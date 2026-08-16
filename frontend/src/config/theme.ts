@@ -4,31 +4,31 @@ export const theme = createTheme({
   palette: {
     mode: 'light',
     primary: {
-      main: '#1565C0', // Construction blue
-      light: '#5E92F3',
-      dark: '#003C8F',
+      main: '#82B1FF', // Light blue
+      light: '#C5E1F5',
+      dark: '#448AFF',
       contrastText: '#FFFFFF',
     },
     secondary: {
-      main: '#FF8F00', // Safety amber
-      light: '#FFC046',
-      dark: '#C56000',
+      main: '#FF69B4', // Pink
+      light: '#FFB6C1',
+      dark: '#FF1493',
     },
     success: {
-      main: '#2E7D32', // Construction green
-      light: '#60B364',
-      dark: '#005005',
+      main: '#4CAF50',
+      light: '#81C784',
+      dark: '#2E7D32',
     },
     error: {
-      main: '#C62828',
-      light: '#FF5F52',
-      dark: '#8E0000',
+      main: '#F44336',
+      light: '#E57373',
+      dark: '#D32F2F',
     },
     warning: {
-      main: '#ED6C02',
+      main: '#FFC107',
     },
     background: {
-      default: '#F5F5F5',
+      default: '#E3F2FD', // Very light blue
       paper: '#FFFFFF',
     },
   },
