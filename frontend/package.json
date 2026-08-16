@@ -1,0 +1,35 @@
+{
+  "name": "@hospital-erp/frontend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@hospital-erp/shared": "*",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.23.1",
+    "@mui/material": "^5.15.18",
+    "@mui/icons-material": "^5.15.18",
+    "@mui/x-data-grid": "^7.6.1",
+    "@emotion/react": "^11.11.4",
+    "@emotion/styled": "^11.11.5",
+    "firebase": "^10.12.1",
+    "axios": "^1.7.2",
+    "socket.io-client": "^4.7.5",
+    "@tanstack/react-query": "^5.40.0",
+    "zustand": "^4.5.2"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.5",
+    "vite": "^5.2.12",
+    "@vitejs/plugin-react": "^4.3.0",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0"
+  }
+}
