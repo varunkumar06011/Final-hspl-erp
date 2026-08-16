@@ -1,0 +1,691 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ═══════════════════════════════════════════════════════════
+// Auth & Projects
+// ═══════════════════════════════════════════════════════════
+
+model User {
+  id          String   @id @default(uuid()) @db.Uuid
+  firebaseUid String   @unique
+  phone       String   @unique
+  name        String
+  role        String   // UserRole enum from shared/enums.ts
+  projectId   String?  @db.Uuid
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  project             Project?             @relation(fields: [projectId], references: [id])
+  auditLogs           AuditLog[]
+  approvalSteps       ApprovalStep[]
+  createdVendors      Vendor[]             @relation("VendorCreatedBy")
+  createdQuotations   Quotation[]          @relation("QuotationCreatedBy")
+  createdPOs          PurchaseOrder[]      @relation("POCreatedBy")
+  createdInvoices     VendorInvoice[]      @relation("InvoiceCreatedBy")
+  createdPayments     PaymentRequest[]     @relation("PaymentRequestCreatedBy")
+  createdGatePasses   GatePass[]           @relation("GatePassCreatedBy")
+  inventoryTxns       InventoryTransaction[]
+  createdPhases       Phase[]              @relation("PhaseCreatedBy")
+  createdActivities   Activity[]           @relation("ActivityCreatedBy")
+  uploadedPhotos      SitePhoto[]          @relation("PhotoUploadedBy")
+  createdIssues       Issue[]              @relation("IssueCreatedBy")
+  inspections         Inspection[]         @relation("InspectionInspector")
+  uploadedDocuments   Document[]          @relation("DocumentUploadedBy")
+  createdContracts    Contract[]          @relation("ContractCreatedBy")
+  labourAttendance    LabourAttendance[]   @relation("LabourSupervisor")
+  createdDropdownOptions DropdownOption[]  @relation("DropdownOptionCreatedBy")
+  uploadedAttachments Attachment[]         @relation("AttachmentUploadedBy")
+
+  @@map("users")
+}
+
+model Project {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String
+  description String?
+  totalBudget Decimal  @db.Decimal(15, 2)
+  startDate   DateTime
+  endDate     DateTime?
+  status      String   @default("PLANNED") // ProjectStatus enum
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  deletedAt   DateTime?
+
+  users           User[]
+  vendors         Vendor[]
+  quotations      Quotation[]
+  purchaseOrders  PurchaseOrder[]
+  invoices        VendorInvoice[]
+  paymentRequests PaymentRequest[]
+  gatePasses      GatePass[]
+  inventoryItems  InventoryItem[]
+  phases          Phase[]
+  photos          SitePhoto[]
+  issues          Issue[]
+  inspections     Inspection[]
+  documents       Document[]
+  contracts       Contract[]
+  labourAttendance LabourAttendance[]
+  approvalWorkflows ApprovalWorkflow[]
+  auditLogs       AuditLog[]
+  dropdownOptions DropdownOption[]
+  attachments     Attachment[]
+
+  @@map("projects")
+}
+
+// ═══════════════════════════════════════════════════════════
+// Financial Chain
+// ═══════════════════════════════════════════════════════════
+
+model Vendor {
+  id               String   @id @default(uuid()) @db.Uuid
+  projectId        String   @db.Uuid
+  name             String
+  gstNumber        String?
+  panNumber        String?
+  category         String   @default("OTHER") // VendorCategory enum
+  bankName         String?
+  bankAccountNumber String?
+  ifscCode         String?
+  address          String?
+  phone            String?
+  email            String?
+  status           String   @default("ACTIVE") // VendorStatus enum
+  rating           Int      @default(0)
+  createdBy        String   @db.Uuid
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  deletedAt        DateTime?
+
+  project          Project      @relation(fields: [projectId], references: [id])
+  createdByUser    User         @relation("VendorCreatedBy", fields: [createdBy], references: [id])
+  quotations       Quotation[]
+  purchaseOrders   PurchaseOrder[]
+  invoices         VendorInvoice[]
+  paymentRequests  PaymentRequest[]
+  contracts        Contract[]
+  activities       Activity[]
+
+  @@unique([projectId, name])
+  @@map("vendors")
+}
+
+model Quotation {
+  id            String   @id @default(uuid()) @db.Uuid
+  projectId     String   @db.Uuid
+  vendorId      String   @db.Uuid
+  phaseId       String?  @db.Uuid
+  quotationNumber String
+  date          DateTime @default(now())
+  status        String   @default("DRAFT") // QuotationStatus enum
+  totalAmount   Decimal  @db.Decimal(15, 2) @default(0)
+  notes         String?
+  createdBy     String   @db.Uuid
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  deletedAt     DateTime?
+
+  project       Project         @relation(fields: [projectId], references: [id])
+  vendor        Vendor          @relation(fields: [vendorId], references: [id])
+  phase         Phase?          @relation(fields: [phaseId], references: [id])
+  createdByUser User            @relation("QuotationCreatedBy", fields: [createdBy], references: [id])
+  items         QuotationItem[]
+  purchaseOrders PurchaseOrder[]
+
+  @@unique([projectId, quotationNumber])
+  @@map("quotations")
+}
+
+model QuotationItem {
+  id          String   @id @default(uuid()) @db.Uuid
+  quotationId String   @db.Uuid
+  description String
+  quantity    Decimal  @db.Decimal(10, 2)
+  unit        String
+  rate        Decimal  @db.Decimal(15, 2)
+  amount      Decimal  @db.Decimal(15, 2)
+  createdAt   DateTime @default(now())
+
+  quotation   Quotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+
+  @@map("quotation_items")
+}
+
+model PurchaseOrder {
+  id            String   @id @default(uuid()) @db.Uuid
+  projectId     String   @db.Uuid
+  vendorId      String   @db.Uuid
+  quotationId   String?  @db.Uuid
+  phaseId       String?  @db.Uuid
+  poNumber      String
+  date          DateTime @default(now())
+  status        String   @default("DRAFT") // POStatus enum
+  deliveryDate  DateTime?
+  totalAmount   Decimal  @db.Decimal(15, 2) @default(0)
+  notes         String?
+  createdBy     String   @db.Uuid
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  deletedAt     DateTime?
+
+  project       Project      @relation(fields: [projectId], references: [id])
+  vendor        Vendor       @relation(fields: [vendorId], references: [id])
+  quotation     Quotation?   @relation(fields: [quotationId], references: [id])
+  phase         Phase?       @relation(fields: [phaseId], references: [id])
+  createdByUser User         @relation("POCreatedBy", fields: [createdBy], references: [id])
+  items         POItem[]
+  invoices      VendorInvoice[]
+  gatePasses    GatePass[]
+
+  @@unique([projectId, poNumber])
+  @@map("purchase_orders")
+}
+
+model POItem {
+  id          String   @id @default(uuid()) @db.Uuid
+  poId        String   @db.Uuid
+  description String
+  quantity    Decimal  @db.Decimal(10, 2)
+  unit        String
+  rate        Decimal  @db.Decimal(15, 2)
+  amount      Decimal  @db.Decimal(15, 2)
+  createdAt   DateTime @default(now())
+
+  purchaseOrder PurchaseOrder @relation(fields: [poId], references: [id], onDelete: Cascade)
+
+  @@map("po_items")
+}
+
+model VendorInvoice {
+  id                  String   @id @default(uuid()) @db.Uuid
+  projectId           String   @db.Uuid
+  vendorId            String   @db.Uuid
+  poId                String?  @db.Uuid
+  invoiceNumber       String
+  date                DateTime @default(now())
+  amount              Decimal  @db.Decimal(15, 2)
+  taxAmount           Decimal  @db.Decimal(15, 2) @default(0)
+  totalAmount         Decimal  @db.Decimal(15, 2)
+  verificationStatus  String   @default("PENDING") // InvoiceVerificationStatus enum
+  notes               String?
+  createdBy           String   @db.Uuid
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  deletedAt           DateTime?
+
+  project             Project         @relation(fields: [projectId], references: [id])
+  vendor              Vendor          @relation(fields: [vendorId], references: [id])
+  purchaseOrder       PurchaseOrder?  @relation(fields: [poId], references: [id])
+  createdByUser       User            @relation("InvoiceCreatedBy", fields: [createdBy], references: [id])
+  paymentRequests     PaymentRequest[]
+  gatePasses          GatePass[]
+
+  @@unique([vendorId, invoiceNumber])
+  @@map("vendor_invoices")
+}
+
+model PaymentRequest {
+  id             String   @id @default(uuid()) @db.Uuid
+  projectId      String   @db.Uuid
+  invoiceId      String   @db.Uuid
+  vendorId       String   @db.Uuid
+  requestNumber  String
+  amount         Decimal  @db.Decimal(15, 2)
+  status         String   @default("PENDING") // PaymentStatus enum
+  paymentMode    String?  // PaymentMode enum
+  notes          String?
+  createdBy      String   @db.Uuid
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  deletedAt      DateTime?
+
+  project        Project         @relation(fields: [projectId], references: [id])
+  invoice        VendorInvoice   @relation(fields: [invoiceId], references: [id])
+  vendor         Vendor          @relation(fields: [vendorId], references: [id])
+  createdByUser  User            @relation("PaymentRequestCreatedBy", fields: [createdBy], references: [id])
+  payments            Payment[]
+  approvalWorkflowId  String?  @unique @db.Uuid
+  approvalWorkflow    ApprovalWorkflow? @relation(fields: [approvalWorkflowId], references: [id])
+
+  @@unique([projectId, requestNumber])
+  @@map("payment_requests")
+}
+
+model Payment {
+  id                String   @id @default(uuid()) @db.Uuid
+  paymentRequestId  String   @db.Uuid
+  amount            Decimal  @db.Decimal(15, 2)
+  date              DateTime @default(now())
+  mode              String   // PaymentMode enum
+  reference         String?
+  status            String   @default("PAID") // PaymentStatus enum
+  createdAt         DateTime @default(now())
+
+  paymentRequest    PaymentRequest @relation(fields: [paymentRequestId], references: [id])
+
+  @@map("payments")
+}
+
+// ═══════════════════════════════════════════════════════════
+// Approval Engine (generic, reusable)
+// ═══════════════════════════════════════════════════════════
+
+model ApprovalWorkflow {
+  id           String   @id @default(uuid()) @db.Uuid
+  entityType   String   // e.g., "PAYMENT_REQUEST", "PERMISSION_REQUEST"
+  entityId     String   @db.Uuid
+  projectId    String   @db.Uuid
+  status       String   @default("CREATED") // ApprovalStatus enum
+  currentStep  Int      @default(0)
+  minApprovers Int      @default(2)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  project      Project         @relation(fields: [projectId], references: [id])
+  steps        ApprovalStep[]
+  paymentRequest PaymentRequest?
+
+  @@unique([entityType, entityId])
+  @@map("approval_workflows")
+}
+
+model ApprovalStep {
+  id            String   @id @default(uuid()) @db.Uuid
+  workflowId    String   @db.Uuid
+  stepNumber    Int
+  approverRole  String   // UserRole enum — which role can approve this step
+  approverUserId String?  @db.Uuid
+  status        String   @default("PENDING") // ApprovalStepStatus enum
+  decidedAt     DateTime?
+  comments      String?
+  createdAt     DateTime @default(now())
+
+  workflow      ApprovalWorkflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  approverUser  User?            @relation(fields: [approverUserId], references: [id])
+
+  @@map("approval_steps")
+}
+
+// ═══════════════════════════════════════════════════════════
+// Site Operations
+// ═══════════════════════════════════════════════════════════
+
+model GatePass {
+  id             String   @id @default(uuid()) @db.Uuid
+  projectId      String   @db.Uuid
+  poId           String?  @db.Uuid
+  invoiceId      String?  @db.Uuid
+  passNumber     String
+  type           String   // GatePassType enum (INWARD / OUTWARD)
+  date           DateTime @default(now())
+  vehicleNumber  String?
+  driverName     String?
+  carrierName    String?
+  status         String   @default("PENDING") // GatePassStatus enum
+  createdBy      String   @db.Uuid
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  deletedAt      DateTime?
+
+  project        Project         @relation(fields: [projectId], references: [id])
+  purchaseOrder  PurchaseOrder?  @relation(fields: [poId], references: [id])
+  invoice        VendorInvoice?  @relation(fields: [invoiceId], references: [id])
+  createdByUser  User            @relation("GatePassCreatedBy", fields: [createdBy], references: [id])
+  items          GatePassItem[]
+  inventoryTxns  InventoryTransaction[]
+
+  @@unique([projectId, passNumber])
+  @@map("gate_passes")
+}
+
+model GatePassItem {
+  id          String   @id @default(uuid()) @db.Uuid
+  gatePassId  String   @db.Uuid
+  description String
+  quantity    Decimal  @db.Decimal(10, 2)
+  unit        String
+  createdAt   DateTime @default(now())
+
+  gatePass    GatePass @relation(fields: [gatePassId], references: [id], onDelete: Cascade)
+
+  @@map("gate_pass_items")
+}
+
+model InventoryItem {
+  id            String   @id @default(uuid()) @db.Uuid
+  projectId     String   @db.Uuid
+  name          String
+  sku           String?
+  category      String?
+  unit          String
+  currentStock  Decimal  @db.Decimal(10, 2) @default(0)
+  minStockLevel Decimal  @db.Decimal(10, 2) @default(0)
+  location      String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  deletedAt     DateTime?
+
+  project       Project                @relation(fields: [projectId], references: [id])
+  transactions  InventoryTransaction[]
+
+  @@unique([projectId, name])
+  @@map("inventory_items")
+}
+
+model InventoryTransaction {
+  id           String   @id @default(uuid()) @db.Uuid
+  itemId       String   @db.Uuid
+  gatePassId   String?  @db.Uuid
+  type         String   // InventoryTxnType enum (IN / OUT / ADJUST)
+  quantity     Decimal  @db.Decimal(10, 2)
+  balanceAfter Decimal  @db.Decimal(10, 2)
+  userId       String   @db.Uuid
+  notes        String?
+  timestamp    DateTime @default(now())
+
+  inventoryItem InventoryItem @relation(fields: [itemId], references: [id])
+  gatePass      GatePass?     @relation(fields: [gatePassId], references: [id])
+  user          User          @relation(fields: [userId], references: [id])
+
+  @@map("inventory_transactions")
+}
+
+// ═══════════════════════════════════════════════════════════
+// Construction Progress
+// ═══════════════════════════════════════════════════════════
+
+model Phase {
+  id             String   @id @default(uuid()) @db.Uuid
+  projectId      String   @db.Uuid
+  name           String
+  plannedStart   DateTime?
+  plannedEnd     DateTime?
+  actualStart    DateTime?
+  actualEnd      DateTime?
+  budgetAmount   Decimal  @db.Decimal(15, 2) @default(0)
+  progressPercent Decimal @db.Decimal(5, 2) @default(0)
+  status         String   @default("NOT_STARTED") // PhaseStatus enum
+  createdBy      String   @db.Uuid
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  deletedAt      DateTime?
+
+  project        Project      @relation(fields: [projectId], references: [id])
+  createdByUser  User         @relation("PhaseCreatedBy", fields: [createdBy], references: [id])
+  activities     Activity[]
+  quotations     Quotation[]
+  purchaseOrders PurchaseOrder[]
+  photos           SitePhoto[]
+  issues           Issue[]
+  inspections      Inspection[]
+  labourAttendance LabourAttendance[]
+
+  @@map("phases")
+}
+
+model Activity {
+  id              String   @id @default(uuid()) @db.Uuid
+  phaseId         String   @db.Uuid
+  name            String
+  plannedStart    DateTime?
+  plannedEnd      DateTime?
+  actualStart     DateTime?
+  actualEnd       DateTime?
+  assignedVendorId String? @db.Uuid
+  budgetAmount    Decimal  @db.Decimal(15, 2) @default(0)
+  progressPercent Decimal  @db.Decimal(5, 2) @default(0)
+  status          String   @default("NOT_STARTED") // ActivityStatus enum
+  dependencies    String?  // JSON array of activity IDs
+  createdBy       String   @db.Uuid
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  deletedAt       DateTime?
+
+  phase           Phase     @relation(fields: [phaseId], references: [id], onDelete: Cascade)
+  assignedVendor  Vendor?   @relation(fields: [assignedVendorId], references: [id])
+  createdByUser   User      @relation("ActivityCreatedBy", fields: [createdBy], references: [id])
+  photos          SitePhoto[]
+  issues          Issue[]
+  inspections     Inspection[]
+  labourAttendance LabourAttendance[]
+
+  @@map("activities")
+}
+
+model SitePhoto {
+  id          String   @id @default(uuid()) @db.Uuid
+  projectId   String   @db.Uuid
+  phaseId     String?  @db.Uuid
+  activityId  String?  @db.Uuid
+  zone        String?
+  imageUrl    String
+  caption     String?
+  takenAt     DateTime @default(now())
+  tag         String   @default("DURING") // PhotoTag enum
+  uploadedBy  String   @db.Uuid
+  createdAt   DateTime @default(now())
+
+  project     Project   @relation(fields: [projectId], references: [id])
+  phase       Phase?    @relation(fields: [phaseId], references: [id])
+  activity    Activity? @relation(fields: [activityId], references: [id])
+  uploadedByUser User   @relation("PhotoUploadedBy", fields: [uploadedBy], references: [id])
+
+  @@map("site_photos")
+}
+
+model Issue {
+  id            String   @id @default(uuid()) @db.Uuid
+  projectId     String   @db.Uuid
+  phaseId       String?  @db.Uuid
+  activityId    String?  @db.Uuid
+  category      String   // IssueCategory enum
+  severity      String   @default("MEDIUM") // IssueSeverity enum
+  title         String
+  description   String?
+  assignedTo    String?  @db.Uuid
+  status        String   @default("OPEN") // IssueStatus enum
+  resolution    String?
+  dateRaised    DateTime @default(now())
+  dateResolved  DateTime?
+  createdBy     String   @db.Uuid
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  deletedAt     DateTime?
+
+  project       Project   @relation(fields: [projectId], references: [id])
+  phase         Phase?    @relation(fields: [phaseId], references: [id])
+  activity      Activity? @relation(fields: [activityId], references: [id])
+  createdByUser User      @relation("IssueCreatedBy", fields: [createdBy], references: [id])
+
+  @@map("issues")
+}
+
+model Inspection {
+  id               String   @id @default(uuid()) @db.Uuid
+  projectId        String   @db.Uuid
+  phaseId          String?  @db.Uuid
+  activityId       String?  @db.Uuid
+  checklist        Json?    // Array of { item, result (PASS/FAIL/N/A) }
+  defects          Json?    // Array of { description, severity }
+  correctiveAction String?
+  status           String   @default("SCHEDULED") // InspectionStatus enum
+  inspectorId      String   @db.Uuid
+  scheduledDate    DateTime?
+  completedDate    DateTime?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  deletedAt        DateTime?
+
+  project          Project   @relation(fields: [projectId], references: [id])
+  phase            Phase?    @relation(fields: [phaseId], references: [id])
+  activity         Activity? @relation(fields: [activityId], references: [id])
+  inspector        User      @relation("InspectionInspector", fields: [inspectorId], references: [id])
+
+  @@map("inspections")
+}
+
+// ═══════════════════════════════════════════════════════════
+// Governance
+// ═══════════════════════════════════════════════════════════
+
+model Document {
+  id          String   @id @default(uuid()) @db.Uuid
+  projectId   String   @db.Uuid
+  entityType  String   // e.g., "VENDOR", "PO", "INVOICE", "CONTRACT"
+  entityId    String   @db.Uuid
+  fileName    String
+  filePath    String   // Supabase Storage URL or local path
+  fileType    String   // DocumentType enum
+  mimeType    String
+  version     Int      @default(1)
+  uploadedBy  String   @db.Uuid
+  status      String   @default("ACTIVE") // DocumentStatus enum
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  project     Project   @relation(fields: [projectId], references: [id])
+  uploadedByUser User   @relation("DocumentUploadedBy", fields: [uploadedBy], references: [id])
+
+  @@map("documents")
+}
+
+model Contract {
+  id              String   @id @default(uuid()) @db.Uuid
+  projectId       String   @db.Uuid
+  vendorId        String   @db.Uuid
+  type            String   // ContractType enum
+  startDate       DateTime
+  endDate         DateTime?
+  value           Decimal  @db.Decimal(15, 2)
+  advancePercent  Decimal  @db.Decimal(5, 2) @default(0)
+  retentionPercent Decimal @db.Decimal(5, 2) @default(0)
+  status          String   @default("DRAFT") // ContractStatus enum
+  createdBy       String   @db.Uuid
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  deletedAt       DateTime?
+
+  project         Project             @relation(fields: [projectId], references: [id])
+  vendor          Vendor              @relation(fields: [vendorId], references: [id])
+  createdByUser   User                @relation("ContractCreatedBy", fields: [createdBy], references: [id])
+  milestones      ContractMilestone[]
+
+  @@map("contracts")
+}
+
+model ContractMilestone {
+  id          String   @id @default(uuid()) @db.Uuid
+  contractId  String   @db.Uuid
+  name        String
+  dueDate     DateTime?
+  amount      Decimal  @db.Decimal(15, 2)
+  status      String   @default("PENDING") // MilestoneStatus enum
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  contract    Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+
+  @@map("contract_milestones")
+}
+
+model LabourAttendance {
+  id           String   @id @default(uuid()) @db.Uuid
+  projectId    String   @db.Uuid
+  phaseId      String?  @db.Uuid
+  activityId   String?  @db.Uuid
+  date         DateTime
+  headcount    Int
+  category     String   // LabourCategory enum
+  cost         Decimal  @db.Decimal(15, 2)
+  supervisorId String   @db.Uuid
+  notes        String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  project      Project   @relation(fields: [projectId], references: [id])
+  phase        Phase?    @relation(fields: [phaseId], references: [id])
+  activity     Activity? @relation(fields: [activityId], references: [id])
+  supervisor   User      @relation("LabourSupervisor", fields: [supervisorId], references: [id])
+
+  @@map("labour_attendance")
+}
+
+// ═══════════════════════════════════════════════════════════
+// Audit Trail (generic, polymorphic)
+// ═══════════════════════════════════════════════════════════
+
+model AuditLog {
+  id          String   @id @default(uuid()) @db.Uuid
+  projectId   String?  @db.Uuid
+  userId      String   @db.Uuid
+  action      String   // AuditAction enum
+  entityType  String   // e.g., "VENDOR", "PAYMENT_REQUEST"
+  entityId    String   @db.Uuid
+  oldValue    Json?
+  newValue    Json?
+  timestamp   DateTime @default(now())
+
+  project     Project? @relation(fields: [projectId], references: [id])
+  user        User     @relation(fields: [userId], references: [id])
+
+  @@index([entityType, entityId])
+  @@index([projectId])
+  @@index([userId])
+  @@map("audit_logs")
+}
+
+// ═══════════════════════════════════════════════════════════
+// Dynamic Dropdown Options (user-expandable, per-project)
+// ═══════════════════════════════════════════════════════════
+
+model DropdownOption {
+  id        String   @id @default(uuid()) @db.Uuid
+  projectId String   @db.Uuid
+  type      String   // e.g., "VENDOR_CATEGORY", "UNIT", "LOCATION", "EXPENSE_TYPE", "ISSUE_CATEGORY"
+  value     String   // The stored value
+  label     String?  // Display label (defaults to value if null)
+  isActive  Boolean  @default(true)
+  createdBy String   @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project   Project  @relation(fields: [projectId], references: [id])
+  user      User     @relation("DropdownOptionCreatedBy", fields: [createdBy], references: [id])
+
+  @@unique([projectId, type, value])
+  @@index([projectId, type])
+  @@map("dropdown_options")
+}
+
+// ═══════════════════════════════════════════════════════════
+// Attachments (generic image/document uploads linked to any entity)
+// ═══════════════════════════════════════════════════════════
+
+model Attachment {
+  id          String   @id @default(uuid()) @db.Uuid
+  projectId   String   @db.Uuid
+  entityType  String   // e.g., "VENDOR", "GATE_PASS", "INVENTORY_ITEM", "PURCHASE_ORDER"
+  entityId    String   @db.Uuid
+  fileName    String
+  filePath    String   // Storage path/URL
+  mimeType    String
+  fileType    String   // "IMAGE" or "DOCUMENT"
+  description String?
+  uploadedBy  String   @db.Uuid
+  createdAt   DateTime @default(now())
+
+  project     Project  @relation(fields: [projectId], references: [id])
+  user        User     @relation("AttachmentUploadedBy", fields: [uploadedBy], references: [id])
+
+  @@index([entityType, entityId])
+  @@index([projectId])
+  @@map("attachments")
+}

@@ -1,0 +1,46 @@
+import { Router } from 'express';
+import authRoutes from './auth.routes';
+import auditRoutes from './audit.routes';
+import dashboardRoutes from './dashboard.routes';
+import vendorRoutes from './vendor.routes';
+import quotationRoutes from './quotation.routes';
+import purchaseOrderRoutes from './purchase-order.routes';
+import invoiceRoutes from './invoice.routes';
+import paymentRoutes from './payment.routes';
+import gatePassRoutes from './gate-pass.routes';
+import inventoryRoutes from './inventory.routes';
+import phaseRoutes from './phase.routes';
+import activityRoutes from './activity.routes';
+import photoRoutes from './photo.routes';
+import issueRoutes from './issue.routes';
+import inspectionRoutes from './inspection.routes';
+import documentRoutes from './document.routes';
+import contractRoutes from './contract.routes';
+import labourRoutes from './labour.routes';
+import dropdownOptionRoutes from './dropdown-option.routes';
+import attachmentRoutes from './attachment.routes';
+
+const router = Router();
+
+router.use('/auth', authRoutes);
+router.use('/audit', auditRoutes);
+router.use('/dashboard', dashboardRoutes);
+router.use('/vendors', vendorRoutes);
+router.use('/quotations', quotationRoutes);
+router.use('/purchase-orders', purchaseOrderRoutes);
+router.use('/invoices', invoiceRoutes);
+router.use('/payments', paymentRoutes);
+router.use('/gate-passes', gatePassRoutes);
+router.use('/inventory', inventoryRoutes);
+router.use('/phases', phaseRoutes);
+router.use('/activities', activityRoutes);
+router.use('/photos', photoRoutes);
+router.use('/issues', issueRoutes);
+router.use('/inspections', inspectionRoutes);
+router.use('/documents', documentRoutes);
+router.use('/contracts', contractRoutes);
+router.use('/labour', labourRoutes);
+router.use('/dropdown-options', dropdownOptionRoutes);
+router.use('/attachments', attachmentRoutes);
+
+export default router;
