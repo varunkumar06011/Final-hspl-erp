@@ -1,26 +1,20 @@
 import { z } from 'zod';
 import {
-  VendorCategory,
   VendorStatus,
   QuotationStatus,
   POStatus,
   InvoiceVerificationStatus,
-  PaymentMode,
   GatePassType,
   GatePassStatus,
   InventoryTxnType,
   PhaseStatus,
   ActivityStatus,
   PhotoTag,
-  IssueCategory,
   IssueSeverity,
   IssueStatus,
   InspectionStatus,
-  DocumentType,
   DocumentStatus,
-  ContractType,
   ContractStatus,
-  LabourCategory,
 } from '../enums';
 
 const uuid = z.string().uuid();

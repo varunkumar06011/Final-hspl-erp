@@ -95,7 +95,7 @@ class SupabaseStorageService implements StorageService {
     }
 
     return {
-      filePath: uniqueName,
+      filePath: `${bucket}/${uniqueName}`,
       fileName: uniqueName,
       mimeType,
       size: file.length,

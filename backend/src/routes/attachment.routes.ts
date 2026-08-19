@@ -60,10 +60,12 @@ router.post(
       }
 
       const isImage = req.file.mimetype.startsWith('image/');
-      const bucket = isImage ? 'attachments/images' : 'attachments/documents';
+      const bucket = 'attachments';
+      const subPath = isImage ? 'images' : 'documents';
+      const prefixedFileName = `${subPath}/${req.file.originalname}`;
 
       const storage = getStorageService();
-      const uploadResult = await storage.upload(req.file.buffer, req.file.originalname, req.file.mimetype, bucket);
+      const uploadResult = await storage.upload(req.file.buffer, prefixedFileName, req.file.mimetype, bucket);
 
       const record = await prisma.attachment.create({
         data: {
