@@ -36,15 +36,22 @@ export default function LoginPage() {
   const navigate = useNavigate();
 
   const setupRecaptcha = useCallback(() => {
-    if (!(window as any).recaptchaVerifier) {
-      (window as any).recaptchaVerifier = new RecaptchaVerifier(
-        auth!,
-        'recaptcha-container',
-        {
-          size: 'invisible',
-        }
-      );
+    // Clear any stale verifier before creating a new one
+    if ((window as any).recaptchaVerifier) {
+      try {
+        (window as any).recaptchaVerifier.clear();
+      } catch {
+        // ignore
+      }
+      (window as any).recaptchaVerifier = null;
     }
+    (window as any).recaptchaVerifier = new RecaptchaVerifier(
+      auth!,
+      'recaptcha-container',
+      {
+        size: 'invisible',
+      }
+    );
     return (window as any).recaptchaVerifier;
   }, []);
 
@@ -58,9 +65,9 @@ export default function LoginPage() {
       setStep('otp');
     } catch (err: unknown) {
       setError(
-        extractErrorMessage(err) + ' — You can still use dev OTP 1234 to sign in.'
+        extractErrorMessage(err)
       );
-      setStep('otp');
+      setStep('phone');
     } finally {
       setLoading(false);
     }
