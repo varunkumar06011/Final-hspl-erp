@@ -1,4 +1,5 @@
 import { env } from '../config/env';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
 export interface UploadResult {
   filePath: string;
@@ -67,11 +68,10 @@ class LocalStorageService implements StorageService {
 }
 
 class SupabaseStorageService implements StorageService {
-  private supabase: import('@supabase/supabase-js').SupabaseClient | null = null;
+  private supabase: SupabaseClient | null = null;
 
-  private async getSupabase() {
+  private getSupabase(): SupabaseClient {
     if (!this.supabase) {
-      const { createClient } = await import('@supabase/supabase-js');
       this.supabase = createClient(env.SUPABASE_URL!, env.SUPABASE_SERVICE_KEY!);
     }
     return this.supabase;
@@ -83,7 +83,7 @@ class SupabaseStorageService implements StorageService {
     mimeType: string,
     bucket: string
   ): Promise<UploadResult> {
-    const supabase = await this.getSupabase();
+    const supabase = this.getSupabase();
     const uniqueName = `${Date.now()}-${fileName}`;
 
     const { error } = await supabase.storage
@@ -103,7 +103,7 @@ class SupabaseStorageService implements StorageService {
   }
 
   async getFile(filePath: string): Promise<Buffer> {
-    const supabase = await this.getSupabase();
+    const supabase = this.getSupabase();
     const [bucket, ...pathParts] = filePath.split('/');
     const objectPath = pathParts.join('/');
 
@@ -120,7 +120,7 @@ class SupabaseStorageService implements StorageService {
   }
 
   async deleteFile(filePath: string): Promise<void> {
-    const supabase = await this.getSupabase();
+    const supabase = this.getSupabase();
     const [bucket, ...pathParts] = filePath.split('/');
     const objectPath = pathParts.join('/');
 
@@ -128,7 +128,7 @@ class SupabaseStorageService implements StorageService {
   }
 
   async getSignedUrl(filePath: string, expiresIn = 3600): Promise<string> {
-    const supabase = await this.getSupabase();
+    const supabase = this.getSupabase();
     const [bucket, ...pathParts] = filePath.split('/');
     const objectPath = pathParts.join('/');
 
