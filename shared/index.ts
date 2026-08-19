@@ -1,6 +1,6 @@
 // Shared package entry point
-export * from './enums';
-export * from './events';
-export * from './constants';
-export * from './types';
-export * from './schemas/index';
+export * from './enums.js';
+export * from './events.js';
+export * from './constants.js';
+export * from './types.js';
+export * from './schemas/index.js';

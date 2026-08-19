@@ -1,3 +1,3 @@
 // Barrel export for all shared schemas
-export * from './auth';
-export * from './modules';
+export * from './auth.js';
+export * from './modules.js';

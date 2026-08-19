@@ -15,7 +15,7 @@ import {
   InspectionStatus,
   DocumentStatus,
   ContractStatus,
-} from '../enums';
+} from '../enums.js';
 
 const uuid = z.string().uuid();
 const money = z.coerce.number().min(0);
