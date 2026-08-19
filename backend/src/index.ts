@@ -11,12 +11,7 @@ import { initSocketServer } from './socket';
 const app = express();
 
 app.use(helmet());
-app.use(
-  cors({
-    origin: true,
-    credentials: true,
-  })
-);
+app.use(cors({ origin: '*' }));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
