@@ -1,12 +1,11 @@
-Prevent duplicate inventory entries: gate pass is primary, invoice payment is fallback
+Update head phone numbers for gate pass OTP
 
-- Add inventoryAdded boolean to VendorInvoice (migration applied)
-- Gate pass OTP approval: adds items to inventory and sets inventoryAdded=true
-- Invoice payment marked Paid: only adds to inventory if inventoryAdded is false
-  (fallback for when no gate pass was created)
-- If gate pass already added items, payment skips inventory and shows
-  "Items already in inventory via gate pass"
-- This prevents double-counting when both gate pass and payment happen
+- Nagarjuna (Project Head): +91 7386861234
+- Ashok (Head of Construction): +91 9247817812
+- Kaushal (Admin): +91 9030845925
+- Vinod (Admin 2): +91 9550237788
+
+Updated in database and seed file.
 
 Generated with [Devin](https://devin.ai)
 

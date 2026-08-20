@@ -76,7 +76,7 @@ async function main() {
     prisma.user.create({
       data: {
         firebaseUid: 'pending-+919381872579',
-        phone: '+919381872579',
+        phone: '+917386861234',
         name: 'Nagarjuna Sir',
         role: UserRole.PROJECT_HEAD,
         projectId: project.id,
@@ -86,7 +86,7 @@ async function main() {
     prisma.user.create({
       data: {
         firebaseUid: 'pending-+918330912144',
-        phone: '+918330912144',
+        phone: '+919247817812',
         name: 'Ashok Sir',
         role: UserRole.HEAD_OF_CONSTRUCTION,
         projectId: project.id,
@@ -96,7 +96,7 @@ async function main() {
     prisma.user.create({
       data: {
         firebaseUid: 'pending-+919000000003',
-        phone: '+919000000003',
+        phone: '+919030845925',
         name: 'Kaushal Sir',
         role: UserRole.ADMIN,
         projectId: project.id,
@@ -106,7 +106,7 @@ async function main() {
     prisma.user.create({
       data: {
         firebaseUid: 'pending-+919000000004',
-        phone: '+919000000004',
+        phone: '+919550237788',
         name: 'Vinod Sir',
         role: UserRole.ADMIN_2,
         projectId: project.id,
@@ -151,10 +151,10 @@ async function main() {
 
   console.log('\n✅ Seed complete!');
   console.log('\n📋 Seed Users (replace with real phone numbers before first login):');
-  console.log('  PROJECT_HEAD:          Nagarjuna Sir — +91 9381872579');
-  console.log('  HEAD_OF_CONSTRUCTION:  Ashok Sir     — +91 8330912144');
-  console.log('  ADMIN:                 Kaushal Sir   — +91 9000000003');
-  console.log('  ADMIN_2:               Vinod Sir     — +91 9000000004');
+  console.log('  PROJECT_HEAD:          Nagarjuna Sir — +91 7386861234');
+  console.log('  HEAD_OF_CONSTRUCTION:  Ashok Sir     — +91 9247817812');
+  console.log('  ADMIN:                 Kaushal Sir   — +91 9030845925');
+  console.log('  ADMIN_2:               Vinod Sir     — +91 9550237788');
 }
 
 main()
