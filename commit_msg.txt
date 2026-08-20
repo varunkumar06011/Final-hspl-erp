@@ -1,12 +1,8 @@
-Fix audit log: show date/time and readable details instead of raw JSON
+Fix attendance: staff list stuck loading due to pageSize exceeding validation max
 
-- Date column now uses 'timestamp' field (was looking for 'createdAt' which
-  doesn't exist on AuditLog model)
-- Date shows both date and time (e.g. "20 Aug 2026, 15:30")
-- Details column now shows readable key-value pairs (e.g. "status: APPROVED
-  | passNumber: VGH-20-08-001") instead of raw JSON.stringify output
-- Entity type column shows friendly labels (e.g. "Invoice" instead of
-  "VENDOR_INVOICE", "Gate Pass" instead of "GATE_PASS")
+- The attendance staff query sent pageSize=200 but the pagination schema
+  validates pageSize max=100, causing a silent 400 error
+- Changed pageSize from 200 to 100 so the query resolves successfully
 
 Generated with [Devin](https://devin.ai)
 

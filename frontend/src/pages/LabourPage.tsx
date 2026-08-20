@@ -115,7 +115,7 @@ export default function AttendancePage() {
   const { data: attendanceStaff } = useQuery({
     queryKey: ['/labour/staff', 'attendance', attendanceType],
     queryFn: async () => {
-      const response = await api.get('/labour/staff', { params: { type: attendanceType, active: 'true', pageSize: 200 } });
+      const response = await api.get('/labour/staff', { params: { type: attendanceType, active: 'true', pageSize: 100 } });
       return response.data?.data ?? [];
     },
     enabled: tab === 1,
