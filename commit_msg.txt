@@ -1,10 +1,14 @@
-Fix gate pass OTP: preserve confirmationResult when opening Enter OTP dialog
+Strict rule: only gate pass approval adds to inventory, invoice payment only checks
 
-- Track which gate pass ID the Firebase confirmationResult belongs to
-- Don't reset confirmationResult when clicking "Enter OTP" on a gate pass
-  that just had its OTP sent during creation
-- If user opens a different gate pass's OTP dialog, show "Resend OTP" prompt
-- Clean up both confirmationResult and confirmationGatePassId on success
+- Removed all inventory addition logic from invoice payment endpoints
+  (PATCH /:id/status and mark-payment-paid no longer add items to inventory)
+- Removed the addItemsToInventory helper function entirely from invoice routes
+- When invoice is marked Paid or stock Received, backend checks if the PO has
+  an approved gate pass and returns a warning if not
+- Frontend shows the warning as an error alert: "No approved gate pass exists
+  for PO X. Items have NOT been added to inventory."
+- Gate pass OTP approval remains the ONLY path that adds items to inventory
+- No more duplicate inventory entries possible
 
 Generated with [Devin](https://devin.ai)
 

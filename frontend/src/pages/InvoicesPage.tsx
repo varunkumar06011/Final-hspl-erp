@@ -293,11 +293,12 @@ export default function InvoicesPage() {
       queryClient.invalidateQueries({ queryKey: ['/inventory'] });
       queryClient.invalidateQueries({ queryKey: ['/payments'] });
       queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
-      const count = data?.inventoryResults?.length ?? 0;
-      setSuccessMsg(count > 0
-        ? `Payment marked as paid. ${count} item(s) added to inventory.`
-        : 'Payment marked as paid.');
-      setTimeout(() => setSuccessMsg(''), 5000);
+      if (data?.inventoryWarning) {
+        setError(data.inventoryWarning);
+      } else {
+        setSuccessMsg('Payment marked as paid.');
+        setTimeout(() => setSuccessMsg(''), 5000);
+      }
     },
     onError: (err: unknown) => setError(extractErrorMessage(err)),
   });
@@ -312,9 +313,10 @@ export default function InvoicesPage() {
       queryClient.invalidateQueries({ queryKey: ['/inventory'] });
       queryClient.invalidateQueries({ queryKey: ['/payments'] });
       queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
-      const count = data?.inventoryResults?.length ?? 0;
-      if (count > 0) {
-        setSuccessMsg(`Payment marked as paid. ${count} item(s) added to inventory and transaction recorded.`);
+      if (data?.inventoryWarning) {
+        setError(data.inventoryWarning);
+      } else {
+        setSuccessMsg('Status updated.');
         setTimeout(() => setSuccessMsg(''), 5000);
       }
     },

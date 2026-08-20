@@ -1,5 +1,5 @@
 import { Router, Response, NextFunction } from 'express';
-import { APPROVAL_CONFIG, Permission, AuditAction, InvoiceVerificationStatus, PaymentStatus, StockStatus, InventoryTxnType, UserRole } from '@hospital-erp/shared';
+import { APPROVAL_CONFIG, Permission, AuditAction, InvoiceVerificationStatus, PaymentStatus, StockStatus, UserRole } from '@hospital-erp/shared';
 import { createInvoiceSchema, listInvoicesSchema, approvalActionSchema, updateInvoiceStatusSchema } from '@hospital-erp/shared';
 import { prisma } from '../config/prisma';
 import { Prisma } from '@prisma/client';
@@ -586,7 +586,9 @@ router.post(
 );
 
 // PATCH /:id/status — update payment and/or stock status
-// When paymentStatus is set to PAID, items are added to inventory and transactions are created
+// Inventory is ONLY added via gate pass approval — this endpoint does NOT add to inventory.
+// When payment is marked PAID or stock is marked RECEIVED, it checks if a gate pass exists
+// for this invoice's PO and warns if items haven't been added to inventory yet.
 router.patch(
   '/:id/status',
   rbacMiddleware(Permission.VIEW_FINANCIALS),
@@ -598,7 +600,7 @@ router.patch(
 
       const invoice = await prisma.vendorInvoice.findFirst({
         where: { id: req.params.id, projectId, deletedAt: null },
-        include: { purchaseOrder: { include: { items: true } } },
+        include: { purchaseOrder: { select: { id: true, poNumber: true } } },
       });
       if (!invoice) {
         res.status(404).json({ error: 'Invoice not found' });
@@ -609,14 +611,8 @@ router.patch(
       if (paymentStatus) updateData.paymentStatus = paymentStatus;
       if (stockStatus) updateData.stockStatus = stockStatus;
 
-      let inventoryResults: { itemName: string; quantity: number; action: string }[] = [];
-
-      // When payment is marked as PAID, add items to inventory only if not already added (via gate pass)
+      // When payment is marked as PAID, create a payment record (but do NOT add to inventory)
       if (paymentStatus === PaymentStatus.PAID && invoice.paymentStatus !== PaymentStatus.PAID) {
-        if (!invoice.inventoryAdded) {
-          inventoryResults = await addItemsToInventory(invoice as unknown as { id: string; projectId: string; invoiceCode: string; purchaseOrder: { items: { id: string; materialName: string; quantity: Prisma.Decimal; unit: string | null }[] } | null }, projectId, req.user!.id);
-          updateData.inventoryAdded = true;
-        }
         await createPaymentRecordForInvoice(invoice as unknown as { id: string; projectId: string; vendorId: string; invoiceCode: string; totalAmount: Prisma.Decimal }, projectId, req.user!.id);
       }
 
@@ -626,85 +622,33 @@ router.patch(
         include: invoiceInclude,
       });
 
+      // Check if this invoice's PO has an approved gate pass (for informational warning)
+      let inventoryWarning: string | null = null;
+      if (invoice.poId) {
+        const gatePass = await prisma.gatePass.findFirst({
+          where: { poId: invoice.poId, projectId, deletedAt: null, status: 'APPROVED' },
+          select: { id: true, passNumber: true },
+        });
+        if (!gatePass) {
+          inventoryWarning = `WARNING: No approved gate pass exists for PO ${invoice.purchaseOrder?.poNumber ?? '—'}. Items have NOT been added to inventory. Create and approve a gate pass first.`;
+        }
+      }
+
       await logAudit({
         userId: req.user!.id,
         action: AuditAction.UPDATE,
         entityType: 'VENDOR_INVOICE',
         entityId: invoice.id,
         projectId,
-        newValue: { ...updateData, inventoryItemsAdded: inventoryResults.length },
+        newValue: { ...updateData, inventoryWarning },
       });
 
-      res.json({ ...updated, inventoryResults });
+      res.json({ ...updated, inventoryWarning });
     } catch (error) {
       next(error);
     }
   }
 );
-
-// Helper: add PO items to inventory and create inventory transactions
-async function addItemsToInventory(
-  invoice: { id: string; projectId: string; invoiceCode: string; purchaseOrder: { items: { id: string; materialName: string; quantity: Prisma.Decimal; unit: string | null }[] } | null },
-  projectId: string,
-  userId: string
-): Promise<{ itemName: string; quantity: number; action: string }[]> {
-  if (!invoice.purchaseOrder || invoice.purchaseOrder.items.length === 0) {
-    return [];
-  }
-
-  const results: { itemName: string; quantity: number; action: string }[] = [];
-
-  for (const item of invoice.purchaseOrder.items) {
-    const existingItem = await prisma.inventoryItem.findFirst({
-      where: { projectId, name: item.materialName, deletedAt: null },
-    });
-
-    const quantity = Number(item.quantity);
-
-    if (existingItem) {
-      const newStock = Number(existingItem.currentStock) + quantity;
-      await prisma.$transaction([
-        prisma.inventoryItem.update({
-          where: { id: existingItem.id },
-          data: { currentStock: newStock },
-        }),
-        prisma.inventoryTransaction.create({
-          data: {
-            itemId: existingItem.id,
-            type: InventoryTxnType.IN,
-            quantity,
-            balanceAfter: newStock,
-            userId,
-            notes: `Received via invoice ${invoice.invoiceCode}`,
-          },
-        }),
-      ]);
-      results.push({ itemName: item.materialName, quantity, action: 'updated' });
-    } else {
-      const newItem = await prisma.inventoryItem.create({
-        data: {
-          projectId,
-          name: item.materialName,
-          unit: item.unit || 'unit',
-          currentStock: quantity,
-        },
-      });
-      await prisma.inventoryTransaction.create({
-        data: {
-          itemId: newItem.id,
-          type: InventoryTxnType.IN,
-          quantity,
-          balanceAfter: quantity,
-          userId,
-          notes: `Received via invoice ${invoice.invoiceCode}`,
-        },
-      });
-      results.push({ itemName: item.materialName, quantity, action: 'created' });
-    }
-  }
-
-  return results;
-}
 
 // Helper: create a payment request + payment record for the invoice (shows in transactions tab)
 async function createPaymentRecordForInvoice(
@@ -752,25 +696,20 @@ async function createPaymentRecordForInvoice(
 }
 
 // Helper: process payment paid (used by legacy mark-payment-paid endpoint)
+// Does NOT add to inventory — that only happens via gate pass approval.
 async function processPaymentPaid(
   invoice: { id: string; projectId: string; paymentStatus: string },
   projectId: string,
   userId: string
-): Promise<{ invoice: unknown; inventoryResults: { itemName: string; quantity: number; action: string }[]; message: string }> {
+): Promise<{ invoice: unknown; inventoryWarning: string | null; message: string }> {
   const fullInvoice = await prisma.vendorInvoice.findFirst({
     where: { id: invoice.id, projectId, deletedAt: null },
-    include: { purchaseOrder: { include: { items: true } } },
+    include: { purchaseOrder: { select: { id: true, poNumber: true } } },
   });
 
-  let inventoryResults: { itemName: string; quantity: number; action: string }[] = [];
   const updateData: Record<string, unknown> = { paymentStatus: PaymentStatus.PAID };
 
   if (fullInvoice && fullInvoice.paymentStatus !== PaymentStatus.PAID) {
-    // Only add to inventory if not already added via gate pass
-    if (!fullInvoice.inventoryAdded) {
-      inventoryResults = await addItemsToInventory(fullInvoice as unknown as { id: string; projectId: string; invoiceCode: string; purchaseOrder: { items: { id: string; materialName: string; quantity: Prisma.Decimal; unit: string | null }[] } | null }, projectId, userId);
-      updateData.inventoryAdded = true;
-    }
     await createPaymentRecordForInvoice(fullInvoice as unknown as { id: string; projectId: string; vendorId: string; invoiceCode: string; totalAmount: Prisma.Decimal }, projectId, userId);
   }
 
@@ -780,23 +719,33 @@ async function processPaymentPaid(
     include: invoiceInclude,
   });
 
+  // Check if PO has an approved gate pass
+  let inventoryWarning: string | null = null;
+  if (fullInvoice?.poId) {
+    const gatePass = await prisma.gatePass.findFirst({
+      where: { poId: fullInvoice.poId, projectId, deletedAt: null, status: 'APPROVED' },
+      select: { id: true, passNumber: true },
+    });
+    if (!gatePass) {
+      inventoryWarning = `WARNING: No approved gate pass exists for PO ${fullInvoice.purchaseOrder?.poNumber ?? '—'}. Items have NOT been added to inventory. Create and approve a gate pass first.`;
+    }
+  }
+
   await logAudit({
     userId,
     action: AuditAction.UPDATE,
     entityType: 'VENDOR_INVOICE',
     entityId: invoice.id,
     projectId,
-    newValue: { paymentStatus: PaymentStatus.PAID, inventoryItemsAdded: inventoryResults.length, skippedDuplicate: inventoryResults.length === 0 && fullInvoice?.inventoryAdded },
+    newValue: { paymentStatus: PaymentStatus.PAID, inventoryWarning },
   });
 
   return {
     invoice: updated,
-    inventoryResults,
-    message: inventoryResults.length > 0
-      ? `Payment marked as paid. ${inventoryResults.length} item(s) added to inventory.`
-      : fullInvoice?.inventoryAdded
-        ? 'Payment marked as paid. Items already in inventory via gate pass.'
-        : 'Payment marked as paid.',
+    inventoryWarning,
+    message: inventoryWarning
+      ? `Payment marked as paid. ${inventoryWarning}`
+      : 'Payment marked as paid. Items are in inventory via gate pass.',
   };
 }
 
