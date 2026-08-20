@@ -66,17 +66,26 @@ const quotationLineItem = z.object({
   unitPrice: money,
 });
 
+// Accept items as JSON string (multipart/form-data) or array (JSON body)
+const itemsField = z.preprocess(
+  (val) => (typeof val === 'string' ? JSON.parse(val) : val),
+  z.array(quotationLineItem).min(1, 'At least one line item is required')
+);
+
 export const createQuotationSchema = z.object({
   body: z.object({
     vendorId: uuid,
-    items: z.array(quotationLineItem).min(1, 'At least one line item is required'),
+    items: itemsField,
     gstAmount: money.optional(),
   }),
 });
 export const updateQuotationSchema = z.object({
   params: z.object({ id: uuid }),
   body: z.object({
-    items: z.array(quotationLineItem).min(1).optional(),
+    items: z.preprocess(
+      (val) => (val === undefined ? undefined : typeof val === 'string' ? JSON.parse(val) : val),
+      z.array(quotationLineItem).min(1).optional()
+    ),
     gstAmount: money.optional(),
   }),
 });
