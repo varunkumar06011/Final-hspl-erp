@@ -1,4 +1,4 @@
-import { Router, Response, NextFunction } from 'express';
+import { Router, Response } from 'express';
 import { prisma } from '../config/prisma';
 import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middleware/auth';
 import { extractFromFile, type OcrDocumentType, type OcrResult } from '../services/ocr.service';
@@ -13,7 +13,7 @@ router.use(authMiddleware);
 router.post(
   '/extract',
   upload.single('file'),
-  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  async (req: AuthenticatedRequest, res: Response) => {
     try {
       const projectId = requireProjectId(req);
       if (!req.file) {
@@ -46,7 +46,9 @@ router.post(
 
       res.json(result);
     } catch (error) {
-      next(error);
+      console.error('[OCR] Extract error:', error);
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      res.status(500).json({ error: `Failed to process document: ${message}` });
     }
   }
 );

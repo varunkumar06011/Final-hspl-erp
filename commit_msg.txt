@@ -1,11 +1,11 @@
-Fix autofill from PDF: render pages to images with pdfjs-dist + canvas
+Improve OCR error handling and image compression for autofill
 
-- Replaced pdf-parse (which crashed on many PDFs) with pdfjs-dist to
-  render PDF pages to PNG images using node-canvas
-- PDF pages (up to 3) are rendered at 2x scale and sent to Groq vision
-  API as images — works for both text-based and scanned PDFs
-- No more "scanned PDF" error — all PDFs are processed via vision API
-- Added dependencies: pdfjs-dist, canvas
+- OCR route now returns actual error message instead of generic "Internal
+  server error" so the user can see what went wrong
+- PDF rendering wrapped in try-catch with helpful error message
+- All images (uploaded and PDF-rendered) are now compressed to JPEG at
+  85% quality, max 1600px width — prevents Groq API size limit errors
+- Large uploaded images (>4MB) are also compressed before sending
 
 Generated with [Devin](https://devin.ai)
 

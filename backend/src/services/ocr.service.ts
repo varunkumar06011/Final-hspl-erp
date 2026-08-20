@@ -154,7 +154,12 @@ async function renderPdfPagesToImages(buffer: Buffer, maxPages = 3): Promise<Buf
     } as any).promise;
 
     const pngBuffer = canvas.toBuffer('image/png');
-    images.push(pngBuffer);
+    // Compress and resize if too large (Groq has ~10MB limit per request)
+    const optimized = await sharp(pngBuffer)
+      .resize({ width: Math.min(width, 1600), withoutEnlargement: true })
+      .jpeg({ quality: 85 })
+      .toBuffer();
+    images.push(optimized);
 
     page.cleanup();
   }
@@ -180,12 +185,23 @@ export async function extractFromFile(
 
   if (isImage) {
     // Groq vision API only supports JPG, PNG, and GIF — convert other formats (webp, etc.)
+    // Also compress large images to stay within API limits
     const supportedTypes = ['image/jpeg', 'image/png', 'image/gif'];
     let imageBuffer = fileBuffer;
     let targetMime = mimeType;
     if (!supportedTypes.includes(mimeType)) {
-      imageBuffer = await sharp(fileBuffer).png().toBuffer();
-      targetMime = 'image/png';
+      imageBuffer = await sharp(fileBuffer)
+        .resize({ width: 1600, withoutEnlargement: true })
+        .jpeg({ quality: 85 })
+        .toBuffer();
+      targetMime = 'image/jpeg';
+    } else if (fileBuffer.length > 4 * 1024 * 1024) {
+      // Compress if larger than 4MB
+      imageBuffer = await sharp(fileBuffer)
+        .resize({ width: 1600, withoutEnlargement: true })
+        .jpeg({ quality: 85 })
+        .toBuffer();
+      targetMime = 'image/jpeg';
     }
     const base64 = imageBuffer.toString('base64');
     const dataUrl = `data:${targetMime};base64,${base64}`;
@@ -196,14 +212,20 @@ export async function extractFromFile(
     isVision = true;
   } else {
     // PDF: render pages to images and use vision API (handles both text and scanned PDFs)
-    const pageImages = await renderPdfPagesToImages(fileBuffer, 3);
+    let pageImages: Buffer[];
+    try {
+      pageImages = await renderPdfPagesToImages(fileBuffer, 3);
+    } catch (renderErr) {
+      const msg = renderErr instanceof Error ? renderErr.message : String(renderErr);
+      throw new Error(`Failed to read PDF: ${msg}. Try uploading a photo/screenshot of the document instead.`);
+    }
     if (pageImages.length === 0) {
       throw new Error('Could not read any pages from this PDF. Please try uploading a photo/screenshot instead.');
     }
     // Send all pages as images to the vision model
     content = pageImages.map((imgBuf) => ({
       type: 'image_url',
-      image_url: { url: `data:image/png;base64,${imgBuf.toString('base64')}` },
+      image_url: { url: `data:image/jpeg;base64,${imgBuf.toString('base64')}` },
     }));
     content.push({
       type: 'text',
