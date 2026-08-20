@@ -51,6 +51,11 @@ export const updateUserSchema = z.object({
   }),
   body: z.object({
     name: z.string().min(1).max(100).optional(),
+    phone: z
+      .string()
+      .min(10, 'Phone number must be at least 10 digits')
+      .regex(/^\+?[0-9]+$/, 'Phone number must contain only digits and optional +')
+      .optional(),
     role: z.nativeEnum(UserRole).optional(),
     isActive: z.boolean().optional(),
     projectId: z.string().uuid().optional(),

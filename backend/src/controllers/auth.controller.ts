@@ -163,7 +163,7 @@ export async function updateUser(
 ): Promise<void> {
   try {
     const { id } = req.params;
-    const { name, role, isActive, projectId } = req.body;
+    const { name, phone, role, isActive, projectId } = req.body;
 
     const existing = await prisma.user.findUnique({ where: { id } });
     if (!existing) {
@@ -174,6 +174,18 @@ export async function updateUser(
     if (id === req.user!.id && isActive === false) {
       res.status(400).json({ error: 'You cannot deactivate your own account' });
       return;
+    }
+
+    // Check phone uniqueness if changing
+    if (phone && phone !== existing.phone) {
+      const phoneConflict = await prisma.user.findFirst({
+        where: { phone, id: { not: id } },
+        select: { id: true },
+      });
+      if (phoneConflict) {
+        res.status(409).json({ error: 'Another user already has this phone number' });
+        return;
+      }
     }
 
     if (role && APPROVER_ROLES.some((approverRole) => approverRole === role)) {
@@ -196,6 +208,7 @@ export async function updateUser(
       where: { id },
       data: {
         ...(name && { name }),
+        ...(phone && { phone }),
         ...(role && { role }),
         ...(isActive !== undefined && { isActive }),
         ...(projectId && { projectId }),

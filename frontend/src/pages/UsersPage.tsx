@@ -2,6 +2,7 @@ import { useState } from 'react';
 import {
   Alert,
   Box,
+  Button,
   Card,
   Chip,
   CircularProgress,
@@ -42,6 +43,8 @@ const ROLE_LABELS: Record<UserRole, string> = {
 
 export default function UsersPage() {
   const [error, setError] = useState('');
+  const [successMsg, setSuccessMsg] = useState('');
+  const [editingPhone, setEditingPhone] = useState<Record<string, string>>({});
   const queryClient = useQueryClient();
 
   const { data, isLoading } = useQuery({
@@ -53,12 +56,27 @@ export default function UsersPage() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: async ({ id, updates }: { id: string; updates: { role?: UserRole; isActive?: boolean } }) => {
+    mutationFn: async ({ id, updates }: { id: string; updates: { name?: string; phone?: string; role?: UserRole; isActive?: boolean } }) => {
       const response = await api.patch(`/auth/users/${id}`, updates);
       return response.data;
     },
     onSuccess: () => {
       setError('');
+      queryClient.invalidateQueries({ queryKey: ['/auth/users'] });
+    },
+    onError: (err: unknown) => setError(extractErrorMessage(err)),
+  });
+
+  const savePhoneMutation = useMutation({
+    mutationFn: async ({ id, phone }: { id: string; phone: string }) => {
+      const response = await api.patch(`/auth/users/${id}`, { phone });
+      return response.data;
+    },
+    onSuccess: () => {
+      setError('');
+      setSuccessMsg('Phone number updated.');
+      setTimeout(() => setSuccessMsg(''), 3000);
+      setEditingPhone({});
       queryClient.invalidateQueries({ queryKey: ['/auth/users'] });
     },
     onError: (err: unknown) => setError(extractErrorMessage(err)),
@@ -73,6 +91,7 @@ export default function UsersPage() {
         New signups start as Supervisors. Assign each privileged role to only one active user.
       </Typography>
       {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
+      {successMsg && <Alert severity="success" sx={{ mb: 2 }} onClose={() => setSuccessMsg('')}>{successMsg}</Alert>}
       <Card>
         <TableContainer>
           <Table size="small">
@@ -90,10 +109,38 @@ export default function UsersPage() {
                 <TableRow><TableCell colSpan={5} align="center" sx={{ py: 4 }}><CircularProgress size={30} /></TableCell></TableRow>
               ) : users.length === 0 ? (
                 <TableRow><TableCell colSpan={5} align="center" sx={{ py: 4 }}>No users found</TableCell></TableRow>
-              ) : users.map((user) => (
+              ) : users.map((user) => {
+                const isEditing = editingPhone[user.id] !== undefined;
+                return (
                 <TableRow key={user.id} hover>
                   <TableCell>{user.name}</TableCell>
-                  <TableCell>{user.phone}</TableCell>
+                  <TableCell>
+                    {isEditing ? (
+                      <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center' }}>
+                        <TextField
+                          size="small"
+                          value={editingPhone[user.id]}
+                          onChange={(e) => setEditingPhone({ ...editingPhone, [user.id]: e.target.value })}
+                          sx={{ width: 160 }}
+                          disabled={savePhoneMutation.isPending}
+                        />
+                        <Button
+                          size="small"
+                          variant="contained"
+                          onClick={() => savePhoneMutation.mutate({ id: user.id, phone: editingPhone[user.id] })}
+                          disabled={savePhoneMutation.isPending || editingPhone[user.id].length < 10}
+                        >
+                          {savePhoneMutation.isPending ? <CircularProgress size={16} /> : 'Save'}
+                        </Button>
+                        <Button size="small" onClick={() => { const c = { ...editingPhone }; delete c[user.id]; setEditingPhone(c); }}>Cancel</Button>
+                      </Box>
+                    ) : (
+                      <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center' }}>
+                        <Typography variant="body2">{user.phone}</Typography>
+                        <Button size="small" onClick={() => setEditingPhone({ ...editingPhone, [user.id]: user.phone })}>Edit</Button>
+                      </Box>
+                    )}
+                  </TableCell>
                   <TableCell>
                     <TextField
                       select
@@ -122,7 +169,8 @@ export default function UsersPage() {
                   </TableCell>
                   <TableCell>{formatDate(user.createdAt)}</TableCell>
                 </TableRow>
-              ))}
+                );
+              })}
             </TableBody>
           </Table>
         </TableContainer>
