@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import {
   Box,
   Typography,
@@ -25,6 +25,7 @@ import {
   Accordion,
   AccordionSummary,
   AccordionDetails,
+  Checkbox,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -33,7 +34,6 @@ import {
   Check as CheckIcon,
   Close as CloseIcon,
   Edit as EditIcon,
-  RemoveCircleOutline as RemoveIcon,
   ExpandMore as ExpandMoreIcon,
   Download as DownloadIcon,
 } from '@mui/icons-material';
@@ -46,7 +46,6 @@ interface QuotationItem {
   id?: string;
   materialName: string;
   quantity: number;
-  unit?: string;
   unitPrice: number;
   amount: number;
 }
@@ -54,7 +53,6 @@ interface QuotationItem {
 interface VendorMaterial {
   id: string;
   name: string;
-  unit?: string | null;
   pricePerUnit?: number | null;
 }
 
@@ -108,6 +106,7 @@ export default function QuotationsPage() {
   const [error, setError] = useState('');
   const [selectedVendorId, setSelectedVendorId] = useState('');
   const [lineItems, setLineItems] = useState<QuotationItem[]>([]);
+  const [selectedMaterialNames, setSelectedMaterialNames] = useState<Set<string>>(new Set());
   const [gstAmount, setGstAmount] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -144,9 +143,10 @@ export default function QuotationsPage() {
 
   const createMutation = useMutation({
     mutationFn: async () => {
+      const filteredItems = lineItems.filter((i) => selectedMaterialNames.has(i.materialName));
       const formData = new FormData();
       formData.append('vendorId', selectedVendorId);
-      formData.append('items', JSON.stringify(lineItems));
+      formData.append('items', JSON.stringify(filteredItems));
       if (gstAmount) formData.append('gstAmount', gstAmount);
       if (selectedFile) formData.append('file', selectedFile);
       const response = await api.post('/quotations', formData, {
@@ -213,14 +213,15 @@ export default function QuotationsPage() {
   const vendors: { id: string; name: string; vendorCode: string }[] = vendorsData?.data ?? [];
 
   const totalAmount = useMemo(
-    () => lineItems.reduce((sum, i) => sum + Number(i.amount), 0),
-    [lineItems]
+    () => lineItems.filter((i) => selectedMaterialNames.has(i.materialName)).reduce((sum, i) => sum + Number(i.amount), 0),
+    [lineItems, selectedMaterialNames]
   );
   const grandTotal = totalAmount + (Number(gstAmount) || 0);
 
   function resetForm() {
     setSelectedVendorId('');
     setLineItems([]);
+    setSelectedMaterialNames(new Set());
     setGstAmount('');
     setSelectedFile(null);
     setError('');
@@ -238,7 +239,6 @@ export default function QuotationsPage() {
       id: i.id,
       materialName: i.materialName,
       quantity: Number(i.quantity),
-      unit: i.unit ?? '',
       unitPrice: Number(i.unitPrice),
       amount: Number(i.amount),
     })));
@@ -248,17 +248,19 @@ export default function QuotationsPage() {
     setEditOpen(true);
   }
 
-  function addLineItem() {
-    if (!selectedVendor?.materials?.length) return;
-    const firstMat = selectedVendor.materials[0];
-    setLineItems([...lineItems, {
-      materialName: firstMat.name,
+  // Auto-populate line items from vendor materials when vendor is selected (create mode)
+  useEffect(() => {
+    if (!createOpen || !selectedVendor?.materials) return;
+    const items = selectedVendor.materials.map((m) => ({
+      materialName: m.name,
       quantity: 1,
-      unit: firstMat.unit ?? '',
-      unitPrice: firstMat.pricePerUnit ? Number(firstMat.pricePerUnit) : 0,
-      amount: firstMat.pricePerUnit ? Number(firstMat.pricePerUnit) : 0,
-    }]);
-  }
+      unitPrice: m.pricePerUnit ? Number(m.pricePerUnit) : 0,
+      amount: m.pricePerUnit ? Number(m.pricePerUnit) : 0,
+    }));
+    setLineItems(items);
+    // All materials ticked by default
+    setSelectedMaterialNames(new Set(selectedVendor.materials.map((m) => m.name)));
+  }, [selectedVendor, createOpen]);
 
   function updateLineItem(index: number, field: keyof QuotationItem, value: string | number) {
     const updated = [...lineItems];
@@ -267,10 +269,6 @@ export default function QuotationsPage() {
       updated[index].amount = Number(updated[index].quantity) * Number(updated[index].unitPrice);
     }
     setLineItems(updated);
-  }
-
-  function removeLineItem(index: number) {
-    setLineItems(lineItems.filter((_, i) => i !== index));
   }
 
   function canApprove(row: QuotationRow): ApprovalStep | null {
@@ -426,7 +424,7 @@ export default function QuotationsPage() {
               select
               label="Vendor"
               value={selectedVendorId}
-              onChange={(e) => { setSelectedVendorId(e.target.value); setLineItems([]); }}
+              onChange={(e) => { setSelectedVendorId(e.target.value); setLineItems([]); setSelectedMaterialNames(new Set()); }}
               fullWidth
               size="small"
               disabled={editOpen}
@@ -440,71 +438,60 @@ export default function QuotationsPage() {
             {/* Materials / Line Items */}
             {selectedVendorId && (
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <Typography variant="body2" fontWeight={600}>Materials</Typography>
-                  <Button size="small" startIcon={<AddIcon />} onClick={addLineItem} disabled={!selectedVendor?.materials?.length}>Add Material</Button>
-                </Box>
+                <Typography variant="body2" fontWeight={600}>Materials (tick the ones you need)</Typography>
                 {selectedVendor?.materials?.length === 0 && (
                   <Alert severity="info">This vendor has no materials registered. Please add materials to the vendor first.</Alert>
                 )}
-                {lineItems.map((item, index) => (
-                  <Box key={index} sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
-                    <TextField
-                      select
-                      label="Material"
-                      value={item.materialName}
-                      onChange={(e) => {
-                        const mat = selectedVendor?.materials?.find((m) => m.name === e.target.value);
-                        const newQty = item.quantity;
-                        const newPrice = mat?.pricePerUnit ? Number(mat.pricePerUnit) : item.unitPrice;
-                        updateLineItem(index, 'materialName', e.target.value);
-                        updateLineItem(index, 'unit', mat?.unit ?? '');
-                        updateLineItem(index, 'unitPrice', newPrice);
-                        // Recalculate amount
-                        const updated = [...lineItems];
-                        updated[index] = { ...updated[index], materialName: e.target.value, unit: mat?.unit ?? '', unitPrice: newPrice, amount: newQty * newPrice };
-                        setLineItems(updated);
-                      }}
-                      size="small"
-                      sx={{ flex: 2 }}
-                    >
-                      {selectedVendor?.materials?.map((m) => (
-                        <MenuItem key={m.id} value={m.name}>{m.name}</MenuItem>
-                      ))}
-                    </TextField>
-                    <TextField
-                      label="Qty"
-                      type="number"
-                      value={item.quantity}
-                      onChange={(e) => updateLineItem(index, 'quantity', Number(e.target.value))}
-                      size="small"
-                      sx={{ flex: 1 }}
-                    />
-                    <TextField
-                      label="Unit"
-                      value={item.unit ?? ''}
-                      onChange={(e) => updateLineItem(index, 'unit', e.target.value)}
-                      size="small"
-                      sx={{ flex: 1 }}
-                    />
-                    <TextField
-                      label="Unit Price"
-                      type="number"
-                      value={item.unitPrice}
-                      onChange={(e) => updateLineItem(index, 'unitPrice', Number(e.target.value))}
-                      size="small"
-                      sx={{ flex: 1 }}
-                    />
-                    <TextField
-                      label="Amount"
-                      value={item.amount}
-                      size="small"
-                      disabled
-                      sx={{ flex: 1 }}
-                    />
-                    <IconButton size="small" color="error" onClick={() => removeLineItem(index)}><RemoveIcon fontSize="small" /></IconButton>
-                  </Box>
-                ))}
+                {lineItems.map((item, index) => {
+                  const checked = selectedMaterialNames.has(item.materialName);
+                  return (
+                    <Box key={index} sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                      <Checkbox
+                        checked={checked}
+                        onChange={(e) => {
+                          const newSet = new Set(selectedMaterialNames);
+                          if (e.target.checked) {
+                            newSet.add(item.materialName);
+                          } else {
+                            newSet.delete(item.materialName);
+                          }
+                          setSelectedMaterialNames(newSet);
+                        }}
+                        size="small"
+                      />
+                      <TextField
+                        label="Material"
+                        value={item.materialName}
+                        size="small"
+                        disabled
+                        sx={{ flex: 2 }}
+                      />
+                      <TextField
+                        label="Qty"
+                        type="number"
+                        value={item.quantity}
+                        onChange={(e) => updateLineItem(index, 'quantity', Number(e.target.value))}
+                        size="small"
+                        sx={{ flex: 1 }}
+                      />
+                      <TextField
+                        label="Unit Price"
+                        type="number"
+                        value={item.unitPrice}
+                        onChange={(e) => updateLineItem(index, 'unitPrice', Number(e.target.value))}
+                        size="small"
+                        sx={{ flex: 1 }}
+                      />
+                      <TextField
+                        label="Amount"
+                        value={item.amount}
+                        size="small"
+                        disabled
+                        sx={{ flex: 1 }}
+                      />
+                    </Box>
+                  );
+                })}
 
                 {/* Totals */}
                 <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 1, mt: 1 }}>
@@ -539,7 +526,7 @@ export default function QuotationsPage() {
           <Button
             variant="contained"
             onClick={() => { setError(''); if (editOpen) updateMutation.mutate(); else createMutation.mutate(); }}
-            disabled={(!selectedVendorId || lineItems.length === 0) || createMutation.isPending || updateMutation.isPending}
+            disabled={(!selectedVendorId || selectedMaterialNames.size === 0) || createMutation.isPending || updateMutation.isPending}
           >
             {(createMutation.isPending || updateMutation.isPending) ? <CircularProgress size={20} /> : editOpen ? 'Update' : 'Create'}
           </Button>

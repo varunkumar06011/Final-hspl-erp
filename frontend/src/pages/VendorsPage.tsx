@@ -50,11 +50,10 @@ export default function VendorsPage() {
         phone: form.phone || undefined,
         gstNumber: form.gstNumber || undefined,
         category: form.category,
-        materials: (form.materials as Array<{ name: string; unit?: string; pricePerUnit?: number }> | undefined)
+        materials: (form.materials as Array<{ name: string; pricePerUnit?: number }> | undefined)
           ?.filter((m) => m.name && m.name.trim() !== '')
           .map((m) => ({
             name: m.name,
-            unit: m.unit || undefined,
             pricePerUnit: m.pricePerUnit || undefined,
           })),
         referenceBy: form.referenceBy || undefined,

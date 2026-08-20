@@ -39,7 +39,6 @@ import AttachmentUpload from './AttachmentUpload';
 export interface MaterialEntry {
   id?: string;
   name: string;
-  unit?: string;
   pricePerUnit?: number;
 }
 
@@ -370,7 +369,7 @@ export default function EntityPage({
                   setForm({ ...form, [field.name]: updated });
                 };
                 const addMaterial = () => {
-                  setForm({ ...form, [field.name]: [...materials, { name: '', unit: '', pricePerUnit: undefined }] });
+                  setForm({ ...form, [field.name]: [...materials, { name: '', pricePerUnit: undefined }] });
                 };
                 const removeMaterial = (index: number) => {
                   setForm({ ...form, [field.name]: materials.filter((_, i) => i !== index) });
@@ -392,13 +391,6 @@ export default function EntityPage({
                           onChange={(e) => updateMaterial(index, 'name', e.target.value)}
                           size="small"
                           sx={{ flex: 2 }}
-                        />
-                        <TextField
-                          label="Unit"
-                          value={mat.unit ?? ''}
-                          onChange={(e) => updateMaterial(index, 'unit', e.target.value)}
-                          size="small"
-                          sx={{ flex: 1 }}
                         />
                         <TextField
                           label="Price / Unit"

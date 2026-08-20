@@ -58,5 +58,18 @@ export const theme = createTheme({
         },
       },
     },
+    MuiOutlinedInput: {
+      styleOverrides: {
+        input: {
+          '&::-webkit-outer-spin-button, &::-webkit-inner-spin-button': {
+            '-webkit-appearance': 'none',
+            margin: 0,
+          },
+          '&[type=number]': {
+            '-moz-appearance': 'textfield',
+          },
+        },
+      },
+    },
   },
 });
