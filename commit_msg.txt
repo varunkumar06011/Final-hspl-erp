@@ -1,10 +1,9 @@
-Add profile settings: users can update their own name and phone number
+Add total budget editing to settings page
 
-- GET /settings/profile — returns current user's profile
-- PATCH /settings/profile — updates name and/or phone
-- New "My Profile" card on Settings page with name, phone, and role (read-only)
-- Phone number updates are reflected in gate pass OTP head selection
-- Updated name reflects immediately in the sidebar/header via auth store
+- Total budget field added to Project Settings card on Settings page
+- Backend GET /settings now returns totalBudget
+- Backend PATCH /settings accepts totalBudget
+- Schema updated to validate totalBudget as a non-negative number
 
 Generated with [Devin](https://devin.ai)
 

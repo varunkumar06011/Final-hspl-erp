@@ -124,6 +124,7 @@ export const updateProjectSettingsSchema = z.object({
   body: z.object({
     officeAddress: z.string().max(1000).optional(),
     hospitalAddress: z.string().max(1000).optional(),
+    totalBudget: z.coerce.number().min(0).optional(),
   }),
 });
 

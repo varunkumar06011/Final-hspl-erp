@@ -12,6 +12,7 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { extractErrorMessage } from '../config/api';
 import { useAuthStore } from '../stores/authStore';
+import { formatCurrency } from '../utils/enumOptions';
 
 const ROLE_LABELS: Record<string, string> = {
   PROJECT_HEAD: 'Project Head',
@@ -26,6 +27,7 @@ export default function SettingsPage() {
   const { user, setUser } = useAuthStore();
   const [officeAddress, setOfficeAddress] = useState('');
   const [hospitalAddress, setHospitalAddress] = useState('');
+  const [totalBudget, setTotalBudget] = useState('');
   const [profileName, setProfileName] = useState('');
   const [profilePhone, setProfilePhone] = useState('');
   const [success, setSuccess] = useState('');
@@ -51,6 +53,7 @@ export default function SettingsPage() {
     if (data) {
       setOfficeAddress(data.officeAddress ?? '');
       setHospitalAddress(data.hospitalAddress ?? '');
+      setTotalBudget(data.totalBudget ? String(data.totalBudget) : '');
     }
   }, [data]);
 
@@ -62,7 +65,7 @@ export default function SettingsPage() {
   }, [profile]);
 
   const updateMutation = useMutation({
-    mutationFn: async (payload: { officeAddress?: string; hospitalAddress?: string }) => {
+    mutationFn: async (payload: { officeAddress?: string; hospitalAddress?: string; totalBudget?: number }) => {
       const response = await api.patch('/settings', payload);
       return response.data;
     },
@@ -150,11 +153,20 @@ export default function SettingsPage() {
       {/* Address Settings */}
       <Card sx={{ mb: 3 }}>
         <CardContent>
-          <Typography variant="h6" gutterBottom>Address Settings</Typography>
+          <Typography variant="h6" gutterBottom>Project Settings</Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            These addresses are used in Purchase Order PDFs.
+            These addresses are used in Purchase Order PDFs. The total budget is used for dashboard tracking.
           </Typography>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <TextField
+              label="Total Budget"
+              type="number"
+              value={totalBudget}
+              onChange={(e) => setTotalBudget(e.target.value)}
+              fullWidth
+              size="small"
+              helperText={totalBudget ? `Current: ${formatCurrency(Number(totalBudget))}` : 'Set the total project budget'}
+            />
             <TextField
               label="Office Address (Bill To)"
               value={officeAddress}
@@ -173,7 +185,7 @@ export default function SettingsPage() {
             />
             <Button
               variant="contained"
-              onClick={() => updateMutation.mutate({ officeAddress, hospitalAddress })}
+              onClick={() => updateMutation.mutate({ officeAddress, hospitalAddress, totalBudget: totalBudget ? Number(totalBudget) : undefined })}
               disabled={updateMutation.isPending}
               sx={{ alignSelf: 'flex-start' }}
             >
