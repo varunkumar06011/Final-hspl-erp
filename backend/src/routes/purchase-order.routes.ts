@@ -457,7 +457,7 @@ router.get(
         return;
       }
 
-      const doc = new PDFDocument({ margin: 40, size: 'A4' });
+      const doc = new PDFDocument({ margin: 50, size: 'A4' });
       res.setHeader('Content-Type', 'application/pdf');
       res.setHeader('Content-Disposition', `attachment; filename="${po.poNumber}.pdf"`);
       doc.pipe(res);
@@ -466,187 +466,188 @@ router.get(
       const PRIMARY = '#1a5276';
       const PRIMARY_LIGHT = '#d4e6f1';
       const LIGHT_BG = '#f8f9fa';
-      const BORDER = '#d5d8dc';
+      const BORDER = '#bdc3c7';
       const TEXT_DARK = '#2c3e50';
       const TEXT_MUTED = '#7f8c8d';
       const WHITE = '#ffffff';
+      const GREEN = '#27ae60';
 
-      const pageWidth = 595; // A4 width in points
-      const margin = 40;
-      const contentWidth = pageWidth - margin * 2;
+      const pageWidth = 595;
+      const pageHeight = 842;
+      const margin = 50;
+      const contentWidth = pageWidth - margin * 2; // 495
 
       // ── Header band ──
-      doc.rect(0, 0, pageWidth, 80).fill(PRIMARY);
-      doc.fillColor(WHITE).fontSize(24).font('Helvetica-Bold').text(po.project?.name ?? 'Vgrand Hospital', margin, 20);
-      doc.fontSize(11).font('Helvetica').fillColor('#d4e6f1').text('Purchase Order', margin, 50);
+      doc.rect(0, 0, pageWidth, 70).fill(PRIMARY);
+      doc.fillColor(WHITE).fontSize(22).font('Helvetica-Bold').text(po.project?.name ?? 'Vgrand Hospital', margin, 18);
+      doc.fontSize(10).font('Helvetica').fillColor(PRIMARY_LIGHT).text('PURCHASE ORDER', margin, 45);
       // PO number badge on the right
-      doc.roundedRect(pageWidth - margin - 130, 18, 130, 44, 6).fill(WHITE);
-      doc.fillColor(PRIMARY).fontSize(9).font('Helvetica').text('PO NUMBER', pageWidth - margin - 122, 24, { width: 114 });
-      doc.fontSize(14).font('Helvetica-Bold').text(po.poNumber, pageWidth - margin - 122, 38, { width: 114 });
+      const badgeW = 120;
+      const badgeX = pageWidth - margin - badgeW;
+      doc.roundedRect(badgeX, 15, badgeW, 40, 5).fill(WHITE);
+      doc.fillColor(TEXT_MUTED).fontSize(7).font('Helvetica').text('PO NUMBER', badgeX + 8, 20, { width: badgeW - 16 });
+      doc.fillColor(PRIMARY).fontSize(13).font('Helvetica-Bold').text(po.poNumber, badgeX + 8, 32, { width: badgeW - 16 });
 
       // ── PO info row ──
-      let y = 95;
-      const infoY = y;
-      doc.fontSize(9).font('Helvetica').fillColor(TEXT_MUTED);
-      doc.text('Date:', margin, infoY, { width: 50 });
-      doc.fillColor(TEXT_DARK).font('Helvetica-Bold').text(new Date(po.createdAt).toLocaleDateString(), margin + 40, infoY, { width: 100 });
-      doc.fillColor(TEXT_MUTED).font('Helvetica').text('Time:', margin + 160, infoY, { width: 40 });
-      doc.fillColor(TEXT_DARK).font('Helvetica-Bold').text(new Date(po.createdAt).toLocaleTimeString(), margin + 200, infoY, { width: 100 });
-      doc.fillColor(TEXT_MUTED).font('Helvetica').text('Created By:', margin + 320, infoY, { width: 70 });
-      doc.fillColor(TEXT_DARK).font('Helvetica-Bold').text(po.createdByUser?.name ?? '—', margin + 390, infoY, { width: 165 });
-      y = infoY + 18;
+      let y = 85;
+      doc.fontSize(8).font('Helvetica').fillColor(TEXT_MUTED);
+      doc.text('Date:', margin, y, { width: 35 });
+      doc.fillColor(TEXT_DARK).font('Helvetica-Bold').text(new Date(po.createdAt).toLocaleDateString(), margin + 35, y, { width: 80 });
+      doc.fillColor(TEXT_MUTED).font('Helvetica').text('Created By:', margin + 140, y, { width: 60 });
+      doc.fillColor(TEXT_DARK).font('Helvetica-Bold').text(po.createdByUser?.name ?? '—', margin + 200, y, { width: 120 });
       if (po.quotation) {
-        doc.fillColor(TEXT_MUTED).font('Helvetica').text('Quotation Ref:', margin, y, { width: 90 });
-        doc.fillColor(TEXT_DARK).font('Helvetica-Bold').text(po.quotation.quotationNumber, margin + 90, y, { width: 200 });
-        y += 16;
+        doc.fillColor(TEXT_MUTED).font('Helvetica').text('Quotation:', margin + 340, y, { width: 55 });
+        doc.fillColor(TEXT_DARK).font('Helvetica-Bold').text(po.quotation.quotationNumber, margin + 395, y, { width: 100 });
       }
+      y += 15;
 
-      // ── Three info cards ──
-      y += 8;
-      const cardY = y;
-      const cardWidth = (contentWidth - 20) / 3;
-      const cardHeight = 110;
+      // ── Info cards: 2 columns (Vendor on left, Addresses on right) ──
+      y += 5;
       const cardGap = 10;
+      const leftCardW = 240;
+      const rightCardW = contentWidth - leftCardW - cardGap; // 245
+      const cardH = 100;
 
-      // Helper to draw a card
-      function drawCard(x: number, label: string, lines: { label: string; value: string }[], valueHeight: number) {
-        doc.roundedRect(x, cardY, cardWidth, cardHeight, 6).fillAndStroke(LIGHT_BG, BORDER);
-        doc.rect(x, cardY, cardWidth, 22).fill(PRIMARY);
-        doc.roundedRect(x, cardY, cardWidth, 6, 6).fill(PRIMARY);
-        doc.rect(x, cardY + 4, cardWidth, 18).fill(PRIMARY);
-        doc.fillColor(WHITE).fontSize(8).font('Helvetica-Bold').text(label, x + 8, cardY + 7, { width: cardWidth - 16 });
-        let ly = cardY + 30;
-        for (const line of lines) {
-          doc.fillColor(TEXT_MUTED).fontSize(7).font('Helvetica').text(line.label, x + 8, ly, { width: cardWidth - 16 });
-          doc.fillColor(TEXT_DARK).fontSize(8).font('Helvetica-Bold').text(line.value, x + 8, ly + 10, { width: cardWidth - 16, height: valueHeight });
-          ly += 10 + valueHeight + 4;
-        }
-      }
+      // Vendor card (left)
+      doc.roundedRect(margin, y, leftCardW, cardH, 5).fillAndStroke(LIGHT_BG, BORDER);
+      doc.rect(margin, y, leftCardW, 20).fill(PRIMARY);
+      doc.fillColor(WHITE).fontSize(8).font('Helvetica-Bold').text('VENDOR', margin + 8, y + 6, { width: leftCardW - 16 });
+      let vy = y + 28;
+      doc.fillColor(TEXT_MUTED).fontSize(7).font('Helvetica').text('Name', margin + 8, vy, { width: leftCardW - 16 });
+      doc.fillColor(TEXT_DARK).fontSize(9).font('Helvetica-Bold').text(po.vendor?.name ?? '—', margin + 8, vy + 9, { width: leftCardW - 16 });
+      vy += 26;
+      doc.fillColor(TEXT_MUTED).fontSize(7).font('Helvetica').text('Contact', margin + 8, vy, { width: leftCardW - 16 });
+      doc.fillColor(TEXT_DARK).fontSize(9).font('Helvetica-Bold').text(po.vendor?.phone ?? po.vendor?.contactPersonPhone ?? '—', margin + 8, vy + 9, { width: leftCardW - 16 });
+      vy += 26;
+      doc.fillColor(TEXT_MUTED).fontSize(7).font('Helvetica').text('Address', margin + 8, vy, { width: leftCardW - 16 });
+      doc.fillColor(TEXT_DARK).fontSize(8).font('Helvetica').text(po.vendor?.address ?? '—', margin + 8, vy + 9, { width: leftCardW - 16, height: 12 });
 
-      drawCard(margin, 'VENDOR', [
-        { label: 'Name', value: po.vendor?.name ?? '—' },
-        { label: 'Contact', value: po.vendor?.phone ?? po.vendor?.contactPersonPhone ?? '—' },
-        { label: 'Address', value: po.vendor?.address ?? '—' },
-      ], 22);
+      // Bill To + Delivery (right, stacked)
+      const rightX = margin + leftCardW + cardGap;
+      const subCardH = (cardH - 10) / 2; // 45 each
 
-      drawCard(margin + cardWidth + cardGap, 'BILL TO', [
-        { label: 'Office Address', value: po.project?.officeAddress ?? '—' },
-      ], 55);
+      // Bill To
+      doc.roundedRect(rightX, y, rightCardW, subCardH, 5).fillAndStroke(LIGHT_BG, BORDER);
+      doc.rect(rightX, y, rightCardW, 18).fill(PRIMARY);
+      doc.fillColor(WHITE).fontSize(7).font('Helvetica-Bold').text('BILL TO (Office Address)', rightX + 8, y + 5, { width: rightCardW - 16 });
+      doc.fillColor(TEXT_DARK).fontSize(8).font('Helvetica').text(po.project?.officeAddress ?? '—', rightX + 8, y + 22, { width: rightCardW - 16, height: 20 });
 
-      drawCard(margin + (cardWidth + cardGap) * 2, 'DELIVERY ADDRESS', [
-        { label: 'Hospital Address', value: po.project?.hospitalAddress ?? '—' },
-      ], 55);
+      // Delivery Address
+      const dy2 = y + subCardH + 10;
+      doc.roundedRect(rightX, dy2, rightCardW, subCardH, 5).fillAndStroke(LIGHT_BG, BORDER);
+      doc.rect(rightX, dy2, rightCardW, 18).fill(PRIMARY);
+      doc.fillColor(WHITE).fontSize(7).font('Helvetica-Bold').text('DELIVERY ADDRESS (Hospital)', rightX + 8, dy2 + 5, { width: rightCardW - 16 });
+      doc.fillColor(TEXT_DARK).fontSize(8).font('Helvetica').text(po.project?.hospitalAddress ?? '—', rightX + 8, dy2 + 22, { width: rightCardW - 16, height: 20 });
 
-      y = cardY + cardHeight + 20;
+      y += cardH + 15;
 
       // ── Items table ──
-      doc.fillColor(PRIMARY).fontSize(12).font('Helvetica-Bold').text('Items', margin, y);
-      y += 20;
+      doc.fillColor(PRIMARY).fontSize(11).font('Helvetica-Bold').text('Items', margin, y);
+      y += 16;
 
-      const colX = { sno: margin, desc: margin + 35, qty: margin + 280, unit: margin + 340, price: margin + 390, total: margin + 470 };
-      const colWidths = { sno: 35, desc: 245, qty: 60, unit: 50, price: 80, total: 85 };
-      const tableWidth = contentWidth;
-      const headerHeight = 24;
-      const rowHeight = 22;
+      // Column layout — all within contentWidth (495)
+      // S.no: 30, Description: 200, Qty: 50, Unit: 40, Unit Price: 80, Total: 95 = 495
+      const cols = [
+        { key: 'sno', label: 'S.no', x: margin, w: 30, align: 'center' },
+        { key: 'desc', label: 'Description', x: margin + 30, w: 200, align: 'left' },
+        { key: 'qty', label: 'Qty', x: margin + 230, w: 50, align: 'center' },
+        { key: 'unit', label: 'Unit', x: margin + 280, w: 40, align: 'center' },
+        { key: 'price', label: 'Unit Price', x: margin + 320, w: 80, align: 'right' },
+        { key: 'total', label: 'Total Amount', x: margin + 400, w: 95, align: 'right' },
+      ];
+      const tableW = contentWidth;
+      const headerH = 22;
+      const rowH = 20;
 
       // Table header
-      doc.rect(margin, y, tableWidth, headerHeight).fill(PRIMARY);
-      doc.fillColor(WHITE).fontSize(9).font('Helvetica-Bold');
-      doc.text('S.no', colX.sno + 4, y + 7, { width: colWidths.sno - 8, align: 'center' });
-      doc.text('Description', colX.desc + 4, y + 7, { width: colWidths.desc - 8 });
-      doc.text('Quantity', colX.qty + 4, y + 7, { width: colWidths.qty - 8, align: 'center' });
-      doc.text('Unit', colX.unit + 4, y + 7, { width: colWidths.unit - 8, align: 'center' });
-      doc.text('Unit Price', colX.price + 4, y + 7, { width: colWidths.price - 8, align: 'right' });
-      doc.text('Total Amount', colX.total + 4, y + 7, { width: colWidths.total - 8, align: 'right' });
-      y += headerHeight;
+      doc.rect(margin, y, tableW, headerH).fill(PRIMARY);
+      doc.fillColor(WHITE).fontSize(8).font('Helvetica-Bold');
+      for (const c of cols) {
+        doc.text(c.label, c.x + 4, y + 7, { width: c.w - 8, align: c.align as 'center' | 'left' | 'right' });
+      }
+      y += headerH;
 
       // Table rows
-      doc.fontSize(9).font('Helvetica');
+      doc.fontSize(8).font('Helvetica');
       po.items.forEach((item, idx) => {
-        if (idx % 2 === 0) {
-          doc.rect(margin, y, tableWidth, rowHeight).fill(WHITE);
-        } else {
-          doc.rect(margin, y, tableWidth, rowHeight).fill(PRIMARY_LIGHT);
-        }
+        // Alternating row background
+        doc.rect(margin, y, tableW, rowH).fill(idx % 2 === 0 ? WHITE : PRIMARY_LIGHT);
         doc.fillColor(TEXT_DARK);
-        doc.text(String(idx + 1), colX.sno + 4, y + 6, { width: colWidths.sno - 8, align: 'center' });
-        doc.text(item.materialName, colX.desc + 4, y + 6, { width: colWidths.desc - 8 });
-        doc.text(String(item.quantity), colX.qty + 4, y + 6, { width: colWidths.qty - 8, align: 'center' });
-        doc.text(item.unit ?? '', colX.unit + 4, y + 6, { width: colWidths.unit - 8, align: 'center' });
-        doc.text(`Rs. ${Number(item.unitPrice).toFixed(2)}`, colX.price + 4, y + 6, { width: colWidths.price - 8, align: 'right' });
-        doc.text(`Rs. ${Number(item.amount).toFixed(2)}`, colX.total + 4, y + 6, { width: colWidths.total - 8, align: 'right' });
-        // Row border
-        doc.rect(margin, y, tableWidth, rowHeight).stroke(BORDER);
-        y += rowHeight;
+        doc.text(String(idx + 1), cols[0].x + 4, y + 6, { width: cols[0].w - 8, align: 'center' });
+        doc.text(item.materialName, cols[1].x + 4, y + 6, { width: cols[1].w - 8 });
+        doc.text(String(item.quantity), cols[2].x + 4, y + 6, { width: cols[2].w - 8, align: 'center' });
+        doc.text(item.unit ?? '', cols[3].x + 4, y + 6, { width: cols[3].w - 8, align: 'center' });
+        doc.text(`Rs. ${Number(item.unitPrice).toFixed(2)}`, cols[4].x + 4, y + 6, { width: cols[4].w - 8, align: 'right' });
+        doc.text(`Rs. ${Number(item.amount).toFixed(2)}`, cols[5].x + 4, y + 6, { width: cols[5].w - 8, align: 'right' });
+        y += rowH;
       });
-      // Outer table border
-      doc.rect(margin, y - po.items.length * rowHeight, tableWidth, po.items.length * rowHeight + headerHeight).stroke(PRIMARY);
+      // Table outer border
+      doc.rect(margin, y - po.items.length * rowH - headerH, tableW, po.items.length * rowH + headerH).stroke(PRIMARY);
 
-      // ── Totals box ──
-      y += 15;
-      const totalsX = margin + tableWidth - 220;
-      const totalsWidth = 220;
-      const totalLines: { label: string; value: string; bold?: boolean }[] = [
-        { label: 'Subtotal', value: `Rs. ${Number(po.totalAmount).toFixed(2)}` },
-      ];
-      if (Number(po.gstAmount) > 0) {
-        totalLines.push({ label: 'GST', value: `Rs. ${Number(po.gstAmount).toFixed(2)}` });
-      }
-      totalLines.push({ label: 'Grand Total', value: `Rs. ${Number(po.grandTotal).toFixed(2)}`, bold: true });
+      // ── Totals section (full width, below table) ──
+      y += 10;
+      const totalsH = 28;
+      const hasGst = Number(po.gstAmount) > 0;
 
-      const totalsHeight = totalLines.length * 22 + 12;
-      doc.roundedRect(totalsX, y, totalsWidth, totalsHeight, 6).fillAndStroke(LIGHT_BG, BORDER);
-      let ty = y + 8;
-      for (const t of totalLines) {
-        if (t.bold) {
-          doc.fillColor(PRIMARY).fontSize(11).font('Helvetica-Bold');
-          // Highlight grand total row
-          doc.rect(totalsX, ty - 4, totalsWidth, 22).fill(PRIMARY_LIGHT);
-          doc.fillColor(PRIMARY);
-        } else {
-          doc.fillColor(TEXT_MUTED).fontSize(9).font('Helvetica');
-        }
-        doc.text(t.label, totalsX + 12, ty, { width: 120 });
-        doc.fillColor(t.bold ? PRIMARY : TEXT_DARK).font(t.bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(t.bold ? 11 : 9);
-        doc.text(t.value, totalsX + 130, ty, { width: totalsWidth - 140, align: 'right' });
-        ty += 22;
+      // Subtotal row
+      doc.rect(margin, y, tableW, totalsH).fill(LIGHT_BG).stroke(BORDER);
+      doc.fillColor(TEXT_DARK).fontSize(9).font('Helvetica').text('Subtotal', margin + 12, y + 9, { width: 300 });
+      doc.fillColor(TEXT_DARK).fontSize(9).font('Helvetica-Bold').text(`Rs. ${Number(po.totalAmount).toFixed(2)}`, margin + 350, y + 9, { width: tableW - 360, align: 'right' });
+      y += totalsH;
+
+      if (hasGst) {
+        doc.rect(margin, y, tableW, totalsH).fill(LIGHT_BG).stroke(BORDER);
+        doc.fillColor(TEXT_DARK).fontSize(9).font('Helvetica').text('GST', margin + 12, y + 9, { width: 300 });
+        doc.fillColor(TEXT_DARK).fontSize(9).font('Helvetica-Bold').text(`Rs. ${Number(po.gstAmount).toFixed(2)}`, margin + 350, y + 9, { width: tableW - 360, align: 'right' });
+        y += totalsH;
       }
+
+      // Grand total row (highlighted)
+      doc.rect(margin, y, tableW, totalsH + 4).fill(PRIMARY);
+      doc.fillColor(WHITE).fontSize(11).font('Helvetica-Bold').text('GRAND TOTAL', margin + 12, y + 10, { width: 300 });
+      doc.fillColor(WHITE).fontSize(12).font('Helvetica-Bold').text(`Rs. ${Number(po.grandTotal).toFixed(2)}`, margin + 350, y + 9, { width: tableW - 360, align: 'right' });
+      y += totalsH + 4 + 15;
 
       // ── Approval signatures ──
-      y = ty + 25;
+      // Check if we need a new page
+      if (y > pageHeight - 120) {
+        doc.addPage({ margin: 50, size: 'A4' });
+        y = 60;
+      }
+
       doc.fillColor(PRIMARY).fontSize(10).font('Helvetica-Bold').text('Approval & Authorization', margin, y);
-      y += 18;
+      y += 16;
 
       const approvedSteps = po.approvalWorkflow?.steps.filter((s) => s.status === 'APPROVED') ?? [];
-      const sigBoxWidth = (contentWidth - 20) / 3;
-      const sigBoxHeight = 60;
+      const sigW = (contentWidth - 20) / 3;
+      const sigH = 55;
 
-      // Signature boxes
       for (let i = 0; i < 3; i++) {
-        const sx = margin + i * (sigBoxWidth + 10);
-        doc.roundedRect(sx, y, sigBoxWidth, sigBoxHeight, 4).stroke(BORDER);
+        const sx = margin + i * (sigW + 10);
+        doc.roundedRect(sx, y, sigW, sigH, 4).stroke(BORDER);
         const step = approvedSteps[i];
-        doc.fillColor(TEXT_MUTED).fontSize(8).font('Helvetica').text(`Approver ${i + 1}`, sx + 8, y + 6, { width: sigBoxWidth - 16 });
+        doc.fillColor(TEXT_MUTED).fontSize(7).font('Helvetica').text(`Approver ${i + 1}`, sx + 6, y + 5, { width: sigW - 12 });
         if (step) {
-          doc.fillColor(TEXT_DARK).fontSize(9).font('Helvetica-Bold').text(step.approverUser?.name ?? '—', sx + 8, y + 20, { width: sigBoxWidth - 16 });
-          doc.fillColor(TEXT_MUTED).fontSize(7).font('Helvetica').text(step.approverUser?.role?.replace(/_/g, ' ') ?? '', sx + 8, y + 34, { width: sigBoxWidth - 16 });
-          doc.fillColor('#27ae60').fontSize(7).font('Helvetica-Bold').text('APPROVED', sx + 8, y + 46, { width: sigBoxWidth - 16 });
+          doc.fillColor(TEXT_DARK).fontSize(8).font('Helvetica-Bold').text(step.approverUser?.name ?? '—', sx + 6, y + 18, { width: sigW - 12 });
+          doc.fillColor(TEXT_MUTED).fontSize(6).font('Helvetica').text((step.approverUser?.role ?? '').replace(/_/g, ' '), sx + 6, y + 30, { width: sigW - 12 });
+          doc.fillColor(GREEN).fontSize(7).font('Helvetica-Bold').text('APPROVED', sx + 6, y + 42, { width: sigW - 12 });
         } else {
-          doc.fillColor(TEXT_MUTED).fontSize(8).font('Helvetica-Oblique').text('Pending', sx + 8, y + 30, { width: sigBoxWidth - 16 });
+          doc.fillColor(TEXT_MUTED).fontSize(7).font('Helvetica-Oblique').text('Pending', sx + 6, y + 28, { width: sigW - 12 });
         }
       }
 
       // ── Footer ──
-      y += sigBoxHeight + 20;
-      doc.fillColor(TEXT_MUTED).fontSize(8).font('Helvetica').text(
+      y += sigH + 20;
+      doc.moveTo(margin, y).lineTo(pageWidth - margin, y).stroke(PRIMARY);
+      y += 6;
+      doc.fillColor(TEXT_MUTED).fontSize(7).font('Helvetica').text(
         `Generated on ${new Date().toLocaleString()}  |  Created by ${po.createdByUser?.name ?? '—'}`,
         margin, y, { width: contentWidth, align: 'center' }
       );
-      // Footer line
-      doc.moveTo(margin, y + 14).lineTo(pageWidth - margin, y + 14).stroke(PRIMARY);
-      doc.fillColor(TEXT_MUTED).fontSize(7).font('Helvetica').text(
+      y += 10;
+      doc.fillColor(TEXT_MUTED).fontSize(6).font('Helvetica-Oblique').text(
         'This is a computer-generated document and does not require a physical signature.',
-        margin, y + 18, { width: contentWidth, align: 'center' }
+        margin, y, { width: contentWidth, align: 'center' }
       );
 
       doc.end();

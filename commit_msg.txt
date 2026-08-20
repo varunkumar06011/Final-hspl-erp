@@ -1,14 +1,15 @@
-Strict rule: only gate pass approval adds to inventory, invoice payment only checks
+Fix PO PDF layout: no overlapping, proper card sizing, full-width totals
 
-- Removed all inventory addition logic from invoice payment endpoints
-  (PATCH /:id/status and mark-payment-paid no longer add items to inventory)
-- Removed the addItemsToInventory helper function entirely from invoice routes
-- When invoice is marked Paid or stock Received, backend checks if the PO has
-  an approved gate pass and returns a warning if not
-- Frontend shows the warning as an error alert: "No approved gate pass exists
-  for PO X. Items have NOT been added to inventory."
-- Gate pass OTP approval remains the ONLY path that adds items to inventory
-- No more duplicate inventory entries possible
+- Changed from 3 cramped cards to 2-column layout: Vendor card (left, wider)
+  and stacked Bill To + Delivery Address (right)
+- All text constrained within card widths with proper wrapping
+- Totals now full-width rows below the table (Subtotal, GST, Grand Total)
+  instead of a small box that overflowed
+- Grand total row highlighted in dark blue with white text
+- Table columns recalculated to fit exactly within content width (495px)
+- Added page break check before approval signatures
+- Increased margins to 50px for cleaner spacing
+- All text uses relative y-positioning, no absolute coordinates that overlap
 
 Generated with [Devin](https://devin.ai)
 
