@@ -85,8 +85,8 @@ async function main() {
     }),
     prisma.user.create({
       data: {
-        firebaseUid: 'pending-+919000000002',
-        phone: '+919000000002',
+        firebaseUid: 'pending-+918330912144',
+        phone: '+918330912144',
         name: 'Admin Two',
         role: UserRole.HEAD_OF_CONSTRUCTION,
         projectId: project.id,
@@ -152,7 +152,7 @@ async function main() {
   console.log('\n✅ Seed complete!');
   console.log('\n📋 Seed Users (replace with real phone numbers before first login):');
   console.log('  PROJECT_HEAD:          Admin One   — +91 9381872579');
-  console.log('  HEAD_OF_CONSTRUCTION:  Admin Two   — +91 9000000002');
+  console.log('  HEAD_OF_CONSTRUCTION:  Admin Two   — +91 8330912144');
   console.log('  ADMIN:                 Admin Three — +91 9000000003');
   console.log('  ADMIN_2:               Admin Four  — +91 9000000004');
 }
