@@ -21,8 +21,62 @@ import {
 import { Refresh as RefreshIcon, Search as SearchIcon } from '@mui/icons-material';
 import { useQuery } from '@tanstack/react-query';
 import { AuditAction } from '@hospital-erp/shared';
-import { enumToOptions, formatDate } from '../utils/enumOptions';
+import { enumToOptions } from '../utils/enumOptions';
 import api from '../config/api';
+
+interface AuditLogRow {
+  id: string;
+  action: string;
+  entityType: string;
+  entityId: string;
+  timestamp: string;
+  oldValue: Record<string, unknown> | null;
+  newValue: Record<string, unknown> | null;
+  user: { id: string; name: string; role: string } | null;
+}
+
+function formatTimestamp(date: unknown): string {
+  if (!date) return '—';
+  const d = new Date(String(date));
+  if (isNaN(d.getTime())) return '—';
+  return d.toLocaleString('en-IN', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function formatDetails(row: AuditLogRow): string {
+  const value = row.newValue ?? row.oldValue;
+  if (!value) return '—';
+  const entries = Object.entries(value);
+  if (entries.length === 0) return '—';
+  // Build readable key-value pairs
+  return entries.map(([k, v]) => {
+    const valStr = typeof v === 'object' && v !== null ? JSON.stringify(v) : String(v);
+    return `${k}: ${valStr}`;
+  }).join('  |  ');
+}
+
+const ENTITY_LABELS: Record<string, string> = {
+  VENDOR_INVOICE: 'Invoice',
+  PURCHASE_ORDER: 'Purchase Order',
+  GATE_PASS: 'Gate Pass',
+  VENDOR: 'Vendor',
+  QUOTATION: 'Quotation',
+  PAYMENT_REQUEST: 'Payment',
+  INVENTORY_ITEM: 'Inventory Item',
+  INVENTORY_TRANSACTION: 'Inventory Transaction',
+  USER: 'User',
+  DOCUMENT: 'Document',
+  SITE_PHOTO: 'Site Photo',
+  ISSUE: 'Issue',
+  INSPECTION: 'Inspection',
+  PROJECT: 'Project',
+  APPROVAL_WORKFLOW: 'Approval Workflow',
+};
 
 export default function AuditLogPage() {
   const [page, setPage] = useState(0);
@@ -94,14 +148,14 @@ export default function AuditLogPage() {
               ) : rows.length === 0 ? (
                 <TableRow><TableCell colSpan={5} align="center" sx={{ py: 4 }}><Typography color="text.secondary">No audit entries found</Typography></TableCell></TableRow>
               ) : (
-                rows.map((row: Record<string, unknown>) => (
-                  <TableRow key={row.id as string} hover>
-                    <TableCell>{formatDate(row.createdAt)}</TableCell>
-                    <TableCell>{(row.user as any)?.name ?? '—'}</TableCell>
-                    <TableCell><Chip label={String(row.action ?? '')} size="small" color={ACTION_COLORS[String(row.action)] ?? 'default'} /></TableCell>
-                    <TableCell>{String(row.entityType ?? '—')}</TableCell>
-                    <TableCell sx={{ maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {row.newValue ? JSON.stringify(row.newValue) : '—'}
+                rows.map((row: AuditLogRow) => (
+                  <TableRow key={row.id} hover>
+                    <TableCell sx={{ whiteSpace: 'nowrap' }}>{formatTimestamp(row.timestamp)}</TableCell>
+                    <TableCell>{row.user?.name ?? '—'}</TableCell>
+                    <TableCell><Chip label={row.action} size="small" color={ACTION_COLORS[row.action] ?? 'default'} /></TableCell>
+                    <TableCell>{ENTITY_LABELS[row.entityType] ?? row.entityType}</TableCell>
+                    <TableCell sx={{ maxWidth: 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {formatDetails(row)}
                     </TableCell>
                   </TableRow>
                 ))

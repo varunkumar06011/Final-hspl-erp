@@ -1,9 +1,12 @@
-Add GST number field to settings and PO PDF
+Fix audit log: show date/time and readable details instead of raw JSON
 
-- New gstNumber field on Project model (migration applied)
-- Settings page: GST Number input field with helper text
-- Backend GET/PATCH /settings includes and accepts gstNumber
-- PO PDF: GSTIN shown in header below hospital name when set
+- Date column now uses 'timestamp' field (was looking for 'createdAt' which
+  doesn't exist on AuditLog model)
+- Date shows both date and time (e.g. "20 Aug 2026, 15:30")
+- Details column now shows readable key-value pairs (e.g. "status: APPROVED
+  | passNumber: VGH-20-08-001") instead of raw JSON.stringify output
+- Entity type column shows friendly labels (e.g. "Invoice" instead of
+  "VENDOR_INVOICE", "Gate Pass" instead of "GATE_PASS")
 
 Generated with [Devin](https://devin.ai)
 
