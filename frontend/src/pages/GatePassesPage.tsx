@@ -78,6 +78,7 @@ interface HeadUser {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let confirmationResult: any = null;
+let confirmationGatePassId: string | null = null;
 
 export default function GatePassesPage() {
   const [page, setPage] = useState(0);
@@ -145,7 +146,7 @@ export default function GatePassesPage() {
     return (window as any).recaptchaVerifier;
   }, []);
 
-  const sendFirebaseOtp = useCallback(async (phone: string): Promise<boolean> => {
+  const sendFirebaseOtp = useCallback(async (phone: string, gatePassId?: string): Promise<boolean> => {
     if (!isConfigured || !auth) {
       setError('Firebase is not configured. Cannot send OTP.');
       return false;
@@ -154,6 +155,7 @@ export default function GatePassesPage() {
     try {
       const appVerifier = setupRecaptcha();
       confirmationResult = await signInWithPhoneNumber(auth, phone, appVerifier);
+      if (gatePassId) confirmationGatePassId = gatePassId;
       return true;
     } catch (err: unknown) {
       setError(extractErrorMessage(err));
@@ -179,7 +181,7 @@ export default function GatePassesPage() {
       resetForm();
       setSuccessMsg(`Gate pass ${data.passNumber} created. Sending OTP to ${data.headName} at ${data.headPhone}...`);
       // Send Firebase OTP to the head's phone
-      const sent = await sendFirebaseOtp(data.headPhone);
+      const sent = await sendFirebaseOtp(data.headPhone, data.id);
       if (sent) {
         setSuccessMsg(`OTP sent to ${data.headName} at ${data.headPhone}. Get the OTP from them and click "Enter OTP" to approve.`);
       } else {
@@ -202,6 +204,7 @@ export default function GatePassesPage() {
       setOtpDialogOpen(null);
       setOtpInput('');
       confirmationResult = null;
+      confirmationGatePassId = null;
       setSuccessMsg(data.message || 'Gate pass approved! Items added to inventory.');
       setTimeout(() => setSuccessMsg(''), 5000);
     },
@@ -233,8 +236,9 @@ export default function GatePassesPage() {
   async function handleVerifyOtp() {
     if (!otpDialogOpen) return;
     setError('');
-    if (!confirmationResult) {
-      setError('No OTP was sent. Click "Resend OTP" to send an OTP to the head\'s phone.');
+    // Check if we have a valid confirmationResult for this specific gate pass
+    if (!confirmationResult || confirmationGatePassId !== otpDialogOpen.id) {
+      setError('No OTP has been sent for this gate pass yet. Click "Resend OTP" to send an OTP to the head\'s phone.');
       return;
     }
     try {
@@ -250,7 +254,7 @@ export default function GatePassesPage() {
     if (!otpDialogOpen?.otpRequestedForUser?.phone) return;
     setResendingOtp(true);
     setError('');
-    const sent = await sendFirebaseOtp(otpDialogOpen.otpRequestedForUser.phone);
+    const sent = await sendFirebaseOtp(otpDialogOpen.otpRequestedForUser.phone, otpDialogOpen.id);
     if (sent) {
       setSuccessMsg(`OTP resent to ${otpDialogOpen.otpRequestedForUser.name} at ${otpDialogOpen.otpRequestedForUser.phone}.`);
       setTimeout(() => setSuccessMsg(''), 5000);
@@ -327,7 +331,7 @@ export default function GatePassesPage() {
                       <Box sx={{ display: 'flex', gap: 0.5 }}>
                         {row.status === 'PENDING' && (
                           <>
-                            <Button size="small" variant="outlined" startIcon={<CheckIcon />} onClick={() => { setOtpDialogOpen(row); setOtpInput(''); confirmationResult = null; }}>
+                            <Button size="small" variant="outlined" startIcon={<CheckIcon />} onClick={() => { setOtpDialogOpen(row); setOtpInput(''); }}>
                               Enter OTP
                             </Button>
                             <IconButton size="small" color="error" onClick={() => { if (confirm('Delete this gate pass?')) deleteMutation.mutate(row.id); }}><DeleteIcon fontSize="small" /></IconButton>

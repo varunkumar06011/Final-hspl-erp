@@ -1,14 +1,10 @@
-Wire gate pass OTP to Firebase phone auth — real SMS sent to heads
+Fix gate pass OTP: preserve confirmationResult when opening Enter OTP dialog
 
-- Gate pass OTP now uses Firebase signInWithPhoneNumber (same as login)
-  to send a real OTP to the selected head's phone number
-- Backend no longer generates a random OTP — it just creates the gate pass
-- Backend verify-otp endpoint now accepts a Firebase ID token and verifies
-  it with Firebase Admin, checking the phone number matches the selected head
-- Frontend: after creating a gate pass, Firebase sends OTP to head's phone
-- Added "Resend OTP" button in the OTP verification dialog
-- Heads dropdown now shows phone numbers alongside names
-- Removed the old on-screen OTP display (no longer needed)
+- Track which gate pass ID the Firebase confirmationResult belongs to
+- Don't reset confirmationResult when clicking "Enter OTP" on a gate pass
+  that just had its OTP sent during creation
+- If user opens a different gate pass's OTP dialog, show "Resend OTP" prompt
+- Clean up both confirmationResult and confirmationGatePassId on success
 
 Generated with [Devin](https://devin.ai)
 
