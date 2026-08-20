@@ -30,6 +30,7 @@ router.get(
           name: true,
           officeAddress: true,
           hospitalAddress: true,
+          gstNumber: true,
           totalBudget: true,
         },
       });
@@ -51,12 +52,13 @@ router.patch(
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const projectId = requireProjectId(req);
-      const { name, officeAddress, hospitalAddress, totalBudget } = req.body;
+      const { name, officeAddress, hospitalAddress, gstNumber, totalBudget } = req.body;
 
       const updateData: Record<string, unknown> = {};
       if (name !== undefined) updateData.name = name;
       if (officeAddress !== undefined) updateData.officeAddress = officeAddress;
       if (hospitalAddress !== undefined) updateData.hospitalAddress = hospitalAddress;
+      if (gstNumber !== undefined) updateData.gstNumber = gstNumber;
       if (totalBudget !== undefined) updateData.totalBudget = totalBudget;
 
       const updated = await prisma.project.update({
@@ -67,6 +69,7 @@ router.patch(
           name: true,
           officeAddress: true,
           hospitalAddress: true,
+          gstNumber: true,
           totalBudget: true,
         },
       });

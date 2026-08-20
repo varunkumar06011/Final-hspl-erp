@@ -1,15 +1,9 @@
-Fix PO PDF layout: no overlapping, proper card sizing, full-width totals
+Add GST number field to settings and PO PDF
 
-- Changed from 3 cramped cards to 2-column layout: Vendor card (left, wider)
-  and stacked Bill To + Delivery Address (right)
-- All text constrained within card widths with proper wrapping
-- Totals now full-width rows below the table (Subtotal, GST, Grand Total)
-  instead of a small box that overflowed
-- Grand total row highlighted in dark blue with white text
-- Table columns recalculated to fit exactly within content width (495px)
-- Added page break check before approval signatures
-- Increased margins to 50px for cleaner spacing
-- All text uses relative y-positioning, no absolute coordinates that overlap
+- New gstNumber field on Project model (migration applied)
+- Settings page: GST Number input field with helper text
+- Backend GET/PATCH /settings includes and accepts gstNumber
+- PO PDF: GSTIN shown in header below hospital name when set
 
 Generated with [Devin](https://devin.ai)
 

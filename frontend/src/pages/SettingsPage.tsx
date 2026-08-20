@@ -29,6 +29,7 @@ export default function SettingsPage() {
   const [hospitalAddress, setHospitalAddress] = useState('');
   const [totalBudget, setTotalBudget] = useState('');
   const [hospitalName, setHospitalName] = useState('');
+  const [gstNumber, setGstNumber] = useState('');
   const [profileName, setProfileName] = useState('');
   const [profilePhone, setProfilePhone] = useState('');
   const [success, setSuccess] = useState('');
@@ -55,6 +56,7 @@ export default function SettingsPage() {
       setHospitalName(data.name ?? '');
       setOfficeAddress(data.officeAddress ?? '');
       setHospitalAddress(data.hospitalAddress ?? '');
+      setGstNumber(data.gstNumber ?? '');
       setTotalBudget(data.totalBudget ? String(data.totalBudget) : '');
     }
   }, [data]);
@@ -67,7 +69,7 @@ export default function SettingsPage() {
   }, [profile]);
 
   const updateMutation = useMutation({
-    mutationFn: async (payload: { name?: string; officeAddress?: string; hospitalAddress?: string; totalBudget?: number }) => {
+    mutationFn: async (payload: { name?: string; officeAddress?: string; hospitalAddress?: string; gstNumber?: string; totalBudget?: number }) => {
       const response = await api.patch('/settings', payload);
       return response.data;
     },
@@ -169,6 +171,14 @@ export default function SettingsPage() {
               helperText="This name appears on PO PDFs and across the app"
             />
             <TextField
+              label="GST Number"
+              value={gstNumber}
+              onChange={(e) => setGstNumber(e.target.value)}
+              fullWidth
+              size="small"
+              helperText="GSTIN shown on PO PDFs (e.g. 36ABCDE1234F1Z5)"
+            />
+            <TextField
               label="Total Budget"
               type="number"
               value={totalBudget}
@@ -195,7 +205,7 @@ export default function SettingsPage() {
             />
             <Button
               variant="contained"
-              onClick={() => updateMutation.mutate({ name: hospitalName, officeAddress, hospitalAddress, totalBudget: totalBudget ? Number(totalBudget) : undefined })}
+              onClick={() => updateMutation.mutate({ name: hospitalName, officeAddress, hospitalAddress, gstNumber, totalBudget: totalBudget ? Number(totalBudget) : undefined })}
               disabled={updateMutation.isPending}
               sx={{ alignSelf: 'flex-start' }}
             >

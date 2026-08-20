@@ -125,6 +125,7 @@ export const updateProjectSettingsSchema = z.object({
     name: z.string().min(1, 'Hospital name is required').max(200).optional(),
     officeAddress: z.string().max(1000).optional(),
     hospitalAddress: z.string().max(1000).optional(),
+    gstNumber: z.string().max(50).optional(),
     totalBudget: z.coerce.number().min(0).optional(),
   }),
 });

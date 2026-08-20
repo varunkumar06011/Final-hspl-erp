@@ -449,7 +449,7 @@ router.get(
               },
             },
           },
-          project: { select: { name: true, officeAddress: true, hospitalAddress: true } },
+          project: { select: { name: true, officeAddress: true, hospitalAddress: true, gstNumber: true } },
         },
       });
       if (!po) {
@@ -479,8 +479,11 @@ router.get(
 
       // ── Header band ──
       doc.rect(0, 0, pageWidth, 70).fill(PRIMARY);
-      doc.fillColor(WHITE).fontSize(22).font('Helvetica-Bold').text(po.project?.name ?? 'Vgrand Hospital', margin, 18);
-      doc.fontSize(10).font('Helvetica').fillColor(PRIMARY_LIGHT).text('PURCHASE ORDER', margin, 45);
+      doc.fillColor(WHITE).fontSize(22).font('Helvetica-Bold').text(po.project?.name ?? 'Vgrand Hospital', margin, 14);
+      doc.fontSize(10).font('Helvetica').fillColor(PRIMARY_LIGHT).text('PURCHASE ORDER', margin, 40);
+      if (po.project?.gstNumber) {
+        doc.fontSize(8).font('Helvetica').fillColor(PRIMARY_LIGHT).text(`GSTIN: ${po.project.gstNumber}`, margin, 55);
+      }
       // PO number badge on the right
       const badgeW = 120;
       const badgeX = pageWidth - margin - badgeW;
