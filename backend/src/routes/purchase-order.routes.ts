@@ -1,5 +1,5 @@
 import { Router, Response, NextFunction } from 'express';
-import { Permission, POStatus, AuditAction, UserRole } from '@hospital-erp/shared';
+import { APPROVAL_CONFIG, Permission, POStatus, AuditAction, UserRole } from '@hospital-erp/shared';
 import { createPOSchema, listPOsSchema, approvalActionSchema } from '@hospital-erp/shared';
 import { prisma } from '../config/prisma';
 import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middleware/auth';
@@ -158,7 +158,7 @@ router.post(
         include: poInclude,
       });
 
-      // Initiate approval workflow — 1 step, minApprovers=1, any of 4 head roles
+      // Initiate approval workflow — any 2 of 4 head roles
       const workflow = await prisma.approvalWorkflow.create({
         data: {
           entityType: 'PURCHASE_ORDER',
@@ -166,7 +166,7 @@ router.post(
           projectId,
           status: 'VERIFICATION',
           currentStep: 0,
-          minApprovers: 2,
+          minApprovers: APPROVAL_CONFIG.MIN_APPROVERS,
           steps: {
             create: HEAD_ROLES.map((role, idx) => ({
               stepNumber: idx + 1,
@@ -189,7 +189,7 @@ router.post(
         entityType: 'PURCHASE_ORDER',
         entityId: po.id,
         projectId,
-        newValue: { poNumber, vendorId, quotationId, totalAmount, grandTotal },
+        newValue: { poNumber, vendorId, quotationId, totalAmount, grandTotal, acknowledged: true },
       });
 
       const result = await prisma.purchaseOrder.findUnique({
@@ -295,7 +295,7 @@ router.delete(
   }
 );
 
-// POST /:id/approve — approve PO (any of 4 head roles, 1 approval needed)
+// POST /:id/approve — approve PO (any 2 of 4 head roles)
 router.post(
   '/:id/approve',
   rbacMiddleware(Permission.VIEW_FINANCIALS),
@@ -353,7 +353,7 @@ router.post(
         entityType: 'PURCHASE_ORDER',
         entityId: po.id,
         projectId,
-        newValue: { comments: req.body.comments },
+        newValue: { comments: req.body.comments, acknowledged: true },
       });
 
       const updated = await prisma.purchaseOrder.findUnique({
@@ -371,6 +371,7 @@ router.post(
 router.post(
   '/:id/reject',
   rbacMiddleware(Permission.VIEW_FINANCIALS),
+  validateMiddleware(approvalActionSchema),
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const projectId = requireProjectId(req);
@@ -397,12 +398,14 @@ router.post(
       }
 
       const reason = req.body.reason || req.body.comments || 'Rejected';
-      await approvalService.reject(step.id, req.user!.id, reason);
+      const result = await approvalService.reject(step.id, req.user!.id, reason);
 
-      await prisma.purchaseOrder.update({
-        where: { id: po.id },
-        data: { status: POStatus.REJECTED },
-      });
+      if (result.isFullyRejected) {
+        await prisma.purchaseOrder.update({
+          where: { id: po.id },
+          data: { status: POStatus.REJECTED },
+        });
+      }
 
       await logAudit({
         userId: req.user!.id,
@@ -410,7 +413,7 @@ router.post(
         entityType: 'PURCHASE_ORDER',
         entityId: po.id,
         projectId,
-        newValue: { reason },
+        newValue: { reason, acknowledged: true },
       });
 
       const updated = await prisma.purchaseOrder.findUnique({

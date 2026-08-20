@@ -422,6 +422,7 @@ describe('E2E: Vendor → Quotation → PO → Invoice full flow', () => {
           { materialName: 'Steel Rods', quantity: 500, unit: 'kg', unitPrice: 65 },
         ],
         gstAmount: 5250,
+        acknowledged: true,
       });
 
     expect(res.status).toBe(201);
@@ -435,14 +436,14 @@ describe('E2E: Vendor → Quotation → PO → Invoice full flow', () => {
     quotationId = res.body.id;
   });
 
-  it('3. Quotation should have an approval workflow with 2 steps', async () => {
+  it('3. Quotation should have four eligible head-role steps', async () => {
     const res = await request
       .get(`/api/quotations/${quotationId}`)
       .set(authAs(USER_PROJECT_HEAD));
 
     expect(res.status).toBe(200);
     expect(res.body.approvalWorkflow).toBeDefined();
-    expect(res.body.approvalWorkflow.steps).toHaveLength(2);
+    expect(res.body.approvalWorkflow.steps).toHaveLength(4);
     expect(res.body.approvalWorkflow.steps[0].approverRole).toBe(UserRole.PROJECT_HEAD);
     expect(res.body.approvalWorkflow.steps[1].approverRole).toBe(UserRole.HEAD_OF_CONSTRUCTION);
     expect(res.body.approvalWorkflow.minApprovers).toBe(2);
@@ -455,7 +456,7 @@ describe('E2E: Vendor → Quotation → PO → Invoice full flow', () => {
     const res = await request
       .post(`/api/quotations/${quotationId}/approve/${step1Id}`)
       .set(authAs(USER_PROJECT_HEAD))
-      .send({ comments: 'Looks good' });
+      .send({ acknowledged: true, comments: 'Looks good' });
 
     expect(res.status).toBe(200);
     expect(res.body.status).not.toBe('APPROVED');
@@ -468,7 +469,7 @@ describe('E2E: Vendor → Quotation → PO → Invoice full flow', () => {
     const res = await request
       .post(`/api/quotations/${quotationId}/approve/${step2Id}`)
       .set(authAs(USER_HOC))
-      .send({ comments: 'Approved' });
+      .send({ acknowledged: true, comments: 'Approved' });
 
     expect(res.status).toBe(200);
     expect(res.body.status).toBe('APPROVED');
@@ -482,6 +483,7 @@ describe('E2E: Vendor → Quotation → PO → Invoice full flow', () => {
         vendorId,
         quotationId,
         gstAmount: 5250,
+        acknowledged: true,
       });
 
     expect(res.status).toBe(201);
@@ -511,7 +513,7 @@ describe('E2E: Vendor → Quotation → PO → Invoice full flow', () => {
     const res = await request
       .post(`/api/purchase-orders/${poId}/approve`)
       .set(authAs(USER_PROJECT_HEAD))
-      .send({ comments: 'PO approved by Project Head' });
+      .send({ acknowledged: true, comments: 'PO approved by Project Head' });
 
     expect(res.status).toBe(200);
     expect(res.body.status).not.toBe('APPROVED');
@@ -521,7 +523,7 @@ describe('E2E: Vendor → Quotation → PO → Invoice full flow', () => {
     const res = await request
       .post(`/api/purchase-orders/${poId}/approve`)
       .set(authAs(USER_HOC))
-      .send({ comments: 'PO approved by HoC' });
+      .send({ acknowledged: true, comments: 'PO approved by HoC' });
 
     expect(res.status).toBe(200);
     expect(res.body.status).toBe('APPROVED');
@@ -531,7 +533,7 @@ describe('E2E: Vendor → Quotation → PO → Invoice full flow', () => {
     const res = await request
       .post(`/api/purchase-orders/${poId}/approve`)
       .set(authAs(USER_PROJECT_HEAD))
-      .send({ comments: 'Trying again' });
+      .send({ acknowledged: true, comments: 'Trying again' });
 
     expect(res.status).toBe(400);
     expect(res.body.error).toContain('already approved');
@@ -550,6 +552,7 @@ describe('E2E: Vendor → Quotation → PO → Invoice full flow', () => {
         totalAmount: 72750,
         advancePaid: 10000,
         advanceType: 'Cash',
+        acknowledged: true,
       });
 
     expect(res.status).toBe(201);
@@ -578,7 +581,7 @@ describe('E2E: Vendor → Quotation → PO → Invoice full flow', () => {
     const res = await request
       .post(`/api/invoices/${invoiceId}/approve`)
       .set(authAs(USER_PROJECT_HEAD))
-      .send({ comments: 'Invoice verified' });
+      .send({ acknowledged: true, comments: 'Invoice verified' });
 
     expect(res.status).toBe(200);
     expect(res.body.verificationStatus).not.toBe('VERIFIED');
@@ -588,7 +591,7 @@ describe('E2E: Vendor → Quotation → PO → Invoice full flow', () => {
     const res = await request
       .post(`/api/invoices/${invoiceId}/approve`)
       .set(authAs(USER_HOC))
-      .send({ comments: 'Invoice verified by HoC' });
+      .send({ acknowledged: true, comments: 'Invoice verified by HoC' });
 
     expect(res.status).toBe(200);
     expect(res.body.verificationStatus).toBe('VERIFIED');
@@ -658,6 +661,7 @@ describe('E2E: Vendor → Quotation → PO → Invoice full flow', () => {
           { materialName: 'Cement', quantity: 10, unit: 'bag', unitPrice: 350 },
         ],
         gstAmount: 0,
+        acknowledged: true,
       });
 
     expect(quotRes.status).toBe(201);
@@ -670,6 +674,7 @@ describe('E2E: Vendor → Quotation → PO → Invoice full flow', () => {
         vendorId,
         quotationId: newQuotationId,
         gstAmount: 0,
+        acknowledged: true,
       });
 
     expect(poRes.status).toBe(400);
@@ -686,6 +691,7 @@ describe('E2E: Vendor → Quotation → PO → Invoice full flow', () => {
           { materialName: 'Bricks', quantity: 1000, unit: 'pcs', unitPrice: 5 },
         ],
         gstAmount: 0,
+        acknowledged: true,
       });
 
     expect(res.status).toBe(400);

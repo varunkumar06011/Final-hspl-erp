@@ -38,9 +38,12 @@ import {
   Download as DownloadIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { QuotationStatus } from '@hospital-erp/shared';
+import { APPROVER_ROLES, QuotationStatus } from '@hospital-erp/shared';
 import { formatCurrency, formatDate, STATUS_COLORS } from '../utils/enumOptions';
 import api, { extractErrorMessage } from '../config/api';
+import { useAuthStore } from '../stores/authStore';
+import AcknowledgementCheckbox from '../components/AcknowledgementCheckbox';
+import ApprovalActionDialog from '../components/ApprovalActionDialog';
 
 interface QuotationItem {
   id?: string;
@@ -68,6 +71,7 @@ interface ApprovalStep {
   stepNumber: number;
   approverRole: string;
   status: string;
+  approverUserId?: string | null;
   approverUser?: { id: string; name: string; role: string } | null;
   comments?: string | null;
   decidedAt?: string | null;
@@ -108,9 +112,12 @@ export default function QuotationsPage() {
   const [lineItems, setLineItems] = useState<QuotationItem[]>([]);
   const [selectedMaterialNames, setSelectedMaterialNames] = useState<Set<string>>(new Set());
   const [gstAmount, setGstAmount] = useState('');
+  const [acknowledged, setAcknowledged] = useState(false);
+  const [approvalAction, setApprovalAction] = useState<{ row: QuotationRow; step: ApprovalStep; action: 'approve' | 'reject' } | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
+  const { user } = useAuthStore();
 
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['/quotations', page, pageSize, search, statusFilter],
@@ -147,6 +154,7 @@ export default function QuotationsPage() {
       const formData = new FormData();
       formData.append('vendorId', selectedVendorId);
       formData.append('items', JSON.stringify(filteredItems));
+      formData.append('acknowledged', String(acknowledged));
       if (gstAmount) formData.append('gstAmount', gstAmount);
       if (selectedFile) formData.append('file', selectedFile);
       const response = await api.post('/quotations', formData, {
@@ -185,25 +193,27 @@ export default function QuotationsPage() {
   });
 
   const approveMutation = useMutation({
-    mutationFn: async ({ quotationId, stepId, comments }: { quotationId: string; stepId: string; comments?: string }) => {
-      const response = await api.post(`/quotations/${quotationId}/approve/${stepId}`, { comments });
+    mutationFn: async ({ quotationId, stepId, comments, acknowledged }: { quotationId: string; stepId: string; comments?: string; acknowledged: true }) => {
+      const response = await api.post(`/quotations/${quotationId}/approve/${stepId}`, { comments, acknowledged });
       return response.data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/quotations'] });
       queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
+      setApprovalAction(null);
     },
     onError: (err: unknown) => setError(extractErrorMessage(err)),
   });
 
   const rejectMutation = useMutation({
-    mutationFn: async ({ quotationId, stepId, reason }: { quotationId: string; stepId: string; reason: string }) => {
-      const response = await api.post(`/quotations/${quotationId}/reject/${stepId}`, { reason });
+    mutationFn: async ({ quotationId, stepId, reason, acknowledged }: { quotationId: string; stepId: string; reason: string; acknowledged: true }) => {
+      const response = await api.post(`/quotations/${quotationId}/reject/${stepId}`, { reason, acknowledged });
       return response.data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/quotations'] });
       queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
+      setApprovalAction(null);
     },
     onError: (err: unknown) => setError(extractErrorMessage(err)),
   });
@@ -223,6 +233,7 @@ export default function QuotationsPage() {
     setLineItems([]);
     setSelectedMaterialNames(new Set());
     setGstAmount('');
+    setAcknowledged(false);
     setSelectedFile(null);
     setError('');
   }
@@ -242,6 +253,7 @@ export default function QuotationsPage() {
       unitPrice: Number(i.unitPrice),
       amount: Number(i.amount),
     })));
+    setSelectedMaterialNames(new Set(row.items.map((item) => item.materialName)));
     setGstAmount(String(row.gstAmount ?? ''));
     setSelectedFile(null);
     setError('');
@@ -272,9 +284,15 @@ export default function QuotationsPage() {
   }
 
   function canApprove(row: QuotationRow): ApprovalStep | null {
-    if (!row.approvalWorkflow) return null;
-    const pendingStep = row.approvalWorkflow.steps.find((s) => s.status === 'PENDING');
-    return pendingStep ?? null;
+    if (!row.approvalWorkflow || !user || !APPROVER_ROLES.some((role) => role === user.role)) return null;
+    if (![QuotationStatus.SUBMITTED, QuotationStatus.UNDER_REVIEW].includes(row.status as QuotationStatus)) return null;
+    const alreadyDecided = row.approvalWorkflow.steps.some(
+      (step) => step.approverUserId === user.id && step.status !== 'PENDING'
+    );
+    if (alreadyDecided) return null;
+    return row.approvalWorkflow.steps.find(
+      (step) => step.approverRole === user.role && step.status === 'PENDING'
+    ) ?? null;
   }
 
   return (
@@ -351,8 +369,8 @@ export default function QuotationsPage() {
                           ) : null}
                           {pendingStep && (
                             <>
-                              <IconButton size="small" color="success" onClick={() => approveMutation.mutate({ quotationId: row.id, stepId: pendingStep.id })} title={`Approve (Step ${pendingStep.stepNumber})`}><CheckIcon fontSize="small" /></IconButton>
-                              <IconButton size="small" color="error" onClick={() => { const reason = prompt('Reason for rejection:'); if (reason) rejectMutation.mutate({ quotationId: row.id, stepId: pendingStep.id, reason }); }} title="Reject"><CloseIcon fontSize="small" /></IconButton>
+                              <IconButton size="small" color="success" onClick={() => setApprovalAction({ row, step: pendingStep, action: 'approve' })} title="Approve"><CheckIcon fontSize="small" /></IconButton>
+                              <IconButton size="small" color="error" onClick={() => setApprovalAction({ row, step: pendingStep, action: 'reject' })} title="Reject"><CloseIcon fontSize="small" /></IconButton>
                             </>
                           )}
                         </Box>
@@ -509,6 +527,14 @@ export default function QuotationsPage() {
               </Box>
             )}
 
+            {!editOpen && (
+              <AcknowledgementCheckbox
+                checked={acknowledged}
+                onChange={setAcknowledged}
+                entityLabel="quotation"
+              />
+            )}
+
             {/* File Upload */}
             <Box>
               <input ref={fileRef} type="file" accept="image/*,application/pdf" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files?.[0]; if (f) setSelectedFile(f); }} />
@@ -526,12 +552,38 @@ export default function QuotationsPage() {
           <Button
             variant="contained"
             onClick={() => { setError(''); if (editOpen) updateMutation.mutate(); else createMutation.mutate(); }}
-            disabled={(!selectedVendorId || selectedMaterialNames.size === 0) || createMutation.isPending || updateMutation.isPending}
+            disabled={(!selectedVendorId || selectedMaterialNames.size === 0 || (!editOpen && !acknowledged)) || createMutation.isPending || updateMutation.isPending}
           >
             {(createMutation.isPending || updateMutation.isPending) ? <CircularProgress size={20} /> : editOpen ? 'Update' : 'Create'}
           </Button>
         </DialogActions>
       </Dialog>
+
+      <ApprovalActionDialog
+        open={approvalAction !== null}
+        action={approvalAction?.action ?? 'approve'}
+        entityLabel="Quotation"
+        pending={approveMutation.isPending || rejectMutation.isPending}
+        onClose={() => setApprovalAction(null)}
+        onConfirm={(payload) => {
+          if (!approvalAction) return;
+          if (approvalAction.action === 'approve') {
+            approveMutation.mutate({
+              quotationId: approvalAction.row.id,
+              stepId: approvalAction.step.id,
+              comments: payload.comments,
+              acknowledged: true,
+            });
+          } else {
+            rejectMutation.mutate({
+              quotationId: approvalAction.row.id,
+              stepId: approvalAction.step.id,
+              reason: payload.reason!,
+              acknowledged: true,
+            });
+          }
+        }}
+      />
     </Box>
   );
 }

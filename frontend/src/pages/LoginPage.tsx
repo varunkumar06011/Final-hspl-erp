@@ -17,6 +17,7 @@ import api, { extractErrorMessage } from '../config/api';
 import { useAuthStore } from '../stores/authStore';
 
 type Step = 'phone' | 'otp' | 'verifying' | 'error';
+type AuthMode = 'signin' | 'signup';
 
 function formatPhone(raw: string): string {
   const digits = raw.replace(/\D/g, '');
@@ -28,6 +29,7 @@ function formatPhone(raw: string): string {
 }
 
 export default function LoginPage() {
+  const [mode, setMode] = useState<AuthMode>('signin');
   const [step, setStep] = useState<Step>('phone');
   const [phone, setPhone] = useState('');
   const [otp, setOtp] = useState('');
@@ -98,7 +100,9 @@ export default function LoginPage() {
       const userCredential = await confirmationResult.confirm(otp);
       const idToken = await userCredential.user.getIdToken();
 
-      const response = await api.post('/auth/verify', { idToken, name: name.trim() || undefined });
+      const response = mode === 'signup'
+        ? await api.post('/auth/register', { idToken, name: name.trim() })
+        : await api.post('/auth/verify', { idToken });
       const user = response.data;
 
       setToken(idToken);
@@ -110,7 +114,7 @@ export default function LoginPage() {
     } finally {
       setLoading(false);
     }
-  }, [confirmationResult, otp, phone, name, setUser, setToken, navigate]);
+  }, [confirmationResult, otp, phone, name, mode, setUser, setToken, navigate]);
 
   if (isAuthenticated()) {
     return <Navigate to="/" replace />;
@@ -204,9 +208,25 @@ export default function LoginPage() {
           <Typography variant="h5" align="center" gutterBottom fontWeight={700}>
             Hospital Construction ERP
           </Typography>
-          <Typography variant="body2" align="center" color="text.secondary" sx={{ mb: 3 }}>
-            Sign in with your registered phone number
+          <Typography variant="body2" align="center" color="text.secondary" sx={{ mb: 2 }}>
+            {mode === 'signin' ? 'Sign in with your registered phone number' : 'Create a Supervisor account with your phone number'}
           </Typography>
+          <Box sx={{ display: 'flex', gap: 1, mb: 3 }}>
+            <Button
+              fullWidth
+              variant={mode === 'signin' ? 'contained' : 'outlined'}
+              onClick={() => { setMode('signin'); setStep('phone'); setOtp(''); setError(''); }}
+            >
+              Sign In
+            </Button>
+            <Button
+              fullWidth
+              variant={mode === 'signup' ? 'contained' : 'outlined'}
+              onClick={() => { setMode('signup'); setStep('phone'); setOtp(''); setError(''); }}
+            >
+              Sign Up
+            </Button>
+          </Box>
 
           <div id="recaptcha-container" />
 
@@ -218,6 +238,17 @@ export default function LoginPage() {
 
           {step === 'phone' && (
             <Box>
+              {mode === 'signup' && (
+                <TextField
+                  fullWidth
+                  label="Full Name"
+                  placeholder="Enter your full name"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  sx={{ mb: 2 }}
+                  required
+                />
+              )}
               <TextField
                 fullWidth
                 label="Phone Number"
@@ -237,7 +268,7 @@ export default function LoginPage() {
                 variant="contained"
                 size="large"
                 onClick={sendOtp}
-                disabled={loading || phone.length !== 10}
+                disabled={loading || phone.length !== 10 || (mode === 'signup' && !name.trim())}
               >
                 {loading ? <CircularProgress size={24} color="inherit" /> : 'Send OTP'}
               </Button>
@@ -249,14 +280,6 @@ export default function LoginPage() {
               <Alert severity="info" sx={{ mb: 2 }}>
                 OTP sent to +91 {phone}
               </Alert>
-              <TextField
-                fullWidth
-                label="Your Name"
-                placeholder="Enter your full name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                sx={{ mb: 2 }}
-              />
               <TextField
                 fullWidth
                 label="Enter OTP"
@@ -273,7 +296,7 @@ export default function LoginPage() {
                 onClick={verifyOtp}
                 disabled={loading || otp.length < 4}
               >
-                {loading ? <CircularProgress size={24} color="inherit" /> : 'Verify & Sign In'}
+                {loading ? <CircularProgress size={24} color="inherit" /> : mode === 'signup' ? 'Verify & Sign Up' : 'Verify & Sign In'}
               </Button>
               <Button
                 fullWidth

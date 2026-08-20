@@ -21,6 +21,7 @@ import ContractsPage from './pages/ContractsPage';
 import LabourPage from './pages/LabourPage';
 import AuditLogPage from './pages/AuditLogPage';
 import SettingsPage from './pages/SettingsPage';
+import UsersPage from './pages/UsersPage';
 import ErrorBoundary from './components/ErrorBoundary';
 
 const queryClient = new QueryClient({
@@ -47,6 +48,7 @@ const ROUTES = [
   { path: '/documents', element: <DocumentsPage /> },
   { path: '/contracts', element: <ContractsPage /> },
   { path: '/audit', element: <AuditLogPage /> },
+  { path: '/users', element: <UsersPage /> },
   { path: '/settings', element: <SettingsPage /> },
 ];
 

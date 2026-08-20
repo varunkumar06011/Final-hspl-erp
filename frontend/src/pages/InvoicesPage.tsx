@@ -43,6 +43,8 @@ import { InvoiceVerificationStatus, PaymentStatus, UserRole } from '@hospital-er
 import { formatCurrency, STATUS_COLORS } from '../utils/enumOptions';
 import api, { extractErrorMessage } from '../config/api';
 import { useAuthStore } from '../stores/authStore';
+import AcknowledgementCheckbox from '../components/AcknowledgementCheckbox';
+import ApprovalActionDialog from '../components/ApprovalActionDialog';
 
 interface POItem {
   id?: string;
@@ -119,6 +121,8 @@ export default function InvoicesPage() {
   const [advanceType, setAdvanceType] = useState('');
   const [advanceOtherType, setAdvanceOtherType] = useState('');
   const [deliveryDate, setDeliveryDate] = useState('');
+  const [acknowledged, setAcknowledged] = useState(false);
+  const [approvalAction, setApprovalAction] = useState<{ row: InvoiceRow; action: 'approve' | 'reject' } | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -213,6 +217,7 @@ export default function InvoicesPage() {
         if (advanceType === 'Other' && advanceOtherType) formData.append('advanceOtherType', advanceOtherType);
       }
       if (deliveryDate) formData.append('deliveryDate', deliveryDate);
+      formData.append('acknowledged', String(acknowledged));
       if (selectedFile) formData.append('file', selectedFile);
       const response = await api.post('/invoices', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
@@ -229,25 +234,27 @@ export default function InvoicesPage() {
   });
 
   const approveMutation = useMutation({
-    mutationFn: async ({ invId, comments }: { invId: string; comments?: string }) => {
-      const response = await api.post(`/invoices/${invId}/approve`, { comments });
+    mutationFn: async ({ invId, comments, acknowledged }: { invId: string; comments?: string; acknowledged: true }) => {
+      const response = await api.post(`/invoices/${invId}/approve`, { comments, acknowledged });
       return response.data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/invoices'] });
       queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
+      setApprovalAction(null);
     },
     onError: (err: unknown) => setError(extractErrorMessage(err)),
   });
 
   const rejectMutation = useMutation({
-    mutationFn: async ({ invId, reason }: { invId: string; reason: string }) => {
-      const response = await api.post(`/invoices/${invId}/reject`, { reason });
+    mutationFn: async ({ invId, reason, acknowledged }: { invId: string; reason: string; acknowledged: true }) => {
+      const response = await api.post(`/invoices/${invId}/reject`, { reason, acknowledged });
       return response.data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/invoices'] });
       queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
+      setApprovalAction(null);
     },
     onError: (err: unknown) => setError(extractErrorMessage(err)),
   });
@@ -298,6 +305,7 @@ export default function InvoicesPage() {
     setAdvanceType('');
     setAdvanceOtherType('');
     setDeliveryDate('');
+    setAcknowledged(false);
     setSelectedFile(null);
     setError('');
   }
@@ -413,8 +421,8 @@ export default function InvoicesPage() {
                       <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
                         {canApprove(row) && (
                           <>
-                            <IconButton size="small" color="success" onClick={() => approveMutation.mutate({ invId: row.id })} title="Approve"><CheckIcon fontSize="small" /></IconButton>
-                            <IconButton size="small" color="error" onClick={() => { const reason = prompt('Reason for rejection:'); if (reason) rejectMutation.mutate({ invId: row.id, reason }); }} title="Reject"><CloseIcon fontSize="small" /></IconButton>
+                            <IconButton size="small" color="success" onClick={() => setApprovalAction({ row, action: 'approve' })} title="Approve"><CheckIcon fontSize="small" /></IconButton>
+                            <IconButton size="small" color="error" onClick={() => setApprovalAction({ row, action: 'reject' })} title="Reject"><CloseIcon fontSize="small" /></IconButton>
                           </>
                         )}
                         {row.verificationStatus === InvoiceVerificationStatus.VERIFIED && row.paymentStatus !== PaymentStatus.PAID && (
@@ -651,6 +659,11 @@ export default function InvoicesPage() {
                 {selectedFile ? `✓ ${selectedFile.name}` : 'Upload Invoice File'}
               </Button>
             </Box>
+            <AcknowledgementCheckbox
+              checked={acknowledged}
+              onChange={setAcknowledged}
+              entityLabel="invoice"
+            />
           </Box>
         </DialogContent>
         <DialogActions>
@@ -658,7 +671,7 @@ export default function InvoicesPage() {
           <Button
             variant="contained"
             onClick={() => { setError(''); createMutation.mutate(); }}
-            disabled={(!selectedVendorId || !invoiceNumber || !amount || !totalAmount) || createMutation.isPending}
+            disabled={(!selectedVendorId || !invoiceNumber || !amount || !totalAmount || !acknowledged) || createMutation.isPending}
           >
             {createMutation.isPending ? <CircularProgress size={20} /> : 'Create Invoice'}
           </Button>
@@ -684,6 +697,22 @@ export default function InvoicesPage() {
           </Typography>
         </Alert>
       </Snackbar>
+
+      <ApprovalActionDialog
+        open={approvalAction !== null}
+        action={approvalAction?.action ?? 'approve'}
+        entityLabel="Invoice"
+        pending={approveMutation.isPending || rejectMutation.isPending}
+        onClose={() => setApprovalAction(null)}
+        onConfirm={(payload) => {
+          if (!approvalAction) return;
+          if (approvalAction.action === 'approve') {
+            approveMutation.mutate({ invId: approvalAction.row.id, comments: payload.comments, acknowledged: true });
+          } else {
+            rejectMutation.mutate({ invId: approvalAction.row.id, reason: payload.reason!, acknowledged: true });
+          }
+        }}
+      />
     </Box>
   );
 }

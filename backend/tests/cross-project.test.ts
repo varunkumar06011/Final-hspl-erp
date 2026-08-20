@@ -12,17 +12,18 @@ describe('Cross-Project Isolation Tests', () => {
   });
 
   it('Every role has VIEW_FINANCIALS (but scoped to their projectId at the service layer)', () => {
-    const roles = [UserRole.PROJECT_HEAD, UserRole.HEAD_OF_CONSTRUCTION, UserRole.ADMIN, UserRole.ADMIN_2];
+    const roles = [UserRole.SUPERVISOR, UserRole.PROJECT_HEAD, UserRole.HEAD_OF_CONSTRUCTION, UserRole.ADMIN, UserRole.ADMIN_2];
     for (const role of roles) {
       expect(hasPermission(role, Permission.VIEW_FINANCIALS)).toBe(true);
     }
   });
 
-  it('MANAGE_USERS is restricted to PROJECT_HEAD only', () => {
+  it('MANAGE_USERS is available to the four heads but not Supervisors', () => {
+    expect(hasPermission(UserRole.SUPERVISOR, Permission.MANAGE_USERS)).toBe(false);
     expect(hasPermission(UserRole.PROJECT_HEAD, Permission.MANAGE_USERS)).toBe(true);
-    expect(hasPermission(UserRole.HEAD_OF_CONSTRUCTION, Permission.MANAGE_USERS)).toBe(false);
-    expect(hasPermission(UserRole.ADMIN, Permission.MANAGE_USERS)).toBe(false);
-    expect(hasPermission(UserRole.ADMIN_2, Permission.MANAGE_USERS)).toBe(false);
+    expect(hasPermission(UserRole.HEAD_OF_CONSTRUCTION, Permission.MANAGE_USERS)).toBe(true);
+    expect(hasPermission(UserRole.ADMIN, Permission.MANAGE_USERS)).toBe(true);
+    expect(hasPermission(UserRole.ADMIN_2, Permission.MANAGE_USERS)).toBe(true);
   });
 
   // The actual cross-project data isolation is enforced at the service layer

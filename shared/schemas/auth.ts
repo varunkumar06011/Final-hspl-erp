@@ -13,6 +13,13 @@ export const verifyTokenSchema = z.object({
   }),
 });
 
+export const registerTokenSchema = z.object({
+  body: z.object({
+    idToken: z.string().min(1, 'Firebase ID token is required'),
+    name: z.string().trim().min(1, 'Name is required').max(100),
+  }),
+});
+
 // Response from /auth/verify
 export const userResponseSchema = z.object({
   id: z.string().uuid(),
@@ -63,5 +70,6 @@ export const listUsersSchema = z.object({
 // ═══════════════════════════════════════════════════════════
 
 export type UserResponse = z.infer<typeof userResponseSchema>;
+export type RegisterTokenInput = z.infer<typeof registerTokenSchema>['body'];
 export type CreateUserInput = z.infer<typeof createUserSchema>['body'];
 export type UpdateUserInput = z.infer<typeof updateUserSchema>['body'];

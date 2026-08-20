@@ -1,5 +1,5 @@
 import { Router, Response, NextFunction } from 'express';
-import { Permission, QuotationStatus, AuditAction } from '@hospital-erp/shared';
+import { APPROVAL_CONFIG, Permission, QuotationStatus, AuditAction } from '@hospital-erp/shared';
 import { createQuotationSchema, listQuotationsSchema, approvalActionSchema } from '@hospital-erp/shared';
 import { prisma } from '../config/prisma';
 import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middleware/auth';
@@ -188,6 +188,7 @@ router.post(
         entityType: 'QUOTATION',
         entityId: quotation.id,
         projectId,
+        minApprovers: APPROVAL_CONFIG.MIN_APPROVERS,
       });
 
       await prisma.quotation.update({
@@ -201,7 +202,7 @@ router.post(
         entityType: 'QUOTATION',
         entityId: quotation.id,
         projectId,
-        newValue: { quotationNumber, vendorId, totalAmount, grandTotal },
+        newValue: { quotationNumber, vendorId, totalAmount, grandTotal, acknowledged: true },
       });
 
       const result = await prisma.quotation.findUnique({
@@ -352,14 +353,20 @@ router.post(
       const projectId = requireProjectId(req);
       const quotation = await prisma.quotation.findFirst({
         where: { id: req.params.id, projectId, deletedAt: null },
-        include: { approvalWorkflow: true },
+        include: { approvalWorkflow: { include: { steps: true } } },
       });
       if (!quotation || !quotation.approvalWorkflow) {
         res.status(404).json({ error: 'Quotation or approval workflow not found' });
         return;
       }
 
-      const result = await approvalService.approve(req.params.stepId, req.user!.id, req.body.comments);
+      const step = quotation.approvalWorkflow.steps.find((candidate) => candidate.id === req.params.stepId);
+      if (!step || step.approverRole !== req.user!.role) {
+        res.status(403).json({ error: 'This approval step is not assigned to you' });
+        return;
+      }
+
+      const result = await approvalService.approve(step.id, req.user!.id, req.body.comments);
 
       if (result.isFullyApproved) {
         await prisma.quotation.update({
@@ -374,7 +381,7 @@ router.post(
         entityType: 'QUOTATION',
         entityId: quotation.id,
         projectId,
-        newValue: { stepId: req.params.stepId, comments: req.body.comments },
+        newValue: { stepId: req.params.stepId, comments: req.body.comments, acknowledged: true },
       });
 
       const updated = await prisma.quotation.findUnique({
@@ -392,25 +399,34 @@ router.post(
 router.post(
   '/:id/reject/:stepId',
   rbacMiddleware(Permission.VIEW_FINANCIALS),
+  validateMiddleware(approvalActionSchema),
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const projectId = requireProjectId(req);
       const quotation = await prisma.quotation.findFirst({
         where: { id: req.params.id, projectId, deletedAt: null },
-        include: { approvalWorkflow: true },
+        include: { approvalWorkflow: { include: { steps: true } } },
       });
       if (!quotation || !quotation.approvalWorkflow) {
         res.status(404).json({ error: 'Quotation or approval workflow not found' });
         return;
       }
 
-      const reason = req.body.reason || req.body.comments || 'Rejected';
-      await approvalService.reject(req.params.stepId, req.user!.id, reason);
+      const step = quotation.approvalWorkflow.steps.find((candidate) => candidate.id === req.params.stepId);
+      if (!step || step.approverRole !== req.user!.role) {
+        res.status(403).json({ error: 'This rejection step is not assigned to you' });
+        return;
+      }
 
-      await prisma.quotation.update({
-        where: { id: quotation.id },
-        data: { status: QuotationStatus.REJECTED },
-      });
+      const reason = req.body.reason || req.body.comments || 'Rejected';
+      const result = await approvalService.reject(step.id, req.user!.id, reason);
+
+      if (result.isFullyRejected) {
+        await prisma.quotation.update({
+          where: { id: quotation.id },
+          data: { status: QuotationStatus.REJECTED },
+        });
+      }
 
       await logAudit({
         userId: req.user!.id,
@@ -418,7 +434,7 @@ router.post(
         entityType: 'QUOTATION',
         entityId: quotation.id,
         projectId,
-        newValue: { stepId: req.params.stepId, reason },
+        newValue: { stepId: req.params.stepId, reason, acknowledged: true },
       });
 
       const updated = await prisma.quotation.findUnique({

@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { verifyFirebaseToken } from '../config/firebase';
 import { prisma } from '../config/prisma';
 import { AuthenticatedRequest } from '../middleware/auth';
+import { APPROVER_ROLES, UserRole } from '@hospital-erp/shared';
 
 export async function verifyToken(
   req: AuthenticatedRequest,
@@ -49,6 +50,64 @@ export async function verifyToken(
       firebaseUid: decodedToken.uid,
       phone: user.phone,
       name: updateData.name ?? user.name,
+      role: user.role,
+      projectId: user.projectId,
+      isActive: user.isActive,
+    });
+  } catch (error) {
+    res.status(401).json({ error: 'Invalid or expired Firebase token' });
+  }
+}
+
+export async function register(
+  req: Request,
+  res: Response,
+  _next: NextFunction
+): Promise<void> {
+  try {
+    const { idToken, name } = req.body;
+    const decodedToken = await verifyFirebaseToken(idToken);
+    const phone = decodedToken.phone_number;
+
+    if (!phone) {
+      res.status(400).json({ error: 'Firebase account does not contain a verified phone number' });
+      return;
+    }
+
+    const existing = await prisma.user.findFirst({
+      where: { OR: [{ firebaseUid: decodedToken.uid }, { phone }] },
+    });
+    if (existing) {
+      res.status(409).json({ error: 'This phone number is already registered. Please sign in.' });
+      return;
+    }
+
+    const project = await prisma.project.findFirst({
+      where: { status: 'ACTIVE' },
+      orderBy: { createdAt: 'asc' },
+      select: { id: true },
+    });
+    if (!project) {
+      res.status(503).json({ error: 'No active project is available for registration' });
+      return;
+    }
+
+    const user = await prisma.user.create({
+      data: {
+        firebaseUid: decodedToken.uid,
+        phone,
+        name: name.trim(),
+        role: UserRole.SUPERVISOR,
+        projectId: project.id,
+        isActive: true,
+      },
+    });
+
+    res.status(201).json({
+      id: user.id,
+      firebaseUid: user.firebaseUid,
+      phone: user.phone,
+      name: user.name,
       role: user.role,
       projectId: user.projectId,
       isActive: user.isActive,
@@ -110,6 +169,27 @@ export async function updateUser(
     if (!existing) {
       res.status(404).json({ error: 'User not found' });
       return;
+    }
+
+    if (id === req.user!.id && isActive === false) {
+      res.status(400).json({ error: 'You cannot deactivate your own account' });
+      return;
+    }
+
+    if (role && APPROVER_ROLES.some((approverRole) => approverRole === role)) {
+      const occupied = await prisma.user.findFirst({
+        where: {
+          id: { not: id },
+          projectId: projectId ?? existing.projectId,
+          role,
+          isActive: true,
+        },
+        select: { name: true },
+      });
+      if (occupied) {
+        res.status(409).json({ error: `${role.replace(/_/g, ' ')} is already assigned to ${occupied.name}` });
+        return;
+      }
     }
 
     const updated = await prisma.user.update({

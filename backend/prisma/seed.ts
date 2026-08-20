@@ -77,7 +77,7 @@ async function main() {
       data: {
         firebaseUid: 'pending-+919381872579',
         phone: '+919381872579',
-        name: 'Admin One',
+        name: 'Nagarjuna Sir',
         role: UserRole.PROJECT_HEAD,
         projectId: project.id,
         isActive: true,
@@ -87,7 +87,7 @@ async function main() {
       data: {
         firebaseUid: 'pending-+918330912144',
         phone: '+918330912144',
-        name: 'Admin Two',
+        name: 'Ashok Sir',
         role: UserRole.HEAD_OF_CONSTRUCTION,
         projectId: project.id,
         isActive: true,
@@ -97,7 +97,7 @@ async function main() {
       data: {
         firebaseUid: 'pending-+919000000003',
         phone: '+919000000003',
-        name: 'Admin Three',
+        name: 'Kaushal Sir',
         role: UserRole.ADMIN,
         projectId: project.id,
         isActive: true,
@@ -107,7 +107,7 @@ async function main() {
       data: {
         firebaseUid: 'pending-+919000000004',
         phone: '+919000000004',
-        name: 'Admin Four',
+        name: 'Vinod Sir',
         role: UserRole.ADMIN_2,
         projectId: project.id,
         isActive: true,
@@ -151,10 +151,10 @@ async function main() {
 
   console.log('\n✅ Seed complete!');
   console.log('\n📋 Seed Users (replace with real phone numbers before first login):');
-  console.log('  PROJECT_HEAD:          Admin One   — +91 9381872579');
-  console.log('  HEAD_OF_CONSTRUCTION:  Admin Two   — +91 8330912144');
-  console.log('  ADMIN:                 Admin Three — +91 9000000003');
-  console.log('  ADMIN_2:               Admin Four  — +91 9000000004');
+  console.log('  PROJECT_HEAD:          Nagarjuna Sir — +91 9381872579');
+  console.log('  HEAD_OF_CONSTRUCTION:  Ashok Sir     — +91 8330912144');
+  console.log('  ADMIN:                 Kaushal Sir   — +91 9000000003');
+  console.log('  ADMIN_2:               Vinod Sir     — +91 9000000004');
 }
 
 main()

@@ -1,5 +1,5 @@
 import { Router, Response, NextFunction } from 'express';
-import { Permission, AuditAction, PaymentStatus, UserRole, InvoiceVerificationStatus } from '@hospital-erp/shared';
+import { APPROVAL_CONFIG, Permission, AuditAction, PaymentStatus, UserRole, InvoiceVerificationStatus } from '@hospital-erp/shared';
 import {
   createPaymentRequestSchema,
   listPaymentRequestsSchema,
@@ -196,7 +196,7 @@ router.post(
             projectId,
             status: 'VERIFICATION',
             currentStep: 0,
-            minApprovers: 2,
+            minApprovers: APPROVAL_CONFIG.MIN_APPROVERS,
             steps: {
               create: HEAD_ROLES.map((role, idx) => ({
                 stepNumber: idx + 1,
@@ -295,7 +295,7 @@ router.post(
             projectId,
             status: 'VERIFICATION',
             currentStep: 0,
-            minApprovers: 2,
+            minApprovers: APPROVAL_CONFIG.MIN_APPROVERS,
             steps: {
               create: HEAD_ROLES.map((role, idx) => ({
                 stepNumber: idx + 1,
@@ -412,7 +412,7 @@ router.post(
         entityType: 'PAYMENT_REQUEST',
         entityId: pr.id,
         projectId,
-        newValue: { comments: req.body.comments, isFullyApproved: result.isFullyApproved },
+        newValue: { comments: req.body.comments, isFullyApproved: result.isFullyApproved, acknowledged: true },
       });
 
       const updated = await prisma.paymentRequest.findUnique({
@@ -430,6 +430,7 @@ router.post(
 router.post(
   '/:id/reject',
   rbacMiddleware(Permission.VIEW_FINANCIALS),
+  validateMiddleware(approvalActionSchema),
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const projectId = requireProjectId(req);
@@ -456,12 +457,14 @@ router.post(
       }
 
       const reason = req.body.reason || req.body.comments || 'Rejected';
-      await approvalService.reject(step.id, req.user!.id, reason);
+      const result = await approvalService.reject(step.id, req.user!.id, reason);
 
-      await prisma.paymentRequest.update({
-        where: { id: pr.id },
-        data: { status: PaymentStatus.REJECTED },
-      });
+      if (result.isFullyRejected) {
+        await prisma.paymentRequest.update({
+          where: { id: pr.id },
+          data: { status: PaymentStatus.REJECTED },
+        });
+      }
 
       await logAudit({
         userId: req.user!.id,
@@ -469,7 +472,7 @@ router.post(
         entityType: 'PAYMENT_REQUEST',
         entityId: pr.id,
         projectId,
-        newValue: { reason },
+        newValue: { reason, acknowledged: true },
       });
 
       const updated = await prisma.paymentRequest.findUnique({

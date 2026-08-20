@@ -1,5 +1,5 @@
 import { Router, Response, NextFunction } from 'express';
-import { Permission, AuditAction, InvoiceVerificationStatus, PaymentStatus, UserRole } from '@hospital-erp/shared';
+import { APPROVAL_CONFIG, Permission, AuditAction, InvoiceVerificationStatus, PaymentStatus, UserRole } from '@hospital-erp/shared';
 import { createInvoiceSchema, listInvoicesSchema, approvalActionSchema } from '@hospital-erp/shared';
 import { prisma } from '../config/prisma';
 import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middleware/auth';
@@ -185,7 +185,7 @@ router.post(
         include: invoiceInclude,
       });
 
-      // Initiate approval workflow — 1 step per head role, minApprovers=1
+      // Initiate approval workflow — any 2 of 4 head roles
       const workflow = await prisma.approvalWorkflow.create({
         data: {
           entityType: 'VENDOR_INVOICE',
@@ -193,7 +193,7 @@ router.post(
           projectId,
           status: 'VERIFICATION',
           currentStep: 0,
-          minApprovers: 2,
+          minApprovers: APPROVAL_CONFIG.MIN_APPROVERS,
           steps: {
             create: HEAD_ROLES.map((role, idx) => ({
               stepNumber: idx + 1,
@@ -216,7 +216,7 @@ router.post(
         entityType: 'VENDOR_INVOICE',
         entityId: invoice.id,
         projectId,
-        newValue: { invoiceCode, invoiceNumber, vendorId, totalAmount },
+        newValue: { invoiceCode, invoiceNumber, vendorId, totalAmount, acknowledged: true },
       });
 
       const result = await prisma.vendorInvoice.findUnique({
@@ -333,7 +333,7 @@ router.delete(
   }
 );
 
-// POST /:id/approve — approve invoice (any of 4 head roles, 1 approval needed)
+// POST /:id/approve — approve invoice (any 2 of 4 head roles)
 router.post(
   '/:id/approve',
   rbacMiddleware(Permission.VIEW_FINANCIALS),
@@ -387,7 +387,7 @@ router.post(
         entityType: 'VENDOR_INVOICE',
         entityId: invoice.id,
         projectId,
-        newValue: { comments: req.body.comments },
+        newValue: { comments: req.body.comments, acknowledged: true },
       });
 
       const updated = await prisma.vendorInvoice.findUnique({
@@ -405,6 +405,7 @@ router.post(
 router.post(
   '/:id/reject',
   rbacMiddleware(Permission.VIEW_FINANCIALS),
+  validateMiddleware(approvalActionSchema),
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const projectId = requireProjectId(req);
@@ -431,12 +432,14 @@ router.post(
       }
 
       const reason = req.body.reason || req.body.comments || 'Rejected';
-      await approvalService.reject(step.id, req.user!.id, reason);
+      const result = await approvalService.reject(step.id, req.user!.id, reason);
 
-      await prisma.vendorInvoice.update({
-        where: { id: invoice.id },
-        data: { verificationStatus: InvoiceVerificationStatus.REJECTED },
-      });
+      if (result.isFullyRejected) {
+        await prisma.vendorInvoice.update({
+          where: { id: invoice.id },
+          data: { verificationStatus: InvoiceVerificationStatus.REJECTED },
+        });
+      }
 
       await logAudit({
         userId: req.user!.id,
@@ -444,7 +447,7 @@ router.post(
         entityType: 'VENDOR_INVOICE',
         entityId: invoice.id,
         projectId,
-        newValue: { reason },
+        newValue: { reason, acknowledged: true },
       });
 
       const updated = await prisma.vendorInvoice.findUnique({

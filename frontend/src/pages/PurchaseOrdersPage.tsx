@@ -43,6 +43,8 @@ import { POStatus, UserRole } from '@hospital-erp/shared';
 import { formatCurrency, formatDate, STATUS_COLORS } from '../utils/enumOptions';
 import api, { extractErrorMessage } from '../config/api';
 import { useAuthStore } from '../stores/authStore';
+import AcknowledgementCheckbox from '../components/AcknowledgementCheckbox';
+import ApprovalActionDialog from '../components/ApprovalActionDialog';
 
 interface POItem {
   id?: string;
@@ -107,6 +109,8 @@ export default function PurchaseOrdersPage() {
   const [selectedVendorId, setSelectedVendorId] = useState('');
   const [selectedQuotationId, setSelectedQuotationId] = useState('');
   const [gstAmount, setGstAmount] = useState('');
+  const [acknowledged, setAcknowledged] = useState(false);
+  const [approvalAction, setApprovalAction] = useState<{ row: PORow; action: 'approve' | 'reject' } | null>(null);
   const [approvalPopup, setApprovalPopup] = useState<PORow | null>(null);
   const queryClient = useQueryClient();
   const { user } = useAuthStore();
@@ -192,6 +196,7 @@ export default function PurchaseOrdersPage() {
         vendorId: selectedVendorId,
         quotationId: selectedQuotationId,
         gstAmount: gstAmount || undefined,
+        acknowledged,
       });
       return response.data;
     },
@@ -205,25 +210,27 @@ export default function PurchaseOrdersPage() {
   });
 
   const approveMutation = useMutation({
-    mutationFn: async ({ poId, comments }: { poId: string; comments?: string }) => {
-      const response = await api.post(`/purchase-orders/${poId}/approve`, { comments });
+    mutationFn: async ({ poId, comments, acknowledged }: { poId: string; comments?: string; acknowledged: true }) => {
+      const response = await api.post(`/purchase-orders/${poId}/approve`, { comments, acknowledged });
       return response.data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/pos'] });
       queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
+      setApprovalAction(null);
     },
     onError: (err: unknown) => setError(extractErrorMessage(err)),
   });
 
   const rejectMutation = useMutation({
-    mutationFn: async ({ poId, reason }: { poId: string; reason: string }) => {
-      const response = await api.post(`/purchase-orders/${poId}/reject`, { reason });
+    mutationFn: async ({ poId, reason, acknowledged }: { poId: string; reason: string; acknowledged: true }) => {
+      const response = await api.post(`/purchase-orders/${poId}/reject`, { reason, acknowledged });
       return response.data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/pos'] });
       queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
+      setApprovalAction(null);
     },
     onError: (err: unknown) => setError(extractErrorMessage(err)),
   });
@@ -243,6 +250,7 @@ export default function PurchaseOrdersPage() {
     setSelectedVendorId('');
     setSelectedQuotationId('');
     setGstAmount('');
+    setAcknowledged(false);
     setError('');
   }
 
@@ -356,8 +364,8 @@ export default function PurchaseOrdersPage() {
                         <IconButton size="small" onClick={() => downloadPDF(row.id, row.poNumber)} title="Download PDF"><DownloadIcon fontSize="small" /></IconButton>
                         {canApprove(row) && (
                           <>
-                            <IconButton size="small" color="success" onClick={() => approveMutation.mutate({ poId: row.id })} title="Approve"><CheckIcon fontSize="small" /></IconButton>
-                            <IconButton size="small" color="error" onClick={() => { const reason = prompt('Reason for rejection:'); if (reason) rejectMutation.mutate({ poId: row.id, reason }); }} title="Reject"><CloseIcon fontSize="small" /></IconButton>
+                            <IconButton size="small" color="success" onClick={() => setApprovalAction({ row, action: 'approve' })} title="Approve"><CheckIcon fontSize="small" /></IconButton>
+                            <IconButton size="small" color="error" onClick={() => setApprovalAction({ row, action: 'reject' })} title="Reject"><CloseIcon fontSize="small" /></IconButton>
                           </>
                         )}
                         {row.status === POStatus.APPROVED && (
@@ -503,6 +511,11 @@ export default function PurchaseOrdersPage() {
                 </Box>
               </Box>
             )}
+            <AcknowledgementCheckbox
+              checked={acknowledged}
+              onChange={setAcknowledged}
+              entityLabel="purchase order"
+            />
           </Box>
         </DialogContent>
         <DialogActions>
@@ -510,7 +523,7 @@ export default function PurchaseOrdersPage() {
           <Button
             variant="contained"
             onClick={() => { setError(''); createMutation.mutate(); }}
-            disabled={(!selectedVendorId || !selectedQuotationId) || createMutation.isPending}
+            disabled={(!selectedVendorId || !selectedQuotationId || !acknowledged) || createMutation.isPending}
           >
             {createMutation.isPending ? <CircularProgress size={20} /> : 'Create PO'}
           </Button>
@@ -536,6 +549,22 @@ export default function PurchaseOrdersPage() {
           </Typography>
         </Alert>
       </Snackbar>
+
+      <ApprovalActionDialog
+        open={approvalAction !== null}
+        action={approvalAction?.action ?? 'approve'}
+        entityLabel="Purchase Order"
+        pending={approveMutation.isPending || rejectMutation.isPending}
+        onClose={() => setApprovalAction(null)}
+        onConfirm={(payload) => {
+          if (!approvalAction) return;
+          if (approvalAction.action === 'approve') {
+            approveMutation.mutate({ poId: approvalAction.row.id, comments: payload.comments, acknowledged: true });
+          } else {
+            rejectMutation.mutate({ poId: approvalAction.row.id, reason: payload.reason!, acknowledged: true });
+          }
+        }}
+      />
     </Box>
   );
 }

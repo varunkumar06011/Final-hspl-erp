@@ -64,7 +64,8 @@ vi.mock('../src/config/prisma', () => {
           return Array.from(steps.values()).find((s) => {
             if (where.workflowId && s.workflowId !== where.workflowId) return false;
             if (where.approverUserId && s.approverUserId !== where.approverUserId) return false;
-            if (where.status && s.status !== where.status) return false;
+            if (where.status?.in && !where.status.in.includes(s.status)) return false;
+            if (typeof where.status === 'string' && s.status !== where.status) return false;
             return true;
           }) ?? null;
         }),
@@ -106,9 +107,13 @@ describe('Approval Engine Tests', () => {
 
     expect(wf.status).toBe(ApprovalStatus.VERIFICATION);
     expect(wf.minApprovers).toBe(2);
-    expect(wf.steps).toHaveLength(2);
-    expect(wf.steps[0].approverRole).toBe(UserRole.PROJECT_HEAD);
-    expect(wf.steps[1].approverRole).toBe(UserRole.HEAD_OF_CONSTRUCTION);
+    expect(wf.steps).toHaveLength(4);
+    expect(wf.steps.map((step: any) => step.approverRole)).toEqual([
+      UserRole.PROJECT_HEAD,
+      UserRole.HEAD_OF_CONSTRUCTION,
+      UserRole.ADMIN,
+      UserRole.ADMIN_2,
+    ]);
     expect(wf.steps.every((s: any) => s.status === ApprovalStepStatus.PENDING)).toBe(true);
   });
 
@@ -160,21 +165,22 @@ describe('Approval Engine Tests', () => {
     );
   });
 
-  it('rejection at any step → REJECTED, no further approvals accepted', async () => {
+  it('requires two distinct rejections before the workflow is rejected', async () => {
     const wf = await initiate({
       entityType: 'PAYMENT_REQUEST',
       entityId: 'entity-5',
       projectId: 'project-1',
     });
 
-    const step1 = wf.steps[0];
-    const result = await reject(step1.id, 'user-1', 'Not valid');
+    const firstResult = await reject(wf.steps[0].id, 'user-1', 'Not valid');
+    expect(firstResult.isFullyRejected).toBe(false);
+    expect(firstResult.workflow.status).toBe(ApprovalStatus.VERIFICATION);
 
-    expect(result.workflow.status).toBe(ApprovalStatus.REJECTED);
+    const secondResult = await reject(wf.steps[1].id, 'user-2', 'Also rejected');
+    expect(secondResult.isFullyRejected).toBe(true);
+    expect(secondResult.workflow.status).toBe(ApprovalStatus.REJECTED);
 
-    const freshWf = await getState(wf.id);
-    const step2 = freshWf.steps[1];
-    await expect(approve(step2.id, 'user-2', 'Trying to approve after rejection')).rejects.toThrow(
+    await expect(approve(wf.steps[2].id, 'user-3', 'Trying after rejection')).rejects.toThrow(
       'Workflow is already rejected'
     );
   });

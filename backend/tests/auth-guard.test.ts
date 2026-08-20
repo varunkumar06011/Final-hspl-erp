@@ -11,15 +11,26 @@ vi.mock('../src/config/prisma', () => ({
   prisma: {
     user: {
       findUnique: vi.fn(),
+      findFirst: vi.fn(),
+      create: vi.fn(),
+      update: vi.fn(),
+    },
+    project: {
+      findFirst: vi.fn(),
     },
   },
 }));
 
 import { verifyFirebaseToken } from '../src/config/firebase';
 import { prisma } from '../src/config/prisma';
+import { register, updateUser } from '../src/controllers/auth.controller';
 
 const mockVerifyToken = verifyFirebaseToken as unknown as ReturnType<typeof vi.fn>;
 const mockFindUser = prisma.user.findUnique as unknown as ReturnType<typeof vi.fn>;
+const mockFindExistingUser = prisma.user.findFirst as unknown as ReturnType<typeof vi.fn>;
+const mockCreateUser = prisma.user.create as unknown as ReturnType<typeof vi.fn>;
+const mockUpdateUser = prisma.user.update as unknown as ReturnType<typeof vi.fn>;
+const mockFindProject = prisma.project.findFirst as unknown as ReturnType<typeof vi.fn>;
 
 function createMockReq(overrides?: Partial<AuthenticatedRequest>): AuthenticatedRequest {
   return {
@@ -152,5 +163,74 @@ describe('Auth Guard — Pre-provisioned login only', () => {
       expect.objectContaining({ error: expect.stringContaining('No authorization') })
     );
     expect(next).not.toHaveBeenCalled();
+  });
+});
+
+describe('Self registration', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('creates a Supervisor in the active project after Firebase phone verification', async () => {
+    mockVerifyToken.mockResolvedValue({ uid: 'firebase-new', phone_number: '+919111111111' });
+    mockFindExistingUser.mockResolvedValue(null);
+    mockFindProject.mockResolvedValue({ id: '11111111-1111-4111-8111-111111111111' });
+    mockCreateUser.mockImplementation(async ({ data }: any) => ({
+      id: '22222222-2222-4222-8222-222222222222',
+      ...data,
+    }));
+
+    const req = createMockReq({ body: { idToken: 'valid-token', name: 'New Supervisor' } });
+    const res = createMockRes();
+
+    await register(req as unknown as Request, res, vi.fn());
+
+    expect(mockCreateUser).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        firebaseUid: 'firebase-new',
+        phone: '+919111111111',
+        name: 'New Supervisor',
+        role: UserRole.SUPERVISOR,
+        projectId: '11111111-1111-4111-8111-111111111111',
+        isActive: true,
+      }),
+    });
+    expect(res.status).toHaveBeenCalledWith(201);
+  });
+});
+
+describe('Privileged role assignment', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('prevents assigning the same active head role to two users in one project', async () => {
+    mockFindUser.mockResolvedValue({
+      id: 'user-supervisor',
+      projectId: 'project-1',
+      role: UserRole.SUPERVISOR,
+      isActive: true,
+    });
+    mockFindExistingUser.mockResolvedValue({ name: 'Nagarjuna Sir' });
+
+    const req = createMockReq({
+      params: { id: 'user-supervisor' },
+      body: { role: UserRole.PROJECT_HEAD },
+      user: {
+        id: 'admin-user',
+        firebaseUid: 'admin-firebase',
+        phone: '+919000000001',
+        name: 'Admin',
+        role: UserRole.ADMIN,
+        projectId: 'project-1',
+        isActive: true,
+      },
+    });
+    const res = createMockRes();
+
+    await updateUser(req, res, vi.fn());
+
+    expect(res.status).toHaveBeenCalledWith(409);
+    expect(mockUpdateUser).not.toHaveBeenCalled();
   });
 });

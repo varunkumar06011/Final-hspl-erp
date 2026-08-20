@@ -17,6 +17,10 @@ const uuid = z.string().uuid();
 const money = z.coerce.number().min(0);
 const qty = z.coerce.number();
 const dateStr = z.coerce.date();
+const acknowledgement = z.preprocess(
+  (value) => value === true || value === 'true',
+  z.literal(true, { errorMap: () => ({ message: 'Acknowledgement is required' }) })
+);
 
 const pagination = z.object({
   page: z.coerce.number().int().min(1).default(1),
@@ -77,6 +81,7 @@ export const createQuotationSchema = z.object({
     vendorId: uuid,
     items: itemsField,
     gstAmount: money.optional(),
+    acknowledged: acknowledgement,
   }),
 });
 export const updateQuotationSchema = z.object({
@@ -99,6 +104,7 @@ export const createPOSchema = z.object({
     vendorId: uuid,
     quotationId: uuid,
     gstAmount: money.optional(),
+    acknowledged: acknowledgement,
   }),
 });
 export const updatePOSchema = z.object({
@@ -132,6 +138,7 @@ export const createInvoiceSchema = z.object({
     advanceType: z.string().max(50).optional(),
     advanceOtherType: z.string().max(100).optional(),
     deliveryDate: dateStr.optional(),
+    acknowledged: acknowledgement,
   }),
 });
 export const updateInvoiceSchema = z.object({
@@ -186,7 +193,11 @@ export const recordPaymentSchema = z.object({
 });
 export const approvalActionSchema = z.object({
   params: z.object({ id: uuid, stepId: uuid.optional() }),
-  body: z.object({ comments: z.string().max(500).optional() }),
+  body: z.object({
+    comments: z.string().max(500).optional(),
+    reason: z.string().min(1).max(500).optional(),
+    acknowledged: acknowledgement,
+  }),
 });
 
 // ═══ Gate Passes ═══

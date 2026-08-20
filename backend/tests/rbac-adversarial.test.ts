@@ -45,10 +45,10 @@ describe('Adversarial RBAC Tests', () => {
     expect(result.status).toBeUndefined();
   });
 
-  it('ADMIN cannot access user management → 403', () => {
+  it('SUPERVISOR cannot access user management → 403', () => {
     const result = runMiddleware(Permission.MANAGE_USERS, {
-      id: '3', firebaseUid: '3', phone: '3', name: 'Admin3',
-      role: UserRole.ADMIN, projectId: 'p1', isActive: true,
+      id: '5', firebaseUid: '5', phone: '5', name: 'Supervisor',
+      role: UserRole.SUPERVISOR, projectId: 'p1', isActive: true,
     });
     expect(result.calledNext).toBe(false);
     expect(result.status).toBe(403);

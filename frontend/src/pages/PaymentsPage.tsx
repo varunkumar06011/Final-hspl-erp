@@ -45,6 +45,7 @@ import { PaymentStatus, PaymentMode, UserRole } from '@hospital-erp/shared';
 import { formatCurrency, STATUS_COLORS } from '../utils/enumOptions';
 import api, { extractErrorMessage } from '../config/api';
 import { useAuthStore } from '../stores/authStore';
+import ApprovalActionDialog from '../components/ApprovalActionDialog';
 
 interface ApprovalStep {
   id: string;
@@ -127,6 +128,7 @@ export default function PaymentsPage() {
   const [expenseOpen, setExpenseOpen] = useState(false);
   const [invoicePayOpen, setInvoicePayOpen] = useState<PendingInvoice | null>(null);
   const [invoicePayForm, setInvoicePayForm] = useState<Record<string, unknown>>({});
+  const [approvalAction, setApprovalAction] = useState<{ row: PaymentRequestRow; action: 'approve' | 'reject' } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
   const { user } = useAuthStore();
@@ -198,25 +200,27 @@ export default function PaymentsPage() {
   });
 
   const approveMutation = useMutation({
-    mutationFn: async ({ prId, comments }: { prId: string; comments?: string }) => {
-      const response = await api.post(`/payments/${prId}/approve`, { comments });
+    mutationFn: async ({ prId, comments, acknowledged }: { prId: string; comments?: string; acknowledged: true }) => {
+      const response = await api.post(`/payments/${prId}/approve`, { comments, acknowledged });
       return response.data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/payments'] });
       queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
+      setApprovalAction(null);
     },
     onError: (err: unknown) => setError(extractErrorMessage(err)),
   });
 
   const rejectMutation = useMutation({
-    mutationFn: async ({ prId, reason }: { prId: string; reason: string }) => {
-      const response = await api.post(`/payments/${prId}/reject`, { reason });
+    mutationFn: async ({ prId, reason, acknowledged }: { prId: string; reason: string; acknowledged: true }) => {
+      const response = await api.post(`/payments/${prId}/reject`, { reason, acknowledged });
       return response.data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/payments'] });
       queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
+      setApprovalAction(null);
     },
     onError: (err: unknown) => setError(extractErrorMessage(err)),
   });
@@ -428,8 +432,8 @@ export default function PaymentsPage() {
                         <Box sx={{ display: 'flex', gap: 0.5 }}>
                           {canApprove(row) && (
                             <>
-                              <IconButton size="small" color="success" onClick={() => approveMutation.mutate({ prId: row.id })} title="Approve"><CheckIcon fontSize="small" /></IconButton>
-                              <IconButton size="small" color="error" onClick={() => { const reason = prompt('Reason for rejection:'); if (reason) rejectMutation.mutate({ prId: row.id, reason }); }} title="Reject"><CloseIcon fontSize="small" /></IconButton>
+                              <IconButton size="small" color="success" onClick={() => setApprovalAction({ row, action: 'approve' })} title="Approve"><CheckIcon fontSize="small" /></IconButton>
+                              <IconButton size="small" color="error" onClick={() => setApprovalAction({ row, action: 'reject' })} title="Reject"><CloseIcon fontSize="small" /></IconButton>
                             </>
                           )}
                           {row.status === PaymentStatus.APPROVED && row.payments.length === 0 && (
@@ -704,6 +708,22 @@ export default function PaymentsPage() {
           </Button>
         </DialogActions>
       </Dialog>
+
+      <ApprovalActionDialog
+        open={approvalAction !== null}
+        action={approvalAction?.action ?? 'approve'}
+        entityLabel="Payment Request"
+        pending={approveMutation.isPending || rejectMutation.isPending}
+        onClose={() => setApprovalAction(null)}
+        onConfirm={(payload) => {
+          if (!approvalAction) return;
+          if (approvalAction.action === 'approve') {
+            approveMutation.mutate({ prId: approvalAction.row.id, comments: payload.comments, acknowledged: true });
+          } else {
+            rejectMutation.mutate({ prId: approvalAction.row.id, reason: payload.reason!, acknowledged: true });
+          }
+        }}
+      />
     </Box>
   );
 }

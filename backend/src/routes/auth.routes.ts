@@ -2,13 +2,14 @@ import { Router } from 'express';
 import { authMiddleware } from '../middleware/auth';
 import { rbacMiddleware } from '../middleware/rbac';
 import { validateMiddleware } from '../middleware/validate';
-import { Permission, verifyTokenSchema, createUserSchema, updateUserSchema, listUsersSchema } from '@hospital-erp/shared';
-import { verifyToken, createUser, updateUser, listUsers, getMe, devLogin } from '../controllers/auth.controller';
+import { Permission, verifyTokenSchema, registerTokenSchema, createUserSchema, updateUserSchema, listUsersSchema } from '@hospital-erp/shared';
+import { verifyToken, register, createUser, updateUser, listUsers, getMe, devLogin } from '../controllers/auth.controller';
 
 const router = Router();
 
 // POST /api/auth/verify — no auth middleware (this IS the auth endpoint)
 router.post('/verify', validateMiddleware(verifyTokenSchema), verifyToken);
+router.post('/register', validateMiddleware(registerTokenSchema), register);
 
 // POST /api/auth/dev-login — dev fallback (OTP 1234), blocked in production
 router.post('/dev-login', devLogin);

@@ -4,11 +4,19 @@
 // ═══════════════════════════════════════════════════════════
 
 export enum UserRole {
+  SUPERVISOR = 'SUPERVISOR',
   PROJECT_HEAD = 'PROJECT_HEAD',
   HEAD_OF_CONSTRUCTION = 'HEAD_OF_CONSTRUCTION',
   ADMIN = 'ADMIN',
   ADMIN_2 = 'ADMIN_2',
 }
+
+export const APPROVER_ROLES = [
+  UserRole.PROJECT_HEAD,
+  UserRole.HEAD_OF_CONSTRUCTION,
+  UserRole.ADMIN,
+  UserRole.ADMIN_2,
+] as const;
 
 export enum ProjectStatus {
   PLANNED = 'PLANNED',
@@ -210,6 +218,24 @@ export enum Permission {
 }
 
 export const PERMISSION_MATRIX: Record<UserRole, Permission[]> = {
+  [UserRole.SUPERVISOR]: [
+    Permission.CREATE_VENDOR,
+    Permission.CREATE_QUOTATION,
+    Permission.CREATE_PO,
+    Permission.VERIFY_INVOICE,
+    Permission.VIEW_FINANCIALS,
+    Permission.CREATE_GATE_PASS,
+    Permission.MANAGE_INVENTORY,
+    Permission.MANAGE_PHASES,
+    Permission.MANAGE_ACTIVITIES,
+    Permission.UPLOAD_PHOTOS,
+    Permission.MANAGE_ISSUES,
+    Permission.MANAGE_INSPECTIONS,
+    Permission.MANAGE_DOCUMENTS,
+    Permission.MANAGE_CONTRACTS,
+    Permission.MANAGE_LABOUR,
+    Permission.VIEW_AUDIT_LOG,
+  ],
   [UserRole.PROJECT_HEAD]: [
     Permission.CREATE_VENDOR,
     Permission.CREATE_QUOTATION,
@@ -240,6 +266,7 @@ export const PERMISSION_MATRIX: Record<UserRole, Permission[]> = {
     Permission.APPROVE_PAYMENT_STEP_2,
     Permission.VIEW_FINANCIALS,
     Permission.VIEW_AUDIT_LOG,
+    Permission.MANAGE_USERS,
     Permission.CREATE_GATE_PASS,
     Permission.MANAGE_INVENTORY,
     Permission.MANAGE_PHASES,
@@ -257,6 +284,7 @@ export const PERMISSION_MATRIX: Record<UserRole, Permission[]> = {
     Permission.VERIFY_INVOICE,
     Permission.APPROVE_PAYMENT_STEP_1,
     Permission.VIEW_FINANCIALS,
+    Permission.MANAGE_USERS,
     Permission.CREATE_GATE_PASS,
     Permission.MANAGE_INVENTORY,
     Permission.MANAGE_PHASES,
@@ -274,6 +302,7 @@ export const PERMISSION_MATRIX: Record<UserRole, Permission[]> = {
     Permission.VERIFY_INVOICE,
     Permission.APPROVE_PAYMENT_STEP_2,
     Permission.VIEW_FINANCIALS,
+    Permission.MANAGE_USERS,
     Permission.CREATE_GATE_PASS,
     Permission.MANAGE_INVENTORY,
     Permission.MANAGE_PHASES,

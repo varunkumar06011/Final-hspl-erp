@@ -16,11 +16,12 @@ import {
   Handshake as ContractIcon,
   History as AuditIcon,
   Settings as SettingsIcon,
+  People as PeopleIcon,
   Logout as LogoutIcon,
   Notifications as NotificationsIcon,
 } from '@mui/icons-material';
 import { useAuthStore } from '../stores/authStore';
-import { UserRole } from '@hospital-erp/shared';
+import { hasPermission, Permission, UserRole } from '@hospital-erp/shared';
 
 const NAV_ITEMS = [
   { label: 'Dashboard', icon: <DashboardIcon />, path: '/' },
@@ -38,10 +39,12 @@ const NAV_ITEMS = [
   { label: 'Documents', icon: <DocumentIcon />, path: '/documents' },
   { label: 'Contracts', icon: <ContractIcon />, path: '/contracts' },
   { label: 'Audit Log', icon: <AuditIcon />, path: '/audit' },
+  { label: 'Users', icon: <PeopleIcon />, path: '/users', permission: Permission.MANAGE_USERS },
   { label: 'Settings', icon: <SettingsIcon />, path: '/settings' },
 ];
 
 const ROLE_COLORS: Record<UserRole, string> = {
+  [UserRole.SUPERVISOR]: '#546E7A',
   [UserRole.PROJECT_HEAD]: '#1565C0',
   [UserRole.HEAD_OF_CONSTRUCTION]: '#2E7D32',
   [UserRole.ADMIN]: '#ED6C02',
@@ -49,9 +52,10 @@ const ROLE_COLORS: Record<UserRole, string> = {
 };
 
 const ROLE_LABELS: Record<UserRole, string> = {
+  [UserRole.SUPERVISOR]: 'Supervisor',
   [UserRole.PROJECT_HEAD]: 'Project Head',
   [UserRole.HEAD_OF_CONSTRUCTION]: 'Head of Construction',
-  [UserRole.ADMIN]: 'Admin',
+  [UserRole.ADMIN]: 'Admin 1',
   [UserRole.ADMIN_2]: 'Admin 2',
 };
 
@@ -133,7 +137,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         <Toolbar />
         <Box sx={{ overflow: 'auto' }}>
           <List>
-            {NAV_ITEMS.map((item) => (
+            {NAV_ITEMS.filter((item) => !item.permission || (user && hasPermission(user.role as UserRole, item.permission))).map((item) => (
               <ListItem
                 key={item.path}
                 button

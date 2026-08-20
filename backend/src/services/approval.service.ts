@@ -1,5 +1,5 @@
 import { prisma } from '../config/prisma';
-import { ApprovalStatus, ApprovalStepStatus, UserRole, APPROVAL_CONFIG } from '@hospital-erp/shared';
+import { APPROVER_ROLES, ApprovalStatus, ApprovalStepStatus, UserRole, APPROVAL_CONFIG } from '@hospital-erp/shared';
 
 interface InitiateParams {
   entityType: string;
@@ -8,10 +8,9 @@ interface InitiateParams {
   minApprovers?: number;
 }
 
-const STEP_ROLES: { stepNumber: number; approverRole: UserRole }[] = [
-  { stepNumber: 1, approverRole: UserRole.PROJECT_HEAD },
-  { stepNumber: 2, approverRole: UserRole.HEAD_OF_CONSTRUCTION },
-];
+const STEP_ROLES: { stepNumber: number; approverRole: UserRole }[] = APPROVER_ROLES.map(
+  (approverRole, index) => ({ stepNumber: index + 1, approverRole })
+);
 
 export async function initiate({
   entityType,
@@ -55,8 +54,8 @@ export async function approve(stepId: string, userId: string, comments?: string)
     throw new Error(`Step already ${step.status.toLowerCase()}`);
   }
 
-  if (step.workflow.status === ApprovalStatus.REJECTED) {
-    throw new Error('Workflow is already rejected — no further approvals accepted');
+  if ([ApprovalStatus.APPROVED, ApprovalStatus.REJECTED].includes(step.workflow.status as ApprovalStatus)) {
+    throw new Error(`Workflow is already ${step.workflow.status.toLowerCase()}`);
   }
 
   const user = await prisma.user.findUnique({ where: { id: userId } });
@@ -68,16 +67,16 @@ export async function approve(stepId: string, userId: string, comments?: string)
     throw new Error(`Only ${step.approverRole} can approve this step`);
   }
 
-  const existingApproval = await prisma.approvalStep.findFirst({
+  const existingDecision = await prisma.approvalStep.findFirst({
     where: {
       workflowId: step.workflowId,
       approverUserId: userId,
-      status: ApprovalStepStatus.APPROVED,
+      status: { in: [ApprovalStepStatus.APPROVED, ApprovalStepStatus.REJECTED] },
     },
   });
 
-  if (existingApproval) {
-    throw new Error('Same person cannot approve twice');
+  if (existingDecision) {
+    throw new Error('You have already decided on this workflow');
   }
 
   const updatedStep = await prisma.approvalStep.update({
@@ -159,6 +158,10 @@ export async function reject(stepId: string, userId: string, reason: string) {
     throw new Error(`Step already ${step.status.toLowerCase()}`);
   }
 
+  if ([ApprovalStatus.APPROVED, ApprovalStatus.REJECTED].includes(step.workflow.status as ApprovalStatus)) {
+    throw new Error(`Workflow is already ${step.workflow.status.toLowerCase()}`);
+  }
+
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user) {
     throw new Error('User not found');
@@ -166,6 +169,17 @@ export async function reject(stepId: string, userId: string, reason: string) {
 
   if (user.role !== step.approverRole) {
     throw new Error(`Only ${step.approverRole} can reject this step`);
+  }
+
+  const existingDecision = await prisma.approvalStep.findFirst({
+    where: {
+      workflowId: step.workflowId,
+      approverUserId: userId,
+      status: { in: [ApprovalStepStatus.APPROVED, ApprovalStepStatus.REJECTED] },
+    },
+  });
+  if (existingDecision) {
+    throw new Error('You have already decided on this workflow');
   }
 
   const updatedStep = await prisma.approvalStep.update({
@@ -178,9 +192,21 @@ export async function reject(stepId: string, userId: string, reason: string) {
     },
   });
 
-  const updatedWorkflow = await prisma.approvalWorkflow.update({
+  const workflow = await prisma.approvalWorkflow.findUnique({
     where: { id: step.workflowId },
-    data: { status: ApprovalStatus.REJECTED },
+    include: { steps: { orderBy: { stepNumber: 'asc' } } },
+  });
+  if (!workflow) {
+    throw new Error('Workflow not found');
+  }
+
+  const rejectedCount = workflow.steps.filter(
+    (workflowStep) => workflowStep.status === ApprovalStepStatus.REJECTED
+  ).length;
+  const isFullyRejected = rejectedCount >= workflow.minApprovers;
+  const updatedWorkflow = await prisma.approvalWorkflow.update({
+    where: { id: workflow.id },
+    data: { status: isFullyRejected ? ApprovalStatus.REJECTED : workflow.status },
     include: { steps: { orderBy: { stepNumber: 'asc' } } },
   });
 
@@ -188,6 +214,7 @@ export async function reject(stepId: string, userId: string, reason: string) {
     workflow: updatedWorkflow,
     step: updatedStep,
     isFullyApproved: false,
+    isFullyRejected,
   };
 }
 
