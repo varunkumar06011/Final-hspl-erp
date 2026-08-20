@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import {
   Box,
   Typography,
@@ -29,8 +29,11 @@ import {
   Search as SearchIcon,
   Check as CheckIcon,
   Delete as DeleteIcon,
+  Refresh as ResendIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { RecaptchaVerifier, signInWithPhoneNumber } from 'firebase/auth';
+import { auth, isConfigured } from '../config/firebase';
 import { formatDate } from '../utils/enumOptions';
 import api, { extractErrorMessage } from '../config/api';
 
@@ -66,6 +69,16 @@ interface ApprovedPO {
   invoices: { id: string; invoiceCode: string; invoiceNumber: string; verificationStatus: string; stockStatus: string }[];
 }
 
+interface HeadUser {
+  id: string;
+  name: string;
+  role: string;
+  phone: string;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let confirmationResult: any = null;
+
 export default function GatePassesPage() {
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(20);
@@ -76,10 +89,11 @@ export default function GatePassesPage() {
   const [otpInput, setOtpInput] = useState('');
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
-  const [createdOtp, setCreatedOtp] = useState<string | null>(null);
   const [selectedPoId, setSelectedPoId] = useState('');
   const [selectedInvoiceId, setSelectedInvoiceId] = useState('');
   const [selectedHeadId, setSelectedHeadId] = useState('');
+  const [sendingOtp, setSendingOtp] = useState(false);
+  const [resendingOtp, setResendingOtp] = useState(false);
   const queryClient = useQueryClient();
 
   const { data, isLoading, refetch } = useQuery({
@@ -93,7 +107,6 @@ export default function GatePassesPage() {
     },
   });
 
-  // Fetch approved POs with their verified invoices and items (single backend query)
   const { data: approvedPOs } = useQuery<ApprovedPO[]>({
     queryKey: ['/gate-passes/approved-pos'],
     queryFn: async () => {
@@ -102,14 +115,53 @@ export default function GatePassesPage() {
     },
   });
 
-  // Fetch the 4 heads
-  const { data: heads } = useQuery({
+  const { data: heads } = useQuery<HeadUser[]>({
     queryKey: ['/gate-passes', 'heads'],
     queryFn: async () => {
       const response = await api.get('/gate-passes/heads');
       return response.data?.data ?? [];
     },
   });
+
+  const setupRecaptcha = useCallback(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if ((window as any).recaptchaVerifier) {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (window as any).recaptchaVerifier.clear();
+      } catch {
+        // ignore
+      }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (window as any).recaptchaVerifier = null;
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (window as any).recaptchaVerifier = new RecaptchaVerifier(
+      auth!,
+      'recaptcha-container-gatepass',
+      { size: 'invisible' }
+    );
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return (window as any).recaptchaVerifier;
+  }, []);
+
+  const sendFirebaseOtp = useCallback(async (phone: string): Promise<boolean> => {
+    if (!isConfigured || !auth) {
+      setError('Firebase is not configured. Cannot send OTP.');
+      return false;
+    }
+    setSendingOtp(true);
+    try {
+      const appVerifier = setupRecaptcha();
+      confirmationResult = await signInWithPhoneNumber(auth, phone, appVerifier);
+      return true;
+    } catch (err: unknown) {
+      setError(extractErrorMessage(err));
+      return false;
+    } finally {
+      setSendingOtp(false);
+    }
+  }, [setupRecaptcha]);
 
   const createMutation = useMutation({
     mutationFn: async () => {
@@ -120,21 +172,27 @@ export default function GatePassesPage() {
       });
       return response.data;
     },
-    onSuccess: (data) => {
+    onSuccess: async (data) => {
       queryClient.invalidateQueries({ queryKey: ['/gate-passes'] });
       queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
       setCreateOpen(false);
       resetForm();
-      setCreatedOtp(data.otpCode);
-      setSuccessMsg(`Gate pass created. OTP sent to ${data.otpRequestedForUser?.name}. Get the OTP from them to approve.`);
-      setTimeout(() => setSuccessMsg(''), 5000);
+      setSuccessMsg(`Gate pass ${data.passNumber} created. Sending OTP to ${data.headName} at ${data.headPhone}...`);
+      // Send Firebase OTP to the head's phone
+      const sent = await sendFirebaseOtp(data.headPhone);
+      if (sent) {
+        setSuccessMsg(`OTP sent to ${data.headName} at ${data.headPhone}. Get the OTP from them and click "Enter OTP" to approve.`);
+      } else {
+        setError(`Gate pass created but OTP could not be sent. Click "Enter OTP" then "Resend OTP" to try again.`);
+      }
+      setTimeout(() => setSuccessMsg(''), 8000);
     },
     onError: (err: unknown) => setError(extractErrorMessage(err)),
   });
 
   const verifyOtpMutation = useMutation({
-    mutationFn: async ({ id, otp }: { id: string; otp: string }) => {
-      const response = await api.post(`/gate-passes/${id}/verify-otp`, { otp });
+    mutationFn: async ({ id, idToken }: { id: string; idToken: string }) => {
+      const response = await api.post(`/gate-passes/${id}/verify-otp`, { idToken });
       return response.data;
     },
     onSuccess: (data) => {
@@ -143,6 +201,7 @@ export default function GatePassesPage() {
       queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
       setOtpDialogOpen(null);
       setOtpInput('');
+      confirmationResult = null;
       setSuccessMsg(data.message || 'Gate pass approved! Items added to inventory.');
       setTimeout(() => setSuccessMsg(''), 5000);
     },
@@ -171,13 +230,43 @@ export default function GatePassesPage() {
 
   const selectedPO = approvedPOs?.find((po) => po.id === selectedPoId);
 
+  async function handleVerifyOtp() {
+    if (!otpDialogOpen) return;
+    setError('');
+    if (!confirmationResult) {
+      setError('No OTP was sent. Click "Resend OTP" to send an OTP to the head\'s phone.');
+      return;
+    }
+    try {
+      const userCredential = await confirmationResult.confirm(otpInput);
+      const idToken = await userCredential.user.getIdToken();
+      verifyOtpMutation.mutate({ id: otpDialogOpen.id, idToken });
+    } catch (err: unknown) {
+      setError(extractErrorMessage(err) || 'Invalid OTP. Please try again.');
+    }
+  }
+
+  async function handleResendOtp() {
+    if (!otpDialogOpen?.otpRequestedForUser?.phone) return;
+    setResendingOtp(true);
+    setError('');
+    const sent = await sendFirebaseOtp(otpDialogOpen.otpRequestedForUser.phone);
+    if (sent) {
+      setSuccessMsg(`OTP resent to ${otpDialogOpen.otpRequestedForUser.name} at ${otpDialogOpen.otpRequestedForUser.phone}.`);
+      setTimeout(() => setSuccessMsg(''), 5000);
+    }
+    setResendingOtp(false);
+  }
+
   return (
     <Box>
+      <div id="recaptcha-container-gatepass" />
+
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
         <Typography variant="h5" fontWeight={600}>Gate Passes</Typography>
         <Box sx={{ display: 'flex', gap: 1 }}>
           <IconButton onClick={() => refetch()} size="small"><RefreshIcon /></IconButton>
-          <Button variant="contained" startIcon={<AddIcon />} onClick={() => { resetForm(); setCreatedOtp(null); setCreateOpen(true); }}>Create Gate Pass</Button>
+          <Button variant="contained" startIcon={<AddIcon />} onClick={() => { resetForm(); setCreateOpen(true); }}>Create Gate Pass</Button>
         </Box>
       </Box>
 
@@ -238,7 +327,7 @@ export default function GatePassesPage() {
                       <Box sx={{ display: 'flex', gap: 0.5 }}>
                         {row.status === 'PENDING' && (
                           <>
-                            <Button size="small" variant="outlined" startIcon={<CheckIcon />} onClick={() => { setOtpDialogOpen(row); setOtpInput(''); }}>
+                            <Button size="small" variant="outlined" startIcon={<CheckIcon />} onClick={() => { setOtpDialogOpen(row); setOtpInput(''); confirmationResult = null; }}>
                               Enter OTP
                             </Button>
                             <IconButton size="small" color="error" onClick={() => { if (confirm('Delete this gate pass?')) deleteMutation.mutate(row.id); }}><DeleteIcon fontSize="small" /></IconButton>
@@ -335,18 +424,12 @@ export default function GatePassesPage() {
               fullWidth
               size="small"
               required
-              helperText="OTP will be sent to this person. They will tell you the OTP by other means."
+              helperText="A real OTP will be sent to this person's phone via Firebase. They will tell you the OTP."
             >
-              {heads?.map((h: { id: string; name: string; role: string }) => (
-                <MenuItem key={h.id} value={h.id}>{h.name} ({h.role.replace(/_/g, ' ')})</MenuItem>
+              {heads?.map((h) => (
+                <MenuItem key={h.id} value={h.id}>{h.name} ({h.role.replace(/_/g, ' ')}) — {h.phone}</MenuItem>
               ))}
             </TextField>
-
-            {createdOtp && (
-              <Alert severity="info">
-                OTP generated: <strong>{createdOtp}</strong> — In production, this will be sent via SMS to the selected head. For now, communicate it to them outside the software.
-              </Alert>
-            )}
           </Box>
         </DialogContent>
         <DialogActions>
@@ -354,9 +437,9 @@ export default function GatePassesPage() {
           <Button
             variant="contained"
             onClick={() => { setError(''); createMutation.mutate(); }}
-            disabled={(!selectedPoId || !selectedInvoiceId || !selectedHeadId) || createMutation.isPending}
+            disabled={(!selectedPoId || !selectedInvoiceId || !selectedHeadId) || createMutation.isPending || sendingOtp}
           >
-            {createMutation.isPending ? <CircularProgress size={20} /> : 'Create & Generate OTP'}
+            {createMutation.isPending || sendingOtp ? <CircularProgress size={20} /> : 'Create & Send OTP'}
           </Button>
         </DialogActions>
       </Dialog>
@@ -367,8 +450,9 @@ export default function GatePassesPage() {
         <DialogContent>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
             <Typography variant="body2">
-              OTP was sent to <strong>{otpDialogOpen?.otpRequestedForUser?.name}</strong>.
-              Enter the OTP they provided to approve this gate pass and add items to inventory.
+              An OTP was sent to <strong>{otpDialogOpen?.otpRequestedForUser?.name}</strong> at{' '}
+              <strong>{otpDialogOpen?.otpRequestedForUser?.phone}</strong>.
+              Enter the OTP they provide to approve this gate pass and add items to inventory.
             </Typography>
             <TextField
               label="Enter OTP"
@@ -379,17 +463,22 @@ export default function GatePassesPage() {
               required
               inputProps={{ maxLength: 6 }}
             />
+            <Button
+              variant="text"
+              startIcon={resendingOtp ? <CircularProgress size={16} /> : <ResendIcon />}
+              onClick={handleResendOtp}
+              disabled={resendingOtp}
+              sx={{ alignSelf: 'flex-start' }}
+            >
+              Resend OTP
+            </Button>
           </Box>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => { setOtpDialogOpen(null); setOtpInput(''); }}>Cancel</Button>
           <Button
             variant="contained"
-            onClick={() => {
-              if (!otpDialogOpen) return;
-              setError('');
-              verifyOtpMutation.mutate({ id: otpDialogOpen.id, otp: otpInput });
-            }}
+            onClick={handleVerifyOtp}
             disabled={!otpInput || verifyOtpMutation.isPending}
           >
             {verifyOtpMutation.isPending ? <CircularProgress size={20} /> : 'Verify & Approve'}

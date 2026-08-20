@@ -6,6 +6,7 @@ import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middl
 import { rbacMiddleware } from '../middleware/rbac';
 import { validateMiddleware } from '../middleware/validate';
 import { logAudit } from '../services/audit.service';
+import { verifyFirebaseToken } from '../config/firebase';
 
 const router = Router();
 router.use(authMiddleware);
@@ -32,10 +33,6 @@ async function generateUniquePassNumber(): Promise<string> {
   }, 0);
   const seq = String(maxSeq + 1).padStart(3, '0');
   return `${prefix}-${seq}`;
-}
-
-function generateOtp(): string {
-  return String(Math.floor(100000 + Math.random() * 900000));
 }
 
 const gatePassInclude = {
@@ -232,7 +229,6 @@ router.post(
       }
 
       const passNumber = await generateUniquePassNumber();
-      const otpCode = generateOtp();
 
       const gatePass = await prisma.gatePass.create({
         data: {
@@ -241,7 +237,6 @@ router.post(
           invoiceId,
           passNumber,
           status: 'PENDING',
-          otpCode,
           otpRequestedFor,
           createdBy: req.user!.id,
           items: {
@@ -264,12 +259,12 @@ router.post(
         newValue: { passNumber, poId, invoiceId, otpRequestedFor },
       });
 
-      // Return the gate pass with the OTP (for now — SMS integration later)
-      // The OTP is communicated to the head outside the software
+      // Return the gate pass — the frontend will use Firebase to send the OTP to the head's phone
       res.status(201).json({
         ...gatePass,
-        otpCode, // Included so the creator knows it was generated (SMS later)
-        message: `OTP has been generated. Please get the OTP from ${headUser.name} to approve this gate pass.`,
+        headPhone: headUser.phone,
+        headName: headUser.name,
+        message: `Gate pass created. An OTP has been sent to ${headUser.name} at ${headUser.phone}. Get the OTP from them to approve.`,
       });
     } catch (error) {
       next(error);
@@ -277,7 +272,7 @@ router.post(
   }
 );
 
-// POST /:id/verify-otp — verify OTP and approve gate pass
+// POST /:id/verify-otp — verify Firebase ID token and approve gate pass
 router.post(
   '/:id/verify-otp',
   rbacMiddleware(Permission.CREATE_GATE_PASS),
@@ -287,7 +282,7 @@ router.post(
       const projectId = requireProjectId(req);
       const gatePass = await prisma.gatePass.findFirst({
         where: { id: req.params.id, projectId, deletedAt: null },
-        include: { purchaseOrder: { include: { items: true } }, items: true },
+        include: { purchaseOrder: { include: { items: true } }, items: true, otpRequestedForUser: { select: { id: true, name: true, phone: true } } },
       });
       if (!gatePass) {
         res.status(404).json({ error: 'Gate pass not found' });
@@ -297,13 +292,26 @@ router.post(
         res.status(400).json({ error: 'Gate pass already approved' });
         return;
       }
-      if (!gatePass.otpCode) {
-        res.status(400).json({ error: 'No OTP was generated for this gate pass' });
+      if (!gatePass.otpRequestedForUser) {
+        res.status(400).json({ error: 'No OTP recipient was set for this gate pass' });
         return;
       }
 
-      if (req.body.otp !== gatePass.otpCode) {
-        res.status(400).json({ error: 'Invalid OTP' });
+      // Verify the Firebase ID token
+      const { idToken } = req.body;
+      let decodedToken;
+      try {
+        decodedToken = await verifyFirebaseToken(idToken);
+      } catch {
+        res.status(400).json({ error: 'Invalid or expired OTP token' });
+        return;
+      }
+
+      // Check that the phone number in the verified token matches the selected head's phone number
+      const tokenPhone = decodedToken.phone_number;
+      const headPhone = gatePass.otpRequestedForUser.phone;
+      if (!tokenPhone || !headPhone || tokenPhone !== headPhone) {
+        res.status(400).json({ error: 'OTP was not verified for the correct head. The OTP must be sent to ' + headPhone });
         return;
       }
 

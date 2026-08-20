@@ -224,7 +224,7 @@ export const listGatePassesSchema = z.object({
 });
 export const verifyGatePassOtpSchema = z.object({
   params: z.object({ id: uuid }),
-  body: z.object({ otp: z.string().min(4).max(10) }),
+  body: z.object({ idToken: z.string().min(1, 'Firebase ID token is required') }),
 });
 
 // ═══ Inventory ═══
