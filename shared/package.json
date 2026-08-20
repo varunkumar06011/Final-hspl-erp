@@ -3,9 +3,10 @@
   "version": "1.0.0",
   "private": true,
   "main": "dist/index.js",
+  "module": "dist/index.mjs",
   "types": "dist/index.d.ts",
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "tsc -p tsconfig.build.json && node scripts/build-esm.mjs",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

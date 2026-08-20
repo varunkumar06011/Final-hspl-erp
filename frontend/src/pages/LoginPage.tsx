@@ -21,8 +21,10 @@ type Step = 'phone' | 'otp' | 'verifying' | 'error';
 function formatPhone(raw: string): string {
   const digits = raw.replace(/\D/g, '');
   if (digits.length === 10) return `+91${digits}`;
+  if (digits.length === 12 && digits.startsWith('91')) return `+${digits}`;
+  if (digits.length === 11 && digits.startsWith('91')) return `+${digits}`;
   if (raw.startsWith('+')) return raw.replace(/\s/g, '');
-  return `+${digits}`;
+  return `+91${digits}`;
 }
 
 export default function LoginPage() {
@@ -144,9 +146,15 @@ export default function LoginPage() {
             <TextField
               fullWidth
               label="Phone Number"
-              placeholder="+91 9000000001"
+              placeholder="9381872579"
               value={phone}
-              onChange={(e) => setPhone(e.target.value)}
+              onChange={(e) => {
+                const digits = e.target.value.replace(/\D/g, '').slice(0, 10);
+                setPhone(digits);
+              }}
+              InputProps={{
+                startAdornment: <InputAdornment position="start">+91</InputAdornment>,
+              }}
               sx={{ mb: 2 }}
             />
             <TextField
@@ -171,7 +179,7 @@ export default function LoginPage() {
               variant="contained"
               size="large"
               onClick={verifyOtp}
-              disabled={loading || phone.length < 10 || otp.length < 4}
+              disabled={loading || phone.length !== 10 || otp.length < 4}
             >
               {loading ? <CircularProgress size={24} color="inherit" /> : 'Sign In (Dev)'}
             </Button>
@@ -213,11 +221,14 @@ export default function LoginPage() {
               <TextField
                 fullWidth
                 label="Phone Number"
-                placeholder="+91 9000000001"
+                placeholder="9381872579"
                 value={phone}
-                onChange={(e) => setPhone(e.target.value)}
+                onChange={(e) => {
+                  const digits = e.target.value.replace(/\D/g, '').slice(0, 10);
+                  setPhone(digits);
+                }}
                 InputProps={{
-                  startAdornment: <InputAdornment position="start">📱</InputAdornment>,
+                  startAdornment: <InputAdornment position="start">+91</InputAdornment>,
                 }}
                 sx={{ mb: 2 }}
               />
@@ -226,7 +237,7 @@ export default function LoginPage() {
                 variant="contained"
                 size="large"
                 onClick={sendOtp}
-                disabled={loading || phone.length < 10}
+                disabled={loading || phone.length !== 10}
               >
                 {loading ? <CircularProgress size={24} color="inherit" /> : 'Send OTP'}
               </Button>
@@ -236,7 +247,7 @@ export default function LoginPage() {
           {(step === 'otp' || step === 'verifying' || step === 'error') && (
             <Box>
               <Alert severity="info" sx={{ mb: 2 }}>
-                OTP sent to {phone}
+                OTP sent to +91 {phone}
               </Alert>
               <TextField
                 fullWidth
