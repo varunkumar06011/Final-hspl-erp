@@ -22,7 +22,8 @@ api.interceptors.request.use(
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401 || error.response?.status === 403) {
+    // Only logout on 401 (invalid/expired token), not 403 (insufficient permissions)
+    if (error.response?.status === 401) {
       localStorage.removeItem('firebaseToken');
       localStorage.removeItem('user');
       if (window.location.pathname !== '/login') {

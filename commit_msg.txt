@@ -1,0 +1,15 @@
+Fix auto-logout: only logout on 401, not 403; give HEAD_OF_CONSTRUCTION audit log access
+
+Root cause: Dashboard calls /audit which requires VIEW_AUDIT_LOG permission.
+HEAD_OF_CONSTRUCTION did not have this permission, so the API returned 403.
+The response interceptor treated 403 as auth failure and logged the user out.
+
+Fixes:
+- Response interceptor now only logs out on 401 (invalid token), not 403
+  (insufficient permissions) — 403 is a permission issue, not a session issue
+- Added VIEW_AUDIT_LOG to HEAD_OF_CONSTRUCTION role since they need dashboard
+  access which includes the recent audit log panel
+
+Generated with [Devin](https://devin.ai)
+
+Co-Authored-By: Devin <158243242+devin-ai-integration[bot]@users.noreply.github.com>
