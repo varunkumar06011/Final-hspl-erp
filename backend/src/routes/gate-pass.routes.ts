@@ -362,10 +362,10 @@ router.post(
         include: gatePassInclude,
       });
 
-      // Also mark the invoice's stock as received
+      // Also mark the invoice's stock as received and flag inventory as added
       await prisma.vendorInvoice.update({
         where: { id: gatePass.invoiceId },
-        data: { stockStatus: 'RECEIVED' },
+        data: { stockStatus: 'RECEIVED', inventoryAdded: true },
       });
 
       await logAudit({

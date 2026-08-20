@@ -1,7 +1,12 @@
-Fix gate pass: sequential pass numbers and PO page navigation
+Prevent duplicate inventory entries: gate pass is primary, invoice payment is fallback
 
-- Change gate pass number from random to sequential (VGH-DD-YY-001, 002, 003...)
-- Fix "coming soon" alert on PO page to navigate to Gate Passes page
+- Add inventoryAdded boolean to VendorInvoice (migration applied)
+- Gate pass OTP approval: adds items to inventory and sets inventoryAdded=true
+- Invoice payment marked Paid: only adds to inventory if inventoryAdded is false
+  (fallback for when no gate pass was created)
+- If gate pass already added items, payment skips inventory and shows
+  "Items already in inventory via gate pass"
+- This prevents double-counting when both gate pass and payment happen
 
 Generated with [Devin](https://devin.ai)
 

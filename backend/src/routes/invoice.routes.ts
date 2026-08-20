@@ -611,9 +611,12 @@ router.patch(
 
       let inventoryResults: { itemName: string; quantity: number; action: string }[] = [];
 
-      // When payment is marked as PAID, add items to inventory and create transactions
+      // When payment is marked as PAID, add items to inventory only if not already added (via gate pass)
       if (paymentStatus === PaymentStatus.PAID && invoice.paymentStatus !== PaymentStatus.PAID) {
-        inventoryResults = await addItemsToInventory(invoice as unknown as { id: string; projectId: string; invoiceCode: string; purchaseOrder: { items: { id: string; materialName: string; quantity: Prisma.Decimal; unit: string | null }[] } | null }, projectId, req.user!.id);
+        if (!invoice.inventoryAdded) {
+          inventoryResults = await addItemsToInventory(invoice as unknown as { id: string; projectId: string; invoiceCode: string; purchaseOrder: { items: { id: string; materialName: string; quantity: Prisma.Decimal; unit: string | null }[] } | null }, projectId, req.user!.id);
+          updateData.inventoryAdded = true;
+        }
         await createPaymentRecordForInvoice(invoice as unknown as { id: string; projectId: string; vendorId: string; invoiceCode: string; totalAmount: Prisma.Decimal }, projectId, req.user!.id);
       }
 
@@ -760,14 +763,20 @@ async function processPaymentPaid(
   });
 
   let inventoryResults: { itemName: string; quantity: number; action: string }[] = [];
+  const updateData: Record<string, unknown> = { paymentStatus: PaymentStatus.PAID };
+
   if (fullInvoice && fullInvoice.paymentStatus !== PaymentStatus.PAID) {
-    inventoryResults = await addItemsToInventory(fullInvoice as unknown as { id: string; projectId: string; invoiceCode: string; purchaseOrder: { items: { id: string; materialName: string; quantity: Prisma.Decimal; unit: string | null }[] } | null }, projectId, userId);
+    // Only add to inventory if not already added via gate pass
+    if (!fullInvoice.inventoryAdded) {
+      inventoryResults = await addItemsToInventory(fullInvoice as unknown as { id: string; projectId: string; invoiceCode: string; purchaseOrder: { items: { id: string; materialName: string; quantity: Prisma.Decimal; unit: string | null }[] } | null }, projectId, userId);
+      updateData.inventoryAdded = true;
+    }
     await createPaymentRecordForInvoice(fullInvoice as unknown as { id: string; projectId: string; vendorId: string; invoiceCode: string; totalAmount: Prisma.Decimal }, projectId, userId);
   }
 
   const updated = await prisma.vendorInvoice.update({
     where: { id: invoice.id },
-    data: { paymentStatus: PaymentStatus.PAID },
+    data: updateData,
     include: invoiceInclude,
   });
 
@@ -777,7 +786,7 @@ async function processPaymentPaid(
     entityType: 'VENDOR_INVOICE',
     entityId: invoice.id,
     projectId,
-    newValue: { paymentStatus: PaymentStatus.PAID, inventoryItemsAdded: inventoryResults.length },
+    newValue: { paymentStatus: PaymentStatus.PAID, inventoryItemsAdded: inventoryResults.length, skippedDuplicate: inventoryResults.length === 0 && fullInvoice?.inventoryAdded },
   });
 
   return {
@@ -785,7 +794,9 @@ async function processPaymentPaid(
     inventoryResults,
     message: inventoryResults.length > 0
       ? `Payment marked as paid. ${inventoryResults.length} item(s) added to inventory.`
-      : 'Payment marked as paid.',
+      : fullInvoice?.inventoryAdded
+        ? 'Payment marked as paid. Items already in inventory via gate pass.'
+        : 'Payment marked as paid.',
   };
 }
 

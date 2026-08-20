@@ -261,6 +261,7 @@ model VendorInvoice {
   fileName            String?
   fileMimeType        String?
   verificationStatus  String   @default("PENDING") // InvoiceVerificationStatus enum
+  inventoryAdded      Boolean  @default(false) // true once items added to inventory (via gate pass or payment)
   notes               String?
   createdBy           String   @db.Uuid
   approvalWorkflowId  String?  @unique @db.Uuid
