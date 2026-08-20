@@ -1,11 +1,10 @@
-Improve OCR error handling and image compression for autofill
+Fix OCR autofill: use correct Groq vision model available to this API key
 
-- OCR route now returns actual error message instead of generic "Internal
-  server error" so the user can see what went wrong
-- PDF rendering wrapped in try-catch with helpful error message
-- All images (uploaded and PDF-rendered) are now compressed to JPEG at
-  85% quality, max 1600px width — prevents Groq API size limit errors
-- Large uploaded images (>4MB) are also compressed before sending
+- The previous model meta-llama/llama-4-scout-17b-16e-instruct was not
+  available to this Groq API key (404 model_not_found)
+- Switched to qwen/qwen3.6-27b which supports text+image input and is
+  available with this API key
+- Verified end-to-end: PDF upload + render + Groq vision API call works
 
 Generated with [Devin](https://devin.ai)
 
