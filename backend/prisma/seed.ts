@@ -75,8 +75,8 @@ async function main() {
   const users = await Promise.all([
     prisma.user.create({
       data: {
-        firebaseUid: 'pending-+919000000001',
-        phone: '+919000000001',
+        firebaseUid: 'pending-+919381872579',
+        phone: '+919381872579',
         name: 'Admin One',
         role: UserRole.PROJECT_HEAD,
         projectId: project.id,
@@ -120,6 +120,7 @@ async function main() {
   const vendorA = await prisma.vendor.create({
     data: {
       projectId: project.id,
+      vendorCode: 'VGH-001',
       name: 'Test Vendor A',
       gstNumber: '27ABCDE1234F1Z5',
       panNumber: 'ABCDE1234F',
@@ -139,6 +140,7 @@ async function main() {
   const vendorB = await prisma.vendor.create({
     data: {
       projectId: projectB.id,
+      vendorCode: 'VGH-002',
       name: 'Test Vendor B',
       category: VendorCategory.MATERIAL_SUPPLIER,
       status: VendorStatus.ACTIVE,
@@ -149,7 +151,7 @@ async function main() {
 
   console.log('\n✅ Seed complete!');
   console.log('\n📋 Seed Users (replace with real phone numbers before first login):');
-  console.log('  PROJECT_HEAD:          Admin One   — +91 9000000001');
+  console.log('  PROJECT_HEAD:          Admin One   — +91 9381872579');
   console.log('  HEAD_OF_CONSTRUCTION:  Admin Two   — +91 9000000002');
   console.log('  ADMIN:                 Admin Three — +91 9000000003');
   console.log('  ADMIN_2:               Admin Four  — +91 9000000004');
