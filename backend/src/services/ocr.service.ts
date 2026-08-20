@@ -1,4 +1,5 @@
 import { env } from '../config/env';
+import sharp from 'sharp';
 
 export type OcrDocumentType = 'QUOTATION' | 'INVOICE';
 
@@ -147,8 +148,16 @@ export async function extractFromFile(
   let isVision = false;
 
   if (isImage) {
-    const base64 = fileBuffer.toString('base64');
-    const dataUrl = `data:${mimeType};base64,${base64}`;
+    // Groq vision API only supports JPG, PNG, and GIF — convert other formats (webp, etc.)
+    const supportedTypes = ['image/jpeg', 'image/png', 'image/gif'];
+    let imageBuffer = fileBuffer;
+    let targetMime = mimeType;
+    if (!supportedTypes.includes(mimeType)) {
+      imageBuffer = await sharp(fileBuffer).png().toBuffer();
+      targetMime = 'image/png';
+    }
+    const base64 = imageBuffer.toString('base64');
+    const dataUrl = `data:${targetMime};base64,${base64}`;
     content = [
       { type: 'image_url', image_url: { url: dataUrl } },
       { type: 'text', text: documentType === 'QUOTATION' ? 'Extract quotation fields' : 'Extract invoice fields' },

@@ -1,10 +1,10 @@
-Allow editing phone numbers for users in Users page
+Fix autofill from document: convert webp images to PNG for Groq vision API
 
-- Backend: updateUserSchema and updateUser controller now accept phone field
-  with uniqueness check (rejects if another user has the same phone)
-- Frontend: Users page phone column now has an "Edit" button next to each
-  phone number — click to edit inline, Save to update, Cancel to discard
-- Success message shows after phone is updated
+- Groq vision API only supports JPG, PNG, and GIF — webp images caused
+  an internal server error
+- Added sharp to convert unsupported image formats (webp, tiff, etc.)
+  to PNG before sending to Groq
+- Works for all image types now: jpg, png, gif, webp, etc.
 
 Generated with [Devin](https://devin.ai)
 
