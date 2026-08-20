@@ -1,11 +1,33 @@
 import { env } from '../config/env';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import type { Response } from 'express';
 
 export interface UploadResult {
   filePath: string;
   fileName: string;
   mimeType: string;
   size: number;
+}
+
+/**
+ * Serve a stored file to the client.
+ * - Supabase mode: 302 redirect to a signed URL (bucket stays private).
+ * - Local mode: stream the file buffer with the stored content-type.
+ */
+export async function serveFile(
+  res: Response,
+  filePath: string,
+  mimeType: string | null,
+  storage: StorageService = getStorageService()
+): Promise<void> {
+  if (env.STORAGE_MODE === 'supabase') {
+    const signedUrl = await storage.getSignedUrl(filePath);
+    res.redirect(signedUrl);
+  } else {
+    const buffer = await storage.getFile(filePath);
+    res.setHeader('Content-Type', mimeType || 'application/octet-stream');
+    res.send(buffer);
+  }
 }
 
 export interface StorageService {

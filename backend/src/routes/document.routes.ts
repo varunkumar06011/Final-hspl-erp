@@ -6,7 +6,7 @@ import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middl
 import { rbacMiddleware } from '../middleware/rbac';
 import { validateMiddleware } from '../middleware/validate';
 import { logAudit } from '../services/audit.service';
-import { getStorageService } from '../services/storage.service';
+import { getStorageService, serveFile } from '../services/storage.service';
 import multer from 'multer';
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
@@ -92,6 +92,30 @@ router.post(
       });
 
       res.status(201).json(record);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// GET /:id/file — serve the document file
+router.get(
+  '/:id/file',
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      const existing = await prisma.document.findFirst({
+        where: { id: req.params.id, projectId, deletedAt: null },
+      });
+      if (!existing) {
+        res.status(404).json({ error: 'Document not found' });
+        return;
+      }
+      if (!existing.filePath) {
+        res.status(404).json({ error: 'No file attached' });
+        return;
+      }
+      await serveFile(res, existing.filePath, existing.mimeType);
     } catch (error) {
       next(error);
     }

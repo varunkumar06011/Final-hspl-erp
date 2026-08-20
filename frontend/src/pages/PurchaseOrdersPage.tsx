@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Box,
   Typography,
@@ -114,6 +115,7 @@ export default function PurchaseOrdersPage() {
   const [approvalPopup, setApprovalPopup] = useState<PORow | null>(null);
   const queryClient = useQueryClient();
   const { user } = useAuthStore();
+  const navigate = useNavigate();
 
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['/pos', page, pageSize, search, statusFilter],
@@ -369,7 +371,7 @@ export default function PurchaseOrdersPage() {
                           </>
                         )}
                         {row.status === POStatus.APPROVED && (
-                          <IconButton size="small" color="primary" onClick={() => alert('Gate Pass module coming soon! This PO is eligible for gate pass creation.')} title="Create Gate Pass"><GatePassIcon fontSize="small" /></IconButton>
+                          <IconButton size="small" color="primary" onClick={() => navigate('/gate-passes')} title="Create Gate Pass"><GatePassIcon fontSize="small" /></IconButton>
                         )}
                       </Box>
                     </TableCell>

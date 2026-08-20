@@ -42,6 +42,7 @@ import { APPROVER_ROLES, QuotationStatus } from '@hospital-erp/shared';
 import { formatCurrency, formatDate, STATUS_COLORS } from '../utils/enumOptions';
 import api, { extractErrorMessage } from '../config/api';
 import { useAuthStore } from '../stores/authStore';
+import { downloadFile } from '../utils/file';
 import AcknowledgementCheckbox from '../components/AcknowledgementCheckbox';
 import ApprovalActionDialog from '../components/ApprovalActionDialog';
 
@@ -295,6 +296,10 @@ export default function QuotationsPage() {
     ) ?? null;
   }
 
+  function handleDownload(id: string, fileName: string) {
+    downloadFile('quotations', id, fileName).catch(() => setError('Failed to download file'));
+  }
+
   return (
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
@@ -359,7 +364,7 @@ export default function QuotationsPage() {
                       <TableCell><Chip label={row.status.replace(/_/g, ' ')} size="small" color={STATUS_COLORS[row.status] ?? 'default'} /></TableCell>
                       <TableCell>
                         {row.filePath ? (
-                          <IconButton size="small" component="a" href={row.filePath} target="_blank"><DownloadIcon fontSize="small" /></IconButton>
+                          <IconButton size="small" onClick={() => handleDownload(row.id, row.fileName ?? 'quotation')}><DownloadIcon fontSize="small" /></IconButton>
                         ) : '—'}
                       </TableCell>
                       <TableCell>

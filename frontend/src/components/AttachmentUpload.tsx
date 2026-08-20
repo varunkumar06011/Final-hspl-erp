@@ -20,6 +20,7 @@ import {
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { extractErrorMessage } from '../config/api';
+import { downloadFile } from '../utils/file';
 
 interface AttachmentUploadProps {
   entityType: string;
@@ -147,9 +148,7 @@ export default function AttachmentUpload({
                 <ListItemSecondaryAction>
                   <IconButton
                     size="small"
-                    component="a"
-                    href={String(row.filePath)}
-                    target="_blank"
+                    onClick={() => downloadFile('attachments', row.id as string, String(row.fileName)).catch(() => setError('Failed to download file'))}
                   >
                     <AttachFileIcon fontSize="small" />
                   </IconButton>

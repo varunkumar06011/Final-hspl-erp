@@ -39,6 +39,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { formatDate } from '../utils/enumOptions';
 import api, { extractErrorMessage } from '../config/api';
 import { useAuthStore } from '../stores/authStore';
+import { downloadFile } from '../utils/file';
 
 interface DocumentRow {
   id: string;
@@ -134,21 +135,8 @@ export default function DocumentsPage() {
     return ids.map((id) => resolveToOptions.find((o) => o.id === id)?.name ?? 'Unknown').join(', ');
   }
 
-  function downloadFile(filePath: string, fileName: string) {
-    const token = localStorage.getItem('firebaseToken');
-    const baseUrl = api.defaults.baseURL ?? '/api';
-    const url = `${baseUrl.replace('/api', '')}${filePath}`;
-    fetch(url, { headers: { Authorization: `Bearer ${token}` } })
-      .then((res) => res.blob())
-      .then((blob) => {
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = fileName;
-        a.click();
-        window.URL.revokeObjectURL(url);
-      })
-      .catch(() => setError('Failed to download file'));
+  function handleDownload(id: string, fileName: string) {
+    downloadFile('documents', id, fileName).catch(() => setError('Failed to download file'));
   }
 
   return (
@@ -208,7 +196,7 @@ export default function DocumentsPage() {
                     <TableCell>{row.uploadedByUser?.name ?? '—'}</TableCell>
                     <TableCell>{formatDate(row.createdAt)}</TableCell>
                     <TableCell>
-                      <IconButton size="small" onClick={() => downloadFile(row.filePath, row.fileName)}><DownloadIcon fontSize="small" /></IconButton>
+                      <IconButton size="small" onClick={() => handleDownload(row.id, row.fileName)}><DownloadIcon fontSize="small" /></IconButton>
                       <IconButton size="small" color="error" onClick={() => { if (confirm('Delete this document?')) deleteMutation.mutate(row.id); }}><DeleteIcon fontSize="small" /></IconButton>
                     </TableCell>
                   </TableRow>

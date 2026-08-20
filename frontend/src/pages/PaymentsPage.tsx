@@ -45,6 +45,7 @@ import { PaymentStatus, PaymentMode, UserRole } from '@hospital-erp/shared';
 import { formatCurrency, STATUS_COLORS } from '../utils/enumOptions';
 import api, { extractErrorMessage } from '../config/api';
 import { useAuthStore } from '../stores/authStore';
+import { downloadFile } from '../utils/file';
 import ApprovalActionDialog from '../components/ApprovalActionDialog';
 
 interface ApprovalStep {
@@ -264,21 +265,8 @@ export default function PaymentsPage() {
     return row.approvalWorkflow.steps.filter((s) => s.status === 'APPROVED').length;
   }
 
-  function downloadFile(filePath: string, fileName: string) {
-    const token = localStorage.getItem('firebaseToken');
-    const baseUrl = api.defaults.baseURL ?? '/api';
-    const url = `${baseUrl.replace('/api', '')}${filePath}`;
-    fetch(url, { headers: { Authorization: `Bearer ${token}` } })
-      .then((res) => res.blob())
-      .then((blob) => {
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = fileName;
-        a.click();
-        window.URL.revokeObjectURL(url);
-      })
-      .catch(() => setError('Failed to download file'));
+  function handleDownload(id: string, fileName: string) {
+    downloadFile('payments', id, fileName).catch(() => setError('Failed to download file'));
   }
 
   return (
@@ -425,7 +413,7 @@ export default function PaymentsPage() {
                       <TableCell><Chip label={row.status} size="small" color={STATUS_COLORS[row.status] ?? 'default'} /></TableCell>
                       <TableCell>
                         {row.filePath
-                          ? <IconButton size="small" onClick={() => downloadFile(row.filePath!, row.fileName ?? 'file')}><DownloadIcon fontSize="small" /></IconButton>
+                          ? <IconButton size="small" onClick={() => handleDownload(row.id, row.fileName ?? 'file')}><DownloadIcon fontSize="small" /></IconButton>
                           : '—'}
                       </TableCell>
                       <TableCell>

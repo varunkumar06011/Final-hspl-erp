@@ -31,6 +31,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { PhotoTag } from '@hospital-erp/shared';
 import { enumToOptions, formatDate, STATUS_COLORS } from '../utils/enumOptions';
 import api, { extractErrorMessage } from '../config/api';
+import { SecureImage } from '../components/SecureImage';
 import CreatableSelect from '../components/CreatableSelect';
 
 export default function PhotosPage() {
@@ -129,7 +130,7 @@ export default function PhotosPage() {
                 rows.map((row: Record<string, unknown>) => (
                   <TableRow key={row.id as string} hover>
                     <TableCell>
-                      <Box component="img" src={String(row.imageUrl ?? '')} alt={String(row.caption ?? '')} sx={{ width: 60, height: 60, objectFit: 'cover', borderRadius: 1 }} />
+                      <SecureImage route="photos" id={row.id as string} alt={String(row.caption ?? '')} sx={{ width: 60, height: 60 }} />
                     </TableCell>
                     <TableCell>{String(row.caption ?? '—')}</TableCell>
                     <TableCell><Chip label={String(row.tag ?? '')} size="small" color={STATUS_COLORS[String(row.tag)] ?? 'default'} /></TableCell>

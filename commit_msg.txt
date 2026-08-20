@@ -1,0 +1,8 @@
+Fix gate pass: sequential pass numbers and PO page navigation
+
+- Change gate pass number from random to sequential (VGH-DD-YY-001, 002, 003...)
+- Fix "coming soon" alert on PO page to navigate to Gate Passes page
+
+Generated with [Devin](https://devin.ai)
+
+Co-Authored-By: Devin <158243242+devin-ai-integration[bot]@users.noreply.github.com

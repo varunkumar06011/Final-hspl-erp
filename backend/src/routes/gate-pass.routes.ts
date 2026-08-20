@@ -12,24 +12,26 @@ router.use(authMiddleware);
 
 const HEAD_ROLES = [UserRole.PROJECT_HEAD, UserRole.HEAD_OF_CONSTRUCTION, UserRole.ADMIN, UserRole.ADMIN_2];
 
-function generatePassNumber(): string {
+function getPassDatePrefix(): string {
   const now = new Date();
   const dd = String(now.getDate()).padStart(2, '0');
   const yy = String(now.getFullYear()).slice(-2);
-  const random = String(Math.floor(Math.random() * 999) + 1).padStart(3, '0');
-  return `VGH-${dd}-${yy}-${random}`;
+  return `VGH-${dd}-${yy}`;
 }
 
-async function generateUniquePassNumber(projectId: string): Promise<string> {
-  let passNumber = generatePassNumber();
-  let exists = await prisma.gatePass.findFirst({ where: { projectId, passNumber } });
-  let attempts = 0;
-  while (exists && attempts < 10) {
-    passNumber = generatePassNumber();
-    exists = await prisma.gatePass.findFirst({ where: { projectId, passNumber } });
-    attempts++;
-  }
-  return passNumber;
+async function generateUniquePassNumber(): Promise<string> {
+  const prefix = getPassDatePrefix();
+  // Find all gate passes with this date prefix (across all projects, to keep global sequence)
+  const existing = await prisma.gatePass.findMany({
+    where: { passNumber: { startsWith: `${prefix}-` } },
+    select: { passNumber: true },
+  });
+  const maxSeq = existing.reduce((max, gp) => {
+    const match = gp.passNumber?.match(/^VGH-\d{2}-\d{2}-(\d+)$/);
+    return match ? Math.max(max, parseInt(match[1], 10)) : max;
+  }, 0);
+  const seq = String(maxSeq + 1).padStart(3, '0');
+  return `${prefix}-${seq}`;
 }
 
 function generateOtp(): string {
@@ -229,7 +231,7 @@ router.post(
         return;
       }
 
-      const passNumber = await generateUniquePassNumber(projectId);
+      const passNumber = await generateUniquePassNumber();
       const otpCode = generateOtp();
 
       const gatePass = await prisma.gatePass.create({

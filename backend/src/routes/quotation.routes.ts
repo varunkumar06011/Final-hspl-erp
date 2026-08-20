@@ -7,7 +7,7 @@ import { rbacMiddleware } from '../middleware/rbac';
 import { validateMiddleware } from '../middleware/validate';
 import { logAudit } from '../services/audit.service';
 import * as approvalService from '../services/approval.service';
-import { getStorageService } from '../services/storage.service';
+import { getStorageService, serveFile } from '../services/storage.service';
 import multer from 'multer';
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
@@ -211,6 +211,31 @@ router.post(
       });
 
       res.status(201).json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// GET /:id/file — serve the quotation attachment file
+router.get(
+  '/:id/file',
+  rbacMiddleware(Permission.VIEW_FINANCIALS),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      const existing = await prisma.quotation.findFirst({
+        where: { id: req.params.id, projectId, deletedAt: null },
+      });
+      if (!existing) {
+        res.status(404).json({ error: 'Quotation not found' });
+        return;
+      }
+      if (!existing.filePath) {
+        res.status(404).json({ error: 'No file attached' });
+        return;
+      }
+      await serveFile(res, existing.filePath, existing.fileMimeType);
     } catch (error) {
       next(error);
     }

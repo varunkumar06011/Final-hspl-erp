@@ -5,7 +5,7 @@ import { prisma } from '../config/prisma';
 import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middleware/auth';
 import { validateMiddleware } from '../middleware/validate';
 import { logAudit } from '../services/audit.service';
-import { getStorageService } from '../services/storage.service';
+import { getStorageService, serveFile } from '../services/storage.service';
 import multer from 'multer';
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
@@ -91,6 +91,29 @@ router.post(
       });
 
       res.status(201).json(record);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// GET /:id/file — serve the attachment file
+router.get(
+  '/:id/file',
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const existing = await prisma.attachment.findFirst({
+        where: { id: req.params.id, projectId: requireProjectId(req) },
+      });
+      if (!existing) {
+        res.status(404).json({ error: 'Attachment not found' });
+        return;
+      }
+      if (!existing.filePath) {
+        res.status(404).json({ error: 'No file attached' });
+        return;
+      }
+      await serveFile(res, existing.filePath, existing.mimeType);
     } catch (error) {
       next(error);
     }
