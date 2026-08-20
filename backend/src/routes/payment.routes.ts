@@ -578,6 +578,11 @@ router.delete(
         return;
       }
 
+      const storage = getStorageService();
+      if (existing.filePath) {
+        await storage.deleteFile(existing.filePath).catch(() => {});
+      }
+
       await prisma.paymentRequest.update({
         where: { id: existing.id },
         data: { deletedAt: new Date() },

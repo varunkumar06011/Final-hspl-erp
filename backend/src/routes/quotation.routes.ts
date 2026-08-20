@@ -280,6 +280,10 @@ router.patch(
         const subPath = isImage ? 'images' : 'documents';
         const prefixedFileName = `quotations/${subPath}/${existing.quotationNumber}-${req.file.originalname}`;
         const storage = getStorageService();
+        // Delete the previous file before uploading the replacement
+        if (existing.filePath) {
+          await storage.deleteFile(existing.filePath).catch(() => {});
+        }
         const uploadResult = await storage.upload(req.file.buffer, prefixedFileName, req.file.mimetype, 'documents');
         updateData.filePath = uploadResult.filePath;
         updateData.fileName = req.file.originalname;
@@ -321,6 +325,11 @@ router.delete(
       if (!existing) {
         res.status(404).json({ error: 'Quotation not found' });
         return;
+      }
+
+      const storage = getStorageService();
+      if (existing.filePath) {
+        await storage.deleteFile(existing.filePath).catch(() => {});
       }
 
       await prisma.quotation.update({

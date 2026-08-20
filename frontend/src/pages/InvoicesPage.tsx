@@ -35,11 +35,9 @@ import {
   Close as CloseIcon,
   Download as DownloadIcon,
   ExpandMore as ExpandMoreIcon,
-  Inventory as InventoryIcon,
-  Payments as PaymentsIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { InvoiceVerificationStatus, PaymentStatus, UserRole } from '@hospital-erp/shared';
+import { InvoiceVerificationStatus, PaymentStatus, StockStatus, UserRole } from '@hospital-erp/shared';
 import { formatCurrency, STATUS_COLORS } from '../utils/enumOptions';
 import api, { extractErrorMessage } from '../config/api';
 import { useAuthStore } from '../stores/authStore';
@@ -202,12 +200,36 @@ export default function InvoicesPage() {
     enabled: !!selectedPoId,
   });
 
+  // Auto-fill amount, tax, and total from selected PO
+  useEffect(() => {
+    if (selectedPO) {
+      const poTotal = Number(selectedPO.totalAmount) || 0;
+      const poGst = Number(selectedPO.gstAmount) || 0;
+      setAmount(String(poTotal));
+      setTaxAmount(poGst > 0 ? String(poGst) : '');
+      setTotalAmount(String(poTotal + poGst));
+    } else {
+      setAmount('');
+      setTaxAmount('');
+      setTotalAmount('');
+    }
+  }, [selectedPO]);
+
+  // Auto-compute total when amount or tax changes (only if no PO selected)
+  useEffect(() => {
+    if (!selectedPoId) {
+      const amt = Number(amount) || 0;
+      const tax = Number(taxAmount) || 0;
+      setTotalAmount(String(amt + tax));
+    }
+  }, [amount, taxAmount, selectedPoId]);
+
   const createMutation = useMutation({
     mutationFn: async () => {
       const formData = new FormData();
       formData.append('vendorId', selectedVendorId);
       if (selectedPoId) formData.append('poId', selectedPoId);
-      formData.append('invoiceNumber', invoiceNumber);
+      if (invoiceNumber) formData.append('invoiceNumber', invoiceNumber);
       formData.append('amount', amount);
       formData.append('taxAmount', taxAmount || '0');
       formData.append('totalAmount', totalAmount);
@@ -259,32 +281,40 @@ export default function InvoicesPage() {
     onError: (err: unknown) => setError(extractErrorMessage(err)),
   });
 
-  const markStockReceivedMutation = useMutation({
-    mutationFn: async (invId: string) => {
-      const response = await api.post(`/invoices/${invId}/mark-stock-received`);
-      return response.data;
-    },
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['/invoices'] });
-      queryClient.invalidateQueries({ queryKey: ['/inventory'] });
-      queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
-      const count = data?.inventoryResults?.length ?? 0;
-      setSuccessMsg(`Stock received! ${count} item(s) added to inventory.`);
-      setTimeout(() => setSuccessMsg(''), 5000);
-    },
-    onError: (err: unknown) => setError(extractErrorMessage(err)),
-  });
-
   const markPaymentPaidMutation = useMutation({
     mutationFn: async (invId: string) => {
       const response = await api.post(`/invoices/${invId}/mark-payment-paid`);
       return response.data;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['/invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['/inventory'] });
+      queryClient.invalidateQueries({ queryKey: ['/payments'] });
       queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
-      setSuccessMsg('Payment marked as paid.');
-      setTimeout(() => setSuccessMsg(''), 3000);
+      const count = data?.inventoryResults?.length ?? 0;
+      setSuccessMsg(count > 0
+        ? `Payment marked as paid. ${count} item(s) added to inventory.`
+        : 'Payment marked as paid.');
+      setTimeout(() => setSuccessMsg(''), 5000);
+    },
+    onError: (err: unknown) => setError(extractErrorMessage(err)),
+  });
+
+  const updateStatusMutation = useMutation({
+    mutationFn: async ({ invId, paymentStatus, stockStatus }: { invId: string; paymentStatus?: string; stockStatus?: string }) => {
+      const response = await api.patch(`/invoices/${invId}/status`, { paymentStatus, stockStatus });
+      return response.data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['/invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['/inventory'] });
+      queryClient.invalidateQueries({ queryKey: ['/payments'] });
+      queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
+      const count = data?.inventoryResults?.length ?? 0;
+      if (count > 0) {
+        setSuccessMsg(`Payment marked as paid. ${count} item(s) added to inventory and transaction recorded.`);
+        setTimeout(() => setSuccessMsg(''), 5000);
+      }
     },
     onError: (err: unknown) => setError(extractErrorMessage(err)),
   });
@@ -409,8 +439,42 @@ export default function InvoicesPage() {
                         ? `${formatCurrency(row.advancePaid)} (${row.advanceType === 'Other' ? row.advanceOtherType : row.advanceType})`
                         : '—'}
                     </TableCell>
-                    <TableCell><Chip label={row.paymentStatus} size="small" color={row.paymentStatus === PaymentStatus.PAID ? 'success' : 'default'} /></TableCell>
-                    <TableCell><Chip label={row.stockStatus} size="small" color={row.stockStatus === 'RECEIVED' ? 'success' : 'warning'} /></TableCell>
+                    <TableCell>
+                      <TextField
+                        select
+                        size="small"
+                        value={row.paymentStatus}
+                        onChange={(e) => {
+                          const newStatus = e.target.value;
+                          if (newStatus === PaymentStatus.PAID) {
+                            markPaymentPaidMutation.mutate(row.id);
+                          } else {
+                            updateStatusMutation.mutate({ invId: row.id, paymentStatus: newStatus });
+                          }
+                        }}
+                        sx={{ minWidth: 140 }}
+                        disabled={row.verificationStatus !== InvoiceVerificationStatus.VERIFIED || updateStatusMutation.isPending || markPaymentPaidMutation.isPending}
+                      >
+                        <MenuItem value={PaymentStatus.PENDING}>Payment Pending</MenuItem>
+                        <MenuItem value={PaymentStatus.PAID}>Paid</MenuItem>
+                        <MenuItem value={PaymentStatus.DELAYED}>Delayed</MenuItem>
+                        <MenuItem value={PaymentStatus.OTHER}>Other</MenuItem>
+                      </TextField>
+                    </TableCell>
+                    <TableCell>
+                      <TextField
+                        select
+                        size="small"
+                        value={row.stockStatus}
+                        onChange={(e) => updateStatusMutation.mutate({ invId: row.id, stockStatus: e.target.value })}
+                        sx={{ minWidth: 130 }}
+                        disabled={row.verificationStatus !== InvoiceVerificationStatus.VERIFIED || updateStatusMutation.isPending}
+                      >
+                        <MenuItem value={StockStatus.PENDING}>Yet to Start</MenuItem>
+                        <MenuItem value={StockStatus.ON_THE_WAY}>On the Way</MenuItem>
+                        <MenuItem value={StockStatus.RECEIVED}>Received</MenuItem>
+                      </TextField>
+                    </TableCell>
                     <TableCell><Chip label={row.verificationStatus.replace(/_/g, ' ')} size="small" color={STATUS_COLORS[row.verificationStatus] ?? 'default'} /></TableCell>
                     <TableCell>
                       {row.filePath ? (
@@ -424,12 +488,6 @@ export default function InvoicesPage() {
                             <IconButton size="small" color="success" onClick={() => setApprovalAction({ row, action: 'approve' })} title="Approve"><CheckIcon fontSize="small" /></IconButton>
                             <IconButton size="small" color="error" onClick={() => setApprovalAction({ row, action: 'reject' })} title="Reject"><CloseIcon fontSize="small" /></IconButton>
                           </>
-                        )}
-                        {row.verificationStatus === InvoiceVerificationStatus.VERIFIED && row.paymentStatus !== PaymentStatus.PAID && (
-                          <IconButton size="small" color="primary" onClick={() => markPaymentPaidMutation.mutate(row.id)} title="Mark Payment Paid"><PaymentsIcon fontSize="small" /></IconButton>
-                        )}
-                        {row.verificationStatus === InvoiceVerificationStatus.VERIFIED && row.stockStatus !== 'RECEIVED' && (
-                          <IconButton size="small" color="secondary" onClick={() => markStockReceivedMutation.mutate(row.id)} title="Mark Stock Received (adds to inventory)"><InventoryIcon fontSize="small" /></IconButton>
                         )}
                       </Box>
                     </TableCell>
@@ -562,41 +620,44 @@ export default function InvoicesPage() {
 
             {/* Invoice details */}
             <TextField
-              label="Invoice Number"
+              label="Invoice Number (auto-generated, leave blank)"
               value={invoiceNumber}
               onChange={(e) => setInvoiceNumber(e.target.value)}
               fullWidth
               size="small"
-              required
+              helperText="If left blank, the system will auto-generate VGH-IN001"
             />
-            <Box sx={{ display: 'flex', gap: 2 }}>
-              <TextField
-                label="Invoice Amount"
-                type="number"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                size="small"
-                sx={{ flex: 1 }}
-                required
-              />
-              <TextField
-                label="Tax Amount"
-                type="number"
-                value={taxAmount}
-                onChange={(e) => setTaxAmount(e.target.value)}
-                size="small"
-                sx={{ flex: 1 }}
-              />
-              <TextField
-                label="Total Amount"
-                type="number"
-                value={totalAmount}
-                onChange={(e) => setTotalAmount(e.target.value)}
-                size="small"
-                sx={{ flex: 1 }}
-                required
-              />
-            </Box>
+            <TextField
+              label="Invoice Amount"
+              type="number"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              fullWidth
+              size="small"
+              required
+              helperText={selectedPoId ? 'Auto-filled from PO total' : 'Enter invoice amount'}
+              InputProps={selectedPoId ? { readOnly: true } : undefined}
+            />
+            <TextField
+              label="Tax Amount (GST)"
+              type="number"
+              value={taxAmount}
+              onChange={(e) => setTaxAmount(e.target.value)}
+              fullWidth
+              size="small"
+              helperText={selectedPoId && Number(selectedPO?.gstAmount) > 0 ? 'Auto-filled from PO GST' : 'Optional — enter if applicable'}
+              InputProps={selectedPoId && Number(selectedPO?.gstAmount) > 0 ? { readOnly: true } : undefined}
+            />
+            <TextField
+              label="Total Amount (Amount + Tax)"
+              type="number"
+              value={totalAmount}
+              fullWidth
+              size="small"
+              required
+              InputProps={{ readOnly: true }}
+              helperText="Auto-calculated"
+            />
 
             {/* Advance Paid */}
             <Box>
@@ -671,7 +732,7 @@ export default function InvoicesPage() {
           <Button
             variant="contained"
             onClick={() => { setError(''); createMutation.mutate(); }}
-            disabled={(!selectedVendorId || !invoiceNumber || !amount || !totalAmount || !acknowledged) || createMutation.isPending}
+            disabled={(!selectedVendorId || !amount || !totalAmount || !acknowledged) || createMutation.isPending}
           >
             {createMutation.isPending ? <CircularProgress size={20} /> : 'Create Invoice'}
           </Button>

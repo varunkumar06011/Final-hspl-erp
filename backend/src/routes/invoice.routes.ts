@@ -1,7 +1,8 @@
 import { Router, Response, NextFunction } from 'express';
-import { APPROVAL_CONFIG, Permission, AuditAction, InvoiceVerificationStatus, PaymentStatus, UserRole } from '@hospital-erp/shared';
-import { createInvoiceSchema, listInvoicesSchema, approvalActionSchema } from '@hospital-erp/shared';
+import { APPROVAL_CONFIG, Permission, AuditAction, InvoiceVerificationStatus, PaymentStatus, StockStatus, InventoryTxnType, UserRole } from '@hospital-erp/shared';
+import { createInvoiceSchema, listInvoicesSchema, approvalActionSchema, updateInvoiceStatusSchema } from '@hospital-erp/shared';
 import { prisma } from '../config/prisma';
+import { Prisma } from '@prisma/client';
 import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middleware/auth';
 import { rbacMiddleware } from '../middleware/rbac';
 import { validateMiddleware } from '../middleware/validate';
@@ -19,14 +20,14 @@ const HEAD_ROLES = [UserRole.PROJECT_HEAD, UserRole.HEAD_OF_CONSTRUCTION, UserRo
 
 async function generateInvoiceCode(): Promise<string> {
   const invoices = await prisma.vendorInvoice.findMany({
-    where: { invoiceCode: { startsWith: 'VGH-INV' } },
+    where: { invoiceCode: { startsWith: 'VGH-IN' } },
     select: { invoiceCode: true },
   });
   const maxNum = invoices.reduce((max, inv) => {
-    const match = inv.invoiceCode?.match(/^VGH-INV(\d+)$/);
+    const match = inv.invoiceCode?.match(/^VGH-IN(\d+)$/);
     return match ? Math.max(max, parseInt(match[1], 10)) : max;
   }, 0);
-  return `VGH-INV${String(maxNum + 1).padStart(3, '0')}`;
+  return `VGH-IN${String(maxNum + 1).padStart(3, '0')}`;
 }
 
 const invoiceInclude = {
@@ -144,6 +145,7 @@ router.post(
       }
 
       const invoiceCode = await generateInvoiceCode();
+      const finalInvoiceNumber = invoiceNumber || invoiceCode;
 
       // Handle file upload
       let filePath: string | null = null;
@@ -166,7 +168,7 @@ router.post(
           vendorId,
           poId: poId ?? null,
           invoiceCode,
-          invoiceNumber,
+          invoiceNumber: finalInvoiceNumber,
           amount: Number(amount),
           taxAmount: Number(taxAmount) || 0,
           totalAmount: Number(totalAmount),
@@ -174,7 +176,7 @@ router.post(
           advanceType: advanceType ?? null,
           advanceOtherType: advanceOtherType ?? null,
           paymentStatus: PaymentStatus.PENDING,
-          stockStatus: 'PENDING',
+          stockStatus: StockStatus.PENDING,
           deliveryDate: deliveryDate ? new Date(deliveryDate) : null,
           filePath,
           fileName,
@@ -216,7 +218,7 @@ router.post(
         entityType: 'VENDOR_INVOICE',
         entityId: invoice.id,
         projectId,
-        newValue: { invoiceCode, invoiceNumber, vendorId, totalAmount, acknowledged: true },
+        newValue: { invoiceCode, invoiceNumber: finalInvoiceNumber, vendorId, totalAmount, acknowledged: true },
       });
 
       const result = await prisma.vendorInvoice.findUnique({
@@ -266,6 +268,10 @@ router.patch(
         const subPath = isImage ? 'images' : 'documents';
         const prefixedFileName = `invoices/${subPath}/${existing.invoiceCode}-${req.file.originalname}`;
         const storage = getStorageService();
+        // Delete the previous file before uploading the replacement
+        if (existing.filePath) {
+          await storage.deleteFile(existing.filePath).catch(() => {});
+        }
         const uploadResult = await storage.upload(req.file.buffer, prefixedFileName, req.file.mimetype, 'documents');
         updateData.filePath = uploadResult.filePath;
         updateData.fileName = req.file.originalname;
@@ -311,6 +317,11 @@ router.delete(
       if (existing.verificationStatus === InvoiceVerificationStatus.VERIFIED) {
         res.status(400).json({ error: 'Cannot delete a verified invoice' });
         return;
+      }
+
+      const storage = getStorageService();
+      if (existing.filePath) {
+        await storage.deleteFile(existing.filePath).catch(() => {});
       }
 
       await prisma.vendorInvoice.update({
@@ -479,7 +490,7 @@ router.post(
         res.status(400).json({ error: 'Invoice must be approved first' });
         return;
       }
-      if (invoice.stockStatus === 'RECEIVED') {
+      if (invoice.stockStatus === StockStatus.RECEIVED) {
         res.status(400).json({ error: 'Stock already marked as received' });
         return;
       }
@@ -498,7 +509,7 @@ router.post(
       // Gate pass already added items to inventory during OTP approval — just mark as received
       await prisma.vendorInvoice.update({
         where: { id: invoice.id },
-        data: { stockStatus: 'RECEIVED' },
+        data: { stockStatus: StockStatus.RECEIVED },
       });
 
       await logAudit({
@@ -507,7 +518,7 @@ router.post(
         entityType: 'VENDOR_INVOICE',
         entityId: invoice.id,
         projectId,
-        newValue: { stockStatus: 'RECEIVED', gatePassId: gatePass.id },
+        newValue: { stockStatus: StockStatus.RECEIVED, gatePassId: gatePass.id },
       });
 
       const updated = await prisma.vendorInvoice.findUnique({
@@ -522,7 +533,7 @@ router.post(
   }
 );
 
-// POST /:id/mark-payment-paid — mark payment status as paid
+// POST /:id/mark-payment-paid — mark payment status as paid (legacy, delegates to status update)
 router.post(
   '/:id/mark-payment-paid',
   rbacMiddleware(Permission.VIEW_FINANCIALS),
@@ -541,9 +552,49 @@ router.post(
         return;
       }
 
+      const result = await processPaymentPaid(invoice, projectId, req.user!.id);
+      res.json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// PATCH /:id/status — update payment and/or stock status
+// When paymentStatus is set to PAID, items are added to inventory and transactions are created
+router.patch(
+  '/:id/status',
+  rbacMiddleware(Permission.VIEW_FINANCIALS),
+  validateMiddleware(updateInvoiceStatusSchema),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      const { paymentStatus, stockStatus } = req.body;
+
+      const invoice = await prisma.vendorInvoice.findFirst({
+        where: { id: req.params.id, projectId, deletedAt: null },
+        include: { purchaseOrder: { include: { items: true } } },
+      });
+      if (!invoice) {
+        res.status(404).json({ error: 'Invoice not found' });
+        return;
+      }
+
+      const updateData: Record<string, unknown> = {};
+      if (paymentStatus) updateData.paymentStatus = paymentStatus;
+      if (stockStatus) updateData.stockStatus = stockStatus;
+
+      let inventoryResults: { itemName: string; quantity: number; action: string }[] = [];
+
+      // When payment is marked as PAID, add items to inventory and create transactions
+      if (paymentStatus === PaymentStatus.PAID && invoice.paymentStatus !== PaymentStatus.PAID) {
+        inventoryResults = await addItemsToInventory(invoice as unknown as { id: string; projectId: string; invoiceCode: string; purchaseOrder: { items: { id: string; materialName: string; quantity: Prisma.Decimal; unit: string | null }[] } | null }, projectId, req.user!.id);
+        await createPaymentRecordForInvoice(invoice as unknown as { id: string; projectId: string; vendorId: string; invoiceCode: string; totalAmount: Prisma.Decimal }, projectId, req.user!.id);
+      }
+
       const updated = await prisma.vendorInvoice.update({
         where: { id: invoice.id },
-        data: { paymentStatus: PaymentStatus.PAID },
+        data: updateData,
         include: invoiceInclude,
       });
 
@@ -553,14 +604,164 @@ router.post(
         entityType: 'VENDOR_INVOICE',
         entityId: invoice.id,
         projectId,
-        newValue: { paymentStatus: PaymentStatus.PAID },
+        newValue: { ...updateData, inventoryItemsAdded: inventoryResults.length },
       });
 
-      res.json(updated);
+      res.json({ ...updated, inventoryResults });
     } catch (error) {
       next(error);
     }
   }
 );
+
+// Helper: add PO items to inventory and create inventory transactions
+async function addItemsToInventory(
+  invoice: { id: string; projectId: string; invoiceCode: string; purchaseOrder: { items: { id: string; materialName: string; quantity: Prisma.Decimal; unit: string | null }[] } | null },
+  projectId: string,
+  userId: string
+): Promise<{ itemName: string; quantity: number; action: string }[]> {
+  if (!invoice.purchaseOrder || invoice.purchaseOrder.items.length === 0) {
+    return [];
+  }
+
+  const results: { itemName: string; quantity: number; action: string }[] = [];
+
+  for (const item of invoice.purchaseOrder.items) {
+    const existingItem = await prisma.inventoryItem.findFirst({
+      where: { projectId, name: item.materialName, deletedAt: null },
+    });
+
+    const quantity = Number(item.quantity);
+
+    if (existingItem) {
+      const newStock = Number(existingItem.currentStock) + quantity;
+      await prisma.$transaction([
+        prisma.inventoryItem.update({
+          where: { id: existingItem.id },
+          data: { currentStock: newStock },
+        }),
+        prisma.inventoryTransaction.create({
+          data: {
+            itemId: existingItem.id,
+            type: InventoryTxnType.IN,
+            quantity,
+            balanceAfter: newStock,
+            userId,
+            notes: `Received via invoice ${invoice.invoiceCode}`,
+          },
+        }),
+      ]);
+      results.push({ itemName: item.materialName, quantity, action: 'updated' });
+    } else {
+      const newItem = await prisma.inventoryItem.create({
+        data: {
+          projectId,
+          name: item.materialName,
+          unit: item.unit || 'unit',
+          currentStock: quantity,
+        },
+      });
+      await prisma.inventoryTransaction.create({
+        data: {
+          itemId: newItem.id,
+          type: InventoryTxnType.IN,
+          quantity,
+          balanceAfter: quantity,
+          userId,
+          notes: `Received via invoice ${invoice.invoiceCode}`,
+        },
+      });
+      results.push({ itemName: item.materialName, quantity, action: 'created' });
+    }
+  }
+
+  return results;
+}
+
+// Helper: create a payment request + payment record for the invoice (shows in transactions tab)
+async function createPaymentRecordForInvoice(
+  invoice: { id: string; projectId: string; vendorId: string; invoiceCode: string; totalAmount: Prisma.Decimal },
+  projectId: string,
+  userId: string
+): Promise<void> {
+  // Check if a payment request already exists for this invoice
+  const existingPR = await prisma.paymentRequest.findFirst({
+    where: { invoiceId: invoice.id, projectId, deletedAt: null },
+  });
+  if (existingPR) {
+    // Update existing payment request status to PAID
+    await prisma.paymentRequest.update({
+      where: { id: existingPR.id },
+      data: { status: PaymentStatus.PAID },
+    });
+    return;
+  }
+
+  // Generate payment code
+  const reqs = await prisma.paymentRequest.findMany({
+    where: { paymentCode: { startsWith: 'VGH-PAY' } },
+    select: { paymentCode: true },
+  });
+  const maxNum = reqs.reduce((max, r) => {
+    const match = r.paymentCode?.match(/^VGH-PAY(\d+)$/);
+    return match ? Math.max(max, parseInt(match[1], 10)) : max;
+  }, 0);
+  const paymentCode = `VGH-PAY${String(maxNum + 1).padStart(3, '0')}`;
+
+  await prisma.paymentRequest.create({
+    data: {
+      projectId,
+      invoiceId: invoice.id,
+      vendorId: invoice.vendorId,
+      paymentCode,
+      requestNumber: `PAYMENT-${invoice.invoiceCode}`,
+      type: 'INVOICE',
+      amount: Number(invoice.totalAmount),
+      status: PaymentStatus.PAID,
+      createdBy: userId,
+    },
+  });
+}
+
+// Helper: process payment paid (used by legacy mark-payment-paid endpoint)
+async function processPaymentPaid(
+  invoice: { id: string; projectId: string; paymentStatus: string },
+  projectId: string,
+  userId: string
+): Promise<{ invoice: unknown; inventoryResults: { itemName: string; quantity: number; action: string }[]; message: string }> {
+  const fullInvoice = await prisma.vendorInvoice.findFirst({
+    where: { id: invoice.id, projectId, deletedAt: null },
+    include: { purchaseOrder: { include: { items: true } } },
+  });
+
+  let inventoryResults: { itemName: string; quantity: number; action: string }[] = [];
+  if (fullInvoice && fullInvoice.paymentStatus !== PaymentStatus.PAID) {
+    inventoryResults = await addItemsToInventory(fullInvoice as unknown as { id: string; projectId: string; invoiceCode: string; purchaseOrder: { items: { id: string; materialName: string; quantity: Prisma.Decimal; unit: string | null }[] } | null }, projectId, userId);
+    await createPaymentRecordForInvoice(fullInvoice as unknown as { id: string; projectId: string; vendorId: string; invoiceCode: string; totalAmount: Prisma.Decimal }, projectId, userId);
+  }
+
+  const updated = await prisma.vendorInvoice.update({
+    where: { id: invoice.id },
+    data: { paymentStatus: PaymentStatus.PAID },
+    include: invoiceInclude,
+  });
+
+  await logAudit({
+    userId,
+    action: AuditAction.UPDATE,
+    entityType: 'VENDOR_INVOICE',
+    entityId: invoice.id,
+    projectId,
+    newValue: { paymentStatus: PaymentStatus.PAID, inventoryItemsAdded: inventoryResults.length },
+  });
+
+  return {
+    invoice: updated,
+    inventoryResults,
+    message: inventoryResults.length > 0
+      ? `Payment marked as paid. ${inventoryResults.length} item(s) added to inventory.`
+      : 'Payment marked as paid.',
+  };
+}
 
 export default router;

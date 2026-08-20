@@ -110,6 +110,9 @@ router.delete(
         res.status(404).json({ error: 'Document not found' });
         return;
       }
+      const storage = getStorageService();
+      await storage.deleteFile(existing.filePath).catch(() => {});
+
       await prisma.document.update({ where: { id: req.params.id }, data: { deletedAt: new Date() } });
       await logAudit({
         userId: req.user!.id,

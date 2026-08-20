@@ -148,6 +148,9 @@ router.delete(
         return;
       }
 
+      const storage = getStorageService();
+      await storage.deleteFile(existing.imageUrl).catch(() => {});
+
       await prisma.sitePhoto.delete({ where: { id: req.params.id } });
 
       await logAudit({

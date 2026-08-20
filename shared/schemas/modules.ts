@@ -11,6 +11,8 @@ import {
   IssueSeverity,
   InspectionStatus,
   ContractStatus,
+  PaymentStatus,
+  StockStatus,
 } from '../enums.js';
 
 const uuid = z.string().uuid();
@@ -130,7 +132,7 @@ export const createInvoiceSchema = z.object({
   body: z.object({
     vendorId: uuid,
     poId: uuid.optional(),
-    invoiceNumber: z.string().min(1).max(50),
+    invoiceNumber: z.string().min(1).max(50).optional(),
     amount: money,
     taxAmount: money.default(0),
     totalAmount: money,
@@ -151,6 +153,13 @@ export const updateInvoiceSchema = z.object({
     advanceType: z.string().max(50).optional(),
     advanceOtherType: z.string().max(100).optional(),
     deliveryDate: dateStr.optional(),
+  }),
+});
+export const updateInvoiceStatusSchema = z.object({
+  params: z.object({ id: uuid }),
+  body: z.object({
+    paymentStatus: z.nativeEnum(PaymentStatus).optional(),
+    stockStatus: z.nativeEnum(StockStatus).optional(),
   }),
 });
 export const listInvoicesSchema = z.object({

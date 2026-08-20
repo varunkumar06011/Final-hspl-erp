@@ -546,7 +546,6 @@ describe('E2E: Vendor → Quotation → PO → Invoice full flow', () => {
       .send({
         vendorId,
         poId,
-        invoiceNumber: 'INV-2024-001',
         amount: 67500,
         taxAmount: 5250,
         totalAmount: 72750,
@@ -557,8 +556,8 @@ describe('E2E: Vendor → Quotation → PO → Invoice full flow', () => {
 
     expect(res.status).toBe(201);
     expect(res.body.id).toBeDefined();
-    expect(res.body.invoiceCode).toMatch(/^VGH-INV\d{3}$/);
-    expect(res.body.invoiceNumber).toBe('INV-2024-001');
+    expect(res.body.invoiceCode).toMatch(/^VGH-IN\d{3}$/);
+    expect(res.body.invoiceNumber).toBe(res.body.invoiceCode);
     expect(res.body.verificationStatus).toBe('PENDING');
     expect(res.body.paymentStatus).toBe('PENDING');
     expect(res.body.stockStatus).toBe('PENDING');

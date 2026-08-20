@@ -30,7 +30,7 @@ class LocalStorageService implements StorageService {
     const fs = await import('fs/promises');
     const path = await import('path');
 
-    const uploadDir = path.join(env.LOCAL_STORAGE_PATH, bucket);
+    const uploadDir = path.join(env.LOCAL_STORAGE_PATH ?? './uploads', bucket);
     await fs.mkdir(uploadDir, { recursive: true });
 
     const uniqueName = `${Date.now()}-${fileName}`;

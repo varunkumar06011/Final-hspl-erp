@@ -71,6 +71,15 @@ export enum PaymentStatus {
   REJECTED = 'REJECTED',
   PAID = 'PAID',
   CANCELLED = 'CANCELLED',
+  DELAYED = 'DELAYED',
+  OTHER = 'OTHER',
+}
+
+export enum StockStatus {
+  PENDING = 'PENDING',
+  RECEIVED = 'RECEIVED',
+  ON_THE_WAY = 'ON_THE_WAY',
+  YET_TO_START = 'YET_TO_START',
 }
 
 export enum PaymentMode {

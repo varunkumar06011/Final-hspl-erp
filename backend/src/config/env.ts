@@ -24,7 +24,8 @@ const envSchema = z.object({
 
   // Storage mode
   STORAGE_MODE: z.enum(['local', 'supabase']).default('local'),
-  LOCAL_STORAGE_PATH: z.string().default('./uploads'),
+  // Only required when STORAGE_MODE=local
+  LOCAL_STORAGE_PATH: z.string().optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);
