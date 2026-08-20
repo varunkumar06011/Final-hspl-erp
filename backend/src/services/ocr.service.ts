@@ -1,5 +1,6 @@
 import { env } from '../config/env';
 import sharp from 'sharp';
+import { createCanvas, CanvasRenderingContext2D } from 'canvas';
 
 export type OcrDocumentType = 'QUOTATION' | 'INVOICE';
 
@@ -125,11 +126,41 @@ function parseJsonResponse(text: string): Record<string, unknown> {
   return JSON.parse(cleaned);
 }
 
-async function extractTextFromPdf(buffer: Buffer): Promise<string> {
-  // pdf-parse@1.x exports a callable function directly
-  const pdfParse: (buffer: Buffer) => Promise<{ text: string }> = (await import('pdf-parse')).default;
-  const data = await pdfParse(buffer);
-  return data.text;
+// Render first N pages of a PDF to PNG buffers using pdfjs-dist + node-canvas
+async function renderPdfPagesToImages(buffer: Buffer, maxPages = 3): Promise<Buffer[]> {
+  // pdfjs-dist v4 is ESM-only — use dynamic import
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const pdfjs: any = await import('pdfjs-dist/legacy/build/pdf.mjs');
+
+  const data = new Uint8Array(buffer);
+  const loadingTask = pdfjs.getDocument({ data, useSystemFonts: true, isEvalSupported: false });
+  const pdf = await loadingTask.promise;
+  const pageCount = Math.min(pdf.numPages, maxPages);
+  const images: Buffer[] = [];
+
+  for (let i = 1; i <= pageCount; i++) {
+    const page = await pdf.getPage(i);
+    const viewport = page.getViewport({ scale: 2.0 });
+    const width = Math.floor(viewport.width);
+    const height = Math.floor(viewport.height);
+
+    const canvas = createCanvas(width, height);
+    const ctx = canvas.getContext('2d') as unknown as CanvasRenderingContext2D;
+
+    await page.render({
+      canvasContext: ctx,
+      viewport,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any).promise;
+
+    const pngBuffer = canvas.toBuffer('image/png');
+    images.push(pngBuffer);
+
+    page.cleanup();
+  }
+
+  await pdf.destroy();
+  return images;
 }
 
 export async function extractFromFile(
@@ -164,18 +195,23 @@ export async function extractFromFile(
     ];
     isVision = true;
   } else {
-    // PDF: try text extraction first, fall back to vision if no text
-    const text = await extractTextFromPdf(fileBuffer);
-    if (text.trim().length > 50) {
-      content = [
-        { type: 'text', text: `${documentType === 'QUOTATION' ? 'Extract quotation fields' : 'Extract invoice fields'} from this document text:\n\n${text}` },
-      ];
-    } else {
-      // Scanned PDF with no extractable text — can't process without rasterization
-      throw new Error(
-        'This PDF appears to be scanned (no text layer). Please upload a photo/screenshot of the document as an image (JPG/PNG) instead.'
-      );
+    // PDF: render pages to images and use vision API (handles both text and scanned PDFs)
+    const pageImages = await renderPdfPagesToImages(fileBuffer, 3);
+    if (pageImages.length === 0) {
+      throw new Error('Could not read any pages from this PDF. Please try uploading a photo/screenshot instead.');
     }
+    // Send all pages as images to the vision model
+    content = pageImages.map((imgBuf) => ({
+      type: 'image_url',
+      image_url: { url: `data:image/png;base64,${imgBuf.toString('base64')}` },
+    }));
+    content.push({
+      type: 'text',
+      text: documentType === 'QUOTATION'
+        ? 'Extract quotation fields from this document (may span multiple pages)'
+        : 'Extract invoice fields from this document (may span multiple pages)',
+    });
+    isVision = true;
   }
 
   const responseText = await callGroq(content, isVision);
