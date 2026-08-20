@@ -125,7 +125,8 @@ function parseJsonResponse(text: string): Record<string, unknown> {
 }
 
 async function extractTextFromPdf(buffer: Buffer): Promise<string> {
-  const pdfParse = (await import('pdf-parse')).default;
+  // pdf-parse@1.x exports a callable function directly
+  const pdfParse: (buffer: Buffer) => Promise<{ text: string }> = (await import('pdf-parse')).default;
   const data = await pdfParse(buffer);
   return data.text;
 }

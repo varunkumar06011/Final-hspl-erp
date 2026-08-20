@@ -301,6 +301,55 @@ export default function QuotationsPage() {
     downloadFile('quotations', id, fileName).catch(() => setError('Failed to download file'));
   }
 
+  function handleOcrExtract(data: OcrQuotationData) {
+    // Match OCR line items to the vendor's registered materials by name (case-insensitive)
+    if (data.lineItems.length > 0 && selectedVendor?.materials) {
+      const vendorMaterialsLower = new Map(
+        selectedVendor.materials.map((m) => [m.name.toLowerCase(), m.name])
+      );
+      const matched = new Set<string>();
+      const updatedItems = lineItems.map((item) => {
+        const ocrMatch = data.lineItems.find(
+          (o) => o.materialName.toLowerCase() === item.materialName.toLowerCase()
+        );
+        if (ocrMatch) {
+          matched.add(item.materialName.toLowerCase());
+          const qty = Number(ocrMatch.quantity) || item.quantity;
+          const price = Number(ocrMatch.unitPrice) || item.unitPrice;
+          return { ...item, quantity: qty, unitPrice: price, amount: qty * price };
+        }
+        // Also try partial match (OCR may have slightly different name)
+        const partialMatch = data.lineItems.find((o) => {
+          const ocrLower = o.materialName.toLowerCase();
+          const itemLower = item.materialName.toLowerCase();
+          return ocrLower.includes(itemLower) || itemLower.includes(ocrLower);
+        });
+        if (partialMatch) {
+          matched.add(item.materialName.toLowerCase());
+          const qty = Number(partialMatch.quantity) || item.quantity;
+          const price = Number(partialMatch.unitPrice) || item.unitPrice;
+          return { ...item, quantity: qty, unitPrice: price, amount: qty * price };
+        }
+        return item;
+      });
+      setLineItems(updatedItems);
+      // Only select materials that were matched
+      setSelectedMaterialNames(matched);
+      const unmatched = data.lineItems.filter(
+        (o) => !vendorMaterialsLower.has(o.materialName.toLowerCase())
+      );
+      if (unmatched.length > 0) {
+        setError(`${unmatched.length} item(s) from the document did not match this vendor's registered materials and were skipped. Fill them manually.`);
+      }
+    }
+    if (data.gstAmount != null) {
+      setGstAmount(String(data.gstAmount));
+    }
+    if (data.vendorId) {
+      setSelectedVendorId(data.vendorId);
+    }
+  }
+
   return (
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
@@ -549,6 +598,17 @@ export default function QuotationsPage() {
               </Button>
               {editing?.fileName && !selectedFile && (
                 <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>Current: {editing.fileName}</Typography>
+              )}
+              <OcrAutoFill
+                file={selectedFile}
+                documentType="QUOTATION"
+                onExtract={handleOcrExtract}
+                disabled={!selectedVendorId}
+              />
+              {!selectedVendorId && selectedFile && (
+                <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                  Select a vendor first to auto-fill line items
+                </Typography>
               )}
             </Box>
           </Box>

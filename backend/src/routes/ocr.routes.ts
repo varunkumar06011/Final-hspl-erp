@@ -1,7 +1,7 @@
 import { Router, Response, NextFunction } from 'express';
 import { prisma } from '../config/prisma';
 import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middleware/auth';
-import { extractFromFile, type OcrDocumentType } from '../services/ocr.service';
+import { extractFromFile, type OcrDocumentType, type OcrResult } from '../services/ocr.service';
 import multer from 'multer';
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
@@ -15,7 +15,7 @@ router.post(
   upload.single('file'),
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
-      requireProjectId(req);
+      const projectId = requireProjectId(req);
       if (!req.file) {
         res.status(400).json({ error: 'No file uploaded' });
         return;
@@ -30,18 +30,17 @@ router.post(
       const result = await extractFromFile(req.file.buffer, req.file.mimetype, documentType);
 
       // If vendorName was extracted, try to match it to an existing vendor in this project
-      const vendorName = (result as { vendorName: string | null }).vendorName;
-      if (vendorName) {
+      if (result.vendorName) {
         const vendor = await prisma.vendor.findFirst({
           where: {
-            projectId: req.user!.projectId,
+            projectId,
             deletedAt: null,
-            name: { contains: vendorName, mode: 'insensitive' },
+            name: { contains: result.vendorName, mode: 'insensitive' },
           },
           select: { id: true, name: true },
         });
         if (vendor) {
-          (result as { vendorId: string | null }).vendorId = vendor.id;
+          (result as OcrResult & { vendorId?: string }).vendorId = vendor.id;
         }
       }
 

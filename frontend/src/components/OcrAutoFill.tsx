@@ -25,14 +25,14 @@ export interface OcrInvoiceData {
   deliveryDate: string | null;
 }
 
-interface OcrAutoFillProps {
+interface OcrAutoFillProps<T extends OcrQuotationData | OcrInvoiceData> {
   file: File | null;
   documentType: 'QUOTATION' | 'INVOICE';
-  onExtract: (data: OcrQuotationData | OcrInvoiceData) => void;
+  onExtract: (data: T) => void;
   disabled?: boolean;
 }
 
-export default function OcrAutoFill({ file, documentType, onExtract, disabled }: OcrAutoFillProps) {
+export default function OcrAutoFill<T extends OcrQuotationData | OcrInvoiceData>({ file, documentType, onExtract, disabled }: OcrAutoFillProps<T>) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -49,7 +49,7 @@ export default function OcrAutoFill({ file, documentType, onExtract, disabled }:
         headers: { 'Content-Type': 'multipart/form-data' },
         timeout: 60_000,
       });
-      onExtract(res.data);
+      onExtract(res.data as T);
     } catch (err: unknown) {
       setError(extractErrorMessage(err));
     } finally {

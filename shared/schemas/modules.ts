@@ -122,6 +122,7 @@ export const listPOsSchema = z.object({
 // ═══ Project Settings ═══
 export const updateProjectSettingsSchema = z.object({
   body: z.object({
+    name: z.string().min(1, 'Hospital name is required').max(200).optional(),
     officeAddress: z.string().max(1000).optional(),
     hospitalAddress: z.string().max(1000).optional(),
     totalBudget: z.coerce.number().min(0).optional(),

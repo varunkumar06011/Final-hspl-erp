@@ -28,6 +28,7 @@ export default function SettingsPage() {
   const [officeAddress, setOfficeAddress] = useState('');
   const [hospitalAddress, setHospitalAddress] = useState('');
   const [totalBudget, setTotalBudget] = useState('');
+  const [hospitalName, setHospitalName] = useState('');
   const [profileName, setProfileName] = useState('');
   const [profilePhone, setProfilePhone] = useState('');
   const [success, setSuccess] = useState('');
@@ -51,6 +52,7 @@ export default function SettingsPage() {
 
   useEffect(() => {
     if (data) {
+      setHospitalName(data.name ?? '');
       setOfficeAddress(data.officeAddress ?? '');
       setHospitalAddress(data.hospitalAddress ?? '');
       setTotalBudget(data.totalBudget ? String(data.totalBudget) : '');
@@ -65,7 +67,7 @@ export default function SettingsPage() {
   }, [profile]);
 
   const updateMutation = useMutation({
-    mutationFn: async (payload: { officeAddress?: string; hospitalAddress?: string; totalBudget?: number }) => {
+    mutationFn: async (payload: { name?: string; officeAddress?: string; hospitalAddress?: string; totalBudget?: number }) => {
       const response = await api.patch('/settings', payload);
       return response.data;
     },
@@ -159,6 +161,14 @@ export default function SettingsPage() {
           </Typography>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
             <TextField
+              label="Hospital Name"
+              value={hospitalName}
+              onChange={(e) => setHospitalName(e.target.value)}
+              fullWidth
+              size="small"
+              helperText="This name appears on PO PDFs and across the app"
+            />
+            <TextField
               label="Total Budget"
               type="number"
               value={totalBudget}
@@ -185,7 +195,7 @@ export default function SettingsPage() {
             />
             <Button
               variant="contained"
-              onClick={() => updateMutation.mutate({ officeAddress, hospitalAddress, totalBudget: totalBudget ? Number(totalBudget) : undefined })}
+              onClick={() => updateMutation.mutate({ name: hospitalName, officeAddress, hospitalAddress, totalBudget: totalBudget ? Number(totalBudget) : undefined })}
               disabled={updateMutation.isPending}
               sx={{ alignSelf: 'flex-start' }}
             >

@@ -44,6 +44,7 @@ import { useAuthStore } from '../stores/authStore';
 import { downloadFile } from '../utils/file';
 import AcknowledgementCheckbox from '../components/AcknowledgementCheckbox';
 import ApprovalActionDialog from '../components/ApprovalActionDialog';
+import OcrAutoFill, { type OcrInvoiceData } from '../components/OcrAutoFill';
 
 interface POItem {
   id?: string;
@@ -357,6 +358,15 @@ export default function InvoicesPage() {
 
   function handleDownload(id: string, fileName: string) {
     downloadFile('invoices', id, fileName).catch(() => setError('Failed to download file'));
+  }
+
+  function handleOcrExtract(data: OcrInvoiceData) {
+    if (data.invoiceNumber) setInvoiceNumber(data.invoiceNumber);
+    if (data.amount != null) setAmount(String(data.amount));
+    if (data.taxAmount != null) setTaxAmount(String(data.taxAmount));
+    if (data.totalAmount != null) setTotalAmount(String(data.totalAmount));
+    if (data.deliveryDate) setDeliveryDate(data.deliveryDate);
+    if (data.vendorId) setSelectedVendorId(data.vendorId);
   }
 
   return (
@@ -707,6 +717,11 @@ export default function InvoicesPage() {
               <Button variant="outlined" onClick={() => fileRef.current?.click()} startIcon={<AddIcon />}>
                 {selectedFile ? `✓ ${selectedFile.name}` : 'Upload Invoice File'}
               </Button>
+              <OcrAutoFill
+                file={selectedFile}
+                documentType="INVOICE"
+                onExtract={handleOcrExtract}
+              />
             </Box>
             <AcknowledgementCheckbox
               checked={acknowledged}

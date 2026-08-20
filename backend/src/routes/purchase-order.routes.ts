@@ -477,7 +477,7 @@ router.get(
 
       // ── Header band ──
       doc.rect(0, 0, pageWidth, 80).fill(PRIMARY);
-      doc.fillColor(WHITE).fontSize(24).font('Helvetica-Bold').text('Vgrand Hospital', margin, 20);
+      doc.fillColor(WHITE).fontSize(24).font('Helvetica-Bold').text(po.project?.name ?? 'Vgrand Hospital', margin, 20);
       doc.fontSize(11).font('Helvetica').fillColor('#d4e6f1').text('Purchase Order', margin, 50);
       // PO number badge on the right
       doc.roundedRect(pageWidth - margin - 130, 18, 130, 44, 6).fill(WHITE);

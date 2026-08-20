@@ -51,9 +51,10 @@ router.patch(
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const projectId = requireProjectId(req);
-      const { officeAddress, hospitalAddress, totalBudget } = req.body;
+      const { name, officeAddress, hospitalAddress, totalBudget } = req.body;
 
       const updateData: Record<string, unknown> = {};
+      if (name !== undefined) updateData.name = name;
       if (officeAddress !== undefined) updateData.officeAddress = officeAddress;
       if (hospitalAddress !== undefined) updateData.hospitalAddress = hospitalAddress;
       if (totalBudget !== undefined) updateData.totalBudget = totalBudget;
