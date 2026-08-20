@@ -1,11 +1,10 @@
-Update head phone numbers for gate pass OTP
+Add profile settings: users can update their own name and phone number
 
-- Nagarjuna (Project Head): +91 7386861234
-- Ashok (Head of Construction): +91 9247817812
-- Kaushal (Admin): +91 9030845925
-- Vinod (Admin 2): +91 9550237788
-
-Updated in database and seed file.
+- GET /settings/profile — returns current user's profile
+- PATCH /settings/profile — updates name and/or phone
+- New "My Profile" card on Settings page with name, phone, and role (read-only)
+- Phone number updates are reflected in gate pass OTP head selection
+- Updated name reflects immediately in the sidebar/header via auth store
 
 Generated with [Devin](https://devin.ai)
 
