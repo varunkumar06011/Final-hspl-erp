@@ -19,6 +19,7 @@ import contractRoutes from './contract.routes';
 import labourRoutes from './labour.routes';
 import dropdownOptionRoutes from './dropdown-option.routes';
 import attachmentRoutes from './attachment.routes';
+import settingsRoutes from './settings.routes';
 
 const router = Router();
 
@@ -42,5 +43,6 @@ router.use('/contracts', contractRoutes);
 router.use('/labour', labourRoutes);
 router.use('/dropdown-options', dropdownOptionRoutes);
 router.use('/attachments', attachmentRoutes);
+router.use('/settings', settingsRoutes);
 
 export default router;

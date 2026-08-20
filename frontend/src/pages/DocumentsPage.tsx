@@ -17,22 +17,41 @@ import {
   DialogContent,
   DialogActions,
   IconButton,
-  Chip,
   Alert,
   CircularProgress,
   InputAdornment,
+  MenuItem,
+  Checkbox,
+  ListItemText,
+  FormControl,
+  InputLabel,
+  Select,
+  Chip,
 } from '@mui/material';
 import {
   Add as AddIcon,
   Refresh as RefreshIcon,
   Search as SearchIcon,
   Download as DownloadIcon,
+  Delete as DeleteIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { DocumentType } from '@hospital-erp/shared';
-import { enumToOptions, formatDate, STATUS_COLORS } from '../utils/enumOptions';
+import { formatDate } from '../utils/enumOptions';
 import api, { extractErrorMessage } from '../config/api';
-import CreatableSelect from '../components/CreatableSelect';
+import { useAuthStore } from '../stores/authStore';
+
+interface DocumentRow {
+  id: string;
+  name: string;
+  description: string | null;
+  resolveTo: string[];
+  fileName: string;
+  filePath: string;
+  mimeType: string;
+  uploadedBy: string;
+  uploadedByUser: { id: string; name: string };
+  createdAt: string;
+}
 
 export default function DocumentsPage() {
   const [page, setPage] = useState(0);
@@ -41,9 +60,11 @@ export default function DocumentsPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [form, setForm] = useState<Record<string, unknown>>({});
   const [error, setError] = useState('');
+  const [successMsg, setSuccessMsg] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
+  const { user } = useAuthStore();
 
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['/documents', page, pageSize, search],
@@ -55,13 +76,23 @@ export default function DocumentsPage() {
     },
   });
 
+  // Fetch heads for resolveTo dropdown
+  const { data: heads } = useQuery({
+    queryKey: ['/gate-passes/heads'],
+    queryFn: async () => {
+      const response = await api.get('/gate-passes/heads');
+      return response.data?.data ?? [];
+    },
+  });
+
   const createMutation = useMutation({
-    mutationFn: async (payload: Record<string, unknown>) => {
+    mutationFn: async () => {
       const formData = new FormData();
-      formData.append('file', payload.file as File);
-      if (payload.fileType) formData.append('fileType', String(payload.fileType));
-      if (payload.entityType) formData.append('entityType', String(payload.entityType));
-      if (payload.entityId) formData.append('entityId', String(payload.entityId));
+      if (!selectedFile) throw new Error('No file selected');
+      formData.append('file', selectedFile);
+      formData.append('name', String(form.name ?? ''));
+      if (form.description) formData.append('description', String(form.description));
+      formData.append('resolveTo', JSON.stringify(form.resolveTo ?? []));
       const response = await api.post('/documents/upload', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
@@ -72,12 +103,53 @@ export default function DocumentsPage() {
       setDialogOpen(false);
       setForm({});
       setSelectedFile(null);
+      setSuccessMsg('Document uploaded successfully.');
+      setTimeout(() => setSuccessMsg(''), 3000);
     },
     onError: (err: unknown) => setError(extractErrorMessage(err)),
   });
 
-  const rows = data?.data ?? [];
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => { await api.delete(`/documents/${id}`); },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/documents'] });
+      setSuccessMsg('Document deleted.');
+      setTimeout(() => setSuccessMsg(''), 3000);
+    },
+    onError: (err: unknown) => setError(extractErrorMessage(err)),
+  });
+
+  const rows: DocumentRow[] = data?.data ?? [];
   const pagination = data?.pagination ?? { page: 1, pageSize: 20, total: 0, totalPages: 0 };
+
+  // Build resolve-to options: 4 heads + self
+  const resolveToOptions = [
+    ...(heads as { id: string; name: string; role: string }[] ?? []),
+    ...(user && !(heads as { id: string }[] ?? []).some((h) => h.id === user.id)
+      ? [{ id: user.id, name: `${user.name} (Self)`, role: user.role }]
+      : []),
+  ];
+
+  function getNamesForIds(ids: string[]): string {
+    return ids.map((id) => resolveToOptions.find((o) => o.id === id)?.name ?? 'Unknown').join(', ');
+  }
+
+  function downloadFile(filePath: string, fileName: string) {
+    const token = localStorage.getItem('firebaseToken');
+    const baseUrl = api.defaults.baseURL ?? '/api';
+    const url = `${baseUrl.replace('/api', '')}${filePath}`;
+    fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+      .then((res) => res.blob())
+      .then((blob) => {
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = fileName;
+        a.click();
+        window.URL.revokeObjectURL(url);
+      })
+      .catch(() => setError('Failed to download file'));
+  }
 
   return (
     <Box>
@@ -85,13 +157,14 @@ export default function DocumentsPage() {
         <Typography variant="h5" fontWeight={600}>Documents</Typography>
         <Box sx={{ display: 'flex', gap: 1 }}>
           <IconButton onClick={() => refetch()} size="small"><RefreshIcon /></IconButton>
-          <Button variant="contained" startIcon={<AddIcon />} onClick={() => { setForm({ fileType: DocumentType.MISC }); setError(''); setDialogOpen(true); }}>
+          <Button variant="contained" startIcon={<AddIcon />} onClick={() => { setForm({ resolveTo: [] }); setError(''); setSelectedFile(null); setDialogOpen(true); }}>
             Upload Document
           </Button>
         </Box>
       </Box>
 
       {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
+      {successMsg && <Alert severity="success" sx={{ mb: 2 }} onClose={() => setSuccessMsg('')}>{successMsg}</Alert>}
 
       <Card>
         <Box sx={{ p: 2 }}>
@@ -109,29 +182,34 @@ export default function DocumentsPage() {
           <Table size="small">
             <TableHead>
               <TableRow>
-                <TableCell sx={{ fontWeight: 600 }}>File Name</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Type</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Entity</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Status</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Uploaded</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Link</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>Name</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>Description</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>Resolve To</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>File</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>Uploaded By</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>Date</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>Actions</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {isLoading ? (
-                <TableRow><TableCell colSpan={6} align="center" sx={{ py: 4 }}><CircularProgress size={32} /></TableCell></TableRow>
+                <TableRow><TableCell colSpan={7} align="center" sx={{ py: 4 }}><CircularProgress size={32} /></TableCell></TableRow>
               ) : rows.length === 0 ? (
-                <TableRow><TableCell colSpan={6} align="center" sx={{ py: 4 }}><Typography color="text.secondary">No documents found</Typography></TableCell></TableRow>
+                <TableRow><TableCell colSpan={7} align="center" sx={{ py: 4 }}><Typography color="text.secondary">No documents found</Typography></TableCell></TableRow>
               ) : (
-                rows.map((row: Record<string, unknown>) => (
-                  <TableRow key={row.id as string} hover>
-                    <TableCell>{String(row.fileName ?? '—')}</TableCell>
-                    <TableCell><Chip label={String(row.fileType ?? '')} size="small" /></TableCell>
-                    <TableCell>{String(row.entityType ?? '—')}</TableCell>
-                    <TableCell><Chip label={String(row.status ?? '')} size="small" color={STATUS_COLORS[String(row.status)] ?? 'default'} /></TableCell>
+                rows.map((row) => (
+                  <TableRow key={row.id} hover>
+                    <TableCell>{row.name}</TableCell>
+                    <TableCell>{row.description ?? '—'}</TableCell>
+                    <TableCell>{getNamesForIds(row.resolveTo)}</TableCell>
+                    <TableCell>
+                      <Chip label={row.fileName} size="small" variant="outlined" />
+                    </TableCell>
+                    <TableCell>{row.uploadedByUser?.name ?? '—'}</TableCell>
                     <TableCell>{formatDate(row.createdAt)}</TableCell>
                     <TableCell>
-                      <IconButton size="small" component="a" href={String(row.filePath ?? '')} target="_blank"><DownloadIcon fontSize="small" /></IconButton>
+                      <IconButton size="small" onClick={() => downloadFile(row.filePath, row.fileName)}><DownloadIcon fontSize="small" /></IconButton>
+                      <IconButton size="small" color="error" onClick={() => { if (confirm('Delete this document?')) deleteMutation.mutate(row.id); }}><DeleteIcon fontSize="small" /></IconButton>
                     </TableCell>
                   </TableRow>
                 ))
@@ -151,28 +229,49 @@ export default function DocumentsPage() {
         />
       </Card>
 
+      {/* Upload Dialog */}
       <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Upload Document</DialogTitle>
         <DialogContent>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
+            <TextField label="Document Name" required value={String(form.name ?? '')} onChange={(e) => setForm({ ...form, name: e.target.value })} fullWidth size="small" />
+            <TextField label="What is this document?" value={String(form.description ?? '')} onChange={(e) => setForm({ ...form, description: e.target.value })} fullWidth size="small" multiline rows={2} />
+            <FormControl fullWidth size="small">
+              <InputLabel>Resolve To (select multiple)</InputLabel>
+              <Select
+                multiple
+                value={(form.resolveTo as string[]) ?? []}
+                onChange={(e) => setForm({ ...form, resolveTo: e.target.value as string[] })}
+                renderValue={(selected) => getNamesForIds(selected as string[])}
+                label="Resolve To (select multiple)"
+              >
+                {resolveToOptions.map((opt) => (
+                  <MenuItem key={opt.id} value={opt.id}>
+                    <Checkbox checked={((form.resolveTo as string[]) ?? []).indexOf(opt.id) > -1} />
+                    <ListItemText primary={opt.name} secondary={opt.role?.replace(/_/g, ' ')} />
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
             <input ref={fileRef} type="file" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files?.[0]; if (f) setSelectedFile(f); }} />
             <Button variant="outlined" onClick={() => fileRef.current?.click()}>
-              {selectedFile ? '✓ File Selected' : 'Choose File'}
+              {selectedFile ? `✓ ${selectedFile.name}` : 'Choose File'}
             </Button>
-            {selectedFile && <Typography variant="body2" color="text.secondary">{selectedFile.name}</Typography>}
-            <CreatableSelect label="Document Type" required value={String(form.fileType ?? DocumentType.MISC)} onChange={(v) => setForm({ ...form, fileType: v })} staticOptions={enumToOptions(DocumentType)} dropdownType="DOCUMENT_TYPE" />
-            <TextField label="Entity Type" placeholder="e.g. VENDOR, PO, CONTRACT" value={form.entityType ?? ''} onChange={(e) => setForm({ ...form, entityType: e.target.value })} fullWidth size="small" />
-            <TextField label="Entity ID (UUID)" value={form.entityId ?? ''} onChange={(e) => setForm({ ...form, entityId: e.target.value })} fullWidth size="small" />
           </Box>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setDialogOpen(false)}>Cancel</Button>
-          <Button variant="contained" onClick={() => createMutation.mutate({
-            file: selectedFile,
-            fileType: form.fileType,
-            entityType: form.entityType || 'MISC',
-            entityId: form.entityId || undefined,
-          })} disabled={!selectedFile || createMutation.isPending}>
+          <Button
+            variant="contained"
+            onClick={() => {
+              setError('');
+              if (!form.name) { setError('Document name is required'); return; }
+              if (!(form.resolveTo as string[])?.length) { setError('Select at least one person to resolve to'); return; }
+              if (!selectedFile) { setError('Please choose a file'); return; }
+              createMutation.mutate();
+            }}
+            disabled={!form.name || !selectedFile || createMutation.isPending}
+          >
             {createMutation.isPending ? <CircularProgress size={20} /> : 'Upload'}
           </Button>
         </DialogActions>

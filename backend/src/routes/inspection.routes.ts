@@ -26,9 +26,8 @@ router.get(
         prisma.inspection.findMany({
           where,
           include: {
-            phase: { select: { id: true, name: true } },
-            activity: { select: { id: true, name: true } },
             inspector: { select: { id: true, name: true } },
+            createdByUser: { select: { id: true, name: true } },
           },
           orderBy: { createdAt: 'desc' },
           skip: (Number(page) - 1) * Number(pageSize),
@@ -60,10 +59,17 @@ router.post(
       }
 
       const record = await prisma.inspection.create({
-        data: { ...req.body, projectId, inspectorId: req.user!.id },
+        data: {
+          ...req.body,
+          projectId,
+          inspectorId: req.user!.id,
+          createdBy: req.user!.id,
+          date: req.body.date ? new Date(req.body.date) : new Date(),
+          scheduledDate: req.body.scheduledDate ? new Date(req.body.scheduledDate) : null,
+        },
         include: {
-          phase: { select: { id: true, name: true } },
-          activity: { select: { id: true, name: true } },
+          inspector: { select: { id: true, name: true } },
+          createdByUser: { select: { id: true, name: true } },
         },
       });
 
@@ -73,7 +79,7 @@ router.post(
         entityType: 'INSPECTION',
         entityId: record.id,
         projectId,
-        newValue: { status: record.status },
+        newValue: { name: record.name, status: record.status },
       });
 
       res.status(201).json(record);

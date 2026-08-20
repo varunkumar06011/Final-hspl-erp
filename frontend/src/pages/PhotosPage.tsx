@@ -60,7 +60,6 @@ export default function PhotosPage() {
       formData.append('file', payload.file as File);
       if (payload.caption) formData.append('caption', String(payload.caption));
       if (payload.tag) formData.append('tag', String(payload.tag));
-      if (payload.phaseId) formData.append('phaseId', String(payload.phaseId));
       if (payload.zone) formData.append('zone', String(payload.zone));
       const response = await api.post('/photos/upload', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
@@ -117,16 +116,15 @@ export default function PhotosPage() {
                 <TableCell sx={{ fontWeight: 600 }}>Image</TableCell>
                 <TableCell sx={{ fontWeight: 600 }}>Caption</TableCell>
                 <TableCell sx={{ fontWeight: 600 }}>Tag</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Phase</TableCell>
                 <TableCell sx={{ fontWeight: 600 }}>Zone</TableCell>
                 <TableCell sx={{ fontWeight: 600 }}>Date</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {isLoading ? (
-                <TableRow><TableCell colSpan={6} align="center" sx={{ py: 4 }}><CircularProgress size={32} /></TableCell></TableRow>
+                <TableRow><TableCell colSpan={5} align="center" sx={{ py: 4 }}><CircularProgress size={32} /></TableCell></TableRow>
               ) : rows.length === 0 ? (
-                <TableRow><TableCell colSpan={6} align="center" sx={{ py: 4 }}><Typography color="text.secondary">No photos found</Typography></TableCell></TableRow>
+                <TableRow><TableCell colSpan={5} align="center" sx={{ py: 4 }}><Typography color="text.secondary">No photos found</Typography></TableCell></TableRow>
               ) : (
                 rows.map((row: Record<string, unknown>) => (
                   <TableRow key={row.id as string} hover>
@@ -135,7 +133,6 @@ export default function PhotosPage() {
                     </TableCell>
                     <TableCell>{String(row.caption ?? '—')}</TableCell>
                     <TableCell><Chip label={String(row.tag ?? '')} size="small" color={STATUS_COLORS[String(row.tag)] ?? 'default'} /></TableCell>
-                    <TableCell>{(row.phase as any)?.name ?? '—'}</TableCell>
                     <TableCell>{String(row.zone ?? '—')}</TableCell>
                     <TableCell>{formatDate(row.takenAt)}</TableCell>
                   </TableRow>
@@ -169,7 +166,6 @@ export default function PhotosPage() {
             )}
             <TextField label="Caption" value={form.caption ?? ''} onChange={(e) => setForm({ ...form, caption: e.target.value })} fullWidth size="small" />
             <CreatableSelect label="Tag" value={String(form.tag ?? PhotoTag.DURING)} onChange={(v) => setForm({ ...form, tag: v })} staticOptions={enumToOptions(PhotoTag)} dropdownType="PHOTO_TAG" />
-            <CreatableSelect label="Phase (optional)" value={String(form.phaseId ?? '')} onChange={(v) => setForm({ ...form, phaseId: v })} optionsEndpoint="/phases" />
             <TextField label="Zone" value={form.zone ?? ''} onChange={(e) => setForm({ ...form, zone: e.target.value })} fullWidth size="small" />
           </Box>
         </DialogContent>
@@ -179,7 +175,6 @@ export default function PhotosPage() {
             file: selectedFile,
             caption: form.caption || undefined,
             tag: form.tag,
-            phaseId: form.phaseId || undefined,
             zone: form.zone || undefined,
           })} disabled={!selectedFile || createMutation.isPending}>
             {createMutation.isPending ? <CircularProgress size={20} /> : 'Upload'}

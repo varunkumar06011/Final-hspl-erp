@@ -9,13 +9,13 @@ import {
   LocalShipping as GatePassIcon,
   Inventory as InventoryIcon,
   Engineering as LabourIcon,
-  Construction as PhaseIcon,
   CameraAlt as PhotoIcon,
   BugReport as IssueIcon,
   Verified as InspectionIcon,
   Description as DocumentIcon,
   Handshake as ContractIcon,
   History as AuditIcon,
+  Settings as SettingsIcon,
   Logout as LogoutIcon,
   Notifications as NotificationsIcon,
 } from '@mui/icons-material';
@@ -31,15 +31,14 @@ const NAV_ITEMS = [
   { label: 'Payments', icon: <PaymentIcon />, path: '/payments' },
   { label: 'Gate Passes', icon: <GatePassIcon />, path: '/gate-passes' },
   { label: 'Inventory', icon: <InventoryIcon />, path: '/inventory' },
-  { label: 'Labour', icon: <LabourIcon />, path: '/labour' },
-  { label: 'Phases', icon: <PhaseIcon />, path: '/phases' },
-  { label: 'Activities', icon: <PhaseIcon />, path: '/activities' },
+  { label: 'Attendance', icon: <LabourIcon />, path: '/labour' },
   { label: 'Site Photos', icon: <PhotoIcon />, path: '/photos' },
   { label: 'Issues', icon: <IssueIcon />, path: '/issues' },
   { label: 'Inspections', icon: <InspectionIcon />, path: '/inspections' },
   { label: 'Documents', icon: <DocumentIcon />, path: '/documents' },
   { label: 'Contracts', icon: <ContractIcon />, path: '/contracts' },
   { label: 'Audit Log', icon: <AuditIcon />, path: '/audit' },
+  { label: 'Settings', icon: <SettingsIcon />, path: '/settings' },
 ];
 
 const ROLE_COLORS: Record<UserRole, string> = {

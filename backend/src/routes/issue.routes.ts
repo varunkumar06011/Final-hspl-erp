@@ -11,8 +11,6 @@ export default createCrudRouter({
   listSchema: listIssuesSchema,
   searchFields: ['title', 'description'],
   include: {
-    phase: { select: { id: true, name: true } },
-    activity: { select: { id: true, name: true } },
     createdByUser: { select: { id: true, name: true } },
   },
 });

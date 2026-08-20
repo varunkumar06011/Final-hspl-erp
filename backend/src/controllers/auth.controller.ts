@@ -9,7 +9,7 @@ export async function verifyToken(
   _next: NextFunction
 ): Promise<void> {
   try {
-    const { idToken } = req.body;
+    const { idToken, name } = req.body;
 
     const decodedToken = await verifyFirebaseToken(idToken);
 
@@ -33,18 +33,22 @@ export async function verifyToken(
       return;
     }
 
+    const updateData: Record<string, unknown> = {};
     if (user.firebaseUid !== decodedToken.uid) {
-      await prisma.user.update({
-        where: { id: user.id },
-        data: { firebaseUid: decodedToken.uid },
-      });
+      updateData.firebaseUid = decodedToken.uid;
+    }
+    if (name && typeof name === 'string' && name.trim() !== '') {
+      updateData.name = name.trim();
+    }
+    if (Object.keys(updateData).length > 0) {
+      await prisma.user.update({ where: { id: user.id }, data: updateData });
     }
 
     res.json({
       id: user.id,
       firebaseUid: decodedToken.uid,
       phone: user.phone,
-      name: user.name,
+      name: updateData.name ?? user.name,
       role: user.role,
       projectId: user.projectId,
       isActive: user.isActive,
@@ -200,7 +204,7 @@ export async function devLogin(
   }
 
   try {
-    const { phone } = req.body;
+    const { phone, name } = req.body;
     if (!phone) {
       res.status(400).json({ error: 'Phone number is required' });
       return;
@@ -221,11 +225,17 @@ export async function devLogin(
       return;
     }
 
+    let updatedName = user.name;
+    if (name && typeof name === 'string' && name.trim() !== '') {
+      updatedName = name.trim();
+      await prisma.user.update({ where: { id: user.id }, data: { name: updatedName } });
+    }
+
     res.json({
       id: user.id,
       firebaseUid: user.firebaseUid,
       phone: user.phone,
-      name: user.name,
+      name: updatedName,
       role: user.role,
       projectId: user.projectId,
       isActive: user.isActive,

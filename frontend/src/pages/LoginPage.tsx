@@ -29,6 +29,7 @@ export default function LoginPage() {
   const [step, setStep] = useState<Step>('phone');
   const [phone, setPhone] = useState('');
   const [otp, setOtp] = useState('');
+  const [name, setName] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [confirmationResult, setConfirmationResult] = useState<any>(null);
@@ -81,7 +82,7 @@ export default function LoginPage() {
       const formattedPhone = formatPhone(phone);
 
       if (otp === '1234') {
-        const response = await api.post('/auth/dev-login', { phone: formattedPhone });
+        const response = await api.post('/auth/dev-login', { phone: formattedPhone, name: name.trim() || undefined });
         const user = response.data;
         setToken(`dev-token:${user.id}`);
         setUser(user);
@@ -95,7 +96,7 @@ export default function LoginPage() {
       const userCredential = await confirmationResult.confirm(otp);
       const idToken = await userCredential.user.getIdToken();
 
-      const response = await api.post('/auth/verify', { idToken });
+      const response = await api.post('/auth/verify', { idToken, name: name.trim() || undefined });
       const user = response.data;
 
       setToken(idToken);
@@ -107,7 +108,7 @@ export default function LoginPage() {
     } finally {
       setLoading(false);
     }
-  }, [confirmationResult, otp, phone, setUser, setToken, navigate]);
+  }, [confirmationResult, otp, phone, name, setUser, setToken, navigate]);
 
   if (isAuthenticated()) {
     return <Navigate to="/" replace />;
@@ -146,6 +147,14 @@ export default function LoginPage() {
               placeholder="+91 9000000001"
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
+              sx={{ mb: 2 }}
+            />
+            <TextField
+              fullWidth
+              label="Your Name"
+              placeholder="Enter your name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
               sx={{ mb: 2 }}
             />
             <TextField
@@ -229,6 +238,14 @@ export default function LoginPage() {
               <Alert severity="info" sx={{ mb: 2 }}>
                 OTP sent to {phone}
               </Alert>
+              <TextField
+                fullWidth
+                label="Your Name"
+                placeholder="Enter your full name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                sx={{ mb: 2 }}
+              />
               <TextField
                 fullWidth
                 label="Enter OTP"

@@ -19,7 +19,9 @@ interface CrudConfig {
   include?: Record<string, unknown>;
   defaultSort?: Record<string, 'asc' | 'desc'>;
   searchFields?: string[];
-  transformCreate?: (body: Record<string, unknown>, userId: string, projectId: string) => Record<string, unknown>;
+  intSearchFields?: string[];
+  transformCreate?: (body: Record<string, unknown>, userId: string, projectId: string) => Record<string, unknown> | Promise<Record<string, unknown>>;
+  transformUpdate?: (body: Record<string, unknown>, userId: string, projectId: string, existingId: string) => Record<string, unknown> | Promise<Record<string, unknown>>;
   beforeDelete?: (id: string) => Promise<void>;
 }
 
@@ -46,9 +48,18 @@ export function createCrudRouter(config: CrudConfig): Router {
         };
 
         if (search && config.searchFields?.length) {
-          where.OR = config.searchFields.map((field) => ({
+          const orConditions: Record<string, unknown>[] = config.searchFields.map((field) => ({
             [field]: { contains: String(search), mode: 'insensitive' },
           }));
+
+          const searchNum = Number(search);
+          if (!isNaN(searchNum) && config.intSearchFields?.length) {
+            config.intSearchFields.forEach((field) => {
+              orConditions.push({ [field]: searchNum });
+            });
+          }
+
+          where.OR = orConditions;
         }
 
         const [data, total] = await Promise.all([
@@ -114,10 +125,10 @@ export function createCrudRouter(config: CrudConfig): Router {
         };
 
         if (config.transformCreate) {
-          data = config.transformCreate(req.body, req.user!.id, projectId);
+          data = await config.transformCreate(req.body, req.user!.id, projectId);
         }
 
-        const record = await model.create({ data });
+        const record = await model.create({ data, include: config.include });
 
         await logAudit({
           userId: req.user!.id,
@@ -154,9 +165,15 @@ export function createCrudRouter(config: CrudConfig): Router {
           return;
         }
 
+        let updateData: Record<string, unknown> = req.body;
+        if (config.transformUpdate) {
+          updateData = await config.transformUpdate(req.body, req.user!.id, requireProjectId(req), req.params.id);
+        }
+
         const updated = await model.update({
           where: { id: req.params.id },
-          data: req.body,
+          data: updateData,
+          include: config.include,
         });
 
         await logAudit({

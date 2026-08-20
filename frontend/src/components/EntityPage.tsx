@@ -28,22 +28,32 @@ import {
   Delete as DeleteIcon,
   Search as SearchIcon,
   Refresh as RefreshIcon,
+  RemoveCircleOutline as RemoveIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { extractErrorMessage } from '../config/api';
 import CreatableSelect from './CreatableSelect';
+import SelectWithOther from './SelectWithOther';
 import AttachmentUpload from './AttachmentUpload';
+
+export interface MaterialEntry {
+  id?: string;
+  name: string;
+  unit?: string;
+  pricePerUnit?: number;
+}
 
 export interface FieldDef {
   name: string;
   label: string;
-  type: 'text' | 'number' | 'date' | 'select' | 'textarea';
+  type: 'text' | 'number' | 'date' | 'select' | 'textarea' | 'select-with-other' | 'materials-list';
   required?: boolean;
   options?: { value: string; label: string }[];
   optionsEndpoint?: string;
   optionLabelKey?: string;
   dropdownType?: string;
   defaultValue?: string | number;
+  readonly?: boolean;
 }
 
 export interface ColumnDef {
@@ -337,6 +347,85 @@ export default function EntityPage({
                     optionsEndpoint={field.optionsEndpoint}
                     optionLabelKey={field.optionLabelKey}
                     dropdownType={field.dropdownType}
+                  />
+                );
+              }
+              if (field.type === 'select-with-other') {
+                return (
+                  <SelectWithOther
+                    key={field.name}
+                    label={field.label}
+                    value={String(form[field.name] ?? '')}
+                    onChange={(v) => setForm({ ...form, [field.name]: v })}
+                    options={field.options ?? []}
+                    required={field.required}
+                  />
+                );
+              }
+              if (field.type === 'materials-list') {
+                const materials = (form[field.name] as MaterialEntry[] | undefined) ?? [];
+                const updateMaterial = (index: number, key: keyof MaterialEntry, val: string | number | undefined) => {
+                  const updated = [...materials];
+                  updated[index] = { ...updated[index], [key]: val };
+                  setForm({ ...form, [field.name]: updated });
+                };
+                const addMaterial = () => {
+                  setForm({ ...form, [field.name]: [...materials, { name: '', unit: '', pricePerUnit: undefined }] });
+                };
+                const removeMaterial = (index: number) => {
+                  setForm({ ...form, [field.name]: materials.filter((_, i) => i !== index) });
+                };
+                return (
+                  <Box key={field.name} sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Typography variant="body2" fontWeight={600}>{field.label}</Typography>
+                      <Button size="small" startIcon={<AddIcon />} onClick={addMaterial}>Add Material</Button>
+                    </Box>
+                    {materials.length === 0 && (
+                      <Typography variant="caption" color="text.secondary">No materials added yet.</Typography>
+                    )}
+                    {materials.map((mat, index) => (
+                      <Box key={index} sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                        <TextField
+                          label="Material Name"
+                          value={mat.name ?? ''}
+                          onChange={(e) => updateMaterial(index, 'name', e.target.value)}
+                          size="small"
+                          sx={{ flex: 2 }}
+                        />
+                        <TextField
+                          label="Unit"
+                          value={mat.unit ?? ''}
+                          onChange={(e) => updateMaterial(index, 'unit', e.target.value)}
+                          size="small"
+                          sx={{ flex: 1 }}
+                        />
+                        <TextField
+                          label="Price / Unit"
+                          type="number"
+                          value={mat.pricePerUnit ?? ''}
+                          onChange={(e) => updateMaterial(index, 'pricePerUnit', e.target.value === '' ? undefined : Number(e.target.value))}
+                          size="small"
+                          sx={{ flex: 1 }}
+                        />
+                        <IconButton size="small" color="error" onClick={() => removeMaterial(index)}>
+                          <RemoveIcon fontSize="small" />
+                        </IconButton>
+                      </Box>
+                    ))}
+                  </Box>
+                );
+              }
+              if (field.readonly) {
+                return (
+                  <TextField
+                    key={field.name}
+                    label={field.label}
+                    value={form[field.name] !== undefined && form[field.name] !== null ? String(form[field.name]) : 'Auto-generated'}
+                    fullWidth
+                    size="small"
+                    disabled
+                    InputProps={{ readOnly: true }}
                   />
                 );
               }

@@ -1,6 +1,6 @@
 import { Router, Response, NextFunction } from 'express';
 import { Permission, AuditAction } from '@hospital-erp/shared';
-import { createDocumentSchema, updateDocumentSchema, listDocumentsSchema } from '@hospital-erp/shared';
+import { listDocumentsSchema } from '@hospital-erp/shared';
 import { prisma } from '../config/prisma';
 import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middleware/auth';
 import { rbacMiddleware } from '../middleware/rbac';
@@ -19,13 +19,8 @@ router.get(
   validateMiddleware(listDocumentsSchema),
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
-      const { page = 1, pageSize = 20, entityType, entityId, fileType } = req.query as Record<string, unknown>;
-      const where: Record<string, unknown> = {
-        projectId: req.user!.projectId,
-        ...(entityType ? { entityType } : {}),
-        ...(entityId ? { entityId } : {}),
-        ...(fileType ? { fileType } : {}),
-      };
+      const { page = 1, pageSize = 20 } = req.query as Record<string, unknown>;
+      const where = { projectId: requireProjectId(req), deletedAt: null };
 
       const [data, total] = await Promise.all([
         prisma.document.findMany({
@@ -48,24 +43,25 @@ router.get(
   }
 );
 
-// POST /upload — multipart file upload
+// POST /upload — multipart file upload with name, description, resolveTo
 router.post(
   '/upload',
   rbacMiddleware(Permission.MANAGE_DOCUMENTS),
   upload.single('file'),
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
-      const projectId = req.user!.projectId;
-      if (!projectId) {
-        res.status(400).json({ error: 'User is not assigned to a project' });
-        return;
-      }
+      const projectId = requireProjectId(req);
       if (!req.file) {
         res.status(400).json({ error: 'No file uploaded' });
         return;
       }
-      if (!req.body.entityId) {
-        res.status(400).json({ error: 'entityId is required' });
+      if (!req.body.name) {
+        res.status(400).json({ error: 'Document name is required' });
+        return;
+      }
+      const resolveTo = req.body.resolveTo ? JSON.parse(String(req.body.resolveTo)) : [];
+      if (!Array.isArray(resolveTo) || resolveTo.length === 0) {
+        res.status(400).json({ error: 'Select at least one person to resolve to' });
         return;
       }
 
@@ -76,11 +72,11 @@ router.post(
       const record = await prisma.document.create({
         data: {
           projectId,
-          entityType: req.body.entityType || 'MISC',
-          entityId: req.body.entityId,
+          name: String(req.body.name),
+          description: req.body.description ? String(req.body.description) : null,
+          resolveTo,
           fileName: req.file.originalname,
           filePath,
-          fileType: req.body.fileType || 'MISC',
           mimeType: req.file.mimetype,
           uploadedBy: req.user!.id,
         },
@@ -92,7 +88,7 @@ router.post(
         entityType: 'DOCUMENT',
         entityId: record.id,
         projectId,
-        newValue: { fileName: record.fileName, fileType: record.fileType },
+        newValue: { name: record.name, fileName: record.fileName },
       });
 
       res.status(201).json(record);
@@ -102,68 +98,27 @@ router.post(
   }
 );
 
-// POST / — register document with existing path
-router.post(
-  '/',
-  rbacMiddleware(Permission.MANAGE_DOCUMENTS),
-  validateMiddleware(createDocumentSchema),
-  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
-    try {
-      const projectId = req.user!.projectId;
-      if (!projectId) {
-        res.status(400).json({ error: 'User is not assigned to a project' });
-        return;
-      }
-
-      const record = await prisma.document.create({
-        data: { ...req.body, projectId, uploadedBy: req.user!.id },
-      });
-
-      await logAudit({
-        userId: req.user!.id,
-        action: AuditAction.CREATE,
-        entityType: 'DOCUMENT',
-        entityId: record.id,
-        projectId,
-        newValue: { fileName: record.fileName },
-      });
-
-      res.status(201).json(record);
-    } catch (error) {
-      next(error);
-    }
-  }
-);
-
-router.patch(
+// DELETE /:id — soft delete
+router.delete(
   '/:id',
   rbacMiddleware(Permission.MANAGE_DOCUMENTS),
-  validateMiddleware(updateDocumentSchema),
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
-      const existing = await prisma.document.findFirst({
-        where: { id: req.params.id, projectId: requireProjectId(req) },
-      });
+      const projectId = requireProjectId(req);
+      const existing = await prisma.document.findFirst({ where: { id: req.params.id, projectId, deletedAt: null } });
       if (!existing) {
         res.status(404).json({ error: 'Document not found' });
         return;
       }
-
-      const updated = await prisma.document.update({
-        where: { id: req.params.id },
-        data: req.body,
-      });
-
+      await prisma.document.update({ where: { id: req.params.id }, data: { deletedAt: new Date() } });
       await logAudit({
         userId: req.user!.id,
-        action: AuditAction.UPDATE,
+        action: AuditAction.DELETE,
         entityType: 'DOCUMENT',
         entityId: req.params.id,
-        projectId: req.user!.projectId,
-        newValue: req.body,
+        projectId,
       });
-
-      res.json(updated);
+      res.json({ message: 'Document deleted' });
     } catch (error) {
       next(error);
     }

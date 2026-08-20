@@ -5,10 +5,11 @@ import { UserRole } from '../enums.js';
 // Auth schemas — the contract between frontend and backend
 // ═══════════════════════════════════════════════════════════
 
-// POST /auth/verify — frontend sends Firebase ID token
+// POST /auth/verify — frontend sends Firebase ID token + optional name (set on first login)
 export const verifyTokenSchema = z.object({
   body: z.object({
     idToken: z.string().min(1, 'Firebase ID token is required'),
+    name: z.string().min(1).max(100).optional(),
   }),
 });
 

@@ -89,17 +89,6 @@ export enum ApprovalStepStatus {
   REJECTED = 'REJECTED',
 }
 
-export enum GatePassType {
-  INWARD = 'INWARD',
-  OUTWARD = 'OUTWARD',
-}
-
-export enum GatePassStatus {
-  PENDING = 'PENDING',
-  APPROVED = 'APPROVED',
-  REJECTED = 'REJECTED',
-}
-
 export enum InventoryTxnType {
   IN = 'IN',
   OUT = 'OUT',
@@ -146,13 +135,6 @@ export enum IssueSeverity {
   CRITICAL = 'CRITICAL',
 }
 
-export enum IssueStatus {
-  OPEN = 'OPEN',
-  IN_PROGRESS = 'IN_PROGRESS',
-  RESOLVED = 'RESOLVED',
-  CLOSED = 'CLOSED',
-}
-
 export enum InspectionStatus {
   SCHEDULED = 'SCHEDULED',
   IN_PROGRESS = 'IN_PROGRESS',
@@ -161,25 +143,6 @@ export enum InspectionStatus {
   RE_INSPECTION = 'RE_INSPECTION',
   PASSED = 'PASSED',
   FAILED = 'FAILED',
-}
-
-export enum DocumentType {
-  CONTRACT = 'CONTRACT',
-  DRAWING = 'DRAWING',
-  INVOICE = 'INVOICE',
-  PERMIT = 'PERMIT',
-  INSPECTION_REPORT = 'INSPECTION_REPORT',
-  PHOTO = 'PHOTO',
-  QUOTATION = 'QUOTATION',
-  PURCHASE_ORDER = 'PURCHASE_ORDER',
-  GATE_PASS = 'GATE_PASS',
-  MISC = 'MISC',
-}
-
-export enum DocumentStatus {
-  ACTIVE = 'ACTIVE',
-  ARCHIVED = 'ARCHIVED',
-  SUPERSEDED = 'SUPERSEDED',
 }
 
 export enum ContractType {
@@ -201,12 +164,6 @@ export enum MilestoneStatus {
   PENDING = 'PENDING',
   INVOICED = 'INVOICED',
   PAID = 'PAID',
-}
-
-export enum LabourCategory {
-  SKILLED = 'SKILLED',
-  UNSKILLED = 'UNSKILLED',
-  SUPERVISOR = 'SUPERVISOR',
 }
 
 export enum AuditAction {

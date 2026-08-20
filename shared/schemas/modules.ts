@@ -4,16 +4,12 @@ import {
   QuotationStatus,
   POStatus,
   InvoiceVerificationStatus,
-  GatePassType,
-  GatePassStatus,
   InventoryTxnType,
   PhaseStatus,
   ActivityStatus,
   PhotoTag,
   IssueSeverity,
-  IssueStatus,
   InspectionStatus,
-  DocumentStatus,
   ContractStatus,
 } from '../enums.js';
 
@@ -28,9 +24,18 @@ const pagination = z.object({
 });
 
 // ═══ Vendors ═══
+const vendorMaterial = z.object({
+  id: uuid.optional(),
+  name: z.string().min(1).max(200),
+  unit: z.string().max(20).optional(),
+  pricePerUnit: z.coerce.number().min(0).optional(),
+});
 export const createVendorSchema = z.object({
   body: z.object({
     name: z.string().min(1).max(200),
+    contactPersonName: z.string().max(200).optional(),
+    contactPersonPhone: z.string().max(20).optional(),
+    referenceBy: z.string().max(200).optional(),
     gstNumber: z.string().max(20).optional(),
     panNumber: z.string().max(20).optional(),
     category: z.string().min(1).max(100).default('OTHER'),
@@ -42,6 +47,7 @@ export const createVendorSchema = z.object({
     email: z.string().email().optional().or(z.literal('')),
     status: z.nativeEnum(VendorStatus).default(VendorStatus.ACTIVE), // workflow status — keep enum
     rating: z.coerce.number().int().min(0).max(5).default(0),
+    materials: z.array(vendorMaterial).optional(),
   }),
 });
 export const updateVendorSchema = z.object({
@@ -53,33 +59,25 @@ export const listVendorsSchema = z.object({
 });
 
 // ═══ Quotations ═══
-const lineItem = z.object({
-  description: z.string().min(1).max(500),
+const quotationLineItem = z.object({
+  materialName: z.string().min(1).max(200),
   quantity: qty,
-  unit: z.string().min(1).max(20),
-  rate: money,
+  unit: z.string().max(20).optional(),
+  unitPrice: money,
 });
 
 export const createQuotationSchema = z.object({
   body: z.object({
     vendorId: uuid,
-    phaseId: uuid.optional(),
-    quotationNumber: z.string().min(1).max(50),
-    date: dateStr.optional(),
-    status: z.nativeEnum(QuotationStatus).default(QuotationStatus.DRAFT),
-    notes: z.string().max(1000).optional(),
-    items: z.array(lineItem).min(1, 'At least one line item is required'),
+    items: z.array(quotationLineItem).min(1, 'At least one line item is required'),
+    gstAmount: money.optional(),
   }),
 });
 export const updateQuotationSchema = z.object({
   params: z.object({ id: uuid }),
   body: z.object({
-    vendorId: uuid.optional(),
-    phaseId: uuid.optional(),
-    quotationNumber: z.string().min(1).max(50).optional(),
-    status: z.nativeEnum(QuotationStatus).optional(),
-    notes: z.string().max(1000).optional(),
-    items: z.array(lineItem).min(1).optional(),
+    items: z.array(quotationLineItem).min(1).optional(),
+    gstAmount: money.optional(),
   }),
 });
 export const listQuotationsSchema = z.object({
@@ -90,27 +88,26 @@ export const listQuotationsSchema = z.object({
 export const createPOSchema = z.object({
   body: z.object({
     vendorId: uuid,
-    quotationId: uuid.optional(),
-    phaseId: uuid.optional(),
-    poNumber: z.string().min(1).max(50),
-    date: dateStr.optional(),
-    deliveryDate: dateStr.optional(),
-    status: z.nativeEnum(POStatus).default(POStatus.DRAFT),
-    notes: z.string().max(1000).optional(),
-    items: z.array(lineItem).min(1, 'At least one line item is required'),
+    quotationId: uuid,
+    gstAmount: money.optional(),
   }),
 });
 export const updatePOSchema = z.object({
   params: z.object({ id: uuid }),
   body: z.object({
-    status: z.nativeEnum(POStatus).optional(),
-    deliveryDate: dateStr.optional(),
-    notes: z.string().max(1000).optional(),
-    items: z.array(lineItem).min(1).optional(),
+    gstAmount: money.optional(),
   }),
 });
 export const listPOsSchema = z.object({
   query: pagination.extend({ vendorId: uuid.optional(), status: z.nativeEnum(POStatus).optional() }),
+});
+
+// ═══ Project Settings ═══
+export const updateProjectSettingsSchema = z.object({
+  body: z.object({
+    officeAddress: z.string().max(1000).optional(),
+    hospitalAddress: z.string().max(1000).optional(),
+  }),
 });
 
 // ═══ Vendor Invoices ═══
@@ -119,18 +116,25 @@ export const createInvoiceSchema = z.object({
     vendorId: uuid,
     poId: uuid.optional(),
     invoiceNumber: z.string().min(1).max(50),
-    date: dateStr.optional(),
     amount: money,
     taxAmount: money.default(0),
     totalAmount: money,
-    notes: z.string().max(1000).optional(),
+    advancePaid: money.optional(),
+    advanceType: z.string().max(50).optional(),
+    advanceOtherType: z.string().max(100).optional(),
+    deliveryDate: dateStr.optional(),
   }),
 });
 export const updateInvoiceSchema = z.object({
   params: z.object({ id: uuid }),
   body: z.object({
-    verificationStatus: z.nativeEnum(InvoiceVerificationStatus).optional(),
-    notes: z.string().max(1000).optional(),
+    amount: money.optional(),
+    taxAmount: money.optional(),
+    totalAmount: money.optional(),
+    advancePaid: money.optional(),
+    advanceType: z.string().max(50).optional(),
+    advanceOtherType: z.string().max(100).optional(),
+    deliveryDate: dateStr.optional(),
   }),
 });
 export const listInvoicesSchema = z.object({
@@ -147,51 +151,49 @@ export const createPaymentRequestSchema = z.object({
     vendorId: uuid,
     requestNumber: z.string().min(1).max(50),
     amount: money,
-    paymentMode: z.string().max(50).optional(), // configurable via DropdownOption
+    paymentMode: z.string().max(50).optional(),
     notes: z.string().max(1000).optional(),
   }),
 });
+export const createExpenseSchema = z.object({
+  body: z.object({
+    description: z.string().min(1).max(500),
+    amount: money,
+    category: z.string().min(1).max(100),
+    expenseDate: dateStr.optional(),
+    paymentMode: z.string().max(50).optional(),
+  }),
+});
 export const listPaymentRequestsSchema = z.object({
-  query: pagination.extend({ vendorId: uuid.optional(), status: z.string().optional() }),
+  query: pagination.extend({ vendorId: uuid.optional(), status: z.string().optional(), type: z.string().optional() }),
 });
 export const recordPaymentSchema = z.object({
   params: z.object({ id: uuid }),
   body: z.object({
     amount: money,
-    mode: z.string().min(1).max(50), // configurable via DropdownOption
+    mode: z.string().min(1).max(50),
     reference: z.string().max(100).optional(),
   }),
 });
 export const approvalActionSchema = z.object({
-  params: z.object({ stepId: uuid }),
+  params: z.object({ id: uuid, stepId: uuid.optional() }),
   body: z.object({ comments: z.string().max(500).optional() }),
 });
 
 // ═══ Gate Passes ═══
-const gatePassItem = z.object({
-  description: z.string().min(1).max(500),
-  quantity: qty,
-  unit: z.string().min(1).max(20),
-});
 export const createGatePassSchema = z.object({
   body: z.object({
-    poId: uuid.optional(),
-    invoiceId: uuid.optional(),
-    passNumber: z.string().min(1).max(50),
-    type: z.nativeEnum(GatePassType),
-    date: dateStr.optional(),
-    vehicleNumber: z.string().max(20).optional(),
-    driverName: z.string().max(100).optional(),
-    carrierName: z.string().max(100).optional(),
-    items: z.array(gatePassItem).min(1, 'At least one item is required'),
+    poId: uuid,
+    invoiceId: uuid,
+    otpRequestedFor: uuid,
   }),
 });
-export const updateGatePassSchema = z.object({
-  params: z.object({ id: uuid }),
-  body: z.object({ status: z.nativeEnum(GatePassStatus).optional() }),
-});
 export const listGatePassesSchema = z.object({
-  query: pagination.extend({ type: z.nativeEnum(GatePassType).optional(), status: z.nativeEnum(GatePassStatus).optional() }),
+  query: pagination.extend({ status: z.string().optional() }),
+});
+export const verifyGatePassOtpSchema = z.object({
+  params: z.object({ id: uuid }),
+  body: z.object({ otp: z.string().min(4).max(10) }),
 });
 
 // ═══ Inventory ═══
@@ -299,28 +301,23 @@ export const listPhotosSchema = z.object({
 // ═══ Issues ═══
 export const createIssueSchema = z.object({
   body: z.object({
-    phaseId: uuid.optional(),
-    activityId: uuid.optional(),
-    category: z.string().min(1).max(100), // configurable via DropdownOption
+    category: z.string().min(1).max(100),
     severity: z.nativeEnum(IssueSeverity).default(IssueSeverity.MEDIUM),
     title: z.string().min(1).max(200),
     description: z.string().max(2000).optional(),
-    assignedTo: uuid.optional(),
+    addressTo: z.array(uuid).min(1, 'Select at least one person to address to'),
   }),
 });
 export const updateIssueSchema = z.object({
   params: z.object({ id: uuid }),
   body: z.object({
-    severity: z.nativeEnum(IssueSeverity).optional(), // workflow status — keep enum
-    status: z.nativeEnum(IssueStatus).optional(), // workflow status — keep enum
-    category: z.string().min(1).max(100).optional(), // configurable
-    resolution: z.string().max(2000).optional(),
-    assignedTo: uuid.optional().nullable(),
+    severity: z.nativeEnum(IssueSeverity).optional(),
+    category: z.string().min(1).max(100).optional(),
+    addressTo: z.array(uuid).optional(),
   }),
 });
 export const listIssuesSchema = z.object({
   query: pagination.extend({
-    status: z.nativeEnum(IssueStatus).optional(),
     severity: z.nativeEnum(IssueSeverity).optional(),
   }),
 });
@@ -328,14 +325,17 @@ export const listIssuesSchema = z.object({
 // ═══ Inspections ═══
 export const createInspectionSchema = z.object({
   body: z.object({
-    phaseId: uuid.optional(),
-    activityId: uuid.optional(),
+    name: z.string().min(1).max(200),
+    date: dateStr.optional(),
     scheduledDate: dateStr.optional(),
   }),
 });
 export const updateInspectionSchema = z.object({
   params: z.object({ id: uuid }),
   body: z.object({
+    name: z.string().min(1).max(200).optional(),
+    date: dateStr.optional(),
+    scheduledDate: dateStr.optional(),
     checklist: z
       .array(z.object({ item: z.string(), result: z.enum(['PASS', 'FAIL', 'N/A']) }))
       .optional(),
@@ -354,24 +354,16 @@ export const listInspectionsSchema = z.object({
 // ═══ Documents ═══
 export const createDocumentSchema = z.object({
   body: z.object({
-    entityType: z.string().min(1).max(50),
-    entityId: uuid,
+    name: z.string().min(1).max(200),
+    description: z.string().max(2000).optional(),
+    resolveTo: z.array(uuid).min(1, 'Select at least one person to resolve to'),
     fileName: z.string().min(1).max(255),
     filePath: z.string().min(1),
-    fileType: z.string().min(1).max(50), // configurable via DropdownOption
     mimeType: z.string().min(1).max(100),
   }),
 });
-export const updateDocumentSchema = z.object({
-  params: z.object({ id: uuid }),
-  body: z.object({ status: z.nativeEnum(DocumentStatus).optional() }),
-});
 export const listDocumentsSchema = z.object({
-  query: pagination.extend({
-    entityType: z.string().optional(),
-    entityId: uuid.optional(),
-    fileType: z.string().max(50).optional(), // configurable
-  }),
+  query: pagination.extend({}),
 });
 
 // ═══ Contracts ═══
@@ -403,36 +395,48 @@ export const listContractsSchema = z.object({
   query: pagination.extend({ vendorId: uuid.optional(), status: z.nativeEnum(ContractStatus).optional() }),
 });
 
-// ═══ Labour Attendance ═══
-export const createLabourAttendanceSchema = z.object({
+// ═══ Attendance (Staff + Daily Attendance) ═══
+export const createStaffSchema = z.object({
   body: z.object({
-    phaseId: uuid.optional(),
-    activityId: uuid.optional(),
-    date: dateStr,
-    headcount: z.coerce.number().int().min(1),
-    category: z.string().min(1).max(100), // configurable via DropdownOption
-    cost: money,
-    notes: z.string().max(500).optional(),
+    name: z.string().min(1).max(200),
+    type: z.enum(['COMPANY', 'LABOUR']),
+    role: z.string().max(100).optional(),
+    phone: z.string().max(20).optional(),
+    baseSalary: money,
   }),
 });
-export const listLabourSchema = z.object({
-  query: pagination.extend({
-    phaseId: uuid.optional(),
-    category: z.string().max(100).optional(),
-    startDate: dateStr.optional(),
-    endDate: dateStr.optional(),
-  }),
-});
-export const updateLabourSchema = z.object({
+export const updateStaffSchema = z.object({
   params: z.object({ id: uuid }),
   body: z.object({
-    date: dateStr.optional(),
-    headcount: z.coerce.number().int().min(1).optional(),
-    category: z.string().min(1).max(100).optional(),
-    cost: money.optional(),
-    phaseId: uuid.optional().nullable(),
-    activityId: uuid.optional().nullable(),
-    notes: z.string().max(500).optional(),
+    name: z.string().min(1).max(200).optional(),
+    role: z.string().max(100).optional(),
+    phone: z.string().max(20).optional(),
+    baseSalary: money.optional(),
+    active: z.boolean().optional(),
+  }),
+});
+export const listStaffSchema = z.object({
+  query: pagination.extend({
+    type: z.enum(['COMPANY', 'LABOUR']).optional(),
+    active: z.enum(['true', 'false']).optional(),
+  }),
+});
+export const markAttendanceSchema = z.object({
+  body: z.object({
+    date: dateStr,
+    records: z.array(z.object({
+      staffId: uuid,
+      present: z.boolean(),
+      notes: z.string().max(500).optional(),
+    })).min(1),
+  }),
+});
+export const listAttendanceSchema = z.object({
+  query: pagination.extend({
+    staffId: uuid.optional(),
+    type: z.enum(['COMPANY', 'LABOUR']).optional(),
+    startDate: dateStr.optional(),
+    endDate: dateStr.optional(),
   }),
 });
 
