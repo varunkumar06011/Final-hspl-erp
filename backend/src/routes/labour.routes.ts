@@ -186,9 +186,9 @@ router.post(
         userId: req.user!.id,
         action: AuditAction.CREATE,
         entityType: 'STAFF_ATTENDANCE',
-        entityId: date,
+        entityId: dateObj.toISOString().slice(0, 10),
         projectId,
-        newValue: { date, count: results.length },
+        newValue: { date: dateObj.toISOString().slice(0, 10), count: results.length },
       });
 
       res.status(201).json({ data: results, count: results.length });

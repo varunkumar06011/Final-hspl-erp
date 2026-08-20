@@ -25,8 +25,8 @@ import {
   MenuItem,
   Tabs,
   Tab,
-  Checkbox,
-  FormControlLabel,
+  ToggleButton,
+  ToggleButtonGroup,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -177,11 +177,14 @@ export default function AttendancePage() {
 
   const markAttendanceMutation = useMutation({
     mutationFn: async () => {
-      const records = (attendanceStaff as Staff[]).map((s) => ({
-        staffId: s.id,
-        present: attendanceRecords[s.id]?.present ?? true,
-        notes: attendanceRecords[s.id]?.notes ?? '',
-      }));
+      const records = (attendanceStaff as Staff[]).map((s) => {
+        const rec = attendanceRecords[s.id];
+        return {
+          staffId: s.id,
+          present: rec?.present ?? true,
+          ...(rec?.notes?.trim() ? { notes: rec.notes.trim() } : {}),
+        };
+      });
       const response = await api.post('/labour/attendance', { date: attendanceDate, records });
       return response.data;
     },
@@ -350,39 +353,47 @@ export default function AttendancePage() {
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {(attendanceStaff as Staff[]).map((s) => (
-                      <TableRow key={s.id}>
-                        <TableCell>{s.name}</TableCell>
-                        <TableCell>{s.role ?? '—'}</TableCell>
-                        <TableCell>
-                          <FormControlLabel
-                            control={
-                              <Checkbox
-                                checked={attendanceRecords[s.id]?.present ?? true}
-                                onChange={(e) => setAttendanceRecords({
+                    {(attendanceStaff as Staff[]).map((s) => {
+                      const isPresent = attendanceRecords[s.id]?.present ?? true;
+                      return (
+                        <TableRow key={s.id}>
+                          <TableCell>{s.name}</TableCell>
+                          <TableCell>{s.role ?? '—'}</TableCell>
+                          <TableCell>
+                            <ToggleButtonGroup
+                              exclusive
+                              size="small"
+                              value={isPresent ? 'present' : 'absent'}
+                              onChange={(_e, val) => {
+                                if (val === null) return;
+                                setAttendanceRecords({
                                   ...attendanceRecords,
-                                  [s.id]: { present: e.target.checked, notes: attendanceRecords[s.id]?.notes ?? '' },
-                                })}
-                                icon={<AbsentIcon color="error" />}
-                                checkedIcon={<PresentIcon color="success" />}
-                              />
-                            }
-                            label={attendanceRecords[s.id]?.present ?? true ? 'Present' : 'Absent'}
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <TextField
-                            size="small"
-                            value={attendanceRecords[s.id]?.notes ?? ''}
-                            onChange={(e) => setAttendanceRecords({
-                              ...attendanceRecords,
-                              [s.id]: { present: attendanceRecords[s.id]?.present ?? true, notes: e.target.value },
-                            })}
-                            placeholder="Optional notes"
-                          />
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                                  [s.id]: { present: val === 'present', notes: attendanceRecords[s.id]?.notes ?? '' },
+                                });
+                              }}
+                            >
+                              <ToggleButton value="present" sx={{ color: isPresent ? '#27ae60' : undefined, borderColor: isPresent ? '#27ae60' : undefined, '&.Mui-selected': { color: '#27ae60', backgroundColor: 'rgba(39,174,96,0.1)' } }}>
+                                <PresentIcon fontSize="small" sx={{ mr: 0.5 }} /> Present
+                              </ToggleButton>
+                              <ToggleButton value="absent" sx={{ color: !isPresent ? '#e74c3c' : undefined, borderColor: !isPresent ? '#e74c3c' : undefined, '&.Mui-selected': { color: '#e74c3c', backgroundColor: 'rgba(231,76,60,0.1)' } }}>
+                                <AbsentIcon fontSize="small" sx={{ mr: 0.5 }} /> Absent
+                              </ToggleButton>
+                            </ToggleButtonGroup>
+                          </TableCell>
+                          <TableCell>
+                            <TextField
+                              size="small"
+                              value={attendanceRecords[s.id]?.notes ?? ''}
+                              onChange={(e) => setAttendanceRecords({
+                                ...attendanceRecords,
+                                [s.id]: { present: attendanceRecords[s.id]?.present ?? true, notes: e.target.value },
+                              })}
+                              placeholder="Optional notes"
+                            />
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
                   </TableBody>
                 </Table>
               </TableContainer>
