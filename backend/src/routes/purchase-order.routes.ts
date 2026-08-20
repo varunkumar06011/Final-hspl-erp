@@ -457,117 +457,197 @@ router.get(
         return;
       }
 
-      const doc = new PDFDocument({ margin: 50, size: 'A4' });
+      const doc = new PDFDocument({ margin: 40, size: 'A4' });
       res.setHeader('Content-Type', 'application/pdf');
       res.setHeader('Content-Disposition', `attachment; filename="${po.poNumber}.pdf"`);
       doc.pipe(res);
 
-      // Header
-      doc.fontSize(22).font('Helvetica-Bold').text('Vgrand Hospital', { align: 'center' });
-      doc.fontSize(10).font('Helvetica').text('Purchase Order', { align: 'center' });
-      doc.moveDown(0.5);
+      // Colors
+      const PRIMARY = '#1a5276';
+      const PRIMARY_LIGHT = '#d4e6f1';
+      const LIGHT_BG = '#f8f9fa';
+      const BORDER = '#d5d8dc';
+      const TEXT_DARK = '#2c3e50';
+      const TEXT_MUTED = '#7f8c8d';
+      const WHITE = '#ffffff';
 
-      // PO info
-      doc.fontSize(10);
-      doc.text(`PO Number: ${po.poNumber}`, 50, doc.y);
-      doc.text(`Date: ${new Date(po.createdAt).toLocaleDateString()}`, 300, doc.y - 15);
-      doc.text(`Time: ${new Date(po.createdAt).toLocaleTimeString()}`, 50, doc.y);
-      doc.text(`Created By: ${po.createdByUser?.name ?? '—'}`, 300, doc.y - 15);
+      const pageWidth = 595; // A4 width in points
+      const margin = 40;
+      const contentWidth = pageWidth - margin * 2;
+
+      // ── Header band ──
+      doc.rect(0, 0, pageWidth, 80).fill(PRIMARY);
+      doc.fillColor(WHITE).fontSize(24).font('Helvetica-Bold').text('Vgrand Hospital', margin, 20);
+      doc.fontSize(11).font('Helvetica').fillColor('#d4e6f1').text('Purchase Order', margin, 50);
+      // PO number badge on the right
+      doc.roundedRect(pageWidth - margin - 130, 18, 130, 44, 6).fill(WHITE);
+      doc.fillColor(PRIMARY).fontSize(9).font('Helvetica').text('PO NUMBER', pageWidth - margin - 122, 24, { width: 114 });
+      doc.fontSize(14).font('Helvetica-Bold').text(po.poNumber, pageWidth - margin - 122, 38, { width: 114 });
+
+      // ── PO info row ──
+      let y = 95;
+      const infoY = y;
+      doc.fontSize(9).font('Helvetica').fillColor(TEXT_MUTED);
+      doc.text('Date:', margin, infoY, { width: 50 });
+      doc.fillColor(TEXT_DARK).font('Helvetica-Bold').text(new Date(po.createdAt).toLocaleDateString(), margin + 40, infoY, { width: 100 });
+      doc.fillColor(TEXT_MUTED).font('Helvetica').text('Time:', margin + 160, infoY, { width: 40 });
+      doc.fillColor(TEXT_DARK).font('Helvetica-Bold').text(new Date(po.createdAt).toLocaleTimeString(), margin + 200, infoY, { width: 100 });
+      doc.fillColor(TEXT_MUTED).font('Helvetica').text('Created By:', margin + 320, infoY, { width: 70 });
+      doc.fillColor(TEXT_DARK).font('Helvetica-Bold').text(po.createdByUser?.name ?? '—', margin + 390, infoY, { width: 165 });
+      y = infoY + 18;
       if (po.quotation) {
-        doc.text(`Quotation Ref: ${po.quotation.quotationNumber}`, 50, doc.y);
+        doc.fillColor(TEXT_MUTED).font('Helvetica').text('Quotation Ref:', margin, y, { width: 90 });
+        doc.fillColor(TEXT_DARK).font('Helvetica-Bold').text(po.quotation.quotationNumber, margin + 90, y, { width: 200 });
+        y += 16;
       }
-      doc.moveDown(1);
 
-      // Three cards: Vendor, Bill To, Delivery Address
-      const cardY = doc.y;
-      const cardWidth = 165;
-      const cardHeight = 90;
-      const gap = 10;
+      // ── Three info cards ──
+      y += 8;
+      const cardY = y;
+      const cardWidth = (contentWidth - 20) / 3;
+      const cardHeight = 110;
+      const cardGap = 10;
 
-      // Card 1: Vendor
-      doc.roundedRect(50, cardY, cardWidth, cardHeight, 5).stroke();
-      doc.font('Helvetica-Bold').fontSize(9).text('VENDOR', 55, cardY + 5, { width: cardWidth - 10 });
-      doc.font('Helvetica').fontSize(8);
-      doc.text(`Name: ${po.vendor?.name ?? '—'}`, 55, cardY + 20, { width: cardWidth - 10 });
-      doc.text(`Contact: ${po.vendor?.phone ?? po.vendor?.contactPersonPhone ?? '—'}`, 55, cardY + 33, { width: cardWidth - 10 });
-      const vendorAddr = po.vendor?.address ?? '—';
-      doc.text(`Address: ${vendorAddr}`, 55, cardY + 46, { width: cardWidth - 10, height: 40 });
+      // Helper to draw a card
+      function drawCard(x: number, label: string, lines: { label: string; value: string }[], valueHeight: number) {
+        doc.roundedRect(x, cardY, cardWidth, cardHeight, 6).fillAndStroke(LIGHT_BG, BORDER);
+        doc.rect(x, cardY, cardWidth, 22).fill(PRIMARY);
+        doc.roundedRect(x, cardY, cardWidth, 6, 6).fill(PRIMARY);
+        doc.rect(x, cardY + 4, cardWidth, 18).fill(PRIMARY);
+        doc.fillColor(WHITE).fontSize(8).font('Helvetica-Bold').text(label, x + 8, cardY + 7, { width: cardWidth - 16 });
+        let ly = cardY + 30;
+        for (const line of lines) {
+          doc.fillColor(TEXT_MUTED).fontSize(7).font('Helvetica').text(line.label, x + 8, ly, { width: cardWidth - 16 });
+          doc.fillColor(TEXT_DARK).fontSize(8).font('Helvetica-Bold').text(line.value, x + 8, ly + 10, { width: cardWidth - 16, height: valueHeight });
+          ly += 10 + valueHeight + 4;
+        }
+      }
 
-      // Card 2: Bill To
-      const card2X = 50 + cardWidth + gap;
-      doc.roundedRect(card2X, cardY, cardWidth, cardHeight, 5).stroke();
-      doc.font('Helvetica-Bold').fontSize(9).text('BILL TO', card2X + 5, cardY + 5, { width: cardWidth - 10 });
-      doc.font('Helvetica').fontSize(8);
-      doc.text(`Office Address:`, card2X + 5, cardY + 20, { width: cardWidth - 10 });
-      doc.text(po.project?.officeAddress ?? '—', card2X + 5, cardY + 33, { width: cardWidth - 10, height: 55 });
+      drawCard(margin, 'VENDOR', [
+        { label: 'Name', value: po.vendor?.name ?? '—' },
+        { label: 'Contact', value: po.vendor?.phone ?? po.vendor?.contactPersonPhone ?? '—' },
+        { label: 'Address', value: po.vendor?.address ?? '—' },
+      ], 22);
 
-      // Card 3: Delivery Address
-      const card3X = card2X + cardWidth + gap;
-      doc.roundedRect(card3X, cardY, cardWidth, cardHeight, 5).stroke();
-      doc.font('Helvetica-Bold').fontSize(9).text('DELIVERY ADDRESS', card3X + 5, cardY + 5, { width: cardWidth - 10 });
-      doc.font('Helvetica').fontSize(8);
-      doc.text(`Hospital Address:`, card3X + 5, cardY + 20, { width: cardWidth - 10 });
-      doc.text(po.project?.hospitalAddress ?? '—', card3X + 5, cardY + 33, { width: cardWidth - 10, height: 55 });
+      drawCard(margin + cardWidth + cardGap, 'BILL TO', [
+        { label: 'Office Address', value: po.project?.officeAddress ?? '—' },
+      ], 55);
 
-      doc.y = cardY + cardHeight + 20;
+      drawCard(margin + (cardWidth + cardGap) * 2, 'DELIVERY ADDRESS', [
+        { label: 'Hospital Address', value: po.project?.hospitalAddress ?? '—' },
+      ], 55);
 
-      // Items table
-      doc.font('Helvetica-Bold').fontSize(10).text('Items', 50, doc.y);
-      doc.moveDown(0.5);
+      y = cardY + cardHeight + 20;
 
-      const tableY = doc.y;
-      const colX = { sno: 50, desc: 90, qty: 280, unit: 340, price: 390, total: 470 };
-      const colWidths = { sno: 40, desc: 190, qty: 60, unit: 50, price: 80, total: 80 };
+      // ── Items table ──
+      doc.fillColor(PRIMARY).fontSize(12).font('Helvetica-Bold').text('Items', margin, y);
+      y += 20;
+
+      const colX = { sno: margin, desc: margin + 35, qty: margin + 280, unit: margin + 340, price: margin + 390, total: margin + 470 };
+      const colWidths = { sno: 35, desc: 245, qty: 60, unit: 50, price: 80, total: 85 };
+      const tableWidth = contentWidth;
+      const headerHeight = 24;
+      const rowHeight = 22;
 
       // Table header
-      doc.font('Helvetica-Bold').fontSize(9);
-      doc.rect(50, tableY, 500, 20).fillAndStroke('#f0f0f0', '#ccc');
-      doc.fillColor('black');
-      doc.text('S.no', colX.sno + 2, tableY + 5, { width: colWidths.sno - 4 });
-      doc.text('Description', colX.desc + 2, tableY + 5, { width: colWidths.desc - 4 });
-      doc.text('Quantity', colX.qty + 2, tableY + 5, { width: colWidths.qty - 4 });
-      doc.text('Unit', colX.unit + 2, tableY + 5, { width: colWidths.unit - 4 });
-      doc.text('Unit Price', colX.price + 2, tableY + 5, { width: colWidths.price - 4 });
-      doc.text('Total Amount', colX.total + 2, tableY + 5, { width: colWidths.total - 4 });
+      doc.rect(margin, y, tableWidth, headerHeight).fill(PRIMARY);
+      doc.fillColor(WHITE).fontSize(9).font('Helvetica-Bold');
+      doc.text('S.no', colX.sno + 4, y + 7, { width: colWidths.sno - 8, align: 'center' });
+      doc.text('Description', colX.desc + 4, y + 7, { width: colWidths.desc - 8 });
+      doc.text('Quantity', colX.qty + 4, y + 7, { width: colWidths.qty - 8, align: 'center' });
+      doc.text('Unit', colX.unit + 4, y + 7, { width: colWidths.unit - 8, align: 'center' });
+      doc.text('Unit Price', colX.price + 4, y + 7, { width: colWidths.price - 8, align: 'right' });
+      doc.text('Total Amount', colX.total + 4, y + 7, { width: colWidths.total - 8, align: 'right' });
+      y += headerHeight;
 
       // Table rows
-      doc.font('Helvetica').fontSize(8);
-      let rowY = tableY + 20;
+      doc.fontSize(9).font('Helvetica');
       po.items.forEach((item, idx) => {
-        if (idx % 2 === 1) {
-          doc.rect(50, rowY, 500, 18).fill('#f9f9f9');
-          doc.fillColor('black');
+        if (idx % 2 === 0) {
+          doc.rect(margin, y, tableWidth, rowHeight).fill(WHITE);
+        } else {
+          doc.rect(margin, y, tableWidth, rowHeight).fill(PRIMARY_LIGHT);
         }
-        doc.text(String(idx + 1), colX.sno + 2, rowY + 4, { width: colWidths.sno - 4 });
-        doc.text(item.materialName, colX.desc + 2, rowY + 4, { width: colWidths.desc - 4 });
-        doc.text(String(item.quantity), colX.qty + 2, rowY + 4, { width: colWidths.qty - 4 });
-        doc.text(item.unit ?? '', colX.unit + 2, rowY + 4, { width: colWidths.unit - 4 });
-        doc.text(`Rs. ${Number(item.unitPrice).toFixed(2)}`, colX.price + 2, rowY + 4, { width: colWidths.price - 4 });
-        doc.text(`Rs. ${Number(item.amount).toFixed(2)}`, colX.total + 2, rowY + 4, { width: colWidths.total - 4 });
-        rowY += 18;
+        doc.fillColor(TEXT_DARK);
+        doc.text(String(idx + 1), colX.sno + 4, y + 6, { width: colWidths.sno - 8, align: 'center' });
+        doc.text(item.materialName, colX.desc + 4, y + 6, { width: colWidths.desc - 8 });
+        doc.text(String(item.quantity), colX.qty + 4, y + 6, { width: colWidths.qty - 8, align: 'center' });
+        doc.text(item.unit ?? '', colX.unit + 4, y + 6, { width: colWidths.unit - 8, align: 'center' });
+        doc.text(`Rs. ${Number(item.unitPrice).toFixed(2)}`, colX.price + 4, y + 6, { width: colWidths.price - 8, align: 'right' });
+        doc.text(`Rs. ${Number(item.amount).toFixed(2)}`, colX.total + 4, y + 6, { width: colWidths.total - 8, align: 'right' });
+        // Row border
+        doc.rect(margin, y, tableWidth, rowHeight).stroke(BORDER);
+        y += rowHeight;
       });
+      // Outer table border
+      doc.rect(margin, y - po.items.length * rowHeight, tableWidth, po.items.length * rowHeight + headerHeight).stroke(PRIMARY);
 
-      // Totals
-      rowY += 10;
-      doc.font('Helvetica').fontSize(9);
-      doc.text(`Total: Rs. ${Number(po.totalAmount).toFixed(2)}`, 350, rowY);
-      rowY += 15;
+      // ── Totals box ──
+      y += 15;
+      const totalsX = margin + tableWidth - 220;
+      const totalsWidth = 220;
+      const totalLines: { label: string; value: string; bold?: boolean }[] = [
+        { label: 'Subtotal', value: `Rs. ${Number(po.totalAmount).toFixed(2)}` },
+      ];
       if (Number(po.gstAmount) > 0) {
-        doc.text(`GST: Rs. ${Number(po.gstAmount).toFixed(2)}`, 350, rowY);
-        rowY += 15;
+        totalLines.push({ label: 'GST', value: `Rs. ${Number(po.gstAmount).toFixed(2)}` });
       }
-      doc.font('Helvetica-Bold').fontSize(10);
-      doc.text(`Grand Total: Rs. ${Number(po.grandTotal).toFixed(2)}`, 350, rowY);
+      totalLines.push({ label: 'Grand Total', value: `Rs. ${Number(po.grandTotal).toFixed(2)}`, bold: true });
 
-      // Approved by / Created by
-      rowY += 40;
-      doc.font('Helvetica').fontSize(9);
-      const approvedStep = po.approvalWorkflow?.steps.find((s) => s.status === 'APPROVED');
-      const approvedBy = approvedStep?.approverUser?.name ?? '—';
-      doc.text(`Approved By: ${approvedBy}`, 50, rowY);
-      doc.text(`Created By: ${po.createdByUser?.name ?? '—'}`, 300, rowY);
-      rowY += 15;
-      doc.text(`Date & Time: ${new Date(po.createdAt).toLocaleString()}`, 50, rowY);
+      const totalsHeight = totalLines.length * 22 + 12;
+      doc.roundedRect(totalsX, y, totalsWidth, totalsHeight, 6).fillAndStroke(LIGHT_BG, BORDER);
+      let ty = y + 8;
+      for (const t of totalLines) {
+        if (t.bold) {
+          doc.fillColor(PRIMARY).fontSize(11).font('Helvetica-Bold');
+          // Highlight grand total row
+          doc.rect(totalsX, ty - 4, totalsWidth, 22).fill(PRIMARY_LIGHT);
+          doc.fillColor(PRIMARY);
+        } else {
+          doc.fillColor(TEXT_MUTED).fontSize(9).font('Helvetica');
+        }
+        doc.text(t.label, totalsX + 12, ty, { width: 120 });
+        doc.fillColor(t.bold ? PRIMARY : TEXT_DARK).font(t.bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(t.bold ? 11 : 9);
+        doc.text(t.value, totalsX + 130, ty, { width: totalsWidth - 140, align: 'right' });
+        ty += 22;
+      }
+
+      // ── Approval signatures ──
+      y = ty + 25;
+      doc.fillColor(PRIMARY).fontSize(10).font('Helvetica-Bold').text('Approval & Authorization', margin, y);
+      y += 18;
+
+      const approvedSteps = po.approvalWorkflow?.steps.filter((s) => s.status === 'APPROVED') ?? [];
+      const sigBoxWidth = (contentWidth - 20) / 3;
+      const sigBoxHeight = 60;
+
+      // Signature boxes
+      for (let i = 0; i < 3; i++) {
+        const sx = margin + i * (sigBoxWidth + 10);
+        doc.roundedRect(sx, y, sigBoxWidth, sigBoxHeight, 4).stroke(BORDER);
+        const step = approvedSteps[i];
+        doc.fillColor(TEXT_MUTED).fontSize(8).font('Helvetica').text(`Approver ${i + 1}`, sx + 8, y + 6, { width: sigBoxWidth - 16 });
+        if (step) {
+          doc.fillColor(TEXT_DARK).fontSize(9).font('Helvetica-Bold').text(step.approverUser?.name ?? '—', sx + 8, y + 20, { width: sigBoxWidth - 16 });
+          doc.fillColor(TEXT_MUTED).fontSize(7).font('Helvetica').text(step.approverUser?.role?.replace(/_/g, ' ') ?? '', sx + 8, y + 34, { width: sigBoxWidth - 16 });
+          doc.fillColor('#27ae60').fontSize(7).font('Helvetica-Bold').text('APPROVED', sx + 8, y + 46, { width: sigBoxWidth - 16 });
+        } else {
+          doc.fillColor(TEXT_MUTED).fontSize(8).font('Helvetica-Oblique').text('Pending', sx + 8, y + 30, { width: sigBoxWidth - 16 });
+        }
+      }
+
+      // ── Footer ──
+      y += sigBoxHeight + 20;
+      doc.fillColor(TEXT_MUTED).fontSize(8).font('Helvetica').text(
+        `Generated on ${new Date().toLocaleString()}  |  Created by ${po.createdByUser?.name ?? '—'}`,
+        margin, y, { width: contentWidth, align: 'center' }
+      );
+      // Footer line
+      doc.moveTo(margin, y + 14).lineTo(pageWidth - margin, y + 14).stroke(PRIMARY);
+      doc.fillColor(TEXT_MUTED).fontSize(7).font('Helvetica').text(
+        'This is a computer-generated document and does not require a physical signature.',
+        margin, y + 18, { width: contentWidth, align: 'center' }
+      );
 
       doc.end();
     } catch (error) {

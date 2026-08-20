@@ -20,6 +20,7 @@ import labourRoutes from './labour.routes';
 import dropdownOptionRoutes from './dropdown-option.routes';
 import attachmentRoutes from './attachment.routes';
 import settingsRoutes from './settings.routes';
+import ocrRoutes from './ocr.routes';
 
 const router = Router();
 
@@ -44,5 +45,6 @@ router.use('/labour', labourRoutes);
 router.use('/dropdown-options', dropdownOptionRoutes);
 router.use('/attachments', attachmentRoutes);
 router.use('/settings', settingsRoutes);
+router.use('/ocr', ocrRoutes);
 
 export default router;

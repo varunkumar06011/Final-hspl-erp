@@ -26,6 +26,9 @@ const envSchema = z.object({
   STORAGE_MODE: z.enum(['local', 'supabase']).default('local'),
   // Only required when STORAGE_MODE=local
   LOCAL_STORAGE_PATH: z.string().optional(),
+
+  // Groq (OCR auto-fill via Llama 3.2 Vision)
+  GROQ_API_KEY: z.string().optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);

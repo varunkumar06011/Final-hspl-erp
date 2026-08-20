@@ -1,9 +1,12 @@
-Add total budget editing to settings page
+Redesign PO PDF: professional layout with colors, no overlapping
 
-- Total budget field added to Project Settings card on Settings page
-- Backend GET /settings now returns totalBudget
-- Backend PATCH /settings accepts totalBudget
-- Schema updated to validate totalBudget as a non-negative number
+- Dark blue header band with hospital name and PO number badge
+- Color-coded info cards (Vendor, Bill To, Delivery Address) with blue headers
+- Styled items table with blue header row and alternating row colors
+- Totals box with highlighted grand total row
+- Approval signature boxes showing approver names and status
+- Professional footer with generation timestamp
+- All text uses relative positioning to prevent overlapping
 
 Generated with [Devin](https://devin.ai)
 

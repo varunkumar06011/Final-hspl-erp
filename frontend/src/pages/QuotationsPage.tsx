@@ -45,6 +45,7 @@ import { useAuthStore } from '../stores/authStore';
 import { downloadFile } from '../utils/file';
 import AcknowledgementCheckbox from '../components/AcknowledgementCheckbox';
 import ApprovalActionDialog from '../components/ApprovalActionDialog';
+import OcrAutoFill, { type OcrQuotationData } from '../components/OcrAutoFill';
 
 interface QuotationItem {
   id?: string;
