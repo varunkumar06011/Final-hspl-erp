@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+﻿import { useState, useCallback } from 'react';
 import {
   Box,
   Typography,
@@ -12,7 +12,6 @@ import {
   TableRow,
   TablePagination,
   TextField,
-  Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
@@ -23,6 +22,8 @@ import {
   InputAdornment,
   MenuItem,
 } from '@mui/material';
+import ResponsiveDialog from '../components/ResponsiveDialog';
+import WrappingMenuItem from '../components/WrappingMenuItem';
 import {
   Add as AddIcon,
   Refresh as RefreshIcon,
@@ -363,7 +364,7 @@ export default function GatePassesPage() {
       </Card>
 
       {/* Create Gate Pass Dialog */}
-      <Dialog open={createOpen} onClose={() => { setCreateOpen(false); resetForm(); }} maxWidth="sm" fullWidth>
+      <ResponsiveDialog open={createOpen} onClose={() => { setCreateOpen(false); resetForm(); }} maxWidth="sm" fullWidth>
         <DialogTitle>Create Gate Pass</DialogTitle>
         <DialogContent>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
@@ -378,7 +379,7 @@ export default function GatePassesPage() {
               helperText={approvedPOs?.length === 0 ? 'No approved POs available' : undefined}
             >
               {approvedPOs?.map((po) => (
-                <MenuItem key={po.id} value={po.id}>{po.poNumber} — {po.vendor.vendorCode} - {po.vendor.name}</MenuItem>
+                <WrappingMenuItem key={po.id} value={po.id} primary={`${po.poNumber} — ${po.vendor.vendorCode} - ${po.vendor.name}`} />
               ))}
             </TextField>
 
@@ -436,7 +437,7 @@ export default function GatePassesPage() {
               helperText="A real OTP will be sent to this person's phone via Firebase. They will tell you the OTP."
             >
               {heads?.map((h) => (
-                <MenuItem key={h.id} value={h.id}>{h.name} ({h.role.replace(/_/g, ' ')}) — {h.phone}</MenuItem>
+                <WrappingMenuItem key={h.id} value={h.id} primary={`${h.name} (${h.role.replace(/_/g, ' ')})`} secondary={h.phone} />
               ))}
             </TextField>
           </Box>
@@ -451,10 +452,10 @@ export default function GatePassesPage() {
             {createMutation.isPending || sendingOtp ? <CircularProgress size={20} /> : 'Create & Send OTP'}
           </Button>
         </DialogActions>
-      </Dialog>
+      </ResponsiveDialog>
 
       {/* OTP Verification Dialog */}
-      <Dialog open={!!otpDialogOpen} onClose={() => { setOtpDialogOpen(null); setOtpInput(''); }} maxWidth="xs" fullWidth>
+      <ResponsiveDialog open={!!otpDialogOpen} onClose={() => { setOtpDialogOpen(null); setOtpInput(''); }} maxWidth="xs" fullWidth>
         <DialogTitle>Enter OTP for {otpDialogOpen?.passNumber}</DialogTitle>
         <DialogContent>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
@@ -493,7 +494,7 @@ export default function GatePassesPage() {
             {verifyOtpMutation.isPending ? <CircularProgress size={20} /> : 'Verify & Approve'}
           </Button>
         </DialogActions>
-      </Dialog>
+      </ResponsiveDialog>
     </Box>
   );
 }

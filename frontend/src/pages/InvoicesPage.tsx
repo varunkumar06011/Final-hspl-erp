@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+﻿import { useState, useEffect, useRef } from 'react';
 import {
   Box,
   Typography,
@@ -12,7 +12,6 @@ import {
   TableRow,
   TablePagination,
   TextField,
-  Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
@@ -27,6 +26,8 @@ import {
   AccordionDetails,
   Snackbar,
 } from '@mui/material';
+import ResponsiveDialog from '../components/ResponsiveDialog';
+import WrappingMenuItem from '../components/WrappingMenuItem';
 import {
   Add as AddIcon,
   Refresh as RefreshIcon,
@@ -552,7 +553,7 @@ export default function InvoicesPage() {
       )}
 
       {/* Create Invoice Dialog */}
-      <Dialog open={createOpen} onClose={() => { setCreateOpen(false); resetForm(); }} maxWidth="md" fullWidth>
+      <ResponsiveDialog open={createOpen} onClose={() => { setCreateOpen(false); resetForm(); }} maxWidth="md" fullWidth>
         <DialogTitle>Create Vendor Invoice</DialogTitle>
         <DialogContent>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
@@ -567,7 +568,7 @@ export default function InvoicesPage() {
               required
             >
               {vendors.map((v) => (
-                <MenuItem key={v.id} value={v.id}>{v.vendorCode} - {v.name}</MenuItem>
+                <WrappingMenuItem key={v.id} value={v.id} primary={`${v.vendorCode} - ${v.name}`} />
               ))}
             </TextField>
 
@@ -584,7 +585,7 @@ export default function InvoicesPage() {
               >
                 <MenuItem value="">None</MenuItem>
                 {approvedPOs?.map((po: { id: string; poNumber: string; grandTotal: number }) => (
-                  <MenuItem key={po.id} value={po.id}>{po.poNumber} — {formatCurrency(po.grandTotal)}</MenuItem>
+                  <WrappingMenuItem key={po.id} value={po.id} primary={po.poNumber} secondary={formatCurrency(po.grandTotal)} />
                 ))}
               </TextField>
             )}
@@ -674,14 +675,14 @@ export default function InvoicesPage() {
                 {hasAdvance ? '✓ Advance Paid' : 'Add Advance Payment'}
               </Button>
               {hasAdvance && (
-                <Box sx={{ display: 'flex', gap: 2, mt: 1, flexWrap: 'wrap' }}>
+                <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, mt: 1, flexWrap: 'wrap' }}>
                   <TextField
                     label="Advance Amount"
                     type="number"
                     value={advancePaid}
                     onChange={(e) => setAdvancePaid(e.target.value)}
                     size="small"
-                    sx={{ flex: 1 }}
+                    sx={{ flex: 1, minWidth: 0 }}
                   />
                   <TextField
                     select
@@ -689,7 +690,7 @@ export default function InvoicesPage() {
                     value={advanceType}
                     onChange={(e) => setAdvanceType(e.target.value)}
                     size="small"
-                    sx={{ flex: 1 }}
+                    sx={{ flex: 1, minWidth: 0 }}
                   >
                     {ADVANCE_TYPES.map((t) => <MenuItem key={t} value={t}>{t}</MenuItem>)}
                   </TextField>
@@ -699,7 +700,7 @@ export default function InvoicesPage() {
                       value={advanceOtherType}
                       onChange={(e) => setAdvanceOtherType(e.target.value)}
                       size="small"
-                      sx={{ flex: 1 }}
+                      sx={{ flex: 1, minWidth: 0 }}
                     />
                   )}
                 </Box>
@@ -713,7 +714,7 @@ export default function InvoicesPage() {
               value={deliveryDate}
               onChange={(e) => setDeliveryDate(e.target.value)}
               size="small"
-              sx={{ width: 250 }}
+              sx={{ width: { xs: '100%', sm: 250 } }}
               InputLabelProps={{ shrink: true }}
             />
 
@@ -746,7 +747,7 @@ export default function InvoicesPage() {
             {createMutation.isPending ? <CircularProgress size={20} /> : 'Create Invoice'}
           </Button>
         </DialogActions>
-      </Dialog>
+      </ResponsiveDialog>
 
       {/* Approval Popup for Creator */}
       <Snackbar

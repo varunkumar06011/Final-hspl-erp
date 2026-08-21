@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+﻿import { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Box,
@@ -13,7 +13,6 @@ import {
   TableRow,
   TablePagination,
   TextField,
-  Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
@@ -28,6 +27,8 @@ import {
   AccordionDetails,
   Snackbar,
 } from '@mui/material';
+import ResponsiveDialog from '../components/ResponsiveDialog';
+import WrappingMenuItem from '../components/WrappingMenuItem';
 import {
   Add as AddIcon,
   Refresh as RefreshIcon,
@@ -436,7 +437,7 @@ export default function PurchaseOrdersPage() {
       )}
 
       {/* Create PO Dialog */}
-      <Dialog open={createOpen} onClose={() => { setCreateOpen(false); resetForm(); }} maxWidth="md" fullWidth sx={{ '& .MuiDialog-paper': { margin: { xs: 1 } } }}>
+      <ResponsiveDialog open={createOpen} onClose={() => { setCreateOpen(false); resetForm(); }} maxWidth="md" fullWidth sx={{ '& .MuiDialog-paper': { margin: { xs: 1 } } }}>
         <DialogTitle>Create Purchase Order</DialogTitle>
         <DialogContent>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1, flexWrap: 'wrap' }}>
@@ -451,7 +452,7 @@ export default function PurchaseOrdersPage() {
               required
             >
               {vendors.map((v) => (
-                <MenuItem key={v.id} value={v.id}>{v.vendorCode} - {v.name}</MenuItem>
+                <WrappingMenuItem key={v.id} value={v.id} primary={`${v.vendorCode} - ${v.name}`} />
               ))}
             </TextField>
 
@@ -468,7 +469,7 @@ export default function PurchaseOrdersPage() {
                 helperText={approvedQuotations?.length === 0 ? 'No approved quotations for this vendor' : undefined}
               >
                 {approvedQuotations?.map((q) => (
-                  <MenuItem key={q.id} value={q.id}>{q.quotationNumber} — {formatCurrency(q.grandTotal)}</MenuItem>
+                  <WrappingMenuItem key={q.id} value={q.id} primary={q.quotationNumber} secondary={formatCurrency(q.grandTotal)} />
                 ))}
               </TextField>
             )}
@@ -503,17 +504,17 @@ export default function PurchaseOrdersPage() {
                     </TableBody>
                   </Table>
                 </TableContainer>
-                <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 1, mt: 1 }}>
-                  <Typography variant="body2">Total: <strong>{formatCurrency(quotationTotal)}</strong></Typography>
+                <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: { xs: 'stretch', sm: 'flex-end' }, gap: 1, mt: 1 }}>
+                  <Typography variant="body2" sx={{ textAlign: { xs: 'left', sm: 'right' } }}>Total: <strong>{formatCurrency(quotationTotal)}</strong></Typography>
                   <TextField
                     label="GST Amount (optional)"
                     type="number"
                     value={gstAmount}
                     onChange={(e) => setGstAmount(e.target.value)}
                     size="small"
-                    sx={{ width: 200 }}
+                    sx={{ width: { xs: '100%', sm: 200 } }}
                   />
-                  <Typography variant="body2">Grand Total: <strong>{formatCurrency(grandTotal)}</strong></Typography>
+                  <Typography variant="body2" sx={{ textAlign: { xs: 'left', sm: 'right' } }}>Grand Total: <strong>{formatCurrency(grandTotal)}</strong></Typography>
                 </Box>
               </Box>
             )}
@@ -534,7 +535,7 @@ export default function PurchaseOrdersPage() {
             {createMutation.isPending ? <CircularProgress size={20} /> : 'Create PO'}
           </Button>
         </DialogActions>
-      </Dialog>
+      </ResponsiveDialog>
 
       {/* Approval Popup for Creator */}
       <Snackbar

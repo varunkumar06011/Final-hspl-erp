@@ -42,6 +42,19 @@ export const theme = createTheme({
     },
   },
   components: {
+    MuiCssBaseline: {
+      styleOverrides: {
+        html: {
+          overflowX: 'hidden',
+          maxWidth: '100vw',
+        },
+        body: {
+          overflowX: 'hidden',
+          maxWidth: '100vw',
+          overflowWrap: 'break-word',
+        },
+      },
+    },
     MuiButton: {
       styleOverrides: {
         root: {
@@ -55,6 +68,7 @@ export const theme = createTheme({
         root: {
           borderRadius: 12,
           boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+          overflow: 'hidden',
         },
       },
     },
@@ -68,6 +82,51 @@ export const theme = createTheme({
           '&[type=number]': {
             '-moz-appearance': 'textfield',
           },
+        },
+      },
+    },
+    MuiDialogContent: {
+      styleOverrides: {
+        root: {
+          paddingTop: '12px',
+        },
+      },
+    },
+    MuiDialogActions: {
+      styleOverrides: {
+        root: {
+          padding: '12px 16px',
+          gap: 1,
+          '& .MuiButton-root': {
+            minWidth: { xs: 88, sm: 96 },
+          },
+        },
+      },
+    },
+    MuiMenuItem: {
+      styleOverrides: {
+        root: {
+          whiteSpace: 'normal',
+          wordBreak: 'break-word',
+          overflowWrap: 'break-word',
+          minHeight: 'auto',
+          paddingTop: 8,
+          paddingBottom: 8,
+        },
+      },
+    },
+    MuiTableCell: {
+      styleOverrides: {
+        root: {
+          wordBreak: 'break-word',
+          overflowWrap: 'break-word',
+        },
+      },
+    },
+    MuiTypography: {
+      styleOverrides: {
+        root: {
+          overflowWrap: 'break-word',
         },
       },
     },

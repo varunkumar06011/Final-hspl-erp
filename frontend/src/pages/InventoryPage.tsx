@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import {
   Box,
   Typography,
@@ -12,7 +12,6 @@ import {
   TableRow,
   TablePagination,
   TextField,
-  Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
@@ -25,6 +24,7 @@ import {
   Tabs,
   Tab,
 } from '@mui/material';
+import ResponsiveDialog from '../components/ResponsiveDialog';
 import {
   Add as AddIcon,
   Edit as EditIcon,
@@ -265,7 +265,7 @@ export default function InventoryPage() {
         />
       </Card>
 
-      <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="sm" fullWidth>
+      <ResponsiveDialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>{editing ? 'Edit Item' : 'New Inventory Item'}</DialogTitle>
         <DialogContent>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
@@ -290,9 +290,9 @@ export default function InventoryPage() {
             {createMutation.isPending || updateMutation.isPending ? <CircularProgress size={20} /> : editing ? 'Update' : 'Create'}
           </Button>
         </DialogActions>
-      </Dialog>
+      </ResponsiveDialog>
 
-      <Dialog open={txnDialogOpen} onClose={() => setTxnDialogOpen(false)} maxWidth="sm" fullWidth>
+      <ResponsiveDialog open={txnDialogOpen} onClose={() => setTxnDialogOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Stock Movement</DialogTitle>
         <DialogContent>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
@@ -311,16 +311,16 @@ export default function InventoryPage() {
             {txnMutation.isPending ? <CircularProgress size={20} /> : 'Record'}
           </Button>
         </DialogActions>
-      </Dialog>
+      </ResponsiveDialog>
 
-      <Dialog open={!!deleteConfirm} onClose={() => setDeleteConfirm(null)}>
+      <ResponsiveDialog open={!!deleteConfirm} onClose={() => setDeleteConfirm(null)}>
         <DialogTitle>Delete Item?</DialogTitle>
         <DialogContent><Typography>This action cannot be undone.</Typography></DialogContent>
         <DialogActions>
           <Button onClick={() => setDeleteConfirm(null)}>Cancel</Button>
           <Button color="error" variant="contained" onClick={() => deleteConfirm && deleteMutation.mutate(deleteConfirm)} disabled={deleteMutation.isPending}>Delete</Button>
         </DialogActions>
-      </Dialog>
+      </ResponsiveDialog>
     </Box>
   );
 }

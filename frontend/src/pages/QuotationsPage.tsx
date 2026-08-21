@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useEffect } from 'react';
+﻿import { useState, useMemo, useRef, useEffect } from 'react';
 import {
   Box,
   Typography,
@@ -12,7 +12,6 @@ import {
   TableRow,
   TablePagination,
   TextField,
-  Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
@@ -27,6 +26,8 @@ import {
   AccordionDetails,
   Checkbox,
 } from '@mui/material';
+import ResponsiveDialog from '../components/ResponsiveDialog';
+import WrappingMenuItem from '../components/WrappingMenuItem';
 import {
   Add as AddIcon,
   Refresh as RefreshIcon,
@@ -492,7 +493,7 @@ export default function QuotationsPage() {
       )}
 
       {/* Create / Edit Dialog */}
-      <Dialog open={createOpen || editOpen} onClose={() => { setCreateOpen(false); setEditOpen(false); setEditing(null); }} maxWidth="md" fullWidth sx={{ '& .MuiDialog-paper': { margin: { xs: 1 } } }}>
+      <ResponsiveDialog open={createOpen || editOpen} onClose={() => { setCreateOpen(false); setEditOpen(false); setEditing(null); }} maxWidth="md" fullWidth sx={{ '& .MuiDialog-paper': { margin: { xs: 1 } } }}>
         <DialogTitle>{editOpen ? `Edit Quotation ${editing?.quotationNumber ?? ''}` : 'Create Quotation'}</DialogTitle>
         <DialogContent>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1, flexWrap: 'wrap' }}>
@@ -508,7 +509,7 @@ export default function QuotationsPage() {
               required
             >
               {vendors.map((v) => (
-                <MenuItem key={v.id} value={v.id}>{v.vendorCode} - {v.name}</MenuItem>
+                <WrappingMenuItem key={v.id} value={v.id} primary={`${v.vendorCode} - ${v.name}`} />
               ))}
             </TextField>
 
@@ -522,66 +523,79 @@ export default function QuotationsPage() {
                 {lineItems.map((item, index) => {
                   const checked = selectedMaterialNames.has(item.materialName);
                   return (
-                    <Box key={index} sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
-                      <Checkbox
-                        checked={checked}
-                        onChange={(e) => {
-                          const newSet = new Set(selectedMaterialNames);
-                          if (e.target.checked) {
-                            newSet.add(item.materialName);
-                          } else {
-                            newSet.delete(item.materialName);
-                          }
-                          setSelectedMaterialNames(newSet);
-                        }}
-                        size="small"
-                      />
-                      <TextField
-                        label="Material"
-                        value={item.materialName}
-                        size="small"
-                        disabled
-                        sx={{ flex: 2 }}
-                      />
-                      <TextField
-                        label="Qty"
-                        type="number"
-                        value={item.quantity}
-                        onChange={(e) => updateLineItem(index, 'quantity', Number(e.target.value))}
-                        size="small"
-                        sx={{ flex: 1 }}
-                      />
-                      <TextField
-                        label="Unit Price"
-                        type="number"
-                        value={item.unitPrice}
-                        onChange={(e) => updateLineItem(index, 'unitPrice', Number(e.target.value))}
-                        size="small"
-                        sx={{ flex: 1 }}
-                      />
-                      <TextField
-                        label="Amount"
-                        value={item.amount}
-                        size="small"
-                        disabled
-                        sx={{ flex: 1 }}
-                      />
+                    <Box key={index} sx={{
+                      display: 'flex',
+                      flexDirection: { xs: 'column', sm: 'row' },
+                      gap: 1,
+                      alignItems: { xs: 'stretch', sm: 'center' },
+                      py: { xs: 1, sm: 0 },
+                      borderBottom: { xs: '1px solid', sm: 'none' },
+                      borderColor: { xs: 'divider', sm: 'transparent' },
+                    }}>
+                      <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', minWidth: 0 }}>
+                        <Checkbox
+                          checked={checked}
+                          onChange={(e) => {
+                            const newSet = new Set(selectedMaterialNames);
+                            if (e.target.checked) {
+                              newSet.add(item.materialName);
+                            } else {
+                              newSet.delete(item.materialName);
+                            }
+                            setSelectedMaterialNames(newSet);
+                          }}
+                          size="small"
+                          sx={{ flexShrink: 0 }}
+                        />
+                        <TextField
+                          label="Material"
+                          value={item.materialName}
+                          size="small"
+                          disabled
+                          sx={{ flex: 2, minWidth: 0 }}
+                        />
+                      </Box>
+                      <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', pl: { xs: 5.5, sm: 0 } }}>
+                        <TextField
+                          label="Qty"
+                          type="number"
+                          value={item.quantity}
+                          onChange={(e) => updateLineItem(index, 'quantity', Number(e.target.value))}
+                          size="small"
+                          sx={{ flex: 1, minWidth: 0 }}
+                        />
+                        <TextField
+                          label="Unit Price"
+                          type="number"
+                          value={item.unitPrice}
+                          onChange={(e) => updateLineItem(index, 'unitPrice', Number(e.target.value))}
+                          size="small"
+                          sx={{ flex: 1, minWidth: 0 }}
+                        />
+                        <TextField
+                          label="Amount"
+                          value={item.amount}
+                          size="small"
+                          disabled
+                          sx={{ flex: 1, minWidth: 0 }}
+                        />
+                      </Box>
                     </Box>
                   );
                 })}
 
                 {/* Totals */}
-                <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 1, mt: 1 }}>
-                  <Typography variant="body2">Total: <strong>{formatCurrency(totalAmount)}</strong></Typography>
+                <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: { xs: 'stretch', sm: 'flex-end' }, gap: 1, mt: 1 }}>
+                  <Typography variant="body2" sx={{ textAlign: { xs: 'left', sm: 'right' } }}>Total: <strong>{formatCurrency(totalAmount)}</strong></Typography>
                   <TextField
                     label="GST Amount (optional)"
                     type="number"
                     value={gstAmount}
                     onChange={(e) => setGstAmount(e.target.value)}
                     size="small"
-                    sx={{ width: 200 }}
+                    sx={{ width: { xs: '100%', sm: 200 } }}
                   />
-                  <Typography variant="body2">Grand Total: <strong>{formatCurrency(grandTotal)}</strong></Typography>
+                  <Typography variant="body2" sx={{ textAlign: { xs: 'left', sm: 'right' } }}>Grand Total: <strong>{formatCurrency(grandTotal)}</strong></Typography>
                 </Box>
               </Box>
             )}
@@ -627,7 +641,7 @@ export default function QuotationsPage() {
             {(createMutation.isPending || updateMutation.isPending) ? <CircularProgress size={20} /> : editOpen ? 'Update' : 'Create'}
           </Button>
         </DialogActions>
-      </Dialog>
+      </ResponsiveDialog>
 
       <ApprovalActionDialog
         open={approvalAction !== null}

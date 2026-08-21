@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+﻿import { useState, useRef } from 'react';
 import {
   Box,
   Typography,
@@ -12,7 +12,6 @@ import {
   TableRow,
   TablePagination,
   TextField,
-  Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
@@ -28,6 +27,7 @@ import {
   Select,
   Chip,
 } from '@mui/material';
+import ResponsiveDialog from '../components/ResponsiveDialog';
 import {
   Add as AddIcon,
   Refresh as RefreshIcon,
@@ -222,7 +222,7 @@ export default function DocumentsPage() {
       </Card>
 
       {/* Upload Dialog */}
-      <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="sm" fullWidth>
+      <ResponsiveDialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Upload Document</DialogTitle>
         <DialogContent>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1, flexWrap: 'wrap' }}>
@@ -267,7 +267,7 @@ export default function DocumentsPage() {
             {createMutation.isPending ? <CircularProgress size={20} /> : 'Upload'}
           </Button>
         </DialogActions>
-      </Dialog>
+      </ResponsiveDialog>
     </Box>
   );
 }

@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+﻿import { useState, useRef } from 'react';
 import {
   Box,
   Typography,
@@ -13,7 +13,6 @@ import {
   TableRow,
   TablePagination,
   TextField,
-  Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
@@ -29,6 +28,7 @@ import {
   Tabs,
   Tab,
 } from '@mui/material';
+import ResponsiveDialog from '../components/ResponsiveDialog';
 import {
   Add as AddIcon,
   Refresh as RefreshIcon,
@@ -499,7 +499,7 @@ export default function PaymentsPage() {
       )}
 
       {/* Create Invoice Payment Dialog */}
-      <Dialog open={!!invoicePayOpen} onClose={() => setInvoicePayOpen(null)} maxWidth="sm" fullWidth>
+      <ResponsiveDialog open={!!invoicePayOpen} onClose={() => setInvoicePayOpen(null)} maxWidth="sm" fullWidth>
         <DialogTitle>Create Payment Request for {invoicePayOpen?.invoiceCode}</DialogTitle>
         <DialogContent>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
@@ -568,10 +568,10 @@ export default function PaymentsPage() {
             {createInvoicePaymentMutation.isPending ? <CircularProgress size={20} /> : 'Create Payment Request'}
           </Button>
         </DialogActions>
-      </Dialog>
+      </ResponsiveDialog>
 
       {/* Create Daily Expense Dialog */}
-      <Dialog open={expenseOpen} onClose={() => setExpenseOpen(false)} maxWidth="sm" fullWidth>
+      <ResponsiveDialog open={expenseOpen} onClose={() => setExpenseOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Add Daily Expense</DialogTitle>
         <DialogContent>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
@@ -583,14 +583,14 @@ export default function PaymentsPage() {
               size="small"
               required
             />
-            <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+            <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, flexWrap: 'wrap' }}>
               <TextField
                 label="Amount"
                 type="number"
                 value={Number(expenseForm.amount ?? 0)}
                 onChange={(e) => setExpenseForm({ ...expenseForm, amount: Number(e.target.value) })}
                 size="small"
-                sx={{ flex: 1 }}
+                sx={{ flex: 1, minWidth: 0 }}
                 required
               />
               <TextField
@@ -599,20 +599,20 @@ export default function PaymentsPage() {
                 value={String(expenseForm.category ?? '')}
                 onChange={(e) => setExpenseForm({ ...expenseForm, category: e.target.value })}
                 size="small"
-                sx={{ flex: 1 }}
+                sx={{ flex: 1, minWidth: 0 }}
                 required
               >
                 {EXPENSE_CATEGORIES.map((c) => <MenuItem key={c} value={c}>{c}</MenuItem>)}
               </TextField>
             </Box>
-            <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+            <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, flexWrap: 'wrap' }}>
               <TextField
                 label="Date"
                 type="date"
                 value={String(expenseForm.expenseDate ?? '')}
                 onChange={(e) => setExpenseForm({ ...expenseForm, expenseDate: e.target.value })}
                 size="small"
-                sx={{ flex: 1 }}
+                sx={{ flex: 1, minWidth: 0 }}
                 InputLabelProps={{ shrink: true }}
               />
               <TextField
@@ -621,7 +621,7 @@ export default function PaymentsPage() {
                 value={String(expenseForm.paymentMode ?? PaymentMode.CASH)}
                 onChange={(e) => setExpenseForm({ ...expenseForm, paymentMode: e.target.value })}
                 size="small"
-                sx={{ flex: 1 }}
+                sx={{ flex: 1, minWidth: 0 }}
               >
                 {PAYMENT_MODES.map((m) => <MenuItem key={m} value={m}>{m.replace(/_/g, ' ')}</MenuItem>)}
               </TextField>
@@ -644,10 +644,10 @@ export default function PaymentsPage() {
             {createExpenseMutation.isPending ? <CircularProgress size={20} /> : 'Create Expense'}
           </Button>
         </DialogActions>
-      </Dialog>
+      </ResponsiveDialog>
 
       {/* Record Payment Dialog */}
-      <Dialog open={!!payOpen} onClose={() => setPayOpen(null)} maxWidth="sm" fullWidth>
+      <ResponsiveDialog open={!!payOpen} onClose={() => setPayOpen(null)} maxWidth="sm" fullWidth>
         <DialogTitle>Record Payment</DialogTitle>
         <DialogContent>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
@@ -701,7 +701,7 @@ export default function PaymentsPage() {
             {payMutation.isPending ? <CircularProgress size={20} /> : 'Record Payment'}
           </Button>
         </DialogActions>
-      </Dialog>
+      </ResponsiveDialog>
 
       <ApprovalActionDialog
         open={approvalAction !== null}

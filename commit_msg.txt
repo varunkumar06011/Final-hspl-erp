@@ -1,11 +1,40 @@
-Set default PIN 1234 for all users + change PIN in settings
+Mobile responsiveness + dropdown UX + PDF timestamp fix
 
-- Set all users without a PIN to default PIN 1234 (4 users updated)
-- New endpoint POST /auth/change-pin (requires auth, verifies old
-  PIN before setting new one, rejects same PIN)
-- Settings page: new "Change Login PIN" card with current/new/confirm
-  PIN fields, show/hide toggle, validation
-- Shared schema: changePinSchema added
+No business logic, APIs, DB schema, or workflows changed.
+
+ResponsiveDialog component (new):
+- Wraps MUI Dialog, goes fullScreen on mobile (<sm breakpoint)
+- Eliminates modal overflow, clipping, horizontal scroll on phones
+- Replaced <Dialog> with <ResponsiveDialog> in all 13 files that use dialogs
+
+WrappingMenuItem component (new):
+- MenuItem that wraps long text instead of clipping
+- Two-line layout: primary text + optional secondary (role/phone)
+- Applied to approver dropdown (name + role + phone), vendor dropdowns,
+  PO dropdown, quotation dropdown
+
+Multi-column form layouts — stack on mobile:
+- Quotation line items: Material/Qty/UnitPrice/Amount stack vertically
+  on mobile, stay inline on desktop
+- PO totals: GST field full-width on mobile, 200px on desktop
+- Invoice advance payment: Amount/Type/Other stack on mobile
+- Invoice delivery date: full-width on mobile, 250px on desktop
+- EntityPage materials list: Name/Price stack on mobile
+- Payments expense dialog: Amount/Category, Date/Mode stack on mobile
+
+Global theme overrides:
+- MuiCssBaseline: html/body overflowX hidden, maxWidth 100vw
+- MuiMenuItem: whiteSpace normal, wordBreak break-word (all dropdowns)
+- MuiTableCell: wordBreak break-word (all tables)
+- MuiTypography: overflowWrap break-word (all text)
+- MuiDialogActions: padding + gap for touch-friendly buttons
+- MuiDialogContent: consistent paddingTop
+
+PDF fixes (purchase-order.routes.ts):
+- Timestamp uses po.createdAt instead of new Date() — preview and
+  download now show identical timestamps (document instance time)
+- Removed "This is a computer-generated document and does not require
+  a physical signature." disclaimer from footer
 
 Generated with [Devin](https://devin.ai)
 
