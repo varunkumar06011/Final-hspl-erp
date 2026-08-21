@@ -1,11 +1,11 @@
-Fix signup flow: handle unregistered phone in check-pin + dev auto-create
+Set default PIN 1234 for all users + change PIN in settings
 
-- handleCheckPhone: in signup mode, 404 from check-pin is expected —
-  proceed to OTP flow instead of showing error
-- dev-login: auto-create user as SUPERVISOR if phone not found (dev
-  mode only), so signup works without Firebase
-- Reordered useCallback declarations (sendOtp before handleCheckPhone)
-  to fix block-scoped variable used before declaration
+- Set all users without a PIN to default PIN 1234 (4 users updated)
+- New endpoint POST /auth/change-pin (requires auth, verifies old
+  PIN before setting new one, rejects same PIN)
+- Settings page: new "Change Login PIN" card with current/new/confirm
+  PIN fields, show/hide toggle, validation
+- Shared schema: changePinSchema added
 
 Generated with [Devin](https://devin.ai)
 
