@@ -29,6 +29,7 @@ import {
   Tab,
 } from '@mui/material';
 import ResponsiveDialog from '../components/ResponsiveDialog';
+import ApprovalStepsDisplay from '../components/ApprovalStepsDisplay';
 import {
   Add as AddIcon,
   Refresh as RefreshIcon,
@@ -94,7 +95,9 @@ interface PendingInvoice {
   vendor: { id: string; name: string; vendorCode: string };
   totalAmount: number;
   advancePaid: number;
-  balanceDue: number;
+  installmentsPaid: number;
+  paidToDate: number;
+  outstanding: number;
   createdBy: string;
   createdAt: string;
 }
@@ -295,10 +298,10 @@ export default function PaymentsPage() {
           <CardContent>
             <Typography variant="h6" gutterBottom>Verified Invoices Awaiting Payment</Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-              These invoices have been approved but don't have a payment request yet. Click "Create Payment" to initiate.
+              These invoices have been approved and are ready for payment. Pay in full or in installments.
             </Typography>
             {pendingInvoicesData.length === 0 ? (
-              <Typography color="text.secondary" sx={{ py: 3, textAlign: 'center' }}>No pending invoices. All verified invoices have payment requests.</Typography>
+              <Typography color="text.secondary" sx={{ py: 3, textAlign: 'center' }}>No invoices awaiting payment. All verified invoices are fully paid or have active payment requests.</Typography>
             ) : (
               <ResponsiveTable>
               <TableContainer sx={{ overflowX: 'auto' }}>
@@ -308,9 +311,11 @@ export default function PaymentsPage() {
                       <TableCell sx={{ fontWeight: 600 }}>Invoice Code</TableCell>
                       <TableCell sx={{ fontWeight: 600 }}>Invoice No</TableCell>
                       <TableCell sx={{ fontWeight: 600 }}>Vendor</TableCell>
-                      <TableCell sx={{ fontWeight: 600 }}>Total Amount</TableCell>
-                      <TableCell sx={{ fontWeight: 600 }}>Advance Paid</TableCell>
-                      <TableCell sx={{ fontWeight: 600 }}>Balance Due</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>Total</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>Advance</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>Installments</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>Paid to Date</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>Outstanding</TableCell>
                       <TableCell sx={{ fontWeight: 600 }}>Created By</TableCell>
                       <TableCell sx={{ fontWeight: 600 }}>Actions</TableCell>
                     </TableRow>
@@ -321,9 +326,11 @@ export default function PaymentsPage() {
                         <TableCell data-label="Invoice Code">{inv.invoiceCode}</TableCell>
                         <TableCell data-label="Invoice No">{inv.invoiceNumber}</TableCell>
                         <TableCell data-label="Vendor">{inv.vendor?.vendorCode} - {inv.vendor?.name}</TableCell>
-                        <TableCell data-label="Total Amount">{formatCurrency(inv.totalAmount)}</TableCell>
-                        <TableCell data-label="Advance Paid">{inv.advancePaid > 0 ? formatCurrency(inv.advancePaid) : '—'}</TableCell>
-                        <TableCell data-label="Balance Due"><strong>{formatCurrency(inv.balanceDue)}</strong></TableCell>
+                        <TableCell data-label="Total">{formatCurrency(inv.totalAmount)}</TableCell>
+                        <TableCell data-label="Advance">{inv.advancePaid > 0 ? formatCurrency(inv.advancePaid) : '—'}</TableCell>
+                        <TableCell data-label="Installments">{inv.installmentsPaid > 0 ? formatCurrency(inv.installmentsPaid) : '—'}</TableCell>
+                        <TableCell data-label="Paid to Date">{formatCurrency(inv.paidToDate)}</TableCell>
+                        <TableCell data-label="Outstanding"><strong>{formatCurrency(inv.outstanding)}</strong></TableCell>
                         <TableCell data-label="Created By">{inv.createdBy}</TableCell>
                         <TableCell data-label="Actions">
                           <Button
@@ -333,7 +340,7 @@ export default function PaymentsPage() {
                             onClick={() => {
                               setInvoicePayOpen(inv);
                               setInvoicePayForm({
-                                amount: inv.balanceDue,
+                                amount: inv.outstanding,
                                 requestNumber: `PAY-${inv.invoiceCode}`,
                                 paymentMode: PaymentMode.BANK_TRANSFER,
                               });
@@ -470,28 +477,7 @@ export default function PaymentsPage() {
                 <Typography><strong>{row.paymentCode}</strong> — {row.type === 'EXPENSE' ? row.description : row.invoice?.invoiceCode} — {getApprovalCount(row)}/2 approved — <Chip label={row.status} size="small" color={STATUS_COLORS[row.status] ?? 'default'} /></Typography>
               </AccordionSummary>
               <AccordionDetails>
-                <Table size="small">
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>Step</TableCell>
-                      <TableCell>Approver Role</TableCell>
-                      <TableCell>Status</TableCell>
-                      <TableCell>Approver</TableCell>
-                      <TableCell>Comments</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {row.approvalWorkflow!.steps.map((step) => (
-                      <TableRow key={step.id}>
-                        <TableCell>{step.stepNumber}</TableCell>
-                        <TableCell>{step.approverRole.replace(/_/g, ' ')}</TableCell>
-                        <TableCell><Chip label={step.status} size="small" color={step.status === 'APPROVED' ? 'success' : step.status === 'REJECTED' ? 'error' : 'default'} /></TableCell>
-                        <TableCell>{step.approverUser?.name ?? '—'}</TableCell>
-                        <TableCell>{step.comments ?? '—'}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                <ApprovalStepsDisplay steps={row.approvalWorkflow!.steps} />
               </AccordionDetails>
             </Accordion>
           ))}
@@ -504,11 +490,33 @@ export default function PaymentsPage() {
         <DialogContent>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
             <Typography variant="body2">Vendor: <strong>{invoicePayOpen?.vendor?.name}</strong></Typography>
-            <Typography variant="body2">Invoice Total: <strong>{invoicePayOpen ? formatCurrency(invoicePayOpen.totalAmount) : ''}</strong></Typography>
-            {invoicePayOpen && invoicePayOpen.advancePaid > 0 && (
-              <Typography variant="body2">Advance Paid: <strong>{formatCurrency(invoicePayOpen.advancePaid)}</strong></Typography>
-            )}
-            <Typography variant="body2">Balance Due: <strong>{invoicePayOpen ? formatCurrency(invoicePayOpen.balanceDue) : ''}</strong></Typography>
+            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1 }}>
+              <Typography variant="body2">Invoice Total: <strong>{invoicePayOpen ? formatCurrency(invoicePayOpen.totalAmount) : ''}</strong></Typography>
+              {invoicePayOpen && invoicePayOpen.advancePaid > 0 && (
+                <Typography variant="body2">Advance Paid: <strong>{formatCurrency(invoicePayOpen.advancePaid)}</strong></Typography>
+              )}
+              {invoicePayOpen && invoicePayOpen.installmentsPaid > 0 && (
+                <Typography variant="body2">Installments Paid: <strong>{formatCurrency(invoicePayOpen.installmentsPaid)}</strong></Typography>
+              )}
+              <Typography variant="body2">Paid to Date: <strong>{invoicePayOpen ? formatCurrency(invoicePayOpen.paidToDate) : ''}</strong></Typography>
+            </Box>
+            <Typography variant="body2" color="primary.main">Outstanding Balance: <strong>{invoicePayOpen ? formatCurrency(invoicePayOpen.outstanding) : ''}</strong></Typography>
+            <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+              <Button
+                size="small"
+                variant="outlined"
+                onClick={() => setInvoicePayForm({ ...invoicePayForm, amount: invoicePayOpen?.outstanding ?? 0 })}
+              >
+                Pay Full Outstanding
+              </Button>
+              <Button
+                size="small"
+                variant="text"
+                onClick={() => setInvoicePayForm({ ...invoicePayForm, amount: 0 })}
+              >
+                Custom Installment
+              </Button>
+            </Box>
             <TextField
               label="Request Number"
               value={String(invoicePayForm.requestNumber ?? '')}
@@ -525,6 +533,7 @@ export default function PaymentsPage() {
               fullWidth
               size="small"
               required
+              helperText={invoicePayOpen ? `Maximum: ${formatCurrency(invoicePayOpen.outstanding)}` : ''}
             />
             <TextField
               select
@@ -563,7 +572,7 @@ export default function PaymentsPage() {
                 notes: invoicePayForm.notes || undefined,
               });
             }}
-            disabled={createInvoicePaymentMutation.isPending}
+            disabled={createInvoicePaymentMutation.isPending || !invoicePayForm.amount || Number(invoicePayForm.amount) <= 0}
           >
             {createInvoicePaymentMutation.isPending ? <CircularProgress size={20} /> : 'Create Payment Request'}
           </Button>

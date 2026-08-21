@@ -27,6 +27,7 @@ import {
   Checkbox,
 } from '@mui/material';
 import ResponsiveDialog from '../components/ResponsiveDialog';
+import ApprovalStepsDisplay from '../components/ApprovalStepsDisplay';
 import {
   Add as AddIcon,
   Refresh as RefreshIcon,
@@ -463,28 +464,7 @@ export default function QuotationsPage() {
                 <Typography><strong>{row.quotationNumber}</strong> — {row.vendor?.name} — Status: <Chip label={row.approvalWorkflow!.status} size="small" color={STATUS_COLORS[row.approvalWorkflow!.status] ?? 'default'} /></Typography>
               </AccordionSummary>
               <AccordionDetails>
-                <Table size="small">
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>Step</TableCell>
-                      <TableCell>Approver Role</TableCell>
-                      <TableCell>Status</TableCell>
-                      <TableCell>Approver</TableCell>
-                      <TableCell>Comments</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {row.approvalWorkflow!.steps.map((step) => (
-                      <TableRow key={step.id}>
-                        <TableCell>{step.stepNumber}</TableCell>
-                        <TableCell>{step.approverRole.replace(/_/g, ' ')}</TableCell>
-                        <TableCell><Chip label={step.status} size="small" color={step.status === 'APPROVED' ? 'success' : step.status === 'REJECTED' ? 'error' : 'default'} /></TableCell>
-                        <TableCell>{step.approverUser?.name ?? '—'}</TableCell>
-                        <TableCell>{step.comments ?? '—'}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                <ApprovalStepsDisplay steps={row.approvalWorkflow!.steps} />
               </AccordionDetails>
             </Accordion>
           ))}

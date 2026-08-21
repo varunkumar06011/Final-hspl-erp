@@ -175,7 +175,7 @@ router.post(
           advancePaid: Number(advancePaid) || 0,
           advanceType: advanceType ?? null,
           advanceOtherType: advanceOtherType ?? null,
-          paymentStatus: PaymentStatus.PENDING,
+          paymentStatus: (Number(advancePaid) || 0) > 0 ? PaymentStatus.PARTIALLY_PAID : PaymentStatus.PENDING,
           stockStatus: StockStatus.PENDING,
           deliveryDate: deliveryDate ? new Date(deliveryDate) : null,
           filePath,
@@ -748,5 +748,120 @@ async function processPaymentPaid(
       : 'Payment marked as paid. Items are in inventory via gate pass.',
   };
 }
+
+// GET /:id/payments — payment history for an invoice (advance + installments)
+router.get(
+  '/:id/payments',
+  rbacMiddleware(Permission.VIEW_FINANCIALS),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      const invoice = await prisma.vendorInvoice.findFirst({
+        where: { id: req.params.id, projectId, deletedAt: null },
+        select: {
+          id: true,
+          invoiceCode: true,
+          invoiceNumber: true,
+          totalAmount: true,
+          advancePaid: true,
+          advanceType: true,
+          advanceOtherType: true,
+          paymentStatus: true,
+          createdAt: true,
+        },
+      });
+      if (!invoice) {
+        res.status(404).json({ error: 'Invoice not found' });
+        return;
+      }
+
+      const paymentRequests = await prisma.paymentRequest.findMany({
+        where: { invoiceId: invoice.id, deletedAt: null },
+        include: {
+          payments: true,
+          createdByUser: { select: { id: true, name: true } },
+        },
+        orderBy: { createdAt: 'asc' },
+      });
+
+      const advancePaid = Number(invoice.advancePaid) || 0;
+      const totalAmount = Number(invoice.totalAmount) || 0;
+
+      // Build ledger entries
+      const ledger: Array<{
+        type: string;
+        date: string;
+        amount: number;
+        mode: string | null;
+        reference: string | null;
+        status: string;
+        requestNumber: string | null;
+      }> = [];
+
+      if (advancePaid > 0) {
+        ledger.push({
+          type: 'Advance',
+          date: invoice.createdAt.toISOString(),
+          amount: advancePaid,
+          mode: invoice.advanceType ?? null,
+          reference: invoice.advanceOtherType ?? null,
+          status: 'PAID',
+          requestNumber: null,
+        });
+      }
+
+      for (const pr of paymentRequests) {
+        if (pr.payments.length === 0) {
+          // Request created but not yet paid
+          ledger.push({
+            type: 'Installment',
+            date: pr.createdAt.toISOString(),
+            amount: Number(pr.amount),
+            mode: pr.paymentMode,
+            reference: null,
+            status: pr.status,
+            requestNumber: pr.requestNumber,
+          });
+        } else {
+          for (const p of pr.payments) {
+            ledger.push({
+              type: 'Installment',
+              date: p.date.toISOString(),
+              amount: Number(p.amount),
+              mode: p.mode,
+              reference: p.reference,
+              status: 'PAID',
+              requestNumber: pr.requestNumber,
+            });
+          }
+        }
+      }
+
+      const installmentsPaid = paymentRequests
+        .filter((pr) => pr.status === PaymentStatus.PAID)
+        .reduce((sum, pr) => sum + pr.payments.reduce((s, p) => s + Number(p.amount), 0), 0);
+
+      const paidToDate = advancePaid + installmentsPaid;
+      const outstanding = totalAmount - paidToDate;
+
+      res.json({
+        invoice: {
+          id: invoice.id,
+          invoiceCode: invoice.invoiceCode,
+          invoiceNumber: invoice.invoiceNumber,
+          totalAmount,
+          advancePaid,
+          installmentsPaid,
+          paidToDate,
+          outstanding,
+          paymentStatus: invoice.paymentStatus,
+        },
+        ledger,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
 
 export default router;

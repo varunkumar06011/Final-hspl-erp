@@ -22,6 +22,57 @@ router.use(authMiddleware);
 
 const HEAD_ROLES = [UserRole.PROJECT_HEAD, UserRole.HEAD_OF_CONSTRUCTION, UserRole.ADMIN, UserRole.ADMIN_2];
 
+/**
+ * Calculate paid-to-date for an invoice: advance + sum of all PAID payment records.
+ * Returns { paidToDate, outstanding, totalAmount, advancePaid }.
+ */
+async function getInvoicePaymentSummary(invoiceId: string) {
+  const invoice = await prisma.vendorInvoice.findUnique({
+    where: { id: invoiceId },
+    select: { totalAmount: true, advancePaid: true },
+  });
+  if (!invoice) throw new Error('Invoice not found');
+
+  const paidRequests = await prisma.paymentRequest.findMany({
+    where: { invoiceId, status: PaymentStatus.PAID, deletedAt: null },
+    select: { amount: true, payments: { select: { amount: true } } },
+  });
+
+  const installmentsPaid = paidRequests.reduce((sum, pr) => {
+    const recorded = pr.payments.reduce((s, p) => s + Number(p.amount), 0);
+    return sum + recorded;
+  }, 0);
+
+  const advancePaid = Number(invoice.advancePaid) || 0;
+  const totalAmount = Number(invoice.totalAmount) || 0;
+  const paidToDate = advancePaid + installmentsPaid;
+  const outstanding = totalAmount - paidToDate;
+
+  return { totalAmount, advancePaid, installmentsPaid, paidToDate, outstanding };
+}
+
+/**
+ * Recalculate and update invoice payment status based on outstanding balance.
+ * - outstanding <= 0 → PAID
+ * - paidToDate > 0 but outstanding > 0 → PARTIALLY_PAID
+ * - paidToDate === 0 → PENDING
+ */
+async function recalcInvoicePaymentStatus(invoiceId: string): Promise<void> {
+  const { paidToDate, outstanding } = await getInvoicePaymentSummary(invoiceId);
+  let status: PaymentStatus;
+  if (outstanding <= 0) {
+    status = PaymentStatus.PAID;
+  } else if (paidToDate > 0) {
+    status = PaymentStatus.PARTIALLY_PAID;
+  } else {
+    status = PaymentStatus.PENDING;
+  }
+  await prisma.vendorInvoice.update({
+    where: { id: invoiceId },
+    data: { paymentStatus: status },
+  });
+}
+
 async function generatePaymentCode(): Promise<string> {
   const reqs = await prisma.paymentRequest.findMany({
     where: { paymentCode: { startsWith: 'VGH-PAY' } },
@@ -87,7 +138,7 @@ router.get(
   }
 );
 
-// GET /pending-invoices — list verified invoices that don't have a payment request yet
+// GET /pending-invoices — list verified invoices eligible for a new payment request
 router.get(
   '/pending-invoices',
   rbacMiddleware(Permission.VIEW_FINANCIALS),
@@ -95,7 +146,7 @@ router.get(
     try {
       const projectId = requireProjectId(req);
 
-      // Get all verified invoices
+      // Get all verified invoices that are not fully paid
       const verifiedInvoices = await prisma.vendorInvoice.findMany({
         where: {
           projectId,
@@ -106,30 +157,42 @@ router.get(
         include: {
           vendor: { select: { id: true, name: true, vendorCode: true } },
           createdByUser: { select: { id: true, name: true } },
-          paymentRequests: { where: { deletedAt: null }, select: { id: true, status: true } },
+          paymentRequests: {
+            where: { deletedAt: null },
+            select: { id: true, status: true, amount: true, payments: { select: { amount: true } } },
+          },
         },
         orderBy: { createdAt: 'desc' },
       });
 
-      // Filter out invoices that already have a non-rejected payment request
-      const pendingInvoices = verifiedInvoices.filter(
-        (inv) => !inv.paymentRequests.some((pr) => pr.status !== PaymentStatus.REJECTED)
+      // Only include invoices with no active (PENDING or APPROVED) payment request
+      const eligible = verifiedInvoices.filter(
+        (inv) => !inv.paymentRequests.some(
+          (pr) => pr.status === PaymentStatus.PENDING || pr.status === PaymentStatus.APPROVED
+        )
       );
 
-      res.json({
-        data: pendingInvoices.map((inv) => ({
-          id: inv.id,
-          invoiceCode: inv.invoiceCode,
-          invoiceNumber: inv.invoiceNumber,
-          vendorId: inv.vendorId,
-          vendor: inv.vendor,
-          totalAmount: Number(inv.totalAmount),
-          advancePaid: Number(inv.advancePaid),
-          balanceDue: Number(inv.totalAmount) - Number(inv.advancePaid),
-          createdBy: inv.createdByUser?.name ?? '—',
-          createdAt: inv.createdAt,
-        })),
-      });
+      const result = await Promise.all(
+        eligible.map(async (inv) => {
+          const summary = await getInvoicePaymentSummary(inv.id);
+          return {
+            id: inv.id,
+            invoiceCode: inv.invoiceCode,
+            invoiceNumber: inv.invoiceNumber,
+            vendorId: inv.vendorId,
+            vendor: inv.vendor,
+            totalAmount: summary.totalAmount,
+            advancePaid: summary.advancePaid,
+            installmentsPaid: summary.installmentsPaid,
+            paidToDate: summary.paidToDate,
+            outstanding: summary.outstanding,
+            createdBy: inv.createdByUser?.name ?? '—',
+            createdAt: inv.createdAt,
+          };
+        })
+      );
+
+      res.json({ data: result });
     } catch (error) {
       next(error);
     }
@@ -159,15 +222,25 @@ router.post(
       }
 
       const existingPR = await prisma.paymentRequest.findFirst({
-        where: { invoiceId, projectId, deletedAt: null, status: { notIn: [PaymentStatus.REJECTED] } },
+        where: {
+          invoiceId,
+          projectId,
+          deletedAt: null,
+          status: { in: [PaymentStatus.PENDING, PaymentStatus.APPROVED] },
+        },
       });
       if (existingPR) {
-        res.status(409).json({ error: 'A payment request already exists for this invoice' });
+        res.status(409).json({ error: 'An active payment request already exists for this invoice. Complete or reject it before creating another.' });
         return;
       }
 
-      if (Number(amount) > Number(invoice.totalAmount)) {
-        res.status(400).json({ error: `Payment amount cannot exceed invoice total of ${invoice.totalAmount}` });
+      const { outstanding } = await getInvoicePaymentSummary(invoiceId);
+      if (Number(amount) > outstanding) {
+        res.status(400).json({ error: `Payment amount cannot exceed outstanding balance of ${outstanding}` });
+        return;
+      }
+      if (Number(amount) <= 0) {
+        res.status(400).json({ error: 'Payment amount must be greater than zero' });
         return;
       }
 
@@ -555,12 +628,9 @@ router.post(
         }),
       ]);
 
-      // If this is an invoice payment, also update the invoice's payment status
-      if (pr.invoiceId && pr.invoice) {
-        await prisma.vendorInvoice.update({
-          where: { id: pr.invoiceId },
-          data: { paymentStatus: PaymentStatus.PAID },
-        });
+      // Recalculate invoice payment status based on total paid (advance + installments)
+      if (pr.invoiceId) {
+        await recalcInvoicePaymentStatus(pr.invoiceId);
       }
 
       await logAudit({

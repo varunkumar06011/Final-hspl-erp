@@ -27,6 +27,7 @@ import {
   Snackbar,
 } from '@mui/material';
 import ResponsiveDialog from '../components/ResponsiveDialog';
+import ApprovalStepsDisplay from '../components/ApprovalStepsDisplay';
 import {
   Add as AddIcon,
   Refresh as RefreshIcon,
@@ -99,6 +100,126 @@ interface InvoiceRow {
 const HEAD_ROLES = [UserRole.PROJECT_HEAD, UserRole.HEAD_OF_CONSTRUCTION, UserRole.ADMIN, UserRole.ADMIN_2];
 
 const ADVANCE_TYPES = ['Cash', 'Credit Card', 'Debit Card', 'Bank Transfer', 'Cheque', 'Other'];
+
+interface PaymentLedgerEntry {
+  type: string;
+  date: string;
+  amount: number;
+  mode: string | null;
+  reference: string | null;
+  status: string;
+  requestNumber: string | null;
+}
+
+interface PaymentHistoryResponse {
+  invoice: {
+    id: string;
+    invoiceCode: string;
+    invoiceNumber: string;
+    totalAmount: number;
+    advancePaid: number;
+    installmentsPaid: number;
+    paidToDate: number;
+    outstanding: number;
+    paymentStatus: string;
+  };
+  ledger: PaymentLedgerEntry[];
+}
+
+function PaymentHistoryAccordion({ invoiceId, invoiceCode, vendorName }: { invoiceId: string; invoiceCode: string; vendorName: string }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ['/invoices', invoiceId, 'payments'],
+    queryFn: async () => {
+      const response = await api.get(`/invoices/${invoiceId}/payments`);
+      return response.data as PaymentHistoryResponse;
+    },
+  });
+
+  return (
+    <Accordion>
+      <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+        <Typography><strong>{invoiceCode}</strong> — {vendorName}
+          {data && data.invoice.outstanding > 0 && (
+            <> — Outstanding: <strong>{formatCurrency(data.invoice.outstanding)}</strong></>
+          )}
+          {data && data.invoice.outstanding <= 0 && (
+            <Chip label="Fully Paid" size="small" color="success" sx={{ ml: 1 }} />
+          )}
+        </Typography>
+      </AccordionSummary>
+      <AccordionDetails>
+        {isLoading ? (
+          <CircularProgress size={24} />
+        ) : data ? (
+          <Box>
+            {/* Summary */}
+            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', sm: 'repeat(4, 1fr)' }, gap: 1, mb: 2 }}>
+              <Box><Typography variant="caption" color="text.secondary">Total</Typography><Typography variant="body2" fontWeight={600}>{formatCurrency(data.invoice.totalAmount)}</Typography></Box>
+              <Box><Typography variant="caption" color="text.secondary">Advance</Typography><Typography variant="body2" fontWeight={600}>{formatCurrency(data.invoice.advancePaid)}</Typography></Box>
+              <Box><Typography variant="caption" color="text.secondary">Installments</Typography><Typography variant="body2" fontWeight={600}>{formatCurrency(data.invoice.installmentsPaid)}</Typography></Box>
+              <Box><Typography variant="caption" color="text.secondary">Paid to Date</Typography><Typography variant="body2" fontWeight={600}>{formatCurrency(data.invoice.paidToDate)}</Typography></Box>
+            </Box>
+            <Box sx={{ mb: 2 }}>
+              <Typography variant="body2" color={data.invoice.outstanding > 0 ? 'error.main' : 'success.main'} fontWeight={600}>
+                Outstanding: {formatCurrency(data.invoice.outstanding)}
+              </Typography>
+            </Box>
+
+            {/* Ledger table (desktop) */}
+            <Table size="small" sx={{ display: { xs: 'none', sm: 'table' } }}>
+              <TableHead>
+                <TableRow>
+                  <TableCell sx={{ fontWeight: 600 }}>Type</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Date</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Amount</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Mode</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Reference</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Status</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {data.ledger.length === 0 ? (
+                  <TableRow><TableCell colSpan={6} align="center">No payments recorded yet</TableCell></TableRow>
+                ) : data.ledger.map((entry, idx) => (
+                  <TableRow key={idx}>
+                    <TableCell>{entry.type}</TableCell>
+                    <TableCell>{new Date(entry.date).toLocaleDateString()}</TableCell>
+                    <TableCell>{formatCurrency(entry.amount)}</TableCell>
+                    <TableCell>{entry.mode ?? '—'}</TableCell>
+                    <TableCell>{entry.reference ?? '—'}</TableCell>
+                    <TableCell><Chip label={entry.status} size="small" color={entry.status === 'PAID' ? 'success' : entry.status === 'REJECTED' ? 'error' : 'default'} /></TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+
+            {/* Ledger cards (mobile) */}
+            <Box sx={{ display: { xs: 'flex', sm: 'none' }, flexDirection: 'column', gap: 1 }}>
+              {data.ledger.length === 0 ? (
+                <Typography color="text.secondary" sx={{ py: 2, textAlign: 'center' }}>No payments recorded yet</Typography>
+              ) : data.ledger.map((entry, idx) => (
+                <Card key={idx} variant="outlined" sx={{ p: 1.5 }}>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                    <Typography variant="subtitle2" fontWeight={700}>{entry.type}</Typography>
+                    <Chip label={entry.status} size="small" color={entry.status === 'PAID' ? 'success' : entry.status === 'REJECTED' ? 'error' : 'default'} />
+                  </Box>
+                  <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0.5 }}>
+                    <Box><Typography variant="caption" color="text.secondary">Date</Typography><Typography variant="body2">{new Date(entry.date).toLocaleDateString()}</Typography></Box>
+                    <Box><Typography variant="caption" color="text.secondary">Amount</Typography><Typography variant="body2" fontWeight={600}>{formatCurrency(entry.amount)}</Typography></Box>
+                    <Box><Typography variant="caption" color="text.secondary">Mode</Typography><Typography variant="body2">{entry.mode ?? '—'}</Typography></Box>
+                    <Box><Typography variant="caption" color="text.secondary">Reference</Typography><Typography variant="body2" sx={{ overflowWrap: 'anywhere' }}>{entry.reference ?? '—'}</Typography></Box>
+                  </Box>
+                </Card>
+              ))}
+            </Box>
+          </Box>
+        ) : (
+          <Typography color="text.secondary">Failed to load payment history</Typography>
+        )}
+      </AccordionDetails>
+    </Accordion>
+  );
+}
 
 export default function InvoicesPage() {
   const [page, setPage] = useState(0);
@@ -458,6 +579,7 @@ export default function InvoicesPage() {
                         disabled={row.verificationStatus !== InvoiceVerificationStatus.VERIFIED || updateStatusMutation.isPending || markPaymentPaidMutation.isPending}
                       >
                         <MenuItem value={PaymentStatus.PENDING}>Payment Pending</MenuItem>
+                        <MenuItem value={PaymentStatus.PARTIALLY_PAID}>Partially Paid</MenuItem>
                         <MenuItem value={PaymentStatus.PAID}>Paid</MenuItem>
                         <MenuItem value={PaymentStatus.DELAYED}>Delayed</MenuItem>
                         <MenuItem value={PaymentStatus.OTHER}>Other</MenuItem>
@@ -523,30 +645,19 @@ export default function InvoicesPage() {
                 <Typography><strong>{row.invoiceCode}</strong> — {row.vendor?.name} — <Chip label={row.approvalWorkflow!.status} size="small" /></Typography>
               </AccordionSummary>
               <AccordionDetails>
-                <Table size="small">
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>Step</TableCell>
-                      <TableCell>Approver Role</TableCell>
-                      <TableCell>Status</TableCell>
-                      <TableCell>Approver</TableCell>
-                      <TableCell>Comments</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {row.approvalWorkflow!.steps.map((step) => (
-                      <TableRow key={step.id}>
-                        <TableCell>{step.stepNumber}</TableCell>
-                        <TableCell>{step.approverRole.replace(/_/g, ' ')}</TableCell>
-                        <TableCell><Chip label={step.status} size="small" color={step.status === 'APPROVED' ? 'success' : step.status === 'REJECTED' ? 'error' : 'default'} /></TableCell>
-                        <TableCell>{step.approverUser?.name ?? '—'}</TableCell>
-                        <TableCell>{step.comments ?? '—'}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                <ApprovalStepsDisplay steps={row.approvalWorkflow!.steps} />
               </AccordionDetails>
             </Accordion>
+          ))}
+        </Box>
+      )}
+
+      {/* Payment History */}
+      {rows.length > 0 && rows.some((r) => r.verificationStatus === InvoiceVerificationStatus.VERIFIED) && (
+        <Box sx={{ mt: 2 }}>
+          <Typography variant="h6" fontWeight={600} sx={{ mb: 1 }}>Payment History</Typography>
+          {rows.filter((r) => r.verificationStatus === InvoiceVerificationStatus.VERIFIED).map((row) => (
+            <PaymentHistoryAccordion key={row.id} invoiceId={row.id} invoiceCode={row.invoiceCode} vendorName={row.vendor?.name ?? '—'} />
           ))}
         </Box>
       )}
