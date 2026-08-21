@@ -1,18 +1,30 @@
-Tables: stacked card layout on mobile, desktop unchanged
+Mobile fixes: actions alignment, button placement, scrollable tabs, audit details
 
-On mobile (< md breakpoint), each table row now renders as a stacked
-card with field labels — no horizontal scrolling needed to see all
-columns (e.g. approval status). Desktop view is completely unchanged.
+ResponsiveTable (mobile only, desktop unchanged):
+- Action buttons stay in a horizontal row, pushed to the right
+- Value text wraps with max-width 65% instead of sticking to right wall
+- Loading/empty-state rows center properly in card layout
 
-- New ResponsiveTable component wraps TableContainer; uses CSS-only
-  @media query to transform rows into cards on mobile
-- Each TableCell in TableBody gets data-label="Column Name" so the
-  card shows field labels
-- Applied to all list tables: Vendors, Quotations, POs, Invoices,
-  Payments, GatePasses, Inventory, Issues, Labour (all 4 tabs),
-  Photos, Inspections, Documents, Contracts, AuditLog, Users
-- Tables inside dialogs left untouched (detail views)
-- overflowX: auto preserved as fallback
+Header buttons (all pages):
+- On mobile, action button box takes full width and aligns right
+- Fixes refresh/daily-expense/new-item buttons jumping to left on wrap
+- Applied to: Payments, Inventory, Vendors/Contracts (EntityPage),
+  Invoices, POs, Quotations, GatePasses, Issues, Documents,
+  Inspections, Photos, Labour
+
+Tabs (Labour, Inventory, Payments):
+- Added variant="scrollable" scrollButtons="auto" so tabs can be
+  scrolled on mobile (e.g. Labour's 4 tabs: Staff, Mark Attendance,
+  Attendance Log, Summary)
+
+AuditLog details:
+- formatDetails now produces readable English descriptions:
+  - CREATE: "Created vendor 'ABC Corp'"
+  - DELETE: "Deleted inventory item 'Cement'"
+  - APPROVE/REJECT: "Approved gate pass"
+  - UPDATE: filtered key-value pairs (skips noisy fields like id,
+    createdAt, updatedAt, projectId, password)
+- Details cell wraps on mobile instead of clipping with ellipsis
 
 Generated with [Devin](https://devin.ai)
 

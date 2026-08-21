@@ -54,11 +54,40 @@ function formatDetails(row: AuditLogRow): string {
   if (!value) return '—';
   const entries = Object.entries(value);
   if (entries.length === 0) return '—';
-  // Build readable key-value pairs
-  return entries.map(([k, v]) => {
+
+  const entityLabel = ENTITY_LABELS[row.entityType] ?? row.entityType;
+  const actionLower = row.action.toLowerCase();
+
+  // For CREATE actions, summarize what was created
+  if (actionLower === 'create') {
+    const name = (value as Record<string, unknown>).name ?? (value as Record<string, unknown>).code ?? (value as Record<string, unknown>).invoiceNo ?? (value as Record<string, unknown>).passNumber ?? (value as Record<string, unknown>).title;
+    if (name) return `Created ${entityLabel.toLowerCase()} "${String(name)}"`;
+    return `Created new ${entityLabel.toLowerCase()}`;
+  }
+
+  // For DELETE actions, summarize what was deleted
+  if (actionLower === 'delete') {
+    const name = (value as Record<string, unknown>).name ?? (value as Record<string, unknown>).code ?? (value as Record<string, unknown>).title;
+    if (name) return `Deleted ${entityLabel.toLowerCase()} "${String(name)}"`;
+    return `Deleted ${entityLabel.toLowerCase()}`;
+  }
+
+  // For APPROVE/REJECT, summarize the action
+  if (actionLower === 'approve') return `Approved ${entityLabel.toLowerCase()}`;
+  if (actionLower === 'reject') return `Rejected ${entityLabel.toLowerCase()}`;
+
+  // For UPDATE actions, show what changed
+  const readableParts: string[] = [];
+  for (const [k, v] of entries) {
+    // Skip noisy/internal fields
+    if (['id', 'createdAt', 'updatedAt', 'projectId', 'password'].includes(k)) continue;
     const valStr = typeof v === 'object' && v !== null ? JSON.stringify(v) : String(v);
-    return `${k}: ${valStr}`;
-  }).join('  |  ');
+    if (valStr && valStr !== 'null' && valStr !== 'undefined' && valStr !== '[object Object]') {
+      readableParts.push(`${k}: ${valStr}`);
+    }
+  }
+  if (readableParts.length === 0) return `${actionLower.charAt(0).toUpperCase() + actionLower.slice(1)}d ${entityLabel.toLowerCase()}`;
+  return readableParts.join('  |  ');
 }
 
 const ENTITY_LABELS: Record<string, string> = {
@@ -156,7 +185,7 @@ export default function AuditLogPage() {
                     <TableCell data-label="User">{row.user?.name ?? '—'}</TableCell>
                     <TableCell data-label="Action"><Chip label={row.action} size="small" color={ACTION_COLORS[row.action] ?? 'default'} /></TableCell>
                     <TableCell data-label="Entity">{ENTITY_LABELS[row.entityType] ?? row.entityType}</TableCell>
-                    <TableCell data-label="Details" sx={{ maxWidth: 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <TableCell data-label="Details" sx={{ maxWidth: { xs: '65%', md: 400 }, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: { xs: 'normal', md: 'nowrap' } }}>
                       {formatDetails(row)}
                     </TableCell>
                   </TableRow>

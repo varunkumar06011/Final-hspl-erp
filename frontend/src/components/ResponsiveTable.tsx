@@ -42,6 +42,7 @@ export default function ResponsiveTable({ children }: { children: React.ReactNod
             borderBottom: '1px solid',
             borderColor: 'action.hover',
             '&:last-child': { borderBottom: 'none' },
+            // Label on the left
             '&::before': {
               content: 'attr(data-label)',
               fontWeight: 600,
@@ -51,6 +52,27 @@ export default function ResponsiveTable({ children }: { children: React.ReactNod
               textTransform: 'uppercase',
               letterSpacing: '0.04em',
             },
+            // Value text wraps instead of sticking to right wall
+            '& > *': {
+              textAlign: 'right',
+              maxWidth: '65%',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+            },
+          },
+          // Action buttons stay in a horizontal row, pushed to the right
+          '& .MuiTableBody-root .MuiTableCell-root[data-label="Actions"]': {
+            '& > *': {
+              display: 'flex',
+              gap: 0.5,
+              maxWidth: 'none',
+            },
+          },
+          // Loading / empty-state rows: center the spinner/message
+          '& .MuiTableBody-root .MuiTableRow-root .MuiTableCell-root:not([data-label])': {
+            justifyContent: 'center',
+            py: 3,
+            '&::before': { content: 'none' },
           },
           // Hide cells explicitly marked as hidden on mobile
           '& .MuiTableBody-root .MuiTableCell-root.hide-on-mobile': {
