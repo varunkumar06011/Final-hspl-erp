@@ -38,7 +38,7 @@ import {
   ExpandMore as ExpandMoreIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { InvoiceVerificationStatus, PaymentStatus, StockStatus, UserRole } from '@hospital-erp/shared';
+import { InvoiceVerificationStatus, StockStatus, UserRole } from '@hospital-erp/shared';
 import { formatCurrency, STATUS_COLORS } from '../utils/enumOptions';
 import api, { extractErrorMessage } from '../config/api';
 import { useAuthStore } from '../stores/authStore';
@@ -47,6 +47,7 @@ import AcknowledgementCheckbox from '../components/AcknowledgementCheckbox';
 import ApprovalActionDialog from '../components/ApprovalActionDialog';
 import OcrAutoFill, { type OcrInvoiceData } from '../components/OcrAutoFill';
 import ResponsiveTable from '../components/ResponsiveTable';
+import { useApprovalDeepLink } from '../utils/useApprovalDeepLink';
 
 interface POItem {
   id?: string;
@@ -405,29 +406,9 @@ export default function InvoicesPage() {
     onError: (err: unknown) => setError(extractErrorMessage(err)),
   });
 
-  const markPaymentPaidMutation = useMutation({
-    mutationFn: async (invId: string) => {
-      const response = await api.post(`/invoices/${invId}/mark-payment-paid`);
-      return response.data;
-    },
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['/invoices'] });
-      queryClient.invalidateQueries({ queryKey: ['/inventory'] });
-      queryClient.invalidateQueries({ queryKey: ['/payments'] });
-      queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
-      if (data?.inventoryWarning) {
-        setError(data.inventoryWarning);
-      } else {
-        setSuccessMsg('Payment marked as paid.');
-        setTimeout(() => setSuccessMsg(''), 5000);
-      }
-    },
-    onError: (err: unknown) => setError(extractErrorMessage(err)),
-  });
-
   const updateStatusMutation = useMutation({
-    mutationFn: async ({ invId, paymentStatus, stockStatus }: { invId: string; paymentStatus?: string; stockStatus?: string }) => {
-      const response = await api.patch(`/invoices/${invId}/status`, { paymentStatus, stockStatus });
+    mutationFn: async ({ invId, stockStatus }: { invId: string; stockStatus?: string }) => {
+      const response = await api.patch(`/invoices/${invId}/status`, { stockStatus });
       return response.data;
     },
     onSuccess: (data) => {
@@ -448,6 +429,9 @@ export default function InvoicesPage() {
   const rows: InvoiceRow[] = data?.data ?? [];
   const pagination = data?.pagination ?? { page: 1, pageSize: 20, total: 0, totalPages: 0 };
   const vendors: { id: string; name: string; vendorCode: string }[] = vendorsData?.data ?? [];
+
+  // Auto-open approval dialog when navigated from a push notification
+  useApprovalDeepLink(rows, (row) => setApprovalAction({ row, action: 'approve' }));
 
   function resetForm() {
     setSelectedVendorId('');
@@ -563,27 +547,11 @@ export default function InvoicesPage() {
                         : '—'}
                     </TableCell>
                     <TableCell data-label="Payment">
-                      <TextField
-                        select
+                      <Chip
+                        label={row.paymentStatus.replace(/_/g, ' ')}
                         size="small"
-                        value={row.paymentStatus}
-                        onChange={(e) => {
-                          const newStatus = e.target.value;
-                          if (newStatus === PaymentStatus.PAID) {
-                            markPaymentPaidMutation.mutate(row.id);
-                          } else {
-                            updateStatusMutation.mutate({ invId: row.id, paymentStatus: newStatus });
-                          }
-                        }}
-                        sx={{ minWidth: 140 }}
-                        disabled={row.verificationStatus !== InvoiceVerificationStatus.VERIFIED || updateStatusMutation.isPending || markPaymentPaidMutation.isPending}
-                      >
-                        <MenuItem value={PaymentStatus.PENDING}>Payment Pending</MenuItem>
-                        <MenuItem value={PaymentStatus.PARTIALLY_PAID}>Partially Paid</MenuItem>
-                        <MenuItem value={PaymentStatus.PAID}>Paid</MenuItem>
-                        <MenuItem value={PaymentStatus.DELAYED}>Delayed</MenuItem>
-                        <MenuItem value={PaymentStatus.OTHER}>Other</MenuItem>
-                      </TextField>
+                        color={STATUS_COLORS[row.paymentStatus] ?? 'default'}
+                      />
                     </TableCell>
                     <TableCell data-label="Stock">
                       <TextField

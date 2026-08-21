@@ -2,12 +2,12 @@ import { Router, Response, NextFunction } from 'express';
 import { APPROVAL_CONFIG, Permission, AuditAction, InvoiceVerificationStatus, PaymentStatus, StockStatus, UserRole } from '@hospital-erp/shared';
 import { createInvoiceSchema, listInvoicesSchema, approvalActionSchema, updateInvoiceStatusSchema } from '@hospital-erp/shared';
 import { prisma } from '../config/prisma';
-import { Prisma } from '@prisma/client';
 import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middleware/auth';
 import { rbacMiddleware } from '../middleware/rbac';
 import { validateMiddleware } from '../middleware/validate';
 import { logAudit } from '../services/audit.service';
 import * as approvalService from '../services/approval.service';
+import { notifyApprovers } from '../services/push.service';
 import { getStorageService, serveFile } from '../services/storage.service';
 import multer from 'multer';
 
@@ -120,6 +120,12 @@ router.post(
       const projectId = requireProjectId(req);
       const { vendorId, poId, invoiceNumber, amount, taxAmount, totalAmount, advancePaid, advanceType, advanceOtherType, deliveryDate } = req.body;
 
+      // Validate advance does not exceed total
+      if (Number(advancePaid) > Number(totalAmount)) {
+        res.status(400).json({ error: `Advance paid (${advancePaid}) cannot exceed invoice total (${totalAmount})` });
+        return;
+      }
+
       // Validate vendor
       const vendor = await prisma.vendor.findFirst({
         where: { id: vendorId, projectId, deletedAt: null },
@@ -220,6 +226,16 @@ router.post(
         projectId,
         newValue: { invoiceCode, invoiceNumber: finalInvoiceNumber, vendorId, totalAmount, acknowledged: true },
       });
+
+      // Notify all approvers via push notification
+      notifyApprovers(projectId, HEAD_ROLES, {
+        approvalId: workflow.id,
+        entityType: 'VENDOR_INVOICE',
+        entityId: invoice.id,
+        title: 'New Approval Required',
+        body: `Invoice ${finalInvoiceNumber} — ₹${totalAmount}`,
+        url: `/invoices?approval=${workflow.id}`,
+      }).catch(() => {});
 
       const result = await prisma.vendorInvoice.findUnique({
         where: { id: invoice.id },
@@ -558,37 +574,10 @@ router.post(
   }
 );
 
-// POST /:id/mark-payment-paid — mark payment status as paid (legacy, delegates to status update)
-router.post(
-  '/:id/mark-payment-paid',
-  rbacMiddleware(Permission.VIEW_FINANCIALS),
-  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
-    try {
-      const projectId = requireProjectId(req);
-      const invoice = await prisma.vendorInvoice.findFirst({
-        where: { id: req.params.id, projectId, deletedAt: null },
-      });
-      if (!invoice) {
-        res.status(404).json({ error: 'Invoice not found' });
-        return;
-      }
-      if (invoice.verificationStatus !== InvoiceVerificationStatus.VERIFIED) {
-        res.status(400).json({ error: 'Invoice must be approved first' });
-        return;
-      }
-
-      const result = await processPaymentPaid(invoice, projectId, req.user!.id);
-      res.json(result);
-    } catch (error) {
-      next(error);
-    }
-  }
-);
-
-// PATCH /:id/status — update payment and/or stock status
-// Inventory is ONLY added via gate pass approval — this endpoint does NOT add to inventory.
-// When payment is marked PAID or stock is marked RECEIVED, it checks if a gate pass exists
-// for this invoice's PO and warns if items haven't been added to inventory yet.
+// PATCH /:id/status — update stock status only
+// Payment status is managed automatically by the installment workflow
+// (recalcInvoicePaymentStatus after each payment recording).
+// Inventory is ONLY added via gate pass approval.
 router.patch(
   '/:id/status',
   rbacMiddleware(Permission.VIEW_FINANCIALS),
@@ -597,6 +586,12 @@ router.patch(
     try {
       const projectId = requireProjectId(req);
       const { paymentStatus, stockStatus } = req.body;
+
+      // Reject manual payment status overrides — only stock status is editable here
+      if (paymentStatus) {
+        res.status(400).json({ error: 'Payment status is managed automatically through the payment workflow. Use the Payments page to record installments.' });
+        return;
+      }
 
       const invoice = await prisma.vendorInvoice.findFirst({
         where: { id: req.params.id, projectId, deletedAt: null },
@@ -608,13 +603,7 @@ router.patch(
       }
 
       const updateData: Record<string, unknown> = {};
-      if (paymentStatus) updateData.paymentStatus = paymentStatus;
       if (stockStatus) updateData.stockStatus = stockStatus;
-
-      // When payment is marked as PAID, create a payment record (but do NOT add to inventory)
-      if (paymentStatus === PaymentStatus.PAID && invoice.paymentStatus !== PaymentStatus.PAID) {
-        await createPaymentRecordForInvoice(invoice as unknown as { id: string; projectId: string; vendorId: string; invoiceCode: string; totalAmount: Prisma.Decimal }, projectId, req.user!.id);
-      }
 
       const updated = await prisma.vendorInvoice.update({
         where: { id: invoice.id },
@@ -649,105 +638,6 @@ router.patch(
     }
   }
 );
-
-// Helper: create a payment request + payment record for the invoice (shows in transactions tab)
-async function createPaymentRecordForInvoice(
-  invoice: { id: string; projectId: string; vendorId: string; invoiceCode: string; totalAmount: Prisma.Decimal },
-  projectId: string,
-  userId: string
-): Promise<void> {
-  // Check if a payment request already exists for this invoice
-  const existingPR = await prisma.paymentRequest.findFirst({
-    where: { invoiceId: invoice.id, projectId, deletedAt: null },
-  });
-  if (existingPR) {
-    // Update existing payment request status to PAID
-    await prisma.paymentRequest.update({
-      where: { id: existingPR.id },
-      data: { status: PaymentStatus.PAID },
-    });
-    return;
-  }
-
-  // Generate payment code
-  const reqs = await prisma.paymentRequest.findMany({
-    where: { paymentCode: { startsWith: 'VGH-PAY' } },
-    select: { paymentCode: true },
-  });
-  const maxNum = reqs.reduce((max, r) => {
-    const match = r.paymentCode?.match(/^VGH-PAY(\d+)$/);
-    return match ? Math.max(max, parseInt(match[1], 10)) : max;
-  }, 0);
-  const paymentCode = `VGH-PAY${String(maxNum + 1).padStart(3, '0')}`;
-
-  await prisma.paymentRequest.create({
-    data: {
-      projectId,
-      invoiceId: invoice.id,
-      vendorId: invoice.vendorId,
-      paymentCode,
-      requestNumber: `PAYMENT-${invoice.invoiceCode}`,
-      type: 'INVOICE',
-      amount: Number(invoice.totalAmount),
-      status: PaymentStatus.PAID,
-      createdBy: userId,
-    },
-  });
-}
-
-// Helper: process payment paid (used by legacy mark-payment-paid endpoint)
-// Does NOT add to inventory — that only happens via gate pass approval.
-async function processPaymentPaid(
-  invoice: { id: string; projectId: string; paymentStatus: string },
-  projectId: string,
-  userId: string
-): Promise<{ invoice: unknown; inventoryWarning: string | null; message: string }> {
-  const fullInvoice = await prisma.vendorInvoice.findFirst({
-    where: { id: invoice.id, projectId, deletedAt: null },
-    include: { purchaseOrder: { select: { id: true, poNumber: true } } },
-  });
-
-  const updateData: Record<string, unknown> = { paymentStatus: PaymentStatus.PAID };
-
-  if (fullInvoice && fullInvoice.paymentStatus !== PaymentStatus.PAID) {
-    await createPaymentRecordForInvoice(fullInvoice as unknown as { id: string; projectId: string; vendorId: string; invoiceCode: string; totalAmount: Prisma.Decimal }, projectId, userId);
-  }
-
-  const updated = await prisma.vendorInvoice.update({
-    where: { id: invoice.id },
-    data: updateData,
-    include: invoiceInclude,
-  });
-
-  // Check if PO has an approved gate pass
-  let inventoryWarning: string | null = null;
-  if (fullInvoice?.poId) {
-    const gatePass = await prisma.gatePass.findFirst({
-      where: { poId: fullInvoice.poId, projectId, deletedAt: null, status: 'APPROVED' },
-      select: { id: true, passNumber: true },
-    });
-    if (!gatePass) {
-      inventoryWarning = `WARNING: No approved gate pass exists for PO ${fullInvoice.purchaseOrder?.poNumber ?? '—'}. Items have NOT been added to inventory. Create and approve a gate pass first.`;
-    }
-  }
-
-  await logAudit({
-    userId,
-    action: AuditAction.UPDATE,
-    entityType: 'VENDOR_INVOICE',
-    entityId: invoice.id,
-    projectId,
-    newValue: { paymentStatus: PaymentStatus.PAID, inventoryWarning },
-  });
-
-  return {
-    invoice: updated,
-    inventoryWarning,
-    message: inventoryWarning
-      ? `Payment marked as paid. ${inventoryWarning}`
-      : 'Payment marked as paid. Items are in inventory via gate pass.',
-  };
-}
 
 // GET /:id/payments — payment history for an invoice (advance + installments)
 router.get(
@@ -839,7 +729,7 @@ router.get(
 
       const installmentsPaid = paymentRequests
         .filter((pr) => pr.status === PaymentStatus.PAID)
-        .reduce((sum, pr) => sum + pr.payments.reduce((s, p) => s + Number(p.amount), 0), 0);
+        .reduce((sum, pr) => sum + Number(pr.amount), 0);
 
       const paidToDate = advancePaid + installmentsPaid;
       const outstanding = totalAmount - paidToDate;

@@ -7,11 +7,13 @@ import {
   approvalActionSchema,
 } from '@hospital-erp/shared';
 import { prisma } from '../config/prisma';
+import { Prisma } from '@prisma/client';
 import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middleware/auth';
 import { rbacMiddleware } from '../middleware/rbac';
 import { validateMiddleware } from '../middleware/validate';
 import { logAudit } from '../services/audit.service';
 import * as approvalService from '../services/approval.service';
+import { notifyApprovers } from '../services/push.service';
 import { getStorageService, serveFile } from '../services/storage.service';
 import multer from 'multer';
 
@@ -23,25 +25,24 @@ router.use(authMiddleware);
 const HEAD_ROLES = [UserRole.PROJECT_HEAD, UserRole.HEAD_OF_CONSTRUCTION, UserRole.ADMIN, UserRole.ADMIN_2];
 
 /**
- * Calculate paid-to-date for an invoice: advance + sum of all PAID payment records.
- * Returns { paidToDate, outstanding, totalAmount, advancePaid }.
+ * Calculate paid-to-date for an invoice: advance + sum of all PAID payment request amounts.
+ * Returns { paidToDate, outstanding, totalAmount, advancePaid, installmentsPaid }.
+ * Accepts optional transaction client for use inside transactions.
  */
-async function getInvoicePaymentSummary(invoiceId: string) {
-  const invoice = await prisma.vendorInvoice.findUnique({
+async function getInvoicePaymentSummary(invoiceId: string, tx?: Prisma.TransactionClient) {
+  const client = tx ?? prisma;
+  const invoice = await client.vendorInvoice.findUnique({
     where: { id: invoiceId },
     select: { totalAmount: true, advancePaid: true },
   });
   if (!invoice) throw new Error('Invoice not found');
 
-  const paidRequests = await prisma.paymentRequest.findMany({
+  const paidRequests = await client.paymentRequest.findMany({
     where: { invoiceId, status: PaymentStatus.PAID, deletedAt: null },
-    select: { amount: true, payments: { select: { amount: true } } },
+    select: { amount: true },
   });
 
-  const installmentsPaid = paidRequests.reduce((sum, pr) => {
-    const recorded = pr.payments.reduce((s, p) => s + Number(p.amount), 0);
-    return sum + recorded;
-  }, 0);
+  const installmentsPaid = paidRequests.reduce((sum, pr) => sum + Number(pr.amount), 0);
 
   const advancePaid = Number(invoice.advancePaid) || 0;
   const totalAmount = Number(invoice.totalAmount) || 0;
@@ -56,9 +57,10 @@ async function getInvoicePaymentSummary(invoiceId: string) {
  * - outstanding <= 0 → PAID
  * - paidToDate > 0 but outstanding > 0 → PARTIALLY_PAID
  * - paidToDate === 0 → PENDING
+ * Accepts optional transaction client for use inside transactions.
  */
-async function recalcInvoicePaymentStatus(invoiceId: string): Promise<void> {
-  const { paidToDate, outstanding } = await getInvoicePaymentSummary(invoiceId);
+async function recalcInvoicePaymentStatus(invoiceId: string, tx?: Prisma.TransactionClient): Promise<void> {
+  const { paidToDate, outstanding } = await getInvoicePaymentSummary(invoiceId, tx);
   let status: PaymentStatus;
   if (outstanding <= 0) {
     status = PaymentStatus.PAID;
@@ -67,7 +69,8 @@ async function recalcInvoicePaymentStatus(invoiceId: string): Promise<void> {
   } else {
     status = PaymentStatus.PENDING;
   }
-  await prisma.vendorInvoice.update({
+  const client = tx ?? prisma;
+  await client.vendorInvoice.update({
     where: { id: invoiceId },
     data: { paymentStatus: status },
   });
@@ -159,7 +162,7 @@ router.get(
           createdByUser: { select: { id: true, name: true } },
           paymentRequests: {
             where: { deletedAt: null },
-            select: { id: true, status: true, amount: true, payments: { select: { amount: true } } },
+            select: { id: true, status: true },
           },
         },
         orderBy: { createdAt: 'desc' },
@@ -303,6 +306,18 @@ router.post(
         include: prInclude,
       });
 
+      // Notify all approvers via push notification
+      if (record?.approvalWorkflow) {
+        notifyApprovers(projectId, HEAD_ROLES, {
+          approvalId: record.approvalWorkflow.id,
+          entityType: 'PAYMENT_REQUEST',
+          entityId: result.id,
+          title: 'New Approval Required',
+          body: `Payment request ${paymentCode} — ₹${amount}`,
+          url: `/payments?approval=${record.approvalWorkflow.id}`,
+        }).catch(() => {});
+      }
+
       res.status(201).json(record);
     } catch (error) {
       next(error);
@@ -401,6 +416,18 @@ router.post(
         where: { id: result.id },
         include: prInclude,
       });
+
+      // Notify all approvers via push notification
+      if (record?.approvalWorkflow) {
+        notifyApprovers(projectId, HEAD_ROLES, {
+          approvalId: record.approvalWorkflow.id,
+          entityType: 'PAYMENT_REQUEST',
+          entityId: result.id,
+          title: 'New Approval Required',
+          body: `Expense: ${description} — ₹${amount}`,
+          url: `/payments?approval=${record.approvalWorkflow.id}`,
+        }).catch(() => {});
+      }
 
       res.status(201).json(record);
     } catch (error) {
@@ -613,25 +640,28 @@ router.post(
         return;
       }
 
-      const [payment] = await prisma.$transaction([
-        prisma.payment.create({
+      const payment = await prisma.$transaction(async (tx) => {
+        const created = await tx.payment.create({
           data: {
             paymentRequestId: pr.id,
             amount: Number(req.body.amount),
             mode: req.body.mode,
             reference: req.body.reference ?? null,
           },
-        }),
-        prisma.paymentRequest.update({
+        });
+
+        await tx.paymentRequest.update({
           where: { id: pr.id },
           data: { status: PaymentStatus.PAID },
-        }),
-      ]);
+        });
 
-      // Recalculate invoice payment status based on total paid (advance + installments)
-      if (pr.invoiceId) {
-        await recalcInvoicePaymentStatus(pr.invoiceId);
-      }
+        // Recalculate invoice payment status inside the transaction
+        if (pr.invoiceId) {
+          await recalcInvoicePaymentStatus(pr.invoiceId, tx);
+        }
+
+        return created;
+      });
 
       await logAudit({
         userId: req.user!.id,

@@ -11,7 +11,6 @@ import {
   IssueSeverity,
   InspectionStatus,
   ContractStatus,
-  PaymentStatus,
   StockStatus,
 } from '../enums.js';
 
@@ -145,6 +144,16 @@ export const createInvoiceSchema = z.object({
     deliveryDate: dateStr.optional(),
     acknowledged: acknowledgement,
   }),
+}).superRefine((data, ctx) => {
+  const advance = Number(data.body.advancePaid ?? 0);
+  const total = Number(data.body.totalAmount);
+  if (advance > total) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['body', 'advancePaid'],
+      message: `Advance paid (${advance}) cannot exceed invoice total (${total})`,
+    });
+  }
 });
 export const updateInvoiceSchema = z.object({
   params: z.object({ id: uuid }),
@@ -161,7 +170,6 @@ export const updateInvoiceSchema = z.object({
 export const updateInvoiceStatusSchema = z.object({
   params: z.object({ id: uuid }),
   body: z.object({
-    paymentStatus: z.nativeEnum(PaymentStatus).optional(),
     stockStatus: z.nativeEnum(StockStatus).optional(),
   }),
 });

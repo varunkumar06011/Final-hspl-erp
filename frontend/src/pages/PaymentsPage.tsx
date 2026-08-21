@@ -49,6 +49,7 @@ import { useAuthStore } from '../stores/authStore';
 import { downloadFile } from '../utils/file';
 import ApprovalActionDialog from '../components/ApprovalActionDialog';
 import ResponsiveTable from '../components/ResponsiveTable';
+import { useApprovalDeepLink } from '../utils/useApprovalDeepLink';
 
 interface ApprovalStep {
   id: string;
@@ -169,6 +170,7 @@ export default function PaymentsPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/payments'] });
+      queryClient.invalidateQueries({ queryKey: ['/invoices'] });
       queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
       setInvoicePayOpen(null);
       setInvoicePayForm({});
@@ -211,6 +213,7 @@ export default function PaymentsPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/payments'] });
+      queryClient.invalidateQueries({ queryKey: ['/invoices'] });
       queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
       setApprovalAction(null);
     },
@@ -224,6 +227,7 @@ export default function PaymentsPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/payments'] });
+      queryClient.invalidateQueries({ queryKey: ['/invoices'] });
       queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
       setApprovalAction(null);
     },
@@ -237,6 +241,7 @@ export default function PaymentsPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/payments'] });
+      queryClient.invalidateQueries({ queryKey: ['/invoices'] });
       queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
       setPayOpen(null);
       setPayForm({});
@@ -249,6 +254,9 @@ export default function PaymentsPage() {
   const rows: PaymentRequestRow[] = data?.data ?? [];
   const pagination = data?.pagination ?? { page: 1, pageSize: 20, total: 0, totalPages: 0 };
   const pendingInvoicesData: PendingInvoice[] = pendingInvoices?.data ?? [];
+
+  // Auto-open approval dialog when navigated from a push notification
+  useApprovalDeepLink(rows, (row) => setApprovalAction({ row, action: 'approve' }));
 
   function canApprove(row: PaymentRequestRow): boolean {
     if (!row.approvalWorkflow) return false;
