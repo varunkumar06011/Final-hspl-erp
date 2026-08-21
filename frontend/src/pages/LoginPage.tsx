@@ -63,48 +63,6 @@ export default function LoginPage() {
     return (window as any).recaptchaVerifier;
   }, []);
 
-  // Step 1: Check if phone has a PIN set
-  const handleCheckPhone = useCallback(async () => {
-    setError('');
-    setLoading(true);
-    try {
-      const formattedPhone = formatPhone(phone);
-      const response = await api.get('/auth/check-pin', { params: { phone: formattedPhone } });
-      if (response.data.hasPin) {
-        setStep('pin');
-      } else {
-        // No PIN set — need OTP first
-        if (mode === 'signup') {
-          await sendOtp();
-        } else {
-          // Sign in but no PIN — go to OTP to verify identity, then set PIN
-          await sendOtp();
-        }
-      }
-    } catch (err: unknown) {
-      setError(extractErrorMessage(err));
-    } finally {
-      setLoading(false);
-    }
-  }, [phone, mode]);
-
-  // Step 2a: Login with PIN
-  const handlePinLogin = useCallback(async () => {
-    setError('');
-    setLoading(true);
-    try {
-      const formattedPhone = formatPhone(phone);
-      const response = await api.post('/auth/pin-login', { phone: formattedPhone, pin });
-      setToken(response.data.token);
-      setUser(response.data.user);
-      navigate('/', { replace: true });
-    } catch (err: unknown) {
-      setError(extractErrorMessage(err));
-    } finally {
-      setLoading(false);
-    }
-  }, [phone, pin, setToken, setUser, navigate]);
-
   // Step 2b: Send OTP via Firebase
   const sendOtp = useCallback(async () => {
     setLoading(true);
@@ -126,6 +84,50 @@ export default function LoginPage() {
     }
   }, [phone, setupRecaptcha]);
 
+  // Step 1: Check if phone has a PIN set
+  const handleCheckPhone = useCallback(async () => {
+    setError('');
+    setLoading(true);
+    try {
+      const formattedPhone = formatPhone(phone);
+      const response = await api.get('/auth/check-pin', { params: { phone: formattedPhone } });
+      if (response.data.hasPin) {
+        setStep('pin');
+      } else {
+        // User exists but no PIN — go to OTP to verify identity, then set PIN
+        await sendOtp();
+      }
+    } catch (err: unknown) {
+      // 404 = phone not registered
+      if (mode === 'signup') {
+        // Signup mode: not registered is expected — proceed to OTP to register
+        await sendOtp();
+      } else {
+        // Sign in mode: not registered is an error
+        setError(extractErrorMessage(err));
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [phone, mode, sendOtp]);
+
+  // Step 2a: Login with PIN
+  const handlePinLogin = useCallback(async () => {
+    setError('');
+    setLoading(true);
+    try {
+      const formattedPhone = formatPhone(phone);
+      const response = await api.post('/auth/pin-login', { phone: formattedPhone, pin });
+      setToken(response.data.token);
+      setUser(response.data.user);
+      navigate('/', { replace: true });
+    } catch (err: unknown) {
+      setError(extractErrorMessage(err));
+    } finally {
+      setLoading(false);
+    }
+  }, [phone, pin, setToken, setUser, navigate]);
+
   // Step 2c: Verify OTP
   const handleVerifyOtp = useCallback(async () => {
     setError('');
@@ -136,13 +138,19 @@ export default function LoginPage() {
 
       // Dev mode fallback
       if (!isConfigured || !auth || otp === '1234') {
-        // Verify/register with backend using dev-login or Firebase
         if (otp === '1234') {
-          await api.post('/auth/dev-login', { phone: formattedPhone, name: name.trim() || undefined });
-          if (mode === 'signup' && name.trim()) {
-            // For signup in dev mode, just proceed to set PIN
+          if (mode === 'signup') {
+            // Dev signup: create user via register endpoint (won't have real Firebase token,
+            // so use dev-login which creates/returns the user)
+            try {
+              await api.post('/auth/dev-login', { phone: formattedPhone, name: name.trim() || undefined });
+            } catch {
+              // If dev-login fails (user doesn't exist), we can't create in dev mode without Firebase
+              // Just proceed to setPin — set-pin endpoint will create the PIN if user exists
+            }
+          } else {
+            await api.post('/auth/dev-login', { phone: formattedPhone, name: name.trim() || undefined });
           }
-          // Proceed to set PIN
           setStep('setPin');
           return;
         }

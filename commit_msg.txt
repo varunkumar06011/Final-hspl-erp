@@ -1,27 +1,11 @@
-PIN-based authentication: phone + 4-digit PIN login (7-day session)
+Fix signup flow: handle unregistered phone in check-pin + dev auto-create
 
-Users now sign in with phone + PIN instead of OTP every time. OTP is
-only needed once (to verify identity and set the PIN).
-
-Flow:
-1. User enters phone number
-2. Backend checks if PIN is set for that phone
-3. If PIN exists → user enters 4-digit PIN → JWT issued (7-day expiry)
-4. If no PIN → OTP verification → set PIN → JWT issued
-5. Subsequent logins: phone + PIN only, no OTP
-
-Changes:
-- Prisma: added pinHash (nullable) to User model + migration applied
-- Backend deps: jsonwebtoken, bcryptjs (+ types)
-- Backend .env: JWT_SECRET for signing 7-day tokens
-- Shared schemas: pinLoginSchema, setPinSchema, checkPinSchema
-- Backend controller: pinLogin (with rate limiting — 5 attempts then
-  15-min lock), setPin (after OTP), checkPin (for login flow)
-- Backend auth middleware: accepts JWT tokens (3-part dot-separated)
-  alongside Firebase ID tokens and dev tokens
-- Frontend LoginPage: reworked to 4-step flow (phone → pin/otp → setPin)
-  with show/hide PIN toggle and "Forgot PIN? Verify with OTP" option
-- Dev mode still works (OTP 1234)
+- handleCheckPhone: in signup mode, 404 from check-pin is expected —
+  proceed to OTP flow instead of showing error
+- dev-login: auto-create user as SUPERVISOR if phone not found (dev
+  mode only), so signup works without Firebase
+- Reordered useCallback declarations (sendOtp before handleCheckPhone)
+  to fix block-scoped variable used before declaration
 
 Generated with [Devin](https://devin.ai)
 

@@ -317,12 +317,28 @@ export async function devLogin(
       return;
     }
 
-    const user = await prisma.user.findUnique({ where: { phone } });
+    let user = await prisma.user.findUnique({ where: { phone } });
     if (!user) {
-      res.status(403).json({
-        error: 'Not authorized. Your phone number is not registered in the system.',
+      // Dev mode: auto-create the user as SUPERVISOR if they don't exist
+      const project = await prisma.project.findFirst({
+        where: { status: 'ACTIVE' },
+        orderBy: { createdAt: 'asc' },
+        select: { id: true },
       });
-      return;
+      if (!project) {
+        res.status(503).json({ error: 'No active project available' });
+        return;
+      }
+      user = await prisma.user.create({
+        data: {
+          firebaseUid: `dev-${phone}`,
+          phone,
+          name: (name && String(name).trim()) || 'Dev User',
+          role: UserRole.SUPERVISOR,
+          projectId: project.id,
+          isActive: true,
+        },
+      });
     }
 
     if (!user.isActive) {
