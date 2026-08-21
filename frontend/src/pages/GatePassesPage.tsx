@@ -23,7 +23,6 @@ import {
   MenuItem,
 } from '@mui/material';
 import ResponsiveDialog from '../components/ResponsiveDialog';
-import WrappingMenuItem from '../components/WrappingMenuItem';
 import {
   Add as AddIcon,
   Refresh as RefreshIcon,
@@ -379,7 +378,7 @@ export default function GatePassesPage() {
               helperText={approvedPOs?.length === 0 ? 'No approved POs available' : undefined}
             >
               {approvedPOs?.map((po) => (
-                <WrappingMenuItem key={po.id} value={po.id} primary={`${po.poNumber} — ${po.vendor.vendorCode} - ${po.vendor.name}`} />
+                <MenuItem key={po.id} value={po.id}>{po.poNumber} — {po.vendor.vendorCode} - {po.vendor.name}</MenuItem>
               ))}
             </TextField>
 
@@ -437,7 +436,7 @@ export default function GatePassesPage() {
               helperText="A real OTP will be sent to this person's phone via Firebase. They will tell you the OTP."
             >
               {heads?.map((h) => (
-                <WrappingMenuItem key={h.id} value={h.id} primary={`${h.name} (${h.role.replace(/_/g, ' ')})`} secondary={h.phone} />
+                <MenuItem key={h.id} value={h.id}>{h.name} ({h.role.replace(/_/g, ' ')}) — {h.phone}</MenuItem>
               ))}
             </TextField>
           </Box>

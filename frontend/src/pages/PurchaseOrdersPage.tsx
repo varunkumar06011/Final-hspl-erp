@@ -28,7 +28,6 @@ import {
   Snackbar,
 } from '@mui/material';
 import ResponsiveDialog from '../components/ResponsiveDialog';
-import WrappingMenuItem from '../components/WrappingMenuItem';
 import {
   Add as AddIcon,
   Refresh as RefreshIcon,
@@ -452,7 +451,7 @@ export default function PurchaseOrdersPage() {
               required
             >
               {vendors.map((v) => (
-                <WrappingMenuItem key={v.id} value={v.id} primary={`${v.vendorCode} - ${v.name}`} />
+                <MenuItem key={v.id} value={v.id}>{v.vendorCode} - {v.name}</MenuItem>
               ))}
             </TextField>
 
@@ -469,7 +468,7 @@ export default function PurchaseOrdersPage() {
                 helperText={approvedQuotations?.length === 0 ? 'No approved quotations for this vendor' : undefined}
               >
                 {approvedQuotations?.map((q) => (
-                  <WrappingMenuItem key={q.id} value={q.id} primary={q.quotationNumber} secondary={formatCurrency(q.grandTotal)} />
+                  <MenuItem key={q.id} value={q.id}>{q.quotationNumber} — {formatCurrency(q.grandTotal)}</MenuItem>
                 ))}
               </TextField>
             )}

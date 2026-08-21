@@ -27,7 +27,6 @@ import {
   Checkbox,
 } from '@mui/material';
 import ResponsiveDialog from '../components/ResponsiveDialog';
-import WrappingMenuItem from '../components/WrappingMenuItem';
 import {
   Add as AddIcon,
   Refresh as RefreshIcon,
@@ -509,7 +508,7 @@ export default function QuotationsPage() {
               required
             >
               {vendors.map((v) => (
-                <WrappingMenuItem key={v.id} value={v.id} primary={`${v.vendorCode} - ${v.name}`} />
+                <MenuItem key={v.id} value={v.id}>{v.vendorCode} - {v.name}</MenuItem>
               ))}
             </TextField>
 

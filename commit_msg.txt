@@ -1,10 +1,15 @@
-Fix attendance marking: entityId must be UUID not date string
+Fix dropdown selected value not displaying: revert WrappingMenuItem
 
-The logAudit call in the attendance route passed a date string
-(e.g. "2026-08-21") as entityId, but AuditLog.entityId is a UUID
-column. This caused a DB constraint violation -> 500 error.
+WrappingMenuItem used Box/Typography as MenuItem children, which
+broke MUI's TextField select rendering of the selected value (the
+name wasn't appearing after selection).
 
-Fix: use the first attendance record's UUID as entityId.
+Reverted to plain MenuItem with text children. The global theme
+override (MuiMenuItem: whiteSpace normal, wordBreak break-word)
+already handles text wrapping on mobile — no need for a custom
+component.
+
+Removed WrappingMenuItem.tsx (no longer used).
 
 Generated with [Devin](https://devin.ai)
 

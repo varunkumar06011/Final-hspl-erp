@@ -27,7 +27,6 @@ import {
   Snackbar,
 } from '@mui/material';
 import ResponsiveDialog from '../components/ResponsiveDialog';
-import WrappingMenuItem from '../components/WrappingMenuItem';
 import {
   Add as AddIcon,
   Refresh as RefreshIcon,
@@ -568,7 +567,7 @@ export default function InvoicesPage() {
               required
             >
               {vendors.map((v) => (
-                <WrappingMenuItem key={v.id} value={v.id} primary={`${v.vendorCode} - ${v.name}`} />
+                <MenuItem key={v.id} value={v.id}>{v.vendorCode} - {v.name}</MenuItem>
               ))}
             </TextField>
 
@@ -585,7 +584,7 @@ export default function InvoicesPage() {
               >
                 <MenuItem value="">None</MenuItem>
                 {approvedPOs?.map((po: { id: string; poNumber: string; grandTotal: number }) => (
-                  <WrappingMenuItem key={po.id} value={po.id} primary={po.poNumber} secondary={formatCurrency(po.grandTotal)} />
+                  <MenuItem key={po.id} value={po.id}>{po.poNumber} — {formatCurrency(po.grandTotal)}</MenuItem>
                 ))}
               </TextField>
             )}
