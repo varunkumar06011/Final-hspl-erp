@@ -39,6 +39,7 @@ import { enumToOptions } from '../utils/enumOptions';
 import api, { extractErrorMessage } from '../config/api';
 import CreatableSelect from '../components/CreatableSelect';
 import AttachmentUpload from '../components/AttachmentUpload';
+import ResponsiveTable from '../components/ResponsiveTable';
 
 export default function InventoryPage() {
   const [tab, setTab] = useState(0);
@@ -183,6 +184,7 @@ export default function InventoryPage() {
           </Box>
         )}
 
+        <ResponsiveTable>
         <TableContainer sx={{ overflowX: 'auto' }}>
           <Table size="small">
             <TableHead>
@@ -218,16 +220,16 @@ export default function InventoryPage() {
                   const lowStock = Number(row.currentStock) <= Number(row.minStockLevel) && Number(row.minStockLevel) > 0;
                   return (
                     <TableRow key={row.id as string} hover>
-                      <TableCell>{String(row.name ?? '—')}</TableCell>
-                      <TableCell>{String(row.sku ?? '—')}</TableCell>
-                      <TableCell>{String(row.category ?? '—')}</TableCell>
-                      <TableCell>{String(row.unit ?? '—')}</TableCell>
-                      <TableCell>
+                      <TableCell data-label="Name">{String(row.name ?? '—')}</TableCell>
+                      <TableCell data-label="SKU">{String(row.sku ?? '—')}</TableCell>
+                      <TableCell data-label="Category">{String(row.category ?? '—')}</TableCell>
+                      <TableCell data-label="Unit">{String(row.unit ?? '—')}</TableCell>
+                      <TableCell data-label="Stock">
                         <Chip label={String(row.currentStock)} size="small" color={lowStock ? 'error' : 'default'} />
                       </TableCell>
-                      <TableCell>{String(row.minStockLevel ?? 0)}</TableCell>
-                      <TableCell>{String(row.location ?? '—')}</TableCell>
-                      <TableCell align="right">
+                      <TableCell data-label="Min Level">{String(row.minStockLevel ?? 0)}</TableCell>
+                      <TableCell data-label="Location">{String(row.location ?? '—')}</TableCell>
+                      <TableCell align="right" data-label="Actions">
                         <IconButton size="small" onClick={() => openEdit(row)}><EditIcon fontSize="small" /></IconButton>
                         <IconButton size="small" color="error" onClick={() => setDeleteConfirm(row.id as string)}><DeleteIcon fontSize="small" /></IconButton>
                       </TableCell>
@@ -237,18 +239,19 @@ export default function InventoryPage() {
               ) : (
                 rows.map((row: Record<string, unknown>) => (
                   <TableRow key={row.id as string} hover>
-                    <TableCell>{(row.inventoryItem as any)?.name ?? '—'}</TableCell>
-                    <TableCell><Chip label={String(row.type)} size="small" color={row.type === 'IN' ? 'success' : row.type === 'OUT' ? 'warning' : 'default'} /></TableCell>
-                    <TableCell>{String(row.quantity ?? '—')}</TableCell>
-                    <TableCell>{String(row.balanceAfter ?? '—')}</TableCell>
-                    <TableCell>{(row.gatePass as any)?.passNumber ?? '—'}</TableCell>
-                    <TableCell>{String(row.notes ?? '—')}</TableCell>
+                    <TableCell data-label="Item">{(row.inventoryItem as any)?.name ?? '—'}</TableCell>
+                    <TableCell data-label="Type"><Chip label={String(row.type)} size="small" color={row.type === 'IN' ? 'success' : row.type === 'OUT' ? 'warning' : 'default'} /></TableCell>
+                    <TableCell data-label="Qty">{String(row.quantity ?? '—')}</TableCell>
+                    <TableCell data-label="Balance After">{String(row.balanceAfter ?? '—')}</TableCell>
+                    <TableCell data-label="Gate Pass">{(row.gatePass as any)?.passNumber ?? '—'}</TableCell>
+                    <TableCell data-label="Notes">{String(row.notes ?? '—')}</TableCell>
                   </TableRow>
                 ))
               )}
             </TableBody>
           </Table>
         </TableContainer>
+        </ResponsiveTable>
 
         <TablePagination
           component="div"

@@ -36,6 +36,7 @@ import { RecaptchaVerifier, signInWithPhoneNumber } from 'firebase/auth';
 import { auth, isConfigured } from '../config/firebase';
 import { formatDate } from '../utils/enumOptions';
 import api, { extractErrorMessage } from '../config/api';
+import ResponsiveTable from '../components/ResponsiveTable';
 
 interface GatePassItem {
   materialName: string;
@@ -294,6 +295,7 @@ export default function GatePassesPage() {
           </TextField>
         </Box>
 
+        <ResponsiveTable>
         <TableContainer sx={{ overflowX: 'auto' }}>
           <Table size="small">
             <TableHead>
@@ -318,16 +320,16 @@ export default function GatePassesPage() {
               ) : (
                 rows.map((row) => (
                   <TableRow key={row.id} hover>
-                    <TableCell>{row.passNumber}</TableCell>
-                    <TableCell>{row.purchaseOrder?.poNumber ?? '—'}</TableCell>
-                    <TableCell>{row.invoice?.invoiceCode ?? '—'}</TableCell>
-                    <TableCell>{row.purchaseOrder?.vendor ? `${row.purchaseOrder.vendor.vendorCode} - ${row.purchaseOrder.vendor.name}` : '—'}</TableCell>
-                    <TableCell>{row.items?.length ?? 0} item(s)</TableCell>
-                    <TableCell>{row.otpRequestedForUser?.name ?? '—'}</TableCell>
-                    <TableCell>{row.otpApprovedByUser?.name ?? '—'}</TableCell>
-                    <TableCell>{formatDate(row.date)}</TableCell>
-                    <TableCell><Chip label={row.status} size="small" color={row.status === 'APPROVED' ? 'success' : 'warning'} /></TableCell>
-                    <TableCell>
+                    <TableCell data-label="Pass Number">{row.passNumber}</TableCell>
+                    <TableCell data-label="PO">{row.purchaseOrder?.poNumber ?? '—'}</TableCell>
+                    <TableCell data-label="Invoice">{row.invoice?.invoiceCode ?? '—'}</TableCell>
+                    <TableCell data-label="Vendor">{row.purchaseOrder?.vendor ? `${row.purchaseOrder.vendor.vendorCode} - ${row.purchaseOrder.vendor.name}` : '—'}</TableCell>
+                    <TableCell data-label="Items">{row.items?.length ?? 0} item(s)</TableCell>
+                    <TableCell data-label="OTP Sent To">{row.otpRequestedForUser?.name ?? '—'}</TableCell>
+                    <TableCell data-label="Approved By">{row.otpApprovedByUser?.name ?? '—'}</TableCell>
+                    <TableCell data-label="Date">{formatDate(row.date)}</TableCell>
+                    <TableCell data-label="Status"><Chip label={row.status} size="small" color={row.status === 'APPROVED' ? 'success' : 'warning'} /></TableCell>
+                    <TableCell data-label="Actions">
                       <Box sx={{ display: 'flex', gap: 0.5 }}>
                         {row.status === 'PENDING' && (
                           <>
@@ -345,6 +347,7 @@ export default function GatePassesPage() {
             </TableBody>
           </Table>
         </TableContainer>
+        </ResponsiveTable>
 
         <TablePagination
           component="div"

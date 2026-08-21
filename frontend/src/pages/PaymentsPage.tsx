@@ -47,6 +47,7 @@ import api, { extractErrorMessage } from '../config/api';
 import { useAuthStore } from '../stores/authStore';
 import { downloadFile } from '../utils/file';
 import ApprovalActionDialog from '../components/ApprovalActionDialog';
+import ResponsiveTable from '../components/ResponsiveTable';
 
 interface ApprovalStep {
   id: string;
@@ -299,6 +300,7 @@ export default function PaymentsPage() {
             {pendingInvoicesData.length === 0 ? (
               <Typography color="text.secondary" sx={{ py: 3, textAlign: 'center' }}>No pending invoices. All verified invoices have payment requests.</Typography>
             ) : (
+              <ResponsiveTable>
               <TableContainer sx={{ overflowX: 'auto' }}>
                 <Table size="small">
                   <TableHead>
@@ -316,14 +318,14 @@ export default function PaymentsPage() {
                   <TableBody>
                     {pendingInvoicesData.map((inv) => (
                       <TableRow key={inv.id} hover>
-                        <TableCell>{inv.invoiceCode}</TableCell>
-                        <TableCell>{inv.invoiceNumber}</TableCell>
-                        <TableCell>{inv.vendor?.vendorCode} - {inv.vendor?.name}</TableCell>
-                        <TableCell>{formatCurrency(inv.totalAmount)}</TableCell>
-                        <TableCell>{inv.advancePaid > 0 ? formatCurrency(inv.advancePaid) : '—'}</TableCell>
-                        <TableCell><strong>{formatCurrency(inv.balanceDue)}</strong></TableCell>
-                        <TableCell>{inv.createdBy}</TableCell>
-                        <TableCell>
+                        <TableCell data-label="Invoice Code">{inv.invoiceCode}</TableCell>
+                        <TableCell data-label="Invoice No">{inv.invoiceNumber}</TableCell>
+                        <TableCell data-label="Vendor">{inv.vendor?.vendorCode} - {inv.vendor?.name}</TableCell>
+                        <TableCell data-label="Total Amount">{formatCurrency(inv.totalAmount)}</TableCell>
+                        <TableCell data-label="Advance Paid">{inv.advancePaid > 0 ? formatCurrency(inv.advancePaid) : '—'}</TableCell>
+                        <TableCell data-label="Balance Due"><strong>{formatCurrency(inv.balanceDue)}</strong></TableCell>
+                        <TableCell data-label="Created By">{inv.createdBy}</TableCell>
+                        <TableCell data-label="Actions">
                           <Button
                             size="small"
                             variant="outlined"
@@ -345,6 +347,7 @@ export default function PaymentsPage() {
                   </TableBody>
                 </Table>
               </TableContainer>
+              </ResponsiveTable>
             )}
           </CardContent>
         </Card>
@@ -373,6 +376,7 @@ export default function PaymentsPage() {
             </TextField>
           </Box>
 
+          <ResponsiveTable>
           <TableContainer sx={{ overflowX: 'auto' }}>
             <Table size="small">
               <TableHead>
@@ -396,27 +400,27 @@ export default function PaymentsPage() {
                 ) : (
                   rows.map((row) => (
                     <TableRow key={row.id} hover>
-                      <TableCell>{row.paymentCode}</TableCell>
-                      <TableCell><Chip label={row.type} size="small" color={row.type === 'EXPENSE' ? 'secondary' : 'primary'} variant="outlined" /></TableCell>
-                      <TableCell>
+                      <TableCell data-label="Code">{row.paymentCode}</TableCell>
+                      <TableCell data-label="Type"><Chip label={row.type} size="small" color={row.type === 'EXPENSE' ? 'secondary' : 'primary'} variant="outlined" /></TableCell>
+                      <TableCell data-label="Description / Invoice">
                         {row.type === 'EXPENSE'
                           ? `${row.description ?? '—'}${row.category ? ` (${row.category})` : ''}`
                           : row.invoice?.invoiceCode ?? '—'}
                       </TableCell>
-                      <TableCell>{row.vendor ? `${row.vendor.vendorCode} - ${row.vendor.name}` : '—'}</TableCell>
-                      <TableCell>{formatCurrency(row.amount)}</TableCell>
-                      <TableCell>
+                      <TableCell data-label="Vendor">{row.vendor ? `${row.vendor.vendorCode} - ${row.vendor.name}` : '—'}</TableCell>
+                      <TableCell data-label="Amount">{formatCurrency(row.amount)}</TableCell>
+                      <TableCell data-label="Approvals">
                         {row.approvalWorkflow
                           ? `${getApprovalCount(row)}/2`
                           : '—'}
                       </TableCell>
-                      <TableCell><Chip label={row.status} size="small" color={STATUS_COLORS[row.status] ?? 'default'} /></TableCell>
-                      <TableCell>
+                      <TableCell data-label="Status"><Chip label={row.status} size="small" color={STATUS_COLORS[row.status] ?? 'default'} /></TableCell>
+                      <TableCell data-label="File">
                         {row.filePath
                           ? <IconButton size="small" onClick={() => handleDownload(row.id, row.fileName ?? 'file')}><DownloadIcon fontSize="small" /></IconButton>
                           : '—'}
                       </TableCell>
-                      <TableCell>
+                      <TableCell data-label="Actions">
                         <Box sx={{ display: 'flex', gap: 0.5 }}>
                           {canApprove(row) && (
                             <>
@@ -441,6 +445,7 @@ export default function PaymentsPage() {
               </TableBody>
             </Table>
           </TableContainer>
+          </ResponsiveTable>
 
           <TablePagination
             component="div"

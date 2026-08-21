@@ -40,6 +40,7 @@ import { IssueSeverity, IssueCategory } from '@hospital-erp/shared';
 import { enumToOptions, formatDate, STATUS_COLORS } from '../utils/enumOptions';
 import api, { extractErrorMessage } from '../config/api';
 import { useAuthStore } from '../stores/authStore';
+import ResponsiveTable from '../components/ResponsiveTable';
 
 interface IssueRow {
   id: string;
@@ -180,6 +181,7 @@ export default function IssuesPage() {
           </TextField>
         </Box>
 
+        <ResponsiveTable>
         <TableContainer sx={{ overflowX: 'auto' }}>
           <Table size="small">
             <TableHead>
@@ -201,13 +203,13 @@ export default function IssuesPage() {
               ) : (
                 rows.map((row) => (
                   <TableRow key={row.id} hover>
-                    <TableCell>{row.title}</TableCell>
-                    <TableCell>{row.category}</TableCell>
-                    <TableCell><Chip label={row.severity} size="small" color={STATUS_COLORS[row.severity] ?? 'default'} /></TableCell>
-                    <TableCell>{getNamesForIds(row.addressTo)}</TableCell>
-                    <TableCell>{row.createdByUser?.name ?? '—'}</TableCell>
-                    <TableCell>{formatDate(row.dateRaised)}</TableCell>
-                    <TableCell>
+                    <TableCell data-label="Title">{row.title}</TableCell>
+                    <TableCell data-label="Category">{row.category}</TableCell>
+                    <TableCell data-label="Severity"><Chip label={row.severity} size="small" color={STATUS_COLORS[row.severity] ?? 'default'} /></TableCell>
+                    <TableCell data-label="Address To">{getNamesForIds(row.addressTo)}</TableCell>
+                    <TableCell data-label="Raised By">{row.createdByUser?.name ?? '—'}</TableCell>
+                    <TableCell data-label="Date">{formatDate(row.dateRaised)}</TableCell>
+                    <TableCell data-label="Actions">
                       <IconButton size="small" onClick={() => openEdit(row)}><EditIcon fontSize="small" /></IconButton>
                       <IconButton size="small" color="error" onClick={() => { if (confirm('Delete this issue?')) deleteMutation.mutate(row.id); }}><DeleteIcon fontSize="small" /></IconButton>
                     </TableCell>
@@ -217,6 +219,7 @@ export default function IssuesPage() {
             </TableBody>
           </Table>
         </TableContainer>
+        </ResponsiveTable>
 
         <TablePagination
           component="div"

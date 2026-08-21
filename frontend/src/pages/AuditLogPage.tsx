@@ -23,6 +23,7 @@ import { useQuery } from '@tanstack/react-query';
 import { AuditAction } from '@hospital-erp/shared';
 import { enumToOptions } from '../utils/enumOptions';
 import api from '../config/api';
+import ResponsiveTable from '../components/ResponsiveTable';
 
 interface AuditLogRow {
   id: string;
@@ -129,6 +130,7 @@ export default function AuditLogPage() {
           </TextField>
         </Box>
 
+        <ResponsiveTable>
         <TableContainer sx={{ overflowX: 'auto' }}>
           <Table size="small">
             <TableHead>
@@ -150,11 +152,11 @@ export default function AuditLogPage() {
               ) : (
                 rows.map((row: AuditLogRow) => (
                   <TableRow key={row.id} hover>
-                    <TableCell sx={{ whiteSpace: 'nowrap' }}>{formatTimestamp(row.timestamp)}</TableCell>
-                    <TableCell>{row.user?.name ?? '—'}</TableCell>
-                    <TableCell><Chip label={row.action} size="small" color={ACTION_COLORS[row.action] ?? 'default'} /></TableCell>
-                    <TableCell>{ENTITY_LABELS[row.entityType] ?? row.entityType}</TableCell>
-                    <TableCell sx={{ maxWidth: 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <TableCell data-label="Date" sx={{ whiteSpace: 'nowrap' }}>{formatTimestamp(row.timestamp)}</TableCell>
+                    <TableCell data-label="User">{row.user?.name ?? '—'}</TableCell>
+                    <TableCell data-label="Action"><Chip label={row.action} size="small" color={ACTION_COLORS[row.action] ?? 'default'} /></TableCell>
+                    <TableCell data-label="Entity">{ENTITY_LABELS[row.entityType] ?? row.entityType}</TableCell>
+                    <TableCell data-label="Details" sx={{ maxWidth: 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {formatDetails(row)}
                     </TableCell>
                   </TableRow>
@@ -163,6 +165,7 @@ export default function AuditLogPage() {
             </TableBody>
           </Table>
         </TableContainer>
+        </ResponsiveTable>
 
         <TablePagination
           component="div"

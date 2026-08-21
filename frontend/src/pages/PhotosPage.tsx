@@ -33,6 +33,7 @@ import { enumToOptions, formatDate, STATUS_COLORS } from '../utils/enumOptions';
 import api, { extractErrorMessage } from '../config/api';
 import { SecureImage } from '../components/SecureImage';
 import CreatableSelect from '../components/CreatableSelect';
+import ResponsiveTable from '../components/ResponsiveTable';
 
 export default function PhotosPage() {
   const [page, setPage] = useState(0);
@@ -110,6 +111,7 @@ export default function PhotosPage() {
           />
         </Box>
 
+        <ResponsiveTable>
         <TableContainer sx={{ overflowX: 'auto' }}>
           <Table size="small">
             <TableHead>
@@ -129,19 +131,20 @@ export default function PhotosPage() {
               ) : (
                 rows.map((row: Record<string, unknown>) => (
                   <TableRow key={row.id as string} hover>
-                    <TableCell>
+                    <TableCell data-label="Image">
                       <SecureImage route="photos" id={row.id as string} alt={String(row.caption ?? '')} sx={{ width: 60, height: 60 }} />
                     </TableCell>
-                    <TableCell>{String(row.caption ?? '—')}</TableCell>
-                    <TableCell><Chip label={String(row.tag ?? '')} size="small" color={STATUS_COLORS[String(row.tag)] ?? 'default'} /></TableCell>
-                    <TableCell>{String(row.zone ?? '—')}</TableCell>
-                    <TableCell>{formatDate(row.takenAt)}</TableCell>
+                    <TableCell data-label="Caption">{String(row.caption ?? '—')}</TableCell>
+                    <TableCell data-label="Tag"><Chip label={String(row.tag ?? '')} size="small" color={STATUS_COLORS[String(row.tag)] ?? 'default'} /></TableCell>
+                    <TableCell data-label="Zone">{String(row.zone ?? '—')}</TableCell>
+                    <TableCell data-label="Date">{formatDate(row.takenAt)}</TableCell>
                   </TableRow>
                 ))
               )}
             </TableBody>
           </Table>
         </TableContainer>
+        </ResponsiveTable>
 
         <TablePagination
           component="div"

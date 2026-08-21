@@ -40,6 +40,7 @@ import { formatDate } from '../utils/enumOptions';
 import api, { extractErrorMessage } from '../config/api';
 import { useAuthStore } from '../stores/authStore';
 import { downloadFile } from '../utils/file';
+import ResponsiveTable from '../components/ResponsiveTable';
 
 interface DocumentRow {
   id: string;
@@ -166,6 +167,7 @@ export default function DocumentsPage() {
           />
         </Box>
 
+        <ResponsiveTable>
         <TableContainer sx={{ overflowX: 'auto' }}>
           <Table size="small">
             <TableHead>
@@ -187,15 +189,15 @@ export default function DocumentsPage() {
               ) : (
                 rows.map((row) => (
                   <TableRow key={row.id} hover>
-                    <TableCell>{row.name}</TableCell>
-                    <TableCell>{row.description ?? '—'}</TableCell>
-                    <TableCell>{getNamesForIds(row.resolveTo)}</TableCell>
-                    <TableCell>
+                    <TableCell data-label="Name">{row.name}</TableCell>
+                    <TableCell data-label="Description">{row.description ?? '—'}</TableCell>
+                    <TableCell data-label="Resolve To">{getNamesForIds(row.resolveTo)}</TableCell>
+                    <TableCell data-label="File">
                       <Chip label={row.fileName} size="small" variant="outlined" />
                     </TableCell>
-                    <TableCell>{row.uploadedByUser?.name ?? '—'}</TableCell>
-                    <TableCell>{formatDate(row.createdAt)}</TableCell>
-                    <TableCell>
+                    <TableCell data-label="Uploaded By">{row.uploadedByUser?.name ?? '—'}</TableCell>
+                    <TableCell data-label="Date">{formatDate(row.createdAt)}</TableCell>
+                    <TableCell data-label="Actions">
                       <IconButton size="small" onClick={() => handleDownload(row.id, row.fileName)}><DownloadIcon fontSize="small" /></IconButton>
                       <IconButton size="small" color="error" onClick={() => { if (confirm('Delete this document?')) deleteMutation.mutate(row.id); }}><DeleteIcon fontSize="small" /></IconButton>
                     </TableCell>
@@ -205,6 +207,7 @@ export default function DocumentsPage() {
             </TableBody>
           </Table>
         </TableContainer>
+        </ResponsiveTable>
 
         <TablePagination
           component="div"

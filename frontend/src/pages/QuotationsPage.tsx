@@ -46,6 +46,7 @@ import { downloadFile } from '../utils/file';
 import AcknowledgementCheckbox from '../components/AcknowledgementCheckbox';
 import ApprovalActionDialog from '../components/ApprovalActionDialog';
 import OcrAutoFill, { type OcrQuotationData } from '../components/OcrAutoFill';
+import ResponsiveTable from '../components/ResponsiveTable';
 
 interface QuotationItem {
   id?: string;
@@ -378,6 +379,7 @@ export default function QuotationsPage() {
           </TextField>
         </Box>
 
+        <ResponsiveTable>
         <TableContainer sx={{ overflowX: 'auto' }}>
           <Table size="small">
             <TableHead>
@@ -404,20 +406,20 @@ export default function QuotationsPage() {
                   const pendingStep = canApprove(row);
                   return (
                     <TableRow key={row.id} hover>
-                      <TableCell>{row.quotationNumber}</TableCell>
-                      <TableCell>{row.vendor?.vendorCode} - {row.vendor?.name ?? '—'}</TableCell>
-                      <TableCell>{formatDate(row.date)}</TableCell>
-                      <TableCell>{formatCurrency(row.totalAmount)}</TableCell>
-                      <TableCell>{formatCurrency(row.gstAmount)}</TableCell>
-                      <TableCell>{formatCurrency(row.grandTotal)}</TableCell>
-                      <TableCell>{row.createdByUser?.name ?? '—'}</TableCell>
-                      <TableCell><Chip label={row.status.replace(/_/g, ' ')} size="small" color={STATUS_COLORS[row.status] ?? 'default'} /></TableCell>
-                      <TableCell>
+                      <TableCell data-label="Quotation No">{row.quotationNumber}</TableCell>
+                      <TableCell data-label="Vendor">{row.vendor?.vendorCode} - {row.vendor?.name ?? '—'}</TableCell>
+                      <TableCell data-label="Date">{formatDate(row.date)}</TableCell>
+                      <TableCell data-label="Total">{formatCurrency(row.totalAmount)}</TableCell>
+                      <TableCell data-label="GST">{formatCurrency(row.gstAmount)}</TableCell>
+                      <TableCell data-label="Grand Total">{formatCurrency(row.grandTotal)}</TableCell>
+                      <TableCell data-label="Created By">{row.createdByUser?.name ?? '—'}</TableCell>
+                      <TableCell data-label="Status"><Chip label={row.status.replace(/_/g, ' ')} size="small" color={STATUS_COLORS[row.status] ?? 'default'} /></TableCell>
+                      <TableCell data-label="File">
                         {row.filePath ? (
                           <IconButton size="small" onClick={() => handleDownload(row.id, row.fileName ?? 'quotation')}><DownloadIcon fontSize="small" /></IconButton>
                         ) : '—'}
                       </TableCell>
-                      <TableCell>
+                      <TableCell data-label="Actions">
                         <Box sx={{ display: 'flex', gap: 0.5 }}>
                           {row.status === QuotationStatus.SUBMITTED || row.status === QuotationStatus.UNDER_REVIEW ? (
                             <IconButton size="small" onClick={() => openEdit(row)}><EditIcon /></IconButton>
@@ -437,6 +439,7 @@ export default function QuotationsPage() {
             </TableBody>
           </Table>
         </TableContainer>
+        </ResponsiveTable>
 
         <TablePagination
           component="div"

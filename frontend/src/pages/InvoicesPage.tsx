@@ -45,6 +45,7 @@ import { downloadFile } from '../utils/file';
 import AcknowledgementCheckbox from '../components/AcknowledgementCheckbox';
 import ApprovalActionDialog from '../components/ApprovalActionDialog';
 import OcrAutoFill, { type OcrInvoiceData } from '../components/OcrAutoFill';
+import ResponsiveTable from '../components/ResponsiveTable';
 
 interface POItem {
   id?: string;
@@ -400,6 +401,7 @@ export default function InvoicesPage() {
           </TextField>
         </Box>
 
+        <ResponsiveTable>
         <TableContainer sx={{ overflowX: 'auto' }}>
           <Table size="small">
             <TableHead>
@@ -427,19 +429,19 @@ export default function InvoicesPage() {
               ) : (
                 rows.map((row) => (
                   <TableRow key={row.id} hover>
-                    <TableCell>{row.invoiceCode}</TableCell>
-                    <TableCell>{row.invoiceNumber}</TableCell>
-                    <TableCell>{row.vendor?.vendorCode} - {row.vendor?.name ?? '—'}</TableCell>
-                    <TableCell>{row.purchaseOrder?.poNumber ?? '—'}</TableCell>
-                    <TableCell>{formatCurrency(row.amount)}</TableCell>
-                    <TableCell>{formatCurrency(row.taxAmount)}</TableCell>
-                    <TableCell>{formatCurrency(row.totalAmount)}</TableCell>
-                    <TableCell>
+                    <TableCell data-label="Invoice Code">{row.invoiceCode}</TableCell>
+                    <TableCell data-label="Invoice No">{row.invoiceNumber}</TableCell>
+                    <TableCell data-label="Vendor">{row.vendor?.vendorCode} - {row.vendor?.name ?? '—'}</TableCell>
+                    <TableCell data-label="PO">{row.purchaseOrder?.poNumber ?? '—'}</TableCell>
+                    <TableCell data-label="Amount">{formatCurrency(row.amount)}</TableCell>
+                    <TableCell data-label="Tax">{formatCurrency(row.taxAmount)}</TableCell>
+                    <TableCell data-label="Total">{formatCurrency(row.totalAmount)}</TableCell>
+                    <TableCell data-label="Advance">
                       {Number(row.advancePaid) > 0
                         ? `${formatCurrency(row.advancePaid)} (${row.advanceType === 'Other' ? row.advanceOtherType : row.advanceType})`
                         : '—'}
                     </TableCell>
-                    <TableCell>
+                    <TableCell data-label="Payment">
                       <TextField
                         select
                         size="small"
@@ -461,7 +463,7 @@ export default function InvoicesPage() {
                         <MenuItem value={PaymentStatus.OTHER}>Other</MenuItem>
                       </TextField>
                     </TableCell>
-                    <TableCell>
+                    <TableCell data-label="Stock">
                       <TextField
                         select
                         size="small"
@@ -475,13 +477,13 @@ export default function InvoicesPage() {
                         <MenuItem value={StockStatus.RECEIVED}>Received</MenuItem>
                       </TextField>
                     </TableCell>
-                    <TableCell><Chip label={row.verificationStatus.replace(/_/g, ' ')} size="small" color={STATUS_COLORS[row.verificationStatus] ?? 'default'} /></TableCell>
-                    <TableCell>
+                    <TableCell data-label="Verification"><Chip label={row.verificationStatus.replace(/_/g, ' ')} size="small" color={STATUS_COLORS[row.verificationStatus] ?? 'default'} /></TableCell>
+                    <TableCell data-label="File">
                       {row.filePath ? (
                         <IconButton size="small" onClick={() => handleDownload(row.id, row.fileName ?? 'invoice')}><DownloadIcon fontSize="small" /></IconButton>
                       ) : '—'}
                     </TableCell>
-                    <TableCell>
+                    <TableCell data-label="Actions">
                       <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
                         {canApprove(row) && (
                           <>
@@ -497,6 +499,7 @@ export default function InvoicesPage() {
             </TableBody>
           </Table>
         </TableContainer>
+        </ResponsiveTable>
 
         <TablePagination
           component="div"

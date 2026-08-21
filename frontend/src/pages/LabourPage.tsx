@@ -40,6 +40,7 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { formatCurrency, formatDate } from '../utils/enumOptions';
 import api, { extractErrorMessage } from '../config/api';
+import ResponsiveTable from '../components/ResponsiveTable';
 
 interface Staff {
   id: string;
@@ -261,6 +262,7 @@ export default function AttendancePage() {
               <MenuItem value="false">Inactive</MenuItem>
             </TextField>
           </Box>
+          <ResponsiveTable>
           <TableContainer sx={{ overflowX: 'auto' }}>
             <Table size="small">
               <TableHead>
@@ -282,13 +284,13 @@ export default function AttendancePage() {
                 ) : (
                   staffRows.map((s) => (
                     <TableRow key={s.id} hover>
-                      <TableCell>{s.name}</TableCell>
-                      <TableCell><Chip label={s.type} size="small" color={s.type === 'COMPANY' ? 'primary' : 'secondary'} variant="outlined" /></TableCell>
-                      <TableCell>{s.role ?? '—'}</TableCell>
-                      <TableCell>{s.phone ?? '—'}</TableCell>
-                      <TableCell>{formatCurrency(s.baseSalary)}</TableCell>
-                      <TableCell><Chip label={s.active ? 'Active' : 'Inactive'} size="small" color={s.active ? 'success' : 'default'} /></TableCell>
-                      <TableCell>
+                      <TableCell data-label="Name">{s.name}</TableCell>
+                      <TableCell data-label="Type"><Chip label={s.type} size="small" color={s.type === 'COMPANY' ? 'primary' : 'secondary'} variant="outlined" /></TableCell>
+                      <TableCell data-label="Role">{s.role ?? '—'}</TableCell>
+                      <TableCell data-label="Phone">{s.phone ?? '—'}</TableCell>
+                      <TableCell data-label="Base Salary">{formatCurrency(s.baseSalary)}</TableCell>
+                      <TableCell data-label="Status"><Chip label={s.active ? 'Active' : 'Inactive'} size="small" color={s.active ? 'success' : 'default'} /></TableCell>
+                      <TableCell data-label="Actions">
                         <IconButton size="small" onClick={() => openEditStaff(s)}><EditIcon fontSize="small" /></IconButton>
                         <IconButton size="small" color="error" onClick={() => { if (confirm(`Delete ${s.name}?`)) deleteStaffMutation.mutate(s.id); }}><DeleteIcon fontSize="small" /></IconButton>
                       </TableCell>
@@ -298,6 +300,7 @@ export default function AttendancePage() {
               </TableBody>
             </Table>
           </TableContainer>
+          </ResponsiveTable>
           <TablePagination
             component="div"
             count={staffPagination.total}
@@ -345,6 +348,7 @@ export default function AttendancePage() {
             ) : attendanceStaff.length === 0 ? (
               <Typography color="text.secondary">No active {attendanceType.toLowerCase()} staff found. Add staff first.</Typography>
             ) : (
+              <ResponsiveTable>
               <TableContainer sx={{ overflowX: 'auto' }}>
                 <Table size="small">
                   <TableHead>
@@ -361,9 +365,9 @@ export default function AttendancePage() {
                       const isPresent = attendanceRecords[s.id]?.present === true;
                       return (
                         <TableRow key={s.id}>
-                          <TableCell>{s.name}</TableCell>
-                          <TableCell>{s.role ?? '—'}</TableCell>
-                          <TableCell>
+                          <TableCell data-label="Name">{s.name}</TableCell>
+                          <TableCell data-label="Role">{s.role ?? '—'}</TableCell>
+                          <TableCell data-label="Present">
                             <ToggleButtonGroup
                               exclusive
                               size="small"
@@ -384,7 +388,7 @@ export default function AttendancePage() {
                               </ToggleButton>
                             </ToggleButtonGroup>
                           </TableCell>
-                          <TableCell>
+                          <TableCell data-label="Notes">
                             <TextField
                               size="small"
                               value={attendanceRecords[s.id]?.notes ?? ''}
@@ -402,6 +406,7 @@ export default function AttendancePage() {
                   </TableBody>
                 </Table>
               </TableContainer>
+              </ResponsiveTable>
             )}
           </CardContent>
         </Card>
@@ -417,6 +422,7 @@ export default function AttendancePage() {
               <MenuItem value="LABOUR">Labour</MenuItem>
             </TextField>
           </Box>
+          <ResponsiveTable>
           <TableContainer sx={{ overflowX: 'auto' }}>
             <Table size="small">
               <TableHead>
@@ -438,19 +444,20 @@ export default function AttendancePage() {
                 ) : (
                   attendanceRows.map((row) => (
                     <TableRow key={row.id} hover>
-                      <TableCell>{formatDate(row.date)}</TableCell>
-                      <TableCell>{row.staff?.name}</TableCell>
-                      <TableCell><Chip label={row.staff?.type} size="small" variant="outlined" /></TableCell>
-                      <TableCell>{row.staff?.role ?? '—'}</TableCell>
-                      <TableCell><Chip label={row.present ? 'Present' : 'Absent'} size="small" color={row.present ? 'success' : 'error'} /></TableCell>
-                      <TableCell>{row.notes ?? '—'}</TableCell>
-                      <TableCell>{row.marker?.name ?? '—'}</TableCell>
+                      <TableCell data-label="Date">{formatDate(row.date)}</TableCell>
+                      <TableCell data-label="Name">{row.staff?.name}</TableCell>
+                      <TableCell data-label="Type"><Chip label={row.staff?.type} size="small" variant="outlined" /></TableCell>
+                      <TableCell data-label="Role">{row.staff?.role ?? '—'}</TableCell>
+                      <TableCell data-label="Status"><Chip label={row.present ? 'Present' : 'Absent'} size="small" color={row.present ? 'success' : 'error'} /></TableCell>
+                      <TableCell data-label="Notes">{row.notes ?? '—'}</TableCell>
+                      <TableCell data-label="Marked By">{row.marker?.name ?? '—'}</TableCell>
                     </TableRow>
                   ))
                 )}
               </TableBody>
             </Table>
           </TableContainer>
+          </ResponsiveTable>
           <TablePagination
             component="div"
             count={attendancePagination.total}
@@ -476,6 +483,7 @@ export default function AttendancePage() {
               <MenuItem value="LABOUR">Labour</MenuItem>
             </TextField>
           </Box>
+          <ResponsiveTable>
           <TableContainer sx={{ overflowX: 'auto' }}>
             <Table size="small">
               <TableHead>
@@ -498,20 +506,21 @@ export default function AttendancePage() {
                 ) : (
                   summaryRows.map((row) => (
                     <TableRow key={row.id} hover>
-                      <TableCell>{row.name}</TableCell>
-                      <TableCell><Chip label={row.type} size="small" variant="outlined" /></TableCell>
-                      <TableCell>{row.role ?? '—'}</TableCell>
-                      <TableCell>{formatCurrency(row.baseSalary)}</TableCell>
-                      <TableCell><Chip label={row.presentDays} size="small" color="success" /></TableCell>
-                      <TableCell><Chip label={row.absentDays} size="small" color="error" /></TableCell>
-                      <TableCell>{row.totalDays}</TableCell>
-                      <TableCell><strong>{formatCurrency(row.salaryForPeriod)}</strong></TableCell>
+                      <TableCell data-label="Name">{row.name}</TableCell>
+                      <TableCell data-label="Type"><Chip label={row.type} size="small" variant="outlined" /></TableCell>
+                      <TableCell data-label="Role">{row.role ?? '—'}</TableCell>
+                      <TableCell data-label="Base Salary">{formatCurrency(row.baseSalary)}</TableCell>
+                      <TableCell data-label="Present"><Chip label={row.presentDays} size="small" color="success" /></TableCell>
+                      <TableCell data-label="Absent"><Chip label={row.absentDays} size="small" color="error" /></TableCell>
+                      <TableCell data-label="Total Days">{row.totalDays}</TableCell>
+                      <TableCell data-label="Salary (Pro-rated)"><strong>{formatCurrency(row.salaryForPeriod)}</strong></TableCell>
                     </TableRow>
                   ))
                 )}
               </TableBody>
             </Table>
           </TableContainer>
+          </ResponsiveTable>
         </Card>
       )}
 

@@ -22,6 +22,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { UserRole } from '@hospital-erp/shared';
 import api, { extractErrorMessage } from '../config/api';
 import { formatDate } from '../utils/enumOptions';
+import ResponsiveTable from '../components/ResponsiveTable';
 
 interface UserRow {
   id: string;
@@ -93,6 +94,7 @@ export default function UsersPage() {
       {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
       {successMsg && <Alert severity="success" sx={{ mb: 2 }} onClose={() => setSuccessMsg('')}>{successMsg}</Alert>}
       <Card>
+        <ResponsiveTable>
         <TableContainer sx={{ overflowX: 'auto' }}>
           <Table size="small">
             <TableHead>
@@ -113,8 +115,8 @@ export default function UsersPage() {
                 const isEditing = editingPhone[user.id] !== undefined;
                 return (
                 <TableRow key={user.id} hover>
-                  <TableCell>{user.name}</TableCell>
-                  <TableCell>
+                  <TableCell data-label="Name">{user.name}</TableCell>
+                  <TableCell data-label="Phone">
                     {isEditing ? (
                       <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center' }}>
                         <TextField
@@ -141,7 +143,7 @@ export default function UsersPage() {
                       </Box>
                     )}
                   </TableCell>
-                  <TableCell>
+                  <TableCell data-label="Role">
                     <TextField
                       select
                       size="small"
@@ -155,7 +157,7 @@ export default function UsersPage() {
                       ))}
                     </TextField>
                   </TableCell>
-                  <TableCell>
+                  <TableCell data-label="Active">
                     <FormControlLabel
                       control={
                         <Switch
@@ -167,13 +169,14 @@ export default function UsersPage() {
                       label={<Chip size="small" label={user.isActive ? 'Active' : 'Inactive'} color={user.isActive ? 'success' : 'default'} />}
                     />
                   </TableCell>
-                  <TableCell>{formatDate(user.createdAt)}</TableCell>
+                  <TableCell data-label="Joined">{formatDate(user.createdAt)}</TableCell>
                 </TableRow>
                 );
               })}
             </TableBody>
           </Table>
         </TableContainer>
+        </ResponsiveTable>
       </Card>
     </Box>
   );

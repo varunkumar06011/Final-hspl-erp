@@ -46,6 +46,7 @@ import api, { extractErrorMessage } from '../config/api';
 import { useAuthStore } from '../stores/authStore';
 import AcknowledgementCheckbox from '../components/AcknowledgementCheckbox';
 import ApprovalActionDialog from '../components/ApprovalActionDialog';
+import ResponsiveTable from '../components/ResponsiveTable';
 
 interface POItem {
   id?: string;
@@ -327,6 +328,7 @@ export default function PurchaseOrdersPage() {
           </TextField>
         </Box>
 
+        <ResponsiveTable>
         <TableContainer sx={{ overflowX: 'auto' }}>
           <Table size="small">
             <TableHead>
@@ -351,16 +353,16 @@ export default function PurchaseOrdersPage() {
               ) : (
                 rows.map((row) => (
                   <TableRow key={row.id} hover>
-                    <TableCell>{row.poNumber}</TableCell>
-                    <TableCell>{row.vendor?.vendorCode} - {row.vendor?.name ?? '—'}</TableCell>
-                    <TableCell>{row.quotation?.quotationNumber ?? '—'}</TableCell>
-                    <TableCell>{formatDate(row.date)}</TableCell>
-                    <TableCell>{formatCurrency(row.totalAmount)}</TableCell>
-                    <TableCell>{formatCurrency(row.gstAmount)}</TableCell>
-                    <TableCell>{formatCurrency(row.grandTotal)}</TableCell>
-                    <TableCell>{row.createdByUser?.name ?? '—'}</TableCell>
-                    <TableCell><Chip label={row.status.replace(/_/g, ' ')} size="small" color={STATUS_COLORS[row.status] ?? 'default'} /></TableCell>
-                    <TableCell>
+                    <TableCell data-label="PO No">{row.poNumber}</TableCell>
+                    <TableCell data-label="Vendor">{row.vendor?.vendorCode} - {row.vendor?.name ?? '—'}</TableCell>
+                    <TableCell data-label="Quotation">{row.quotation?.quotationNumber ?? '—'}</TableCell>
+                    <TableCell data-label="Date">{formatDate(row.date)}</TableCell>
+                    <TableCell data-label="Total">{formatCurrency(row.totalAmount)}</TableCell>
+                    <TableCell data-label="GST">{formatCurrency(row.gstAmount)}</TableCell>
+                    <TableCell data-label="Grand Total">{formatCurrency(row.grandTotal)}</TableCell>
+                    <TableCell data-label="Created By">{row.createdByUser?.name ?? '—'}</TableCell>
+                    <TableCell data-label="Status"><Chip label={row.status.replace(/_/g, ' ')} size="small" color={STATUS_COLORS[row.status] ?? 'default'} /></TableCell>
+                    <TableCell data-label="Actions">
                       <Box sx={{ display: 'flex', gap: 0.5 }}>
                         <IconButton size="small" onClick={() => previewPDF(row.id)} title="Preview PDF"><PdfIcon fontSize="small" /></IconButton>
                         <IconButton size="small" onClick={() => downloadPDF(row.id, row.poNumber)} title="Download PDF"><DownloadIcon fontSize="small" /></IconButton>
@@ -381,6 +383,7 @@ export default function PurchaseOrdersPage() {
             </TableBody>
           </Table>
         </TableContainer>
+        </ResponsiveTable>
 
         <TablePagination
           component="div"

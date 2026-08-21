@@ -34,6 +34,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { InspectionStatus } from '@hospital-erp/shared';
 import { enumToOptions, formatDate, STATUS_COLORS } from '../utils/enumOptions';
 import api, { extractErrorMessage } from '../config/api';
+import ResponsiveTable from '../components/ResponsiveTable';
 
 interface InspectionRow {
   id: string;
@@ -152,6 +153,7 @@ export default function InspectionsPage() {
           </TextField>
         </Box>
 
+        <ResponsiveTable>
         <TableContainer sx={{ overflowX: 'auto' }}>
           <Table size="small">
             <TableHead>
@@ -173,13 +175,13 @@ export default function InspectionsPage() {
               ) : (
                 rows.map((row) => (
                   <TableRow key={row.id} hover>
-                    <TableCell>{row.name}</TableCell>
-                    <TableCell>{formatDate(row.date)}</TableCell>
-                    <TableCell>{row.scheduledDate ? formatDate(row.scheduledDate) : '—'}</TableCell>
-                    <TableCell><Chip label={row.status.replace(/_/g, ' ')} size="small" color={STATUS_COLORS[row.status] ?? 'default'} /></TableCell>
-                    <TableCell>{row.completedDate ? formatDate(row.completedDate) : '—'}</TableCell>
-                    <TableCell>{row.inspector?.name ?? '—'}</TableCell>
-                    <TableCell>
+                    <TableCell data-label="Name">{row.name}</TableCell>
+                    <TableCell data-label="Date">{formatDate(row.date)}</TableCell>
+                    <TableCell data-label="Scheduled Date">{row.scheduledDate ? formatDate(row.scheduledDate) : '—'}</TableCell>
+                    <TableCell data-label="Status"><Chip label={row.status.replace(/_/g, ' ')} size="small" color={STATUS_COLORS[row.status] ?? 'default'} /></TableCell>
+                    <TableCell data-label="Completed">{row.completedDate ? formatDate(row.completedDate) : '—'}</TableCell>
+                    <TableCell data-label="Inspector">{row.inspector?.name ?? '—'}</TableCell>
+                    <TableCell data-label="Actions">
                       <IconButton size="small" onClick={() => openEdit(row)}><EditIcon fontSize="small" /></IconButton>
                       <IconButton size="small" color="error" onClick={() => { if (confirm('Delete this inspection?')) deleteMutation.mutate(row.id); }}><DeleteIcon fontSize="small" /></IconButton>
                     </TableCell>
@@ -189,6 +191,7 @@ export default function InspectionsPage() {
             </TableBody>
           </Table>
         </TableContainer>
+        </ResponsiveTable>
 
         <TablePagination
           component="div"

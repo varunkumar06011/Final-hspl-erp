@@ -35,6 +35,7 @@ import api, { extractErrorMessage } from '../config/api';
 import CreatableSelect from './CreatableSelect';
 import SelectWithOther from './SelectWithOther';
 import AttachmentUpload from './AttachmentUpload';
+import ResponsiveTable from './ResponsiveTable';
 
 export interface MaterialEntry {
   id?: string;
@@ -248,6 +249,7 @@ export default function EntityPage({
           />
         </Box>
 
+        <ResponsiveTable>
         <TableContainer sx={{ overflowX: 'auto' }}>
           <Table size="small">
             <TableHead>
@@ -284,7 +286,7 @@ export default function EntityPage({
                 rows.map((row: Record<string, unknown>) => (
                   <TableRow key={row.id as string} hover>
                     {columns.map((col) => (
-                      <TableCell key={col.key}>
+                      <TableCell key={col.key} data-label={col.label}>
                         {col.render
                           ? col.render(row)
                           : col.key === statusKey
@@ -299,7 +301,7 @@ export default function EntityPage({
                       </TableCell>
                     ))}
                     {canCreate && (
-                      <TableCell align="right">
+                      <TableCell align="right" data-label="Actions">
                         <IconButton size="small" onClick={() => openEdit(row)}>
                           <EditIcon fontSize="small" />
                         </IconButton>
@@ -314,6 +316,7 @@ export default function EntityPage({
             </TableBody>
           </Table>
         </TableContainer>
+        </ResponsiveTable>
 
         <TablePagination
           component="div"

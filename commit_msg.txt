@@ -1,21 +1,18 @@
-Make entire app mobile responsive
+Tables: stacked card layout on mobile, desktop unchanged
 
-AppShell:
-- Hamburger menu drawer on mobile (temporary drawer below md breakpoint)
-- Permanent drawer kept on desktop
-- AppBar title, role chip, notifications hidden/collapsed on small screens
-- Main content padding responsive (xs: 1.5, sm: 2, md: 3)
+On mobile (< md breakpoint), each table row now renders as a stacked
+card with field labels — no horizontal scrolling needed to see all
+columns (e.g. approval status). Desktop view is completely unchanged.
 
-All pages (Dashboard, Vendors, Quotations, POs, Invoices, Payments,
-GatePasses, Inventory, Labour, Photos, Issues, Inspections, Documents,
-Contracts, AuditLog, Users, Settings):
-- Page headers wrap on small screens
-- Filter/search bars wrap; search fields go full-width on mobile
-- All tables get overflowX: auto for horizontal scroll
-- TablePagination toolbar wraps on mobile
-- Dialog form field boxes wrap
-- h5 titles use smaller font on mobile
-- Shared EntityPage (Vendors, Contracts, etc.) updated once for all
+- New ResponsiveTable component wraps TableContainer; uses CSS-only
+  @media query to transform rows into cards on mobile
+- Each TableCell in TableBody gets data-label="Column Name" so the
+  card shows field labels
+- Applied to all list tables: Vendors, Quotations, POs, Invoices,
+  Payments, GatePasses, Inventory, Issues, Labour (all 4 tabs),
+  Photos, Inspections, Documents, Contracts, AuditLog, Users
+- Tables inside dialogs left untouched (detail views)
+- overflowX: auto preserved as fallback
 
 Generated with [Devin](https://devin.ai)
 
