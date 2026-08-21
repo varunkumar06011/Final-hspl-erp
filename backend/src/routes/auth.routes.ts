@@ -2,8 +2,8 @@ import { Router } from 'express';
 import { authMiddleware } from '../middleware/auth';
 import { rbacMiddleware } from '../middleware/rbac';
 import { validateMiddleware } from '../middleware/validate';
-import { Permission, verifyTokenSchema, registerTokenSchema, createUserSchema, updateUserSchema, listUsersSchema } from '@hospital-erp/shared';
-import { verifyToken, register, createUser, updateUser, listUsers, getMe, devLogin } from '../controllers/auth.controller';
+import { Permission, verifyTokenSchema, registerTokenSchema, createUserSchema, updateUserSchema, listUsersSchema, pinLoginSchema, setPinSchema, checkPinSchema } from '@hospital-erp/shared';
+import { verifyToken, register, createUser, updateUser, listUsers, getMe, devLogin, pinLogin, setPin, checkPin } from '../controllers/auth.controller';
 
 const router = Router();
 
@@ -13,6 +13,11 @@ router.post('/register', validateMiddleware(registerTokenSchema), register);
 
 // POST /api/auth/dev-login — dev fallback (OTP 1234), blocked in production
 router.post('/dev-login', devLogin);
+
+// PIN-based auth (no OTP needed for returning users)
+router.get('/check-pin', validateMiddleware(checkPinSchema), checkPin);
+router.post('/pin-login', validateMiddleware(pinLoginSchema), pinLogin);
+router.post('/set-pin', validateMiddleware(setPinSchema), setPin);
 
 // GET /api/auth/me — get current user profile
 router.get('/me', authMiddleware, getMe);

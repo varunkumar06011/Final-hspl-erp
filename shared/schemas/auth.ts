@@ -20,6 +20,29 @@ export const registerTokenSchema = z.object({
   }),
 });
 
+// POST /auth/pin-login — login with phone + 4-digit PIN (no OTP needed)
+export const pinLoginSchema = z.object({
+  body: z.object({
+    phone: z.string().min(10, 'Phone number is required'),
+    pin: z.string().length(4, 'PIN must be exactly 4 digits').regex(/^\d{4}$/, 'PIN must be 4 digits'),
+  }),
+});
+
+// POST /auth/set-pin — set a 4-digit PIN after OTP verification
+export const setPinSchema = z.object({
+  body: z.object({
+    phone: z.string().min(10, 'Phone number is required'),
+    pin: z.string().length(4, 'PIN must be exactly 4 digits').regex(/^\d{4}$/, 'PIN must be 4 digits'),
+  }),
+});
+
+// GET /auth/check-pin — check if a phone number has a PIN set (for login flow)
+export const checkPinSchema = z.object({
+  query: z.object({
+    phone: z.string().min(10, 'Phone number is required'),
+  }),
+});
+
 // Response from /auth/verify
 export const userResponseSchema = z.object({
   id: z.string().uuid(),
@@ -76,5 +99,7 @@ export const listUsersSchema = z.object({
 
 export type UserResponse = z.infer<typeof userResponseSchema>;
 export type RegisterTokenInput = z.infer<typeof registerTokenSchema>['body'];
+export type PinLoginInput = z.infer<typeof pinLoginSchema>['body'];
+export type SetPinInput = z.infer<typeof setPinSchema>['body'];
 export type CreateUserInput = z.infer<typeof createUserSchema>['body'];
 export type UpdateUserInput = z.infer<typeof updateUserSchema>['body'];

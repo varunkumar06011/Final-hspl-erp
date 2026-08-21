@@ -20,6 +20,7 @@ model User {
   role        String   // UserRole enum from shared/enums.ts
   projectId   String?  @db.Uuid
   isActive    Boolean  @default(true)
+  pinHash     String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 

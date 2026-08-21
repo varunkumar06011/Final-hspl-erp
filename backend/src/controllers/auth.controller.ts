@@ -3,6 +3,20 @@ import { verifyFirebaseToken } from '../config/firebase';
 import { prisma } from '../config/prisma';
 import { AuthenticatedRequest } from '../middleware/auth';
 import { APPROVER_ROLES, UserRole } from '@hospital-erp/shared';
+import jwt from 'jsonwebtoken';
+import bcrypt from 'bcryptjs';
+
+const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-me';
+const JWT_EXPIRES_IN = '7d';
+const MAX_PIN_ATTEMPTS = 5;
+const LOCK_DURATION_MS = 15 * 60 * 1000; // 15 minutes
+
+// In-memory rate limiting for PIN attempts (per phone number)
+const pinAttempts = new Map<string, { count: number; lockedUntil: number }>();
+
+function signJwt(userId: string): string {
+  return jwt.sign({ userId }, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
+}
 
 export async function verifyToken(
   req: AuthenticatedRequest,
@@ -335,5 +349,144 @@ export async function devLogin(
     });
   } catch (error) {
     res.status(500).json({ error: 'Dev login failed' });
+  }
+}
+
+// GET /auth/check-pin?phone=... — check if user has a PIN set
+export async function checkPin(
+  req: Request,
+  res: Response,
+  _next: NextFunction
+): Promise<void> {
+  try {
+    const phone = req.query.phone as string;
+    if (!phone) {
+      res.status(400).json({ error: 'Phone number is required' });
+      return;
+    }
+
+    const user = await prisma.user.findUnique({ where: { phone } });
+    if (!user) {
+      res.status(404).json({ error: 'Phone number not registered' });
+      return;
+    }
+    if (!user.isActive) {
+      res.status(403).json({ error: 'Account is inactive. Contact the Project Head.' });
+      return;
+    }
+
+    res.json({ hasPin: !!user.pinHash });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to check PIN status' });
+  }
+}
+
+// POST /auth/pin-login — login with phone + PIN
+export async function pinLogin(
+  req: Request,
+  res: Response,
+  _next: NextFunction
+): Promise<void> {
+  try {
+    const { phone, pin } = req.body;
+
+    // Rate limiting check
+    const attempt = pinAttempts.get(phone);
+    if (attempt && attempt.lockedUntil > Date.now()) {
+      const minsLeft = Math.ceil((attempt.lockedUntil - Date.now()) / 60000);
+      res.status(429).json({ error: `Too many failed attempts. Try again in ${minsLeft} minute(s).` });
+      return;
+    }
+
+    const user = await prisma.user.findUnique({ where: { phone } });
+    if (!user) {
+      res.status(404).json({ error: 'Phone number not registered' });
+      return;
+    }
+    if (!user.isActive) {
+      res.status(403).json({ error: 'Account is inactive. Contact the Project Head.' });
+      return;
+    }
+    if (!user.pinHash) {
+      res.status(400).json({ error: 'PIN not set. Please sign in with OTP first to set your PIN.' });
+      return;
+    }
+
+    const pinValid = await bcrypt.compare(pin, user.pinHash);
+    if (!pinValid) {
+      // Track failed attempt
+      const current = pinAttempts.get(phone) ?? { count: 0, lockedUntil: 0 };
+      current.count += 1;
+      if (current.count >= MAX_PIN_ATTEMPTS) {
+        current.lockedUntil = Date.now() + LOCK_DURATION_MS;
+        current.count = 0;
+        pinAttempts.set(phone, current);
+        res.status(429).json({ error: `Too many failed attempts. Account locked for 15 minutes.` });
+        return;
+      }
+      pinAttempts.set(phone, current);
+      const remaining = MAX_PIN_ATTEMPTS - current.count;
+      res.status(401).json({ error: `Incorrect PIN. ${remaining} attempt(s) remaining.` });
+      return;
+    }
+
+    // PIN correct — clear rate limit
+    pinAttempts.delete(phone);
+
+    const token = signJwt(user.id);
+    res.json({
+      token,
+      user: {
+        id: user.id,
+        firebaseUid: user.firebaseUid,
+        phone: user.phone,
+        name: user.name,
+        role: user.role,
+        projectId: user.projectId,
+        isActive: user.isActive,
+      },
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Login failed' });
+  }
+}
+
+// POST /auth/set-pin — set PIN after OTP verification
+export async function setPin(
+  req: Request,
+  res: Response,
+  _next: NextFunction
+): Promise<void> {
+  try {
+    const { phone, pin } = req.body;
+
+    const user = await prisma.user.findUnique({ where: { phone } });
+    if (!user) {
+      res.status(404).json({ error: 'Phone number not registered' });
+      return;
+    }
+    if (!user.isActive) {
+      res.status(403).json({ error: 'Account is inactive. Contact the Project Head.' });
+      return;
+    }
+
+    const pinHash = await bcrypt.hash(pin, 10);
+    await prisma.user.update({ where: { id: user.id }, data: { pinHash } });
+
+    const token = signJwt(user.id);
+    res.json({
+      token,
+      user: {
+        id: user.id,
+        firebaseUid: user.firebaseUid,
+        phone: user.phone,
+        name: user.name,
+        role: user.role,
+        projectId: user.projectId,
+        isActive: user.isActive,
+      },
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to set PIN' });
   }
 }
