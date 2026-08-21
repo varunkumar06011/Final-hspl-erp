@@ -162,6 +162,33 @@ export enum InspectionStatus {
   FAILED = 'FAILED',
 }
 
+export enum GatePassType {
+  INWARD = 'INWARD',
+  OUTWARD = 'OUTWARD',
+}
+
+export enum GatePassStatus {
+  PENDING = 'PENDING',
+  APPROVED = 'APPROVED',
+  REJECTED = 'REJECTED',
+  EXPIRED = 'EXPIRED',
+}
+
+export enum IssueStatus {
+  OPEN = 'OPEN',
+  IN_PROGRESS = 'IN_PROGRESS',
+  RESOLVED = 'RESOLVED',
+  CLOSED = 'CLOSED',
+}
+
+export enum DocumentStatus {
+  DRAFT = 'DRAFT',
+  SUBMITTED = 'SUBMITTED',
+  APPROVED = 'APPROVED',
+  REJECTED = 'REJECTED',
+  EXPIRED = 'EXPIRED',
+}
+
 export enum ContractType {
   FIXED_PRICE = 'FIXED_PRICE',
   TIME_MATERIAL = 'TIME_MATERIAL',
@@ -209,6 +236,8 @@ export enum Permission {
   MANAGE_USERS = 'MANAGE_USERS',
   // Approvals config
   MANAGE_APPROVALS_CONFIG = 'MANAGE_APPROVALS_CONFIG',
+  // Payments
+  CREATE_PAYMENT = 'CREATE_PAYMENT',
   // Site operations
   CREATE_GATE_PASS = 'CREATE_GATE_PASS',
   MANAGE_INVENTORY = 'MANAGE_INVENTORY',

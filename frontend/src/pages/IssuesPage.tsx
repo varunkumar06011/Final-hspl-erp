@@ -280,7 +280,7 @@ export default function IssuesPage() {
             </FormControl>
           </Box>
         </DialogContent>
-        <DialogActions>
+        <DialogActions sx={{ flexWrap: "wrap", gap: 1 }}>
           <Button onClick={() => { setCreateOpen(false); setEditingId(null); }}>Cancel</Button>
           <Button
             variant="contained"

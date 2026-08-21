@@ -49,7 +49,7 @@ export default function ApprovalActionDialog({
           entityLabel={entityLabel.toLowerCase()}
         />
       </DialogContent>
-      <DialogActions>
+      <DialogActions sx={{ flexWrap: 'wrap', gap: 1 }}>
         <Button onClick={onClose} disabled={pending}>Cancel</Button>
         <Button
           variant="contained"

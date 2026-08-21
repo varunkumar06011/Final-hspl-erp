@@ -555,7 +555,7 @@ export default function AttendancePage() {
             )}
           </Box>
         </DialogContent>
-        <DialogActions>
+        <DialogActions sx={{ flexWrap: "wrap", gap: 1 }}>
           <Button onClick={() => setStaffDialogOpen(false)}>Cancel</Button>
           <Button
             variant="contained"

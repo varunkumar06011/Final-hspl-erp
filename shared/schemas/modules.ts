@@ -1,28 +1,27 @@
 import { z } from 'zod';
 import {
   VendorStatus,
+  PaymentMode,
   QuotationStatus,
   POStatus,
   InvoiceVerificationStatus,
+  GatePassType,
+  GatePassStatus,
   InventoryTxnType,
   PhaseStatus,
   ActivityStatus,
   PhotoTag,
   IssueSeverity,
+  IssueStatus,
   InspectionStatus,
+  DocumentStatus,
   ContractStatus,
-  PaymentStatus,
-  StockStatus,
-} from '../enums.js';
+} from '../enums';
 
 const uuid = z.string().uuid();
 const money = z.coerce.number().min(0);
 const qty = z.coerce.number();
 const dateStr = z.coerce.date();
-const acknowledgement = z.preprocess(
-  (value) => value === true || value === 'true',
-  z.literal(true, { errorMap: () => ({ message: 'Acknowledgement is required' }) })
-);
 
 const pagination = z.object({
   page: z.coerce.number().int().min(1).default(1),
@@ -30,30 +29,23 @@ const pagination = z.object({
 });
 
 // ═══ Vendors ═══
-const vendorMaterial = z.object({
-  id: uuid.optional(),
-  name: z.string().min(1).max(200),
-  unit: z.string().max(20).optional(),
-  pricePerUnit: z.coerce.number().min(0).optional(),
-});
 export const createVendorSchema = z.object({
   body: z.object({
     name: z.string().min(1).max(200),
-    contactPersonName: z.string().max(200).optional(),
-    contactPersonPhone: z.string().max(20).optional(),
-    referenceBy: z.string().max(200).optional(),
     gstNumber: z.string().max(20).optional(),
     panNumber: z.string().max(20).optional(),
     category: z.string().min(1).max(100).default('OTHER'),
+    subCategory: z.string().max(100).optional(),
     bankName: z.string().max(100).optional(),
     bankAccountNumber: z.string().max(30).optional(),
     ifscCode: z.string().max(15).optional(),
     address: z.string().max(500).optional(),
     phone: z.string().max(20).optional(),
     email: z.string().email().optional().or(z.literal('')),
-    status: z.nativeEnum(VendorStatus).default(VendorStatus.ACTIVE), // workflow status — keep enum
+    material: z.string().max(200).optional(),
+    unitPrice: money.optional(),
+    status: z.nativeEnum(VendorStatus).default(VendorStatus.ACTIVE),
     rating: z.coerce.number().int().min(0).max(5).default(0),
-    materials: z.array(vendorMaterial).optional(),
   }),
 });
 export const updateVendorSchema = z.object({
@@ -64,36 +56,46 @@ export const listVendorsSchema = z.object({
   query: pagination.extend({ search: z.string().optional(), status: z.nativeEnum(VendorStatus).optional() }),
 });
 
-// ═══ Quotations ═══
-const quotationLineItem = z.object({
-  materialName: z.string().min(1).max(200),
-  quantity: qty,
-  unit: z.string().max(20).optional(),
-  unitPrice: money,
+export const recordVendorPaymentSchema = z.object({
+  params: z.object({ id: uuid }),
+  body: z.object({
+    amount: money,
+    date: dateStr.optional(),
+    mode: z.nativeEnum(PaymentMode),
+    reference: z.string().max(100).optional(),
+    notes: z.string().max(1000).optional(),
+    proofUrl: z.string().url().optional().or(z.literal('')),
+  }),
 });
 
-// Accept items as JSON string (multipart/form-data) or array (JSON body)
-const itemsField = z.preprocess(
-  (val) => (typeof val === 'string' ? JSON.parse(val) : val),
-  z.array(quotationLineItem).min(1, 'At least one line item is required')
-);
+// ═══ Quotations ═══
+const lineItem = z.object({
+  description: z.string().min(1).max(500),
+  quantity: qty,
+  unit: z.string().min(1).max(20),
+  rate: money,
+});
 
 export const createQuotationSchema = z.object({
   body: z.object({
     vendorId: uuid,
-    items: itemsField,
-    gstAmount: money.optional(),
-    acknowledged: acknowledgement,
+    phaseId: uuid.optional(),
+    quotationNumber: z.string().min(1).max(50),
+    date: dateStr.optional(),
+    status: z.nativeEnum(QuotationStatus).default(QuotationStatus.DRAFT),
+    notes: z.string().max(1000).optional(),
+    items: z.array(lineItem).min(1, 'At least one line item is required'),
   }),
 });
 export const updateQuotationSchema = z.object({
   params: z.object({ id: uuid }),
   body: z.object({
-    items: z.preprocess(
-      (val) => (val === undefined ? undefined : typeof val === 'string' ? JSON.parse(val) : val),
-      z.array(quotationLineItem).min(1).optional()
-    ),
-    gstAmount: money.optional(),
+    vendorId: uuid.optional(),
+    phaseId: uuid.optional(),
+    quotationNumber: z.string().min(1).max(50).optional(),
+    status: z.nativeEnum(QuotationStatus).optional(),
+    notes: z.string().max(1000).optional(),
+    items: z.array(lineItem).min(1).optional(),
   }),
 });
 export const listQuotationsSchema = z.object({
@@ -104,30 +106,27 @@ export const listQuotationsSchema = z.object({
 export const createPOSchema = z.object({
   body: z.object({
     vendorId: uuid,
-    quotationId: uuid,
-    gstAmount: money.optional(),
-    acknowledged: acknowledgement,
+    quotationId: uuid.optional(),
+    phaseId: uuid.optional(),
+    poNumber: z.string().min(1).max(50),
+    date: dateStr.optional(),
+    deliveryDate: dateStr.optional(),
+    status: z.nativeEnum(POStatus).default(POStatus.DRAFT),
+    notes: z.string().max(1000).optional(),
+    items: z.array(lineItem).min(1, 'At least one line item is required'),
   }),
 });
 export const updatePOSchema = z.object({
   params: z.object({ id: uuid }),
   body: z.object({
-    gstAmount: money.optional(),
+    status: z.nativeEnum(POStatus).optional(),
+    deliveryDate: dateStr.optional(),
+    notes: z.string().max(1000).optional(),
+    items: z.array(lineItem).min(1).optional(),
   }),
 });
 export const listPOsSchema = z.object({
   query: pagination.extend({ vendorId: uuid.optional(), status: z.nativeEnum(POStatus).optional() }),
-});
-
-// ═══ Project Settings ═══
-export const updateProjectSettingsSchema = z.object({
-  body: z.object({
-    name: z.string().min(1, 'Hospital name is required').max(200).optional(),
-    officeAddress: z.string().max(1000).optional(),
-    hospitalAddress: z.string().max(1000).optional(),
-    gstNumber: z.string().max(50).optional(),
-    totalBudget: z.coerce.number().min(0).optional(),
-  }),
 });
 
 // ═══ Vendor Invoices ═══
@@ -135,34 +134,19 @@ export const createInvoiceSchema = z.object({
   body: z.object({
     vendorId: uuid,
     poId: uuid.optional(),
-    invoiceNumber: z.string().min(1).max(50).optional(),
+    invoiceNumber: z.string().min(1).max(50),
+    date: dateStr.optional(),
     amount: money,
     taxAmount: money.default(0),
     totalAmount: money,
-    advancePaid: money.optional(),
-    advanceType: z.string().max(50).optional(),
-    advanceOtherType: z.string().max(100).optional(),
-    deliveryDate: dateStr.optional(),
-    acknowledged: acknowledgement,
+    notes: z.string().max(1000).optional(),
   }),
 });
 export const updateInvoiceSchema = z.object({
   params: z.object({ id: uuid }),
   body: z.object({
-    amount: money.optional(),
-    taxAmount: money.optional(),
-    totalAmount: money.optional(),
-    advancePaid: money.optional(),
-    advanceType: z.string().max(50).optional(),
-    advanceOtherType: z.string().max(100).optional(),
-    deliveryDate: dateStr.optional(),
-  }),
-});
-export const updateInvoiceStatusSchema = z.object({
-  params: z.object({ id: uuid }),
-  body: z.object({
-    paymentStatus: z.nativeEnum(PaymentStatus).optional(),
-    stockStatus: z.nativeEnum(StockStatus).optional(),
+    verificationStatus: z.nativeEnum(InvoiceVerificationStatus).optional(),
+    notes: z.string().max(1000).optional(),
   }),
 });
 export const listInvoicesSchema = z.object({
@@ -179,53 +163,68 @@ export const createPaymentRequestSchema = z.object({
     vendorId: uuid,
     requestNumber: z.string().min(1).max(50),
     amount: money,
-    paymentMode: z.string().max(50).optional(),
+    paymentMode: z.string().max(50).optional(), // configurable via DropdownOption
     notes: z.string().max(1000).optional(),
   }),
 });
-export const createExpenseSchema = z.object({
-  body: z.object({
-    description: z.string().min(1).max(500),
-    amount: money,
-    category: z.string().min(1).max(100),
-    expenseDate: dateStr.optional(),
-    paymentMode: z.string().max(50).optional(),
-  }),
-});
 export const listPaymentRequestsSchema = z.object({
-  query: pagination.extend({ vendorId: uuid.optional(), status: z.string().optional(), type: z.string().optional() }),
+  query: pagination.extend({ vendorId: uuid.optional(), status: z.string().optional() }),
 });
 export const recordPaymentSchema = z.object({
   params: z.object({ id: uuid }),
   body: z.object({
     amount: money,
-    mode: z.string().min(1).max(50),
+    mode: z.string().min(1).max(50), // configurable via DropdownOption
     reference: z.string().max(100).optional(),
   }),
 });
 export const approvalActionSchema = z.object({
-  params: z.object({ id: uuid, stepId: uuid.optional() }),
-  body: z.object({
-    comments: z.string().max(500).optional(),
-    reason: z.string().min(1).max(500).optional(),
-    acknowledged: acknowledgement,
-  }),
+  params: z.object({ stepId: uuid }),
+  body: z.object({ comments: z.string().max(500).optional() }),
 });
 
 // ═══ Gate Passes ═══
+const gatePassItem = z.object({
+  description: z.string().min(1).max(500),
+  quantity: qty,
+  unit: z.string().min(1).max(20),
+});
 export const createGatePassSchema = z.object({
   body: z.object({
-    poId: uuid,
+    vendorId: uuid,
+    poId: uuid.optional(),
     invoiceId: uuid.optional(),
-    otpRequestedFor: uuid,
+    passNumber: z.string().min(1).max(50),
+    type: z.nativeEnum(GatePassType),
+    date: dateStr.optional(),
+    timeIn: z.string().max(10).optional(),
+    vehicleNumber: z.string().max(20).optional(),
+    driverName: z.string().max(100).optional(),
+    driverPhone: z.string().max(20).optional(),
+    carrierName: z.string().max(100).optional(),
+    vehiclePhoto: z.string().max(500).optional(),
+    approverId: uuid,
+    items: z.array(gatePassItem).min(1, 'At least one item is required'),
   }),
 });
-export const listGatePassesSchema = z.object({
-  query: pagination.extend({ status: z.string().optional() }),
+export const updateGatePassSchema = z.object({
+  params: z.object({ id: uuid }),
+  body: z.object({
+    status: z.nativeEnum(GatePassStatus).optional(),
+    timeIn: z.string().max(10).optional(),
+    vehicleNumber: z.string().max(20).optional(),
+    driverName: z.string().max(100).optional(),
+    driverPhone: z.string().max(20).optional(),
+    vehiclePhoto: z.string().max(500).optional(),
+    approverId: uuid.optional(),
+  }),
 });
 export const verifyGatePassOtpSchema = z.object({
   params: z.object({ id: uuid }),
-  body: z.object({ idToken: z.string().min(1, 'Firebase ID token is required') }),
+  body: z.object({ otp: z.string().min(1).max(10) }),
+});
+export const listGatePassesSchema = z.object({
+  query: pagination.extend({ type: z.nativeEnum(GatePassType).optional(), status: z.nativeEnum(GatePassStatus).optional() }),
 });
 
 // ═══ Inventory ═══
@@ -333,23 +332,28 @@ export const listPhotosSchema = z.object({
 // ═══ Issues ═══
 export const createIssueSchema = z.object({
   body: z.object({
-    category: z.string().min(1).max(100),
+    phaseId: uuid.optional(),
+    activityId: uuid.optional(),
+    category: z.string().min(1).max(100), // configurable via DropdownOption
     severity: z.nativeEnum(IssueSeverity).default(IssueSeverity.MEDIUM),
     title: z.string().min(1).max(200),
     description: z.string().max(2000).optional(),
-    addressTo: z.array(uuid).min(1, 'Select at least one person to address to'),
+    assignedTo: uuid.optional(),
   }),
 });
 export const updateIssueSchema = z.object({
   params: z.object({ id: uuid }),
   body: z.object({
-    severity: z.nativeEnum(IssueSeverity).optional(),
-    category: z.string().min(1).max(100).optional(),
-    addressTo: z.array(uuid).optional(),
+    severity: z.nativeEnum(IssueSeverity).optional(), // workflow status — keep enum
+    status: z.nativeEnum(IssueStatus).optional(), // workflow status — keep enum
+    category: z.string().min(1).max(100).optional(), // configurable
+    resolution: z.string().max(2000).optional(),
+    assignedTo: uuid.optional().nullable(),
   }),
 });
 export const listIssuesSchema = z.object({
   query: pagination.extend({
+    status: z.nativeEnum(IssueStatus).optional(),
     severity: z.nativeEnum(IssueSeverity).optional(),
   }),
 });
@@ -357,17 +361,14 @@ export const listIssuesSchema = z.object({
 // ═══ Inspections ═══
 export const createInspectionSchema = z.object({
   body: z.object({
-    name: z.string().min(1).max(200),
-    date: dateStr.optional(),
+    phaseId: uuid.optional(),
+    activityId: uuid.optional(),
     scheduledDate: dateStr.optional(),
   }),
 });
 export const updateInspectionSchema = z.object({
   params: z.object({ id: uuid }),
   body: z.object({
-    name: z.string().min(1).max(200).optional(),
-    date: dateStr.optional(),
-    scheduledDate: dateStr.optional(),
     checklist: z
       .array(z.object({ item: z.string(), result: z.enum(['PASS', 'FAIL', 'N/A']) }))
       .optional(),
@@ -386,16 +387,24 @@ export const listInspectionsSchema = z.object({
 // ═══ Documents ═══
 export const createDocumentSchema = z.object({
   body: z.object({
-    name: z.string().min(1).max(200),
-    description: z.string().max(2000).optional(),
-    resolveTo: z.array(uuid).min(1, 'Select at least one person to resolve to'),
+    entityType: z.string().min(1).max(50),
+    entityId: uuid,
     fileName: z.string().min(1).max(255),
     filePath: z.string().min(1),
+    fileType: z.string().min(1).max(50), // configurable via DropdownOption
     mimeType: z.string().min(1).max(100),
   }),
 });
+export const updateDocumentSchema = z.object({
+  params: z.object({ id: uuid }),
+  body: z.object({ status: z.nativeEnum(DocumentStatus).optional() }),
+});
 export const listDocumentsSchema = z.object({
-  query: pagination.extend({}),
+  query: pagination.extend({
+    entityType: z.string().optional(),
+    entityId: uuid.optional(),
+    fileType: z.string().max(50).optional(), // configurable
+  }),
 });
 
 // ═══ Contracts ═══
@@ -427,48 +436,36 @@ export const listContractsSchema = z.object({
   query: pagination.extend({ vendorId: uuid.optional(), status: z.nativeEnum(ContractStatus).optional() }),
 });
 
-// ═══ Attendance (Staff + Daily Attendance) ═══
-export const createStaffSchema = z.object({
+// ═══ Labour Attendance ═══
+export const createLabourAttendanceSchema = z.object({
   body: z.object({
-    name: z.string().min(1).max(200),
-    type: z.enum(['COMPANY', 'LABOUR']),
-    role: z.string().max(100).optional(),
-    phone: z.string().max(20).optional(),
-    baseSalary: money,
-  }),
-});
-export const updateStaffSchema = z.object({
-  params: z.object({ id: uuid }),
-  body: z.object({
-    name: z.string().min(1).max(200).optional(),
-    role: z.string().max(100).optional(),
-    phone: z.string().max(20).optional(),
-    baseSalary: money.optional(),
-    active: z.boolean().optional(),
-  }),
-});
-export const listStaffSchema = z.object({
-  query: pagination.extend({
-    type: z.enum(['COMPANY', 'LABOUR']).optional(),
-    active: z.enum(['true', 'false']).optional(),
-  }),
-});
-export const markAttendanceSchema = z.object({
-  body: z.object({
+    phaseId: uuid.optional(),
+    activityId: uuid.optional(),
     date: dateStr,
-    records: z.array(z.object({
-      staffId: uuid,
-      present: z.boolean(),
-      notes: z.string().max(500).optional(),
-    })).min(1),
+    headcount: z.coerce.number().int().min(1),
+    category: z.string().min(1).max(100), // configurable via DropdownOption
+    cost: money,
+    notes: z.string().max(500).optional(),
   }),
 });
-export const listAttendanceSchema = z.object({
+export const listLabourSchema = z.object({
   query: pagination.extend({
-    staffId: uuid.optional(),
-    type: z.enum(['COMPANY', 'LABOUR']).optional(),
+    phaseId: uuid.optional(),
+    category: z.string().max(100).optional(),
     startDate: dateStr.optional(),
     endDate: dateStr.optional(),
+  }),
+});
+export const updateLabourSchema = z.object({
+  params: z.object({ id: uuid }),
+  body: z.object({
+    date: dateStr.optional(),
+    headcount: z.coerce.number().int().min(1).optional(),
+    category: z.string().min(1).max(100).optional(),
+    cost: money.optional(),
+    phaseId: uuid.optional().nullable(),
+    activityId: uuid.optional().nullable(),
+    notes: z.string().max(500).optional(),
   }),
 });
 

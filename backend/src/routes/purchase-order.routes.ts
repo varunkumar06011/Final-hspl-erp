@@ -644,12 +644,7 @@ router.get(
       doc.moveTo(margin, y).lineTo(pageWidth - margin, y).stroke(PRIMARY);
       y += 6;
       doc.fillColor(TEXT_MUTED).fontSize(7).font('Helvetica').text(
-        `Generated on ${new Date().toLocaleString()}  |  Created by ${po.createdByUser?.name ?? '—'}`,
-        margin, y, { width: contentWidth, align: 'center' }
-      );
-      y += 10;
-      doc.fillColor(TEXT_MUTED).fontSize(6).font('Helvetica-Oblique').text(
-        'This is a computer-generated document and does not require a physical signature.',
+        `Generated on ${new Date(po.createdAt).toLocaleString()}  |  Created by ${po.createdByUser?.name ?? '—'}`,
         margin, y, { width: contentWidth, align: 'center' }
       );
 

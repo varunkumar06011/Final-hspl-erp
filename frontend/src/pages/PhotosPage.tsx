@@ -174,7 +174,7 @@ export default function PhotosPage() {
             <TextField label="Zone" value={form.zone ?? ''} onChange={(e) => setForm({ ...form, zone: e.target.value })} fullWidth size="small" />
           </Box>
         </DialogContent>
-        <DialogActions>
+        <DialogActions sx={{ flexWrap: "wrap", gap: 1 }}>
           <Button onClick={() => setDialogOpen(false)}>Cancel</Button>
           <Button variant="contained" onClick={() => createMutation.mutate({
             file: selectedFile,

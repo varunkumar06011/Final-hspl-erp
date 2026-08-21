@@ -56,8 +56,8 @@ export default function ResponsiveTable({ children }: { children: React.ReactNod
             '& > *': {
               textAlign: 'right',
               maxWidth: '65%',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
+              overflowWrap: 'break-word',
+              wordBreak: 'break-word',
             },
           },
           // Action buttons stay in a horizontal row, pushed to the right

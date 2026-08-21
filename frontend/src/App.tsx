@@ -1,4 +1,5 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { Box, Typography } from '@mui/material';
 import { ThemeProvider, CssBaseline } from '@mui/material';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { theme } from './config/theme';
@@ -84,6 +85,8 @@ export default function App() {
                 }
               />
             ))}
+            <Route path="/vendor" element={<ProtectedRoute><AppShell><Navigate to="/vendors" replace /></AppShell></ProtectedRoute>} />
+            <Route path="*" element={<ProtectedRoute><AppShell><Box sx={{ p: 3 }}><Typography variant="h5">Page not found</Typography></Box></AppShell></ProtectedRoute>} />
           </Routes>
           </ErrorBoundary>
         </BrowserRouter>

@@ -713,7 +713,7 @@ export default function InvoicesPage() {
               value={deliveryDate}
               onChange={(e) => setDeliveryDate(e.target.value)}
               size="small"
-              sx={{ width: 250 }}
+              sx={{ width: { xs: '100%', sm: 250 } }}
               InputLabelProps={{ shrink: true }}
             />
 
@@ -736,7 +736,7 @@ export default function InvoicesPage() {
             />
           </Box>
         </DialogContent>
-        <DialogActions>
+        <DialogActions sx={{ flexWrap: 'wrap', gap: 1 }}>
           <Button onClick={() => { setCreateOpen(false); resetForm(); }}>Cancel</Button>
           <Button
             variant="contained"

@@ -333,10 +333,10 @@ export default function EntityPage({
         />
       </Card>
 
-      <Dialog open={dialogOpen} onClose={closeDialog} maxWidth="sm" fullWidth sx={{ '& .MuiDialog-paper': { margin: { xs: 1 } } }}>
+      <Dialog open={dialogOpen} onClose={closeDialog} maxWidth="sm" fullWidth>
         <DialogTitle>{editing ? `Edit ${entityName}` : `New ${entityName}`}</DialogTitle>
         <DialogContent>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1, flexWrap: 'wrap' }}>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
             {fields.map((field) => {
               if (field.type === 'select') {
                 return (
@@ -388,25 +388,28 @@ export default function EntityPage({
                       <Typography variant="caption" color="text.secondary">No materials added yet.</Typography>
                     )}
                     {materials.map((mat, index) => (
-                      <Box key={index} sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                      <Box key={index} sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 1, alignItems: { xs: 'stretch', sm: 'center' } }}>
                         <TextField
                           label="Material Name"
                           value={mat.name ?? ''}
                           onChange={(e) => updateMaterial(index, 'name', e.target.value)}
                           size="small"
-                          sx={{ flex: 2 }}
+                          fullWidth
+                          sx={{ flex: { sm: 2 } }}
                         />
-                        <TextField
-                          label="Price / Unit"
-                          type="number"
-                          value={mat.pricePerUnit ?? ''}
-                          onChange={(e) => updateMaterial(index, 'pricePerUnit', e.target.value === '' ? undefined : Number(e.target.value))}
-                          size="small"
-                          sx={{ flex: 1 }}
-                        />
-                        <IconButton size="small" color="error" onClick={() => removeMaterial(index)}>
-                          <RemoveIcon fontSize="small" />
-                        </IconButton>
+                        <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                          <TextField
+                            label="Price / Unit"
+                            type="number"
+                            value={mat.pricePerUnit ?? ''}
+                            onChange={(e) => updateMaterial(index, 'pricePerUnit', e.target.value === '' ? undefined : Number(e.target.value))}
+                            size="small"
+                            sx={{ width: 120 }}
+                          />
+                          <IconButton size="small" color="error" onClick={() => removeMaterial(index)}>
+                            <RemoveIcon fontSize="small" />
+                          </IconButton>
+                        </Box>
                       </Box>
                     ))}
                   </Box>
@@ -467,7 +470,7 @@ export default function EntityPage({
             </Box>
           )}
         </DialogContent>
-        <DialogActions>
+        <DialogActions sx={{ flexWrap: 'wrap', gap: 1 }}>
           <Button onClick={closeDialog}>Cancel</Button>
           <Button
             variant="contained"
@@ -484,7 +487,7 @@ export default function EntityPage({
         <DialogContent>
           <Typography>This action cannot be undone. The record will be soft-deleted.</Typography>
         </DialogContent>
-        <DialogActions>
+        <DialogActions sx={{ flexWrap: 'wrap', gap: 1 }}>
           <Button onClick={() => setDeleteConfirm(null)}>Cancel</Button>
           <Button
             color="error"

@@ -1,96 +1,281 @@
-import { Permission } from '@hospital-erp/shared';
-import { createVendorSchema, updateVendorSchema, listVendorsSchema } from '@hospital-erp/shared';
+import { Router, Response, NextFunction } from 'express';
+import { Prisma } from '@prisma/client';
 import { prisma } from '../config/prisma';
-import { createCrudRouter } from '../utils/crudFactory';
+import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middleware/auth';
+import { rbacMiddleware } from '../middleware/rbac';
+import { validateMiddleware } from '../middleware/validate';
+import { logAudit } from '../services/audit.service';
+import { AuditAction, Permission } from '@hospital-erp/shared';
+import {
+  createVendorSchema,
+  updateVendorSchema,
+  listVendorsSchema,
+  recordVendorPaymentSchema,
+} from '@hospital-erp/shared';
 
-interface MaterialInput {
-  id?: string;
-  name: string;
-  unit?: string;
-  pricePerUnit?: number;
+const router = Router();
+router.use(authMiddleware);
+
+const withTotals = (v: any, totals: { totalBilled: number; totalPaid: number; outstanding: number }) => ({
+  ...v,
+  ...totals,
+});
+
+async function getVendorTotals(vendorId: string) {
+  const [invoicesAgg, paymentsAgg] = await Promise.all([
+    prisma.vendorInvoice.aggregate({
+      where: { vendorId, deletedAt: null },
+      _sum: { totalAmount: true },
+    }),
+    prisma.vendorPayment.aggregate({
+      where: { vendorId },
+      _sum: { amount: true },
+    }),
+  ]);
+  const totalBilled = Number(invoicesAgg._sum.totalAmount ?? 0);
+  const totalPaid = Number(paymentsAgg._sum.amount ?? 0);
+  return { totalBilled, totalPaid, outstanding: totalBilled - totalPaid };
 }
 
-async function generateVendorCode(): Promise<string> {
-  const vendors = await prisma.vendor.findMany({
-    where: { vendorCode: { startsWith: 'VGH-' } },
+async function nextVendorCode(projectId: string) {
+  const existing = await prisma.vendor.findMany({
+    where: { projectId, vendorCode: { not: null } },
     select: { vendorCode: true },
   });
-  const maxNum = vendors.reduce((max, v) => {
-    const match = v.vendorCode?.match(/^VGH-(\d+)$/);
-    return match ? Math.max(max, parseInt(match[1], 10)) : max;
-  }, 0);
-  return `VGH-${String(maxNum + 1).padStart(3, '0')}`;
+  const max = existing
+    .map((v) => parseInt(v.vendorCode || '0', 10))
+    .filter((n) => !isNaN(n))
+    .reduce((a, b) => Math.max(a, b), 0);
+  return String(max + 1).padStart(3, '0');
 }
 
-export default createCrudRouter({
-  entityType: 'VENDOR',
-  model: 'vendor',
-  createPermission: Permission.CREATE_VENDOR,
-  viewPermission: Permission.VIEW_FINANCIALS,
-  createSchema: createVendorSchema,
-  updateSchema: updateVendorSchema,
-  listSchema: listVendorsSchema,
-  searchFields: ['name', 'vendorCode', 'gstNumber', 'phone', 'contactPersonName', 'contactPersonPhone', 'referenceBy'],
-  include: {
-    createdByUser: { select: { id: true, name: true } },
-    materials: { orderBy: { name: 'asc' } },
-  },
-  defaultSort: { vendorCode: 'asc' },
-  transformCreate: async (body, userId, projectId) => {
-    const vendorCode = await generateVendorCode();
-    const materials = (body.materials as MaterialInput[] | undefined) ?? [];
+// GET / — list
+router.get(
+  '/',
+  rbacMiddleware(Permission.VIEW_FINANCIALS),
+  validateMiddleware(listVendorsSchema),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const { page = 1, pageSize = 20, search, status } = req.query as Record<string, unknown>;
+      const projectId = requireProjectId(req);
 
-    return {
-      projectId,
-      vendorCode,
-      name: body.name,
-      contactPersonName: body.contactPersonName ?? null,
-      contactPersonPhone: body.contactPersonPhone ?? null,
-      referenceBy: body.referenceBy ?? null,
-      gstNumber: body.gstNumber ?? null,
-      panNumber: body.panNumber ?? null,
-      category: body.category ?? 'OTHER',
-      bankName: body.bankName ?? null,
-      bankAccountNumber: body.bankAccountNumber ?? null,
-      ifscCode: body.ifscCode ?? null,
-      address: body.address ?? null,
-      phone: body.phone ?? null,
-      email: body.email ?? null,
-      status: body.status ?? 'ACTIVE',
-      rating: body.rating ?? 0,
-      createdBy: userId,
-      materials: {
-        create: materials.map((m) => ({
-          name: m.name,
-          unit: m.unit ?? null,
-          pricePerUnit: m.pricePerUnit ?? null,
-        })),
-      },
-    };
-  },
-  transformUpdate: async (body, _userId, _projectId, existingId) => {
-    const data: Record<string, unknown> = {};
-
-    // Copy scalar fields
-    for (const key of ['name', 'contactPersonName', 'contactPersonPhone', 'referenceBy', 'gstNumber', 'panNumber', 'category', 'bankName', 'bankAccountNumber', 'ifscCode', 'address', 'phone', 'email', 'status', 'rating']) {
-      if (body[key] !== undefined) {
-        data[key] = body[key];
+      const where: any = { projectId, deletedAt: null };
+      if (status) where.status = status;
+      if (search) {
+        where.OR = [
+          { name: { contains: String(search), mode: 'insensitive' } },
+          { vendorCode: { contains: String(search), mode: 'insensitive' } },
+          { gstNumber: { contains: String(search), mode: 'insensitive' } },
+          { phone: { contains: String(search) } },
+        ];
       }
-    }
 
-    // Handle materials sync: delete all existing and recreate
-    if (body.materials !== undefined) {
-      const materials = body.materials as MaterialInput[];
-      await prisma.vendorMaterial.deleteMany({ where: { vendorId: existingId } });
-      data.materials = {
-        create: materials.map((m) => ({
-          name: m.name,
-          unit: m.unit ?? null,
-          pricePerUnit: m.pricePerUnit ?? null,
-        })),
-      };
-    }
+      const [rows, total] = await Promise.all([
+        prisma.vendor.findMany({
+          where,
+          include: { createdByUser: { select: { id: true, name: true } } },
+          orderBy: { name: 'asc' },
+          skip: (Number(page) - 1) * Number(pageSize),
+          take: Number(pageSize),
+        }),
+        prisma.vendor.count({ where }),
+      ]);
 
-    return data;
-  },
-});
+      const data = await Promise.all(
+        rows.map(async (v) => withTotals(v, await getVendorTotals(v.id)))
+      );
+
+      res.json({
+        data,
+        pagination: { page: Number(page), pageSize: Number(pageSize), total, totalPages: Math.ceil(total / Number(pageSize)) },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// GET /:id
+router.get(
+  '/:id',
+  rbacMiddleware(Permission.VIEW_FINANCIALS),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      const record = await prisma.vendor.findFirst({
+        where: { id: req.params.id, projectId, deletedAt: null },
+        include: { createdByUser: { select: { id: true, name: true } } },
+      });
+      if (!record) {
+        res.status(404).json({ error: 'Vendor not found' });
+        return;
+      }
+      res.json(withTotals(record, await getVendorTotals(record.id)));
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// POST / — create
+router.post(
+  '/',
+  rbacMiddleware(Permission.CREATE_VENDOR),
+  validateMiddleware(createVendorSchema),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      const vendorCode = await nextVendorCode(projectId);
+
+      const record = await prisma.vendor.create({
+        data: {
+          ...req.body,
+          projectId,
+          vendorCode,
+          createdBy: req.user!.id,
+        },
+      });
+
+      await logAudit({
+        userId: req.user!.id,
+        action: AuditAction.CREATE,
+        entityType: 'VENDOR',
+        entityId: record.id,
+        projectId,
+        newValue: record,
+      });
+
+      res.status(201).json(record);
+    } catch (error: unknown) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        res.status(409).json({ error: 'A vendor with this identifier already exists' });
+        return;
+      }
+      next(error);
+    }
+  }
+);
+
+// PATCH /:id — update
+router.patch(
+  '/:id',
+  rbacMiddleware(Permission.CREATE_VENDOR),
+  validateMiddleware(updateVendorSchema),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      const existing = await prisma.vendor.findFirst({
+        where: { id: req.params.id, projectId, deletedAt: null },
+      });
+      if (!existing) {
+        res.status(404).json({ error: 'Vendor not found' });
+        return;
+      }
+      const updated = await prisma.vendor.update({
+        where: { id: req.params.id },
+        data: req.body,
+      });
+
+      await logAudit({
+        userId: req.user!.id,
+        action: AuditAction.UPDATE,
+        entityType: 'VENDOR',
+        entityId: req.params.id,
+        projectId,
+        oldValue: existing,
+        newValue: updated,
+      });
+
+      res.json(withTotals(updated, await getVendorTotals(updated.id)));
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// DELETE /:id — soft delete
+router.delete(
+  '/:id',
+  rbacMiddleware(Permission.CREATE_VENDOR),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      const existing = await prisma.vendor.findFirst({
+        where: { id: req.params.id, projectId, deletedAt: null },
+      });
+      if (!existing) {
+        res.status(404).json({ error: 'Vendor not found' });
+        return;
+      }
+
+      await prisma.vendor.update({
+        where: { id: req.params.id },
+        data: { deletedAt: new Date() },
+      });
+
+      await logAudit({
+        userId: req.user!.id,
+        action: AuditAction.DELETE,
+        entityType: 'VENDOR',
+        entityId: req.params.id,
+        projectId,
+        oldValue: existing,
+      });
+
+      res.json({ message: 'Vendor deleted' });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// POST /:id/payments — record payment
+router.post(
+  '/:id/payments',
+  rbacMiddleware(Permission.CREATE_VENDOR),
+  validateMiddleware(recordVendorPaymentSchema),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      const vendorId = req.params.id;
+
+      const vendor = await prisma.vendor.findFirst({
+        where: { id: vendorId, projectId, deletedAt: null },
+      });
+      if (!vendor) {
+        res.status(404).json({ error: 'Vendor not found' });
+        return;
+      }
+
+      const { amount, date, mode, reference, notes, proofUrl } = req.body;
+      const payment = await prisma.vendorPayment.create({
+        data: {
+          projectId,
+          vendorId,
+          amount: new Prisma.Decimal(amount),
+          date: date ? new Date(date) : new Date(),
+          mode,
+          reference,
+          notes,
+          proofUrl,
+          createdBy: req.user!.id,
+        },
+      });
+
+      await logAudit({
+        userId: req.user!.id,
+        action: AuditAction.CREATE,
+        entityType: 'VENDOR_PAYMENT',
+        entityId: payment.id,
+        projectId,
+        newValue: payment,
+      });
+
+      res.status(201).json(payment);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+export default router;

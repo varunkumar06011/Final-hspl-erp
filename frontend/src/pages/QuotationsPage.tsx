@@ -460,9 +460,10 @@ export default function QuotationsPage() {
           {rows.filter((r) => r.approvalWorkflow).map((row) => (
             <Accordion key={row.id}>
               <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                <Typography><strong>{row.quotationNumber}</strong> — {row.vendor?.name} — Status: <Chip label={row.approvalWorkflow!.status} size="small" color={STATUS_COLORS[row.approvalWorkflow!.status] ?? 'default'} /></Typography>
+                <Typography sx={{ overflowWrap: 'break-word', fontSize: { xs: '0.8rem', sm: '0.875rem' } }}><strong>{row.quotationNumber}</strong> — {row.vendor?.name} — Status: <Chip label={row.approvalWorkflow!.status} size="small" color={STATUS_COLORS[row.approvalWorkflow!.status] ?? 'default'} /></Typography>
               </AccordionSummary>
               <AccordionDetails>
+                <ResponsiveTable>
                 <Table size="small">
                   <TableHead>
                     <TableRow>
@@ -476,15 +477,16 @@ export default function QuotationsPage() {
                   <TableBody>
                     {row.approvalWorkflow!.steps.map((step) => (
                       <TableRow key={step.id}>
-                        <TableCell>{step.stepNumber}</TableCell>
-                        <TableCell>{step.approverRole.replace(/_/g, ' ')}</TableCell>
-                        <TableCell><Chip label={step.status} size="small" color={step.status === 'APPROVED' ? 'success' : step.status === 'REJECTED' ? 'error' : 'default'} /></TableCell>
-                        <TableCell>{step.approverUser?.name ?? '—'}</TableCell>
-                        <TableCell>{step.comments ?? '—'}</TableCell>
+                        <TableCell data-label="Step">{step.stepNumber}</TableCell>
+                        <TableCell data-label="Approver Role">{step.approverRole.replace(/_/g, ' ')}</TableCell>
+                        <TableCell data-label="Status"><Chip label={step.status} size="small" color={step.status === 'APPROVED' ? 'success' : step.status === 'REJECTED' ? 'error' : 'default'} /></TableCell>
+                        <TableCell data-label="Approver">{step.approverUser?.name ?? '—'}</TableCell>
+                        <TableCell data-label="Comments">{step.comments ?? '—'}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
                 </Table>
+                </ResponsiveTable>
               </AccordionDetails>
             </Accordion>
           ))}
@@ -492,10 +494,10 @@ export default function QuotationsPage() {
       )}
 
       {/* Create / Edit Dialog */}
-      <Dialog open={createOpen || editOpen} onClose={() => { setCreateOpen(false); setEditOpen(false); setEditing(null); }} maxWidth="md" fullWidth sx={{ '& .MuiDialog-paper': { margin: { xs: 1 } } }}>
+      <Dialog open={createOpen || editOpen} onClose={() => { setCreateOpen(false); setEditOpen(false); setEditing(null); }} maxWidth="md" fullWidth>
         <DialogTitle>{editOpen ? `Edit Quotation ${editing?.quotationNumber ?? ''}` : 'Create Quotation'}</DialogTitle>
         <DialogContent>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1, flexWrap: 'wrap' }}>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
             {/* Vendor Selection */}
             <TextField
               select
@@ -522,56 +524,61 @@ export default function QuotationsPage() {
                 {lineItems.map((item, index) => {
                   const checked = selectedMaterialNames.has(item.materialName);
                   return (
-                    <Box key={index} sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
-                      <Checkbox
-                        checked={checked}
-                        onChange={(e) => {
-                          const newSet = new Set(selectedMaterialNames);
-                          if (e.target.checked) {
-                            newSet.add(item.materialName);
-                          } else {
-                            newSet.delete(item.materialName);
-                          }
-                          setSelectedMaterialNames(newSet);
-                        }}
-                        size="small"
-                      />
-                      <TextField
-                        label="Material"
-                        value={item.materialName}
-                        size="small"
-                        disabled
-                        sx={{ flex: 2 }}
-                      />
-                      <TextField
-                        label="Qty"
-                        type="number"
-                        value={item.quantity}
-                        onChange={(e) => updateLineItem(index, 'quantity', Number(e.target.value))}
-                        size="small"
-                        sx={{ flex: 1 }}
-                      />
-                      <TextField
-                        label="Unit Price"
-                        type="number"
-                        value={item.unitPrice}
-                        onChange={(e) => updateLineItem(index, 'unitPrice', Number(e.target.value))}
-                        size="small"
-                        sx={{ flex: 1 }}
-                      />
-                      <TextField
-                        label="Amount"
-                        value={item.amount}
-                        size="small"
-                        disabled
-                        sx={{ flex: 1 }}
-                      />
+                    <Box key={index} sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 1, alignItems: { xs: 'stretch', sm: 'center' } }}>
+                      <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', minWidth: 0 }}>
+                        <Checkbox
+                          checked={checked}
+                          onChange={(e) => {
+                            const newSet = new Set(selectedMaterialNames);
+                            if (e.target.checked) {
+                              newSet.add(item.materialName);
+                            } else {
+                              newSet.delete(item.materialName);
+                            }
+                            setSelectedMaterialNames(newSet);
+                          }}
+                          size="small"
+                        />
+                        <TextField
+                          label="Material"
+                          value={item.materialName}
+                          size="small"
+                          disabled
+                          fullWidth
+                          sx={{ flex: 2 }}
+                        />
+                      </Box>
+                      <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap', pl: { xs: 5, sm: 0 } }}>
+                        <TextField
+                          label="Qty"
+                          type="number"
+                          value={item.quantity}
+                          onChange={(e) => updateLineItem(index, 'quantity', Number(e.target.value))}
+                          size="small"
+                          sx={{ width: 100 }}
+                        />
+                        <TextField
+                          label="Unit Price"
+                          type="number"
+                          value={item.unitPrice}
+                          onChange={(e) => updateLineItem(index, 'unitPrice', Number(e.target.value))}
+                          size="small"
+                          sx={{ width: 120 }}
+                        />
+                        <TextField
+                          label="Amount"
+                          value={item.amount}
+                          size="small"
+                          disabled
+                          sx={{ width: 120 }}
+                        />
+                      </Box>
                     </Box>
                   );
                 })}
 
                 {/* Totals */}
-                <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 1, mt: 1 }}>
+                <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: { xs: 'stretch', sm: 'flex-end' }, gap: 1, mt: 1 }}>
                   <Typography variant="body2">Total: <strong>{formatCurrency(totalAmount)}</strong></Typography>
                   <TextField
                     label="GST Amount (optional)"
@@ -579,7 +586,7 @@ export default function QuotationsPage() {
                     value={gstAmount}
                     onChange={(e) => setGstAmount(e.target.value)}
                     size="small"
-                    sx={{ width: 200 }}
+                    sx={{ width: { xs: '100%', sm: 200 } }}
                   />
                   <Typography variant="body2">Grand Total: <strong>{formatCurrency(grandTotal)}</strong></Typography>
                 </Box>
@@ -617,7 +624,7 @@ export default function QuotationsPage() {
             </Box>
           </Box>
         </DialogContent>
-        <DialogActions>
+        <DialogActions sx={{ flexWrap: 'wrap', gap: 1 }}>
           <Button onClick={() => { setCreateOpen(false); setEditOpen(false); setEditing(null); resetForm(); }}>Cancel</Button>
           <Button
             variant="contained"

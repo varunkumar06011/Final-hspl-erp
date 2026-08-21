@@ -284,7 +284,7 @@ export default function InventoryPage() {
             </Box>
           )}
         </DialogContent>
-        <DialogActions>
+        <DialogActions sx={{ flexWrap: "wrap", gap: 1 }}>
           <Button onClick={() => setDialogOpen(false)}>Cancel</Button>
           <Button variant="contained" onClick={handleSubmit} disabled={createMutation.isPending || updateMutation.isPending}>
             {createMutation.isPending || updateMutation.isPending ? <CircularProgress size={20} /> : editing ? 'Update' : 'Create'}
@@ -305,7 +305,7 @@ export default function InventoryPage() {
             <TextField label="Notes" value={txnForm.notes ?? ''} onChange={(e) => setTxnForm({ ...txnForm, notes: e.target.value })} fullWidth size="small" multiline rows={2} />
           </Box>
         </DialogContent>
-        <DialogActions>
+        <DialogActions sx={{ flexWrap: "wrap", gap: 1 }}>
           <Button onClick={() => setTxnDialogOpen(false)}>Cancel</Button>
           <Button variant="contained" onClick={() => txnMutation.mutate(txnForm)} disabled={txnMutation.isPending}>
             {txnMutation.isPending ? <CircularProgress size={20} /> : 'Record'}
@@ -316,7 +316,7 @@ export default function InventoryPage() {
       <Dialog open={!!deleteConfirm} onClose={() => setDeleteConfirm(null)}>
         <DialogTitle>Delete Item?</DialogTitle>
         <DialogContent><Typography>This action cannot be undone.</Typography></DialogContent>
-        <DialogActions>
+        <DialogActions sx={{ flexWrap: "wrap", gap: 1 }}>
           <Button onClick={() => setDeleteConfirm(null)}>Cancel</Button>
           <Button color="error" variant="contained" onClick={() => deleteConfirm && deleteMutation.mutate(deleteConfirm)} disabled={deleteMutation.isPending}>Delete</Button>
         </DialogActions>

@@ -547,7 +547,7 @@ export default function PaymentsPage() {
             />
           </Box>
         </DialogContent>
-        <DialogActions>
+        <DialogActions sx={{ flexWrap: "wrap", gap: 1 }}>
           <Button onClick={() => setInvoicePayOpen(null)}>Cancel</Button>
           <Button
             variant="contained"
@@ -634,7 +634,7 @@ export default function PaymentsPage() {
             </Box>
           </Box>
         </DialogContent>
-        <DialogActions>
+        <DialogActions sx={{ flexWrap: "wrap", gap: 1 }}>
           <Button onClick={() => setExpenseOpen(false)}>Cancel</Button>
           <Button
             variant="contained"
@@ -680,7 +680,7 @@ export default function PaymentsPage() {
             />
           </Box>
         </DialogContent>
-        <DialogActions>
+        <DialogActions sx={{ flexWrap: "wrap", gap: 1 }}>
           <Button onClick={() => setPayOpen(null)}>Cancel</Button>
           <Button
             variant="contained"

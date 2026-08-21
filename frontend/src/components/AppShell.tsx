@@ -1,8 +1,7 @@
-import { Box, AppBar, Toolbar, Typography, IconButton, Avatar, Chip, Menu, MenuItem, Drawer, List, ListItem, ListItemIcon, ListItemText, useTheme, useMediaQuery } from '@mui/material';
+import { Box, AppBar, Toolbar, Typography, IconButton, Avatar, Chip, Menu, MenuItem, Drawer, List, ListItem, ListItemIcon, ListItemText } from '@mui/material';
 import { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
-  Menu as MenuIcon,
   Dashboard as DashboardIcon,
   Business as VendorIcon,
   Receipt as ReceiptIcon,
@@ -10,19 +9,20 @@ import {
   LocalShipping as GatePassIcon,
   Inventory as InventoryIcon,
   Engineering as LabourIcon,
+  Construction as PhaseIcon,
   CameraAlt as PhotoIcon,
   BugReport as IssueIcon,
   Verified as InspectionIcon,
   Description as DocumentIcon,
   Handshake as ContractIcon,
   History as AuditIcon,
-  Settings as SettingsIcon,
-  People as PeopleIcon,
   Logout as LogoutIcon,
   Notifications as NotificationsIcon,
+  Menu as MenuIcon,
+  ChevronLeft as ChevronLeftIcon,
 } from '@mui/icons-material';
 import { useAuthStore } from '../stores/authStore';
-import { hasPermission, Permission, UserRole } from '@hospital-erp/shared';
+import { UserRole } from '@hospital-erp/shared';
 
 const NAV_ITEMS = [
   { label: 'Dashboard', icon: <DashboardIcon />, path: '/' },
@@ -33,19 +33,18 @@ const NAV_ITEMS = [
   { label: 'Payments', icon: <PaymentIcon />, path: '/payments' },
   { label: 'Gate Passes', icon: <GatePassIcon />, path: '/gate-passes' },
   { label: 'Inventory', icon: <InventoryIcon />, path: '/inventory' },
-  { label: 'Attendance', icon: <LabourIcon />, path: '/labour' },
+  { label: 'Labour', icon: <LabourIcon />, path: '/labour' },
+  { label: 'Phases', icon: <PhaseIcon />, path: '/phases' },
+  { label: 'Activities', icon: <PhaseIcon />, path: '/activities' },
   { label: 'Site Photos', icon: <PhotoIcon />, path: '/photos' },
   { label: 'Issues', icon: <IssueIcon />, path: '/issues' },
   { label: 'Inspections', icon: <InspectionIcon />, path: '/inspections' },
   { label: 'Documents', icon: <DocumentIcon />, path: '/documents' },
   { label: 'Contracts', icon: <ContractIcon />, path: '/contracts' },
   { label: 'Audit Log', icon: <AuditIcon />, path: '/audit' },
-  { label: 'Users', icon: <PeopleIcon />, path: '/users', permission: Permission.MANAGE_USERS },
-  { label: 'Settings', icon: <SettingsIcon />, path: '/settings' },
 ];
 
 const ROLE_COLORS: Record<UserRole, string> = {
-  [UserRole.SUPERVISOR]: '#546E7A',
   [UserRole.PROJECT_HEAD]: '#1565C0',
   [UserRole.HEAD_OF_CONSTRUCTION]: '#2E7D32',
   [UserRole.ADMIN]: '#ED6C02',
@@ -53,10 +52,9 @@ const ROLE_COLORS: Record<UserRole, string> = {
 };
 
 const ROLE_LABELS: Record<UserRole, string> = {
-  [UserRole.SUPERVISOR]: 'Supervisor',
   [UserRole.PROJECT_HEAD]: 'Project Head',
   [UserRole.HEAD_OF_CONSTRUCTION]: 'Head of Construction',
-  [UserRole.ADMIN]: 'Admin 1',
+  [UserRole.ADMIN]: 'Admin',
   [UserRole.ADMIN_2]: 'Admin 2',
 };
 
@@ -64,12 +62,32 @@ const DRAWER_WIDTH = 260;
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
-  const [mobileOpen, setMobileOpen] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(() => {
+    try {
+      return localStorage.getItem('erp:sidebarOpen') !== 'false';
+    } catch {
+      return true;
+    }
+  });
+  const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout } = useAuthStore();
-  const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+
+  const toggleDrawer = () => {
+    // On mobile, toggle the temporary drawer
+    if (window.innerWidth < 900) {
+      setMobileDrawerOpen((prev) => !prev);
+      return;
+    }
+    const next = !drawerOpen;
+    setDrawerOpen(next);
+    try {
+      localStorage.setItem('erp:sidebarOpen', String(next));
+    } catch {
+      // ignore
+    }
+  };
 
   const handleMenu = (event: React.MouseEvent<HTMLElement>) => {
     setAnchorEl(event.currentTarget);
@@ -84,21 +102,19 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     navigate('/login');
   };
 
-  const handleNavigate = (path: string) => {
-    navigate(path);
-    if (isMobile) setMobileOpen(false);
-  };
-
-  const drawer = (
-    <>
+  const drawerContent = (
+    <Box sx={{ width: DRAWER_WIDTH, flexShrink: 0 }} role="navigation">
       <Toolbar />
       <Box sx={{ overflow: 'auto' }}>
         <List>
-          {NAV_ITEMS.filter((item) => !item.permission || (user && hasPermission(user.role as UserRole, item.permission))).map((item) => (
+          {NAV_ITEMS.map((item) => (
             <ListItem
               key={item.path}
               button
-              onClick={() => handleNavigate(item.path)}
+              onClick={() => {
+                navigate(item.path);
+                setMobileDrawerOpen(false);
+              }}
               selected={location.pathname === item.path}
               sx={{
                 '&.Mui-selected': {
@@ -114,31 +130,28 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           ))}
         </List>
       </Box>
-    </>
+    </Box>
   );
 
   return (
-    <Box sx={{ display: 'flex' }}>
+    <Box sx={{ display: 'flex', minWidth: 0 }}>
       <AppBar
         position="fixed"
-        sx={{ zIndex: (theme) => theme.zIndex.drawer + 1 }}
+        sx={{
+          zIndex: (theme) => theme.zIndex.drawer + 1,
+          ml: { md: drawerOpen ? `${DRAWER_WIDTH}px` : 0 },
+          width: { md: drawerOpen ? `calc(100% - ${DRAWER_WIDTH}px)` : '100%', xs: '100%' },
+          transition: (theme) => theme.transitions.create(['width', 'margin'], {
+            easing: theme.transitions.easing.sharp,
+            duration: theme.transitions.duration.leavingScreen,
+          }),
+        }}
       >
         <Toolbar>
-          {isMobile && (
-            <IconButton
-              color="inherit"
-              edge="start"
-              onClick={() => setMobileOpen(!mobileOpen)}
-              sx={{ mr: 1 }}
-            >
-              <MenuIcon />
-            </IconButton>
-          )}
-          <Typography
-            variant="h6"
-            component="div"
-            sx={{ flexGrow: 1, fontSize: { xs: '1rem', sm: '1.25rem' } }}
-          >
+          <IconButton color="inherit" onClick={toggleDrawer} edge="start" sx={{ mr: 2 }}>
+            {drawerOpen && window.innerWidth >= 900 ? <ChevronLeftIcon /> : <MenuIcon />}
+          </IconButton>
+          <Typography variant="h6" component="div" sx={{ flexGrow: 1, fontSize: { xs: '1rem', sm: '1.25rem' }, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             Hospital Construction ERP
           </Typography>
           <IconButton color="inherit" size="large" sx={{ display: { xs: 'none', sm: 'inline-flex' } }}>
@@ -154,7 +167,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                   bgcolor: ROLE_COLORS[user.role as UserRole],
                   color: 'white',
                   fontWeight: 600,
-                  display: { xs: 'none', sm: 'flex' },
+                  display: { xs: 'none', sm: 'inline-flex' },
                 }}
               />
               <IconButton onClick={handleMenu} color="inherit">
@@ -178,34 +191,52 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         </Toolbar>
       </AppBar>
 
-      {/* Mobile drawer (temporary) */}
-      {isMobile ? (
-        <Drawer
-          variant="temporary"
-          open={mobileOpen}
-          onClose={() => setMobileOpen(false)}
-          ModalProps={{ keepMounted: true }}
-          sx={{
-            '& .MuiDrawer-paper': { width: DRAWER_WIDTH, boxSizing: 'border-box' },
-          }}
-        >
-          {drawer}
-        </Drawer>
-      ) : (
-        /* Desktop drawer (permanent) */
+      {/* Mobile drawer (temporary overlay) */}
+      <Drawer
+        variant="temporary"
+        open={mobileDrawerOpen}
+        onClose={() => setMobileDrawerOpen(false)}
+        ModalProps={{ keepMounted: true }}
+        sx={{
+          display: { xs: 'block', md: 'none' },
+          '& .MuiDrawer-paper': { width: DRAWER_WIDTH, boxSizing: 'border-box' },
+        }}
+      >
+        {drawerContent}
+      </Drawer>
+
+      {/* Desktop drawer (permanent) */}
+      {drawerOpen && (
         <Drawer
           variant="permanent"
           sx={{
+            display: { xs: 'none', md: 'block' },
             width: DRAWER_WIDTH,
             flexShrink: 0,
-            '& .MuiDrawer-paper': { width: DRAWER_WIDTH, boxSizing: 'border-box' },
+            '& .MuiDrawer-paper': {
+              width: DRAWER_WIDTH,
+              boxSizing: 'border-box',
+            },
           }}
         >
-          {drawer}
+          {drawerContent}
         </Drawer>
       )}
 
-      <Box component="main" sx={{ flexGrow: 1, p: { xs: 1.5, sm: 2, md: 3 }, mt: 8, width: { xs: '100%', md: 'auto' } }}>
+      <Box
+        component="main"
+        sx={{
+          flexGrow: 1,
+          p: { xs: 1.5, sm: 2, md: 3 },
+          mt: 8,
+          width: { md: drawerOpen ? `calc(100% - ${DRAWER_WIDTH}px)` : '100%', xs: '100%' },
+          minWidth: 0,
+          transition: (theme) => theme.transitions.create('width', {
+            easing: theme.transitions.easing.sharp,
+            duration: theme.transitions.duration.leavingScreen,
+          }),
+        }}
+      >
         {children}
       </Box>
     </Box>

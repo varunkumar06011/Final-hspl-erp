@@ -71,5 +71,69 @@ export const theme = createTheme({
         },
       },
     },
+    MuiDialog: {
+      styleOverrides: {
+        paper: {
+          '@media (max-width: 599.95px)': {
+            margin: 8,
+            width: 'calc(100% - 16px)',
+            maxWidth: 'calc(100% - 16px) !important',
+          },
+        },
+      },
+    },
+    MuiDialogContent: {
+      styleOverrides: {
+        root: {
+          '@media (max-width: 599.95px)': {
+            padding: 12,
+          },
+        },
+      },
+    },
+    MuiDialogTitle: {
+      styleOverrides: {
+        root: {
+          '@media (max-width: 599.95px)': {
+            padding: '12px 16px',
+            fontSize: '1.1rem',
+          },
+        },
+      },
+    },
+    MuiDialogActions: {
+      styleOverrides: {
+        root: {
+          '@media (max-width: 599.95px)': {
+            padding: '8px 12px',
+            '& .MuiButton-root': {
+              minWidth: 'auto',
+            },
+          },
+        },
+      },
+    },
+    MuiTablePagination: {
+      styleOverrides: {
+        toolbar: {
+          '@media (max-width: 599.95px)': {
+            flexWrap: 'wrap',
+            gap: 0.5,
+            paddingLeft: 8,
+            paddingRight: 8,
+          },
+        },
+        select: {
+          '@media (max-width: 599.95px)': {
+            marginRight: 0,
+          },
+        },
+        displayedRows: {
+          '@media (max-width: 599.95px)': {
+            display: 'none',
+          },
+        },
+      },
+    },
   },
 });

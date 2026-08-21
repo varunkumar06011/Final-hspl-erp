@@ -118,7 +118,7 @@ export default function SettingsPage() {
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
             Update your name and phone number. Your phone number is used for gate pass OTP verification.
           </Typography>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, maxWidth: 400, flexWrap: 'wrap' }}>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, maxWidth: { xs: '100%', sm: 400 } }}>
             <TextField
               label="Name"
               value={profileName}

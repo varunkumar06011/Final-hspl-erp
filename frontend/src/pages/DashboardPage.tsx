@@ -2,6 +2,7 @@ import { Box, Card, CardContent, Typography, Skeleton, Alert, Chip, Table, Table
 import { useQuery } from '@tanstack/react-query';
 import api from '../config/api';
 import { formatCurrency, formatDate } from '../utils/enumOptions';
+import ResponsiveTable from '../components/ResponsiveTable';
 
 export default function DashboardPage() {
   const { data: summary, isLoading, isError } = useQuery({
@@ -27,15 +28,15 @@ export default function DashboardPage() {
       </Typography>
 
       {summary?.project && (
-        <Box sx={{ mb: 2 }}>
+        <Box sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
           <Typography variant="body2" color="text.secondary">
             Project: <strong>{summary.project.name}</strong>
-            <Chip label={summary.project.status} size="small" sx={{ ml: 1 }} />
           </Typography>
+          <Chip label={summary.project.status} size="small" />
         </Box>
       )}
 
-      <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 2, mb: 3 }}>
+      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(auto-fill, minmax(280px, 1fr))' }, gap: 2, mb: 3 }}>
         <Card>
           <CardContent>
             <Typography color="text.secondary" variant="body2" gutterBottom>Total Budget</Typography>
@@ -62,7 +63,7 @@ export default function DashboardPage() {
         </Card>
       </Box>
 
-      <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 2, mb: 3 }}>
+      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(auto-fill, minmax(200px, 1fr))' }, gap: 2, mb: 3 }}>
         <Card><CardContent><Typography color="text.secondary" variant="body2" gutterBottom>Pending Payments</Typography>{isLoading ? <Skeleton variant="text" width={60} height={30} /> : <Typography variant="h4" color="warning.main">{summary?.pendingPayments ?? 0}</Typography>}</CardContent></Card>
         <Card><CardContent><Typography color="text.secondary" variant="body2" gutterBottom>Open Issues</Typography>{isLoading ? <Skeleton variant="text" width={60} height={30} /> : <Typography variant="h4" color="error.main">{summary?.openIssues ?? 0}</Typography>}</CardContent></Card>
         <Card><CardContent><Typography color="text.secondary" variant="body2" gutterBottom>Low Stock Items</Typography>{isLoading ? <Skeleton variant="text" width={60} height={30} /> : <Typography variant="h4" color="error.main">{summary?.lowStockItems ?? 0}</Typography>}</CardContent></Card>
@@ -81,6 +82,7 @@ export default function DashboardPage() {
           {isLoading ? (
             [1, 2, 3].map((i) => <Skeleton key={i} variant="text" height={30} />)
           ) : summary?.recentQuotations?.length > 0 ? (
+            <ResponsiveTable>
             <TableContainer sx={{ overflowX: 'auto' }}>
               <Table size="small">
                 <TableHead>
@@ -96,17 +98,18 @@ export default function DashboardPage() {
                 <TableBody>
                   {summary.recentQuotations.map((q: any) => (
                     <TableRow key={q.id} hover>
-                      <TableCell>{q.quotationNumber}</TableCell>
-                      <TableCell>{q.vendorCode} - {q.vendorName}</TableCell>
-                      <TableCell>{formatCurrency(q.grandTotal)}</TableCell>
-                      <TableCell>{q.createdBy}</TableCell>
-                      <TableCell><Chip label={q.status.replace(/_/g, ' ')} size="small" /></TableCell>
-                      <TableCell>{formatDate(q.createdAt)}</TableCell>
+                      <TableCell data-label="Quotation No">{q.quotationNumber}</TableCell>
+                      <TableCell data-label="Vendor">{q.vendorCode} - {q.vendorName}</TableCell>
+                      <TableCell data-label="Grand Total">{formatCurrency(q.grandTotal)}</TableCell>
+                      <TableCell data-label="Created By">{q.createdBy}</TableCell>
+                      <TableCell data-label="Status"><Chip label={q.status.replace(/_/g, ' ')} size="small" /></TableCell>
+                      <TableCell data-label="Date">{formatDate(q.createdAt)}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
               </Table>
             </TableContainer>
+            </ResponsiveTable>
           ) : (
             <Typography color="text.secondary">No quotations yet.</Typography>
           )}
@@ -120,6 +123,7 @@ export default function DashboardPage() {
           {isLoading ? (
             [1, 2, 3].map((i) => <Skeleton key={i} variant="text" height={30} />)
           ) : summary?.recentPOs?.length > 0 ? (
+            <ResponsiveTable>
             <TableContainer sx={{ overflowX: 'auto' }}>
               <Table size="small">
                 <TableHead>
@@ -135,17 +139,18 @@ export default function DashboardPage() {
                 <TableBody>
                   {summary.recentPOs.map((p: any) => (
                     <TableRow key={p.id} hover>
-                      <TableCell>{p.poNumber}</TableCell>
-                      <TableCell>{p.vendorCode} - {p.vendorName}</TableCell>
-                      <TableCell>{formatCurrency(p.grandTotal)}</TableCell>
-                      <TableCell>{p.createdBy}</TableCell>
-                      <TableCell><Chip label={p.status.replace(/_/g, ' ')} size="small" /></TableCell>
-                      <TableCell>{formatDate(p.createdAt)}</TableCell>
+                      <TableCell data-label="PO No">{p.poNumber}</TableCell>
+                      <TableCell data-label="Vendor">{p.vendorCode} - {p.vendorName}</TableCell>
+                      <TableCell data-label="Grand Total">{formatCurrency(p.grandTotal)}</TableCell>
+                      <TableCell data-label="Created By">{p.createdBy}</TableCell>
+                      <TableCell data-label="Status"><Chip label={p.status.replace(/_/g, ' ')} size="small" /></TableCell>
+                      <TableCell data-label="Date">{formatDate(p.createdAt)}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
               </Table>
             </TableContainer>
+            </ResponsiveTable>
           ) : (
             <Typography color="text.secondary">No purchase orders yet.</Typography>
           )}
@@ -159,6 +164,7 @@ export default function DashboardPage() {
           {isLoading ? (
             [1, 2, 3].map((i) => <Skeleton key={i} variant="text" height={30} />)
           ) : summary?.recentInvoices?.length > 0 ? (
+            <ResponsiveTable>
             <TableContainer sx={{ overflowX: 'auto' }}>
               <Table size="small">
                 <TableHead>
@@ -176,19 +182,20 @@ export default function DashboardPage() {
                 <TableBody>
                   {summary.recentInvoices.map((i: any) => (
                     <TableRow key={i.id} hover>
-                      <TableCell>{i.invoiceCode}</TableCell>
-                      <TableCell>{i.vendorCode} - {i.vendorName}</TableCell>
-                      <TableCell>{formatCurrency(i.totalAmount)}</TableCell>
-                      <TableCell><Chip label={i.verificationStatus.replace(/_/g, ' ')} size="small" /></TableCell>
-                      <TableCell><Chip label={i.paymentStatus} size="small" color={i.paymentStatus === 'PAID' ? 'success' : 'default'} /></TableCell>
-                      <TableCell><Chip label={i.stockStatus} size="small" color={i.stockStatus === 'RECEIVED' ? 'success' : 'warning'} /></TableCell>
-                      <TableCell>{i.createdBy}</TableCell>
-                      <TableCell>{formatDate(i.createdAt)}</TableCell>
+                      <TableCell data-label="Invoice Code">{i.invoiceCode}</TableCell>
+                      <TableCell data-label="Vendor">{i.vendorCode} - {i.vendorName}</TableCell>
+                      <TableCell data-label="Total">{formatCurrency(i.totalAmount)}</TableCell>
+                      <TableCell data-label="Verification"><Chip label={i.verificationStatus.replace(/_/g, ' ')} size="small" /></TableCell>
+                      <TableCell data-label="Payment"><Chip label={i.paymentStatus} size="small" color={i.paymentStatus === 'PAID' ? 'success' : 'default'} /></TableCell>
+                      <TableCell data-label="Stock"><Chip label={i.stockStatus} size="small" color={i.stockStatus === 'RECEIVED' ? 'success' : 'warning'} /></TableCell>
+                      <TableCell data-label="Created By">{i.createdBy}</TableCell>
+                      <TableCell data-label="Date">{formatDate(i.createdAt)}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
               </Table>
             </TableContainer>
+            </ResponsiveTable>
           ) : (
             <Typography color="text.secondary">No invoices yet.</Typography>
           )}
@@ -202,6 +209,7 @@ export default function DashboardPage() {
           {isLoading ? (
             [1, 2, 3].map((i) => <Skeleton key={i} variant="text" height={30} />)
           ) : summary?.recentPayments?.length > 0 ? (
+            <ResponsiveTable>
             <TableContainer sx={{ overflowX: 'auto' }}>
               <Table size="small">
                 <TableHead>
@@ -219,19 +227,20 @@ export default function DashboardPage() {
                 <TableBody>
                   {summary.recentPayments.map((p: any) => (
                     <TableRow key={p.id} hover>
-                      <TableCell>{p.paymentCode}</TableCell>
-                      <TableCell><Chip label={p.type} size="small" variant="outlined" /></TableCell>
-                      <TableCell>{p.type === 'EXPENSE' ? `${p.description ?? '—'} (${p.category ?? '—'})` : p.invoiceCode ?? '—'}</TableCell>
-                      <TableCell>{formatCurrency(p.amount)}</TableCell>
-                      <TableCell><Chip label={p.status} size="small" /></TableCell>
-                      <TableCell>{p.isPaid ? <Chip label="Paid" size="small" color="success" /> : '—'}</TableCell>
-                      <TableCell>{p.createdBy}</TableCell>
-                      <TableCell>{formatDate(p.createdAt)}</TableCell>
+                      <TableCell data-label="Code">{p.paymentCode}</TableCell>
+                      <TableCell data-label="Type"><Chip label={p.type} size="small" variant="outlined" /></TableCell>
+                      <TableCell data-label="Description / Invoice">{p.type === 'EXPENSE' ? `${p.description ?? '—'} (${p.category ?? '—'})` : p.invoiceCode ?? '—'}</TableCell>
+                      <TableCell data-label="Amount">{formatCurrency(p.amount)}</TableCell>
+                      <TableCell data-label="Status"><Chip label={p.status} size="small" /></TableCell>
+                      <TableCell data-label="Paid">{p.isPaid ? <Chip label="Paid" size="small" color="success" /> : '—'}</TableCell>
+                      <TableCell data-label="Created By">{p.createdBy}</TableCell>
+                      <TableCell data-label="Date">{formatDate(p.createdAt)}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
               </Table>
             </TableContainer>
+            </ResponsiveTable>
           ) : (
             <Typography color="text.secondary">No payments yet.</Typography>
           )}

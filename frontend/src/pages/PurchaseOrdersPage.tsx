@@ -477,6 +477,7 @@ export default function PurchaseOrdersPage() {
             {selectedQuotation?.items && selectedQuotation.items.length > 0 && (
               <Box>
                 <Typography variant="body2" fontWeight={600} sx={{ mb: 1 }}>Items (from quotation)</Typography>
+                <ResponsiveTable>
                 <TableContainer component={Card} variant="outlined">
                   <Table size="small">
                     <TableHead>
@@ -492,18 +493,19 @@ export default function PurchaseOrdersPage() {
                     <TableBody>
                       {selectedQuotation.items.map((item, idx) => (
                         <TableRow key={idx}>
-                          <TableCell>{idx + 1}</TableCell>
-                          <TableCell>{item.materialName}</TableCell>
-                          <TableCell>{item.quantity}</TableCell>
-                          <TableCell>{item.unit ?? '—'}</TableCell>
-                          <TableCell>{formatCurrency(item.unitPrice)}</TableCell>
-                          <TableCell>{formatCurrency(item.amount)}</TableCell>
+                          <TableCell data-label="S.no">{idx + 1}</TableCell>
+                          <TableCell data-label="Material">{item.materialName}</TableCell>
+                          <TableCell data-label="Qty">{item.quantity}</TableCell>
+                          <TableCell data-label="Unit">{item.unit ?? '—'}</TableCell>
+                          <TableCell data-label="Unit Price">{formatCurrency(item.unitPrice)}</TableCell>
+                          <TableCell data-label="Amount">{formatCurrency(item.amount)}</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
                   </Table>
                 </TableContainer>
-                <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 1, mt: 1 }}>
+                </ResponsiveTable>
+                <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: { xs: 'stretch', sm: 'flex-end' }, gap: 1, mt: 1 }}>
                   <Typography variant="body2">Total: <strong>{formatCurrency(quotationTotal)}</strong></Typography>
                   <TextField
                     label="GST Amount (optional)"
@@ -511,7 +513,7 @@ export default function PurchaseOrdersPage() {
                     value={gstAmount}
                     onChange={(e) => setGstAmount(e.target.value)}
                     size="small"
-                    sx={{ width: 200 }}
+                    sx={{ width: { xs: '100%', sm: 200 } }}
                   />
                   <Typography variant="body2">Grand Total: <strong>{formatCurrency(grandTotal)}</strong></Typography>
                 </Box>
@@ -524,7 +526,7 @@ export default function PurchaseOrdersPage() {
             />
           </Box>
         </DialogContent>
-        <DialogActions>
+        <DialogActions sx={{ flexWrap: 'wrap', gap: 1 }}>
           <Button onClick={() => { setCreateOpen(false); resetForm(); }}>Cancel</Button>
           <Button
             variant="contained"

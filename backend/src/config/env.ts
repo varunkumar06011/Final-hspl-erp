@@ -9,6 +9,7 @@ const envSchema = z.object({
 
   // Database
   DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
+  DIRECT_URL: z.string().optional(),
 
   // Firebase Admin
   FIREBASE_PROJECT_ID: z.string().min(1, 'FIREBASE_PROJECT_ID is required'),
@@ -18,17 +19,21 @@ const envSchema = z.object({
   // Supabase (for prod storage)
   SUPABASE_URL: z.string().optional(),
   SUPABASE_SERVICE_KEY: z.string().optional(),
+  SUPABASE_ANON_KEY: z.string().optional(),
 
   // Frontend URL (for CORS)
   FRONTEND_URL: z.string().default('http://localhost:5173'),
 
   // Storage mode
   STORAGE_MODE: z.enum(['local', 'supabase']).default('local'),
-  // Only required when STORAGE_MODE=local
-  LOCAL_STORAGE_PATH: z.string().optional(),
+  LOCAL_STORAGE_PATH: z.string().default('./uploads'),
 
-  // Groq (OCR auto-fill via Llama 3.2 Vision)
+  // Groq (OCR auto-fill)
   GROQ_API_KEY: z.string().optional(),
+
+  // Camera (RTSP for gate pass video clips)
+  CAMERA_RTSP_URL: z.string().optional(),
+  CAMERA_CLIP_DURATION: z.coerce.number().default(15),
 });
 
 const parsed = envSchema.safeParse(process.env);
