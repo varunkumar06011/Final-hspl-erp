@@ -50,7 +50,7 @@ router.get(
           }),
           prisma.quotation.aggregate({
             where: { projectId, deletedAt: null, status: { in: ['SUBMITTED', 'UNDER_REVIEW'] } },
-            _sum: { grandTotal: true },
+            _sum: { totalAmount: true },
           }),
           prisma.quotation.findMany({
             where: { projectId, deletedAt: null },
@@ -123,14 +123,13 @@ router.get(
         openIssues,
         lowStockItems: lowStock,
         pendingQuotations,
-        pendingQuotationValue: Number(pendingQuotationValue._sum.grandTotal ?? 0),
+        pendingQuotationValue: Number(pendingQuotationValue._sum.totalAmount ?? 0),
         recentQuotations: recentQuotations.map((q) => ({
           id: q.id,
           quotationNumber: q.quotationNumber,
           vendorName: q.vendor?.name ?? '—',
           vendorCode: q.vendor?.vendorCode ?? '',
           totalAmount: Number(q.totalAmount),
-          grandTotal: Number(q.grandTotal),
           status: q.status,
           createdBy: q.createdByUser?.name ?? '—',
           createdAt: q.createdAt,
@@ -141,7 +140,7 @@ router.get(
           poNumber: p.poNumber,
           vendorName: p.vendor?.name ?? '—',
           vendorCode: p.vendor?.vendorCode ?? '',
-          grandTotal: Number(p.grandTotal),
+          totalAmount: Number(p.totalAmount),
           status: p.status,
           createdBy: p.createdByUser?.name ?? '—',
           createdAt: p.createdAt,
@@ -149,7 +148,7 @@ router.get(
         pendingInvoices,
         recentInvoices: recentInvoices.map((i) => ({
           id: i.id,
-          invoiceCode: i.invoiceCode,
+          invoiceCode: i.invoiceCode ?? null,
           invoiceNumber: i.invoiceNumber,
           vendorName: i.vendor?.name ?? '—',
           vendorCode: i.vendor?.vendorCode ?? '',

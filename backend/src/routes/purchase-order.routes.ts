@@ -1,5 +1,5 @@
 import { Router, Response, NextFunction } from 'express';
-import { APPROVAL_CONFIG, Permission, POStatus, AuditAction, UserRole } from '@hospital-erp/shared';
+import { Permission, POStatus, AuditAction, UserRole } from '@hospital-erp/shared';
 import { createPOSchema, listPOsSchema, approvalActionSchema } from '@hospital-erp/shared';
 import { prisma } from '../config/prisma';
 import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middleware/auth';
@@ -27,18 +27,10 @@ async function generatePONumber(projectId: string): Promise<string> {
 }
 
 const poInclude = {
-  vendor: { select: { id: true, name: true, vendorCode: true, phone: true, address: true, contactPersonName: true, contactPersonPhone: true } },
+  vendor: { select: { id: true, name: true, vendorCode: true, phone: true, address: true } },
   quotation: { select: { id: true, quotationNumber: true } },
   items: true,
   createdByUser: { select: { id: true, name: true } },
-  approvalWorkflow: {
-    include: {
-      steps: {
-        orderBy: { stepNumber: 'asc' as const },
-        include: { approverUser: { select: { id: true, name: true, role: true } } },
-      },
-    },
-  },
 };
 
 // GET / — list POs
@@ -108,7 +100,7 @@ router.post(
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const projectId = requireProjectId(req);
-      const { vendorId, quotationId, gstAmount } = req.body;
+      const { vendorId, quotationId } = req.body;
 
       // Validate quotation exists, belongs to project, is approved, and matches vendor
       const quotation = await prisma.quotation.findFirst({
@@ -130,8 +122,6 @@ router.post(
 
       const poNumber = await generatePONumber(projectId);
       const totalAmount = Number(quotation.totalAmount);
-      const gst = Number(gstAmount) || 0;
-      const grandTotal = totalAmount + gst;
 
       // Create PO with items copied from quotation
       const po = await prisma.purchaseOrder.create({
@@ -142,15 +132,13 @@ router.post(
           poNumber,
           status: POStatus.PENDING_APPROVAL,
           totalAmount,
-          gstAmount: gst,
-          grandTotal,
           createdBy: req.user!.id,
           items: {
             create: quotation.items.map((item) => ({
-              materialName: item.materialName,
+              description: item.description,
               quantity: item.quantity,
               unit: item.unit,
-              unitPrice: item.unitPrice,
+              rate: item.rate,
               amount: item.amount,
             })),
           },
@@ -158,29 +146,11 @@ router.post(
         include: poInclude,
       });
 
-      // Initiate approval workflow — any 2 of 4 head roles
-      const workflow = await prisma.approvalWorkflow.create({
-        data: {
-          entityType: 'PURCHASE_ORDER',
-          entityId: po.id,
-          projectId,
-          status: 'VERIFICATION',
-          currentStep: 0,
-          minApprovers: APPROVAL_CONFIG.MIN_APPROVERS,
-          steps: {
-            create: HEAD_ROLES.map((role, idx) => ({
-              stepNumber: idx + 1,
-              approverRole: role,
-              status: 'PENDING',
-            })),
-          },
-        },
-        include: { steps: true },
-      });
-
-      await prisma.purchaseOrder.update({
-        where: { id: po.id },
-        data: { approvalWorkflowId: workflow.id },
+      // Initiate approval workflow
+      await approvalService.initiate({
+        entityType: 'PURCHASE_ORDER',
+        entityId: po.id,
+        projectId,
       });
 
       await logAudit({
@@ -189,7 +159,7 @@ router.post(
         entityType: 'PURCHASE_ORDER',
         entityId: po.id,
         projectId,
-        newValue: { poNumber, vendorId, quotationId, totalAmount, grandTotal, acknowledged: true },
+        newValue: { poNumber, vendorId, quotationId, totalAmount, acknowledged: true },
       });
 
       const result = await prisma.purchaseOrder.findUnique({
@@ -224,10 +194,14 @@ router.patch(
       }
 
       const updateData: Record<string, unknown> = {};
-      if (req.body.gstAmount !== undefined) {
-        const gst = Number(req.body.gstAmount);
-        updateData.gstAmount = gst;
-        updateData.grandTotal = Number(existing.totalAmount) + gst;
+      if (req.body.status !== undefined) {
+        updateData.status = req.body.status;
+      }
+      if (req.body.deliveryDate !== undefined) {
+        updateData.deliveryDate = new Date(req.body.deliveryDate);
+      }
+      if (req.body.notes !== undefined) {
+        updateData.notes = req.body.notes;
       }
 
       const updated = await prisma.purchaseOrder.update({
@@ -305,10 +279,15 @@ router.post(
       const projectId = requireProjectId(req);
       const po = await prisma.purchaseOrder.findFirst({
         where: { id: req.params.id, projectId, deletedAt: null },
-        include: { approvalWorkflow: { include: { steps: true } } },
       });
-      if (!po || !po.approvalWorkflow) {
-        res.status(404).json({ error: 'Purchase order or approval workflow not found' });
+      if (!po) {
+        res.status(404).json({ error: 'Purchase order not found' });
+        return;
+      }
+
+      const workflow = await approvalService.getWorkflowByEntity('PURCHASE_ORDER', po.id);
+      if (!workflow) {
+        res.status(404).json({ error: 'Approval workflow not found' });
         return;
       }
 
@@ -319,7 +298,7 @@ router.post(
       }
 
       // Find the step for this user's role
-      const step = po.approvalWorkflow.steps.find(
+      const step = workflow.steps.find(
         (s) => s.approverRole === req.user!.role && s.status === 'PENDING'
       );
       if (!step) {
@@ -328,7 +307,7 @@ router.post(
       }
 
       // Check same person hasn't already approved
-      const alreadyApproved = po.approvalWorkflow.steps.find(
+      const alreadyApproved = workflow.steps.find(
         (s) => s.approverUserId === req.user!.id && s.status === 'APPROVED'
       );
       if (alreadyApproved) {
@@ -377,10 +356,15 @@ router.post(
       const projectId = requireProjectId(req);
       const po = await prisma.purchaseOrder.findFirst({
         where: { id: req.params.id, projectId, deletedAt: null },
-        include: { approvalWorkflow: { include: { steps: true } } },
       });
-      if (!po || !po.approvalWorkflow) {
-        res.status(404).json({ error: 'Purchase order or approval workflow not found' });
+      if (!po) {
+        res.status(404).json({ error: 'Purchase order not found' });
+        return;
+      }
+
+      const workflow = await approvalService.getWorkflowByEntity('PURCHASE_ORDER', po.id);
+      if (!workflow) {
+        res.status(404).json({ error: 'Approval workflow not found' });
         return;
       }
 
@@ -389,7 +373,7 @@ router.post(
         return;
       }
 
-      const step = po.approvalWorkflow.steps.find(
+      const step = workflow.steps.find(
         (s) => s.approverRole === req.user!.role && s.status === 'PENDING'
       );
       if (!step) {
@@ -441,15 +425,7 @@ router.get(
           quotation: { select: { quotationNumber: true } },
           items: true,
           createdByUser: { select: { name: true } },
-          approvalWorkflow: {
-            include: {
-              steps: {
-                orderBy: { stepNumber: 'asc' as const },
-                include: { approverUser: { select: { name: true, role: true } } },
-              },
-            },
-          },
-          project: { select: { name: true, officeAddress: true, hospitalAddress: true, gstNumber: true } },
+          project: { select: { name: true } },
         },
       });
       if (!po) {
@@ -470,7 +446,6 @@ router.get(
       const TEXT_DARK = '#2c3e50';
       const TEXT_MUTED = '#7f8c8d';
       const WHITE = '#ffffff';
-      const GREEN = '#27ae60';
 
       const pageWidth = 595;
       const pageHeight = 842;
@@ -479,11 +454,8 @@ router.get(
 
       // ── Header band ──
       doc.rect(0, 0, pageWidth, 70).fill(PRIMARY);
-      doc.fillColor(WHITE).fontSize(22).font('Helvetica-Bold').text(po.project?.name ?? 'Vgrand Hospital', margin, 14);
+      doc.fillColor(WHITE).fontSize(22).font('Helvetica-Bold').text(po.project?.name ?? 'Hospital ERP', margin, 14);
       doc.fontSize(10).font('Helvetica').fillColor(PRIMARY_LIGHT).text('PURCHASE ORDER', margin, 40);
-      if (po.project?.gstNumber) {
-        doc.fontSize(8).font('Helvetica').fillColor(PRIMARY_LIGHT).text(`GSTIN: ${po.project.gstNumber}`, margin, 55);
-      }
       // PO number badge on the right
       const badgeW = 120;
       const badgeX = pageWidth - margin - badgeW;
@@ -520,7 +492,7 @@ router.get(
       doc.fillColor(TEXT_DARK).fontSize(9).font('Helvetica-Bold').text(po.vendor?.name ?? '—', margin + 8, vy + 9, { width: leftCardW - 16 });
       vy += 26;
       doc.fillColor(TEXT_MUTED).fontSize(7).font('Helvetica').text('Contact', margin + 8, vy, { width: leftCardW - 16 });
-      doc.fillColor(TEXT_DARK).fontSize(9).font('Helvetica-Bold').text(po.vendor?.phone ?? po.vendor?.contactPersonPhone ?? '—', margin + 8, vy + 9, { width: leftCardW - 16 });
+      doc.fillColor(TEXT_DARK).fontSize(9).font('Helvetica-Bold').text(po.vendor?.phone ?? '—', margin + 8, vy + 9, { width: leftCardW - 16 });
       vy += 26;
       doc.fillColor(TEXT_MUTED).fontSize(7).font('Helvetica').text('Address', margin + 8, vy, { width: leftCardW - 16 });
       doc.fillColor(TEXT_DARK).fontSize(8).font('Helvetica').text(po.vendor?.address ?? '—', margin + 8, vy + 9, { width: leftCardW - 16, height: 12 });
@@ -532,15 +504,15 @@ router.get(
       // Bill To
       doc.roundedRect(rightX, y, rightCardW, subCardH, 5).fillAndStroke(LIGHT_BG, BORDER);
       doc.rect(rightX, y, rightCardW, 18).fill(PRIMARY);
-      doc.fillColor(WHITE).fontSize(7).font('Helvetica-Bold').text('BILL TO (Office Address)', rightX + 8, y + 5, { width: rightCardW - 16 });
-      doc.fillColor(TEXT_DARK).fontSize(8).font('Helvetica').text(po.project?.officeAddress ?? '—', rightX + 8, y + 22, { width: rightCardW - 16, height: 20 });
+      doc.fillColor(WHITE).fontSize(7).font('Helvetica-Bold').text('BILL TO', rightX + 8, y + 5, { width: rightCardW - 16 });
+      doc.fillColor(TEXT_DARK).fontSize(8).font('Helvetica').text(po.vendor?.name ?? '—', rightX + 8, y + 22, { width: rightCardW - 16, height: 20 });
 
       // Delivery Address
       const dy2 = y + subCardH + 10;
       doc.roundedRect(rightX, dy2, rightCardW, subCardH, 5).fillAndStroke(LIGHT_BG, BORDER);
       doc.rect(rightX, dy2, rightCardW, 18).fill(PRIMARY);
-      doc.fillColor(WHITE).fontSize(7).font('Helvetica-Bold').text('DELIVERY ADDRESS (Hospital)', rightX + 8, dy2 + 5, { width: rightCardW - 16 });
-      doc.fillColor(TEXT_DARK).fontSize(8).font('Helvetica').text(po.project?.hospitalAddress ?? '—', rightX + 8, dy2 + 22, { width: rightCardW - 16, height: 20 });
+      doc.fillColor(WHITE).fontSize(7).font('Helvetica-Bold').text('DELIVERY ADDRESS', rightX + 8, dy2 + 5, { width: rightCardW - 16 });
+      doc.fillColor(TEXT_DARK).fontSize(8).font('Helvetica').text(po.vendor?.address ?? '—', rightX + 8, dy2 + 22, { width: rightCardW - 16, height: 20 });
 
       y += cardH + 15;
 
@@ -577,10 +549,10 @@ router.get(
         doc.rect(margin, y, tableW, rowH).fill(idx % 2 === 0 ? WHITE : PRIMARY_LIGHT);
         doc.fillColor(TEXT_DARK);
         doc.text(String(idx + 1), cols[0].x + 4, y + 6, { width: cols[0].w - 8, align: 'center' });
-        doc.text(item.materialName, cols[1].x + 4, y + 6, { width: cols[1].w - 8 });
+        doc.text(item.description, cols[1].x + 4, y + 6, { width: cols[1].w - 8 });
         doc.text(String(item.quantity), cols[2].x + 4, y + 6, { width: cols[2].w - 8, align: 'center' });
         doc.text(item.unit ?? '', cols[3].x + 4, y + 6, { width: cols[3].w - 8, align: 'center' });
-        doc.text(`Rs. ${Number(item.unitPrice).toFixed(2)}`, cols[4].x + 4, y + 6, { width: cols[4].w - 8, align: 'right' });
+        doc.text(`Rs. ${Number(item.rate).toFixed(2)}`, cols[4].x + 4, y + 6, { width: cols[4].w - 8, align: 'right' });
         doc.text(`Rs. ${Number(item.amount).toFixed(2)}`, cols[5].x + 4, y + 6, { width: cols[5].w - 8, align: 'right' });
         y += rowH;
       });
@@ -590,25 +562,11 @@ router.get(
       // ── Totals section (full width, below table) ──
       y += 10;
       const totalsH = 28;
-      const hasGst = Number(po.gstAmount) > 0;
-
-      // Subtotal row
-      doc.rect(margin, y, tableW, totalsH).fill(LIGHT_BG).stroke(BORDER);
-      doc.fillColor(TEXT_DARK).fontSize(9).font('Helvetica').text('Subtotal', margin + 12, y + 9, { width: 300 });
-      doc.fillColor(TEXT_DARK).fontSize(9).font('Helvetica-Bold').text(`Rs. ${Number(po.totalAmount).toFixed(2)}`, margin + 350, y + 9, { width: tableW - 360, align: 'right' });
-      y += totalsH;
-
-      if (hasGst) {
-        doc.rect(margin, y, tableW, totalsH).fill(LIGHT_BG).stroke(BORDER);
-        doc.fillColor(TEXT_DARK).fontSize(9).font('Helvetica').text('GST', margin + 12, y + 9, { width: 300 });
-        doc.fillColor(TEXT_DARK).fontSize(9).font('Helvetica-Bold').text(`Rs. ${Number(po.gstAmount).toFixed(2)}`, margin + 350, y + 9, { width: tableW - 360, align: 'right' });
-        y += totalsH;
-      }
 
       // Grand total row (highlighted)
       doc.rect(margin, y, tableW, totalsH + 4).fill(PRIMARY);
       doc.fillColor(WHITE).fontSize(11).font('Helvetica-Bold').text('GRAND TOTAL', margin + 12, y + 10, { width: 300 });
-      doc.fillColor(WHITE).fontSize(12).font('Helvetica-Bold').text(`Rs. ${Number(po.grandTotal).toFixed(2)}`, margin + 350, y + 9, { width: tableW - 360, align: 'right' });
+      doc.fillColor(WHITE).fontSize(12).font('Helvetica-Bold').text(`Rs. ${Number(po.totalAmount).toFixed(2)}`, margin + 350, y + 9, { width: tableW - 360, align: 'right' });
       y += totalsH + 4 + 15;
 
       // ── Approval signatures ──
@@ -618,25 +576,17 @@ router.get(
         y = 60;
       }
 
-      doc.fillColor(PRIMARY).fontSize(10).font('Helvetica-Bold').text('Approval & Authorization', margin, y);
+      doc.fillColor(PRIMARY).fontSize(10).font('Helvetica-Bold').text('Authorization', margin, y);
       y += 16;
 
-      const approvedSteps = po.approvalWorkflow?.steps.filter((s) => s.status === 'APPROVED') ?? [];
       const sigW = (contentWidth - 20) / 3;
       const sigH = 55;
 
       for (let i = 0; i < 3; i++) {
         const sx = margin + i * (sigW + 10);
         doc.roundedRect(sx, y, sigW, sigH, 4).stroke(BORDER);
-        const step = approvedSteps[i];
-        doc.fillColor(TEXT_MUTED).fontSize(7).font('Helvetica').text(`Approver ${i + 1}`, sx + 6, y + 5, { width: sigW - 12 });
-        if (step) {
-          doc.fillColor(TEXT_DARK).fontSize(8).font('Helvetica-Bold').text(step.approverUser?.name ?? '—', sx + 6, y + 18, { width: sigW - 12 });
-          doc.fillColor(TEXT_MUTED).fontSize(6).font('Helvetica').text((step.approverUser?.role ?? '').replace(/_/g, ' '), sx + 6, y + 30, { width: sigW - 12 });
-          doc.fillColor(GREEN).fontSize(7).font('Helvetica-Bold').text('APPROVED', sx + 6, y + 42, { width: sigW - 12 });
-        } else {
-          doc.fillColor(TEXT_MUTED).fontSize(7).font('Helvetica-Oblique').text('Pending', sx + 6, y + 28, { width: sigW - 12 });
-        }
+        doc.fillColor(TEXT_MUTED).fontSize(7).font('Helvetica').text(`Signature ${i + 1}`, sx + 6, y + 5, { width: sigW - 12 });
+        doc.fillColor(TEXT_MUTED).fontSize(7).font('Helvetica-Oblique').text('Pending', sx + 6, y + 28, { width: sigW - 12 });
       }
 
       // ── Footer ──

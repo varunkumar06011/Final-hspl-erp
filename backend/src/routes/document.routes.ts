@@ -72,11 +72,14 @@ router.post(
       const record = await prisma.document.create({
         data: {
           projectId,
+          entityType: req.body.entityType ?? 'GOVERNANCE',
+          entityId: req.body.entityId ?? req.user!.id,
           name: String(req.body.name),
           description: req.body.description ? String(req.body.description) : null,
           resolveTo,
           fileName: req.file.originalname,
           filePath,
+          fileType: req.body.fileType ?? 'DOCUMENT',
           mimeType: req.file.mimetype,
           uploadedBy: req.user!.id,
         },

@@ -1,6 +1,6 @@
 import { Router, Response, NextFunction } from 'express';
 import { APPROVAL_CONFIG, Permission, AuditAction, InvoiceVerificationStatus, PaymentStatus, StockStatus, UserRole } from '@hospital-erp/shared';
-import { createInvoiceSchema, listInvoicesSchema, approvalActionSchema, updateInvoiceStatusSchema } from '@hospital-erp/shared';
+import { createInvoiceSchema, listInvoicesSchema, approvalActionSchema, updateInvoiceSchema } from '@hospital-erp/shared';
 import { prisma } from '../config/prisma';
 import { Prisma } from '@prisma/client';
 import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middleware/auth';
@@ -592,7 +592,7 @@ router.post(
 router.patch(
   '/:id/status',
   rbacMiddleware(Permission.VIEW_FINANCIALS),
-  validateMiddleware(updateInvoiceStatusSchema),
+  validateMiddleware(updateInvoiceSchema),
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const projectId = requireProjectId(req);

@@ -1,6 +1,5 @@
 import { Router, Response, NextFunction } from 'express';
 import { z } from 'zod';
-import { updateProjectSettingsSchema } from '@hospital-erp/shared';
 import { prisma } from '../config/prisma';
 import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middleware/auth';
 import { validateMiddleware } from '../middleware/validate';
@@ -17,6 +16,14 @@ const updateProfileSchema = z.object({
   }),
 });
 
+const updateProjectSettingsSchema = z.object({
+  body: z.object({
+    name: z.string().min(1).max(200).optional(),
+    description: z.string().max(2000).optional(),
+    totalBudget: z.coerce.number().min(0).optional(),
+  }),
+});
+
 // GET / — get project settings
 router.get(
   '/',
@@ -28,10 +35,9 @@ router.get(
         select: {
           id: true,
           name: true,
-          officeAddress: true,
-          hospitalAddress: true,
-          gstNumber: true,
+          description: true,
           totalBudget: true,
+          status: true,
         },
       });
       if (!project) {
@@ -52,13 +58,11 @@ router.patch(
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const projectId = requireProjectId(req);
-      const { name, officeAddress, hospitalAddress, gstNumber, totalBudget } = req.body;
+      const { name, description, totalBudget } = req.body;
 
       const updateData: Record<string, unknown> = {};
       if (name !== undefined) updateData.name = name;
-      if (officeAddress !== undefined) updateData.officeAddress = officeAddress;
-      if (hospitalAddress !== undefined) updateData.hospitalAddress = hospitalAddress;
-      if (gstNumber !== undefined) updateData.gstNumber = gstNumber;
+      if (description !== undefined) updateData.description = description;
       if (totalBudget !== undefined) updateData.totalBudget = totalBudget;
 
       const updated = await prisma.project.update({
@@ -67,10 +71,9 @@ router.patch(
         select: {
           id: true,
           name: true,
-          officeAddress: true,
-          hospitalAddress: true,
-          gstNumber: true,
+          description: true,
           totalBudget: true,
+          status: true,
         },
       });
 

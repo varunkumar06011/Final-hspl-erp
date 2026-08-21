@@ -1,5 +1,5 @@
 import { Router, Response, NextFunction } from 'express';
-import { APPROVAL_CONFIG, Permission, QuotationStatus, AuditAction } from '@hospital-erp/shared';
+import { Permission, QuotationStatus, AuditAction } from '@hospital-erp/shared';
 import { createQuotationSchema, listQuotationsSchema, approvalActionSchema } from '@hospital-erp/shared';
 import { prisma } from '../config/prisma';
 import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middleware/auth';
@@ -16,10 +16,10 @@ const router = Router();
 router.use(authMiddleware);
 
 interface QuotationLineItem {
-  materialName: string;
+  description: string;
   quantity: number;
-  unit?: string;
-  unitPrice: number;
+  unit: string;
+  rate: number;
 }
 
 async function generateQuotationNumber(projectId: string): Promise<string> {
@@ -38,7 +38,6 @@ const quotationInclude = {
   vendor: { select: { id: true, name: true, vendorCode: true } },
   items: true,
   createdByUser: { select: { id: true, name: true } },
-  approvalWorkflow: { include: { steps: { orderBy: { stepNumber: 'asc' as const }, include: { approverUser: { select: { id: true, name: true, role: true } } } } } },
 };
 
 // GET / — list quotations
@@ -113,46 +112,30 @@ router.post(
       const items = typeof req.body.items === 'string'
         ? JSON.parse(req.body.items || '[]') as QuotationLineItem[]
         : (req.body.items || []) as QuotationLineItem[];
-      const gstAmount = Number(req.body.gstAmount) || 0;
 
       // Validate vendor exists and belongs to project
       const vendor = await prisma.vendor.findFirst({
         where: { id: vendorId, projectId, deletedAt: null },
-        include: { materials: true },
       });
       if (!vendor) {
         res.status(400).json({ error: 'Vendor not found' });
         return;
       }
 
-      // Validate each material exists in vendor's materials
-      const vendorMaterialNames = vendor.materials.map((m) => m.name.toLowerCase());
-      for (const item of items) {
-        if (!vendorMaterialNames.includes(item.materialName.toLowerCase())) {
-          res.status(400).json({
-            error: `Material "${item.materialName}" is not supplied by vendor "${vendor.name}". Only materials registered for this vendor can be added.`,
-          });
-          return;
-        }
-      }
-
       // Calculate totals
       const itemsWithAmounts = items.map((item) => ({
-        materialName: item.materialName,
+        description: item.description,
         quantity: item.quantity,
-        unit: item.unit || null,
-        unitPrice: item.unitPrice,
-        amount: item.quantity * item.unitPrice,
+        unit: item.unit,
+        rate: item.rate,
+        amount: item.quantity * item.rate,
       }));
       const totalAmount = itemsWithAmounts.reduce((sum, i) => sum + Number(i.amount), 0);
-      const grandTotal = totalAmount + gstAmount;
 
       const quotationNumber = await generateQuotationNumber(projectId);
 
-      // Handle file upload
+      // Handle file upload — store as Document
       let filePath: string | null = null;
-      let fileName: string | null = null;
-      let fileMimeType: string | null = null;
       if (req.file) {
         const isImage = req.file.mimetype.startsWith('image/');
         const subPath = isImage ? 'images' : 'documents';
@@ -160,8 +143,6 @@ router.post(
         const storage = getStorageService();
         const uploadResult = await storage.upload(req.file.buffer, prefixedFileName, req.file.mimetype, 'documents');
         filePath = uploadResult.filePath;
-        fileName = req.file.originalname;
-        fileMimeType = req.file.mimetype;
       }
 
       // Create quotation
@@ -172,28 +153,33 @@ router.post(
           quotationNumber,
           status: QuotationStatus.SUBMITTED,
           totalAmount,
-          gstAmount,
-          grandTotal,
-          filePath,
-          fileName,
-          fileMimeType,
           createdBy: req.user!.id,
           items: { create: itemsWithAmounts },
         },
         include: quotationInclude,
       });
 
+      // Save file as Document if uploaded
+      if (req.file && filePath) {
+        await prisma.document.create({
+          data: {
+            projectId,
+            entityType: 'QUOTATION',
+            entityId: quotation.id,
+            fileName: req.file.originalname,
+            filePath,
+            fileType: 'QUOTATION',
+            mimeType: req.file.mimetype,
+            uploadedBy: req.user!.id,
+          },
+        });
+      }
+
       // Initiate approval workflow
-      const workflow = await approvalService.initiate({
+      await approvalService.initiate({
         entityType: 'QUOTATION',
         entityId: quotation.id,
         projectId,
-        minApprovers: APPROVAL_CONFIG.MIN_APPROVERS,
-      });
-
-      await prisma.quotation.update({
-        where: { id: quotation.id },
-        data: { approvalWorkflowId: workflow.id },
       });
 
       await logAudit({
@@ -202,7 +188,7 @@ router.post(
         entityType: 'QUOTATION',
         entityId: quotation.id,
         projectId,
-        newValue: { quotationNumber, vendorId, totalAmount, grandTotal, acknowledged: true },
+        newValue: { quotationNumber, vendorId, totalAmount, acknowledged: true },
       });
 
       const result = await prisma.quotation.findUnique({
@@ -224,18 +210,14 @@ router.get(
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const projectId = requireProjectId(req);
-      const existing = await prisma.quotation.findFirst({
-        where: { id: req.params.id, projectId, deletedAt: null },
+      const doc = await prisma.document.findFirst({
+        where: { entityType: 'QUOTATION', entityId: req.params.id, projectId },
       });
-      if (!existing) {
-        res.status(404).json({ error: 'Quotation not found' });
-        return;
-      }
-      if (!existing.filePath) {
+      if (!doc) {
         res.status(404).json({ error: 'No file attached' });
         return;
       }
-      await serveFile(res, existing.filePath, existing.fileMimeType);
+      await serveFile(res, doc.filePath, doc.mimeType);
     } catch (error) {
       next(error);
     }
@@ -268,51 +250,46 @@ router.patch(
         const items = typeof req.body.items === 'string'
           ? JSON.parse(req.body.items) as QuotationLineItem[]
           : req.body.items as QuotationLineItem[];
-        const vendor = await prisma.vendor.findFirst({
-          where: { id: existing.vendorId, projectId },
-          include: { materials: true },
-        });
-        const vendorMaterialNames = vendor?.materials.map((m) => m.name.toLowerCase()) ?? [];
-        for (const item of items) {
-          if (!vendorMaterialNames.includes(item.materialName.toLowerCase())) {
-            res.status(400).json({ error: `Material "${item.materialName}" is not supplied by this vendor.` });
-            return;
-          }
-        }
         const itemsWithAmounts = items.map((item) => ({
-          materialName: item.materialName,
+          description: item.description,
           quantity: item.quantity,
-          unit: item.unit || null,
-          unitPrice: item.unitPrice,
-          amount: item.quantity * item.unitPrice,
+          unit: item.unit,
+          rate: item.rate,
+          amount: item.quantity * item.rate,
         }));
         const totalAmount = itemsWithAmounts.reduce((sum, i) => sum + Number(i.amount), 0);
-        const gstAmount = req.body.gstAmount ? Number(req.body.gstAmount) : Number(existing.gstAmount);
         updateData.totalAmount = totalAmount;
-        updateData.gstAmount = gstAmount;
-        updateData.grandTotal = totalAmount + gstAmount;
         await prisma.quotationItem.deleteMany({ where: { quotationId: existing.id } });
         updateData.items = { create: itemsWithAmounts };
-      } else if (req.body.gstAmount !== undefined) {
-        const gstAmount = Number(req.body.gstAmount);
-        updateData.gstAmount = gstAmount;
-        updateData.grandTotal = Number(existing.totalAmount) + gstAmount;
       }
 
-      // Handle file upload
+      // Handle file upload — store as Document
       if (req.file) {
         const isImage = req.file.mimetype.startsWith('image/');
         const subPath = isImage ? 'images' : 'documents';
         const prefixedFileName = `quotations/${subPath}/${existing.quotationNumber}-${req.file.originalname}`;
         const storage = getStorageService();
-        // Delete the previous file before uploading the replacement
-        if (existing.filePath) {
-          await storage.deleteFile(existing.filePath).catch(() => {});
+        // Delete previous document if exists
+        const prevDoc = await prisma.document.findFirst({
+          where: { entityType: 'QUOTATION', entityId: existing.id, projectId },
+        });
+        if (prevDoc) {
+          await storage.deleteFile(prevDoc.filePath).catch(() => {});
+          await prisma.document.delete({ where: { id: prevDoc.id } });
         }
         const uploadResult = await storage.upload(req.file.buffer, prefixedFileName, req.file.mimetype, 'documents');
-        updateData.filePath = uploadResult.filePath;
-        updateData.fileName = req.file.originalname;
-        updateData.fileMimeType = req.file.mimetype;
+        await prisma.document.create({
+          data: {
+            projectId,
+            entityType: 'QUOTATION',
+            entityId: existing.id,
+            fileName: req.file.originalname,
+            filePath: uploadResult.filePath,
+            fileType: 'QUOTATION',
+            mimeType: req.file.mimetype,
+            uploadedBy: req.user!.id,
+          },
+        });
       }
 
       const updated = await prisma.quotation.update({
@@ -353,8 +330,12 @@ router.delete(
       }
 
       const storage = getStorageService();
-      if (existing.filePath) {
-        await storage.deleteFile(existing.filePath).catch(() => {});
+      const doc = await prisma.document.findFirst({
+        where: { entityType: 'QUOTATION', entityId: existing.id, projectId },
+      });
+      if (doc) {
+        await storage.deleteFile(doc.filePath).catch(() => {});
+        await prisma.document.delete({ where: { id: doc.id } });
       }
 
       await prisma.quotation.update({
@@ -387,14 +368,19 @@ router.post(
       const projectId = requireProjectId(req);
       const quotation = await prisma.quotation.findFirst({
         where: { id: req.params.id, projectId, deletedAt: null },
-        include: { approvalWorkflow: { include: { steps: true } } },
       });
-      if (!quotation || !quotation.approvalWorkflow) {
-        res.status(404).json({ error: 'Quotation or approval workflow not found' });
+      if (!quotation) {
+        res.status(404).json({ error: 'Quotation not found' });
         return;
       }
 
-      const step = quotation.approvalWorkflow.steps.find((candidate) => candidate.id === req.params.stepId);
+      const workflow = await approvalService.getWorkflowByEntity('QUOTATION', quotation.id);
+      if (!workflow) {
+        res.status(404).json({ error: 'Approval workflow not found' });
+        return;
+      }
+
+      const step = workflow.steps.find((candidate) => candidate.id === req.params.stepId);
       if (!step || step.approverRole !== req.user!.role) {
         res.status(403).json({ error: 'This approval step is not assigned to you' });
         return;
@@ -439,14 +425,19 @@ router.post(
       const projectId = requireProjectId(req);
       const quotation = await prisma.quotation.findFirst({
         where: { id: req.params.id, projectId, deletedAt: null },
-        include: { approvalWorkflow: { include: { steps: true } } },
       });
-      if (!quotation || !quotation.approvalWorkflow) {
-        res.status(404).json({ error: 'Quotation or approval workflow not found' });
+      if (!quotation) {
+        res.status(404).json({ error: 'Quotation not found' });
         return;
       }
 
-      const step = quotation.approvalWorkflow.steps.find((candidate) => candidate.id === req.params.stepId);
+      const workflow = await approvalService.getWorkflowByEntity('QUOTATION', quotation.id);
+      if (!workflow) {
+        res.status(404).json({ error: 'Approval workflow not found' });
+        return;
+      }
+
+      const step = workflow.steps.find((candidate) => candidate.id === req.params.stepId);
       if (!step || step.approverRole !== req.user!.role) {
         res.status(403).json({ error: 'This rejection step is not assigned to you' });
         return;

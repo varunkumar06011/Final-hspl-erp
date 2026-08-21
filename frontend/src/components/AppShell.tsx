@@ -45,6 +45,7 @@ const NAV_ITEMS = [
 ];
 
 const ROLE_COLORS: Record<UserRole, string> = {
+  [UserRole.SUPERVISOR]: '#757575',
   [UserRole.PROJECT_HEAD]: '#1565C0',
   [UserRole.HEAD_OF_CONSTRUCTION]: '#2E7D32',
   [UserRole.ADMIN]: '#ED6C02',
@@ -52,6 +53,7 @@ const ROLE_COLORS: Record<UserRole, string> = {
 };
 
 const ROLE_LABELS: Record<UserRole, string> = {
+  [UserRole.SUPERVISOR]: 'Supervisor',
   [UserRole.PROJECT_HEAD]: 'Project Head',
   [UserRole.HEAD_OF_CONSTRUCTION]: 'Head of Construction',
   [UserRole.ADMIN]: 'Admin',

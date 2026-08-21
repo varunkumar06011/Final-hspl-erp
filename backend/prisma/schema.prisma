@@ -41,11 +41,13 @@ model User {
   uploadedPhotos      SitePhoto[]          @relation("PhotoUploadedBy")
   createdIssues       Issue[]              @relation("IssueCreatedBy")
   inspections         Inspection[]         @relation("InspectionInspector")
+  createdInspections  Inspection[]         @relation("InspectionCreatedBy")
   uploadedDocuments   Document[]          @relation("DocumentUploadedBy")
   createdContracts    Contract[]          @relation("ContractCreatedBy")
   labourAttendance    LabourAttendance[]   @relation("LabourSupervisor")
   createdDropdownOptions DropdownOption[]  @relation("DropdownOptionCreatedBy")
   uploadedAttachments Attachment[]         @relation("AttachmentUploadedBy")
+  staffAttendanceMarked StaffAttendance[] @relation("StaffAttendanceMarkedBy")
 
   @@map("users")
 }
@@ -82,6 +84,7 @@ model Project {
   dropdownOptions DropdownOption[]
   attachments     Attachment[]
   vendorPayments  VendorPayment[]
+  staff           Staff[]
 
   @@map("projects")
 }
@@ -242,13 +245,24 @@ model VendorInvoice {
   projectId           String   @db.Uuid
   vendorId            String   @db.Uuid
   poId                String?  @db.Uuid
+  invoiceCode         String?  // e.g. VGH-IN001
   invoiceNumber       String
   date                DateTime @default(now())
   amount              Decimal  @db.Decimal(15, 2)
   taxAmount           Decimal  @db.Decimal(15, 2) @default(0)
   totalAmount         Decimal  @db.Decimal(15, 2)
+  advancePaid         Decimal  @db.Decimal(15, 2) @default(0)
+  advanceType         String?  // e.g. "PERCENTAGE", "FIXED", "OTHER"
+  advanceOtherType    String?
+  paymentStatus       String   @default("PENDING") // PaymentStatus enum
+  stockStatus         String   @default("PENDING") // StockStatus enum
+  deliveryDate        DateTime?
   verificationStatus  String   @default("PENDING") // InvoiceVerificationStatus enum
   notes               String?
+  filePath            String?
+  fileName            String?
+  fileMimeType        String?
+  approvalWorkflowId  String?  @unique @db.Uuid
   createdBy           String   @db.Uuid
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
@@ -260,6 +274,7 @@ model VendorInvoice {
   createdByUser       User            @relation("InvoiceCreatedBy", fields: [createdBy], references: [id])
   paymentRequests     PaymentRequest[]
   gatePasses          GatePass[]
+  approvalWorkflow    ApprovalWorkflow? @relation(fields: [approvalWorkflowId], references: [id])
 
   @@unique([vendorId, invoiceNumber])
   @@map("vendor_invoices")
@@ -268,21 +283,29 @@ model VendorInvoice {
 model PaymentRequest {
   id             String   @id @default(uuid()) @db.Uuid
   projectId      String   @db.Uuid
-  invoiceId      String   @db.Uuid
-  vendorId       String   @db.Uuid
+  invoiceId      String?  @db.Uuid
+  vendorId       String?  @db.Uuid
+  paymentCode    String?  // e.g. VGH-PAY001
   requestNumber  String
+  type           String   @default("INVOICE") // "INVOICE" | "EXPENSE"
   amount         Decimal  @db.Decimal(15, 2)
   status         String   @default("PENDING") // PaymentStatus enum
   paymentMode    String?  // PaymentMode enum
+  description    String?  // For expense type
+  category       String?  // For expense type
+  expenseDate    DateTime? // For expense type
   notes          String?
+  filePath       String?
+  fileName       String?
+  fileMimeType   String?
   createdBy      String   @db.Uuid
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
   deletedAt      DateTime?
 
   project        Project         @relation(fields: [projectId], references: [id])
-  invoice        VendorInvoice   @relation(fields: [invoiceId], references: [id])
-  vendor         Vendor          @relation(fields: [vendorId], references: [id])
+  invoice        VendorInvoice?  @relation(fields: [invoiceId], references: [id])
+  vendor         Vendor?         @relation(fields: [vendorId], references: [id])
   createdByUser  User            @relation("PaymentRequestCreatedBy", fields: [createdBy], references: [id])
   payments            Payment[]
   approvalWorkflowId  String?  @unique @db.Uuid
@@ -313,7 +336,7 @@ model Payment {
 
 model ApprovalWorkflow {
   id           String   @id @default(uuid()) @db.Uuid
-  entityType   String   // e.g., "PAYMENT_REQUEST", "PERMISSION_REQUEST"
+  entityType   String   // e.g., "PAYMENT_REQUEST", "VENDOR_INVOICE", "PURCHASE_ORDER", "QUOTATION"
   entityId     String   @db.Uuid
   projectId    String   @db.Uuid
   status       String   @default("CREATED") // ApprovalStatus enum
@@ -325,6 +348,7 @@ model ApprovalWorkflow {
   project      Project         @relation(fields: [projectId], references: [id])
   steps        ApprovalStep[]
   paymentRequest PaymentRequest?
+  vendorInvoice  VendorInvoice?
 
   @@unique([entityType, entityId])
   @@map("approval_workflows")
@@ -557,13 +581,16 @@ model Inspection {
   projectId        String   @db.Uuid
   phaseId          String?  @db.Uuid
   activityId       String?  @db.Uuid
+  name             String?
   checklist        Json?    // Array of { item, result (PASS/FAIL/N/A) }
   defects          Json?    // Array of { description, severity }
   correctiveAction String?
   status           String   @default("SCHEDULED") // InspectionStatus enum
   inspectorId      String   @db.Uuid
+  createdBy        String?  @db.Uuid
   scheduledDate    DateTime?
   completedDate    DateTime?
+  date             DateTime?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
   deletedAt        DateTime?
@@ -572,6 +599,7 @@ model Inspection {
   phase            Phase?    @relation(fields: [phaseId], references: [id])
   activity         Activity? @relation(fields: [activityId], references: [id])
   inspector        User      @relation("InspectionInspector", fields: [inspectorId], references: [id])
+  createdByUser    User?     @relation("InspectionCreatedBy", fields: [createdBy], references: [id])
 
   @@map("inspections")
 }
@@ -585,6 +613,9 @@ model Document {
   projectId   String   @db.Uuid
   entityType  String   // e.g., "VENDOR", "PO", "INVOICE", "CONTRACT"
   entityId    String   @db.Uuid
+  name        String?  // Document name (for governance documents)
+  description String?  // Optional description
+  resolveTo   Json?    // Array of user IDs who need to resolve this document
   fileName    String
   filePath    String   // Supabase Storage URL or local path
   fileType    String   // DocumentType enum
@@ -594,6 +625,7 @@ model Document {
   status      String   @default("ACTIVE") // DocumentStatus enum
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  deletedAt   DateTime?
 
   project     Project   @relation(fields: [projectId], references: [id])
   uploadedByUser User   @relation("DocumentUploadedBy", fields: [uploadedBy], references: [id])
@@ -660,6 +692,42 @@ model LabourAttendance {
   supervisor   User      @relation("LabourSupervisor", fields: [supervisorId], references: [id])
 
   @@map("labour_attendance")
+}
+
+model Staff {
+  id          String   @id @default(uuid()) @db.Uuid
+  projectId   String   @db.Uuid
+  name        String
+  type        String   // StaffType enum
+  role        String?
+  baseSalary  Decimal  @db.Decimal(15, 2) @default(0)
+  active      Boolean  @default(true)
+  createdBy   String   @db.Uuid
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  deletedAt   DateTime?
+
+  project     Project           @relation(fields: [projectId], references: [id])
+  attendance  StaffAttendance[]
+
+  @@map("staff")
+}
+
+model StaffAttendance {
+  id          String   @id @default(uuid()) @db.Uuid
+  staffId     String   @db.Uuid
+  date        DateTime
+  present     Boolean  @default(false)
+  notes       String?
+  markedBy    String   @db.Uuid
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  staff       Staff    @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  marker      User     @relation("StaffAttendanceMarkedBy", fields: [markedBy], references: [id])
+
+  @@unique([staffId, date])
+  @@map("staff_attendance")
 }
 
 // ═══════════════════════════════════════════════════════════

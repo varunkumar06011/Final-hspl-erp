@@ -492,3 +492,44 @@ export const listAttachmentsSchema = z.object({
     fileType: z.string().max(20).optional(),
   }),
 });
+
+// ═══ Staff ═══
+export const createStaffSchema = z.object({
+  body: z.object({
+    name: z.string().min(1).max(200),
+    type: z.string().min(1).max(100),
+    role: z.string().max(200).optional(),
+    baseSalary: money.default(0),
+    active: z.boolean().default(true),
+  }),
+});
+export const updateStaffSchema = z.object({
+  params: z.object({ id: uuid }),
+  body: createStaffSchema.shape.body.partial(),
+});
+export const listStaffSchema = z.object({
+  query: pagination.extend({
+    type: z.string().max(100).optional(),
+    active: z.string().optional(),
+  }),
+});
+
+// ═══ Staff Attendance ═══
+export const markAttendanceSchema = z.object({
+  body: z.object({
+    date: dateStr,
+    records: z.array(z.object({
+      staffId: uuid,
+      present: z.boolean(),
+      notes: z.string().max(500).optional(),
+    })).min(1),
+  }),
+});
+export const listAttendanceSchema = z.object({
+  query: pagination.extend({
+    staffId: uuid.optional(),
+    type: z.string().max(100).optional(),
+    startDate: dateStr.optional(),
+    endDate: dateStr.optional(),
+  }),
+});
