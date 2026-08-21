@@ -1,7 +1,8 @@
-import { Box, AppBar, Toolbar, Typography, IconButton, Avatar, Chip, Menu, MenuItem, Drawer, List, ListItem, ListItemIcon, ListItemText } from '@mui/material';
+import { Box, AppBar, Toolbar, Typography, IconButton, Avatar, Chip, Menu, MenuItem, Drawer, List, ListItem, ListItemIcon, ListItemText, useTheme, useMediaQuery } from '@mui/material';
 import { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
+  Menu as MenuIcon,
   Dashboard as DashboardIcon,
   Business as VendorIcon,
   Receipt as ReceiptIcon,
@@ -63,9 +64,12 @@ const DRAWER_WIDTH = 260;
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
+  const [mobileOpen, setMobileOpen] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout } = useAuthStore();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
   const handleMenu = (event: React.MouseEvent<HTMLElement>) => {
     setAnchorEl(event.currentTarget);
@@ -80,17 +84,64 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     navigate('/login');
   };
 
+  const handleNavigate = (path: string) => {
+    navigate(path);
+    if (isMobile) setMobileOpen(false);
+  };
+
+  const drawer = (
+    <>
+      <Toolbar />
+      <Box sx={{ overflow: 'auto' }}>
+        <List>
+          {NAV_ITEMS.filter((item) => !item.permission || (user && hasPermission(user.role as UserRole, item.permission))).map((item) => (
+            <ListItem
+              key={item.path}
+              button
+              onClick={() => handleNavigate(item.path)}
+              selected={location.pathname === item.path}
+              sx={{
+                '&.Mui-selected': {
+                  bgcolor: 'primary.light',
+                  borderRight: '4px solid',
+                  borderColor: 'primary.main',
+                },
+              }}
+            >
+              <ListItemIcon sx={{ minWidth: 40 }}>{item.icon}</ListItemIcon>
+              <ListItemText primary={item.label} primaryTypographyProps={{ fontSize: 14 }} />
+            </ListItem>
+          ))}
+        </List>
+      </Box>
+    </>
+  );
+
   return (
     <Box sx={{ display: 'flex' }}>
       <AppBar
         position="fixed"
-        sx={{ zIndex: (theme) => theme.zIndex.drawer + 1, ml: `${DRAWER_WIDTH}px` }}
+        sx={{ zIndex: (theme) => theme.zIndex.drawer + 1 }}
       >
         <Toolbar>
-          <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
+          {isMobile && (
+            <IconButton
+              color="inherit"
+              edge="start"
+              onClick={() => setMobileOpen(!mobileOpen)}
+              sx={{ mr: 1 }}
+            >
+              <MenuIcon />
+            </IconButton>
+          )}
+          <Typography
+            variant="h6"
+            component="div"
+            sx={{ flexGrow: 1, fontSize: { xs: '1rem', sm: '1.25rem' } }}
+          >
             Hospital Construction ERP
           </Typography>
-          <IconButton color="inherit" size="large">
+          <IconButton color="inherit" size="large" sx={{ display: { xs: 'none', sm: 'inline-flex' } }}>
             <NotificationsIcon />
           </IconButton>
           {user && (
@@ -103,6 +154,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                   bgcolor: ROLE_COLORS[user.role as UserRole],
                   color: 'white',
                   fontWeight: 600,
+                  display: { xs: 'none', sm: 'flex' },
                 }}
               />
               <IconButton onClick={handleMenu} color="inherit">
@@ -126,40 +178,34 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         </Toolbar>
       </AppBar>
 
-      <Drawer
-        variant="permanent"
-        sx={{
-          width: DRAWER_WIDTH,
-          flexShrink: 0,
-          '& .MuiDrawer-paper': { width: DRAWER_WIDTH, boxSizing: 'border-box' },
-        }}
-      >
-        <Toolbar />
-        <Box sx={{ overflow: 'auto' }}>
-          <List>
-            {NAV_ITEMS.filter((item) => !item.permission || (user && hasPermission(user.role as UserRole, item.permission))).map((item) => (
-              <ListItem
-                key={item.path}
-                button
-                onClick={() => navigate(item.path)}
-                selected={location.pathname === item.path}
-                sx={{
-                  '&.Mui-selected': {
-                    bgcolor: 'primary.light',
-                    borderRight: '4px solid',
-                    borderColor: 'primary.main',
-                  },
-                }}
-              >
-                <ListItemIcon sx={{ minWidth: 40 }}>{item.icon}</ListItemIcon>
-                <ListItemText primary={item.label} primaryTypographyProps={{ fontSize: 14 }} />
-              </ListItem>
-            ))}
-          </List>
-        </Box>
-      </Drawer>
+      {/* Mobile drawer (temporary) */}
+      {isMobile ? (
+        <Drawer
+          variant="temporary"
+          open={mobileOpen}
+          onClose={() => setMobileOpen(false)}
+          ModalProps={{ keepMounted: true }}
+          sx={{
+            '& .MuiDrawer-paper': { width: DRAWER_WIDTH, boxSizing: 'border-box' },
+          }}
+        >
+          {drawer}
+        </Drawer>
+      ) : (
+        /* Desktop drawer (permanent) */
+        <Drawer
+          variant="permanent"
+          sx={{
+            width: DRAWER_WIDTH,
+            flexShrink: 0,
+            '& .MuiDrawer-paper': { width: DRAWER_WIDTH, boxSizing: 'border-box' },
+          }}
+        >
+          {drawer}
+        </Drawer>
+      )}
 
-      <Box component="main" sx={{ flexGrow: 1, p: 3, mt: 8 }}>
+      <Box component="main" sx={{ flexGrow: 1, p: { xs: 1.5, sm: 2, md: 3 }, mt: 8, width: { xs: '100%', md: 'auto' } }}>
         {children}
       </Box>
     </Box>

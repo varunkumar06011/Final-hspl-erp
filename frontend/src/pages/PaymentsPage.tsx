@@ -271,9 +271,9 @@ export default function PaymentsPage() {
 
   return (
     <Box>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-        <Typography variant="h5" fontWeight={600}>Payments</Typography>
-        <Box sx={{ display: 'flex', gap: 1 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap' }}>
+        <Typography variant="h5" fontWeight={600} sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' } }}>Payments</Typography>
+        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
           <IconButton onClick={() => refetch()} size="small"><RefreshIcon /></IconButton>
           <Button variant="outlined" startIcon={<ReceiptIcon />} onClick={() => setTab(0)}>Pending Invoices</Button>
           <Button variant="contained" startIcon={<AddIcon />} onClick={() => { setExpenseForm({}); setExpenseFile(null); setExpenseOpen(true); }}>Add Daily Expense</Button>
@@ -299,7 +299,7 @@ export default function PaymentsPage() {
             {pendingInvoicesData.length === 0 ? (
               <Typography color="text.secondary" sx={{ py: 3, textAlign: 'center' }}>No pending invoices. All verified invoices have payment requests.</Typography>
             ) : (
-              <TableContainer>
+              <TableContainer sx={{ overflowX: 'auto' }}>
                 <Table size="small">
                   <TableHead>
                     <TableRow>
@@ -360,7 +360,7 @@ export default function PaymentsPage() {
               value={search}
               onChange={(e) => { setSearch(e.target.value); setPage(0); }}
               InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> }}
-              sx={{ width: 250 }}
+              sx={{ width: { xs: '100%', sm: 250 } }}
             />
             <TextField select size="small" label="Type" value={typeFilter} onChange={(e) => { setTypeFilter(e.target.value); setPage(0); }} sx={{ width: 150 }}>
               <MenuItem value="">All</MenuItem>
@@ -373,7 +373,7 @@ export default function PaymentsPage() {
             </TextField>
           </Box>
 
-          <TableContainer>
+          <TableContainer sx={{ overflowX: 'auto' }}>
             <Table size="small">
               <TableHead>
                 <TableRow>
@@ -450,6 +450,7 @@ export default function PaymentsPage() {
             rowsPerPage={pageSize}
             onRowsPerPageChange={(e) => { setPageSize(parseInt(e.target.value, 10)); setPage(0); }}
             rowsPerPageOptions={[10, 20, 50]}
+            sx={{ '& .MuiTablePagination-toolbar': { flexWrap: 'wrap' } }}
           />
         </Card>
       )}
@@ -577,7 +578,7 @@ export default function PaymentsPage() {
               size="small"
               required
             />
-            <Box sx={{ display: 'flex', gap: 2 }}>
+            <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
               <TextField
                 label="Amount"
                 type="number"
@@ -599,7 +600,7 @@ export default function PaymentsPage() {
                 {EXPENSE_CATEGORIES.map((c) => <MenuItem key={c} value={c}>{c}</MenuItem>)}
               </TextField>
             </Box>
-            <Box sx={{ display: 'flex', gap: 2 }}>
+            <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
               <TextField
                 label="Date"
                 type="date"

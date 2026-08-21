@@ -108,28 +108,28 @@ export default function AuditLogPage() {
 
   return (
     <Box>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-        <Typography variant="h5" fontWeight={600}>Audit Log</Typography>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap' }}>
+        <Typography variant="h5" fontWeight={600} sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' } }}>Audit Log</Typography>
         <IconButton onClick={() => refetch()} size="small"><RefreshIcon /></IconButton>
       </Box>
 
       <Card>
-        <Box sx={{ p: 2, display: 'flex', gap: 2 }}>
+        <Box sx={{ p: 2, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
           <TextField
             size="small"
             placeholder="Search audit log..."
             value={search}
             onChange={(e) => { setSearch(e.target.value); setPage(0); }}
             InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> }}
-            sx={{ width: 300 }}
+            sx={{ width: { xs: '100%', sm: 300 } }}
           />
-          <TextField select size="small" label="Action" value={action} onChange={(e) => { setAction(e.target.value); setPage(0); }} sx={{ width: 180 }}>
+          <TextField select size="small" label="Action" value={action} onChange={(e) => { setAction(e.target.value); setPage(0); }} sx={{ width: { xs: '100%', sm: 180 } }}>
             <MenuItem value="">All</MenuItem>
             {enumToOptions(AuditAction).map((opt) => <MenuItem key={opt.value} value={opt.value}>{opt.label}</MenuItem>)}
           </TextField>
         </Box>
 
-        <TableContainer>
+        <TableContainer sx={{ overflowX: 'auto' }}>
           <Table size="small">
             <TableHead>
               <TableRow>
@@ -172,6 +172,7 @@ export default function AuditLogPage() {
           rowsPerPage={pageSize}
           onRowsPerPageChange={(e) => { setPageSize(parseInt(e.target.value, 10)); setPage(0); }}
           rowsPerPageOptions={[10, 20, 50]}
+          sx={{ '& .MuiTablePagination-toolbar': { flexWrap: 'wrap' } }}
         />
       </Card>
     </Box>

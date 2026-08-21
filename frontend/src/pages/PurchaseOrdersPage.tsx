@@ -301,9 +301,9 @@ export default function PurchaseOrdersPage() {
 
   return (
     <Box>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-        <Typography variant="h5" fontWeight={600}>Purchase Orders</Typography>
-        <Box sx={{ display: 'flex', gap: 1 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap' }}>
+        <Typography variant="h5" fontWeight={600} sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' } }}>Purchase Orders</Typography>
+        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
           <IconButton onClick={() => refetch()} size="small"><RefreshIcon /></IconButton>
           <Button variant="contained" startIcon={<AddIcon />} onClick={() => { resetForm(); setCreateOpen(true); }}>Create PO</Button>
         </Box>
@@ -312,22 +312,22 @@ export default function PurchaseOrdersPage() {
       {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
 
       <Card>
-        <Box sx={{ p: 2, display: 'flex', gap: 2 }}>
+        <Box sx={{ p: 2, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
           <TextField
             size="small"
             placeholder="Search POs..."
             value={search}
             onChange={(e) => { setSearch(e.target.value); setPage(0); }}
             InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> }}
-            sx={{ width: 300 }}
+            sx={{ width: { xs: '100%', sm: 300 } }}
           />
-          <TextField select size="small" label="Status" value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(0); }} sx={{ width: 180 }}>
+          <TextField select size="small" label="Status" value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(0); }} sx={{ width: { xs: '100%', sm: 180 } }}>
             <MenuItem value="">All</MenuItem>
             {Object.values(POStatus).map((s) => <MenuItem key={s} value={s}>{s.replace(/_/g, ' ')}</MenuItem>)}
           </TextField>
         </Box>
 
-        <TableContainer>
+        <TableContainer sx={{ overflowX: 'auto' }}>
           <Table size="small">
             <TableHead>
               <TableRow>
@@ -390,6 +390,7 @@ export default function PurchaseOrdersPage() {
           rowsPerPage={pageSize}
           onRowsPerPageChange={(e) => { setPageSize(parseInt(e.target.value, 10)); setPage(0); }}
           rowsPerPageOptions={[10, 20, 50]}
+          sx={{ '& .MuiTablePagination-toolbar': { flexWrap: 'wrap' } }}
         />
       </Card>
 
@@ -432,10 +433,10 @@ export default function PurchaseOrdersPage() {
       )}
 
       {/* Create PO Dialog */}
-      <Dialog open={createOpen} onClose={() => { setCreateOpen(false); resetForm(); }} maxWidth="md" fullWidth>
+      <Dialog open={createOpen} onClose={() => { setCreateOpen(false); resetForm(); }} maxWidth="md" fullWidth sx={{ '& .MuiDialog-paper': { margin: { xs: 1 } } }}>
         <DialogTitle>Create Purchase Order</DialogTitle>
         <DialogContent>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1, flexWrap: 'wrap' }}>
             {/* Vendor Selection */}
             <TextField
               select

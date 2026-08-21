@@ -220,9 +220,9 @@ export default function AttendancePage() {
 
   return (
     <Box>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-        <Typography variant="h5" fontWeight={600}>Attendance</Typography>
-        <Box sx={{ display: 'flex', gap: 1 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap' }}>
+        <Typography variant="h5" fontWeight={600} sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' } }}>Attendance</Typography>
+        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
           <IconButton onClick={() => { refetchStaff(); refetchAttendance(); refetchSummary(); }} size="small"><RefreshIcon /></IconButton>
           <Button variant="contained" startIcon={<AddIcon />} onClick={openCreateStaff}>Add Staff</Button>
         </Box>
@@ -241,14 +241,14 @@ export default function AttendancePage() {
       {/* Tab 0: Staff Management */}
       {tab === 0 && (
         <Card>
-          <Box sx={{ p: 2, display: 'flex', gap: 2 }}>
+          <Box sx={{ p: 2, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
             <TextField
               size="small"
               placeholder="Search staff..."
               value={search}
               onChange={(e) => { setSearch(e.target.value); setPage(0); }}
               InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> }}
-              sx={{ width: 250 }}
+              sx={{ width: { xs: '100%', sm: 250 } }}
             />
             <TextField select size="small" label="Type" value={typeFilter} onChange={(e) => { setTypeFilter(e.target.value); setPage(0); }} sx={{ width: 150 }}>
               <MenuItem value="">All</MenuItem>
@@ -261,7 +261,7 @@ export default function AttendancePage() {
               <MenuItem value="false">Inactive</MenuItem>
             </TextField>
           </Box>
-          <TableContainer>
+          <TableContainer sx={{ overflowX: 'auto' }}>
             <Table size="small">
               <TableHead>
                 <TableRow>
@@ -306,6 +306,7 @@ export default function AttendancePage() {
             rowsPerPage={pageSize}
             onRowsPerPageChange={(e) => { setPageSize(parseInt(e.target.value, 10)); setPage(0); }}
             rowsPerPageOptions={[10, 20, 50]}
+            sx={{ '& .MuiTablePagination-toolbar': { flexWrap: 'wrap' } }}
           />
         </Card>
       )}
@@ -344,7 +345,7 @@ export default function AttendancePage() {
             ) : attendanceStaff.length === 0 ? (
               <Typography color="text.secondary">No active {attendanceType.toLowerCase()} staff found. Add staff first.</Typography>
             ) : (
-              <TableContainer>
+              <TableContainer sx={{ overflowX: 'auto' }}>
                 <Table size="small">
                   <TableHead>
                     <TableRow>
@@ -409,14 +410,14 @@ export default function AttendancePage() {
       {/* Tab 2: Attendance Log */}
       {tab === 2 && (
         <Card>
-          <Box sx={{ p: 2, display: 'flex', gap: 2 }}>
+          <Box sx={{ p: 2, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
             <TextField select size="small" label="Type" value={typeFilter} onChange={(e) => { setTypeFilter(e.target.value); setPage(0); }} sx={{ width: 150 }}>
               <MenuItem value="">All</MenuItem>
               <MenuItem value="COMPANY">Company</MenuItem>
               <MenuItem value="LABOUR">Labour</MenuItem>
             </TextField>
           </Box>
-          <TableContainer>
+          <TableContainer sx={{ overflowX: 'auto' }}>
             <Table size="small">
               <TableHead>
                 <TableRow>
@@ -458,6 +459,7 @@ export default function AttendancePage() {
             rowsPerPage={pageSize}
             onRowsPerPageChange={(e) => { setPageSize(parseInt(e.target.value, 10)); setPage(0); }}
             rowsPerPageOptions={[10, 20, 50]}
+            sx={{ '& .MuiTablePagination-toolbar': { flexWrap: 'wrap' } }}
           />
         </Card>
       )}
@@ -474,7 +476,7 @@ export default function AttendancePage() {
               <MenuItem value="LABOUR">Labour</MenuItem>
             </TextField>
           </Box>
-          <TableContainer>
+          <TableContainer sx={{ overflowX: 'auto' }}>
             <Table size="small">
               <TableHead>
                 <TableRow>

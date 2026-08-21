@@ -1,12 +1,21 @@
-Attendance: blank default, only save marked staff, fix prod 500
+Make entire app mobile responsive
 
-- Default state is now blank (no Present/Absent pre-selected)
-- User must click Present or Absent for each staff member
-- Save button shows count of marked staff and is disabled if none marked
-- Only marked staff are sent to the backend (not all staff with default=true)
-- Notes field disabled until Present/Absent is selected
-- The 500 error on production is from the logAudit entityId bug already
-  fixed locally — production needs redeployment
+AppShell:
+- Hamburger menu drawer on mobile (temporary drawer below md breakpoint)
+- Permanent drawer kept on desktop
+- AppBar title, role chip, notifications hidden/collapsed on small screens
+- Main content padding responsive (xs: 1.5, sm: 2, md: 3)
+
+All pages (Dashboard, Vendors, Quotations, POs, Invoices, Payments,
+GatePasses, Inventory, Labour, Photos, Issues, Inspections, Documents,
+Contracts, AuditLog, Users, Settings):
+- Page headers wrap on small screens
+- Filter/search bars wrap; search fields go full-width on mobile
+- All tables get overflowX: auto for horizontal scroll
+- TablePagination toolbar wraps on mobile
+- Dialog form field boxes wrap
+- h5 titles use smaller font on mobile
+- Shared EntityPage (Vendors, Contracts, etc.) updated once for all
 
 Generated with [Devin](https://devin.ai)
 

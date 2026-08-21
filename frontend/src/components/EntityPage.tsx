@@ -205,11 +205,11 @@ export default function EntityPage({
 
   return (
     <Box>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-        <Typography variant="h5" fontWeight={600}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap' }}>
+        <Typography variant="h5" fontWeight={600} sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' } }}>
           {title}
         </Typography>
-        <Box sx={{ display: 'flex', gap: 1 }}>
+        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
           <IconButton onClick={() => refetch()} size="small">
             <RefreshIcon />
           </IconButton>
@@ -244,11 +244,11 @@ export default function EntityPage({
                 </InputAdornment>
               ),
             }}
-            sx={{ width: 300 }}
+            sx={{ width: { xs: '100%', sm: 300 } }}
           />
         </Box>
 
-        <TableContainer>
+        <TableContainer sx={{ overflowX: 'auto' }}>
           <Table size="small">
             <TableHead>
               <TableRow>
@@ -326,13 +326,14 @@ export default function EntityPage({
             setPage(0);
           }}
           rowsPerPageOptions={[10, 20, 50]}
+          sx={{ '& .MuiTablePagination-toolbar': { flexWrap: 'wrap' } }}
         />
       </Card>
 
-      <Dialog open={dialogOpen} onClose={closeDialog} maxWidth="sm" fullWidth>
+      <Dialog open={dialogOpen} onClose={closeDialog} maxWidth="sm" fullWidth sx={{ '& .MuiDialog-paper': { margin: { xs: 1 } } }}>
         <DialogTitle>{editing ? `Edit ${entityName}` : `New ${entityName}`}</DialogTitle>
         <DialogContent>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1, flexWrap: 'wrap' }}>
             {fields.map((field) => {
               if (field.type === 'select') {
                 return (

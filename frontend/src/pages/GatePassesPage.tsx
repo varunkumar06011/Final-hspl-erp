@@ -266,9 +266,9 @@ export default function GatePassesPage() {
     <Box>
       <div id="recaptcha-container-gatepass" />
 
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-        <Typography variant="h5" fontWeight={600}>Gate Passes</Typography>
-        <Box sx={{ display: 'flex', gap: 1 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap' }}>
+        <Typography variant="h5" fontWeight={600} sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' } }}>Gate Passes</Typography>
+        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
           <IconButton onClick={() => refetch()} size="small"><RefreshIcon /></IconButton>
           <Button variant="contained" startIcon={<AddIcon />} onClick={() => { resetForm(); setCreateOpen(true); }}>Create Gate Pass</Button>
         </Box>
@@ -278,14 +278,14 @@ export default function GatePassesPage() {
       {successMsg && <Alert severity="success" sx={{ mb: 2 }} onClose={() => setSuccessMsg('')}>{successMsg}</Alert>}
 
       <Card>
-        <Box sx={{ p: 2, display: 'flex', gap: 2 }}>
+        <Box sx={{ p: 2, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
           <TextField
             size="small"
             placeholder="Search gate passes..."
             value={search}
             onChange={(e) => { setSearch(e.target.value); setPage(0); }}
             InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> }}
-            sx={{ width: 300 }}
+            sx={{ width: { xs: '100%', sm: 300 } }}
           />
           <TextField select size="small" label="Status" value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(0); }} sx={{ width: 150 }}>
             <MenuItem value="">All</MenuItem>
@@ -294,7 +294,7 @@ export default function GatePassesPage() {
           </TextField>
         </Box>
 
-        <TableContainer>
+        <TableContainer sx={{ overflowX: 'auto' }}>
           <Table size="small">
             <TableHead>
               <TableRow>
@@ -354,6 +354,7 @@ export default function GatePassesPage() {
           rowsPerPage={pageSize}
           onRowsPerPageChange={(e) => { setPageSize(parseInt(e.target.value, 10)); setPage(0); }}
           rowsPerPageOptions={[10, 20, 50]}
+          sx={{ '& .MuiTablePagination-toolbar': { flexWrap: 'wrap' } }}
         />
       </Card>
 
@@ -396,7 +397,7 @@ export default function GatePassesPage() {
             {selectedPO && (
               <Box>
                 <Typography variant="body2" fontWeight={600} sx={{ mb: 1 }}>PO Items (will be added to inventory on approval)</Typography>
-                <TableContainer component={Card} variant="outlined">
+                <TableContainer component={Card} variant="outlined" sx={{ overflowX: 'auto' }}>
                   <Table size="small">
                     <TableHead>
                       <TableRow>

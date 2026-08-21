@@ -22,7 +22,7 @@ export default function DashboardPage() {
 
   return (
     <Box>
-      <Typography variant="h5" gutterBottom fontWeight={600}>
+      <Typography variant="h5" gutterBottom fontWeight={600} sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' } }}>
         Dashboard
       </Typography>
 
@@ -81,7 +81,7 @@ export default function DashboardPage() {
           {isLoading ? (
             [1, 2, 3].map((i) => <Skeleton key={i} variant="text" height={30} />)
           ) : summary?.recentQuotations?.length > 0 ? (
-            <TableContainer>
+            <TableContainer sx={{ overflowX: 'auto' }}>
               <Table size="small">
                 <TableHead>
                   <TableRow>
@@ -120,7 +120,7 @@ export default function DashboardPage() {
           {isLoading ? (
             [1, 2, 3].map((i) => <Skeleton key={i} variant="text" height={30} />)
           ) : summary?.recentPOs?.length > 0 ? (
-            <TableContainer>
+            <TableContainer sx={{ overflowX: 'auto' }}>
               <Table size="small">
                 <TableHead>
                   <TableRow>
@@ -159,7 +159,7 @@ export default function DashboardPage() {
           {isLoading ? (
             [1, 2, 3].map((i) => <Skeleton key={i} variant="text" height={30} />)
           ) : summary?.recentInvoices?.length > 0 ? (
-            <TableContainer>
+            <TableContainer sx={{ overflowX: 'auto' }}>
               <Table size="small">
                 <TableHead>
                   <TableRow>
@@ -202,7 +202,7 @@ export default function DashboardPage() {
           {isLoading ? (
             [1, 2, 3].map((i) => <Skeleton key={i} variant="text" height={30} />)
           ) : summary?.recentPayments?.length > 0 ? (
-            <TableContainer>
+            <TableContainer sx={{ overflowX: 'auto' }}>
               <Table size="small">
                 <TableHead>
                   <TableRow>

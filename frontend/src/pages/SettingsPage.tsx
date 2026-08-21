@@ -106,7 +106,7 @@ export default function SettingsPage() {
 
   return (
     <Box>
-      <Typography variant="h5" gutterBottom fontWeight={600}>Settings</Typography>
+      <Typography variant="h5" gutterBottom fontWeight={600} sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' } }}>Settings</Typography>
 
       {success && <Alert severity="success" sx={{ mb: 2 }}>{success}</Alert>}
       {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
@@ -118,7 +118,7 @@ export default function SettingsPage() {
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
             Update your name and phone number. Your phone number is used for gate pass OTP verification.
           </Typography>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, maxWidth: 400 }}>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, maxWidth: 400, flexWrap: 'wrap' }}>
             <TextField
               label="Name"
               value={profileName}
@@ -161,7 +161,7 @@ export default function SettingsPage() {
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
             These addresses are used in Purchase Order PDFs. The total budget is used for dashboard tracking.
           </Typography>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, flexWrap: 'wrap' }}>
             <TextField
               label="Hospital Name"
               value={hospitalName}
