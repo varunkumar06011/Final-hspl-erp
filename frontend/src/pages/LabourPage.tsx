@@ -177,14 +177,16 @@ export default function AttendancePage() {
 
   const markAttendanceMutation = useMutation({
     mutationFn: async () => {
-      const records = (attendanceStaff as Staff[]).map((s) => {
-        const rec = attendanceRecords[s.id];
-        return {
-          staffId: s.id,
-          present: rec?.present ?? true,
-          ...(rec?.notes?.trim() ? { notes: rec.notes.trim() } : {}),
-        };
-      });
+      const records = (attendanceStaff as Staff[])
+        .filter((s) => attendanceRecords[s.id]?.present !== undefined)
+        .map((s) => {
+          const rec = attendanceRecords[s.id];
+          return {
+            staffId: s.id,
+            present: rec!.present,
+            ...(rec!.notes?.trim() ? { notes: rec!.notes.trim() } : {}),
+          };
+        });
       const response = await api.post('/labour/attendance', { date: attendanceDate, records });
       return response.data;
     },
@@ -332,8 +334,8 @@ export default function AttendancePage() {
                 <MenuItem value="COMPANY">Company</MenuItem>
                 <MenuItem value="LABOUR">Labour</MenuItem>
               </TextField>
-              <Button variant="contained" onClick={() => { setError(''); markAttendanceMutation.mutate(); }} disabled={markAttendanceMutation.isPending || !attendanceStaff?.length}>
-                {markAttendanceMutation.isPending ? <CircularProgress size={20} /> : 'Save Attendance'}
+              <Button variant="contained" onClick={() => { setError(''); markAttendanceMutation.mutate(); }} disabled={markAttendanceMutation.isPending || !attendanceStaff?.length || Object.keys(attendanceRecords).length === 0}>
+                {markAttendanceMutation.isPending ? <CircularProgress size={20} /> : `Save Attendance${Object.keys(attendanceRecords).length > 0 ? ` (${Object.keys(attendanceRecords).length} marked)` : ''}`}
               </Button>
             </Box>
 
@@ -354,7 +356,8 @@ export default function AttendancePage() {
                   </TableHead>
                   <TableBody>
                     {(attendanceStaff as Staff[]).map((s) => {
-                      const isPresent = attendanceRecords[s.id]?.present ?? true;
+                      const marked = attendanceRecords[s.id]?.present !== undefined;
+                      const isPresent = attendanceRecords[s.id]?.present === true;
                       return (
                         <TableRow key={s.id}>
                           <TableCell>{s.name}</TableCell>
@@ -363,7 +366,7 @@ export default function AttendancePage() {
                             <ToggleButtonGroup
                               exclusive
                               size="small"
-                              value={isPresent ? 'present' : 'absent'}
+                              value={marked ? (isPresent ? 'present' : 'absent') : null}
                               onChange={(_e, val) => {
                                 if (val === null) return;
                                 setAttendanceRecords({
@@ -372,10 +375,10 @@ export default function AttendancePage() {
                                 });
                               }}
                             >
-                              <ToggleButton value="present" sx={{ color: isPresent ? '#27ae60' : undefined, borderColor: isPresent ? '#27ae60' : undefined, '&.Mui-selected': { color: '#27ae60', backgroundColor: 'rgba(39,174,96,0.1)' } }}>
+                              <ToggleButton value="present" sx={{ '&.Mui-selected': { color: '#27ae60', backgroundColor: 'rgba(39,174,96,0.1)' } }}>
                                 <PresentIcon fontSize="small" sx={{ mr: 0.5 }} /> Present
                               </ToggleButton>
-                              <ToggleButton value="absent" sx={{ color: !isPresent ? '#e74c3c' : undefined, borderColor: !isPresent ? '#e74c3c' : undefined, '&.Mui-selected': { color: '#e74c3c', backgroundColor: 'rgba(231,76,60,0.1)' } }}>
+                              <ToggleButton value="absent" sx={{ '&.Mui-selected': { color: '#e74c3c', backgroundColor: 'rgba(231,76,60,0.1)' } }}>
                                 <AbsentIcon fontSize="small" sx={{ mr: 0.5 }} /> Absent
                               </ToggleButton>
                             </ToggleButtonGroup>
@@ -386,9 +389,10 @@ export default function AttendancePage() {
                               value={attendanceRecords[s.id]?.notes ?? ''}
                               onChange={(e) => setAttendanceRecords({
                                 ...attendanceRecords,
-                                [s.id]: { present: attendanceRecords[s.id]?.present ?? true, notes: e.target.value },
+                                [s.id]: { present: attendanceRecords[s.id]?.present ?? false, notes: e.target.value },
                               })}
                               placeholder="Optional notes"
+                              disabled={!marked}
                             />
                           </TableCell>
                         </TableRow>

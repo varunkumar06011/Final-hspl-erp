@@ -1,10 +1,12 @@
-Fix OCR autofill: use correct Groq vision model available to this API key
+Attendance: blank default, only save marked staff, fix prod 500
 
-- The previous model meta-llama/llama-4-scout-17b-16e-instruct was not
-  available to this Groq API key (404 model_not_found)
-- Switched to qwen/qwen3.6-27b which supports text+image input and is
-  available with this API key
-- Verified end-to-end: PDF upload + render + Groq vision API call works
+- Default state is now blank (no Present/Absent pre-selected)
+- User must click Present or Absent for each staff member
+- Save button shows count of marked staff and is disabled if none marked
+- Only marked staff are sent to the backend (not all staff with default=true)
+- Notes field disabled until Present/Absent is selected
+- The 500 error on production is from the logAudit entityId bug already
+  fixed locally — production needs redeployment
 
 Generated with [Devin](https://devin.ai)
 
