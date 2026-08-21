@@ -1,5 +1,5 @@
-import { Box, AppBar, Toolbar, Typography, IconButton, Avatar, Chip, Menu, MenuItem, Drawer, List, ListItem, ListItemIcon, ListItemText, useTheme, useMediaQuery } from '@mui/material';
-import { useState } from 'react';
+import { Box, AppBar, Toolbar, Typography, IconButton, Avatar, Chip, Menu, MenuItem, Drawer, List, ListItem, ListItemIcon, ListItemText, useTheme, useMediaQuery, Snackbar, Alert } from '@mui/material';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Menu as MenuIcon,
@@ -23,6 +23,7 @@ import {
 } from '@mui/icons-material';
 import { useAuthStore } from '../stores/authStore';
 import { hasPermission, Permission, UserRole } from '@hospital-erp/shared';
+import { onForegroundMessage } from '../config/notifications';
 
 const NAV_ITEMS = [
   { label: 'Dashboard', icon: <DashboardIcon />, path: '/' },
@@ -65,11 +66,34 @@ const DRAWER_WIDTH = 260;
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [fgNotification, setFgNotification] = useState<{ open: boolean; title: string; body: string; url?: string }>({
+    open: false,
+    title: '',
+    body: '',
+  });
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout } = useAuthStore();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+
+  // Listen for foreground push messages (when the tab is open)
+  useEffect(() => {
+    const unsubscribe = onForegroundMessage((payload) => {
+      const title = payload.notification?.title || payload.data?.title || 'New Notification';
+      const body = payload.notification?.body || payload.data?.body || '';
+      const url = payload.data?.url;
+      setFgNotification({ open: true, title, body, url });
+    });
+    return unsubscribe;
+  }, []);
+
+  const handleFgNotificationClick = useCallback(() => {
+    if (fgNotification.url) {
+      navigate(fgNotification.url);
+    }
+    setFgNotification({ open: false, title: '', body: '', url: undefined });
+  }, [fgNotification.url, navigate]);
 
   const handleMenu = (event: React.MouseEvent<HTMLElement>) => {
     setAnchorEl(event.currentTarget);
@@ -208,6 +232,26 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       <Box component="main" sx={{ flexGrow: 1, p: { xs: 1.5, sm: 2, md: 3 }, mt: 8, width: { xs: '100%', md: 'auto' } }}>
         {children}
       </Box>
+
+      {/* Foreground push notification snackbar */}
+      <Snackbar
+        open={fgNotification.open}
+        autoHideDuration={10000}
+        onClose={() => setFgNotification({ open: false, title: '', body: '', url: undefined })}
+        anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
+        sx={{ mt: 8 }}
+      >
+        <Alert
+          severity="info"
+          icon={<NotificationsIcon />}
+          onClick={handleFgNotificationClick}
+          sx={{ cursor: fgNotification.url ? 'pointer' : 'default', alignItems: 'flex-start' }}
+        >
+          <Typography variant="subtitle2">{fgNotification.title}</Typography>
+          <Typography variant="body2">{fgNotification.body}</Typography>
+          {fgNotification.url && <Typography variant="caption" color="primary">Tap to view →</Typography>}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 }
