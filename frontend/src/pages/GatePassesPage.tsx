@@ -48,13 +48,13 @@ interface GatePassRow {
   id: string;
   passNumber: string;
   poId: string;
-  invoiceId: string;
+  invoiceId: string | null;
   status: string;
   date: string;
   createdBy: string;
   createdByUser: { id: string; name: string };
   purchaseOrder: { id: string; poNumber: string; vendor: { name: string; vendorCode: string }; items: GatePassItem[] };
-  invoice: { id: string; invoiceCode: string; invoiceNumber: string };
+  invoice: { id: string; invoiceCode: string; invoiceNumber: string } | null;
   items: GatePassItem[];
   otpRequestedForUser: { id: string; name: string; role: string; phone: string } | null;
   otpApprovedByUser: { id: string; name: string } | null;
@@ -168,11 +168,12 @@ export default function GatePassesPage() {
 
   const createMutation = useMutation({
     mutationFn: async () => {
-      const response = await api.post('/gate-passes', {
+      const payload: Record<string, string> = {
         poId: selectedPoId,
-        invoiceId: selectedInvoiceId,
         otpRequestedFor: selectedHeadId,
-      });
+      };
+      if (selectedInvoiceId) payload.invoiceId = selectedInvoiceId;
+      const response = await api.post('/gate-passes', payload);
       return response.data;
     },
     onSuccess: async (data) => {
@@ -374,23 +375,23 @@ export default function GatePassesPage() {
               fullWidth
               size="small"
               required
-              helperText={approvedPOs?.length === 0 ? 'No approved POs with verified invoices available' : undefined}
+              helperText={approvedPOs?.length === 0 ? 'No approved POs available' : undefined}
             >
               {approvedPOs?.map((po) => (
                 <MenuItem key={po.id} value={po.id}>{po.poNumber} — {po.vendor.vendorCode} - {po.vendor.name}</MenuItem>
               ))}
             </TextField>
 
-            {selectedPO && (
+            {selectedPO && selectedPO.invoices.length > 0 && (
               <TextField
                 select
-                label="Invoice (verified)"
+                label="Invoice (optional — select if available)"
                 value={selectedInvoiceId}
                 onChange={(e) => setSelectedInvoiceId(e.target.value)}
                 fullWidth
                 size="small"
-                required
               >
+                <MenuItem value="">— None —</MenuItem>
                 {selectedPO.invoices.map((inv) => (
                   <MenuItem key={inv.id} value={inv.id}>{inv.invoiceCode} — {inv.invoiceNumber}</MenuItem>
                 ))}
@@ -445,7 +446,7 @@ export default function GatePassesPage() {
           <Button
             variant="contained"
             onClick={() => { setError(''); createMutation.mutate(); }}
-            disabled={(!selectedPoId || !selectedInvoiceId || !selectedHeadId) || createMutation.isPending || sendingOtp}
+            disabled={(!selectedPoId || !selectedHeadId) || createMutation.isPending || sendingOtp}
           >
             {createMutation.isPending || sendingOtp ? <CircularProgress size={20} /> : 'Create & Send OTP'}
           </Button>

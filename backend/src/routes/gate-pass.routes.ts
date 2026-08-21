@@ -91,21 +91,19 @@ router.get(
         },
         orderBy: { createdAt: 'desc' },
       });
-      // Only return POs that have at least one verified invoice
-      const result = pos
-        .filter((po) => po.invoices.length > 0)
-        .map((po) => ({
-          id: po.id,
-          poNumber: po.poNumber,
-          vendor: po.vendor,
-          grandTotal: Number(po.grandTotal),
-          items: po.items.map((item) => ({
-            materialName: item.materialName,
-            quantity: Number(item.quantity),
-            unit: item.unit,
-          })),
-          invoices: po.invoices,
-        }));
+      // Return all approved POs (invoice is optional for gate pass creation)
+      const result = pos.map((po) => ({
+        id: po.id,
+        poNumber: po.poNumber,
+        vendor: po.vendor,
+        grandTotal: Number(po.grandTotal),
+        items: po.items.map((item) => ({
+          materialName: item.materialName,
+          quantity: Number(item.quantity),
+          unit: item.unit,
+        })),
+        invoices: po.invoices,
+      }));
       res.json({ data: result });
     } catch (error) {
       next(error);
@@ -195,30 +193,41 @@ router.post(
         return;
       }
 
-      // Validate invoice exists and is verified
-      const invoice = await prisma.vendorInvoice.findFirst({
-        where: { id: invoiceId, projectId, deletedAt: null },
-      });
-      if (!invoice) {
-        res.status(400).json({ error: 'Invoice not found' });
-        return;
-      }
-      if (invoice.verificationStatus !== 'VERIFIED') {
-        res.status(400).json({ error: 'Invoice must be verified first' });
-        return;
-      }
-      if (invoice.poId !== poId) {
-        res.status(400).json({ error: 'Invoice does not belong to this purchase order' });
-        return;
-      }
+      // Validate invoice only if provided (invoice is optional)
+      if (invoiceId) {
+        const invoice = await prisma.vendorInvoice.findFirst({
+          where: { id: invoiceId, projectId, deletedAt: null },
+        });
+        if (!invoice) {
+          res.status(400).json({ error: 'Invoice not found' });
+          return;
+        }
+        if (invoice.verificationStatus !== 'VERIFIED') {
+          res.status(400).json({ error: 'Invoice must be verified first' });
+          return;
+        }
+        if (invoice.poId !== poId) {
+          res.status(400).json({ error: 'Invoice does not belong to this purchase order' });
+          return;
+        }
 
-      // Check if a gate pass already exists for this invoice
-      const existingGP = await prisma.gatePass.findFirst({
-        where: { invoiceId, projectId, deletedAt: null, status: 'APPROVED' },
-      });
-      if (existingGP) {
-        res.status(409).json({ error: 'An approved gate pass already exists for this invoice' });
-        return;
+        // Check if a gate pass already exists for this invoice
+        const existingGP = await prisma.gatePass.findFirst({
+          where: { invoiceId, projectId, deletedAt: null, status: 'APPROVED' },
+        });
+        if (existingGP) {
+          res.status(409).json({ error: 'An approved gate pass already exists for this invoice' });
+          return;
+        }
+      } else {
+        // No invoice provided — check if an approved gate pass already exists for this PO without an invoice
+        const existingGP = await prisma.gatePass.findFirst({
+          where: { poId, projectId, deletedAt: null, status: 'APPROVED', invoiceId: null },
+        });
+        if (existingGP) {
+          res.status(409).json({ error: 'An approved gate pass already exists for this purchase order' });
+          return;
+        }
       }
 
       // Validate otpRequestedFor is one of the 4 heads
@@ -234,7 +243,7 @@ router.post(
         data: {
           projectId,
           poId,
-          invoiceId,
+          ...(invoiceId ? { invoiceId } : {}),
           passNumber,
           status: 'PENDING',
           otpRequestedFor,
@@ -256,7 +265,7 @@ router.post(
         entityType: 'GATE_PASS',
         entityId: gatePass.id,
         projectId,
-        newValue: { passNumber, poId, invoiceId, otpRequestedFor },
+        newValue: { passNumber, poId, invoiceId: invoiceId ?? null, otpRequestedFor },
       });
 
       // Return the gate pass — the frontend will use Firebase to send the OTP to the head's phone
@@ -370,11 +379,13 @@ router.post(
         include: gatePassInclude,
       });
 
-      // Also mark the invoice's stock as received and flag inventory as added
-      await prisma.vendorInvoice.update({
-        where: { id: gatePass.invoiceId },
-        data: { stockStatus: 'RECEIVED', inventoryAdded: true },
-      });
+      // Also mark the invoice's stock as received and flag inventory as added (only if invoice linked)
+      if (gatePass.invoiceId) {
+        await prisma.vendorInvoice.update({
+          where: { id: gatePass.invoiceId },
+          data: { stockStatus: 'RECEIVED', inventoryAdded: true },
+        });
+      }
 
       await logAudit({
         userId: req.user!.id,

@@ -216,7 +216,7 @@ export const approvalActionSchema = z.object({
 export const createGatePassSchema = z.object({
   body: z.object({
     poId: uuid,
-    invoiceId: uuid,
+    invoiceId: uuid.optional(),
     otpRequestedFor: uuid,
   }),
 });
