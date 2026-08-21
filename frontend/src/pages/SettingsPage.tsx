@@ -17,6 +17,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { extractErrorMessage } from '../config/api';
 import { useAuthStore } from '../stores/authStore';
 import { formatCurrency } from '../utils/enumOptions';
+import NotificationPermissionPrompt from '../components/NotificationPermissionPrompt';
 
 const ROLE_LABELS: Record<string, string> = {
   PROJECT_HEAD: 'Project Head',
@@ -175,6 +176,17 @@ export default function SettingsPage() {
               {updateProfileMutation.isPending ? <CircularProgress size={20} /> : 'Save Profile'}
             </Button>
           </Box>
+        </CardContent>
+      </Card>
+
+      {/* Notifications */}
+      <Card sx={{ mb: 3 }}>
+        <CardContent>
+          <Typography variant="h6" gutterBottom>Push Notifications</Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Get system-level alerts when an approval is required, even when the website is closed or minimized.
+          </Typography>
+          <NotificationPermissionPrompt />
         </CardContent>
       </Card>
 

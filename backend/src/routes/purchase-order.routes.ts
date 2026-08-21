@@ -7,6 +7,7 @@ import { rbacMiddleware } from '../middleware/rbac';
 import { validateMiddleware } from '../middleware/validate';
 import { logAudit } from '../services/audit.service';
 import * as approvalService from '../services/approval.service';
+import { notifyApprovers } from '../services/push.service';
 import PDFDocument from 'pdfkit';
 
 const router = Router();
@@ -191,6 +192,16 @@ router.post(
         projectId,
         newValue: { poNumber, vendorId, quotationId, totalAmount, grandTotal, acknowledged: true },
       });
+
+      // Notify all approvers via push notification
+      notifyApprovers(projectId, HEAD_ROLES, {
+        approvalId: workflow.id,
+        entityType: 'PURCHASE_ORDER',
+        entityId: po.id,
+        title: 'New Approval Required',
+        body: `Purchase Order ${poNumber} — ₹${grandTotal}`,
+        url: `/pos?approval=${workflow.id}`,
+      }).catch(() => {});
 
       const result = await prisma.purchaseOrder.findUnique({
         where: { id: po.id },

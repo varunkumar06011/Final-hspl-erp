@@ -1,5 +1,5 @@
 import { Router, Response, NextFunction } from 'express';
-import { APPROVAL_CONFIG, Permission, QuotationStatus, AuditAction } from '@hospital-erp/shared';
+import { APPROVAL_CONFIG, APPROVER_ROLES, Permission, QuotationStatus, AuditAction } from '@hospital-erp/shared';
 import { createQuotationSchema, listQuotationsSchema, approvalActionSchema } from '@hospital-erp/shared';
 import { prisma } from '../config/prisma';
 import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middleware/auth';
@@ -7,6 +7,7 @@ import { rbacMiddleware } from '../middleware/rbac';
 import { validateMiddleware } from '../middleware/validate';
 import { logAudit } from '../services/audit.service';
 import * as approvalService from '../services/approval.service';
+import { notifyApprovers } from '../services/push.service';
 import { getStorageService, serveFile } from '../services/storage.service';
 import multer from 'multer';
 
@@ -204,6 +205,16 @@ router.post(
         projectId,
         newValue: { quotationNumber, vendorId, totalAmount, grandTotal, acknowledged: true },
       });
+
+      // Notify all approvers via push notification
+      notifyApprovers(projectId, [...APPROVER_ROLES], {
+        approvalId: workflow.id,
+        entityType: 'QUOTATION',
+        entityId: quotation.id,
+        title: 'New Approval Required',
+        body: `Quotation ${quotationNumber} from ${quotation.vendor?.name ?? 'vendor'} — ₹${grandTotal}`,
+        url: `/quotations?approval=${workflow.id}`,
+      }).catch(() => {});
 
       const result = await prisma.quotation.findUnique({
         where: { id: quotation.id },

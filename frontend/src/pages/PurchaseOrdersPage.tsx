@@ -48,6 +48,7 @@ import { useAuthStore } from '../stores/authStore';
 import AcknowledgementCheckbox from '../components/AcknowledgementCheckbox';
 import ApprovalActionDialog from '../components/ApprovalActionDialog';
 import ResponsiveTable from '../components/ResponsiveTable';
+import { useApprovalDeepLink } from '../utils/useApprovalDeepLink';
 
 interface POItem {
   id?: string;
@@ -242,6 +243,9 @@ export default function PurchaseOrdersPage() {
   const rows: PORow[] = data?.data ?? [];
   const pagination = data?.pagination ?? { page: 1, pageSize: 20, total: 0, totalPages: 0 };
   const vendors: { id: string; name: string; vendorCode: string }[] = vendorsData?.data ?? [];
+
+  // Auto-open approval dialog when navigated from a push notification
+  useApprovalDeepLink(rows, (row) => setApprovalAction({ row, action: 'approve' }));
 
   const quotationTotal = useMemo(() => {
     if (!selectedQuotation?.items) return 0;

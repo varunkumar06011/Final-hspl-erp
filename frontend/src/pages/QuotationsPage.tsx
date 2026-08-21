@@ -48,6 +48,7 @@ import AcknowledgementCheckbox from '../components/AcknowledgementCheckbox';
 import ApprovalActionDialog from '../components/ApprovalActionDialog';
 import OcrAutoFill, { type OcrQuotationData } from '../components/OcrAutoFill';
 import ResponsiveTable from '../components/ResponsiveTable';
+import { useApprovalDeepLink } from '../utils/useApprovalDeepLink';
 
 interface QuotationItem {
   id?: string;
@@ -225,6 +226,12 @@ export default function QuotationsPage() {
   const rows: QuotationRow[] = data?.data ?? [];
   const pagination = data?.pagination ?? { page: 1, pageSize: 20, total: 0, totalPages: 0 };
   const vendors: { id: string; name: string; vendorCode: string }[] = vendorsData?.data ?? [];
+
+  // Auto-open approval dialog when navigated from a push notification
+  useApprovalDeepLink(rows, (row) => {
+    const step = canApprove(row);
+    if (step) setApprovalAction({ row, step, action: 'approve' });
+  });
 
   const totalAmount = useMemo(
     () => lineItems.filter((i) => selectedMaterialNames.has(i.materialName)).reduce((sum, i) => sum + Number(i.amount), 0),

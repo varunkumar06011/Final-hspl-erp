@@ -47,6 +47,7 @@ model User {
   createdDropdownOptions DropdownOption[]  @relation("DropdownOptionCreatedBy")
   uploadedAttachments Attachment[]         @relation("AttachmentUploadedBy")
   markedAttendance  StaffAttendance[]     @relation("AttendanceMarker")
+  pushSubscriptions PushSubscription[]
 
   @@map("users")
 }
@@ -751,4 +752,23 @@ model Attachment {
   @@index([entityType, entityId])
   @@index([projectId])
   @@map("attachments")
+}
+
+// ═══════════════════════════════════════════════════════════
+// Push Notifications (FCM tokens for Web Push)
+// ═══════════════════════════════════════════════════════════
+
+model PushSubscription {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  token     String   @unique // FCM registration token
+  userAgent String?  // browser/device info for identification
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("push_subscriptions")
 }
