@@ -1,7 +1,50 @@
 import { Box, Card, CardContent, Typography, Skeleton, Alert, Chip, Table, TableBody, TableCell, TableContainer, TableHead, TableRow } from '@mui/material';
+import type { ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api from '../config/api';
 import { formatCurrency, formatDate } from '../utils/enumOptions';
+
+function MobileRecentCard({
+  primary,
+  secondary,
+  amount,
+  status,
+  date,
+  details,
+}: {
+  primary: string;
+  secondary: string;
+  amount?: string;
+  status?: ReactNode;
+  date: string;
+  details?: ReactNode;
+}) {
+  return (
+    <Box
+      sx={{
+        display: { xs: 'block', sm: 'none' },
+        p: 1.5,
+        border: '1px solid',
+        borderColor: 'divider',
+        borderRadius: 1.5,
+        '& + &': { mt: 1 },
+      }}
+    >
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 1 }}>
+        <Box sx={{ minWidth: 0 }}>
+          <Typography variant="subtitle2" fontWeight={600} noWrap>{primary}</Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ wordBreak: 'break-word' }}>{secondary}</Typography>
+        </Box>
+        {amount && <Typography variant="subtitle2" fontWeight={600} sx={{ whiteSpace: 'nowrap' }}>{amount}</Typography>}
+      </Box>
+      {details && <Box sx={{ mt: 1 }}>{details}</Box>}
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 1, mt: 1 }}>
+        {status ?? <Box />}
+        <Typography variant="caption" color="text.secondary">{date}</Typography>
+      </Box>
+    </Box>
+  );
+}
 
 export default function DashboardPage() {
   const { data: summary, isLoading, isError } = useQuery({
@@ -81,7 +124,8 @@ export default function DashboardPage() {
           {isLoading ? (
             [1, 2, 3].map((i) => <Skeleton key={i} variant="text" height={30} />)
           ) : summary?.recentQuotations?.length > 0 ? (
-            <TableContainer sx={{ overflowX: 'auto' }}>
+            <>
+            <TableContainer sx={{ display: { xs: 'none', sm: 'block' }, overflowX: 'auto' }}>
               <Table size="small">
                 <TableHead>
                   <TableRow>
@@ -107,6 +151,20 @@ export default function DashboardPage() {
                 </TableBody>
               </Table>
             </TableContainer>
+            <Box sx={{ display: { xs: 'block', sm: 'none' } }}>
+              {summary.recentQuotations.map((q: any) => (
+                <MobileRecentCard
+                  key={q.id}
+                  primary={q.quotationNumber}
+                  secondary={`${q.vendorCode} - ${q.vendorName}`}
+                  amount={formatCurrency(q.grandTotal)}
+                  status={<Chip label={q.status.replace(/_/g, ' ')} size="small" />}
+                  date={formatDate(q.createdAt)}
+                  details={<Typography variant="caption" color="text.secondary">Created by: {q.createdBy}</Typography>}
+                />
+              ))}
+            </Box>
+            </>
           ) : (
             <Typography color="text.secondary">No quotations yet.</Typography>
           )}
@@ -120,7 +178,8 @@ export default function DashboardPage() {
           {isLoading ? (
             [1, 2, 3].map((i) => <Skeleton key={i} variant="text" height={30} />)
           ) : summary?.recentPOs?.length > 0 ? (
-            <TableContainer sx={{ overflowX: 'auto' }}>
+            <>
+            <TableContainer sx={{ display: { xs: 'none', sm: 'block' }, overflowX: 'auto' }}>
               <Table size="small">
                 <TableHead>
                   <TableRow>
@@ -146,6 +205,20 @@ export default function DashboardPage() {
                 </TableBody>
               </Table>
             </TableContainer>
+            <Box sx={{ display: { xs: 'block', sm: 'none' } }}>
+              {summary.recentPOs.map((p: any) => (
+                <MobileRecentCard
+                  key={p.id}
+                  primary={p.poNumber}
+                  secondary={`${p.vendorCode} - ${p.vendorName}`}
+                  amount={formatCurrency(p.grandTotal)}
+                  status={<Chip label={p.status.replace(/_/g, ' ')} size="small" />}
+                  date={formatDate(p.createdAt)}
+                  details={<Typography variant="caption" color="text.secondary">Created by: {p.createdBy}</Typography>}
+                />
+              ))}
+            </Box>
+            </>
           ) : (
             <Typography color="text.secondary">No purchase orders yet.</Typography>
           )}
@@ -159,7 +232,8 @@ export default function DashboardPage() {
           {isLoading ? (
             [1, 2, 3].map((i) => <Skeleton key={i} variant="text" height={30} />)
           ) : summary?.recentInvoices?.length > 0 ? (
-            <TableContainer sx={{ overflowX: 'auto' }}>
+            <>
+            <TableContainer sx={{ display: { xs: 'none', sm: 'block' }, overflowX: 'auto' }}>
               <Table size="small">
                 <TableHead>
                   <TableRow>
@@ -189,6 +263,26 @@ export default function DashboardPage() {
                 </TableBody>
               </Table>
             </TableContainer>
+            <Box sx={{ display: { xs: 'block', sm: 'none' } }}>
+              {summary.recentInvoices.map((i: any) => (
+                <MobileRecentCard
+                  key={i.id}
+                  primary={i.invoiceCode}
+                  secondary={`${i.vendorCode} - ${i.vendorName}`}
+                  amount={formatCurrency(i.totalAmount)}
+                  status={<Chip label={i.paymentStatus} size="small" color={i.paymentStatus === 'PAID' ? 'success' : 'default'} />}
+                  date={formatDate(i.createdAt)}
+                  details={(
+                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
+                      <Chip label={`Verification: ${i.verificationStatus.replace(/_/g, ' ')}`} size="small" variant="outlined" />
+                      <Chip label={`Stock: ${i.stockStatus}`} size="small" color={i.stockStatus === 'RECEIVED' ? 'success' : 'warning'} />
+                      <Typography variant="caption" color="text.secondary" sx={{ alignSelf: 'center' }}>Created by: {i.createdBy}</Typography>
+                    </Box>
+                  )}
+                />
+              ))}
+            </Box>
+            </>
           ) : (
             <Typography color="text.secondary">No invoices yet.</Typography>
           )}
@@ -202,7 +296,8 @@ export default function DashboardPage() {
           {isLoading ? (
             [1, 2, 3].map((i) => <Skeleton key={i} variant="text" height={30} />)
           ) : summary?.recentPayments?.length > 0 ? (
-            <TableContainer sx={{ overflowX: 'auto' }}>
+            <>
+            <TableContainer sx={{ display: { xs: 'none', sm: 'block' }, overflowX: 'auto' }}>
               <Table size="small">
                 <TableHead>
                   <TableRow>
@@ -232,6 +327,26 @@ export default function DashboardPage() {
                 </TableBody>
               </Table>
             </TableContainer>
+            <Box sx={{ display: { xs: 'block', sm: 'none' } }}>
+              {summary.recentPayments.map((p: any) => (
+                <MobileRecentCard
+                  key={p.id}
+                  primary={p.paymentCode}
+                  secondary={p.type === 'EXPENSE' ? `${p.description ?? '—'} (${p.category ?? '—'})` : p.invoiceCode ?? '—'}
+                  amount={formatCurrency(p.amount)}
+                  status={<Chip label={p.status} size="small" />}
+                  date={formatDate(p.createdAt)}
+                  details={(
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                      <Chip label={p.type} size="small" variant="outlined" />
+                      {p.isPaid && <Chip label="Paid" size="small" color="success" />}
+                      <Typography variant="caption" color="text.secondary">Created by: {p.createdBy}</Typography>
+                    </Box>
+                  )}
+                />
+              ))}
+            </Box>
+            </>
           ) : (
             <Typography color="text.secondary">No payments yet.</Typography>
           )}
