@@ -1,10 +1,12 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { Box, Typography } from '@mui/material';
 import { ThemeProvider, CssBaseline } from '@mui/material';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { theme } from './config/theme';
 import AppShell from './components/AppShell';
 import ProtectedRoute from './components/ProtectedRoute';
+import ErrorScreen from './components/ErrorScreen';
+import OfflineBanner from './components/OfflineBanner';
+import { useOnlineStatus } from './hooks/useOnlineStatus';
 import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
 import VendorsPage from './pages/VendorsPage';
@@ -54,40 +56,47 @@ const ROUTES = [
 ];
 
 export default function App() {
+  const online = useOnlineStatus();
+
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <QueryClientProvider client={queryClient}>
         <BrowserRouter>
           <ErrorBoundary>
-          <Routes>
-            <Route path="/login" element={<LoginPage />} />
-            <Route
-              path="/"
-              element={
-                <ProtectedRoute>
-                  <AppShell>
-                    <DashboardPage />
-                  </AppShell>
-                </ProtectedRoute>
-              }
-            />
-            {ROUTES.map((route) => (
-              <Route
-                key={route.path}
-                path={route.path}
-                element={
-                  <ProtectedRoute>
-                    <AppShell>
-                      {route.element}
-                    </AppShell>
-                  </ProtectedRoute>
-                }
-              />
-            ))}
-            <Route path="/vendor" element={<ProtectedRoute><AppShell><Navigate to="/vendors" replace /></AppShell></ProtectedRoute>} />
-            <Route path="*" element={<ProtectedRoute><AppShell><Box sx={{ p: 3 }}><Typography variant="h5">Page not found</Typography></Box></AppShell></ProtectedRoute>} />
-          </Routes>
+            <OfflineBanner />
+            {!online ? (
+              <ErrorScreen variant="offline" />
+            ) : (
+              <Routes>
+                <Route path="/login" element={<LoginPage />} />
+                <Route
+                  path="/"
+                  element={
+                    <ProtectedRoute>
+                      <AppShell>
+                        <DashboardPage />
+                      </AppShell>
+                    </ProtectedRoute>
+                  }
+                />
+                {ROUTES.map((route) => (
+                  <Route
+                    key={route.path}
+                    path={route.path}
+                    element={
+                      <ProtectedRoute>
+                        <AppShell>
+                          {route.element}
+                        </AppShell>
+                      </ProtectedRoute>
+                    }
+                  />
+                ))}
+                <Route path="/vendor" element={<ProtectedRoute><AppShell><Navigate to="/vendors" replace /></AppShell></ProtectedRoute>} />
+                <Route path="*" element={<ErrorScreen variant="404" />} />
+              </Routes>
+            )}
           </ErrorBoundary>
         </BrowserRouter>
       </QueryClientProvider>

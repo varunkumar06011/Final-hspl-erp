@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { useNetworkStore } from '../stores/networkStore';
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || '/api',
@@ -35,6 +36,7 @@ api.interceptors.response.use(
       error.message = 'Request timed out. Please try again.';
     } else if (!error.response) {
       error.message = 'Network error. Please check your connection.';
+      useNetworkStore.getState().setApiNetworkError(true);
     }
 
     return Promise.reject(error);
