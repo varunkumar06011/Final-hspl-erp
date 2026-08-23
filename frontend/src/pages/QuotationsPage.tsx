@@ -53,8 +53,8 @@ import { useApprovalDeepLink } from '../utils/useApprovalDeepLink';
 interface QuotationItem {
   id?: string;
   materialName: string;
-  quantity: number;
-  unitPrice: number;
+  quantity: number | '';
+  unitPrice: number | '';
   amount: number;
 }
 
@@ -197,6 +197,39 @@ export default function QuotationsPage() {
     onError: (err: unknown) => setError(extractErrorMessage(err)),
   });
 
+  const validateQuotationForm = (): boolean => {
+    const items = lineItems.filter((item) => selectedMaterialNames.has(item.materialName));
+    if (!selectedVendorId) {
+      setError('Please select a vendor');
+      return false;
+    }
+    if (items.length === 0) {
+      setError('Add at least one material');
+      return false;
+    }
+    if (items.some((item) => !item.materialName.trim() || !Number.isFinite(Number(item.quantity)) || Number(item.quantity) <= 0)) {
+      setError('Each material must have a name and a quantity greater than zero');
+      return false;
+    }
+    if (items.some((item) => !Number.isFinite(Number(item.unitPrice)) || Number(item.unitPrice) < 0)) {
+      setError('Unit price cannot be negative or invalid');
+      return false;
+    }
+    if (gstAmount !== '' && (!Number.isFinite(Number(gstAmount)) || Number(gstAmount) < 0)) {
+      setError('GST amount cannot be negative or invalid');
+      return false;
+    }
+    if (!editOpen && !acknowledged) {
+      setError('Please acknowledge the quotation before creating it');
+      return false;
+    }
+    if (selectedFile && (!['application/pdf', 'image/jpeg', 'image/png', 'image/webp'].includes(selectedFile.type) || selectedFile.size > 50 * 1024 * 1024)) {
+      setError('Quotation file must be a PDF or image smaller than 50 MB');
+      return false;
+    }
+    return true;
+  };
+
   const approveMutation = useMutation({
     mutationFn: async ({ quotationId, stepId, comments, acknowledged }: { quotationId: string; stepId: string; comments?: string; acknowledged: true }) => {
       const response = await api.post(`/quotations/${quotationId}/approve/${stepId}`, { comments, acknowledged });
@@ -325,7 +358,7 @@ export default function QuotationsPage() {
           matched.add(item.materialName.toLowerCase());
           const qty = Number(ocrMatch.quantity) || item.quantity;
           const price = Number(ocrMatch.unitPrice) || item.unitPrice;
-          return { ...item, quantity: qty, unitPrice: price, amount: qty * price };
+          return { ...item, quantity: qty, unitPrice: price, amount: Number(qty) * Number(price) };
         }
         // Also try partial match (OCR may have slightly different name)
         const partialMatch = data.lineItems.find((o) => {
@@ -337,7 +370,7 @@ export default function QuotationsPage() {
           matched.add(item.materialName.toLowerCase());
           const qty = Number(partialMatch.quantity) || item.quantity;
           const price = Number(partialMatch.unitPrice) || item.unitPrice;
-          return { ...item, quantity: qty, unitPrice: price, amount: qty * price };
+          return { ...item, quantity: qty, unitPrice: price, amount: Number(qty) * Number(price) };
         }
         return item;
       });
@@ -546,7 +579,8 @@ export default function QuotationsPage() {
                           label="Qty"
                           type="number"
                           value={item.quantity}
-                          onChange={(e) => updateLineItem(index, 'quantity', Number(e.target.value))}
+                          onChange={(e) => updateLineItem(index, 'quantity', e.target.value === '' ? '' : Number(e.target.value))}
+                          inputProps={{ min: 0.01, step: 0.01 }}
                           size="small"
                           sx={{ flex: 1, minWidth: 0 }}
                         />
@@ -554,7 +588,8 @@ export default function QuotationsPage() {
                           label="Unit Price"
                           type="number"
                           value={item.unitPrice}
-                          onChange={(e) => updateLineItem(index, 'unitPrice', Number(e.target.value))}
+                          onChange={(e) => updateLineItem(index, 'unitPrice', e.target.value === '' ? '' : Number(e.target.value))}
+                          inputProps={{ min: 0, step: 0.01 }}
                           size="small"
                           sx={{ flex: 1, minWidth: 0 }}
                         />
@@ -578,6 +613,7 @@ export default function QuotationsPage() {
                     type="number"
                     value={gstAmount}
                     onChange={(e) => setGstAmount(e.target.value)}
+                    inputProps={{ min: 0, step: 0.01 }}
                     size="small"
                     sx={{ width: { xs: '100%', sm: 200 } }}
                   />
@@ -621,8 +657,8 @@ export default function QuotationsPage() {
           <Button onClick={() => { setCreateOpen(false); setEditOpen(false); setEditing(null); resetForm(); }}>Cancel</Button>
           <Button
             variant="contained"
-            onClick={() => { setError(''); if (editOpen) updateMutation.mutate(); else createMutation.mutate(); }}
-            disabled={(!selectedVendorId || selectedMaterialNames.size === 0 || (!editOpen && !acknowledged)) || createMutation.isPending || updateMutation.isPending}
+            onClick={() => { setError(''); if (!validateQuotationForm()) return; if (editOpen) updateMutation.mutate(); else createMutation.mutate(); }}
+            disabled={createMutation.isPending || updateMutation.isPending}
           >
             {(createMutation.isPending || updateMutation.isPending) ? <CircularProgress size={20} /> : editOpen ? 'Update' : 'Create'}
           </Button>

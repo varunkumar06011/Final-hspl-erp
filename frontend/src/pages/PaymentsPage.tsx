@@ -254,6 +254,7 @@ export default function PaymentsPage() {
   const rows: PaymentRequestRow[] = data?.data ?? [];
   const pagination = data?.pagination ?? { page: 1, pageSize: 20, total: 0, totalPages: 0 };
   const pendingInvoicesData: PendingInvoice[] = pendingInvoices?.data ?? [];
+  const currentPaymentRequest = rows.find((row) => row.id === payOpen);
 
   // Auto-open approval dialog when navigated from a push notification
   useApprovalDeepLink(rows, (row) => setApprovalAction({ row, action: 'approve' }));
@@ -279,6 +280,22 @@ export default function PaymentsPage() {
 
   function handleDownload(id: string, fileName: string) {
     downloadFile('payments', id, fileName).catch(() => setError('Failed to download file'));
+  }
+
+  function validateExpenseForm(): boolean {
+    if (!String(expenseForm.description ?? '').trim() || !String(expenseForm.category ?? '').trim()) {
+      setError('Description and category are required');
+      return false;
+    }
+    if (!Number.isFinite(Number(expenseForm.amount)) || Number(expenseForm.amount) <= 0) {
+      setError('Expense amount must be greater than zero');
+      return false;
+    }
+    if (expenseFile && (!['application/pdf', 'image/jpeg', 'image/png', 'image/webp'].includes(expenseFile.type) || expenseFile.size > 50 * 1024 * 1024)) {
+      setError('Receipt must be a PDF or image smaller than 50 MB');
+      return false;
+    }
+    return true;
   }
 
   return (
@@ -536,8 +553,22 @@ export default function PaymentsPage() {
             <TextField
               label="Payment Amount"
               type="number"
-              value={Number(invoicePayForm.amount ?? 0)}
-              onChange={(e) => setInvoicePayForm({ ...invoicePayForm, amount: Number(e.target.value) })}
+              value={invoicePayForm.amount ?? ''}
+              onChange={(e) => {
+                const value = e.target.value;
+                const parsedAmount = Number(value);
+                setInvoicePayForm({
+                  ...invoicePayForm,
+                  amount: value === ''
+                    ? ''
+                    : !Number.isFinite(parsedAmount)
+                      ? ''
+                      : invoicePayOpen
+                        ? Math.min(parsedAmount, invoicePayOpen.outstanding)
+                        : parsedAmount,
+                });
+              }}
+              inputProps={{ min: 0, max: invoicePayOpen?.outstanding }}
               fullWidth
               size="small"
               required
@@ -622,8 +653,9 @@ export default function PaymentsPage() {
               <TextField
                 label="Amount"
                 type="number"
-                value={Number(expenseForm.amount ?? 0)}
-                onChange={(e) => setExpenseForm({ ...expenseForm, amount: Number(e.target.value) })}
+                value={expenseForm.amount ?? ''}
+                onChange={(e) => setExpenseForm({ ...expenseForm, amount: e.target.value === '' ? '' : Number(e.target.value) })}
+                inputProps={{ min: 0.01, step: 0.01 }}
                 size="small"
                 sx={{ flex: 1, minWidth: 0 }}
                 required
@@ -662,7 +694,16 @@ export default function PaymentsPage() {
               </TextField>
             </Box>
             <Box>
-              <input ref={fileRef} type="file" accept="image/*,application/pdf" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files?.[0]; if (f) setExpenseFile(f); }} />
+              <input ref={fileRef} type="file" accept="image/*,application/pdf" style={{ display: 'none' }} onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                if (!['application/pdf', 'image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 50 * 1024 * 1024) {
+                  setError('Receipt must be a PDF or image smaller than 50 MB');
+                  return;
+                }
+                setError('');
+                setExpenseFile(file);
+              }} />
               <Button variant="outlined" onClick={() => fileRef.current?.click()} startIcon={<AddIcon />}>
                 {expenseFile ? `✓ ${expenseFile.name}` : 'Upload Receipt Photo'}
               </Button>
@@ -673,8 +714,8 @@ export default function PaymentsPage() {
           <Button onClick={() => setExpenseOpen(false)}>Cancel</Button>
           <Button
             variant="contained"
-            onClick={() => { setError(''); createExpenseMutation.mutate(); }}
-            disabled={(!expenseForm.description || !expenseForm.amount || !expenseForm.category) || createExpenseMutation.isPending}
+            onClick={() => { setError(''); if (validateExpenseForm()) createExpenseMutation.mutate(); }}
+            disabled={createExpenseMutation.isPending}
           >
             {createExpenseMutation.isPending ? <CircularProgress size={20} /> : 'Create Expense'}
           </Button>
@@ -689,8 +730,16 @@ export default function PaymentsPage() {
             <TextField
               label="Amount"
               type="number"
-              value={Number(payForm.amount ?? 0)}
-              onChange={(e) => setPayForm({ ...payForm, amount: Number(e.target.value) })}
+              value={payForm.amount ?? ''}
+              onChange={(e) => {
+                const value = e.target.value;
+                const parsedAmount = Number(value);
+                setPayForm({
+                  ...payForm,
+                  amount: value === '' ? '' : Number.isFinite(parsedAmount) ? Math.min(parsedAmount, currentPaymentRequest?.amount ?? parsedAmount) : '',
+                });
+              }}
+              inputProps={{ min: 0.01, max: currentPaymentRequest?.amount, step: 0.01 }}
               fullWidth
               size="small"
               required

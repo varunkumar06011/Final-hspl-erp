@@ -12,6 +12,7 @@ import { getStorageService, serveFile } from '../services/storage.service';
 import multer from 'multer';
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
+const allowedQuotationFileTypes = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'];
 
 const router = Router();
 router.use(authMiddleware);
@@ -155,6 +156,10 @@ router.post(
       let fileName: string | null = null;
       let fileMimeType: string | null = null;
       if (req.file) {
+        if (!allowedQuotationFileTypes.includes(req.file.mimetype)) {
+          res.status(400).json({ error: 'Quotation file must be a PDF or supported image' });
+          return;
+        }
         const isImage = req.file.mimetype.startsWith('image/');
         const subPath = isImage ? 'images' : 'documents';
         const prefixedFileName = `quotations/${subPath}/${quotationNumber}-${req.file.originalname}`;
@@ -312,6 +317,10 @@ router.patch(
 
       // Handle file upload
       if (req.file) {
+        if (!allowedQuotationFileTypes.includes(req.file.mimetype)) {
+          res.status(400).json({ error: 'Quotation file must be a PDF or supported image' });
+          return;
+        }
         const isImage = req.file.mimetype.startsWith('image/');
         const subPath = isImage ? 'images' : 'documents';
         const prefixedFileName = `quotations/${subPath}/${existing.quotationNumber}-${req.file.originalname}`;

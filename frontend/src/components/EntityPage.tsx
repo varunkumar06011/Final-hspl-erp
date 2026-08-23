@@ -185,10 +185,22 @@ export default function EntityPage({
   }, []);
 
   const handleSubmit = useCallback(() => {
-    // Validate required fields
-    const missingFields = fields.filter((f) => f.required && !form[f.name]);
+    const missingFields = fields.filter((f) => f.required && (form[f.name] === undefined || form[f.name] === null || String(form[f.name]).trim() === ''));
     if (missingFields.length > 0) {
       setError(`Required fields missing: ${missingFields.map((f) => f.label).join(', ')}`);
+      return;
+    }
+
+    const invalidNumber = fields.find((f) => f.type === 'number' && form[f.name] !== undefined && form[f.name] !== '' && (!Number.isFinite(Number(form[f.name])) || Number(form[f.name]) < 0));
+    if (invalidNumber) {
+      setError(`${invalidNumber.label} cannot be negative or invalid`);
+      return;
+    }
+
+    const startDate = form.startDate ?? form.plannedStart;
+    const endDate = form.endDate ?? form.plannedEnd;
+    if (startDate && endDate && new Date(String(endDate)) < new Date(String(startDate))) {
+      setError('End date cannot be before start date');
       return;
     }
 
@@ -404,6 +416,7 @@ export default function EntityPage({
                             onChange={(e) => updateMaterial(index, 'pricePerUnit', e.target.value === '' ? undefined : Number(e.target.value))}
                             size="small"
                             sx={{ flex: 1, minWidth: 0 }}
+                            inputProps={{ min: 0, step: 0.01 }}
                           />
                           <IconButton size="small" color="error" onClick={() => removeMaterial(index)} sx={{ flexShrink: 0 }}>
                             <RemoveIcon fontSize="small" />
@@ -451,12 +464,13 @@ export default function EntityPage({
                   onChange={(e) =>
                     setForm({
                       ...form,
-                      [field.name]: field.type === 'number' ? Number(e.target.value) : e.target.value,
+                      [field.name]: field.type === 'number' && e.target.value !== '' ? Number(e.target.value) : e.target.value,
                     })
                   }
                   required={field.required}
                   fullWidth
                   size="small"
+                  inputProps={field.type === 'number' ? { min: 0, step: 0.01 } : undefined}
                   InputLabelProps={field.type === 'date' ? { shrink: true } : undefined}
                 />
               );

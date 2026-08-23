@@ -380,6 +380,42 @@ export default function InvoicesPage() {
     onError: (err: unknown) => setError(extractErrorMessage(err)),
   });
 
+  const validateInvoiceForm = (): boolean => {
+    const invoiceAmount = Number(amount);
+    const tax = Number(taxAmount || 0);
+    const total = Number(totalAmount);
+    const advance = Number(advancePaid || 0);
+    if (!selectedVendorId || !Number.isFinite(invoiceAmount) || invoiceAmount <= 0) {
+      setError('Select a vendor and enter an invoice amount greater than zero');
+      return false;
+    }
+    if (!Number.isFinite(tax) || tax < 0 || !Number.isFinite(total) || total <= 0) {
+      setError('Tax and total amounts must be valid and non-negative');
+      return false;
+    }
+    if (Math.abs(total - (invoiceAmount + tax)) > 0.01) {
+      setError('Total amount must equal invoice amount plus tax amount');
+      return false;
+    }
+    if (hasAdvance && (!Number.isFinite(advance) || advance < 0 || advance > total)) {
+      setError('Advance payment must be between zero and the invoice total');
+      return false;
+    }
+    if (advance > 0 && !advanceType) {
+      setError('Select the advance payment type');
+      return false;
+    }
+    if (advanceType === 'Other' && !advanceOtherType.trim()) {
+      setError('Specify the advance payment type');
+      return false;
+    }
+    if (selectedFile && (!['application/pdf', 'image/jpeg', 'image/png', 'image/webp'].includes(selectedFile.type) || selectedFile.size > 50 * 1024 * 1024)) {
+      setError('Invoice file must be a PDF or image smaller than 50 MB');
+      return false;
+    }
+    return true;
+  };
+
   const approveMutation = useMutation({
     mutationFn: async ({ invId, comments, acknowledged }: { invId: string; comments?: string; acknowledged: true }) => {
       const response = await api.post(`/invoices/${invId}/approve`, { comments, acknowledged });
@@ -715,6 +751,7 @@ export default function InvoicesPage() {
               type="number"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
+              inputProps={{ min: 0.01, step: 0.01 }}
               fullWidth
               size="small"
               required
@@ -726,6 +763,7 @@ export default function InvoicesPage() {
               type="number"
               value={taxAmount}
               onChange={(e) => setTaxAmount(e.target.value)}
+              inputProps={{ min: 0, step: 0.01 }}
               fullWidth
               size="small"
               helperText={selectedPoId && Number(selectedPO?.gstAmount) > 0 ? 'Auto-filled from PO GST' : 'Optional — enter if applicable'}
@@ -759,6 +797,7 @@ export default function InvoicesPage() {
                     type="number"
                     value={advancePaid}
                     onChange={(e) => setAdvancePaid(e.target.value)}
+                    inputProps={{ min: 0, max: Number(totalAmount) || undefined, step: 0.01 }}
                     size="small"
                     sx={{ flex: 1, minWidth: 0 }}
                   />
@@ -819,8 +858,8 @@ export default function InvoicesPage() {
           <Button onClick={() => { setCreateOpen(false); resetForm(); }}>Cancel</Button>
           <Button
             variant="contained"
-            onClick={() => { setError(''); createMutation.mutate(); }}
-            disabled={(!selectedVendorId || !amount || !totalAmount || !acknowledged) || createMutation.isPending}
+            onClick={() => { setError(''); if (validateInvoiceForm()) createMutation.mutate(); }}
+            disabled={createMutation.isPending}
           >
             {createMutation.isPending ? <CircularProgress size={20} /> : 'Create Invoice'}
           </Button>

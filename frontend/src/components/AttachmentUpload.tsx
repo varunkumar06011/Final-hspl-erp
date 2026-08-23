@@ -86,7 +86,12 @@ export default function AttachmentUpload({
       setError('Save the record first before uploading attachments');
       return;
     }
-    uploadMutation.mutate({ file, description: description || undefined });
+    const allowedTypes = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'];
+    if (!allowedTypes.includes(file.type) || file.size > 50 * 1024 * 1024) {
+      setError('File must be a supported document or image smaller than 50 MB');
+      return;
+    }
+    uploadMutation.mutate({ file, description: description.trim() || undefined });
   };
 
   const rows = (attachments as Record<string, unknown>[]) ?? [];

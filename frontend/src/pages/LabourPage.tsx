@@ -546,7 +546,7 @@ export default function AttendancePage() {
             </TextField>
             <TextField label="Role" value={String(staffForm.role ?? '')} onChange={(e) => setStaffForm({ ...staffForm, role: e.target.value })} fullWidth size="small" />
             <TextField label="Phone" value={String(staffForm.phone ?? '')} onChange={(e) => setStaffForm({ ...staffForm, phone: e.target.value })} fullWidth size="small" />
-            <TextField label="Base Salary" type="number" required value={Number(staffForm.baseSalary ?? 0)} onChange={(e) => setStaffForm({ ...staffForm, baseSalary: Number(e.target.value) })} fullWidth size="small" />
+            <TextField label="Base Salary" type="number" required value={staffForm.baseSalary ?? ''} onChange={(e) => setStaffForm({ ...staffForm, baseSalary: e.target.value === '' ? '' : Number(e.target.value) })} inputProps={{ min: 0, step: 0.01 }} fullWidth size="small" />
             {editingStaff && (
               <TextField select label="Status" value={staffForm.active === false ? 'false' : 'true'} onChange={(e) => setStaffForm({ ...staffForm, active: e.target.value === 'true' })} fullWidth size="small">
                 <MenuItem value="true">Active</MenuItem>
@@ -561,6 +561,18 @@ export default function AttendancePage() {
             variant="contained"
             onClick={() => {
               setError('');
+              if (!String(staffForm.name ?? '').trim()) {
+                setError('Staff name is required');
+                return;
+              }
+              if (!Number.isFinite(Number(staffForm.baseSalary)) || Number(staffForm.baseSalary) < 0) {
+                setError('Base salary must be zero or greater');
+                return;
+              }
+              if (staffForm.phone && !/^[0-9+() .-]{7,20}$/.test(String(staffForm.phone).trim())) {
+                setError('Enter a valid phone number');
+                return;
+              }
               createStaffMutation.mutate({
                 name: staffForm.name,
                 type: staffForm.type,

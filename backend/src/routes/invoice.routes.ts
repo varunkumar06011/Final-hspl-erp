@@ -1,6 +1,6 @@
 import { Router, Response, NextFunction } from 'express';
 import { APPROVAL_CONFIG, Permission, AuditAction, InvoiceVerificationStatus, PaymentStatus, StockStatus, UserRole } from '@hospital-erp/shared';
-import { createInvoiceSchema, listInvoicesSchema, approvalActionSchema, updateInvoiceSchema } from '@hospital-erp/shared';
+import { createInvoiceSchema, listInvoicesSchema, approvalActionSchema, updateInvoiceSchema, updateInvoiceStatusSchema } from '@hospital-erp/shared';
 import { prisma } from '../config/prisma';
 import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middleware/auth';
 import { rbacMiddleware } from '../middleware/rbac';
@@ -12,6 +12,7 @@ import { getStorageService, serveFile } from '../services/storage.service';
 import multer from 'multer';
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
+const allowedInvoiceFileTypes = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'];
 
 const router = Router();
 router.use(authMiddleware);
@@ -158,6 +159,10 @@ router.post(
       let fileName: string | null = null;
       let fileMimeType: string | null = null;
       if (req.file) {
+        if (!allowedInvoiceFileTypes.includes(req.file.mimetype)) {
+          res.status(400).json({ error: 'Invoice file must be a PDF or supported image' });
+          return;
+        }
         const isImage = req.file.mimetype.startsWith('image/');
         const subPath = isImage ? 'images' : 'documents';
         const prefixedFileName = `invoices/${subPath}/${invoiceCode}-${req.file.originalname}`;
@@ -279,6 +284,7 @@ router.patch(
   '/:id',
   rbacMiddleware(Permission.VERIFY_INVOICE),
   upload.single('file'),
+  validateMiddleware(updateInvoiceSchema),
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const projectId = requireProjectId(req);
@@ -294,6 +300,19 @@ router.patch(
         return;
       }
 
+      const amount = req.body.amount !== undefined ? Number(req.body.amount) : Number(existing.amount);
+      const taxAmount = req.body.taxAmount !== undefined ? Number(req.body.taxAmount) : Number(existing.taxAmount);
+      const totalAmount = req.body.totalAmount !== undefined ? Number(req.body.totalAmount) : Number(existing.totalAmount);
+      const advancePaid = req.body.advancePaid !== undefined ? Number(req.body.advancePaid) : Number(existing.advancePaid);
+      if (Math.abs(totalAmount - (amount + taxAmount)) > 0.01) {
+        res.status(400).json({ error: 'Total amount must equal invoice amount plus tax amount' });
+        return;
+      }
+      if (advancePaid > totalAmount) {
+        res.status(400).json({ error: 'Advance paid cannot exceed invoice total' });
+        return;
+      }
+
       const updateData: Record<string, unknown> = {};
       for (const key of ['amount', 'taxAmount', 'totalAmount', 'advancePaid', 'advanceType', 'advanceOtherType']) {
         if (req.body[key] !== undefined) {
@@ -305,6 +324,10 @@ router.patch(
       }
 
       if (req.file) {
+        if (!allowedInvoiceFileTypes.includes(req.file.mimetype)) {
+          res.status(400).json({ error: 'Invoice file must be a PDF or supported image' });
+          return;
+        }
         const isImage = req.file.mimetype.startsWith('image/');
         const subPath = isImage ? 'images' : 'documents';
         const prefixedFileName = `invoices/${subPath}/${existing.invoiceCode}-${req.file.originalname}`;
@@ -581,7 +604,7 @@ router.post(
 router.patch(
   '/:id/status',
   rbacMiddleware(Permission.VIEW_FINANCIALS),
-  validateMiddleware(updateInvoiceSchema),
+  validateMiddleware(updateInvoiceStatusSchema),
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const projectId = requireProjectId(req);

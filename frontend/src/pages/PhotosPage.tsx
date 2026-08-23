@@ -78,6 +78,11 @@ export default function PhotosPage() {
   });
 
   const handleFileSelect = (file: File) => {
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 50 * 1024 * 1024) {
+      setError('Photo must be a JPEG, PNG, or WebP image smaller than 50 MB');
+      return;
+    }
+    setError('');
     setSelectedFile(file);
     setForm((prev) => ({ ...prev, fileName: file.name }));
   };

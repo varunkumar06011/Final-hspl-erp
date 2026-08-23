@@ -4,6 +4,7 @@ import {
   createPaymentRequestSchema,
   listPaymentRequestsSchema,
   recordPaymentSchema,
+  createExpenseSchema,
   approvalActionSchema,
 } from '@hospital-erp/shared';
 import { prisma } from '../config/prisma';
@@ -330,6 +331,7 @@ router.post(
   '/expense',
   rbacMiddleware(Permission.VIEW_FINANCIALS),
   upload.single('file'),
+  validateMiddleware(createExpenseSchema),
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const projectId = requireProjectId(req);

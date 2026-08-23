@@ -139,11 +139,29 @@ export default function InventoryPage() {
   };
 
   const handleSubmit = () => {
+    if (!String(form.name ?? '').trim() || !String(form.unit ?? '').trim()) {
+      setError('Item name and unit are required');
+      return;
+    }
+    if (![form.currentStock, form.minStockLevel].every((value) => Number.isFinite(Number(value)) && Number(value) >= 0)) {
+      setError('Stock values must be zero or greater');
+      return;
+    }
+    setError('');
     if (editing) {
       updateMutation.mutate({ id: editing.id as string, payload: form });
     } else {
       createMutation.mutate(form);
     }
+  };
+
+  const handleTransactionSubmit = () => {
+    if (!txnForm.itemId || !txnForm.type || !Number.isFinite(Number(txnForm.quantity)) || Number(txnForm.quantity) <= 0) {
+      setError('Select an item and enter a quantity greater than zero');
+      return;
+    }
+    setError('');
+    txnMutation.mutate(txnForm);
   };
 
   return (
@@ -273,8 +291,8 @@ export default function InventoryPage() {
             <TextField label="SKU" value={form.sku ?? ''} onChange={(e) => setForm({ ...form, sku: e.target.value })} fullWidth size="small" />
             <CreatableSelect label="Category" value={String(form.category ?? '')} onChange={(v) => setForm({ ...form, category: v })} dropdownType="INVENTORY_CATEGORY" />
             <CreatableSelect label="Unit" value={String(form.unit ?? '')} onChange={(v) => setForm({ ...form, unit: v })} required dropdownType="UNIT" />
-            <TextField label="Current Stock" type="number" value={form.currentStock ?? 0} onChange={(e) => setForm({ ...form, currentStock: Number(e.target.value) })} fullWidth size="small" />
-            <TextField label="Min Stock Level" type="number" value={form.minStockLevel ?? 0} onChange={(e) => setForm({ ...form, minStockLevel: Number(e.target.value) })} fullWidth size="small" />
+            <TextField label="Current Stock" type="number" value={form.currentStock ?? 0} onChange={(e) => setForm({ ...form, currentStock: e.target.value === '' ? '' : Number(e.target.value) })} inputProps={{ min: 0, step: 0.01 }} fullWidth size="small" />
+            <TextField label="Min Stock Level" type="number" value={form.minStockLevel ?? 0} onChange={(e) => setForm({ ...form, minStockLevel: e.target.value === '' ? '' : Number(e.target.value) })} inputProps={{ min: 0, step: 0.01 }} fullWidth size="small" />
             <CreatableSelect label="Location" value={String(form.location ?? '')} onChange={(v) => setForm({ ...form, location: v })} dropdownType="LOCATION" />
           </Box>
 
@@ -300,14 +318,14 @@ export default function InventoryPage() {
             <TextField select label="Type" required value={txnForm.type ?? InventoryTxnType.IN} onChange={(e) => setTxnForm({ ...txnForm, type: e.target.value })} fullWidth size="small">
               {enumToOptions(InventoryTxnType).map((opt) => <MenuItem key={opt.value} value={opt.value}>{opt.label}</MenuItem>)}
             </TextField>
-            <TextField label="Quantity" type="number" required value={txnForm.quantity ?? 0} onChange={(e) => setTxnForm({ ...txnForm, quantity: Number(e.target.value) })} fullWidth size="small"
+            <TextField label="Quantity" type="number" required value={txnForm.quantity ?? ''} onChange={(e) => setTxnForm({ ...txnForm, quantity: e.target.value === '' ? '' : Number(e.target.value) })} inputProps={{ min: 0.01, step: 0.01 }} fullWidth size="small"
               helperText={txnForm.type === 'ADJUST' ? 'Set absolute stock value' : 'Positive number'} />
             <TextField label="Notes" value={txnForm.notes ?? ''} onChange={(e) => setTxnForm({ ...txnForm, notes: e.target.value })} fullWidth size="small" multiline rows={2} />
           </Box>
         </DialogContent>
         <DialogActions sx={{ flexWrap: "wrap", gap: 1 }}>
           <Button onClick={() => setTxnDialogOpen(false)}>Cancel</Button>
-          <Button variant="contained" onClick={() => txnMutation.mutate(txnForm)} disabled={txnMutation.isPending}>
+          <Button variant="contained" onClick={handleTransactionSubmit} disabled={txnMutation.isPending}>
             {txnMutation.isPending ? <CircularProgress size={20} /> : 'Record'}
           </Button>
         </DialogActions>

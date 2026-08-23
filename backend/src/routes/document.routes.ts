@@ -56,7 +56,21 @@ router.post(
         res.status(400).json({ error: 'No file uploaded' });
         return;
       }
-      if (!req.body.name) {
+      const allowedMimeTypes = [
+        'application/pdf',
+        'image/jpeg',
+        'image/png',
+        'image/webp',
+        'application/msword',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'application/vnd.ms-excel',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      ];
+      if (!allowedMimeTypes.includes(req.file.mimetype)) {
+        res.status(400).json({ error: 'Unsupported document file type' });
+        return;
+      }
+      if (!String(req.body.name ?? '').trim()) {
         res.status(400).json({ error: 'Document name is required' });
         return;
       }

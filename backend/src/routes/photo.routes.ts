@@ -68,6 +68,10 @@ router.post(
         res.status(400).json({ error: 'No file uploaded' });
         return;
       }
+      if (!['image/jpeg', 'image/png', 'image/webp'].includes(req.file.mimetype)) {
+        res.status(400).json({ error: 'Only JPEG, PNG, and WebP images are allowed' });
+        return;
+      }
 
       const storage = getStorageService();
       const uploadResult = await storage.upload(req.file.buffer, req.file.originalname, req.file.mimetype, 'photos');

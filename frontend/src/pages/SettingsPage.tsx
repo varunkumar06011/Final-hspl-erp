@@ -274,6 +274,7 @@ export default function SettingsPage() {
               type="number"
               value={totalBudget}
               onChange={(e) => setTotalBudget(e.target.value)}
+              inputProps={{ min: 0, step: 0.01 }}
               fullWidth
               size="small"
               helperText={totalBudget ? `Current: ${formatCurrency(Number(totalBudget))}` : 'Set the total project budget'}

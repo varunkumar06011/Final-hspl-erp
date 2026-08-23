@@ -85,8 +85,16 @@ function RecordPaymentDialog({ vendor, open, onClose }: PaymentDialogProps) {
 
   const handleSubmit = () => {
     setError('');
-    if (!amount || Number(amount) <= 0) {
-      setError('Amount is required');
+    if (!Number.isFinite(Number(amount)) || Number(amount) <= 0) {
+      setError('Amount must be greater than zero');
+      return;
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(new Date(date).getTime())) {
+      setError('Enter a valid payment date');
+      return;
+    }
+    if (reference.length > 100 || notes.length > 500) {
+      setError('Reference must be at most 100 characters and notes at most 500 characters');
       return;
     }
     paymentMutation.mutate();
@@ -103,6 +111,7 @@ function RecordPaymentDialog({ vendor, open, onClose }: PaymentDialogProps) {
             type="number"
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
+            inputProps={{ min: 0.01, step: 0.01 }}
             required
           />
           <TextField

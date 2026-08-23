@@ -15,9 +15,12 @@ import {
 } from '../enums.js';
 
 const uuid = z.string().uuid();
-const money = z.coerce.number().min(0);
-const qty = z.coerce.number();
+const money = z.coerce.number().finite().min(0);
+const positiveMoney = z.coerce.number().finite().gt(0);
+const qty = z.coerce.number().finite().min(0);
+const positiveQty = z.coerce.number().finite().gt(0);
 const dateStr = z.coerce.date();
+const nonEmptyText = (max: number) => z.string().trim().min(1).max(max);
 const acknowledgement = z.preprocess(
   (value) => value === true || value === 'true',
   z.literal(true, { errorMap: () => ({ message: 'Acknowledgement is required' }) })
@@ -65,9 +68,9 @@ export const listVendorsSchema = z.object({
 
 // ═══ Quotations ═══
 const quotationLineItem = z.object({
-  materialName: z.string().min(1).max(200),
-  quantity: qty,
-  unit: z.string().max(20).optional(),
+  materialName: nonEmptyText(200),
+  quantity: positiveQty,
+  unit: z.string().trim().max(20).optional(),
   unitPrice: money,
 });
 
@@ -134,24 +137,30 @@ export const createInvoiceSchema = z.object({
   body: z.object({
     vendorId: uuid,
     poId: uuid.optional(),
-    invoiceNumber: z.string().min(1).max(50).optional(),
-    amount: money,
+    invoiceNumber: z.string().trim().max(50).optional(),
+    amount: positiveMoney,
     taxAmount: money.default(0),
-    totalAmount: money,
+    totalAmount: positiveMoney,
     advancePaid: money.optional(),
-    advanceType: z.string().max(50).optional(),
-    advanceOtherType: z.string().max(100).optional(),
+    advanceType: z.string().trim().max(50).optional(),
+    advanceOtherType: z.string().trim().max(100).optional(),
     deliveryDate: dateStr.optional(),
     acknowledged: acknowledgement,
   }),
 }).superRefine((data, ctx) => {
-  const advance = Number(data.body.advancePaid ?? 0);
-  const total = Number(data.body.totalAmount);
-  if (advance > total) {
+  const { amount, taxAmount, totalAmount, advancePaid = 0 } = data.body;
+  if (Math.abs(Number(totalAmount) - (Number(amount) + Number(taxAmount))) > 0.01) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['body', 'totalAmount'],
+      message: 'Total amount must equal invoice amount plus tax amount',
+    });
+  }
+  if (Number(advancePaid) > Number(totalAmount)) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       path: ['body', 'advancePaid'],
-      message: `Advance paid (${advance}) cannot exceed invoice total (${total})`,
+      message: `Advance paid (${advancePaid}) cannot exceed invoice total (${totalAmount})`,
     });
   }
 });
@@ -185,19 +194,19 @@ export const createPaymentRequestSchema = z.object({
   body: z.object({
     invoiceId: uuid,
     vendorId: uuid,
-    requestNumber: z.string().min(1).max(50),
-    amount: money,
-    paymentMode: z.string().max(50).optional(),
-    notes: z.string().max(1000).optional(),
+    requestNumber: nonEmptyText(50),
+    amount: positiveMoney,
+    paymentMode: z.string().trim().max(50).optional(),
+    notes: z.string().trim().max(1000).optional(),
   }),
 });
 export const createExpenseSchema = z.object({
   body: z.object({
-    description: z.string().min(1).max(500),
-    amount: money,
-    category: z.string().min(1).max(100),
+    description: nonEmptyText(500),
+    amount: positiveMoney,
+    category: nonEmptyText(100),
     expenseDate: dateStr.optional(),
-    paymentMode: z.string().max(50).optional(),
+    paymentMode: z.string().trim().max(50).optional(),
   }),
 });
 export const listPaymentRequestsSchema = z.object({
@@ -257,7 +266,7 @@ export const createInventoryTxnSchema = z.object({
     itemId: uuid,
     gatePassId: uuid.optional(),
     type: z.nativeEnum(InventoryTxnType),
-    quantity: qty.refine((v) => v !== 0, 'Quantity cannot be zero'),
+    quantity: z.coerce.number().finite().refine((v) => v !== 0, 'Quantity cannot be zero'),
     notes: z.string().max(500).optional(),
   }),
 });
@@ -271,12 +280,16 @@ export const listInventoryTxnsSchema = z.object({
 // ═══ Phases & Activities ═══
 export const createPhaseSchema = z.object({
   body: z.object({
-    name: z.string().min(1).max(200),
+    name: nonEmptyText(200),
     plannedStart: dateStr.optional(),
     plannedEnd: dateStr.optional(),
     budgetAmount: money.default(0),
     status: z.nativeEnum(PhaseStatus).default(PhaseStatus.NOT_STARTED),
   }),
+}).superRefine((data, ctx) => {
+  if (data.body.plannedStart && data.body.plannedEnd && data.body.plannedEnd < data.body.plannedStart) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['body', 'plannedEnd'], message: 'Planned end date cannot be before planned start date' });
+  }
 });
 export const updatePhaseSchema = z.object({
   params: z.object({ id: uuid }),
@@ -294,13 +307,17 @@ export const updatePhaseSchema = z.object({
 export const createActivitySchema = z.object({
   body: z.object({
     phaseId: uuid,
-    name: z.string().min(1).max(200),
+    name: nonEmptyText(200),
     plannedStart: dateStr.optional(),
     plannedEnd: dateStr.optional(),
     assignedVendorId: uuid.optional(),
     budgetAmount: money.default(0),
     status: z.nativeEnum(ActivityStatus).default(ActivityStatus.NOT_STARTED),
   }),
+}).superRefine((data, ctx) => {
+  if (data.body.plannedStart && data.body.plannedEnd && data.body.plannedEnd < data.body.plannedStart) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['body', 'plannedEnd'], message: 'Planned end date cannot be before planned start date' });
+  }
 });
 export const updateActivitySchema = z.object({
   params: z.object({ id: uuid }),
@@ -341,10 +358,10 @@ export const listPhotosSchema = z.object({
 // ═══ Issues ═══
 export const createIssueSchema = z.object({
   body: z.object({
-    category: z.string().min(1).max(100),
+    category: nonEmptyText(100),
     severity: z.nativeEnum(IssueSeverity).default(IssueSeverity.MEDIUM),
-    title: z.string().min(1).max(200),
-    description: z.string().max(2000).optional(),
+    title: nonEmptyText(200),
+    description: z.string().trim().max(2000).optional(),
     addressTo: z.array(uuid).min(1, 'Select at least one person to address to'),
   }),
 });
@@ -365,7 +382,7 @@ export const listIssuesSchema = z.object({
 // ═══ Inspections ═══
 export const createInspectionSchema = z.object({
   body: z.object({
-    name: z.string().min(1).max(200),
+    name: nonEmptyText(200),
     date: dateStr.optional(),
     scheduledDate: dateStr.optional(),
   }),
@@ -408,21 +425,25 @@ export const listDocumentsSchema = z.object({
 
 // ═══ Contracts ═══
 const milestone = z.object({
-  name: z.string().min(1).max(200),
+  name: nonEmptyText(200),
   dueDate: dateStr.optional(),
   amount: money,
 });
 export const createContractSchema = z.object({
   body: z.object({
     vendorId: uuid,
-    type: z.string().min(1).max(100), // configurable via DropdownOption
+    type: nonEmptyText(100),
     startDate: dateStr,
     endDate: dateStr.optional(),
     value: money,
-    advancePercent: z.coerce.number().min(0).max(100).default(0),
-    retentionPercent: z.coerce.number().min(0).max(100).default(0),
+    advancePercent: z.coerce.number().finite().min(0).max(100).default(0),
+    retentionPercent: z.coerce.number().finite().min(0).max(100).default(0),
     milestones: z.array(milestone).optional(),
   }),
+}).superRefine((data, ctx) => {
+  if (data.body.endDate && data.body.endDate < data.body.startDate) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['body', 'endDate'], message: 'End date cannot be before start date' });
+  }
 });
 export const updateContractSchema = z.object({
   params: z.object({ id: uuid }),
@@ -438,19 +459,19 @@ export const listContractsSchema = z.object({
 // ═══ Attendance (Staff + Daily Attendance) ═══
 export const createStaffSchema = z.object({
   body: z.object({
-    name: z.string().min(1).max(200),
+    name: nonEmptyText(200),
     type: z.enum(['COMPANY', 'LABOUR']),
-    role: z.string().max(100).optional(),
-    phone: z.string().max(20).optional(),
+    role: z.string().trim().max(100).optional(),
+    phone: z.string().trim().regex(/^[0-9+() .-]{7,20}$/, 'Enter a valid phone number').optional().or(z.literal('')),
     baseSalary: money,
   }),
 });
 export const updateStaffSchema = z.object({
   params: z.object({ id: uuid }),
   body: z.object({
-    name: z.string().min(1).max(200).optional(),
-    role: z.string().max(100).optional(),
-    phone: z.string().max(20).optional(),
+    name: z.string().trim().min(1).max(200).optional(),
+    role: z.string().trim().max(100).optional(),
+    phone: z.string().trim().regex(/^[0-9+() .-]{7,20}$/, 'Enter a valid phone number').optional().or(z.literal('')),
     baseSalary: money.optional(),
     active: z.boolean().optional(),
   }),
@@ -478,6 +499,10 @@ export const listAttendanceSchema = z.object({
     startDate: dateStr.optional(),
     endDate: dateStr.optional(),
   }),
+}).superRefine((data, ctx) => {
+  if (data.query.startDate && data.query.endDate && data.query.endDate < data.query.startDate) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['query', 'endDate'], message: 'End date cannot be before start date' });
+  }
 });
 
 // ═══ Dropdown Options ═══
