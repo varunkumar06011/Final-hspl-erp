@@ -50,7 +50,7 @@ export default function ErrorScreen({
         background: 'linear-gradient(135deg, #E3F2FD 0%, #BBDEFB 100%)',
       }}
     >
-      <Box sx={{ width: { xs: 220, sm: 280, md: 320 } }}>
+      <Box sx={{ width: { xs: 220, sm: 280, md: 320 }, height: { xs: 220, sm: 280, md: 320 } }}>
         <Lottie src={errorAnimation} loop autoplay style={{ width: '100%', height: '100%' }} />
       </Box>
 
