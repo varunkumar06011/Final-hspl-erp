@@ -1,6 +1,7 @@
+import { useEffect, useRef } from 'react';
 import { Box, Typography, Button } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
-import { Lottie } from 'lottie-react';
+import lottie from 'lottie-web';
 import errorAnimation from '../assets/lottie-error.json';
 
 export type ErrorVariant = '404' | 'offline' | 'generic';
@@ -34,8 +35,21 @@ export default function ErrorScreen({
   showReload,
 }: Props) {
   const navigate = useNavigate();
+  const containerRef = useRef<HTMLDivElement>(null);
   const { title, defaultMessage } = COPY[variant];
   const reload = showReload ?? variant === 'offline';
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+    const anim = lottie.loadAnimation({
+      container: containerRef.current,
+      renderer: 'svg',
+      loop: true,
+      autoplay: true,
+      animationData: errorAnimation,
+    });
+    return () => anim.destroy();
+  }, []);
 
   return (
     <Box
@@ -50,9 +64,10 @@ export default function ErrorScreen({
         background: 'linear-gradient(135deg, #E3F2FD 0%, #BBDEFB 100%)',
       }}
     >
-      <Box sx={{ width: { xs: 220, sm: 280, md: 320 }, height: { xs: 220, sm: 280, md: 320 } }}>
-        <Lottie src={errorAnimation} loop autoplay style={{ width: '100%', height: '100%' }} />
-      </Box>
+      <Box
+        ref={containerRef}
+        sx={{ width: { xs: 220, sm: 280, md: 320 }, height: { xs: 220, sm: 280, md: 320 } }}
+      />
 
       <Typography variant="h4" fontWeight={700} align="center">
         {variant === '404' ? '404' : title}
