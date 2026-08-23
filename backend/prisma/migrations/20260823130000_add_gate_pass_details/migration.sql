@@ -1,12 +1,12 @@
 ALTER TABLE "gate_passes"
-  ADD COLUMN "visitTime" TEXT,
-  ADD COLUMN "visitorName" TEXT,
-  ADD COLUMN "purpose" TEXT,
-  ADD COLUMN "vehicleType" TEXT,
-  ADD COLUMN "vehicleNumber" TEXT,
-  ADD COLUMN "driverName" TEXT,
-  ADD COLUMN "driverMobile" TEXT,
-  ADD COLUMN "materialMovement" BOOLEAN NOT NULL DEFAULT true,
-  ADD COLUMN "gatePassType" TEXT NOT NULL DEFAULT 'NON_RETURNABLE',
-  ADD COLUMN "photoProofPath" TEXT,
-  ADD COLUMN "remarks" TEXT;
+  ADD COLUMN IF NOT EXISTS "visitTime" TEXT,
+  ADD COLUMN IF NOT EXISTS "visitorName" TEXT,
+  ADD COLUMN IF NOT EXISTS "purpose" TEXT,
+  ADD COLUMN IF NOT EXISTS "vehicleType" TEXT,
+  ADD COLUMN IF NOT EXISTS "vehicleNumber" TEXT,
+  ADD COLUMN IF NOT EXISTS "driverName" TEXT,
+  ADD COLUMN IF NOT EXISTS "driverMobile" TEXT,
+  ADD COLUMN IF NOT EXISTS "materialMovement" BOOLEAN NOT NULL DEFAULT true,
+  ADD COLUMN IF NOT EXISTS "gatePassType" TEXT NOT NULL DEFAULT 'NON_RETURNABLE',
+  ADD COLUMN IF NOT EXISTS "photoProofPath" TEXT,
+  ADD COLUMN IF NOT EXISTS "remarks" TEXT;
