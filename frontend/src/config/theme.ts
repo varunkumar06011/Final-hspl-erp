@@ -42,6 +42,19 @@ export const theme = createTheme({
     },
   },
   components: {
+    MuiCssBaseline: {
+      styleOverrides: {
+        html: {
+          overflowX: 'hidden',
+          maxWidth: '100vw',
+        },
+        body: {
+          overflowX: 'hidden',
+          maxWidth: '100vw',
+          overflowWrap: 'break-word',
+        },
+      },
+    },
     MuiButton: {
       styleOverrides: {
         root: {
@@ -55,6 +68,7 @@ export const theme = createTheme({
         root: {
           borderRadius: 12,
           boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+          overflow: 'hidden',
         },
       },
     },
@@ -71,67 +85,48 @@ export const theme = createTheme({
         },
       },
     },
-    MuiDialog: {
-      styleOverrides: {
-        paper: {
-          '@media (max-width: 599.95px)': {
-            margin: 8,
-            width: 'calc(100% - 16px)',
-            maxWidth: 'calc(100% - 16px) !important',
-          },
-        },
-      },
-    },
     MuiDialogContent: {
       styleOverrides: {
         root: {
-          '@media (max-width: 599.95px)': {
-            padding: 12,
-          },
-        },
-      },
-    },
-    MuiDialogTitle: {
-      styleOverrides: {
-        root: {
-          '@media (max-width: 599.95px)': {
-            padding: '12px 16px',
-            fontSize: '1.1rem',
-          },
+          paddingTop: '12px',
         },
       },
     },
     MuiDialogActions: {
       styleOverrides: {
         root: {
-          '@media (max-width: 599.95px)': {
-            padding: '8px 12px',
-            '& .MuiButton-root': {
-              minWidth: 'auto',
-            },
+          padding: '12px 16px',
+          gap: 1,
+          '& .MuiButton-root': {
+            minWidth: { xs: 88, sm: 96 },
           },
         },
       },
     },
-    MuiTablePagination: {
+    MuiMenuItem: {
       styleOverrides: {
-        toolbar: {
-          '@media (max-width: 599.95px)': {
-            flexWrap: 'wrap',
-            gap: 0.5,
-            paddingLeft: 8,
-            paddingRight: 8,
-          },
+        root: {
+          whiteSpace: 'normal',
+          wordBreak: 'break-word',
+          overflowWrap: 'break-word',
+          minHeight: 'auto',
+          paddingTop: 8,
+          paddingBottom: 8,
         },
-        select: {
-          '@media (max-width: 599.95px)': {
-            marginRight: 0,
-          },
+      },
+    },
+    MuiTableCell: {
+      styleOverrides: {
+        root: {
+          wordBreak: 'break-word',
+          overflowWrap: 'break-word',
         },
-        displayedRows: {
-          '@media (max-width: 599.95px)': {
-            display: 'none',
-          },
+      },
+    },
+    MuiTypography: {
+      styleOverrides: {
+        root: {
+          overflowWrap: 'break-word',
         },
       },
     },

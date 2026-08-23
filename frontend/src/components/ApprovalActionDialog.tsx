@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
-import { Button, Dialog, DialogActions, DialogContent, DialogTitle, TextField } from '@mui/material';
+﻿import { useEffect, useState } from 'react';
+import { Button, DialogActions, DialogContent, DialogTitle, TextField } from '@mui/material';
+import ResponsiveDialog from './ResponsiveDialog';
 import AcknowledgementCheckbox from './AcknowledgementCheckbox';
 
 interface ApprovalActionDialogProps {
@@ -32,7 +33,7 @@ export default function ApprovalActionDialog({
   const isReject = action === 'reject';
 
   return (
-    <Dialog open={open} onClose={pending ? undefined : onClose} fullWidth maxWidth="sm">
+    <ResponsiveDialog open={open} onClose={pending ? undefined : onClose} fullWidth maxWidth="sm">
       <DialogTitle>{isReject ? 'Reject' : 'Approve'} {entityLabel}</DialogTitle>
       <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '12px !important' }}>
         <TextField
@@ -63,6 +64,6 @@ export default function ApprovalActionDialog({
           {isReject ? 'Reject' : 'Approve'}
         </Button>
       </DialogActions>
-    </Dialog>
+    </ResponsiveDialog>
   );
 }

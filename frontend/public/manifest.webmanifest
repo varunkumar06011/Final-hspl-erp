@@ -1,0 +1,26 @@
+{
+  "name": "Hospital Construction ERP",
+  "short_name": "Hospital ERP",
+  "description": "Construction management and approval workflow system for hospital projects",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#E3F2FD",
+  "theme_color": "#448AFF",
+  "categories": ["business", "productivity"],
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-maskable.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+﻿import { useState, useEffect, useRef } from 'react';
 import {
   Box,
   Typography,
@@ -12,7 +12,6 @@ import {
   TableRow,
   TablePagination,
   TextField,
-  Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
@@ -27,6 +26,8 @@ import {
   AccordionDetails,
   Snackbar,
 } from '@mui/material';
+import ResponsiveDialog from '../components/ResponsiveDialog';
+import ApprovalStepsDisplay from '../components/ApprovalStepsDisplay';
 import {
   Add as AddIcon,
   Refresh as RefreshIcon,
@@ -37,7 +38,7 @@ import {
   ExpandMore as ExpandMoreIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { InvoiceVerificationStatus, PaymentStatus, StockStatus, UserRole } from '@hospital-erp/shared';
+import { InvoiceVerificationStatus, StockStatus, UserRole } from '@hospital-erp/shared';
 import { formatCurrency, STATUS_COLORS } from '../utils/enumOptions';
 import api, { extractErrorMessage } from '../config/api';
 import { useAuthStore } from '../stores/authStore';
@@ -46,6 +47,7 @@ import AcknowledgementCheckbox from '../components/AcknowledgementCheckbox';
 import ApprovalActionDialog from '../components/ApprovalActionDialog';
 import OcrAutoFill, { type OcrInvoiceData } from '../components/OcrAutoFill';
 import ResponsiveTable from '../components/ResponsiveTable';
+import { useApprovalDeepLink } from '../utils/useApprovalDeepLink';
 
 interface POItem {
   id?: string;
@@ -99,6 +101,126 @@ interface InvoiceRow {
 const HEAD_ROLES = [UserRole.PROJECT_HEAD, UserRole.HEAD_OF_CONSTRUCTION, UserRole.ADMIN, UserRole.ADMIN_2];
 
 const ADVANCE_TYPES = ['Cash', 'Credit Card', 'Debit Card', 'Bank Transfer', 'Cheque', 'Other'];
+
+interface PaymentLedgerEntry {
+  type: string;
+  date: string;
+  amount: number;
+  mode: string | null;
+  reference: string | null;
+  status: string;
+  requestNumber: string | null;
+}
+
+interface PaymentHistoryResponse {
+  invoice: {
+    id: string;
+    invoiceCode: string;
+    invoiceNumber: string;
+    totalAmount: number;
+    advancePaid: number;
+    installmentsPaid: number;
+    paidToDate: number;
+    outstanding: number;
+    paymentStatus: string;
+  };
+  ledger: PaymentLedgerEntry[];
+}
+
+function PaymentHistoryAccordion({ invoiceId, invoiceCode, vendorName }: { invoiceId: string; invoiceCode: string; vendorName: string }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ['/invoices', invoiceId, 'payments'],
+    queryFn: async () => {
+      const response = await api.get(`/invoices/${invoiceId}/payments`);
+      return response.data as PaymentHistoryResponse;
+    },
+  });
+
+  return (
+    <Accordion>
+      <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+        <Typography><strong>{invoiceCode}</strong> — {vendorName}
+          {data && data.invoice.outstanding > 0 && (
+            <> — Outstanding: <strong>{formatCurrency(data.invoice.outstanding)}</strong></>
+          )}
+          {data && data.invoice.outstanding <= 0 && (
+            <Chip label="Fully Paid" size="small" color="success" sx={{ ml: 1 }} />
+          )}
+        </Typography>
+      </AccordionSummary>
+      <AccordionDetails>
+        {isLoading ? (
+          <CircularProgress size={24} />
+        ) : data ? (
+          <Box>
+            {/* Summary */}
+            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', sm: 'repeat(4, 1fr)' }, gap: 1, mb: 2 }}>
+              <Box><Typography variant="caption" color="text.secondary">Total</Typography><Typography variant="body2" fontWeight={600}>{formatCurrency(data.invoice.totalAmount)}</Typography></Box>
+              <Box><Typography variant="caption" color="text.secondary">Advance</Typography><Typography variant="body2" fontWeight={600}>{formatCurrency(data.invoice.advancePaid)}</Typography></Box>
+              <Box><Typography variant="caption" color="text.secondary">Installments</Typography><Typography variant="body2" fontWeight={600}>{formatCurrency(data.invoice.installmentsPaid)}</Typography></Box>
+              <Box><Typography variant="caption" color="text.secondary">Paid to Date</Typography><Typography variant="body2" fontWeight={600}>{formatCurrency(data.invoice.paidToDate)}</Typography></Box>
+            </Box>
+            <Box sx={{ mb: 2 }}>
+              <Typography variant="body2" color={data.invoice.outstanding > 0 ? 'error.main' : 'success.main'} fontWeight={600}>
+                Outstanding: {formatCurrency(data.invoice.outstanding)}
+              </Typography>
+            </Box>
+
+            {/* Ledger table (desktop) */}
+            <Table size="small" sx={{ display: { xs: 'none', sm: 'table' } }}>
+              <TableHead>
+                <TableRow>
+                  <TableCell sx={{ fontWeight: 600 }}>Type</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Date</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Amount</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Mode</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Reference</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Status</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {data.ledger.length === 0 ? (
+                  <TableRow><TableCell colSpan={6} align="center">No payments recorded yet</TableCell></TableRow>
+                ) : data.ledger.map((entry, idx) => (
+                  <TableRow key={idx}>
+                    <TableCell>{entry.type}</TableCell>
+                    <TableCell>{new Date(entry.date).toLocaleDateString()}</TableCell>
+                    <TableCell>{formatCurrency(entry.amount)}</TableCell>
+                    <TableCell>{entry.mode ?? '—'}</TableCell>
+                    <TableCell>{entry.reference ?? '—'}</TableCell>
+                    <TableCell><Chip label={entry.status} size="small" color={entry.status === 'PAID' ? 'success' : entry.status === 'REJECTED' ? 'error' : 'default'} /></TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+
+            {/* Ledger cards (mobile) */}
+            <Box sx={{ display: { xs: 'flex', sm: 'none' }, flexDirection: 'column', gap: 1 }}>
+              {data.ledger.length === 0 ? (
+                <Typography color="text.secondary" sx={{ py: 2, textAlign: 'center' }}>No payments recorded yet</Typography>
+              ) : data.ledger.map((entry, idx) => (
+                <Card key={idx} variant="outlined" sx={{ p: 1.5 }}>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                    <Typography variant="subtitle2" fontWeight={700}>{entry.type}</Typography>
+                    <Chip label={entry.status} size="small" color={entry.status === 'PAID' ? 'success' : entry.status === 'REJECTED' ? 'error' : 'default'} />
+                  </Box>
+                  <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0.5 }}>
+                    <Box><Typography variant="caption" color="text.secondary">Date</Typography><Typography variant="body2">{new Date(entry.date).toLocaleDateString()}</Typography></Box>
+                    <Box><Typography variant="caption" color="text.secondary">Amount</Typography><Typography variant="body2" fontWeight={600}>{formatCurrency(entry.amount)}</Typography></Box>
+                    <Box><Typography variant="caption" color="text.secondary">Mode</Typography><Typography variant="body2">{entry.mode ?? '—'}</Typography></Box>
+                    <Box><Typography variant="caption" color="text.secondary">Reference</Typography><Typography variant="body2" sx={{ overflowWrap: 'anywhere' }}>{entry.reference ?? '—'}</Typography></Box>
+                  </Box>
+                </Card>
+              ))}
+            </Box>
+          </Box>
+        ) : (
+          <Typography color="text.secondary">Failed to load payment history</Typography>
+        )}
+      </AccordionDetails>
+    </Accordion>
+  );
+}
 
 export default function InvoicesPage() {
   const [page, setPage] = useState(0);
@@ -284,29 +406,9 @@ export default function InvoicesPage() {
     onError: (err: unknown) => setError(extractErrorMessage(err)),
   });
 
-  const markPaymentPaidMutation = useMutation({
-    mutationFn: async (invId: string) => {
-      const response = await api.post(`/invoices/${invId}/mark-payment-paid`);
-      return response.data;
-    },
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['/invoices'] });
-      queryClient.invalidateQueries({ queryKey: ['/inventory'] });
-      queryClient.invalidateQueries({ queryKey: ['/payments'] });
-      queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
-      if (data?.inventoryWarning) {
-        setError(data.inventoryWarning);
-      } else {
-        setSuccessMsg('Payment marked as paid.');
-        setTimeout(() => setSuccessMsg(''), 5000);
-      }
-    },
-    onError: (err: unknown) => setError(extractErrorMessage(err)),
-  });
-
   const updateStatusMutation = useMutation({
-    mutationFn: async ({ invId, paymentStatus, stockStatus }: { invId: string; paymentStatus?: string; stockStatus?: string }) => {
-      const response = await api.patch(`/invoices/${invId}/status`, { paymentStatus, stockStatus });
+    mutationFn: async ({ invId, stockStatus }: { invId: string; stockStatus?: string }) => {
+      const response = await api.patch(`/invoices/${invId}/status`, { stockStatus });
       return response.data;
     },
     onSuccess: (data) => {
@@ -327,6 +429,9 @@ export default function InvoicesPage() {
   const rows: InvoiceRow[] = data?.data ?? [];
   const pagination = data?.pagination ?? { page: 1, pageSize: 20, total: 0, totalPages: 0 };
   const vendors: { id: string; name: string; vendorCode: string }[] = vendorsData?.data ?? [];
+
+  // Auto-open approval dialog when navigated from a push notification
+  useApprovalDeepLink(rows, (row) => setApprovalAction({ row, action: 'approve' }));
 
   function resetForm() {
     setSelectedVendorId('');
@@ -442,26 +547,11 @@ export default function InvoicesPage() {
                         : '—'}
                     </TableCell>
                     <TableCell data-label="Payment">
-                      <TextField
-                        select
+                      <Chip
+                        label={row.paymentStatus.replace(/_/g, ' ')}
                         size="small"
-                        value={row.paymentStatus}
-                        onChange={(e) => {
-                          const newStatus = e.target.value;
-                          if (newStatus === PaymentStatus.PAID) {
-                            markPaymentPaidMutation.mutate(row.id);
-                          } else {
-                            updateStatusMutation.mutate({ invId: row.id, paymentStatus: newStatus });
-                          }
-                        }}
-                        sx={{ minWidth: 140 }}
-                        disabled={row.verificationStatus !== InvoiceVerificationStatus.VERIFIED || updateStatusMutation.isPending || markPaymentPaidMutation.isPending}
-                      >
-                        <MenuItem value={PaymentStatus.PENDING}>Payment Pending</MenuItem>
-                        <MenuItem value={PaymentStatus.PAID}>Paid</MenuItem>
-                        <MenuItem value={PaymentStatus.DELAYED}>Delayed</MenuItem>
-                        <MenuItem value={PaymentStatus.OTHER}>Other</MenuItem>
-                      </TextField>
+                        color={STATUS_COLORS[row.paymentStatus] ?? 'default'}
+                      />
                     </TableCell>
                     <TableCell data-label="Stock">
                       <TextField
@@ -523,36 +613,25 @@ export default function InvoicesPage() {
                 <Typography><strong>{row.invoiceCode}</strong> — {row.vendor?.name} — <Chip label={row.approvalWorkflow!.status} size="small" /></Typography>
               </AccordionSummary>
               <AccordionDetails>
-                <Table size="small">
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>Step</TableCell>
-                      <TableCell>Approver Role</TableCell>
-                      <TableCell>Status</TableCell>
-                      <TableCell>Approver</TableCell>
-                      <TableCell>Comments</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {row.approvalWorkflow!.steps.map((step) => (
-                      <TableRow key={step.id}>
-                        <TableCell>{step.stepNumber}</TableCell>
-                        <TableCell>{step.approverRole.replace(/_/g, ' ')}</TableCell>
-                        <TableCell><Chip label={step.status} size="small" color={step.status === 'APPROVED' ? 'success' : step.status === 'REJECTED' ? 'error' : 'default'} /></TableCell>
-                        <TableCell>{step.approverUser?.name ?? '—'}</TableCell>
-                        <TableCell>{step.comments ?? '—'}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                <ApprovalStepsDisplay steps={row.approvalWorkflow!.steps} />
               </AccordionDetails>
             </Accordion>
           ))}
         </Box>
       )}
 
+      {/* Payment History */}
+      {rows.length > 0 && rows.some((r) => r.verificationStatus === InvoiceVerificationStatus.VERIFIED) && (
+        <Box sx={{ mt: 2 }}>
+          <Typography variant="h6" fontWeight={600} sx={{ mb: 1 }}>Payment History</Typography>
+          {rows.filter((r) => r.verificationStatus === InvoiceVerificationStatus.VERIFIED).map((row) => (
+            <PaymentHistoryAccordion key={row.id} invoiceId={row.id} invoiceCode={row.invoiceCode} vendorName={row.vendor?.name ?? '—'} />
+          ))}
+        </Box>
+      )}
+
       {/* Create Invoice Dialog */}
-      <Dialog open={createOpen} onClose={() => { setCreateOpen(false); resetForm(); }} maxWidth="md" fullWidth>
+      <ResponsiveDialog open={createOpen} onClose={() => { setCreateOpen(false); resetForm(); }} maxWidth="md" fullWidth>
         <DialogTitle>Create Vendor Invoice</DialogTitle>
         <DialogContent>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
@@ -674,14 +753,14 @@ export default function InvoicesPage() {
                 {hasAdvance ? '✓ Advance Paid' : 'Add Advance Payment'}
               </Button>
               {hasAdvance && (
-                <Box sx={{ display: 'flex', gap: 2, mt: 1, flexWrap: 'wrap' }}>
+                <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, mt: 1, flexWrap: 'wrap' }}>
                   <TextField
                     label="Advance Amount"
                     type="number"
                     value={advancePaid}
                     onChange={(e) => setAdvancePaid(e.target.value)}
                     size="small"
-                    sx={{ flex: 1 }}
+                    sx={{ flex: 1, minWidth: 0 }}
                   />
                   <TextField
                     select
@@ -689,7 +768,7 @@ export default function InvoicesPage() {
                     value={advanceType}
                     onChange={(e) => setAdvanceType(e.target.value)}
                     size="small"
-                    sx={{ flex: 1 }}
+                    sx={{ flex: 1, minWidth: 0 }}
                   >
                     {ADVANCE_TYPES.map((t) => <MenuItem key={t} value={t}>{t}</MenuItem>)}
                   </TextField>
@@ -699,7 +778,7 @@ export default function InvoicesPage() {
                       value={advanceOtherType}
                       onChange={(e) => setAdvanceOtherType(e.target.value)}
                       size="small"
-                      sx={{ flex: 1 }}
+                      sx={{ flex: 1, minWidth: 0 }}
                     />
                   )}
                 </Box>
@@ -746,7 +825,7 @@ export default function InvoicesPage() {
             {createMutation.isPending ? <CircularProgress size={20} /> : 'Create Invoice'}
           </Button>
         </DialogActions>
-      </Dialog>
+      </ResponsiveDialog>
 
       {/* Approval Popup for Creator */}
       <Snackbar

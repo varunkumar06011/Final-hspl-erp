@@ -8,11 +8,16 @@ import {
   Button,
   Alert,
   CircularProgress,
+  Input,
+  IconButton,
+  InputAdornment,
 } from '@mui/material';
+import { Visibility, VisibilityOff } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { extractErrorMessage } from '../config/api';
 import { useAuthStore } from '../stores/authStore';
 import { formatCurrency } from '../utils/enumOptions';
+import NotificationPermissionPrompt from '../components/NotificationPermissionPrompt';
 
 const ROLE_LABELS: Record<string, string> = {
   PROJECT_HEAD: 'Project Head',
@@ -32,6 +37,10 @@ export default function SettingsPage() {
   const [gstNumber, setGstNumber] = useState('');
   const [profileName, setProfileName] = useState('');
   const [profilePhone, setProfilePhone] = useState('');
+  const [oldPin, setOldPin] = useState('');
+  const [newPin, setNewPin] = useState('');
+  const [confirmPin, setConfirmPin] = useState('');
+  const [showPins, setShowPins] = useState(false);
   const [success, setSuccess] = useState('');
   const [error, setError] = useState('');
 
@@ -100,6 +109,22 @@ export default function SettingsPage() {
     onError: (err: unknown) => setError(extractErrorMessage(err)),
   });
 
+  const changePinMutation = useMutation({
+    mutationFn: async (payload: { oldPin: string; newPin: string }) => {
+      const response = await api.post('/auth/change-pin', payload);
+      return response.data;
+    },
+    onSuccess: () => {
+      setSuccess('PIN updated successfully');
+      setError('');
+      setOldPin('');
+      setNewPin('');
+      setConfirmPin('');
+      setTimeout(() => setSuccess(''), 3000);
+    },
+    onError: (err: unknown) => setError(extractErrorMessage(err)),
+  });
+
   if (isLoading) {
     return <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}><CircularProgress /></Box>;
   }
@@ -149,6 +174,72 @@ export default function SettingsPage() {
               sx={{ alignSelf: 'flex-start' }}
             >
               {updateProfileMutation.isPending ? <CircularProgress size={20} /> : 'Save Profile'}
+            </Button>
+          </Box>
+        </CardContent>
+      </Card>
+
+      {/* Notifications */}
+      <Card sx={{ mb: 3 }}>
+        <CardContent>
+          <Typography variant="h6" gutterBottom>Push Notifications</Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Get system-level alerts when an approval is required, even when the website is closed or minimized.
+          </Typography>
+          <NotificationPermissionPrompt />
+        </CardContent>
+      </Card>
+
+      {/* Change PIN */}
+      <Card sx={{ mb: 3 }}>
+        <CardContent>
+          <Typography variant="h6" gutterBottom>Change Login PIN</Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Your 4-digit PIN is used with your phone number to sign in. No OTP needed after setting it.
+          </Typography>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, maxWidth: 400, flexWrap: 'wrap' }}>
+            <Input
+              type={showPins ? 'text' : 'password'}
+              value={oldPin}
+              onChange={(e) => { const d = e.target.value.replace(/\D/g, '').slice(0, 4); setOldPin(d); }}
+              placeholder="Current PIN"
+              fullWidth
+              inputProps={{ maxLength: 4, style: { textAlign: 'center', letterSpacing: '0.3rem', fontSize: '1.25rem' } }}
+              endAdornment={
+                <InputAdornment position="end">
+                  <IconButton onClick={() => setShowPins(!showPins)} edge="end">
+                    {showPins ? <VisibilityOff /> : <Visibility />}
+                  </IconButton>
+                </InputAdornment>
+              }
+            />
+            <Input
+              type={showPins ? 'text' : 'password'}
+              value={newPin}
+              onChange={(e) => { const d = e.target.value.replace(/\D/g, '').slice(0, 4); setNewPin(d); }}
+              placeholder="New PIN"
+              fullWidth
+              inputProps={{ maxLength: 4, style: { textAlign: 'center', letterSpacing: '0.3rem', fontSize: '1.25rem' } }}
+            />
+            <Input
+              type={showPins ? 'text' : 'password'}
+              value={confirmPin}
+              onChange={(e) => { const d = e.target.value.replace(/\D/g, '').slice(0, 4); setConfirmPin(d); }}
+              placeholder="Confirm New PIN"
+              fullWidth
+              error={confirmPin.length > 0 && confirmPin !== newPin}
+              inputProps={{ maxLength: 4, style: { textAlign: 'center', letterSpacing: '0.3rem', fontSize: '1.25rem' } }}
+            />
+            {confirmPin.length > 0 && confirmPin !== newPin && (
+              <Typography variant="caption" color="error">PINs do not match</Typography>
+            )}
+            <Button
+              variant="contained"
+              onClick={() => changePinMutation.mutate({ oldPin, newPin })}
+              disabled={oldPin.length !== 4 || newPin.length !== 4 || confirmPin !== newPin || changePinMutation.isPending}
+              sx={{ alignSelf: 'flex-start' }}
+            >
+              {changePinMutation.isPending ? <CircularProgress size={20} /> : 'Update PIN'}
             </Button>
           </Box>
         </CardContent>

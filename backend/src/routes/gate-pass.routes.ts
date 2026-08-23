@@ -1,36 +1,68 @@
 import { Router, Response, NextFunction } from 'express';
-import multer from 'multer';
-import { AuditAction, Permission, createGatePassSchema, updateGatePassSchema, listGatePassesSchema, verifyGatePassOtpSchema } from '@hospital-erp/shared';
+import { Permission, AuditAction, UserRole, InventoryTxnType } from '@hospital-erp/shared';
+import { createGatePassSchema, listGatePassesSchema, verifyGatePassOtpSchema } from '@hospital-erp/shared';
 import { prisma } from '../config/prisma';
 import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middleware/auth';
 import { rbacMiddleware } from '../middleware/rbac';
 import { validateMiddleware } from '../middleware/validate';
 import { logAudit } from '../services/audit.service';
-import { getStorageService } from '../services/storage.service';
-import { generateOtp, verifyOtp } from '../services/otp.service';
+import { verifyFirebaseToken } from '../config/firebase';
 
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 const router = Router();
-
 router.use(authMiddleware);
 
-const include = {
-  vendor: { select: { id: true, name: true, phone: true } },
-  purchaseOrder: { select: { id: true, poNumber: true } },
-  invoice: { select: { id: true, invoiceNumber: true } },
-  approver: { select: { id: true, name: true, phone: true } },
+const HEAD_ROLES = [UserRole.PROJECT_HEAD, UserRole.HEAD_OF_CONSTRUCTION, UserRole.ADMIN, UserRole.ADMIN_2];
+
+function getPassDatePrefix(): string {
+  const now = new Date();
+  const dd = String(now.getDate()).padStart(2, '0');
+  const yy = String(now.getFullYear()).slice(-2);
+  return `VGH-${dd}-${yy}`;
+}
+
+async function generateUniquePassNumber(): Promise<string> {
+  const prefix = getPassDatePrefix();
+  // Find all gate passes with this date prefix (across all projects, to keep global sequence)
+  const existing = await prisma.gatePass.findMany({
+    where: { passNumber: { startsWith: `${prefix}-` } },
+    select: { passNumber: true },
+  });
+  const maxSeq = existing.reduce((max, gp) => {
+    const match = gp.passNumber?.match(/^VGH-\d{2}-\d{2}-(\d+)$/);
+    return match ? Math.max(max, parseInt(match[1], 10)) : max;
+  }, 0);
+  const seq = String(maxSeq + 1).padStart(3, '0');
+  return `${prefix}-${seq}`;
+}
+
+const gatePassInclude = {
+  purchaseOrder: {
+    select: {
+      id: true,
+      poNumber: true,
+      vendor: { select: { id: true, name: true, vendorCode: true } },
+      items: true,
+    },
+  },
+  invoice: { select: { id: true, invoiceCode: true, invoiceNumber: true } },
   items: true,
   createdByUser: { select: { id: true, name: true } },
+  otpRequestedForUser: { select: { id: true, name: true, role: true, phone: true } },
+  otpApprovedByUser: { select: { id: true, name: true } },
 };
 
-// GET /approvers — list project users that can approve gate passes
+// GET /heads — list the 4 head users for OTP selection (not filtered by projectId — heads may not be assigned to a project)
 router.get(
-  '/approvers',
-  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  '/heads',
+  rbacMiddleware(Permission.VIEW_FINANCIALS),
+  async (_req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const users = await prisma.user.findMany({
-        where: { projectId: req.user!.projectId, isActive: true },
-        select: { id: true, name: true, phone: true, role: true },
+        where: {
+          role: { in: HEAD_ROLES },
+          isActive: true,
+        },
+        select: { id: true, name: true, role: true, phone: true },
         orderBy: { name: 'asc' },
       });
       res.json({ data: users });
@@ -54,7 +86,7 @@ router.get(
           items: true,
           invoices: {
             where: { deletedAt: null, verificationStatus: 'VERIFIED' },
-            select: { id: true, invoiceNumber: true, verificationStatus: true },
+            select: { id: true, invoiceCode: true, invoiceNumber: true, verificationStatus: true, stockStatus: true },
           },
         },
         orderBy: { createdAt: 'desc' },
@@ -64,9 +96,9 @@ router.get(
         id: po.id,
         poNumber: po.poNumber,
         vendor: po.vendor,
-        totalAmount: Number(po.totalAmount),
+        grandTotal: Number(po.grandTotal),
         items: po.items.map((item) => ({
-          description: item.description,
+          materialName: item.materialName,
           quantity: Number(item.quantity),
           unit: item.unit,
         })),
@@ -79,44 +111,35 @@ router.get(
   }
 );
 
-// GET / — list
+// GET / — list gate passes
 router.get(
   '/',
+  rbacMiddleware(Permission.VIEW_FINANCIALS),
   validateMiddleware(listGatePassesSchema),
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
-      const { page = 1, pageSize = 20, search, type, status } = req.query as Record<string, unknown>;
-      const projectId = req.user!.projectId;
+      const projectId = requireProjectId(req);
+      const { page, pageSize, status } = req.query as Record<string, unknown>;
+      const pageNum = Number(page) || 1;
+      const size = Number(pageSize) || 20;
 
-      const where: Record<string, unknown> = {
-        projectId,
-        deletedAt: null,
-        ...(type ? { type } : {}),
-        ...(status ? { status } : {}),
-      };
-
-      if (search) {
-        where.OR = [
-          { passNumber: { contains: String(search), mode: 'insensitive' } },
-          { vehicleNumber: { contains: String(search), mode: 'insensitive' } },
-          { driverName: { contains: String(search), mode: 'insensitive' } },
-        ];
-      }
+      const where: Record<string, unknown> = { projectId, deletedAt: null };
+      if (status) where.status = status;
 
       const [data, total] = await Promise.all([
         prisma.gatePass.findMany({
           where,
-          include,
+          include: gatePassInclude,
           orderBy: { createdAt: 'desc' },
-          skip: (Number(page) - 1) * Number(pageSize),
-          take: Number(pageSize),
+          skip: (pageNum - 1) * size,
+          take: size,
         }),
         prisma.gatePass.count({ where }),
       ]);
 
       res.json({
         data,
-        pagination: { page: Number(page), pageSize: Number(pageSize), total, totalPages: Math.ceil(total / Number(pageSize)) },
+        pagination: { page: pageNum, pageSize: size, total, totalPages: Math.ceil(total / size) },
       });
     } catch (error) {
       next(error);
@@ -127,14 +150,16 @@ router.get(
 // GET /:id
 router.get(
   '/:id',
+  rbacMiddleware(Permission.VIEW_FINANCIALS),
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
+      const projectId = requireProjectId(req);
       const record = await prisma.gatePass.findFirst({
-        where: { id: req.params.id, projectId: requireProjectId(req), deletedAt: null },
-        include,
+        where: { id: req.params.id, projectId, deletedAt: null },
+        include: gatePassInclude,
       });
       if (!record) {
-        res.status(404).json({ error: 'Gate Pass not found' });
+        res.status(404).json({ error: 'Gate pass not found' });
         return;
       }
       res.json(record);
@@ -144,247 +169,269 @@ router.get(
   }
 );
 
-// POST / — create with photo upload
+// POST / — create gate pass (request OTP)
 router.post(
   '/',
   rbacMiddleware(Permission.CREATE_GATE_PASS),
-  upload.single('vehiclePhoto'),
   validateMiddleware(createGatePassSchema),
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const projectId = requireProjectId(req);
-      const body = req.body as Record<string, unknown>;
+      const { poId, invoiceId, otpRequestedFor } = req.body;
 
-      let vehiclePhoto: string | null = null;
-      if (req.file) {
-        const storage = getStorageService();
-        const uploadResult = await storage.upload(req.file.buffer, req.file.originalname, req.file.mimetype, 'gate-pass-photos');
-        vehiclePhoto = uploadResult.filePath;
+      // Validate PO exists and is approved
+      const po = await prisma.purchaseOrder.findFirst({
+        where: { id: poId, projectId, deletedAt: null },
+        include: { items: true },
+      });
+      if (!po) {
+        res.status(400).json({ error: 'Purchase order not found' });
+        return;
+      }
+      if (po.status !== 'APPROVED') {
+        res.status(400).json({ error: 'Purchase order must be approved first' });
+        return;
       }
 
-      const record = await prisma.gatePass.create({
+      // Validate invoice only if provided (invoice is optional)
+      if (invoiceId) {
+        const invoice = await prisma.vendorInvoice.findFirst({
+          where: { id: invoiceId, projectId, deletedAt: null },
+        });
+        if (!invoice) {
+          res.status(400).json({ error: 'Invoice not found' });
+          return;
+        }
+        if (invoice.verificationStatus !== 'VERIFIED') {
+          res.status(400).json({ error: 'Invoice must be verified first' });
+          return;
+        }
+        if (invoice.poId !== poId) {
+          res.status(400).json({ error: 'Invoice does not belong to this purchase order' });
+          return;
+        }
+
+        // Check if a gate pass already exists for this invoice
+        const existingGP = await prisma.gatePass.findFirst({
+          where: { invoiceId, projectId, deletedAt: null, status: 'APPROVED' },
+        });
+        if (existingGP) {
+          res.status(409).json({ error: 'An approved gate pass already exists for this invoice' });
+          return;
+        }
+      } else {
+        // No invoice provided — check if an approved gate pass already exists for this PO without an invoice
+        const existingGP = await prisma.gatePass.findFirst({
+          where: { poId, projectId, deletedAt: null, status: 'APPROVED', invoiceId: null },
+        });
+        if (existingGP) {
+          res.status(409).json({ error: 'An approved gate pass already exists for this purchase order' });
+          return;
+        }
+      }
+
+      // Validate otpRequestedFor is one of the 4 heads
+      const headUser = await prisma.user.findUnique({ where: { id: otpRequestedFor } });
+      if (!headUser || !HEAD_ROLES.includes(headUser.role as UserRole)) {
+        res.status(400).json({ error: 'OTP recipient must be one of the 4 heads' });
+        return;
+      }
+
+      const passNumber = await generateUniquePassNumber();
+
+      const gatePass = await prisma.gatePass.create({
         data: {
           projectId,
+          poId,
+          ...(invoiceId ? { invoiceId } : {}),
+          passNumber,
+          status: 'PENDING',
+          otpRequestedFor,
           createdBy: req.user!.id,
-          vendorId: body.vendorId as string,
-          poId: (body.poId as string) ?? null,
-          invoiceId: (body.invoiceId as string) ?? null,
-          passNumber: body.passNumber as string,
-          type: body.type as string,
-          date: body.date ? new Date(String(body.date)) : new Date(),
-          timeIn: (body.timeIn as string) ?? null,
-          vehicleNumber: (body.vehicleNumber as string) ?? null,
-          driverName: (body.driverName as string) ?? null,
-          driverPhone: (body.driverPhone as string) ?? null,
-          carrierName: (body.carrierName as string) ?? null,
-          vehiclePhoto,
-          approverId: (body.approverId as string) ?? null,
-          items: { create: body.items as { description: string; quantity: number; unit: string }[] },
+          items: {
+            create: po.items.map((item) => ({
+              materialName: item.materialName,
+              quantity: item.quantity,
+              unit: item.unit,
+            })),
+          },
         },
-        include,
+        include: gatePassInclude,
       });
 
       await logAudit({
         userId: req.user!.id,
         action: AuditAction.CREATE,
         entityType: 'GATE_PASS',
-        entityId: record.id,
+        entityId: gatePass.id,
         projectId,
-        newValue: { passNumber: record.passNumber, vendorId: record.vendorId },
+        newValue: { passNumber, poId, invoiceId: invoiceId ?? null, otpRequestedFor },
       });
 
-      res.status(201).json(record);
+      // Return the gate pass — the frontend will use Firebase to send the OTP to the head's phone
+      res.status(201).json({
+        ...gatePass,
+        headPhone: headUser.phone,
+        headName: headUser.name,
+        message: `Gate pass created. An OTP has been sent to ${headUser.name} at ${headUser.phone}. Get the OTP from them to approve.`,
+      });
     } catch (error) {
       next(error);
     }
   }
 );
 
-// PATCH /:id
-router.patch(
-  '/:id',
-  validateMiddleware(updateGatePassSchema),
+// POST /:id/verify-otp — verify Firebase ID token and approve gate pass
+router.post(
+  '/:id/verify-otp',
+  rbacMiddleware(Permission.CREATE_GATE_PASS),
+  validateMiddleware(verifyGatePassOtpSchema),
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
-      const existing = await prisma.gatePass.findFirst({
-        where: { id: req.params.id, projectId: requireProjectId(req), deletedAt: null },
+      const projectId = requireProjectId(req);
+      const gatePass = await prisma.gatePass.findFirst({
+        where: { id: req.params.id, projectId, deletedAt: null },
+        include: { purchaseOrder: { include: { items: true } }, items: true, otpRequestedForUser: { select: { id: true, name: true, phone: true } } },
       });
-      if (!existing) {
-        res.status(404).json({ error: 'Gate Pass not found' });
+      if (!gatePass) {
+        res.status(404).json({ error: 'Gate pass not found' });
+        return;
+      }
+      if (gatePass.status === 'APPROVED') {
+        res.status(400).json({ error: 'Gate pass already approved' });
+        return;
+      }
+      if (!gatePass.otpRequestedForUser) {
+        res.status(400).json({ error: 'No OTP recipient was set for this gate pass' });
         return;
       }
 
-      const body = req.body as Record<string, unknown>;
-      const record = await prisma.gatePass.update({
-        where: { id: req.params.id },
+      // Verify the Firebase ID token
+      const { idToken } = req.body;
+      let decodedToken;
+      try {
+        decodedToken = await verifyFirebaseToken(idToken);
+      } catch {
+        res.status(400).json({ error: 'Invalid or expired OTP token' });
+        return;
+      }
+
+      // Check that the phone number in the verified token matches the selected head's phone number
+      const tokenPhone = decodedToken.phone_number;
+      const headPhone = gatePass.otpRequestedForUser.phone;
+      if (!tokenPhone || !headPhone || tokenPhone !== headPhone) {
+        res.status(400).json({ error: 'OTP was not verified for the correct head. The OTP must be sent to ' + headPhone });
+        return;
+      }
+
+      // OTP verified — approve the gate pass and add items to inventory
+      const inventoryResults: { name: string; quantity: number; action: string }[] = [];
+
+      for (const item of gatePass.items) {
+        let invItem = await prisma.inventoryItem.findFirst({
+          where: { projectId, name: { equals: item.materialName, mode: 'insensitive' }, deletedAt: null },
+        });
+
+        if (!invItem) {
+          invItem = await prisma.inventoryItem.create({
+            data: {
+              projectId,
+              name: item.materialName,
+              unit: item.unit ?? 'nos',
+              currentStock: 0,
+              minStockLevel: 0,
+            },
+          });
+          inventoryResults.push({ name: item.materialName, quantity: Number(item.quantity), action: 'created' });
+        } else {
+          inventoryResults.push({ name: item.materialName, quantity: Number(item.quantity), action: 'updated' });
+        }
+
+        const newBalance = Number(invItem.currentStock) + Number(item.quantity);
+
+        await prisma.$transaction([
+          prisma.inventoryTransaction.create({
+            data: {
+              itemId: invItem.id,
+              gatePassId: gatePass.id,
+              type: InventoryTxnType.IN,
+              quantity: Number(item.quantity),
+              balanceAfter: newBalance,
+              userId: req.user!.id,
+              notes: `Auto-added from gate pass ${gatePass.passNumber}`,
+            },
+          }),
+          prisma.inventoryItem.update({
+            where: { id: invItem.id },
+            data: { currentStock: newBalance },
+          }),
+        ]);
+      }
+
+      // Mark gate pass as approved
+      const updated = await prisma.gatePass.update({
+        where: { id: gatePass.id },
         data: {
-          status: (body.status as string) ?? undefined,
-          timeIn: (body.timeIn as string) ?? undefined,
-          vehicleNumber: (body.vehicleNumber as string) ?? undefined,
-          driverName: (body.driverName as string) ?? undefined,
-          driverPhone: (body.driverPhone as string) ?? undefined,
-          vehiclePhoto: (body.vehiclePhoto as string) ?? undefined,
-          approverId: (body.approverId as string) ?? undefined,
+          status: 'APPROVED',
+          otpApprovedBy: req.user!.id,
+          otpApprovedAt: new Date(),
         },
-        include,
+        include: gatePassInclude,
       });
+
+      // Also mark the invoice's stock as received and flag inventory as added (only if invoice linked)
+      if (gatePass.invoiceId) {
+        await prisma.vendorInvoice.update({
+          where: { id: gatePass.invoiceId },
+          data: { stockStatus: 'RECEIVED', inventoryAdded: true },
+        });
+      }
 
       await logAudit({
         userId: req.user!.id,
-        action: AuditAction.UPDATE,
+        action: AuditAction.APPROVE,
         entityType: 'GATE_PASS',
-        entityId: record.id,
-        projectId: req.user!.projectId,
-        newValue: body,
+        entityId: gatePass.id,
+        projectId,
+        newValue: { status: 'APPROVED', inventoryResults },
       });
 
-      res.json(record);
+      res.json({
+        ...updated,
+        inventoryResults,
+        message: `Gate pass approved! ${inventoryResults.length} item(s) added to inventory.`,
+      });
     } catch (error) {
       next(error);
     }
   }
 );
 
-// DELETE /:id
+// DELETE /:id — soft delete (only if pending)
 router.delete(
   '/:id',
+  rbacMiddleware(Permission.CREATE_GATE_PASS),
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
+      const projectId = requireProjectId(req);
       const existing = await prisma.gatePass.findFirst({
-        where: { id: req.params.id, projectId: requireProjectId(req), deletedAt: null },
+        where: { id: req.params.id, projectId, deletedAt: null },
       });
       if (!existing) {
-        res.status(404).json({ error: 'Gate Pass not found' });
+        res.status(404).json({ error: 'Gate pass not found' });
+        return;
+      }
+      if (existing.status === 'APPROVED') {
+        res.status(400).json({ error: 'Cannot delete an approved gate pass' });
         return;
       }
 
       await prisma.gatePass.update({
-        where: { id: req.params.id },
+        where: { id: existing.id },
         data: { deletedAt: new Date() },
       });
 
-      await logAudit({
-        userId: req.user!.id,
-        action: AuditAction.DELETE,
-        entityType: 'GATE_PASS',
-        entityId: req.params.id,
-        projectId: req.user!.projectId,
-      });
-
-      res.json({ message: 'Gate Pass deleted' });
-    } catch (error) {
-      next(error);
-    }
-  }
-);
-
-// POST /:id/send-otp — generate and (placeholder) send OTP to approver
-router.post(
-  '/:id/send-otp',
-  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
-    try {
-      const record = await prisma.gatePass.findFirst({
-        where: { id: req.params.id, projectId: requireProjectId(req), deletedAt: null },
-        include: { approver: { select: { phone: true, name: true } } },
-      });
-      if (!record) {
-        res.status(404).json({ error: 'Gate Pass not found' });
-        return;
-      }
-      if (!record.approverId || !record.approver?.phone) {
-        res.status(400).json({ error: 'Approver or phone number not set' });
-        return;
-      }
-      if (record.otpVerified) {
-        res.status(400).json({ error: 'Gate Pass already verified' });
-        return;
-      }
-
-      const otp = generateOtp(record.id);
-      // TODO: integrate Firebase/SMS OTP service; for now fallback 1234 is returned for testing
-      res.json({
-        message: 'OTP generated (fallback active)',
-        // Do not expose OTP in production; exposed here for local testing only
-        otp,
-        phone: record.approver.phone,
-      });
-    } catch (error) {
-      next(error);
-    }
-  }
-);
-
-// POST /:id/verify-otp — verify OTP and approve gate pass
-router.post(
-  '/:id/verify-otp',
-  validateMiddleware(verifyGatePassOtpSchema),
-  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
-    try {
-      const record = await prisma.gatePass.findFirst({
-        where: { id: req.params.id, projectId: requireProjectId(req), deletedAt: null },
-      });
-      if (!record) {
-        res.status(404).json({ error: 'Gate Pass not found' });
-        return;
-      }
-
-      const { otp } = req.body as { otp: string };
-      if (!verifyOtp(record.id, otp)) {
-        res.status(400).json({ error: 'Invalid or expired OTP' });
-        return;
-      }
-
-      const updated = await prisma.gatePass.update({
-        where: { id: req.params.id },
-        data: { otpVerified: true, status: 'APPROVED', approvedAt: new Date() },
-        include,
-      });
-
-      await logAudit({
-        userId: req.user!.id,
-        action: AuditAction.UPDATE,
-        entityType: 'GATE_PASS',
-        entityId: record.id,
-        projectId: req.user!.projectId,
-        newValue: { status: 'APPROVED', otpVerified: true },
-      });
-
-      res.json(updated);
-    } catch (error) {
-      next(error);
-    }
-  }
-);
-
-// GET /:id/whatsapp-link — generate a shareable WhatsApp message link
-router.get(
-  '/:id/whatsapp-link',
-  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
-    try {
-      const record = await prisma.gatePass.findFirst({
-        where: { id: req.params.id, projectId: requireProjectId(req), deletedAt: null },
-        include,
-      });
-      if (!record) {
-        res.status(404).json({ error: 'Gate Pass not found' });
-        return;
-      }
-
-      const message = encodeURIComponent(
-        `Gate Pass #${record.passNumber}\n` +
-        `Date: ${new Date(record.date).toLocaleDateString()} ${record.timeIn ? ' at ' + record.timeIn : ''}\n` +
-        `Vehicle: ${record.vehicleNumber ?? '—'}\n` +
-        `Driver: ${record.driverName ?? '—'} (${record.driverPhone ?? '—'})\n` +
-        `Vendor: ${(record.vendor as any)?.name ?? '—'}\n` +
-        `Materials: ${record.items.map((i: any) => `${i.description} ${i.quantity} ${i.unit}`).join(', ')}\n` +
-        `Status: ${record.status}`
-      );
-
-      res.json({
-        message: message.replace(/%20/g, ' '),
-        mobileLink: `whatsapp://send?text=${message}`,
-        webLink: `https://wa.me/?text=${message}`,
-      });
+      res.json({ message: 'Gate pass deleted' });
     } catch (error) {
       next(error);
     }

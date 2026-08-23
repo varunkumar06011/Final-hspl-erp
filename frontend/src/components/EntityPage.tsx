@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+﻿import { useState, useCallback } from 'react';
 import {
   Box,
   Typography,
@@ -12,7 +12,6 @@ import {
   TableRow,
   TablePagination,
   TextField,
-  Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
@@ -22,6 +21,7 @@ import {
   CircularProgress,
   InputAdornment,
 } from '@mui/material';
+import ResponsiveDialog from './ResponsiveDialog';
 import {
   Add as AddIcon,
   Edit as EditIcon,
@@ -333,10 +333,10 @@ export default function EntityPage({
         />
       </Card>
 
-      <Dialog open={dialogOpen} onClose={closeDialog} maxWidth="sm" fullWidth>
+      <ResponsiveDialog open={dialogOpen} onClose={closeDialog} maxWidth="sm" fullWidth sx={{ '& .MuiDialog-paper': { margin: { xs: 1 } } }}>
         <DialogTitle>{editing ? `Edit ${entityName}` : `New ${entityName}`}</DialogTitle>
         <DialogContent>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1, flexWrap: 'wrap' }}>
             {fields.map((field) => {
               if (field.type === 'select') {
                 return (
@@ -394,8 +394,7 @@ export default function EntityPage({
                           value={mat.name ?? ''}
                           onChange={(e) => updateMaterial(index, 'name', e.target.value)}
                           size="small"
-                          fullWidth
-                          sx={{ flex: { sm: 2 } }}
+                          sx={{ flex: 2, minWidth: 0 }}
                         />
                         <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
                           <TextField
@@ -404,9 +403,9 @@ export default function EntityPage({
                             value={mat.pricePerUnit ?? ''}
                             onChange={(e) => updateMaterial(index, 'pricePerUnit', e.target.value === '' ? undefined : Number(e.target.value))}
                             size="small"
-                            sx={{ width: 120 }}
+                            sx={{ flex: 1, minWidth: 0 }}
                           />
-                          <IconButton size="small" color="error" onClick={() => removeMaterial(index)}>
+                          <IconButton size="small" color="error" onClick={() => removeMaterial(index)} sx={{ flexShrink: 0 }}>
                             <RemoveIcon fontSize="small" />
                           </IconButton>
                         </Box>
@@ -470,7 +469,7 @@ export default function EntityPage({
             </Box>
           )}
         </DialogContent>
-        <DialogActions sx={{ flexWrap: 'wrap', gap: 1 }}>
+        <DialogActions>
           <Button onClick={closeDialog}>Cancel</Button>
           <Button
             variant="contained"
@@ -480,14 +479,14 @@ export default function EntityPage({
             {submitting ? <CircularProgress size={20} /> : editing ? 'Update' : 'Create'}
           </Button>
         </DialogActions>
-      </Dialog>
+      </ResponsiveDialog>
 
-      <Dialog open={!!deleteConfirm} onClose={() => setDeleteConfirm(null)}>
+      <ResponsiveDialog open={!!deleteConfirm} onClose={() => setDeleteConfirm(null)}>
         <DialogTitle>Delete {entityName}?</DialogTitle>
         <DialogContent>
           <Typography>This action cannot be undone. The record will be soft-deleted.</Typography>
         </DialogContent>
-        <DialogActions sx={{ flexWrap: 'wrap', gap: 1 }}>
+        <DialogActions>
           <Button onClick={() => setDeleteConfirm(null)}>Cancel</Button>
           <Button
             color="error"
@@ -498,7 +497,7 @@ export default function EntityPage({
             Delete
           </Button>
         </DialogActions>
-      </Dialog>
+      </ResponsiveDialog>
     </Box>
   );
 }

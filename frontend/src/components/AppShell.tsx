@@ -1,7 +1,8 @@
-import { Box, AppBar, Toolbar, Typography, IconButton, Avatar, Chip, Menu, MenuItem, Drawer, List, ListItem, ListItemIcon, ListItemText } from '@mui/material';
-import { useState } from 'react';
+import { Box, AppBar, Toolbar, Typography, IconButton, Avatar, Chip, Menu, MenuItem, Drawer, List, ListItem, ListItemIcon, ListItemText, useTheme, useMediaQuery, Snackbar, Alert } from '@mui/material';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
+  Menu as MenuIcon,
   Dashboard as DashboardIcon,
   Business as VendorIcon,
   Receipt as ReceiptIcon,
@@ -9,20 +10,20 @@ import {
   LocalShipping as GatePassIcon,
   Inventory as InventoryIcon,
   Engineering as LabourIcon,
-  Construction as PhaseIcon,
   CameraAlt as PhotoIcon,
   BugReport as IssueIcon,
   Verified as InspectionIcon,
   Description as DocumentIcon,
   Handshake as ContractIcon,
   History as AuditIcon,
+  Settings as SettingsIcon,
+  People as PeopleIcon,
   Logout as LogoutIcon,
   Notifications as NotificationsIcon,
-  Menu as MenuIcon,
-  ChevronLeft as ChevronLeftIcon,
 } from '@mui/icons-material';
 import { useAuthStore } from '../stores/authStore';
-import { UserRole } from '@hospital-erp/shared';
+import { hasPermission, Permission, UserRole } from '@hospital-erp/shared';
+import { onForegroundMessage } from '../config/notifications';
 
 const NAV_ITEMS = [
   { label: 'Dashboard', icon: <DashboardIcon />, path: '/' },
@@ -33,19 +34,19 @@ const NAV_ITEMS = [
   { label: 'Payments', icon: <PaymentIcon />, path: '/payments' },
   { label: 'Gate Passes', icon: <GatePassIcon />, path: '/gate-passes' },
   { label: 'Inventory', icon: <InventoryIcon />, path: '/inventory' },
-  { label: 'Labour', icon: <LabourIcon />, path: '/labour' },
-  { label: 'Phases', icon: <PhaseIcon />, path: '/phases' },
-  { label: 'Activities', icon: <PhaseIcon />, path: '/activities' },
+  { label: 'Attendance', icon: <LabourIcon />, path: '/labour' },
   { label: 'Site Photos', icon: <PhotoIcon />, path: '/photos' },
   { label: 'Issues', icon: <IssueIcon />, path: '/issues' },
   { label: 'Inspections', icon: <InspectionIcon />, path: '/inspections' },
   { label: 'Documents', icon: <DocumentIcon />, path: '/documents' },
   { label: 'Contracts', icon: <ContractIcon />, path: '/contracts' },
   { label: 'Audit Log', icon: <AuditIcon />, path: '/audit' },
+  { label: 'Users', icon: <PeopleIcon />, path: '/users', permission: Permission.MANAGE_USERS },
+  { label: 'Settings', icon: <SettingsIcon />, path: '/settings' },
 ];
 
 const ROLE_COLORS: Record<UserRole, string> = {
-  [UserRole.SUPERVISOR]: '#757575',
+  [UserRole.SUPERVISOR]: '#546E7A',
   [UserRole.PROJECT_HEAD]: '#1565C0',
   [UserRole.HEAD_OF_CONSTRUCTION]: '#2E7D32',
   [UserRole.ADMIN]: '#ED6C02',
@@ -56,7 +57,7 @@ const ROLE_LABELS: Record<UserRole, string> = {
   [UserRole.SUPERVISOR]: 'Supervisor',
   [UserRole.PROJECT_HEAD]: 'Project Head',
   [UserRole.HEAD_OF_CONSTRUCTION]: 'Head of Construction',
-  [UserRole.ADMIN]: 'Admin',
+  [UserRole.ADMIN]: 'Admin 1',
   [UserRole.ADMIN_2]: 'Admin 2',
 };
 
@@ -64,32 +65,35 @@ const DRAWER_WIDTH = 260;
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
-  const [drawerOpen, setDrawerOpen] = useState(() => {
-    try {
-      return localStorage.getItem('erp:sidebarOpen') !== 'false';
-    } catch {
-      return true;
-    }
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [fgNotification, setFgNotification] = useState<{ open: boolean; title: string; body: string; url?: string }>({
+    open: false,
+    title: '',
+    body: '',
   });
-  const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout } = useAuthStore();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
-  const toggleDrawer = () => {
-    // On mobile, toggle the temporary drawer
-    if (window.innerWidth < 900) {
-      setMobileDrawerOpen((prev) => !prev);
-      return;
+  // Listen for foreground push messages (when the tab is open)
+  useEffect(() => {
+    const unsubscribe = onForegroundMessage((payload) => {
+      const title = payload.notification?.title || payload.data?.title || 'New Notification';
+      const body = payload.notification?.body || payload.data?.body || '';
+      const url = payload.data?.url;
+      setFgNotification({ open: true, title, body, url });
+    });
+    return unsubscribe;
+  }, []);
+
+  const handleFgNotificationClick = useCallback(() => {
+    if (fgNotification.url) {
+      navigate(fgNotification.url);
     }
-    const next = !drawerOpen;
-    setDrawerOpen(next);
-    try {
-      localStorage.setItem('erp:sidebarOpen', String(next));
-    } catch {
-      // ignore
-    }
-  };
+    setFgNotification({ open: false, title: '', body: '', url: undefined });
+  }, [fgNotification.url, navigate]);
 
   const handleMenu = (event: React.MouseEvent<HTMLElement>) => {
     setAnchorEl(event.currentTarget);
@@ -104,19 +108,21 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     navigate('/login');
   };
 
-  const drawerContent = (
-    <Box sx={{ width: DRAWER_WIDTH, flexShrink: 0 }} role="navigation">
+  const handleNavigate = (path: string) => {
+    navigate(path);
+    if (isMobile) setMobileOpen(false);
+  };
+
+  const drawer = (
+    <>
       <Toolbar />
       <Box sx={{ overflow: 'auto' }}>
         <List>
-          {NAV_ITEMS.map((item) => (
+          {NAV_ITEMS.filter((item) => !item.permission || (user && hasPermission(user.role as UserRole, item.permission))).map((item) => (
             <ListItem
               key={item.path}
               button
-              onClick={() => {
-                navigate(item.path);
-                setMobileDrawerOpen(false);
-              }}
+              onClick={() => handleNavigate(item.path)}
               selected={location.pathname === item.path}
               sx={{
                 '&.Mui-selected': {
@@ -132,28 +138,31 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           ))}
         </List>
       </Box>
-    </Box>
+    </>
   );
 
   return (
-    <Box sx={{ display: 'flex', minWidth: 0 }}>
+    <Box sx={{ display: 'flex' }}>
       <AppBar
         position="fixed"
-        sx={{
-          zIndex: (theme) => theme.zIndex.drawer + 1,
-          ml: { md: drawerOpen ? `${DRAWER_WIDTH}px` : 0 },
-          width: { md: drawerOpen ? `calc(100% - ${DRAWER_WIDTH}px)` : '100%', xs: '100%' },
-          transition: (theme) => theme.transitions.create(['width', 'margin'], {
-            easing: theme.transitions.easing.sharp,
-            duration: theme.transitions.duration.leavingScreen,
-          }),
-        }}
+        sx={{ zIndex: (theme) => theme.zIndex.drawer + 1 }}
       >
         <Toolbar>
-          <IconButton color="inherit" onClick={toggleDrawer} edge="start" sx={{ mr: 2 }}>
-            {drawerOpen && window.innerWidth >= 900 ? <ChevronLeftIcon /> : <MenuIcon />}
-          </IconButton>
-          <Typography variant="h6" component="div" sx={{ flexGrow: 1, fontSize: { xs: '1rem', sm: '1.25rem' }, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {isMobile && (
+            <IconButton
+              color="inherit"
+              edge="start"
+              onClick={() => setMobileOpen(!mobileOpen)}
+              sx={{ mr: 1 }}
+            >
+              <MenuIcon />
+            </IconButton>
+          )}
+          <Typography
+            variant="h6"
+            component="div"
+            sx={{ flexGrow: 1, fontSize: { xs: '1rem', sm: '1.25rem' } }}
+          >
             Hospital Construction ERP
           </Typography>
           <IconButton color="inherit" size="large" sx={{ display: { xs: 'none', sm: 'inline-flex' } }}>
@@ -169,7 +178,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                   bgcolor: ROLE_COLORS[user.role as UserRole],
                   color: 'white',
                   fontWeight: 600,
-                  display: { xs: 'none', sm: 'inline-flex' },
+                  display: { xs: 'none', sm: 'flex' },
                 }}
               />
               <IconButton onClick={handleMenu} color="inherit">
@@ -193,54 +202,56 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         </Toolbar>
       </AppBar>
 
-      {/* Mobile drawer (temporary overlay) */}
-      <Drawer
-        variant="temporary"
-        open={mobileDrawerOpen}
-        onClose={() => setMobileDrawerOpen(false)}
-        ModalProps={{ keepMounted: true }}
-        sx={{
-          display: { xs: 'block', md: 'none' },
-          '& .MuiDrawer-paper': { width: DRAWER_WIDTH, boxSizing: 'border-box' },
-        }}
-      >
-        {drawerContent}
-      </Drawer>
-
-      {/* Desktop drawer (permanent) */}
-      {drawerOpen && (
+      {/* Mobile drawer (temporary) */}
+      {isMobile ? (
+        <Drawer
+          variant="temporary"
+          open={mobileOpen}
+          onClose={() => setMobileOpen(false)}
+          ModalProps={{ keepMounted: true }}
+          sx={{
+            '& .MuiDrawer-paper': { width: DRAWER_WIDTH, boxSizing: 'border-box' },
+          }}
+        >
+          {drawer}
+        </Drawer>
+      ) : (
+        /* Desktop drawer (permanent) */
         <Drawer
           variant="permanent"
           sx={{
-            display: { xs: 'none', md: 'block' },
             width: DRAWER_WIDTH,
             flexShrink: 0,
-            '& .MuiDrawer-paper': {
-              width: DRAWER_WIDTH,
-              boxSizing: 'border-box',
-            },
+            '& .MuiDrawer-paper': { width: DRAWER_WIDTH, boxSizing: 'border-box' },
           }}
         >
-          {drawerContent}
+          {drawer}
         </Drawer>
       )}
 
-      <Box
-        component="main"
-        sx={{
-          flexGrow: 1,
-          p: { xs: 1.5, sm: 2, md: 3 },
-          mt: 8,
-          width: { md: drawerOpen ? `calc(100% - ${DRAWER_WIDTH}px)` : '100%', xs: '100%' },
-          minWidth: 0,
-          transition: (theme) => theme.transitions.create('width', {
-            easing: theme.transitions.easing.sharp,
-            duration: theme.transitions.duration.leavingScreen,
-          }),
-        }}
-      >
+      <Box component="main" sx={{ flexGrow: 1, p: { xs: 1.5, sm: 2, md: 3 }, mt: 8, width: { xs: '100%', md: 'auto' } }}>
         {children}
       </Box>
+
+      {/* Foreground push notification snackbar */}
+      <Snackbar
+        open={fgNotification.open}
+        autoHideDuration={10000}
+        onClose={() => setFgNotification({ open: false, title: '', body: '', url: undefined })}
+        anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
+        sx={{ mt: 8 }}
+      >
+        <Alert
+          severity="info"
+          icon={<NotificationsIcon />}
+          onClick={handleFgNotificationClick}
+          sx={{ cursor: fgNotification.url ? 'pointer' : 'default', alignItems: 'flex-start' }}
+        >
+          <Typography variant="subtitle2">{fgNotification.title}</Typography>
+          <Typography variant="body2">{fgNotification.body}</Typography>
+          {fgNotification.url && <Typography variant="caption" color="primary">Tap to view →</Typography>}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 }

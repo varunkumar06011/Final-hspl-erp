@@ -36,6 +36,14 @@ export const setPinSchema = z.object({
   }),
 });
 
+// POST /auth/change-pin — change PIN (requires auth, sends old + new PIN)
+export const changePinSchema = z.object({
+  body: z.object({
+    oldPin: z.string().length(4, 'Old PIN must be exactly 4 digits').regex(/^\d{4}$/, 'PIN must be 4 digits'),
+    newPin: z.string().length(4, 'New PIN must be exactly 4 digits').regex(/^\d{4}$/, 'PIN must be 4 digits'),
+  }),
+});
+
 // GET /auth/check-pin — check if a phone number has a PIN set (for login flow)
 export const checkPinSchema = z.object({
   query: z.object({

@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+﻿import { useState, useRef } from 'react';
 import {
   Box,
   Typography,
@@ -12,7 +12,6 @@ import {
   TableRow,
   TablePagination,
   TextField,
-  Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
@@ -22,6 +21,7 @@ import {
   CircularProgress,
   InputAdornment,
 } from '@mui/material';
+import ResponsiveDialog from '../components/ResponsiveDialog';
 import {
   Add as AddIcon,
   Refresh as RefreshIcon,
@@ -158,7 +158,7 @@ export default function PhotosPage() {
         />
       </Card>
 
-      <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="sm" fullWidth>
+      <ResponsiveDialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Upload Photo</DialogTitle>
         <DialogContent>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
@@ -185,7 +185,7 @@ export default function PhotosPage() {
             {createMutation.isPending ? <CircularProgress size={20} /> : 'Upload'}
           </Button>
         </DialogActions>
-      </Dialog>
+      </ResponsiveDialog>
     </Box>
   );
 }

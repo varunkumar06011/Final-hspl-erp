@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import {
   Box,
   Typography,
@@ -12,7 +12,6 @@ import {
   TableRow,
   TablePagination,
   TextField,
-  Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
@@ -23,6 +22,7 @@ import {
   InputAdornment,
   MenuItem,
 } from '@mui/material';
+import ResponsiveDialog from '../components/ResponsiveDialog';
 import {
   Add as AddIcon,
   Refresh as RefreshIcon,
@@ -206,7 +206,7 @@ export default function InspectionsPage() {
       </Card>
 
       {/* Create/Edit Dialog */}
-      <Dialog open={createOpen} onClose={() => { setCreateOpen(false); setEditingId(null); }} maxWidth="sm" fullWidth>
+      <ResponsiveDialog open={createOpen} onClose={() => { setCreateOpen(false); setEditingId(null); }} maxWidth="sm" fullWidth>
         <DialogTitle>{editingId ? 'Edit Inspection' : 'New Inspection'}</DialogTitle>
         <DialogContent>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
@@ -265,7 +265,7 @@ export default function InspectionsPage() {
             {createMutation.isPending ? <CircularProgress size={20} /> : editingId ? 'Update' : 'Create'}
           </Button>
         </DialogActions>
-      </Dialog>
+      </ResponsiveDialog>
     </Box>
   );
 }

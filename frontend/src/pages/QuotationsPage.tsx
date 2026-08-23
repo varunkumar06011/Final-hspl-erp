@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useEffect } from 'react';
+﻿import { useState, useMemo, useRef, useEffect } from 'react';
 import {
   Box,
   Typography,
@@ -12,7 +12,6 @@ import {
   TableRow,
   TablePagination,
   TextField,
-  Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
@@ -27,6 +26,8 @@ import {
   AccordionDetails,
   Checkbox,
 } from '@mui/material';
+import ResponsiveDialog from '../components/ResponsiveDialog';
+import ApprovalStepsDisplay from '../components/ApprovalStepsDisplay';
 import {
   Add as AddIcon,
   Refresh as RefreshIcon,
@@ -47,6 +48,7 @@ import AcknowledgementCheckbox from '../components/AcknowledgementCheckbox';
 import ApprovalActionDialog from '../components/ApprovalActionDialog';
 import OcrAutoFill, { type OcrQuotationData } from '../components/OcrAutoFill';
 import ResponsiveTable from '../components/ResponsiveTable';
+import { useApprovalDeepLink } from '../utils/useApprovalDeepLink';
 
 interface QuotationItem {
   id?: string;
@@ -224,6 +226,12 @@ export default function QuotationsPage() {
   const rows: QuotationRow[] = data?.data ?? [];
   const pagination = data?.pagination ?? { page: 1, pageSize: 20, total: 0, totalPages: 0 };
   const vendors: { id: string; name: string; vendorCode: string }[] = vendorsData?.data ?? [];
+
+  // Auto-open approval dialog when navigated from a push notification
+  useApprovalDeepLink(rows, (row) => {
+    const step = canApprove(row);
+    if (step) setApprovalAction({ row, step, action: 'approve' });
+  });
 
   const totalAmount = useMemo(
     () => lineItems.filter((i) => selectedMaterialNames.has(i.materialName)).reduce((sum, i) => sum + Number(i.amount), 0),
@@ -460,33 +468,10 @@ export default function QuotationsPage() {
           {rows.filter((r) => r.approvalWorkflow).map((row) => (
             <Accordion key={row.id}>
               <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                <Typography sx={{ overflowWrap: 'break-word', fontSize: { xs: '0.8rem', sm: '0.875rem' } }}><strong>{row.quotationNumber}</strong> — {row.vendor?.name} — Status: <Chip label={row.approvalWorkflow!.status} size="small" color={STATUS_COLORS[row.approvalWorkflow!.status] ?? 'default'} /></Typography>
+                <Typography><strong>{row.quotationNumber}</strong> — {row.vendor?.name} — Status: <Chip label={row.approvalWorkflow!.status} size="small" color={STATUS_COLORS[row.approvalWorkflow!.status] ?? 'default'} /></Typography>
               </AccordionSummary>
               <AccordionDetails>
-                <ResponsiveTable>
-                <Table size="small">
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>Step</TableCell>
-                      <TableCell>Approver Role</TableCell>
-                      <TableCell>Status</TableCell>
-                      <TableCell>Approver</TableCell>
-                      <TableCell>Comments</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {row.approvalWorkflow!.steps.map((step) => (
-                      <TableRow key={step.id}>
-                        <TableCell data-label="Step">{step.stepNumber}</TableCell>
-                        <TableCell data-label="Approver Role">{step.approverRole.replace(/_/g, ' ')}</TableCell>
-                        <TableCell data-label="Status"><Chip label={step.status} size="small" color={step.status === 'APPROVED' ? 'success' : step.status === 'REJECTED' ? 'error' : 'default'} /></TableCell>
-                        <TableCell data-label="Approver">{step.approverUser?.name ?? '—'}</TableCell>
-                        <TableCell data-label="Comments">{step.comments ?? '—'}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-                </ResponsiveTable>
+                <ApprovalStepsDisplay steps={row.approvalWorkflow!.steps} />
               </AccordionDetails>
             </Accordion>
           ))}
@@ -494,10 +479,10 @@ export default function QuotationsPage() {
       )}
 
       {/* Create / Edit Dialog */}
-      <Dialog open={createOpen || editOpen} onClose={() => { setCreateOpen(false); setEditOpen(false); setEditing(null); }} maxWidth="md" fullWidth>
+      <ResponsiveDialog open={createOpen || editOpen} onClose={() => { setCreateOpen(false); setEditOpen(false); setEditing(null); }} maxWidth="md" fullWidth sx={{ '& .MuiDialog-paper': { margin: { xs: 1 } } }}>
         <DialogTitle>{editOpen ? `Edit Quotation ${editing?.quotationNumber ?? ''}` : 'Create Quotation'}</DialogTitle>
         <DialogContent>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1, flexWrap: 'wrap' }}>
             {/* Vendor Selection */}
             <TextField
               select
@@ -524,7 +509,15 @@ export default function QuotationsPage() {
                 {lineItems.map((item, index) => {
                   const checked = selectedMaterialNames.has(item.materialName);
                   return (
-                    <Box key={index} sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 1, alignItems: { xs: 'stretch', sm: 'center' } }}>
+                    <Box key={index} sx={{
+                      display: 'flex',
+                      flexDirection: { xs: 'column', sm: 'row' },
+                      gap: 1,
+                      alignItems: { xs: 'stretch', sm: 'center' },
+                      py: { xs: 1, sm: 0 },
+                      borderBottom: { xs: '1px solid', sm: 'none' },
+                      borderColor: { xs: 'divider', sm: 'transparent' },
+                    }}>
                       <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', minWidth: 0 }}>
                         <Checkbox
                           checked={checked}
@@ -538,24 +531,24 @@ export default function QuotationsPage() {
                             setSelectedMaterialNames(newSet);
                           }}
                           size="small"
+                          sx={{ flexShrink: 0 }}
                         />
                         <TextField
                           label="Material"
                           value={item.materialName}
                           size="small"
                           disabled
-                          fullWidth
-                          sx={{ flex: 2 }}
+                          sx={{ flex: 2, minWidth: 0 }}
                         />
                       </Box>
-                      <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap', pl: { xs: 5, sm: 0 } }}>
+                      <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', pl: { xs: 5.5, sm: 0 } }}>
                         <TextField
                           label="Qty"
                           type="number"
                           value={item.quantity}
                           onChange={(e) => updateLineItem(index, 'quantity', Number(e.target.value))}
                           size="small"
-                          sx={{ width: 100 }}
+                          sx={{ flex: 1, minWidth: 0 }}
                         />
                         <TextField
                           label="Unit Price"
@@ -563,14 +556,14 @@ export default function QuotationsPage() {
                           value={item.unitPrice}
                           onChange={(e) => updateLineItem(index, 'unitPrice', Number(e.target.value))}
                           size="small"
-                          sx={{ width: 120 }}
+                          sx={{ flex: 1, minWidth: 0 }}
                         />
                         <TextField
                           label="Amount"
                           value={item.amount}
                           size="small"
                           disabled
-                          sx={{ width: 120 }}
+                          sx={{ flex: 1, minWidth: 0 }}
                         />
                       </Box>
                     </Box>
@@ -579,7 +572,7 @@ export default function QuotationsPage() {
 
                 {/* Totals */}
                 <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: { xs: 'stretch', sm: 'flex-end' }, gap: 1, mt: 1 }}>
-                  <Typography variant="body2">Total: <strong>{formatCurrency(totalAmount)}</strong></Typography>
+                  <Typography variant="body2" sx={{ textAlign: { xs: 'left', sm: 'right' } }}>Total: <strong>{formatCurrency(totalAmount)}</strong></Typography>
                   <TextField
                     label="GST Amount (optional)"
                     type="number"
@@ -588,7 +581,7 @@ export default function QuotationsPage() {
                     size="small"
                     sx={{ width: { xs: '100%', sm: 200 } }}
                   />
-                  <Typography variant="body2">Grand Total: <strong>{formatCurrency(grandTotal)}</strong></Typography>
+                  <Typography variant="body2" sx={{ textAlign: { xs: 'left', sm: 'right' } }}>Grand Total: <strong>{formatCurrency(grandTotal)}</strong></Typography>
                 </Box>
               </Box>
             )}
@@ -624,7 +617,7 @@ export default function QuotationsPage() {
             </Box>
           </Box>
         </DialogContent>
-        <DialogActions sx={{ flexWrap: 'wrap', gap: 1 }}>
+        <DialogActions>
           <Button onClick={() => { setCreateOpen(false); setEditOpen(false); setEditing(null); resetForm(); }}>Cancel</Button>
           <Button
             variant="contained"
@@ -634,7 +627,7 @@ export default function QuotationsPage() {
             {(createMutation.isPending || updateMutation.isPending) ? <CircularProgress size={20} /> : editOpen ? 'Update' : 'Create'}
           </Button>
         </DialogActions>
-      </Dialog>
+      </ResponsiveDialog>
 
       <ApprovalActionDialog
         open={approvalAction !== null}

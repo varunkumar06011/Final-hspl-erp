@@ -29,7 +29,7 @@ router.get(
             _sum: { totalAmount: true },
           }),
           prisma.payment.aggregate({
-            where: { paymentRequest: { projectId, deletedAt: null } },
+            where: { paymentRequest: { projectId, deletedAt: null, status: 'PAID' } },
             _sum: { amount: true },
           }),
           prisma.paymentRequest.count({

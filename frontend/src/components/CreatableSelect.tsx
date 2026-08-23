@@ -1,13 +1,7 @@
 import { useState, useMemo } from 'react';
-import { Autocomplete, TextField, Chip, Box, Typography } from '@mui/material';
+import { Autocomplete, TextField, Chip } from '@mui/material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../config/api';
-
-interface SelectOption {
-  value: string;
-  label: string;
-  secondary?: string;
-}
 
 interface CreatableSelectProps {
   label: string;
@@ -16,7 +10,7 @@ interface CreatableSelectProps {
   required?: boolean;
   size?: 'small' | 'medium';
   dropdownType?: string;
-  staticOptions?: SelectOption[];
+  staticOptions?: { value: string; label: string }[];
   optionsEndpoint?: string;
   optionLabelKey?: string;
   placeholder?: string;
@@ -72,7 +66,7 @@ export default function CreatableSelect({
   });
 
   const allOptions = useMemo(() => {
-    const opts: SelectOption[] = [];
+    const opts: { value: string; label: string }[] = [];
 
     if (staticOptions.length > 0) {
       opts.push(...staticOptions);
@@ -158,16 +152,11 @@ export default function CreatableSelect({
       renderOption={(props, option) => {
         const isCreateOption = option.label.startsWith('Create "');
         return (
-          <li {...props} style={{ fontWeight: isCreateOption ? 600 : 400, display: 'block', padding: '6px 16px' }}>
+          <li {...props} style={{ fontWeight: isCreateOption ? 600 : 400, whiteSpace: 'normal', wordBreak: 'break-word' }}>
             {isCreateOption ? (
               <span style={{ color: '#1976d2' }}>{option.label}</span>
-            ) : option.secondary ? (
-              <Box sx={{ display: 'flex', flexDirection: 'column', lineHeight: 1.3 }}>
-                <Typography variant="body2" component="span" sx={{ overflowWrap: 'break-word' }}>{option.label}</Typography>
-                <Typography variant="caption" component="span" color="text.secondary" sx={{ overflowWrap: 'break-word' }}>{option.secondary}</Typography>
-              </Box>
             ) : (
-              <span style={{ overflowWrap: 'break-word' }}>{option.label}</span>
+              option.label
             )}
           </li>
         );

@@ -506,3 +506,42 @@ export async function setPin(
     res.status(500).json({ error: 'Failed to set PIN' });
   }
 }
+
+// POST /auth/change-pin — change PIN (requires auth)
+export async function changePin(
+  req: AuthenticatedRequest,
+  res: Response,
+  _next: NextFunction
+): Promise<void> {
+  try {
+    const { oldPin, newPin } = req.body;
+
+    const user = await prisma.user.findUnique({ where: { id: req.user!.id } });
+    if (!user) {
+      res.status(404).json({ error: 'User not found' });
+      return;
+    }
+    if (!user.pinHash) {
+      res.status(400).json({ error: 'No PIN set. Please set a PIN first.' });
+      return;
+    }
+
+    const pinValid = await bcrypt.compare(oldPin, user.pinHash);
+    if (!pinValid) {
+      res.status(401).json({ error: 'Current PIN is incorrect' });
+      return;
+    }
+
+    if (oldPin === newPin) {
+      res.status(400).json({ error: 'New PIN must be different from current PIN' });
+      return;
+    }
+
+    const pinHash = await bcrypt.hash(newPin, 10);
+    await prisma.user.update({ where: { id: user.id }, data: { pinHash } });
+
+    res.json({ message: 'PIN updated successfully' });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to update PIN' });
+  }
+}

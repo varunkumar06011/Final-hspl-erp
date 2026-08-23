@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import {
   Box,
   Typography,
@@ -13,7 +13,6 @@ import {
   TableRow,
   TablePagination,
   TextField,
-  Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
@@ -28,6 +27,7 @@ import {
   ToggleButton,
   ToggleButtonGroup,
 } from '@mui/material';
+import ResponsiveDialog from '../components/ResponsiveDialog';
 import {
   Add as AddIcon,
   Refresh as RefreshIcon,
@@ -525,7 +525,7 @@ export default function AttendancePage() {
       )}
 
       {/* Add/Edit Staff Dialog */}
-      <Dialog open={staffDialogOpen} onClose={() => setStaffDialogOpen(false)} maxWidth="sm" fullWidth>
+      <ResponsiveDialog open={staffDialogOpen} onClose={() => setStaffDialogOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>{editingStaff ? 'Edit Staff' : 'Add Staff'}</DialogTitle>
         <DialogContent>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
@@ -575,7 +575,7 @@ export default function AttendancePage() {
             {createStaffMutation.isPending ? <CircularProgress size={20} /> : editingStaff ? 'Update' : 'Add'}
           </Button>
         </DialogActions>
-      </Dialog>
+      </ResponsiveDialog>
     </Box>
   );
 }

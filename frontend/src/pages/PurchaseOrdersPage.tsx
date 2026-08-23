@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+﻿import { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Box,
@@ -13,7 +13,6 @@ import {
   TableRow,
   TablePagination,
   TextField,
-  Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
@@ -28,6 +27,8 @@ import {
   AccordionDetails,
   Snackbar,
 } from '@mui/material';
+import ResponsiveDialog from '../components/ResponsiveDialog';
+import ApprovalStepsDisplay from '../components/ApprovalStepsDisplay';
 import {
   Add as AddIcon,
   Refresh as RefreshIcon,
@@ -47,6 +48,7 @@ import { useAuthStore } from '../stores/authStore';
 import AcknowledgementCheckbox from '../components/AcknowledgementCheckbox';
 import ApprovalActionDialog from '../components/ApprovalActionDialog';
 import ResponsiveTable from '../components/ResponsiveTable';
+import { useApprovalDeepLink } from '../utils/useApprovalDeepLink';
 
 interface POItem {
   id?: string;
@@ -242,6 +244,9 @@ export default function PurchaseOrdersPage() {
   const pagination = data?.pagination ?? { page: 1, pageSize: 20, total: 0, totalPages: 0 };
   const vendors: { id: string; name: string; vendorCode: string }[] = vendorsData?.data ?? [];
 
+  // Auto-open approval dialog when navigated from a push notification
+  useApprovalDeepLink(rows, (row) => setApprovalAction({ row, action: 'approve' }));
+
   const quotationTotal = useMemo(() => {
     if (!selectedQuotation?.items) return 0;
     return selectedQuotation.items.reduce((sum, i) => sum + Number(i.amount), 0);
@@ -407,28 +412,7 @@ export default function PurchaseOrdersPage() {
                 <Typography><strong>{row.poNumber}</strong> — {row.vendor?.name} — Status: <Chip label={row.approvalWorkflow!.status} size="small" color={STATUS_COLORS[row.approvalWorkflow!.status] ?? 'default'} /></Typography>
               </AccordionSummary>
               <AccordionDetails>
-                <Table size="small">
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>Step</TableCell>
-                      <TableCell>Approver Role</TableCell>
-                      <TableCell>Status</TableCell>
-                      <TableCell>Approver</TableCell>
-                      <TableCell>Comments</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {row.approvalWorkflow!.steps.map((step) => (
-                      <TableRow key={step.id}>
-                        <TableCell>{step.stepNumber}</TableCell>
-                        <TableCell>{step.approverRole.replace(/_/g, ' ')}</TableCell>
-                        <TableCell><Chip label={step.status} size="small" color={step.status === 'APPROVED' ? 'success' : step.status === 'REJECTED' ? 'error' : 'default'} /></TableCell>
-                        <TableCell>{step.approverUser?.name ?? '—'}</TableCell>
-                        <TableCell>{step.comments ?? '—'}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                <ApprovalStepsDisplay steps={row.approvalWorkflow!.steps} />
               </AccordionDetails>
             </Accordion>
           ))}
@@ -436,7 +420,7 @@ export default function PurchaseOrdersPage() {
       )}
 
       {/* Create PO Dialog */}
-      <Dialog open={createOpen} onClose={() => { setCreateOpen(false); resetForm(); }} maxWidth="md" fullWidth sx={{ '& .MuiDialog-paper': { margin: { xs: 1 } } }}>
+      <ResponsiveDialog open={createOpen} onClose={() => { setCreateOpen(false); resetForm(); }} maxWidth="md" fullWidth sx={{ '& .MuiDialog-paper': { margin: { xs: 1 } } }}>
         <DialogTitle>Create Purchase Order</DialogTitle>
         <DialogContent>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1, flexWrap: 'wrap' }}>
@@ -477,8 +461,7 @@ export default function PurchaseOrdersPage() {
             {selectedQuotation?.items && selectedQuotation.items.length > 0 && (
               <Box>
                 <Typography variant="body2" fontWeight={600} sx={{ mb: 1 }}>Items (from quotation)</Typography>
-                <ResponsiveTable>
-                <TableContainer component={Card} variant="outlined">
+                <TableContainer component={Card} variant="outlined" sx={{ display: { xs: 'none', sm: 'block' } }}>
                   <Table size="small">
                     <TableHead>
                       <TableRow>
@@ -493,20 +476,47 @@ export default function PurchaseOrdersPage() {
                     <TableBody>
                       {selectedQuotation.items.map((item, idx) => (
                         <TableRow key={idx}>
-                          <TableCell data-label="S.no">{idx + 1}</TableCell>
-                          <TableCell data-label="Material">{item.materialName}</TableCell>
-                          <TableCell data-label="Qty">{item.quantity}</TableCell>
-                          <TableCell data-label="Unit">{item.unit ?? '—'}</TableCell>
-                          <TableCell data-label="Unit Price">{formatCurrency(item.unitPrice)}</TableCell>
-                          <TableCell data-label="Amount">{formatCurrency(item.amount)}</TableCell>
+                          <TableCell>{idx + 1}</TableCell>
+                          <TableCell>{item.materialName}</TableCell>
+                          <TableCell>{item.quantity}</TableCell>
+                          <TableCell>{item.unit ?? '—'}</TableCell>
+                          <TableCell>{formatCurrency(item.unitPrice)}</TableCell>
+                          <TableCell>{formatCurrency(item.amount)}</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
                   </Table>
                 </TableContainer>
-                </ResponsiveTable>
+                <Box sx={{ display: { xs: 'flex', sm: 'none' }, flexDirection: 'column', gap: 1 }}>
+                  {selectedQuotation.items.map((item, idx) => (
+                    <Card key={idx} variant="outlined" sx={{ p: 1.5 }}>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 1, mb: 1 }}>
+                        <Typography variant="subtitle2" fontWeight={700} sx={{ minWidth: 0, overflowWrap: 'anywhere' }}>
+                          {idx + 1}. {item.materialName}
+                        </Typography>
+                        <Typography variant="subtitle2" fontWeight={700} sx={{ flexShrink: 0 }}>
+                          {formatCurrency(item.amount)}
+                        </Typography>
+                      </Box>
+                      <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 1 }}>
+                        <Box>
+                          <Typography variant="caption" color="text.secondary">Quantity</Typography>
+                          <Typography variant="body2" fontWeight={600}>{item.quantity}</Typography>
+                        </Box>
+                        <Box>
+                          <Typography variant="caption" color="text.secondary">Unit</Typography>
+                          <Typography variant="body2" fontWeight={600}>{item.unit ?? '—'}</Typography>
+                        </Box>
+                        <Box>
+                          <Typography variant="caption" color="text.secondary">Unit Price</Typography>
+                          <Typography variant="body2" fontWeight={600}>{formatCurrency(item.unitPrice)}</Typography>
+                        </Box>
+                      </Box>
+                    </Card>
+                  ))}
+                </Box>
                 <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: { xs: 'stretch', sm: 'flex-end' }, gap: 1, mt: 1 }}>
-                  <Typography variant="body2">Total: <strong>{formatCurrency(quotationTotal)}</strong></Typography>
+                  <Typography variant="body2" sx={{ textAlign: { xs: 'left', sm: 'right' } }}>Total: <strong>{formatCurrency(quotationTotal)}</strong></Typography>
                   <TextField
                     label="GST Amount (optional)"
                     type="number"
@@ -515,7 +525,7 @@ export default function PurchaseOrdersPage() {
                     size="small"
                     sx={{ width: { xs: '100%', sm: 200 } }}
                   />
-                  <Typography variant="body2">Grand Total: <strong>{formatCurrency(grandTotal)}</strong></Typography>
+                  <Typography variant="body2" sx={{ textAlign: { xs: 'left', sm: 'right' } }}>Grand Total: <strong>{formatCurrency(grandTotal)}</strong></Typography>
                 </Box>
               </Box>
             )}
@@ -526,7 +536,7 @@ export default function PurchaseOrdersPage() {
             />
           </Box>
         </DialogContent>
-        <DialogActions sx={{ flexWrap: 'wrap', gap: 1 }}>
+        <DialogActions>
           <Button onClick={() => { setCreateOpen(false); resetForm(); }}>Cancel</Button>
           <Button
             variant="contained"
@@ -536,7 +546,7 @@ export default function PurchaseOrdersPage() {
             {createMutation.isPending ? <CircularProgress size={20} /> : 'Create PO'}
           </Button>
         </DialogActions>
-      </Dialog>
+      </ResponsiveDialog>
 
       {/* Approval Popup for Creator */}
       <Snackbar
