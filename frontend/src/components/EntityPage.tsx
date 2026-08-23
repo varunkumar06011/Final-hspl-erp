@@ -407,6 +407,7 @@ export default function EntityPage({
                           value={mat.name ?? ''}
                           onChange={(e) => updateMaterial(index, 'name', e.target.value)}
                           size="small"
+                          InputLabelProps={{ shrink: true }}
                           sx={{ flex: 2, minWidth: 0 }}
                         />
                         <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
@@ -417,6 +418,7 @@ export default function EntityPage({
                             onChange={(e) => updateMaterial(index, 'pricePerUnit', e.target.value === '' ? undefined : Number(e.target.value.replace(/,/g, '')))}
                             inputMode="decimal"
                             size="small"
+                            InputLabelProps={{ shrink: true }}
                             sx={{ flex: 1, minWidth: 0 }}
                             inputProps={{ min: 0, step: 0.01 }}
                           />
