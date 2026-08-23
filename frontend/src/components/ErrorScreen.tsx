@@ -100,9 +100,6 @@ export default function ErrorScreen({
             Go Home
           </Button>
         )}
-        <Button variant="outlined" size="large" onClick={() => window.history.back()}>
-          Go Back
-        </Button>
       </Box>
 
       {stillOffline && (
