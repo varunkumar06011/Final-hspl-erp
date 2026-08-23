@@ -2,6 +2,7 @@ import { Permission } from '@hospital-erp/shared';
 import { createVendorSchema, updateVendorSchema, listVendorsSchema } from '@hospital-erp/shared';
 import { prisma } from '../config/prisma';
 import { createCrudRouter } from '../utils/crudFactory';
+import { notifyAllHeads } from '../services/push.service';
 
 interface MaterialInput {
   id?: string;
@@ -92,5 +93,14 @@ export default createCrudRouter({
     }
 
     return data;
+  },
+  afterCreate: async (record, _userId, projectId) => {
+    await notifyAllHeads(projectId, {
+      entityType: 'VENDOR',
+      entityId: record.id as string,
+      title: 'New Vendor Created',
+      body: `Vendor ${record.name} (${record.vendorCode}) added`,
+      url: '/vendors',
+    });
   },
 });

@@ -6,6 +6,7 @@ import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middl
 import { rbacMiddleware } from '../middleware/rbac';
 import { validateMiddleware } from '../middleware/validate';
 import { logAudit } from '../services/audit.service';
+import { notifyAllHeads } from '../services/push.service';
 
 const router = Router();
 router.use(authMiddleware);
@@ -81,6 +82,14 @@ router.post(
         projectId,
         newValue: { name: record.name, status: record.status },
       });
+
+      notifyAllHeads(projectId, {
+        entityType: 'INSPECTION',
+        entityId: record.id,
+        title: 'New Inspection Created',
+        body: `Inspection "${record.name}" — Status: ${record.status}`,
+        url: '/inspections',
+      }).catch((err) => console.error('[Push] Inspection notification error:', err));
 
       res.status(201).json(record);
     } catch (error) {

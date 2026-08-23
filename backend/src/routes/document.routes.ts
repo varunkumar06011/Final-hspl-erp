@@ -7,6 +7,7 @@ import { rbacMiddleware } from '../middleware/rbac';
 import { validateMiddleware } from '../middleware/validate';
 import { logAudit } from '../services/audit.service';
 import { getStorageService, serveFile } from '../services/storage.service';
+import { notifyAllHeads } from '../services/push.service';
 import multer from 'multer';
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
@@ -90,6 +91,14 @@ router.post(
         projectId,
         newValue: { name: record.name, fileName: record.fileName },
       });
+
+      notifyAllHeads(projectId, {
+        entityType: 'DOCUMENT',
+        entityId: record.id,
+        title: 'New Document Uploaded',
+        body: `"${record.name}" — ${record.fileName}`,
+        url: '/documents',
+      }).catch((err) => console.error('[Push] Document notification error:', err));
 
       res.status(201).json(record);
     } catch (error) {

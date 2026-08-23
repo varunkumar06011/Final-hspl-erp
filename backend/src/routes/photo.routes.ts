@@ -7,6 +7,7 @@ import { rbacMiddleware } from '../middleware/rbac';
 import { validateMiddleware } from '../middleware/validate';
 import { logAudit } from '../services/audit.service';
 import { getStorageService, serveFile } from '../services/storage.service';
+import { notifyAllHeads } from '../services/push.service';
 import multer from 'multer';
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
@@ -95,6 +96,14 @@ router.post(
         newValue: { fileName: req.file.originalname, tag: record.tag },
       });
 
+      notifyAllHeads(projectId, {
+        entityType: 'SITE_PHOTO',
+        entityId: record.id,
+        title: 'New Site Photo Uploaded',
+        body: `${req.file.originalname} — Tag: ${record.tag}`,
+        url: '/photos',
+      }).catch((err) => console.error('[Push] Photo notification error:', err));
+
       res.status(201).json(record);
     } catch (error) {
       next(error);
@@ -127,6 +136,14 @@ router.post(
         projectId,
         newValue: { tag: record.tag },
       });
+
+      notifyAllHeads(projectId, {
+        entityType: 'SITE_PHOTO',
+        entityId: record.id,
+        title: 'New Site Photo Added',
+        body: `Tag: ${record.tag}${record.caption ? ` — ${record.caption}` : ''}`,
+        url: '/photos',
+      }).catch((err) => console.error('[Push] Photo notification error:', err));
 
       res.status(201).json(record);
     } catch (error) {

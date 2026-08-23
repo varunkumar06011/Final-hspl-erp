@@ -6,6 +6,7 @@ import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middl
 import { rbacMiddleware } from '../middleware/rbac';
 import { validateMiddleware } from '../middleware/validate';
 import { logAudit } from '../services/audit.service';
+import { notifyAllHeads } from '../services/push.service';
 
 const router = Router();
 router.use(authMiddleware);
@@ -76,6 +77,14 @@ router.post(
         projectId: req.user!.projectId,
         newValue: { name: record.name, phaseId: record.phaseId },
       });
+
+      notifyAllHeads(requireProjectId(req), {
+        entityType: 'ACTIVITY',
+        entityId: record.id,
+        title: 'New Activity Created',
+        body: `Activity "${record.name}" added`,
+        url: '/dashboard',
+      }).catch((err) => console.error('[Push] Activity notification error:', err));
 
       res.status(201).json(record);
     } catch (error) {

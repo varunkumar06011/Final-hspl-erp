@@ -23,7 +23,7 @@ import {
 } from '@mui/icons-material';
 import { useAuthStore } from '../stores/authStore';
 import { hasPermission, Permission, UserRole } from '@hospital-erp/shared';
-import { onForegroundMessage } from '../config/notifications';
+import { onForegroundMessage, enableNotifications, isPushSupported, getPermissionState } from '../config/notifications';
 
 const NAV_ITEMS = [
   { label: 'Dashboard', icon: <DashboardIcon />, path: '/' },
@@ -87,6 +87,30 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     });
     return unsubscribe;
   }, []);
+
+  // Auto-enable notifications on login — request permission and register FCM token
+  // Runs once when the user is authenticated. If permission is denied, do nothing.
+  useEffect(() => {
+    let cancelled = false;
+    async function autoEnable() {
+      if (!user) return;
+      const supported = await isPushSupported();
+      if (!supported) return;
+
+      const permission = getPermissionState();
+      // If already granted, just ensure the token is registered
+      // If default (not asked), request permission automatically
+      // If denied, respect the user's choice
+      if (permission === 'denied') return;
+
+      const result = await enableNotifications();
+      if (!cancelled && result.success) {
+        console.log('[Notifications] Auto-enabled on login');
+      }
+    }
+    autoEnable();
+    return () => { cancelled = true; };
+  }, [user]);
 
   const handleFgNotificationClick = useCallback(() => {
     if (fgNotification.url) {

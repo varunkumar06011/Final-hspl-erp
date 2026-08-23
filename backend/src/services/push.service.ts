@@ -1,12 +1,20 @@
 import { prisma } from '../config/prisma';
 import { getFirebaseApp } from '../config/firebase';
 import admin from 'firebase-admin';
-import { UserRole } from '@hospital-erp/shared';
+import { UserRole, APPROVER_ROLES } from '@hospital-erp/shared';
 
 // ─── Types ────────────────────────────────────────────────
 
 export interface ApprovalNotificationPayload {
   approvalId: string;
+  entityType: string;
+  entityId: string;
+  title: string;
+  body: string;
+  url: string;
+}
+
+export interface NotificationPayload {
   entityType: string;
   entityId: string;
   title: string;
@@ -58,7 +66,9 @@ export async function getSubscriptionStatus(userId: string): Promise<{
 
 async function sendPushToTokens(
   tokens: string[],
-  payload: ApprovalNotificationPayload
+  title: string,
+  body: string,
+  data: Record<string, string>
 ): Promise<void> {
   if (tokens.length === 0) return;
 
@@ -66,26 +76,15 @@ async function sendPushToTokens(
   const messaging = admin.messaging(app);
 
   const message = {
-    notification: {
-      title: payload.title,
-      body: payload.body,
-    },
-    data: {
-      type: 'approval_request',
-      approvalId: payload.approvalId,
-      entityType: payload.entityType,
-      entityId: payload.entityId,
-      title: payload.title,
-      body: payload.body,
-      url: payload.url,
-    },
+    notification: { title, body },
+    data,
     tokens,
   };
 
   try {
     const response = await messaging.sendEachForMulticast(message);
     console.log(
-      `[Push] Sent to ${response.successCount}/${tokens.length} devices (approval ${payload.approvalId})`
+      `[Push] Sent to ${response.successCount}/${tokens.length} devices`
     );
 
     // Clean up invalid tokens
@@ -94,7 +93,6 @@ async function sendPushToTokens(
       response.responses.forEach((resp, index) => {
         if (!resp.success && resp.error) {
           const errorCode = resp.error.code;
-          // FCM error codes that mean the token is permanently invalid
           if (
             errorCode === 'messaging/invalid-registration-token' ||
             errorCode === 'messaging/registration-token-not-registered' ||
@@ -113,8 +111,75 @@ async function sendPushToTokens(
       }
     }
   } catch (error) {
-    console.error(`[Push] Failed to send push (approval ${payload.approvalId}):`, error);
+    console.error(`[Push] Failed to send push:`, error);
   }
+}
+
+// ─── Get tokens for a set of users ────────────────────────
+
+async function getTokensForUsers(userIds: string[]): Promise<string[]> {
+  if (userIds.length === 0) return [];
+  const subscriptions = await prisma.pushSubscription.findMany({
+    where: { userId: { in: userIds }, isActive: true },
+    select: { token: true },
+  });
+  return subscriptions.map((s) => s.token);
+}
+
+// ─── Notify all 4 heads in a project ──────────────────────
+
+export async function notifyAllHeads(
+  projectId: string,
+  payload: NotificationPayload
+): Promise<void> {
+  const heads = await prisma.user.findMany({
+    where: {
+      projectId,
+      isActive: true,
+      role: { in: [...APPROVER_ROLES] as string[] },
+    },
+    select: { id: true },
+  });
+
+  if (heads.length === 0) return;
+
+  const tokens = await getTokensForUsers(heads.map((h) => h.id));
+
+  if (tokens.length === 0) {
+    console.log(`[Push] No subscriptions for heads in project ${projectId}`);
+    return;
+  }
+
+  console.log(`[Push] Notifying ${heads.length} heads (${tokens.length} devices) — ${payload.entityType}`);
+  await sendPushToTokens(tokens, payload.title, payload.body, {
+    type: 'entity_created',
+    entityType: payload.entityType,
+    entityId: payload.entityId,
+    title: payload.title,
+    body: payload.body,
+    url: payload.url,
+  });
+}
+
+// ─── Notify a specific user ───────────────────────────────
+
+export async function notifyUser(
+  userId: string,
+  payload: NotificationPayload
+): Promise<void> {
+  const tokens = await getTokensForUsers([userId]);
+
+  if (tokens.length === 0) return;
+
+  console.log(`[Push] Notifying user ${userId} (${tokens.length} devices) — ${payload.entityType}`);
+  await sendPushToTokens(tokens, payload.title, payload.body, {
+    type: 'approval_result',
+    entityType: payload.entityType,
+    entityId: payload.entityId,
+    title: payload.title,
+    body: payload.body,
+    url: payload.url,
+  });
 }
 
 // ─── Notify approvers for an approval workflow ────────────
@@ -140,17 +205,7 @@ export async function notifyApprovers(
   }
 
   const approverIds = approvers.map((a) => a.id);
-
-  // Get all active push subscriptions for these approvers
-  const subscriptions = await prisma.pushSubscription.findMany({
-    where: {
-      userId: { in: approverIds },
-      isActive: true,
-    },
-    select: { token: true },
-  });
-
-  const tokens = subscriptions.map((s) => s.token);
+  const tokens = await getTokensForUsers(approverIds);
 
   if (tokens.length === 0) {
     console.log(`[Push] No push subscriptions for approvers in project ${projectId}`);
@@ -158,9 +213,17 @@ export async function notifyApprovers(
   }
 
   console.log(
-    `[Push] Approval notification triggered — approval ${payload.approvalId}, ` +
+    `[Push] Approval notification — approval ${payload.approvalId}, ` +
     `${approvers.length} approver(s), ${tokens.length} device(s)`
   );
 
-  await sendPushToTokens(tokens, payload);
+  await sendPushToTokens(tokens, payload.title, payload.body, {
+    type: 'approval_request',
+    approvalId: payload.approvalId,
+    entityType: payload.entityType,
+    entityId: payload.entityId,
+    title: payload.title,
+    body: payload.body,
+    url: payload.url,
+  });
 }

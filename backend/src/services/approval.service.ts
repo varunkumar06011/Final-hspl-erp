@@ -1,5 +1,6 @@
 import { prisma } from '../config/prisma';
 import { APPROVER_ROLES, ApprovalStatus, ApprovalStepStatus, UserRole, APPROVAL_CONFIG } from '@hospital-erp/shared';
+import { notifyAllHeads, notifyUser, NotificationPayload } from './push.service';
 
 interface InitiateParams {
   entityType: string;
@@ -11,6 +12,88 @@ interface InitiateParams {
 const STEP_ROLES: { stepNumber: number; approverRole: UserRole }[] = APPROVER_ROLES.map(
   (approverRole, index) => ({ stepNumber: index + 1, approverRole })
 );
+
+// ─── Entity type → Prisma model mapping for creator lookup ──
+const ENTITY_MODEL_MAP: Record<string, string> = {
+  QUOTATION: 'quotation',
+  PURCHASE_ORDER: 'purchaseOrder',
+  VENDOR_INVOICE: 'vendorInvoice',
+  PAYMENT_REQUEST: 'paymentRequest',
+};
+
+const ENTITY_URL_MAP: Record<string, string> = {
+  QUOTATION: '/quotations',
+  PURCHASE_ORDER: '/pos',
+  VENDOR_INVOICE: '/invoices',
+  PAYMENT_REQUEST: '/payments',
+};
+
+const ENTITY_LABEL_MAP: Record<string, string> = {
+  QUOTATION: 'Quotation',
+  PURCHASE_ORDER: 'Purchase Order',
+  VENDOR_INVOICE: 'Invoice',
+  PAYMENT_REQUEST: 'Payment Request',
+};
+
+async function findEntityCreator(entityType: string, entityId: string): Promise<{ createdBy: string | null; projectId: string; label: string }> {
+  const modelName = ENTITY_MODEL_MAP[entityType];
+  if (!modelName) {
+    // Fallback: get projectId from the workflow
+    const workflow = await prisma.approvalWorkflow.findUnique({
+      where: { entityType_entityId: { entityType, entityId } },
+      select: { projectId: true },
+    });
+    return { createdBy: null, projectId: workflow?.projectId ?? '', label: entityType };
+  }
+
+  const model = (prisma as any)[modelName];
+  const entity = await model.findUnique({
+    where: { id: entityId },
+    select: { createdBy: true, projectId: true },
+  });
+
+  return {
+    createdBy: entity?.createdBy ?? null,
+    projectId: entity?.projectId ?? '',
+    label: ENTITY_LABEL_MAP[entityType] ?? entityType,
+  };
+}
+
+async function notifyApprovalResult(
+  entityType: string,
+  entityId: string,
+  action: 'approved' | 'rejected',
+  actorName: string,
+  isFinal: boolean,
+  entityLabel: string,
+  entityUrl: string,
+  projectId: string,
+  createdBy: string | null,
+): Promise<void> {
+  const status = action === 'approved' ? 'Approved' : 'Rejected';
+  const title = isFinal ? `${entityLabel} ${status}` : `${entityLabel} — Step ${status}`;
+  const body = `${action === 'approved' ? 'Approved' : 'Rejected'} by ${actorName}${isFinal ? ' (Final)' : ''}`;
+
+  const payload: NotificationPayload = {
+    entityType,
+    entityId,
+    title,
+    body,
+    url: entityUrl,
+  };
+
+  // Notify all 4 heads
+  notifyAllHeads(projectId, payload).catch((err) =>
+    console.error('[Push] Approval result heads notification error:', err)
+  );
+
+  // Notify the creator (if different from the actor and has a subscription)
+  if (createdBy) {
+    notifyUser(createdBy, payload).catch((err) =>
+      console.error('[Push] Approval result creator notification error:', err)
+    );
+  }
+}
 
 export async function initiate({
   entityType,
@@ -108,6 +191,20 @@ export async function approve(stepId: string, userId: string, comments?: string)
       data: { status: ApprovalStatus.APPROVED, currentStep: workflow.steps.length },
     });
 
+    // Notify creator + all heads that the entity is fully approved
+    const entityInfo = await findEntityCreator(workflow.entityType, workflow.entityId);
+    notifyApprovalResult(
+      workflow.entityType,
+      workflow.entityId,
+      'approved',
+      user.name,
+      true,
+      entityInfo.label,
+      `${ENTITY_URL_MAP[workflow.entityType] ?? '/'}?approval=${workflow.id}`,
+      entityInfo.projectId || workflow.projectId,
+      entityInfo.createdBy,
+    ).catch((err) => console.error('[Push] Approval notification error:', err));
+
     return {
       workflow: { ...workflow, status: ApprovalStatus.APPROVED },
       step: updatedStep,
@@ -136,6 +233,20 @@ export async function approve(stepId: string, userId: string, comments?: string)
     data: { status: newStatus, currentStep: newCurrentStep },
     include: { steps: { orderBy: { stepNumber: 'asc' } } },
   });
+
+  // Notify creator + all heads that a step was approved (not final yet)
+  const entityInfo = await findEntityCreator(workflow.entityType, workflow.entityId);
+  notifyApprovalResult(
+    workflow.entityType,
+    workflow.entityId,
+    'approved',
+    user.name,
+    false,
+    entityInfo.label,
+    `${ENTITY_URL_MAP[workflow.entityType] ?? '/'}?approval=${workflow.id}`,
+    entityInfo.projectId || workflow.projectId,
+    entityInfo.createdBy,
+  ).catch((err) => console.error('[Push] Step approval notification error:', err));
 
   return {
     workflow: updatedWorkflow,
@@ -209,6 +320,20 @@ export async function reject(stepId: string, userId: string, reason: string) {
     data: { status: isFullyRejected ? ApprovalStatus.REJECTED : workflow.status },
     include: { steps: { orderBy: { stepNumber: 'asc' } } },
   });
+
+  // Notify creator + all heads about the rejection
+  const entityInfo = await findEntityCreator(workflow.entityType, workflow.entityId);
+  notifyApprovalResult(
+    workflow.entityType,
+    workflow.entityId,
+    'rejected',
+    user.name,
+    isFullyRejected,
+    entityInfo.label,
+    `${ENTITY_URL_MAP[workflow.entityType] ?? '/'}?approval=${workflow.id}`,
+    entityInfo.projectId || workflow.projectId,
+    entityInfo.createdBy,
+  ).catch((err) => console.error('[Push] Rejection notification error:', err));
 
   return {
     workflow: updatedWorkflow,

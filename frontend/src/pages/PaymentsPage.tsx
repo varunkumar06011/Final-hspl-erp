@@ -543,6 +543,24 @@ export default function PaymentsPage() {
               required
               helperText={invoicePayOpen ? `Maximum: ${formatCurrency(invoicePayOpen.outstanding)}` : ''}
             />
+            {invoicePayOpen && (
+              <Box
+                sx={{
+                  p: 1.5,
+                  borderRadius: 1,
+                  bgcolor: 'action.hover',
+                  border: 1,
+                  borderColor: 'divider',
+                }}
+              >
+                <Typography variant="body2" color="text.secondary">
+                  Outstanding After This Payment
+                </Typography>
+                <Typography variant="h6" color="primary.main" fontWeight={600}>
+                  {formatCurrency(Math.max(0, invoicePayOpen.outstanding - (Number(invoicePayForm.amount) || 0)))}
+                </Typography>
+              </Box>
+            )}
             <TextField
               select
               label="Payment Mode"

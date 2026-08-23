@@ -7,6 +7,7 @@ import { rbacMiddleware } from '../middleware/rbac';
 import { validateMiddleware } from '../middleware/validate';
 import { logAudit } from '../services/audit.service';
 import { verifyFirebaseToken } from '../config/firebase';
+import { notifyAllHeads } from '../services/push.service';
 
 const router = Router();
 router.use(authMiddleware);
@@ -267,6 +268,15 @@ router.post(
         projectId,
         newValue: { passNumber, poId, invoiceId: invoiceId ?? null, otpRequestedFor },
       });
+
+      // Notify all heads about the new gate pass
+      notifyAllHeads(projectId, {
+        entityType: 'GATE_PASS',
+        entityId: gatePass.id,
+        title: 'New Gate Pass Created',
+        body: `Gate pass ${passNumber} — OTP sent to ${headUser.name}`,
+        url: '/gate-passes',
+      }).catch((err) => console.error('[Push] Gate pass notification error:', err));
 
       // Return the gate pass — the frontend will use Firebase to send the OTP to the head's phone
       res.status(201).json({
