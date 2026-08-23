@@ -163,21 +163,18 @@ router.get(
           createdByUser: { select: { id: true, name: true } },
           paymentRequests: {
             where: { deletedAt: null },
-            select: { id: true, status: true },
+            select: { id: true, status: true, amount: true, requestNumber: true },
           },
         },
         orderBy: { createdAt: 'desc' },
       });
 
-      // Only include invoices with no active (PENDING or APPROVED) payment request
-      const eligible = verifiedInvoices.filter(
-        (inv) => !inv.paymentRequests.some(
-          (pr) => pr.status === PaymentStatus.PENDING || pr.status === PaymentStatus.APPROVED
-        )
-      );
-
+      // Keep invoices visible while an installment request is pending so the remaining balance is not hidden.
       const result = await Promise.all(
-        eligible.map(async (inv) => {
+        verifiedInvoices.map(async (inv) => {
+          const activeRequest = inv.paymentRequests.find(
+            (pr) => pr.status === PaymentStatus.PENDING || pr.status === PaymentStatus.APPROVED
+          );
           const summary = await getInvoicePaymentSummary(inv.id);
           return {
             id: inv.id,
@@ -190,6 +187,14 @@ router.get(
             installmentsPaid: summary.installmentsPaid,
             paidToDate: summary.paidToDate,
             outstanding: summary.outstanding,
+            activePaymentRequest: activeRequest
+              ? {
+                  id: activeRequest.id,
+                  status: activeRequest.status,
+                  amount: Number(activeRequest.amount),
+                  requestNumber: activeRequest.requestNumber,
+                }
+              : null,
             createdBy: inv.createdByUser?.name ?? '—',
             createdAt: inv.createdAt,
           };

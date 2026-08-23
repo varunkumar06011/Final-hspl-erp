@@ -388,6 +388,17 @@ model GatePass {
   invoiceId       String?  @db.Uuid
   passNumber      String
   date            DateTime @default(now())
+  visitTime       String?
+  visitorName     String?
+  purpose         String?
+  vehicleType     String?
+  vehicleNumber   String?
+  driverName      String?
+  driverMobile    String?
+  materialMovement Boolean @default(true)
+  gatePassType    String   @default("NON_RETURNABLE")
+  photoProofPath  String?
+  remarks         String?
   status          String   @default("PENDING") // PENDING | APPROVED
   otpCode         String?
   otpRequestedFor String?  @db.Uuid

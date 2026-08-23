@@ -23,7 +23,7 @@ const dateStr = z.coerce.date();
 const nonEmptyText = (max: number) => z.string().trim().min(1).max(max);
 const acknowledgement = z.preprocess(
   (value) => value === true || value === 'true',
-  z.literal(true, { errorMap: () => ({ message: 'Acknowledgement is required' }) })
+  z.literal(true, { errorMap: () => ({ message: 'Acknowledgement is required' }) }),
 );
 
 const pagination = z.object({
@@ -63,7 +63,10 @@ export const updateVendorSchema = z.object({
   body: createVendorSchema.shape.body.partial(),
 });
 export const listVendorsSchema = z.object({
-  query: pagination.extend({ search: z.string().optional(), status: z.nativeEnum(VendorStatus).optional() }),
+  query: pagination.extend({
+    search: z.string().optional(),
+    status: z.nativeEnum(VendorStatus).optional(),
+  }),
 });
 
 // ═══ Quotations ═══
@@ -77,7 +80,7 @@ const quotationLineItem = z.object({
 // Accept items as JSON string (multipart/form-data) or array (JSON body)
 const itemsField = z.preprocess(
   (val) => (typeof val === 'string' ? JSON.parse(val) : val),
-  z.array(quotationLineItem).min(1, 'At least one line item is required')
+  z.array(quotationLineItem).min(1, 'At least one line item is required'),
 );
 
 export const createQuotationSchema = z.object({
@@ -93,13 +96,16 @@ export const updateQuotationSchema = z.object({
   body: z.object({
     items: z.preprocess(
       (val) => (val === undefined ? undefined : typeof val === 'string' ? JSON.parse(val) : val),
-      z.array(quotationLineItem).min(1).optional()
+      z.array(quotationLineItem).min(1).optional(),
     ),
     gstAmount: money.optional(),
   }),
 });
 export const listQuotationsSchema = z.object({
-  query: pagination.extend({ vendorId: uuid.optional(), status: z.nativeEnum(QuotationStatus).optional() }),
+  query: pagination.extend({
+    vendorId: uuid.optional(),
+    status: z.nativeEnum(QuotationStatus).optional(),
+  }),
 });
 
 // ═══ Purchase Orders ═══
@@ -118,7 +124,10 @@ export const updatePOSchema = z.object({
   }),
 });
 export const listPOsSchema = z.object({
-  query: pagination.extend({ vendorId: uuid.optional(), status: z.nativeEnum(POStatus).optional() }),
+  query: pagination.extend({
+    vendorId: uuid.optional(),
+    status: z.nativeEnum(POStatus).optional(),
+  }),
 });
 
 // ═══ Project Settings ═══
@@ -133,37 +142,39 @@ export const updateProjectSettingsSchema = z.object({
 });
 
 // ═══ Vendor Invoices ═══
-export const createInvoiceSchema = z.object({
-  body: z.object({
-    vendorId: uuid,
-    poId: uuid.optional(),
-    invoiceNumber: z.string().trim().max(50).optional(),
-    amount: positiveMoney,
-    taxAmount: money.default(0),
-    totalAmount: positiveMoney,
-    advancePaid: money.optional(),
-    advanceType: z.string().trim().max(50).optional(),
-    advanceOtherType: z.string().trim().max(100).optional(),
-    deliveryDate: dateStr.optional(),
-    acknowledged: acknowledgement,
-  }),
-}).superRefine((data, ctx) => {
-  const { amount, taxAmount, totalAmount, advancePaid = 0 } = data.body;
-  if (Math.abs(Number(totalAmount) - (Number(amount) + Number(taxAmount))) > 0.01) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ['body', 'totalAmount'],
-      message: 'Total amount must equal invoice amount plus tax amount',
-    });
-  }
-  if (Number(advancePaid) > Number(totalAmount)) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ['body', 'advancePaid'],
-      message: `Advance paid (${advancePaid}) cannot exceed invoice total (${totalAmount})`,
-    });
-  }
-});
+export const createInvoiceSchema = z
+  .object({
+    body: z.object({
+      vendorId: uuid,
+      poId: uuid.optional(),
+      invoiceNumber: z.string().trim().max(50).optional(),
+      amount: positiveMoney,
+      taxAmount: money.default(0),
+      totalAmount: positiveMoney,
+      advancePaid: money.optional(),
+      advanceType: z.string().trim().max(50).optional(),
+      advanceOtherType: z.string().trim().max(100).optional(),
+      deliveryDate: dateStr.optional(),
+      acknowledged: acknowledgement,
+    }),
+  })
+  .superRefine((data, ctx) => {
+    const { amount, taxAmount, totalAmount, advancePaid = 0 } = data.body;
+    if (Math.abs(Number(totalAmount) - (Number(amount) + Number(taxAmount))) > 0.01) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['body', 'totalAmount'],
+        message: 'Total amount must equal invoice amount plus tax amount',
+      });
+    }
+    if (Number(advancePaid) > Number(totalAmount)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['body', 'advancePaid'],
+        message: `Advance paid (${advancePaid}) cannot exceed invoice total (${totalAmount})`,
+      });
+    }
+  });
 export const updateInvoiceSchema = z.object({
   params: z.object({ id: uuid }),
   body: z.object({
@@ -210,7 +221,11 @@ export const createExpenseSchema = z.object({
   }),
 });
 export const listPaymentRequestsSchema = z.object({
-  query: pagination.extend({ vendorId: uuid.optional(), status: z.string().optional(), type: z.string().optional() }),
+  query: pagination.extend({
+    vendorId: uuid.optional(),
+    status: z.string().optional(),
+    type: z.string().optional(),
+  }),
 });
 export const recordPaymentSchema = z.object({
   params: z.object({ id: uuid }),
@@ -235,6 +250,20 @@ export const createGatePassSchema = z.object({
     poId: uuid,
     invoiceId: uuid.optional(),
     otpRequestedFor: uuid,
+    visitorName: z.string().trim().max(200).optional(),
+    visitDate: dateStr.optional(),
+    visitTime: z.string().trim().max(20).optional(),
+    purpose: z.string().trim().max(500).optional(),
+    vehicleType: z.string().trim().max(50).optional(),
+    vehicleNumber: z.string().trim().max(50).optional(),
+    driverName: z.string().trim().max(200).optional(),
+    driverMobile: z.string().trim().max(30).optional(),
+    materialMovement: z
+      .preprocess((value) => value === true || value === 'true', z.boolean())
+      .default(true),
+    gatePassType: z.enum(['RETURNABLE', 'NON_RETURNABLE']).default('NON_RETURNABLE'),
+    photoProofPath: z.string().trim().max(1000).optional(),
+    remarks: z.string().trim().max(1000).optional(),
   }),
 });
 export const listGatePassesSchema = z.object({
@@ -266,7 +295,10 @@ export const createInventoryTxnSchema = z.object({
     itemId: uuid,
     gatePassId: uuid.optional(),
     type: z.nativeEnum(InventoryTxnType),
-    quantity: z.coerce.number().finite().refine((v) => v !== 0, 'Quantity cannot be zero'),
+    quantity: z.coerce
+      .number()
+      .finite()
+      .refine((v) => v !== 0, 'Quantity cannot be zero'),
     notes: z.string().max(500).optional(),
   }),
 });
@@ -274,23 +306,36 @@ export const listInventorySchema = z.object({
   query: pagination.extend({ search: z.string().optional(), category: z.string().optional() }),
 });
 export const listInventoryTxnsSchema = z.object({
-  query: pagination.extend({ itemId: uuid.optional(), type: z.nativeEnum(InventoryTxnType).optional() }),
+  query: pagination.extend({
+    itemId: uuid.optional(),
+    type: z.nativeEnum(InventoryTxnType).optional(),
+  }),
 });
 
 // ═══ Phases & Activities ═══
-export const createPhaseSchema = z.object({
-  body: z.object({
-    name: nonEmptyText(200),
-    plannedStart: dateStr.optional(),
-    plannedEnd: dateStr.optional(),
-    budgetAmount: money.default(0),
-    status: z.nativeEnum(PhaseStatus).default(PhaseStatus.NOT_STARTED),
-  }),
-}).superRefine((data, ctx) => {
-  if (data.body.plannedStart && data.body.plannedEnd && data.body.plannedEnd < data.body.plannedStart) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['body', 'plannedEnd'], message: 'Planned end date cannot be before planned start date' });
-  }
-});
+export const createPhaseSchema = z
+  .object({
+    body: z.object({
+      name: nonEmptyText(200),
+      plannedStart: dateStr.optional(),
+      plannedEnd: dateStr.optional(),
+      budgetAmount: money.default(0),
+      status: z.nativeEnum(PhaseStatus).default(PhaseStatus.NOT_STARTED),
+    }),
+  })
+  .superRefine((data, ctx) => {
+    if (
+      data.body.plannedStart &&
+      data.body.plannedEnd &&
+      data.body.plannedEnd < data.body.plannedStart
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['body', 'plannedEnd'],
+        message: 'Planned end date cannot be before planned start date',
+      });
+    }
+  });
 export const updatePhaseSchema = z.object({
   params: z.object({ id: uuid }),
   body: z.object({
@@ -304,21 +349,31 @@ export const updatePhaseSchema = z.object({
     status: z.nativeEnum(PhaseStatus).optional(),
   }),
 });
-export const createActivitySchema = z.object({
-  body: z.object({
-    phaseId: uuid,
-    name: nonEmptyText(200),
-    plannedStart: dateStr.optional(),
-    plannedEnd: dateStr.optional(),
-    assignedVendorId: uuid.optional(),
-    budgetAmount: money.default(0),
-    status: z.nativeEnum(ActivityStatus).default(ActivityStatus.NOT_STARTED),
-  }),
-}).superRefine((data, ctx) => {
-  if (data.body.plannedStart && data.body.plannedEnd && data.body.plannedEnd < data.body.plannedStart) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['body', 'plannedEnd'], message: 'Planned end date cannot be before planned start date' });
-  }
-});
+export const createActivitySchema = z
+  .object({
+    body: z.object({
+      phaseId: uuid,
+      name: nonEmptyText(200),
+      plannedStart: dateStr.optional(),
+      plannedEnd: dateStr.optional(),
+      assignedVendorId: uuid.optional(),
+      budgetAmount: money.default(0),
+      status: z.nativeEnum(ActivityStatus).default(ActivityStatus.NOT_STARTED),
+    }),
+  })
+  .superRefine((data, ctx) => {
+    if (
+      data.body.plannedStart &&
+      data.body.plannedEnd &&
+      data.body.plannedEnd < data.body.plannedStart
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['body', 'plannedEnd'],
+        message: 'Planned end date cannot be before planned start date',
+      });
+    }
+  });
 export const updateActivitySchema = z.object({
   params: z.object({ id: uuid }),
   body: z.object({
@@ -429,22 +484,28 @@ const milestone = z.object({
   dueDate: dateStr.optional(),
   amount: money,
 });
-export const createContractSchema = z.object({
-  body: z.object({
-    vendorId: uuid,
-    type: nonEmptyText(100),
-    startDate: dateStr,
-    endDate: dateStr.optional(),
-    value: money,
-    advancePercent: z.coerce.number().finite().min(0).max(100).default(0),
-    retentionPercent: z.coerce.number().finite().min(0).max(100).default(0),
-    milestones: z.array(milestone).optional(),
-  }),
-}).superRefine((data, ctx) => {
-  if (data.body.endDate && data.body.endDate < data.body.startDate) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['body', 'endDate'], message: 'End date cannot be before start date' });
-  }
-});
+export const createContractSchema = z
+  .object({
+    body: z.object({
+      vendorId: uuid,
+      type: nonEmptyText(100),
+      startDate: dateStr,
+      endDate: dateStr.optional(),
+      value: money,
+      advancePercent: z.coerce.number().finite().min(0).max(100).default(0),
+      retentionPercent: z.coerce.number().finite().min(0).max(100).default(0),
+      milestones: z.array(milestone).optional(),
+    }),
+  })
+  .superRefine((data, ctx) => {
+    if (data.body.endDate && data.body.endDate < data.body.startDate) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['body', 'endDate'],
+        message: 'End date cannot be before start date',
+      });
+    }
+  });
 export const updateContractSchema = z.object({
   params: z.object({ id: uuid }),
   body: z.object({
@@ -453,7 +514,10 @@ export const updateContractSchema = z.object({
   }),
 });
 export const listContractsSchema = z.object({
-  query: pagination.extend({ vendorId: uuid.optional(), status: z.nativeEnum(ContractStatus).optional() }),
+  query: pagination.extend({
+    vendorId: uuid.optional(),
+    status: z.nativeEnum(ContractStatus).optional(),
+  }),
 });
 
 // ═══ Attendance (Staff + Daily Attendance) ═══
@@ -462,7 +526,12 @@ export const createStaffSchema = z.object({
     name: nonEmptyText(200),
     type: z.enum(['COMPANY', 'LABOUR']),
     role: z.string().trim().max(100).optional(),
-    phone: z.string().trim().regex(/^[0-9+() .-]{7,20}$/, 'Enter a valid phone number').optional().or(z.literal('')),
+    phone: z
+      .string()
+      .trim()
+      .regex(/^[0-9+() .-]{7,20}$/, 'Enter a valid phone number')
+      .optional()
+      .or(z.literal('')),
     baseSalary: money,
   }),
 });
@@ -471,7 +540,12 @@ export const updateStaffSchema = z.object({
   body: z.object({
     name: z.string().trim().min(1).max(200).optional(),
     role: z.string().trim().max(100).optional(),
-    phone: z.string().trim().regex(/^[0-9+() .-]{7,20}$/, 'Enter a valid phone number').optional().or(z.literal('')),
+    phone: z
+      .string()
+      .trim()
+      .regex(/^[0-9+() .-]{7,20}$/, 'Enter a valid phone number')
+      .optional()
+      .or(z.literal('')),
     baseSalary: money.optional(),
     active: z.boolean().optional(),
   }),
@@ -485,25 +559,35 @@ export const listStaffSchema = z.object({
 export const markAttendanceSchema = z.object({
   body: z.object({
     date: dateStr,
-    records: z.array(z.object({
-      staffId: uuid,
-      present: z.boolean(),
-      notes: z.string().max(500).optional(),
-    })).min(1),
+    records: z
+      .array(
+        z.object({
+          staffId: uuid,
+          present: z.boolean(),
+          notes: z.string().max(500).optional(),
+        }),
+      )
+      .min(1),
   }),
 });
-export const listAttendanceSchema = z.object({
-  query: pagination.extend({
-    staffId: uuid.optional(),
-    type: z.enum(['COMPANY', 'LABOUR']).optional(),
-    startDate: dateStr.optional(),
-    endDate: dateStr.optional(),
-  }),
-}).superRefine((data, ctx) => {
-  if (data.query.startDate && data.query.endDate && data.query.endDate < data.query.startDate) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['query', 'endDate'], message: 'End date cannot be before start date' });
-  }
-});
+export const listAttendanceSchema = z
+  .object({
+    query: pagination.extend({
+      staffId: uuid.optional(),
+      type: z.enum(['COMPANY', 'LABOUR']).optional(),
+      startDate: dateStr.optional(),
+      endDate: dateStr.optional(),
+    }),
+  })
+  .superRefine((data, ctx) => {
+    if (data.query.startDate && data.query.endDate && data.query.endDate < data.query.startDate) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['query', 'endDate'],
+        message: 'End date cannot be before start date',
+      });
+    }
+  });
 
 // ═══ Dropdown Options ═══
 export const createDropdownOptionSchema = z.object({

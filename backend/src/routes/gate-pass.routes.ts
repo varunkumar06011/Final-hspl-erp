@@ -1,6 +1,10 @@
 import { Router, Response, NextFunction } from 'express';
 import { Permission, AuditAction, UserRole, InventoryTxnType } from '@hospital-erp/shared';
-import { createGatePassSchema, listGatePassesSchema, verifyGatePassOtpSchema } from '@hospital-erp/shared';
+import {
+  createGatePassSchema,
+  listGatePassesSchema,
+  verifyGatePassOtpSchema,
+} from '@hospital-erp/shared';
 import { prisma } from '../config/prisma';
 import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middleware/auth';
 import { rbacMiddleware } from '../middleware/rbac';
@@ -8,11 +12,21 @@ import { validateMiddleware } from '../middleware/validate';
 import { logAudit } from '../services/audit.service';
 import { verifyFirebaseToken } from '../config/firebase';
 import { notifyAllHeads } from '../services/push.service';
+import { streamGatePassPdf } from '../services/gate-pass-pdf.service';
+import { getStorageService } from '../services/storage.service';
+import multer from 'multer';
+
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
 
 const router = Router();
 router.use(authMiddleware);
 
-const HEAD_ROLES = [UserRole.PROJECT_HEAD, UserRole.HEAD_OF_CONSTRUCTION, UserRole.ADMIN, UserRole.ADMIN_2];
+const HEAD_ROLES = [
+  UserRole.PROJECT_HEAD,
+  UserRole.HEAD_OF_CONSTRUCTION,
+  UserRole.ADMIN,
+  UserRole.ADMIN_2,
+];
 
 function getPassDatePrefix(): string {
   const now = new Date();
@@ -50,6 +64,7 @@ const gatePassInclude = {
   createdByUser: { select: { id: true, name: true } },
   otpRequestedForUser: { select: { id: true, name: true, role: true, phone: true } },
   otpApprovedByUser: { select: { id: true, name: true } },
+  project: { select: { name: true, officeAddress: true, hospitalAddress: true, gstNumber: true } },
 };
 
 // GET /heads — list the 4 head users for OTP selection (not filtered by projectId — heads may not be assigned to a project)
@@ -70,7 +85,7 @@ router.get(
     } catch (error) {
       next(error);
     }
-  }
+  },
 );
 
 // GET /approved-pos — list approved POs with their verified invoices and items (for gate pass creation)
@@ -87,7 +102,13 @@ router.get(
           items: true,
           invoices: {
             where: { deletedAt: null, verificationStatus: 'VERIFIED' },
-            select: { id: true, invoiceCode: true, invoiceNumber: true, verificationStatus: true, stockStatus: true },
+            select: {
+              id: true,
+              invoiceCode: true,
+              invoiceNumber: true,
+              verificationStatus: true,
+              stockStatus: true,
+            },
           },
         },
         orderBy: { createdAt: 'desc' },
@@ -109,7 +130,7 @@ router.get(
     } catch (error) {
       next(error);
     }
-  }
+  },
 );
 
 // GET / — list gate passes
@@ -145,7 +166,7 @@ router.get(
     } catch (error) {
       next(error);
     }
-  }
+  },
 );
 
 // GET /:id
@@ -167,18 +188,59 @@ router.get(
     } catch (error) {
       next(error);
     }
-  }
+  },
+);
+
+// GET /:id/pdf — download the gate pass PDF without requiring OTP approval
+router.get(
+  '/:id/pdf',
+  rbacMiddleware(Permission.VIEW_FINANCIALS),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      const record = await prisma.gatePass.findFirst({
+        where: { id: req.params.id, projectId, deletedAt: null },
+        include: gatePassInclude,
+      });
+      if (!record) {
+        res.status(404).json({ error: 'Gate pass not found' });
+        return;
+      }
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${record.passNumber}.pdf"`);
+      streamGatePassPdf(res, record);
+    } catch (error) {
+      next(error);
+    }
+  },
 );
 
 // POST / — create gate pass (request OTP)
 router.post(
   '/',
   rbacMiddleware(Permission.CREATE_GATE_PASS),
+  upload.single('photoProof'),
   validateMiddleware(createGatePassSchema),
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const projectId = requireProjectId(req);
-      const { poId, invoiceId, otpRequestedFor } = req.body;
+      const {
+        poId,
+        invoiceId,
+        otpRequestedFor,
+        visitorName,
+        visitDate,
+        visitTime,
+        purpose,
+        vehicleType,
+        vehicleNumber,
+        driverName,
+        driverMobile,
+        materialMovement,
+        gatePassType,
+        photoProofPath,
+        remarks,
+      } = req.body;
 
       // Validate PO exists and is approved
       const po = await prisma.purchaseOrder.findFirst({
@@ -226,7 +288,9 @@ router.post(
           where: { poId, projectId, deletedAt: null, status: 'APPROVED', invoiceId: null },
         });
         if (existingGP) {
-          res.status(409).json({ error: 'An approved gate pass already exists for this purchase order' });
+          res
+            .status(409)
+            .json({ error: 'An approved gate pass already exists for this purchase order' });
           return;
         }
       }
@@ -239,6 +303,20 @@ router.post(
       }
 
       const passNumber = await generateUniquePassNumber();
+      let uploadedPhotoPath: string | null = photoProofPath || null;
+      if (req.file) {
+        if (!req.file.mimetype.startsWith('image/')) {
+          res.status(400).json({ error: 'Photo proof must be an image' });
+          return;
+        }
+        const uploadResult = await getStorageService().upload(
+          req.file.buffer,
+          `gate-passes/${passNumber}-${req.file.originalname}`,
+          req.file.mimetype,
+          'documents',
+        );
+        uploadedPhotoPath = uploadResult.filePath;
+      }
 
       const gatePass = await prisma.gatePass.create({
         data: {
@@ -246,6 +324,18 @@ router.post(
           poId,
           ...(invoiceId ? { invoiceId } : {}),
           passNumber,
+          ...(visitDate ? { date: new Date(visitDate) } : {}),
+          visitTime: visitTime || null,
+          visitorName: visitorName || null,
+          purpose: purpose || null,
+          vehicleType: vehicleType || null,
+          vehicleNumber: vehicleNumber || null,
+          driverName: driverName || null,
+          driverMobile: driverMobile || null,
+          materialMovement: materialMovement ?? true,
+          gatePassType: gatePassType ?? 'NON_RETURNABLE',
+          photoProofPath: uploadedPhotoPath,
+          remarks: remarks || null,
           status: 'PENDING',
           otpRequestedFor,
           createdBy: req.user!.id,
@@ -288,7 +378,7 @@ router.post(
     } catch (error) {
       next(error);
     }
-  }
+  },
 );
 
 // POST /:id/verify-otp — verify Firebase ID token and approve gate pass
@@ -301,7 +391,11 @@ router.post(
       const projectId = requireProjectId(req);
       const gatePass = await prisma.gatePass.findFirst({
         where: { id: req.params.id, projectId, deletedAt: null },
-        include: { purchaseOrder: { include: { items: true } }, items: true, otpRequestedForUser: { select: { id: true, name: true, phone: true } } },
+        include: {
+          purchaseOrder: { include: { items: true } },
+          items: true,
+          otpRequestedForUser: { select: { id: true, name: true, phone: true } },
+        },
       });
       if (!gatePass) {
         res.status(404).json({ error: 'Gate pass not found' });
@@ -330,7 +424,12 @@ router.post(
       const tokenPhone = decodedToken.phone_number;
       const headPhone = gatePass.otpRequestedForUser.phone;
       if (!tokenPhone || !headPhone || tokenPhone !== headPhone) {
-        res.status(400).json({ error: 'OTP was not verified for the correct head. The OTP must be sent to ' + headPhone });
+        res
+          .status(400)
+          .json({
+            error:
+              'OTP was not verified for the correct head. The OTP must be sent to ' + headPhone,
+          });
         return;
       }
 
@@ -339,7 +438,11 @@ router.post(
 
       for (const item of gatePass.items) {
         let invItem = await prisma.inventoryItem.findFirst({
-          where: { projectId, name: { equals: item.materialName, mode: 'insensitive' }, deletedAt: null },
+          where: {
+            projectId,
+            name: { equals: item.materialName, mode: 'insensitive' },
+            deletedAt: null,
+          },
         });
 
         if (!invItem) {
@@ -352,9 +455,17 @@ router.post(
               minStockLevel: 0,
             },
           });
-          inventoryResults.push({ name: item.materialName, quantity: Number(item.quantity), action: 'created' });
+          inventoryResults.push({
+            name: item.materialName,
+            quantity: Number(item.quantity),
+            action: 'created',
+          });
         } else {
-          inventoryResults.push({ name: item.materialName, quantity: Number(item.quantity), action: 'updated' });
+          inventoryResults.push({
+            name: item.materialName,
+            quantity: Number(item.quantity),
+            action: 'updated',
+          });
         }
 
         const newBalance = Number(invItem.currentStock) + Number(item.quantity);
@@ -414,7 +525,7 @@ router.post(
     } catch (error) {
       next(error);
     }
-  }
+  },
 );
 
 // DELETE /:id — soft delete (only if pending)
@@ -445,7 +556,7 @@ router.delete(
     } catch (error) {
       next(error);
     }
-  }
+  },
 );
 
 export default router;
