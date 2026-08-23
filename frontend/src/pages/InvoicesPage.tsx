@@ -708,32 +708,34 @@ export default function InvoicesPage() {
             {selectedPO?.items && selectedPO.items.length > 0 && (
               <Box>
                 <Typography variant="body2" fontWeight={600} sx={{ mb: 1 }}>PO Materials</Typography>
-                <TableContainer component={Card} variant="outlined" sx={{ overflowX: 'auto' }}>
-                  <Table size="small">
-                    <TableHead>
-                      <TableRow>
-                        <TableCell sx={{ fontWeight: 600 }}>S.no</TableCell>
-                        <TableCell sx={{ fontWeight: 600 }}>Material</TableCell>
-                        <TableCell sx={{ fontWeight: 600 }}>Qty</TableCell>
-                        <TableCell sx={{ fontWeight: 600 }}>Unit</TableCell>
-                        <TableCell sx={{ fontWeight: 600 }}>Unit Price</TableCell>
-                        <TableCell sx={{ fontWeight: 600 }}>Amount</TableCell>
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {selectedPO.items.map((item: POItem, idx: number) => (
-                        <TableRow key={idx}>
-                          <TableCell>{idx + 1}</TableCell>
-                          <TableCell>{item.materialName}</TableCell>
-                          <TableCell>{item.quantity}</TableCell>
-                          <TableCell>{item.unit ?? '—'}</TableCell>
-                          <TableCell>{formatCurrency(item.unitPrice)}</TableCell>
-                          <TableCell>{formatCurrency(item.amount)}</TableCell>
+                <ResponsiveTable>
+                  <TableContainer component={Card} variant="outlined" sx={{ overflowX: 'auto' }}>
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow>
+                          <TableCell sx={{ fontWeight: 600 }}>S.no</TableCell>
+                          <TableCell sx={{ fontWeight: 600 }}>Material</TableCell>
+                          <TableCell sx={{ fontWeight: 600 }}>Qty</TableCell>
+                          <TableCell sx={{ fontWeight: 600 }}>Unit</TableCell>
+                          <TableCell sx={{ fontWeight: 600 }}>Unit Price</TableCell>
+                          <TableCell sx={{ fontWeight: 600 }}>Amount</TableCell>
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </TableContainer>
+                      </TableHead>
+                      <TableBody>
+                        {selectedPO.items.map((item: POItem, idx: number) => (
+                          <TableRow key={idx}>
+                            <TableCell data-label="S.no">{idx + 1}</TableCell>
+                            <TableCell data-label="Material">{item.materialName}</TableCell>
+                            <TableCell data-label="Qty">{item.quantity}</TableCell>
+                            <TableCell data-label="Unit">{item.unit ?? '—'}</TableCell>
+                            <TableCell data-label="Unit Price">{formatCurrency(item.unitPrice)}</TableCell>
+                            <TableCell data-label="Amount">{formatCurrency(item.amount)}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </ResponsiveTable>
               </Box>
             )}
 
