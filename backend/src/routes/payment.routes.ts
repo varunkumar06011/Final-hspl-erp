@@ -315,7 +315,7 @@ router.post(
           title: 'New Approval Required',
           body: `Payment request ${paymentCode} — ₹${amount}`,
           url: `/payments?approval=${record.approvalWorkflow.id}`,
-        }).catch(() => {});
+        }).catch((err) => console.error('[Push] Payment notification error:', err));
       }
 
       res.status(201).json(record);
@@ -426,7 +426,7 @@ router.post(
           title: 'New Approval Required',
           body: `Expense: ${description} — ₹${amount}`,
           url: `/payments?approval=${record.approvalWorkflow.id}`,
-        }).catch(() => {});
+        }).catch((err) => console.error('[Push] Expense notification error:', err));
       }
 
       res.status(201).json(record);

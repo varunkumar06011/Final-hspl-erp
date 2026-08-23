@@ -201,7 +201,7 @@ router.post(
         title: 'New Approval Required',
         body: `Purchase Order ${poNumber} — ₹${grandTotal}`,
         url: `/pos?approval=${workflow.id}`,
-      }).catch(() => {});
+      }).catch((err) => console.error('[Push] PO notification error:', err));
 
       const result = await prisma.purchaseOrder.findUnique({
         where: { id: po.id },
@@ -506,7 +506,12 @@ router.get(
       let y = 85;
       doc.fontSize(8).font('Helvetica').fillColor(TEXT_MUTED);
       doc.text('Date:', margin, y, { width: 35 });
-      doc.fillColor(TEXT_DARK).font('Helvetica-Bold').text(new Date(po.createdAt).toLocaleDateString(), margin + 35, y, { width: 80 });
+      doc.fillColor(TEXT_DARK).font('Helvetica-Bold').text(
+        new Date(po.createdAt).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' }),
+        margin + 35,
+        y,
+        { width: 80 }
+      );
       doc.fillColor(TEXT_MUTED).font('Helvetica').text('Created By:', margin + 140, y, { width: 60 });
       doc.fillColor(TEXT_DARK).font('Helvetica-Bold').text(po.createdByUser?.name ?? '—', margin + 200, y, { width: 120 });
       if (po.quotation) {
@@ -655,7 +660,7 @@ router.get(
       doc.moveTo(margin, y).lineTo(pageWidth - margin, y).stroke(PRIMARY);
       y += 6;
       doc.fillColor(TEXT_MUTED).fontSize(7).font('Helvetica').text(
-        `Generated on ${new Date(po.createdAt).toLocaleString()}  |  Created by ${po.createdByUser?.name ?? '—'}`,
+        `Generated on ${new Date(po.createdAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}  |  Created by ${po.createdByUser?.name ?? '—'}`,
         margin, y, { width: contentWidth, align: 'center' }
       );
 

@@ -235,7 +235,7 @@ router.post(
         title: 'New Approval Required',
         body: `Invoice ${finalInvoiceNumber} — ₹${totalAmount}`,
         url: `/invoices?approval=${workflow.id}`,
-      }).catch(() => {});
+      }).catch((err) => console.error('[Push] Invoice notification error:', err));
 
       const result = await prisma.vendorInvoice.findUnique({
         where: { id: invoice.id },

@@ -214,7 +214,7 @@ router.post(
         title: 'New Approval Required',
         body: `Quotation ${quotationNumber} from ${quotation.vendor?.name ?? 'vendor'} — ₹${grandTotal}`,
         url: `/quotations?approval=${workflow.id}`,
-      }).catch(() => {});
+      }).catch((err) => console.error('[Push] Quotation notification error:', err));
 
       const result = await prisma.quotation.findUnique({
         where: { id: quotation.id },
