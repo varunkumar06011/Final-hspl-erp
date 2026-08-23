@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "npm run build --workspace @hospital-erp/shared && prisma generate && tsc",
-    "start": "node dist/index.js",
+    "start": "prisma migrate deploy && node dist/index.js",
     "typecheck": "tsc --noEmit",
     "seed": "tsx prisma/seed.ts",
     "test": "vitest run",
