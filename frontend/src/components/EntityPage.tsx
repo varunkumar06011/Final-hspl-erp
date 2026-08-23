@@ -36,6 +36,7 @@ import CreatableSelect from './CreatableSelect';
 import SelectWithOther from './SelectWithOther';
 import AttachmentUpload from './AttachmentUpload';
 import ResponsiveTable from './ResponsiveTable';
+import { formatIndianNumber } from '../utils/enumOptions';
 
 export interface MaterialEntry {
   id?: string;
@@ -411,9 +412,10 @@ export default function EntityPage({
                         <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
                           <TextField
                             label="Price / Unit"
-                            type="number"
-                            value={mat.pricePerUnit ?? ''}
-                            onChange={(e) => updateMaterial(index, 'pricePerUnit', e.target.value === '' ? undefined : Number(e.target.value))}
+                            type="text"
+                            value={formatIndianNumber(mat.pricePerUnit ?? '')}
+                            onChange={(e) => updateMaterial(index, 'pricePerUnit', e.target.value === '' ? undefined : Number(e.target.value.replace(/,/g, '')))}
+                            inputMode="decimal"
                             size="small"
                             sx={{ flex: 1, minWidth: 0 }}
                             inputProps={{ min: 0, step: 0.01 }}

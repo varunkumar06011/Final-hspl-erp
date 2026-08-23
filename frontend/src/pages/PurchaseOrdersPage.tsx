@@ -42,7 +42,7 @@ import {
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { POStatus, UserRole } from '@hospital-erp/shared';
-import { formatCurrency, formatDate, STATUS_COLORS } from '../utils/enumOptions';
+import { formatCurrency, formatDate, formatIndianNumber, STATUS_COLORS } from '../utils/enumOptions';
 import api, { extractErrorMessage } from '../config/api';
 import { useAuthStore } from '../stores/authStore';
 import AcknowledgementCheckbox from '../components/AcknowledgementCheckbox';
@@ -519,9 +519,10 @@ export default function PurchaseOrdersPage() {
                   <Typography variant="body2" sx={{ textAlign: { xs: 'left', sm: 'right' } }}>Total: <strong>{formatCurrency(quotationTotal)}</strong></Typography>
                   <TextField
                     label="GST Amount (optional)"
-                    type="number"
-                    value={gstAmount}
-                    onChange={(e) => setGstAmount(e.target.value)}
+                    type="text"
+                    value={formatIndianNumber(gstAmount)}
+                    onChange={(e) => setGstAmount(e.target.value.replace(/,/g, ''))}
+                    inputMode="decimal"
                     size="small"
                     sx={{ width: { xs: '100%', sm: 200 } }}
                   />

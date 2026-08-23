@@ -16,7 +16,7 @@ import { Visibility, VisibilityOff } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { extractErrorMessage } from '../config/api';
 import { useAuthStore } from '../stores/authStore';
-import { formatCurrency } from '../utils/enumOptions';
+import { formatCurrency, formatIndianNumber } from '../utils/enumOptions';
 import NotificationPermissionPrompt from '../components/NotificationPermissionPrompt';
 
 const ROLE_LABELS: Record<string, string> = {
@@ -271,9 +271,10 @@ export default function SettingsPage() {
             />
             <TextField
               label="Total Budget"
-              type="number"
-              value={totalBudget}
-              onChange={(e) => setTotalBudget(e.target.value)}
+              type="text"
+              value={formatIndianNumber(totalBudget)}
+              onChange={(e) => setTotalBudget(e.target.value.replace(/,/g, ''))}
+              inputMode="decimal"
               inputProps={{ min: 0, step: 0.01 }}
               fullWidth
               size="small"

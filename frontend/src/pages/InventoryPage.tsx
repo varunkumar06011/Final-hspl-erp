@@ -35,7 +35,7 @@ import {
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { InventoryTxnType } from '@hospital-erp/shared';
-import { enumToOptions } from '../utils/enumOptions';
+import { enumToOptions, formatIndianNumber } from '../utils/enumOptions';
 import api, { extractErrorMessage } from '../config/api';
 import CreatableSelect from '../components/CreatableSelect';
 import AttachmentUpload from '../components/AttachmentUpload';
@@ -291,8 +291,8 @@ export default function InventoryPage() {
             <TextField label="SKU" value={form.sku ?? ''} onChange={(e) => setForm({ ...form, sku: e.target.value })} fullWidth size="small" />
             <CreatableSelect label="Category" value={String(form.category ?? '')} onChange={(v) => setForm({ ...form, category: v })} dropdownType="INVENTORY_CATEGORY" />
             <CreatableSelect label="Unit" value={String(form.unit ?? '')} onChange={(v) => setForm({ ...form, unit: v })} required dropdownType="UNIT" />
-            <TextField label="Current Stock" type="number" value={form.currentStock ?? 0} onChange={(e) => setForm({ ...form, currentStock: e.target.value === '' ? '' : Number(e.target.value) })} inputProps={{ min: 0, step: 0.01 }} fullWidth size="small" />
-            <TextField label="Min Stock Level" type="number" value={form.minStockLevel ?? 0} onChange={(e) => setForm({ ...form, minStockLevel: e.target.value === '' ? '' : Number(e.target.value) })} inputProps={{ min: 0, step: 0.01 }} fullWidth size="small" />
+            <TextField label="Current Stock" type="text" value={formatIndianNumber(form.currentStock ?? 0)} onChange={(e) => setForm({ ...form, currentStock: e.target.value === '' ? '' : Number(e.target.value.replace(/,/g, '')) })} inputMode="decimal" inputProps={{ min: 0, step: 0.01 }} fullWidth size="small" />
+            <TextField label="Min Stock Level" type="text" value={formatIndianNumber(form.minStockLevel ?? 0)} onChange={(e) => setForm({ ...form, minStockLevel: e.target.value === '' ? '' : Number(e.target.value.replace(/,/g, '')) })} inputMode="decimal" inputProps={{ min: 0, step: 0.01 }} fullWidth size="small" />
             <CreatableSelect label="Location" value={String(form.location ?? '')} onChange={(v) => setForm({ ...form, location: v })} dropdownType="LOCATION" />
           </Box>
 
@@ -318,7 +318,7 @@ export default function InventoryPage() {
             <TextField select label="Type" required value={txnForm.type ?? InventoryTxnType.IN} onChange={(e) => setTxnForm({ ...txnForm, type: e.target.value })} fullWidth size="small">
               {enumToOptions(InventoryTxnType).map((opt) => <MenuItem key={opt.value} value={opt.value}>{opt.label}</MenuItem>)}
             </TextField>
-            <TextField label="Quantity" type="number" required value={txnForm.quantity ?? ''} onChange={(e) => setTxnForm({ ...txnForm, quantity: e.target.value === '' ? '' : Number(e.target.value) })} inputProps={{ min: 0.01, step: 0.01 }} fullWidth size="small"
+            <TextField label="Quantity" type="text" required value={formatIndianNumber(txnForm.quantity ?? '')} onChange={(e) => setTxnForm({ ...txnForm, quantity: e.target.value === '' ? '' : Number(e.target.value.replace(/,/g, '')) })} inputMode="decimal" inputProps={{ min: 0.01, step: 0.01 }} fullWidth size="small"
               helperText={txnForm.type === 'ADJUST' ? 'Set absolute stock value' : 'Positive number'} />
             <TextField label="Notes" value={txnForm.notes ?? ''} onChange={(e) => setTxnForm({ ...txnForm, notes: e.target.value })} fullWidth size="small" multiline rows={2} />
           </Box>

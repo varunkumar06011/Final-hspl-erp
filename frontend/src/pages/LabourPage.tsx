@@ -38,7 +38,7 @@ import {
   Cancel as AbsentIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { formatCurrency, formatDate } from '../utils/enumOptions';
+import { formatCurrency, formatDate, formatIndianNumber } from '../utils/enumOptions';
 import api, { extractErrorMessage } from '../config/api';
 import ResponsiveTable from '../components/ResponsiveTable';
 
@@ -546,7 +546,7 @@ export default function AttendancePage() {
             </TextField>
             <TextField label="Role" value={String(staffForm.role ?? '')} onChange={(e) => setStaffForm({ ...staffForm, role: e.target.value })} fullWidth size="small" />
             <TextField label="Phone" value={String(staffForm.phone ?? '')} onChange={(e) => setStaffForm({ ...staffForm, phone: e.target.value })} fullWidth size="small" />
-            <TextField label="Base Salary" type="number" required value={staffForm.baseSalary ?? ''} onChange={(e) => setStaffForm({ ...staffForm, baseSalary: e.target.value === '' ? '' : Number(e.target.value) })} inputProps={{ min: 0, step: 0.01 }} fullWidth size="small" />
+            <TextField label="Base Salary" type="text" required value={formatIndianNumber(staffForm.baseSalary ?? '')} onChange={(e) => setStaffForm({ ...staffForm, baseSalary: e.target.value === '' ? '' : Number(e.target.value.replace(/,/g, '')) })} inputMode="decimal" inputProps={{ min: 0, step: 0.01 }} fullWidth size="small" />
             {editingStaff && (
               <TextField select label="Status" value={staffForm.active === false ? 'false' : 'true'} onChange={(e) => setStaffForm({ ...staffForm, active: e.target.value === 'true' })} fullWidth size="small">
                 <MenuItem value="true">Active</MenuItem>

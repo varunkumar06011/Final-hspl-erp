@@ -43,7 +43,7 @@ import {
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { PaymentStatus, PaymentMode, UserRole } from '@hospital-erp/shared';
-import { formatCurrency, STATUS_COLORS } from '../utils/enumOptions';
+import { formatCurrency, formatIndianNumber, STATUS_COLORS } from '../utils/enumOptions';
 import api, { extractErrorMessage } from '../config/api';
 import { useAuthStore } from '../stores/authStore';
 import { downloadFile } from '../utils/file';
@@ -99,6 +99,12 @@ interface PendingInvoice {
   installmentsPaid: number;
   paidToDate: number;
   outstanding: number;
+  activePaymentRequest: {
+    id: string;
+    status: string;
+    amount: number;
+    requestNumber: string;
+  } | null;
   createdBy: string;
   createdAt: string;
 }
@@ -341,6 +347,7 @@ export default function PaymentsPage() {
                       <TableCell sx={{ fontWeight: 600 }}>Installments</TableCell>
                       <TableCell sx={{ fontWeight: 600 }}>Paid to Date</TableCell>
                       <TableCell sx={{ fontWeight: 600 }}>Outstanding</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>After Current Request</TableCell>
                       <TableCell sx={{ fontWeight: 600 }}>Created By</TableCell>
                       <TableCell sx={{ fontWeight: 600 }}>Actions</TableCell>
                     </TableRow>
@@ -356,15 +363,27 @@ export default function PaymentsPage() {
                         <TableCell data-label="Installments">{inv.installmentsPaid > 0 ? formatCurrency(inv.installmentsPaid) : '—'}</TableCell>
                         <TableCell data-label="Paid to Date">{formatCurrency(inv.paidToDate)}</TableCell>
                         <TableCell data-label="Outstanding"><strong>{formatCurrency(inv.outstanding)}</strong></TableCell>
+                        <TableCell data-label="After Current Request">
+                          {inv.activePaymentRequest
+                            ? formatCurrency(Math.max(0, inv.outstanding - inv.activePaymentRequest.amount))
+                            : '—'}
+                        </TableCell>
                         <TableCell data-label="Created By">{inv.createdBy}</TableCell>
                         <TableCell data-label="Actions">
-                          <Button
-                            size="small"
-                            variant="outlined"
-                            startIcon={<PaymentsIcon />}
-                            onClick={() => {
-                              setInvoicePayOpen(inv);
-                              setInvoicePayForm({
+                          {inv.activePaymentRequest ? (
+                            <Chip
+                              size="small"
+                              color="warning"
+                              label={`Request ${inv.activePaymentRequest.status}`}
+                            />
+                          ) : (
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              startIcon={<PaymentsIcon />}
+                              onClick={() => {
+                                setInvoicePayOpen(inv);
+                                setInvoicePayForm({
                                 amount: inv.outstanding,
                                 requestNumber: `PAY-${inv.invoiceCode}`,
                                 paymentMode: PaymentMode.BANK_TRANSFER,
@@ -372,7 +391,8 @@ export default function PaymentsPage() {
                             }}
                           >
                             Create Payment
-                          </Button>
+                            </Button>
+                          )}
                         </TableCell>
                       </TableRow>
                     ))}
@@ -552,10 +572,10 @@ export default function PaymentsPage() {
             />
             <TextField
               label="Payment Amount"
-              type="number"
-              value={invoicePayForm.amount ?? ''}
+              type="text"
+              value={formatIndianNumber(invoicePayForm.amount ?? '')}
               onChange={(e) => {
-                const value = e.target.value;
+                const value = e.target.value.replace(/,/g, '');
                 const parsedAmount = Number(value);
                 setInvoicePayForm({
                   ...invoicePayForm,
@@ -568,6 +588,7 @@ export default function PaymentsPage() {
                         : parsedAmount,
                 });
               }}
+              inputMode="decimal"
               inputProps={{ min: 0, max: invoicePayOpen?.outstanding }}
               fullWidth
               size="small"
@@ -652,9 +673,10 @@ export default function PaymentsPage() {
             <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, flexWrap: 'wrap' }}>
               <TextField
                 label="Amount"
-                type="number"
-                value={expenseForm.amount ?? ''}
-                onChange={(e) => setExpenseForm({ ...expenseForm, amount: e.target.value === '' ? '' : Number(e.target.value) })}
+                type="text"
+                value={formatIndianNumber(expenseForm.amount ?? '')}
+                onChange={(e) => setExpenseForm({ ...expenseForm, amount: e.target.value === '' ? '' : Number(e.target.value.replace(/,/g, '')) })}
+                inputMode="decimal"
                 inputProps={{ min: 0.01, step: 0.01 }}
                 size="small"
                 sx={{ flex: 1, minWidth: 0 }}
@@ -729,16 +751,17 @@ export default function PaymentsPage() {
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
             <TextField
               label="Amount"
-              type="number"
-              value={payForm.amount ?? ''}
+              type="text"
+              value={formatIndianNumber(payForm.amount ?? '')}
               onChange={(e) => {
-                const value = e.target.value;
+                const value = e.target.value.replace(/,/g, '');
                 const parsedAmount = Number(value);
                 setPayForm({
                   ...payForm,
                   amount: value === '' ? '' : Number.isFinite(parsedAmount) ? Math.min(parsedAmount, currentPaymentRequest?.amount ?? parsedAmount) : '',
                 });
               }}
+              inputMode="decimal"
               inputProps={{ min: 0.01, max: currentPaymentRequest?.amount, step: 0.01 }}
               fullWidth
               size="small"

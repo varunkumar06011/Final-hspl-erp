@@ -14,6 +14,20 @@ export function formatCurrency(amount: unknown): string {
   }).format(num);
 }
 
+export function formatIndianNumber(value: unknown): string {
+  if (value === null || value === undefined || value === '') return '';
+
+  const rawValue = String(value).replace(/,/g, '');
+  const [integerPart, decimalPart] = rawValue.split('.');
+  const sign = integerPart.startsWith('-') ? '-' : '';
+  const unsignedInteger = integerPart.replace(/^-/, '') || '0';
+  const formattedInteger = unsignedInteger.length > 3
+    ? `${unsignedInteger.slice(0, -3).replace(/\B(?=(\d{2})+(?!\d))/g, ',')},${unsignedInteger.slice(-3)}`
+    : unsignedInteger;
+
+  return `${sign}${formattedInteger}${decimalPart !== undefined ? `.${decimalPart}` : ''}`;
+}
+
 export function formatDate(date: unknown): string {
   if (!date) return '—';
   return new Date(String(date)).toLocaleDateString('en-IN', {

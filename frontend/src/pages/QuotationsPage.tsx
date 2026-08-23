@@ -40,7 +40,7 @@ import {
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { APPROVER_ROLES, QuotationStatus } from '@hospital-erp/shared';
-import { formatCurrency, formatDate, STATUS_COLORS } from '../utils/enumOptions';
+import { formatCurrency, formatDate, formatIndianNumber, STATUS_COLORS } from '../utils/enumOptions';
 import api, { extractErrorMessage } from '../config/api';
 import { useAuthStore } from '../stores/authStore';
 import { downloadFile } from '../utils/file';
@@ -577,25 +577,27 @@ export default function QuotationsPage() {
                       <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', pl: { xs: 5.5, sm: 0 } }}>
                         <TextField
                           label="Qty"
-                          type="number"
-                          value={item.quantity}
-                          onChange={(e) => updateLineItem(index, 'quantity', e.target.value === '' ? '' : Number(e.target.value))}
+                          type="text"
+                          value={formatIndianNumber(item.quantity)}
+                          onChange={(e) => updateLineItem(index, 'quantity', e.target.value === '' ? '' : Number(e.target.value.replace(/,/g, '')))}
+                          inputMode="decimal"
                           inputProps={{ min: 0.01, step: 0.01 }}
                           size="small"
                           sx={{ flex: 1, minWidth: 0 }}
                         />
                         <TextField
                           label="Unit Price"
-                          type="number"
-                          value={item.unitPrice}
-                          onChange={(e) => updateLineItem(index, 'unitPrice', e.target.value === '' ? '' : Number(e.target.value))}
+                          type="text"
+                          value={formatIndianNumber(item.unitPrice)}
+                          onChange={(e) => updateLineItem(index, 'unitPrice', e.target.value === '' ? '' : Number(e.target.value.replace(/,/g, '')))}
+                          inputMode="decimal"
                           inputProps={{ min: 0, step: 0.01 }}
                           size="small"
                           sx={{ flex: 1, minWidth: 0 }}
                         />
                         <TextField
                           label="Amount"
-                          value={item.amount}
+                          value={formatIndianNumber(item.amount)}
                           size="small"
                           disabled
                           sx={{ flex: 1, minWidth: 0 }}
@@ -610,9 +612,10 @@ export default function QuotationsPage() {
                   <Typography variant="body2" sx={{ textAlign: { xs: 'left', sm: 'right' } }}>Total: <strong>{formatCurrency(totalAmount)}</strong></Typography>
                   <TextField
                     label="GST Amount (optional)"
-                    type="number"
-                    value={gstAmount}
-                    onChange={(e) => setGstAmount(e.target.value)}
+                    type="text"
+                    value={formatIndianNumber(gstAmount)}
+                    onChange={(e) => setGstAmount(e.target.value.replace(/,/g, ''))}
+                    inputMode="decimal"
                     inputProps={{ min: 0, step: 0.01 }}
                     size="small"
                     sx={{ width: { xs: '100%', sm: 200 } }}

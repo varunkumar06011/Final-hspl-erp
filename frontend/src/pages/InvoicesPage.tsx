@@ -39,7 +39,7 @@ import {
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { InvoiceVerificationStatus, StockStatus, UserRole } from '@hospital-erp/shared';
-import { formatCurrency, STATUS_COLORS } from '../utils/enumOptions';
+import { formatCurrency, formatIndianNumber, STATUS_COLORS } from '../utils/enumOptions';
 import api, { extractErrorMessage } from '../config/api';
 import { useAuthStore } from '../stores/authStore';
 import { downloadFile } from '../utils/file';
@@ -750,9 +750,10 @@ export default function InvoicesPage() {
             />
             <TextField
               label="Invoice Amount"
-              type="number"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
+              type="text"
+              value={formatIndianNumber(amount)}
+              onChange={(e) => setAmount(e.target.value.replace(/,/g, ''))}
+              inputMode="decimal"
               inputProps={{ min: 0.01, step: 0.01 }}
               fullWidth
               size="small"
@@ -762,9 +763,10 @@ export default function InvoicesPage() {
             />
             <TextField
               label="Tax Amount (GST)"
-              type="number"
-              value={taxAmount}
-              onChange={(e) => setTaxAmount(e.target.value)}
+              type="text"
+              value={formatIndianNumber(taxAmount)}
+              onChange={(e) => setTaxAmount(e.target.value.replace(/,/g, ''))}
+              inputMode="decimal"
               inputProps={{ min: 0, step: 0.01 }}
               fullWidth
               size="small"
@@ -773,8 +775,9 @@ export default function InvoicesPage() {
             />
             <TextField
               label="Total Amount (Amount + Tax)"
-              type="number"
-              value={totalAmount}
+              type="text"
+              value={formatIndianNumber(totalAmount)}
+              inputMode="decimal"
               fullWidth
               size="small"
               required
@@ -796,9 +799,10 @@ export default function InvoicesPage() {
                 <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, mt: 1, flexWrap: 'wrap' }}>
                   <TextField
                     label="Advance Amount"
-                    type="number"
-                    value={advancePaid}
-                    onChange={(e) => setAdvancePaid(e.target.value)}
+                    type="text"
+                    value={formatIndianNumber(advancePaid)}
+                    onChange={(e) => setAdvancePaid(e.target.value.replace(/,/g, ''))}
+                    inputMode="decimal"
                     inputProps={{ min: 0, max: Number(totalAmount) || undefined, step: 0.01 }}
                     size="small"
                     sx={{ flex: 1, minWidth: 0 }}

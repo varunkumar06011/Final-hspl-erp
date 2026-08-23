@@ -16,7 +16,7 @@ import { Payment as PaymentIcon } from '@mui/icons-material';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import EntityPage from '../components/EntityPage';
 import { PaymentMode, VendorCategory, VendorStatus } from '@hospital-erp/shared';
-import { enumToOptions, formatDate, STATUS_COLORS } from '../utils/enumOptions';
+import { enumToOptions, formatDate, formatIndianNumber, STATUS_COLORS } from '../utils/enumOptions';
 import api, { extractErrorMessage } from '../config/api';
 
 interface PaymentDialogProps {
@@ -108,9 +108,10 @@ function RecordPaymentDialog({ vendor, open, onClose }: PaymentDialogProps) {
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
           <TextField
             label="Amount"
-            type="number"
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
+            type="text"
+            value={formatIndianNumber(amount)}
+            onChange={(e) => setAmount(e.target.value.replace(/,/g, ''))}
+            inputMode="decimal"
             inputProps={{ min: 0.01, step: 0.01 }}
             required
           />
