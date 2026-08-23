@@ -1,5 +1,5 @@
-import { useEffect, useRef } from 'react';
-import { Box, Typography, Button } from '@mui/material';
+import { useEffect, useRef, useState } from 'react';
+import { Box, Typography, Button, Alert } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import lottie from 'lottie-web';
 import errorAnimation from '../assets/lottie-error.json';
@@ -36,8 +36,17 @@ export default function ErrorScreen({
 }: Props) {
   const navigate = useNavigate();
   const containerRef = useRef<HTMLDivElement>(null);
+  const [stillOffline, setStillOffline] = useState(false);
   const { title, defaultMessage } = COPY[variant];
   const reload = showReload ?? variant === 'offline';
+
+  const handleReload = () => {
+    if (navigator.onLine) {
+      window.location.reload();
+    } else {
+      setStillOffline(true);
+    }
+  };
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -83,7 +92,7 @@ export default function ErrorScreen({
 
       <Box sx={{ display: 'flex', gap: 1.5, mt: 2 }}>
         {reload ? (
-          <Button variant="contained" size="large" onClick={() => window.location.reload()}>
+          <Button variant="contained" size="large" onClick={handleReload}>
             Reload
           </Button>
         ) : (
@@ -95,6 +104,12 @@ export default function ErrorScreen({
           Go Back
         </Button>
       </Box>
+
+      {stillOffline && (
+        <Alert severity="info" sx={{ mt: 2, maxWidth: 420 }} onClose={() => setStillOffline(false)}>
+          Still offline. The page will load automatically once your connection is back.
+        </Alert>
+      )}
     </Box>
   );
 }
