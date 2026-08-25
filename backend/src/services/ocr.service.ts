@@ -34,73 +34,88 @@ export interface OcrInvoiceResult {
 export type OcrResult = OcrQuotationResult | OcrInvoiceResult;
 
 const GROQ_VISION_MODEL = 'qwen/qwen3.6-27b';
-const GROQ_TEXT_MODEL = 'llama-3.3-70b-versatile';
+const GROQ_TEXT_MODEL = 'openai/gpt-oss-20b';
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
 
-function getQuotationPrompt(): string {
-  return `You are an expert at reading Indian vendor quotations. Extract the following fields from this document and return ONLY valid JSON (no markdown, no explanation):
+// Progressive image widths — tried in order on 413 (too large) errors.
+// Start small because Groq free tier has 8000 TPM limit (input + max_tokens must fit).
+const IMAGE_WIDTH_STEPS = [768, 512, 384, 256, 200];
+const JPEG_QUALITY_STEPS = [60, 50, 40, 30, 20];
 
-{
-  "vendorName": "name of the vendor/company or null",
-  "quotationNumber": "quotation/reference number or null",
-  "date": "date on the document in YYYY-MM-DD format or null",
-  "lineItems": [
-    { "materialName": "item name/description", "quantity": number, "unitPrice": number, "unit": "unit if mentioned or null" }
-  ],
-  "gstAmount": number_or_null,
-  "totalAmount": "subtotal before tax or null",
-  "grandTotal": "final total after tax or null"
+// Short prompts to minimize token usage (every token counts on free tier)
+const QUOTATION_PROMPT = `Extract all fields from this quotation/invoice image. Return ONLY JSON:
+{"vendorName":string|null,"quotationNumber":string|null,"date":"YYYY-MM-DD"|null,"lineItems":[{"materialName":string,"quantity":number,"unitPrice":number,"unit":string|null}],"gstAmount":number|null,"totalAmount":number|null,"grandTotal":number|null}
+Extract EVERY line item. Numbers without symbols/commas. Use 0 if unreadable, null if absent.`;
+
+const INVOICE_PROMPT = `Extract all fields from this invoice image. Return ONLY JSON:
+{"vendorName":string|null,"invoiceNumber":string|null,"date":"YYYY-MM-DD"|null,"amount":number|null,"taxAmount":number|null,"totalAmount":number|null,"deliveryDate":"YYYY-MM-DD"|null}
+Numbers without symbols/commas. Use null if absent.`;
+
+// Even shorter prompt for text-based extraction (no image tokens)
+const QUOTATION_TEXT_PROMPT = `Extract all fields from this quotation/invoice text. Return ONLY JSON:
+{"vendorName":string|null,"quotationNumber":string|null,"date":"YYYY-MM-DD"|null,"lineItems":[{"materialName":string,"quantity":number,"unitPrice":number,"unit":string|null}],"gstAmount":number|null,"totalAmount":number|null,"grandTotal":number|null}
+Extract EVERY line item from the text. Numbers without symbols/commas. Use 0 if unreadable, null if absent.`;
+
+const INVOICE_TEXT_PROMPT = `Extract all fields from this invoice text. Return ONLY JSON:
+{"vendorName":string|null,"invoiceNumber":string|null,"date":"YYYY-MM-DD"|null,"amount":number|null,"taxAmount":number|null,"totalAmount":number|null,"deliveryDate":"YYYY-MM-DD"|null}
+Numbers without symbols/commas. Use null if absent.`;
+
+/**
+ * Compress an image buffer to JPEG at a given width and quality.
+ */
+async function compressImage(buffer: Buffer, maxWidth: number, quality: number): Promise<Buffer> {
+  return sharp(buffer)
+    .resize({ width: maxWidth, withoutEnlargement: true })
+    .jpeg({ quality })
+    .toBuffer();
 }
 
-Rules:
-- Extract ALL line items visible on the document.
-- Use null for any field you cannot read clearly.
-- Numbers must be plain numbers (no currency symbols, no commas).
-- Return ONLY the JSON object.`;
+/**
+ * Build the Groq message content array from image buffers.
+ */
+function buildVisionContent(
+  images: Buffer[],
+  documentType: OcrDocumentType
+): Array<Record<string, unknown>> {
+  const content: Array<Record<string, unknown>> = images.map((imgBuf) => ({
+    type: 'image_url',
+    image_url: { url: `data:image/jpeg;base64,${imgBuf.toString('base64')}` },
+  }));
+  content.push({
+    type: 'text',
+    text: documentType === 'QUOTATION' ? 'Extract all quotation fields' : 'Extract all invoice fields',
+  });
+  return content;
 }
 
-function getInvoicePrompt(): string {
-  return `You are an expert at reading Indian vendor invoices. Extract the following fields from this document and return ONLY valid JSON (no markdown, no explanation):
-
-{
-  "vendorName": "name of the vendor/company or null",
-  "invoiceNumber": "invoice number or null",
-  "date": "invoice date in YYYY-MM-DD format or null",
-  "amount": "subtotal before tax or null",
-  "taxAmount": "GST/tax amount or null",
-  "totalAmount": "final total after tax or null",
-  "deliveryDate": "delivery date in YYYY-MM-DD format or null"
-}
-
-Rules:
-- Use null for any field you cannot read clearly.
-- Numbers must be plain numbers (no currency symbols, no commas).
-- Return ONLY the JSON object.`;
-}
-
-async function callGroq(
+/**
+ * Call Groq API once. Returns status + text.
+ * max_tokens is kept LOW because Groq free tier counts input+output against TPM limit.
+ */
+async function callGroqOnce(
   content: Array<Record<string, unknown>>,
+  systemPrompt: string,
   isVision: boolean
-): Promise<string> {
+): Promise<{ ok: boolean; status: number; text: string }> {
   if (!env.GROQ_API_KEY) {
     throw new Error('GROQ_API_KEY is not configured');
   }
 
-  const model = isVision ? GROQ_VISION_MODEL : GROQ_TEXT_MODEL;
-  const prompt = content[content.length - 1]?.text as string;
-  const documentType = prompt.includes('quotation') ? 'QUOTATION' : 'INVOICE';
-  const systemPrompt = documentType === 'QUOTATION' ? getQuotationPrompt() : getInvoicePrompt();
-
-  const body = {
-    model,
+  const body: Record<string, unknown> = {
+    model: isVision ? GROQ_VISION_MODEL : GROQ_TEXT_MODEL,
     messages: [
       { role: 'system', content: systemPrompt },
       { role: 'user', content },
     ],
     temperature: 0,
-    max_tokens: 4096,
-    response_format: { type: 'json_object' },
+    // Keep max_tokens low — Groq free tier counts input + max_tokens against 8000 TPM
+    max_tokens: isVision ? 2000 : 4000,
   };
+
+  // Only vision model (qwen) supports response_format json_object reliably
+  if (isVision) {
+    body.response_format = { type: 'json_object' };
+  }
 
   const res = await fetch(GROQ_API_URL, {
     method: 'POST',
@@ -111,24 +126,160 @@ async function callGroq(
     body: JSON.stringify(body),
   });
 
-  if (!res.ok) {
-    const errText = await res.text();
-    throw new Error(`Groq API error ${res.status}: ${errText}`);
+  const text = await res.text();
+  return { ok: res.ok, status: res.status, text };
+}
+
+/**
+ * Call Groq text model (no image) — much cheaper, no 413 risk.
+ * Used when PDF has extractable text.
+ */
+async function callGroqText(
+  extractedText: string,
+  documentType: OcrDocumentType
+): Promise<string> {
+  const systemPrompt = documentType === 'QUOTATION' ? QUOTATION_TEXT_PROMPT : INVOICE_TEXT_PROMPT;
+  const MAX_RETRIES = 3;
+
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    const content: Array<Record<string, unknown>> = [
+      { type: 'text', text: extractedText.substring(0, 12000) }, // cap text length
+    ];
+
+    const result = await callGroqOnce(content, systemPrompt, false);
+
+    if (result.ok) {
+      const data = JSON.parse(result.text);
+      return data.choices?.[0]?.message?.content ?? '';
+    }
+
+    if ((result.status === 429 || result.status >= 500) && attempt < MAX_RETRIES) {
+      let delayMs = Math.min(2000 * Math.pow(2, attempt), 20000);
+      const retryMatch = result.text.match(/try again in ([\d.]+)s/i);
+      if (retryMatch) {
+        delayMs = Math.ceil(Number(retryMatch[1]) * 1000) + 500;
+      }
+      console.warn(`[Groq Text] ${result.status} attempt ${attempt + 1}, retry in ${delayMs}ms`);
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+      continue;
+    }
+
+    throw new Error(`Groq API error ${result.status}: ${result.text}`);
   }
 
-  const data = await res.json();
-  return data.choices?.[0]?.message?.content ?? '';
+  throw new Error('Groq API: max retries exceeded');
+}
+
+/**
+ * Call Groq vision with progressive downscaling on 413 (too large) errors.
+ */
+async function callGroqVision(
+  rawImages: Buffer[],
+  documentType: OcrDocumentType
+): Promise<string> {
+  const systemPrompt = documentType === 'QUOTATION' ? QUOTATION_PROMPT : INVOICE_PROMPT;
+  const MAX_RATE_LIMIT_RETRIES = 3;
+  let lastErrText = '';
+
+  for (let step = 0; step < IMAGE_WIDTH_STEPS.length; step++) {
+    const width = IMAGE_WIDTH_STEPS[step];
+    const quality = JPEG_QUALITY_STEPS[step];
+
+    // Compress all images at this step's resolution
+    const compressed = await Promise.all(
+      rawImages.map((img) => compressImage(img, width, quality))
+    );
+    const totalSize = compressed.reduce((sum, buf) => sum + buf.length, 0);
+    console.log(`[OCR] Vision: width=${width}px, quality=${quality}, total=${(totalSize / 1024).toFixed(0)}KB`);
+
+    const content = buildVisionContent(compressed, documentType);
+
+    for (let attempt = 0; attempt <= MAX_RATE_LIMIT_RETRIES; attempt++) {
+      const result = await callGroqOnce(content, systemPrompt, true);
+
+      if (result.ok) {
+        const data = JSON.parse(result.text);
+        return data.choices?.[0]?.message?.content ?? '';
+      }
+
+      lastErrText = result.text;
+
+      // 413 = image too large — step down to next smaller size
+      if (result.status === 413) {
+        console.warn(`[Groq] 413 at width=${width}px, stepping down...`);
+        break;
+      }
+
+      // 429 or 5xx — retry with delay
+      if ((result.status === 429 || result.status >= 500) && attempt < MAX_RATE_LIMIT_RETRIES) {
+        let delayMs = Math.min(2000 * Math.pow(2, attempt), 20000);
+        const retryMatch = result.text.match(/try again in ([\d.]+)s/i);
+        if (retryMatch) {
+          delayMs = Math.ceil(Number(retryMatch[1]) * 1000) + 500;
+        }
+        console.warn(`[Groq] ${result.status} attempt ${attempt + 1}/${MAX_RATE_LIMIT_RETRIES + 1}, retry in ${delayMs}ms`);
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+        continue;
+      }
+
+      throw new Error(`Groq API error ${result.status}: ${result.text}`);
+    }
+  }
+
+  throw new Error(
+    'Document image is too large for the AI model even after aggressive compression. ' +
+    'Please try uploading a smaller image or crop to just the items table.'
+  );
 }
 
 function parseJsonResponse(text: string): Record<string, unknown> {
-  // Strip markdown code fences if present
   const cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
   return JSON.parse(cleaned);
 }
 
-// Render first N pages of a PDF to PNG buffers using pdfjs-dist + node-canvas
-async function renderPdfPagesToImages(buffer: Buffer, maxPages = 3): Promise<Buffer[]> {
-  // pdfjs-dist v4 is ESM-only — use dynamic import
+/**
+ * Try to extract text from a PDF using pdfjs-dist.
+ * Returns the extracted text or null if no text could be extracted (scanned PDF).
+ */
+async function tryExtractPdfText(buffer: Buffer, maxPages = 3): Promise<string | null> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const pdfjs: any = await import('pdfjs-dist/legacy/build/pdf.mjs');
+
+  const data = new Uint8Array(buffer);
+  const loadingTask = pdfjs.getDocument({ data, useSystemFonts: true, isEvalSupported: false });
+  const pdf = await loadingTask.promise;
+  const pageCount = Math.min(pdf.numPages, maxPages);
+  let allText = '';
+
+  for (let i = 1; i <= pageCount; i++) {
+    const page = await pdf.getPage(i);
+    const textContent = await page.getTextContent();
+    const pageText = textContent.items
+      .map((item: any) => item.str ?? '')
+      .join(' ')
+      .trim();
+    if (pageText) {
+      allText += pageText + '\n';
+    }
+    page.cleanup();
+  }
+
+  await pdf.destroy();
+
+  // If we got very little text, it's likely a scanned PDF — return null to use vision
+  if (allText.trim().length < 50) {
+    console.log('[OCR] PDF has little/no extractable text (likely scanned), falling back to vision');
+    return null;
+  }
+
+  console.log(`[OCR] PDF text extracted: ${allText.length} chars from ${pageCount} page(s)`);
+  return allText;
+}
+
+/**
+ * Render pages of a PDF to PNG buffers for vision API (fallback for scanned PDFs)
+ */
+async function renderPdfPagesToPng(buffer: Buffer, maxPages = 1): Promise<Buffer[]> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const pdfjs: any = await import('pdfjs-dist/legacy/build/pdf.mjs');
 
@@ -140,7 +291,7 @@ async function renderPdfPagesToImages(buffer: Buffer, maxPages = 3): Promise<Buf
 
   for (let i = 1; i <= pageCount; i++) {
     const page = await pdf.getPage(i);
-    const viewport = page.getViewport({ scale: 2.0 });
+    const viewport = page.getViewport({ scale: 1.5 });
     const width = Math.floor(viewport.width);
     const height = Math.floor(viewport.height);
 
@@ -153,14 +304,7 @@ async function renderPdfPagesToImages(buffer: Buffer, maxPages = 3): Promise<Buf
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any).promise;
 
-    const pngBuffer = canvas.toBuffer('image/png');
-    // Compress and resize if too large (Groq has ~10MB limit per request)
-    const optimized = await sharp(pngBuffer)
-      .resize({ width: Math.min(width, 1600), withoutEnlargement: true })
-      .jpeg({ quality: 85 })
-      .toBuffer();
-    images.push(optimized);
-
+    images.push(canvas.toBuffer('image/png'));
     page.cleanup();
   }
 
@@ -177,70 +321,54 @@ export async function extractFromFile(
   const isPdf = mimeType === 'application/pdf';
 
   if (!isImage && !isPdf) {
-    throw new Error('Unsupported file type. Please upload an image (JPG/PNG) or PDF.');
+    throw new Error('Unsupported file type. Please upload an image (JPG, PNG, GIF, WebP, BMP, TIFF) or PDF.');
   }
 
-  let content: Array<Record<string, unknown>>;
-  let isVision = false;
+  let responseText: string;
 
-  if (isImage) {
-    // Groq vision API only supports JPG, PNG, and GIF — convert other formats (webp, etc.)
-    // Also compress large images to stay within API limits
-    const supportedTypes = ['image/jpeg', 'image/png', 'image/gif'];
-    let imageBuffer = fileBuffer;
-    let targetMime = mimeType;
-    if (!supportedTypes.includes(mimeType)) {
-      imageBuffer = await sharp(fileBuffer)
-        .resize({ width: 1600, withoutEnlargement: true })
-        .jpeg({ quality: 85 })
-        .toBuffer();
-      targetMime = 'image/jpeg';
-    } else if (fileBuffer.length > 4 * 1024 * 1024) {
-      // Compress if larger than 4MB
-      imageBuffer = await sharp(fileBuffer)
-        .resize({ width: 1600, withoutEnlargement: true })
-        .jpeg({ quality: 85 })
-        .toBuffer();
-      targetMime = 'image/jpeg';
-    }
-    const base64 = imageBuffer.toString('base64');
-    const dataUrl = `data:${targetMime};base64,${base64}`;
-    content = [
-      { type: 'image_url', image_url: { url: dataUrl } },
-      { type: 'text', text: documentType === 'QUOTATION' ? 'Extract quotation fields' : 'Extract invoice fields' },
-    ];
-    isVision = true;
-  } else {
-    // PDF: render pages to images and use vision API (handles both text and scanned PDFs)
-    let pageImages: Buffer[];
+  if (isPdf) {
+    // STRATEGY: Try text extraction first (cheap, no 413 risk).
+    // Fall back to vision only if the PDF is scanned (no extractable text).
+    let extractedText: string | null = null;
     try {
-      pageImages = await renderPdfPagesToImages(fileBuffer, 3);
-    } catch (renderErr) {
-      const msg = renderErr instanceof Error ? renderErr.message : String(renderErr);
-      throw new Error(`Failed to read PDF: ${msg}. Try uploading a photo/screenshot of the document instead.`);
+      extractedText = await tryExtractPdfText(fileBuffer, 3);
+    } catch (err) {
+      console.warn('[OCR] PDF text extraction failed:', err instanceof Error ? err.message : err);
     }
-    if (pageImages.length === 0) {
-      throw new Error('Could not read any pages from this PDF. Please try uploading a photo/screenshot instead.');
+
+    if (extractedText) {
+      // Use text model — much cheaper, no image tokens, no 413
+      console.log('[OCR] Using text extraction path (no vision needed)');
+      responseText = await callGroqText(extractedText, documentType);
+    } else {
+      // Scanned PDF — fall back to vision with progressive downscaling
+      console.log('[OCR] Using vision path for scanned PDF');
+      let rawImages: Buffer[];
+      try {
+        rawImages = await renderPdfPagesToPng(fileBuffer, 1);
+      } catch (renderErr) {
+        const msg = renderErr instanceof Error ? renderErr.message : String(renderErr);
+        throw new Error(`Failed to read PDF: ${msg}. Try uploading a photo/screenshot of the document instead.`);
+      }
+      if (rawImages.length === 0) {
+        throw new Error('Could not read any pages from this PDF. Please try uploading a photo/screenshot instead.');
+      }
+      responseText = await callGroqVision(rawImages, documentType);
     }
-    // Send all pages as images to the vision model
-    content = pageImages.map((imgBuf) => ({
-      type: 'image_url',
-      image_url: { url: `data:image/jpeg;base64,${imgBuf.toString('base64')}` },
-    }));
-    content.push({
-      type: 'text',
-      text: documentType === 'QUOTATION'
-        ? 'Extract quotation fields from this document (may span multiple pages)'
-        : 'Extract invoice fields from this document (may span multiple pages)',
-    });
-    isVision = true;
+  } else {
+    // Image — must use vision API with progressive downscaling
+    console.log(`[OCR] Using vision path for image: ${mimeType}, ${fileBuffer.length} bytes`);
+    // sharp handles all image formats (JPEG, PNG, GIF, WebP, BMP, TIFF, AVIF)
+    const png = await sharp(fileBuffer).png().toBuffer();
+    responseText = await callGroqVision([png], documentType);
   }
 
-  const responseText = await callGroq(content, isVision);
+  console.log('[OCR] Groq response:', responseText.substring(0, 500));
   const parsed = parseJsonResponse(responseText);
 
   if (documentType === 'QUOTATION') {
     const items = Array.isArray(parsed.lineItems) ? parsed.lineItems : [];
+    console.log(`[OCR] Extracted ${items.length} line items, vendorName=${parsed.vendorName ?? 'null'}`);
     return {
       vendorName: (parsed.vendorName as string) ?? null,
       quotationNumber: (parsed.quotationNumber as string) ?? null,

@@ -4,7 +4,7 @@ import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middl
 import { extractFromFile, type OcrDocumentType, type OcrResult } from '../services/ocr.service';
 import multer from 'multer';
 
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 100 * 1024 * 1024 } });
 
 const router = Router();
 router.use(authMiddleware);
@@ -48,7 +48,12 @@ router.post(
     } catch (error) {
       console.error('[OCR] Extract error:', error);
       const message = error instanceof Error ? error.message : 'Unknown error';
-      res.status(500).json({ error: `Failed to process document: ${message}` });
+      // Provide a user-friendly hint for common PDF rendering failures
+      const isPdfRenderError = message.includes('Failed to read PDF') || message.includes('canvas');
+      const hint = isPdfRenderError
+        ? ' Could not process the PDF. Try uploading a photo/screenshot of the document instead.'
+        : '';
+      res.status(500).json({ error: `Failed to process document: ${message}${hint}` });
     }
   }
 );

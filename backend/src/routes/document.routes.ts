@@ -10,7 +10,7 @@ import { getStorageService, serveFile } from '../services/storage.service';
 import { notifyAllHeads } from '../services/push.service';
 import multer from 'multer';
 
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 100 * 1024 * 1024 } });
 
 const router = Router();
 router.use(authMiddleware);
@@ -60,7 +60,10 @@ router.post(
         'application/pdf',
         'image/jpeg',
         'image/png',
+        'image/gif',
         'image/webp',
+        'image/bmp',
+        'image/tiff',
         'application/msword',
         'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
         'application/vnd.ms-excel',

@@ -7,6 +7,7 @@ interface SelectWithOtherProps {
   onChange: (value: string) => void;
   options: { value: string; label: string }[];
   otherLabel?: string;
+  otherFieldLabel?: string;
   required?: boolean;
 }
 
@@ -18,6 +19,7 @@ export default function SelectWithOther({
   onChange,
   options,
   otherLabel = 'Other',
+  otherFieldLabel,
   required = false,
 }: SelectWithOtherProps) {
   const isPredefined = options.some((o) => o.value === value);
@@ -56,9 +58,11 @@ export default function SelectWithOther({
         fullWidth
         size="small"
       >
-        <MenuItem value="">
-          <em>None</em>
-        </MenuItem>
+        {!required && (
+          <MenuItem value="">
+            <em>None</em>
+          </MenuItem>
+        )}
         {options.map((opt) => (
           <MenuItem key={opt.value} value={opt.value}>
             {opt.label}
@@ -68,11 +72,14 @@ export default function SelectWithOther({
       </TextField>
       {selectValue === OTHER_VALUE && (
         <TextField
-          label={`${otherLabel} name`}
+          label={otherFieldLabel ?? `${otherLabel} name`}
           value={otherText}
           onChange={(e) => handleOtherTextChange(e.target.value)}
           fullWidth
           size="small"
+          required={required}
+          error={required && otherText.trim() === ''}
+          helperText={required && otherText.trim() === '' ? 'This field is required' : undefined}
         />
       )}
     </Box>

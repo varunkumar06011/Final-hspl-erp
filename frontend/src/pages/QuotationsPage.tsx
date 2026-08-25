@@ -223,8 +223,8 @@ export default function QuotationsPage() {
       setError('Please acknowledge the quotation before creating it');
       return false;
     }
-    if (selectedFile && (!['application/pdf', 'image/jpeg', 'image/png', 'image/webp'].includes(selectedFile.type) || selectedFile.size > 50 * 1024 * 1024)) {
-      setError('Quotation file must be a PDF or image smaller than 50 MB');
+    if (selectedFile && (!['application/pdf', 'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/bmp', 'image/tiff'].includes(selectedFile.type) || selectedFile.size > 100 * 1024 * 1024)) {
+      setError('Quotation file must be a PDF or image (JPG, PNG, GIF, WebP, BMP, TIFF) smaller than 100 MB');
       return false;
     }
     return true;
@@ -344,11 +344,13 @@ export default function QuotationsPage() {
   }
 
   function handleOcrExtract(data: OcrQuotationData) {
-    // Match OCR line items to the vendor's registered materials by name (case-insensitive)
-    if (data.lineItems.length > 0 && selectedVendor?.materials) {
-      const vendorMaterialsLower = new Map(
-        selectedVendor.materials.map((m) => [m.name.toLowerCase(), m.name])
+    if (data.lineItems.length > 0) {
+      const vendorMaterialsLower = new Set(
+        (selectedVendor?.materials ?? []).map((m) => m.name.toLowerCase())
       );
+      const existingNamesLower = new Set(lineItems.map((i) => i.materialName.toLowerCase()));
+
+      // Update existing items that match OCR items
       const matched = new Set<string>();
       const updatedItems = lineItems.map((item) => {
         const ocrMatch = data.lineItems.find(
@@ -374,14 +376,41 @@ export default function QuotationsPage() {
         }
         return item;
       });
-      setLineItems(updatedItems);
-      // Only select materials that were matched
-      setSelectedMaterialNames(matched);
-      const unmatched = data.lineItems.filter(
-        (o) => !vendorMaterialsLower.has(o.materialName.toLowerCase())
-      );
-      if (unmatched.length > 0) {
-        setError(`${unmatched.length} item(s) from the document did not match this vendor's registered materials and were skipped. Fill them manually.`);
+
+      // Add OCR items that don't match any existing line item as NEW items
+      const newItems: QuotationItem[] = [];
+      data.lineItems.forEach((o) => {
+        const ocrLower = o.materialName.toLowerCase();
+        const isMatched = matched.has(ocrLower) || existingNamesLower.has(ocrLower) || vendorMaterialsLower.has(ocrLower);
+        if (!isMatched && o.materialName.trim()) {
+          const qty = Number(o.quantity) || 1;
+          const price = Number(o.unitPrice) || 0;
+          newItems.push({
+            materialName: o.materialName,
+            quantity: qty,
+            unitPrice: price,
+            amount: qty * price,
+          });
+        }
+      });
+
+      const allItems = [...updatedItems, ...newItems];
+      setLineItems(allItems);
+
+      // Select all matched + new items
+      const allSelected = new Set<string>();
+      matched.forEach((name) => allSelected.add(name));
+      newItems.forEach((item) => allSelected.add(item.materialName));
+      // Also keep previously selected items
+      selectedMaterialNames.forEach((name) => {
+        if (allItems.some((i) => i.materialName === name)) {
+          allSelected.add(name);
+        }
+      });
+      setSelectedMaterialNames(allSelected);
+
+      if (newItems.length > 0) {
+        setError(`${newItems.length} new item(s) extracted from the document and added. Review and tick the ones you need.`);
       }
     }
     if (data.gstAmount != null) {
@@ -501,7 +530,10 @@ export default function QuotationsPage() {
           {rows.filter((r) => r.approvalWorkflow).map((row) => (
             <Accordion key={row.id}>
               <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                <Typography><strong>{row.quotationNumber}</strong> — {row.vendor?.name} — Status: <Chip label={row.approvalWorkflow!.status} size="small" color={STATUS_COLORS[row.approvalWorkflow!.status] ?? 'default'} /></Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                  <Typography component="span"><strong>{row.quotationNumber}</strong> — {row.vendor?.name} — Status: </Typography>
+                  <Chip label={row.approvalWorkflow!.status} size="small" color={STATUS_COLORS[row.approvalWorkflow!.status] ?? 'default'} />
+                </Box>
               </AccordionSummary>
               <AccordionDetails>
                 <ApprovalStepsDisplay steps={row.approvalWorkflow!.steps} />

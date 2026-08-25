@@ -11,8 +11,8 @@ import { notifyApprovers } from '../services/push.service';
 import { getStorageService, serveFile } from '../services/storage.service';
 import multer from 'multer';
 
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
-const allowedInvoiceFileTypes = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'];
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 100 * 1024 * 1024 } });
+const allowedInvoiceFileTypes = ['application/pdf', 'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/bmp', 'image/tiff'];
 
 const router = Router();
 router.use(authMiddleware);

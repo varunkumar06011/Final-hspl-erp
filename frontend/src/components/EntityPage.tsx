@@ -55,6 +55,8 @@ export interface FieldDef {
   dropdownType?: string;
   defaultValue?: string | number;
   readonly?: boolean;
+  otherLabel?: string;
+  otherFieldLabel?: string;
 }
 
 export interface ColumnDef {
@@ -218,12 +220,12 @@ export default function EntityPage({
   const submitting = createMutation.isPending || updateMutation.isPending;
 
   return (
-    <Box>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap' }}>
-        <Typography variant="h5" fontWeight={600} sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' } }}>
+    <Box sx={{ minWidth: 0, overflow: 'hidden' }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: { xs: 'flex-start', sm: 'center' }, mb: 2, flexWrap: 'wrap', gap: 1 }}>
+        <Typography variant="h5" fontWeight={600} sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' }, whiteSpace: 'nowrap' }}>
           {title}
         </Typography>
-        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', justifyContent: { xs: 'flex-end', md: 'flex-end' }, width: { xs: '100%', md: 'auto' } }}>
+        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', justifyContent: { xs: 'flex-end', md: 'flex-end' }, alignItems: 'center', width: { xs: '100%', md: 'auto' }, minWidth: { md: 'max-content' } }}>
           <IconButton onClick={() => refetch()} size="small">
             <RefreshIcon />
           </IconButton>
@@ -241,7 +243,7 @@ export default function EntityPage({
         </Alert>
       )}
 
-      <Card>
+      <Card sx={{ overflow: 'hidden' }}>
         <Box sx={{ p: 2 }}>
           <TextField
             size="small"
@@ -264,7 +266,7 @@ export default function EntityPage({
 
         <ResponsiveTable>
         <TableContainer sx={{ overflowX: 'auto' }}>
-          <Table size="small">
+          <Table size="small" sx={{ '@media (min-width: 900px)': { minWidth: 'max-content', '& .MuiTableCell-root': { whiteSpace: 'nowrap' } } }}>
             <TableHead>
               <TableRow>
                 {columns.map((col) => (
@@ -375,6 +377,8 @@ export default function EntityPage({
                     onChange={(v) => setForm({ ...form, [field.name]: v })}
                     options={field.options ?? []}
                     required={field.required}
+                    otherLabel={field.otherLabel}
+                    otherFieldLabel={field.otherFieldLabel}
                   />
                 );
               }

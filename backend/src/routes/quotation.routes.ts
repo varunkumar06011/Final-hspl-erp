@@ -11,8 +11,8 @@ import { notifyApprovers } from '../services/push.service';
 import { getStorageService, serveFile } from '../services/storage.service';
 import multer from 'multer';
 
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
-const allowedQuotationFileTypes = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'];
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 100 * 1024 * 1024 } });
+const allowedQuotationFileTypes = ['application/pdf', 'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/bmp', 'image/tiff'];
 
 const router = Router();
 router.use(authMiddleware);
@@ -127,15 +127,21 @@ router.post(
         return;
       }
 
-      // Validate each material exists in vendor's materials
+      // Auto-register any materials from the quotation that aren't yet in vendor's materials
+      // (e.g. items extracted via OCR that don't match existing vendor materials)
       const vendorMaterialNames = vendor.materials.map((m) => m.name.toLowerCase());
-      for (const item of items) {
-        if (!vendorMaterialNames.includes(item.materialName.toLowerCase())) {
-          res.status(400).json({
-            error: `Material "${item.materialName}" is not supplied by vendor "${vendor.name}". Only materials registered for this vendor can be added.`,
-          });
-          return;
-        }
+      const newMaterials = items
+        .filter((item) => !vendorMaterialNames.includes(item.materialName.toLowerCase()))
+        .map((item) => ({ name: item.materialName, pricePerUnit: item.unitPrice || null }));
+      if (newMaterials.length > 0) {
+        await prisma.vendorMaterial.createMany({
+          data: newMaterials.map((m) => ({
+            vendorId: vendor.id,
+            name: m.name,
+            pricePerUnit: m.pricePerUnit,
+          })),
+        });
+        console.log(`[Quotation] Auto-registered ${newMaterials.length} new material(s) for vendor "${vendor.name}"`);
       }
 
       // Calculate totals
@@ -288,12 +294,20 @@ router.patch(
           where: { id: existing.vendorId, projectId },
           include: { materials: true },
         });
+        // Auto-register any new materials from the quotation to the vendor
         const vendorMaterialNames = vendor?.materials.map((m) => m.name.toLowerCase()) ?? [];
-        for (const item of items) {
-          if (!vendorMaterialNames.includes(item.materialName.toLowerCase())) {
-            res.status(400).json({ error: `Material "${item.materialName}" is not supplied by this vendor.` });
-            return;
-          }
+        const newMaterials = items
+          .filter((item) => !vendorMaterialNames.includes(item.materialName.toLowerCase()))
+          .map((item) => ({ name: item.materialName, pricePerUnit: item.unitPrice || null }));
+        if (newMaterials.length > 0 && vendor) {
+          await prisma.vendorMaterial.createMany({
+            data: newMaterials.map((m) => ({
+              vendorId: vendor.id,
+              name: m.name,
+              pricePerUnit: m.pricePerUnit,
+            })),
+          });
+          console.log(`[Quotation] Auto-registered ${newMaterials.length} new material(s) for vendor "${vendor.name}"`);
         }
         const itemsWithAmounts = items.map((item) => ({
           materialName: item.materialName,

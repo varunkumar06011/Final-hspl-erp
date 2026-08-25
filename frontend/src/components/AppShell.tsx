@@ -253,7 +253,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         </Drawer>
       )}
 
-      <Box component="main" sx={{ flexGrow: 1, p: { xs: 1.5, sm: 2, md: 3 }, mt: 8, width: { xs: '100%', md: 'auto' } }}>
+      <Box component="main" sx={{ flexGrow: 1, p: { xs: 1.5, sm: 2, md: 3 }, mt: 8, width: { xs: '100%', md: 'auto' }, minWidth: 0, overflow: 'hidden' }}>
         {children}
       </Box>
 

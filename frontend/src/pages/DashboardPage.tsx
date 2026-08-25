@@ -70,11 +70,11 @@ export default function DashboardPage() {
       </Typography>
 
       {summary?.project && (
-        <Box sx={{ mb: 2 }}>
-          <Typography variant="body2" color="text.secondary">
+        <Box sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+          <Typography variant="body2" color="text.secondary" component="span">
             Project: <strong>{summary.project.name}</strong>
-            <Chip label={summary.project.status} size="small" sx={{ ml: 1 }} />
           </Typography>
+          <Chip label={summary.project.status} size="small" />
         </Box>
       )}
 

@@ -15,7 +15,7 @@ import {
 import { Payment as PaymentIcon } from '@mui/icons-material';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import EntityPage from '../components/EntityPage';
-import { PaymentMode, VendorCategory, VendorStatus } from '@hospital-erp/shared';
+import { PaymentMode, VendorCategory } from '@hospital-erp/shared';
 import { enumToOptions, formatDate, formatIndianNumber, STATUS_COLORS } from '../utils/enumOptions';
 import api, { extractErrorMessage } from '../config/api';
 
@@ -194,6 +194,7 @@ export default function VendorsPage() {
         columns={[
           { key: 'vendorCode', label: 'Vendor ID' },
           { key: 'name', label: 'Vendor Name' },
+          { key: 'category', label: 'Category' },
           { key: 'gstNumber', label: 'GST No' },
           { key: 'createdAt', label: 'Date', render: (r) => formatDate(r.createdAt) },
           { key: 'phone', label: 'Phone' },
@@ -225,7 +226,7 @@ export default function VendorsPage() {
           { name: 'name', label: 'Vendor Name', type: 'text', required: true },
           { name: 'phone', label: 'Phone', type: 'text' },
           { name: 'gstNumber', label: 'GST Number', type: 'text' },
-          { name: 'category', label: 'Category', type: 'select', options: enumToOptions(VendorCategory), defaultValue: VendorCategory.OTHER, dropdownType: 'VENDOR_CATEGORY' },
+          { name: 'category', label: 'Vendor Category', type: 'select-with-other', required: true, options: [{ value: VendorCategory.MATERIAL_SUPPLIER, label: 'Material Supplier' }], defaultValue: VendorCategory.MATERIAL_SUPPLIER, otherLabel: 'Other', otherFieldLabel: 'Specify Vendor Category' },
           { name: 'subCategory', label: 'Sub Category', type: 'text' },
           { name: 'material', label: 'Material', type: 'text' },
           { name: 'unitPrice', label: 'Unit Price', type: 'number' },
@@ -235,8 +236,6 @@ export default function VendorsPage() {
           { name: 'ifscCode', label: 'IFSC Code', type: 'text' },
           { name: 'address', label: 'Address', type: 'textarea' },
           { name: 'email', label: 'Email', type: 'text' },
-          { name: 'status', label: 'Status', type: 'select', options: enumToOptions(VendorStatus), defaultValue: VendorStatus.ACTIVE },
-          { name: 'rating', label: 'Rating (0-5)', type: 'number', defaultValue: 0 },
         ]}
       />
       {paymentVendor && (

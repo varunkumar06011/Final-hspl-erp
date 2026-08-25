@@ -409,8 +409,8 @@ export default function InvoicesPage() {
       setError('Specify the advance payment type');
       return false;
     }
-    if (selectedFile && (!['application/pdf', 'image/jpeg', 'image/png', 'image/webp'].includes(selectedFile.type) || selectedFile.size > 50 * 1024 * 1024)) {
-      setError('Invoice file must be a PDF or image smaller than 50 MB');
+    if (selectedFile && (!['application/pdf', 'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/bmp', 'image/tiff'].includes(selectedFile.type) || selectedFile.size > 100 * 1024 * 1024)) {
+      setError('Invoice file must be a PDF or image (JPG, PNG, GIF, WebP, BMP, TIFF) smaller than 100 MB');
       return false;
     }
     return true;
@@ -544,7 +544,7 @@ export default function InvoicesPage() {
 
         <ResponsiveTable>
         <TableContainer sx={{ overflowX: 'auto' }}>
-          <Table size="small">
+          <Table size="small" sx={{ '@media (min-width: 900px)': { minWidth: 'max-content', '& .MuiTableCell-root': { whiteSpace: 'nowrap' } } }}>
             <TableHead>
               <TableRow>
                 <TableCell sx={{ fontWeight: 600 }}>Invoice Code</TableCell>
