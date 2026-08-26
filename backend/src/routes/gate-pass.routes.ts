@@ -11,7 +11,7 @@ import { rbacMiddleware } from '../middleware/rbac';
 import { validateMiddleware } from '../middleware/validate';
 import { logAudit } from '../services/audit.service';
 import { verifyFirebaseToken } from '../config/firebase';
-import { notifyAllHeads, notifyApprovers } from '../services/push.service';
+import { notifyAllHeads } from '../services/push.service';
 import { streamGatePassPdf } from '../services/gate-pass-pdf.service';
 import { getStorageService } from '../services/storage.service';
 import multer from 'multer';
@@ -96,10 +96,14 @@ router.get(
     try {
       const projectId = requireProjectId(req);
       const pos = await prisma.purchaseOrder.findMany({
-        where: { projectId, deletedAt: null, status: 'APPROVED' },
+        where: { projectId, deletedAt: null, status: { in: ['APPROVED', 'PARTIALLY_DELIVERED'] } },
         include: {
           vendor: { select: { id: true, name: true, vendorCode: true } },
           items: true,
+          gatePasses: {
+            where: { deletedAt: null, status: { in: ['PENDING', 'APPROVED'] } },
+            select: { items: true },
+          },
           invoices: {
             where: { deletedAt: null, verificationStatus: 'VERIFIED' },
             select: {
@@ -114,18 +118,34 @@ router.get(
         orderBy: { createdAt: 'desc' },
       });
       // Return all approved POs (invoice is optional for gate pass creation)
-      const result = pos.map((po) => ({
-        id: po.id,
-        poNumber: po.poNumber,
-        vendor: po.vendor,
-        grandTotal: Number(po.grandTotal),
-        items: po.items.map((item) => ({
-          materialName: item.materialName,
-          quantity: Number(item.quantity),
-          unit: item.unit,
-        })),
-        invoices: po.invoices,
-      }));
+      const result = pos.map((po) => {
+        const receivedByName = new Map<string, number>();
+        for (const gatePass of po.gatePasses) {
+          for (const item of gatePass.items) {
+            const name = item.materialName.toLowerCase();
+            receivedByName.set(name, (receivedByName.get(name) ?? 0) + Number(item.quantity));
+          }
+        }
+        return {
+          id: po.id,
+          poNumber: po.poNumber,
+          vendor: po.vendor,
+          grandTotal: Number(po.grandTotal),
+          items: po.items.map((item) => {
+            const orderedQuantity = Number(item.quantity);
+            const receivedQuantity = receivedByName.get(item.materialName.toLowerCase()) ?? 0;
+            return {
+              materialName: item.materialName,
+              quantity: orderedQuantity,
+              orderedQuantity,
+              receivedQuantity,
+              remainingQuantity: Math.max(0, orderedQuantity - receivedQuantity),
+              unit: item.unit,
+            };
+          }),
+          invoices: po.invoices,
+        };
+      });
       res.json({ data: result });
     } catch (error) {
       next(error);
@@ -246,20 +266,42 @@ router.post(
       // Validate PO exists and is approved
       const po = await prisma.purchaseOrder.findFirst({
         where: { id: poId, projectId, deletedAt: null },
-        include: { items: true },
+        include: {
+          items: true,
+          gatePasses: {
+            where: { deletedAt: null, status: { in: ['PENDING', 'APPROVED'] } },
+            select: { items: true },
+          },
+        },
       });
       if (!po) {
         res.status(400).json({ error: 'Purchase order not found' });
         return;
       }
-      if (po.status !== 'APPROVED') {
+      if (!['APPROVED', 'PARTIALLY_DELIVERED'].includes(po.status)) {
         res.status(400).json({ error: 'Purchase order must be approved first' });
         return;
       }
 
+      const receivedByName = new Map<string, number>();
+      for (const gatePass of po.gatePasses) {
+        for (const item of gatePass.items) {
+          const name = item.materialName.toLowerCase();
+          receivedByName.set(name, (receivedByName.get(name) ?? 0) + Number(item.quantity));
+        }
+      }
+      const remainingByName = new Map(po.items.map((item) => [
+        item.materialName.toLowerCase(), Math.max(0, Number(item.quantity) - (receivedByName.get(item.materialName.toLowerCase()) ?? 0)),
+      ]));
       const items = (rawItems
         ? (typeof rawItems === 'string' ? JSON.parse(rawItems) : rawItems)
-        : po.items.map((item) => ({ materialName: item.materialName, quantity: Number(item.quantity), unit: item.unit ?? undefined }))) as { materialName: string; quantity: number; unit?: string }[];
+        : po.items
+          .filter((item) => (remainingByName.get(item.materialName.toLowerCase()) ?? 0) > 0)
+          .map((item) => ({ materialName: item.materialName, quantity: remainingByName.get(item.materialName.toLowerCase()), unit: item.unit ?? undefined }))) as { materialName: string; quantity: number; unit?: string }[];
+      if (items.length === 0) {
+        res.status(400).json({ error: 'Enter at least one received item quantity greater than zero' });
+        return;
+      }
       const poItemsByName = new Map(po.items.map((item) => [item.materialName.toLowerCase(), item]));
       const itemNames = new Set<string>();
       for (const item of items) {
@@ -274,8 +316,9 @@ router.post(
           res.status(400).json({ error: `Item ${item.materialName} is not part of the purchase order` });
           return;
         }
-        if (Number(item.quantity) > Number(poItem.quantity)) {
-          res.status(400).json({ error: `Received quantity for ${item.materialName} cannot exceed the PO quantity` });
+        const remainingQuantity = remainingByName.get(normalizedName) ?? 0;
+        if (Number(item.quantity) > remainingQuantity) {
+          res.status(400).json({ error: `Received quantity for ${item.materialName} cannot exceed the remaining quantity of ${remainingQuantity}` });
           return;
         }
       }
@@ -460,88 +503,6 @@ router.post(
       // OTP approval only approves the gate pass. Inventory is intentionally decoupled
       // until the inventory receiving workflow is defined.
 
-      const poItemsByName = new Map(gatePass.purchaseOrder.items.map((item) => [item.materialName.toLowerCase(), item]));
-      const isReducedReceipt = gatePass.purchaseOrder.items.some((item) => {
-        const received = gatePass.items.find((gateItem) => gateItem.materialName.toLowerCase() === item.materialName.toLowerCase());
-        return !received || Number(received.quantity) < Number(item.quantity);
-      });
-
-      let adjustedPoWorkflowId: string | null = null;
-      if (isReducedReceipt) {
-        const adjustedItems = gatePass.items.map((item) => {
-          const poItem = poItemsByName.get(item.materialName.toLowerCase())!;
-          return {
-            materialName: poItem.materialName,
-            quantity: item.quantity,
-            unit: poItem.unit,
-            unitPrice: poItem.unitPrice,
-            amount: Number(item.quantity) * Number(poItem.unitPrice),
-          };
-        });
-        const totalAmount = adjustedItems.reduce((sum, item) => sum + item.amount, 0);
-        await prisma.$transaction(async (tx) => {
-          await tx.pOItem.deleteMany({ where: { poId: gatePass.poId } });
-          await tx.pOItem.createMany({ data: adjustedItems.map((item) => ({ poId: gatePass.poId, ...item })) });
-          if (gatePass.purchaseOrder.approvalWorkflow?.id) {
-            await tx.purchaseOrder.update({
-              where: { id: gatePass.poId },
-              data: { approvalWorkflowId: null },
-            });
-            await tx.approvalWorkflow.delete({ where: { id: gatePass.purchaseOrder.approvalWorkflow.id } });
-          }
-          const workflow = await tx.approvalWorkflow.create({
-            data: {
-              entityType: 'PURCHASE_ORDER',
-              entityId: gatePass.poId,
-              projectId,
-              status: 'VERIFICATION',
-              currentStep: 0,
-              minApprovers: 1,
-              approvalPolicy: 'PO_SINGLE_APPROVER',
-              steps: {
-                create: [UserRole.ADMIN, UserRole.ADMIN_2].map((role, index) => ({
-                  stepNumber: index + 1,
-                  approverRole: role,
-                  status: 'PENDING',
-                })),
-              },
-            },
-          });
-          await tx.purchaseOrder.update({
-            where: { id: gatePass.poId },
-            data: {
-              totalAmount,
-              grandTotal: totalAmount + Number(gatePass.purchaseOrder.gstAmount),
-              status: 'PENDING_APPROVAL',
-              approvalWorkflowId: workflow.id,
-            },
-          });
-          adjustedPoWorkflowId = workflow.id;
-        });
-
-        await logAudit({
-          userId: req.user!.id,
-          action: AuditAction.UPDATE,
-          entityType: 'PURCHASE_ORDER',
-          entityId: gatePass.poId,
-          projectId,
-          newValue: {
-            reason: 'Partial receipt through gatepass',
-            receivedItems: gatePass.items.map((item) => ({ materialName: item.materialName, quantity: Number(item.quantity) })),
-            status: 'PENDING_APPROVAL',
-            approvalWorkflowId: adjustedPoWorkflowId,
-          },
-        });
-        notifyApprovers(projectId, [UserRole.ADMIN, UserRole.ADMIN_2], {
-          approvalId: adjustedPoWorkflowId!,
-          entityType: 'PURCHASE_ORDER',
-          entityId: gatePass.poId,
-          title: 'Purchase Order Reapproval Required',
-          body: `PO ${gatePass.purchaseOrder.poNumber} was adjusted to the received quantities.`,
-          url: `/pos?approval=${adjustedPoWorkflowId}`,
-        }).catch((err) => console.error('[Push] PO adjustment notification error:', err));
-      }
-
       // Mark gate pass as approved
       const updated = await prisma.gatePass.update({
         where: { id: gatePass.id },
@@ -553,11 +514,30 @@ router.post(
         include: gatePassInclude,
       });
 
-      // Mark the linked invoice as received without changing inventory
-      if (gatePass.invoiceId) {
-        await prisma.vendorInvoice.update({
-          where: { id: gatePass.invoiceId },
-          data: { stockStatus: 'RECEIVED' },
+      const poWithReceipts = await prisma.purchaseOrder.findUnique({
+        where: { id: gatePass.poId },
+        include: {
+          items: true,
+          gatePasses: {
+            where: { deletedAt: null, status: 'APPROVED' },
+            select: { items: true },
+          },
+        },
+      });
+      if (poWithReceipts) {
+        const receivedByName = new Map<string, number>();
+        for (const receipt of poWithReceipts.gatePasses) {
+          for (const item of receipt.items) {
+            const name = item.materialName.toLowerCase();
+            receivedByName.set(name, (receivedByName.get(name) ?? 0) + Number(item.quantity));
+          }
+        }
+        const fullyReceived = poWithReceipts.items.every(
+          (item) => (receivedByName.get(item.materialName.toLowerCase()) ?? 0) >= Number(item.quantity),
+        );
+        await prisma.purchaseOrder.update({
+          where: { id: gatePass.poId },
+          data: { status: fullyReceived ? 'DELIVERED' : 'PARTIALLY_DELIVERED' },
         });
       }
 

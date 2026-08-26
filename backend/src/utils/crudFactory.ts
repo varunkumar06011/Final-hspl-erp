@@ -22,6 +22,7 @@ interface CrudConfig {
   intSearchFields?: string[];
   transformCreate?: (body: Record<string, unknown>, userId: string, projectId: string) => Record<string, unknown> | Promise<Record<string, unknown>>;
   transformUpdate?: (body: Record<string, unknown>, userId: string, projectId: string, existingId: string) => Record<string, unknown> | Promise<Record<string, unknown>>;
+  transformList?: (records: Record<string, unknown>[], projectId: string) => Record<string, unknown>[] | Promise<Record<string, unknown>[]>;
   beforeDelete?: (id: string) => Promise<void>;
   afterCreate?: (record: Record<string, unknown>, userId: string, projectId: string) => void | Promise<void>;
 }
@@ -40,7 +41,7 @@ export function createCrudRouter(config: CrudConfig): Router {
     async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
       try {
         const { page = 1, pageSize = 20, search, ...filters } = req.query as Record<string, unknown>;
-        const projectId = req.user!.projectId;
+        const projectId = requireProjectId(req);
 
         const where: Record<string, unknown> = {
           projectId,
@@ -74,8 +75,12 @@ export function createCrudRouter(config: CrudConfig): Router {
           model.count({ where }),
         ]);
 
+        const transformedData = config.transformList
+          ? await config.transformList(data as Record<string, unknown>[], projectId)
+          : data;
+
         res.json({
-          data,
+          data: transformedData,
           pagination: {
             page: Number(page),
             pageSize: Number(pageSize),

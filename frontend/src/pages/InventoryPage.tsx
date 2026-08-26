@@ -121,7 +121,7 @@ export default function InventoryPage() {
   const pagination = data?.pagination ?? { page: 1, pageSize: 20, total: 0, totalPages: 0 };
 
   const openCreate = () => {
-    setForm({ name: '', unit: 'nos', currentStock: 0, minStockLevel: 0 });
+    setForm({ name: '', unit: 'nos', minStockLevel: 0 });
     setEditing(null);
     setError('');
     setDialogOpen(true);
@@ -130,7 +130,7 @@ export default function InventoryPage() {
   const openEdit = (row: Record<string, unknown>) => {
     setForm({
       name: row.name ?? '', sku: row.sku ?? '', category: row.category ?? '',
-      unit: row.unit ?? 'nos', currentStock: row.currentStock ?? 0,
+      unit: row.unit ?? 'nos',
       minStockLevel: row.minStockLevel ?? 0, location: row.location ?? '',
     });
     setEditing(row);
@@ -172,7 +172,7 @@ export default function InventoryPage() {
           <IconButton onClick={() => refetch()} size="small"><RefreshIcon /></IconButton>
           {tab === 0 && (
             <>
-              <Button variant="outlined" startIcon={<SwapVertIcon />} onClick={() => { setTxnForm({ type: InventoryTxnType.IN, quantity: 0 }); setTxnDialogOpen(true); }}>
+              <Button variant="outlined" startIcon={<SwapVertIcon />} onClick={() => { setTxnForm({ type: InventoryTxnType.OUT, quantity: 0 }); setTxnDialogOpen(true); }}>
                 Stock Movement
               </Button>
               <Button variant="contained" startIcon={<AddIcon />} onClick={openCreate}>New Item</Button>
@@ -291,7 +291,6 @@ export default function InventoryPage() {
             <TextField label="SKU" value={form.sku ?? ''} onChange={(e) => setForm({ ...form, sku: e.target.value })} fullWidth size="small" />
             <CreatableSelect label="Category" value={String(form.category ?? '')} onChange={(v) => setForm({ ...form, category: v })} dropdownType="INVENTORY_CATEGORY" />
             <CreatableSelect label="Unit" value={String(form.unit ?? '')} onChange={(v) => setForm({ ...form, unit: v })} required dropdownType="UNIT" />
-            <TextField label="Current Stock" type="text" value={formatIndianNumber(form.currentStock ?? 0)} onChange={(e) => setForm({ ...form, currentStock: e.target.value === '' ? '' : Number(e.target.value.replace(/,/g, '')) })} inputMode="decimal" inputProps={{ min: 0, step: 0.01 }} fullWidth size="small" />
             <TextField label="Min Stock Level" type="text" value={formatIndianNumber(form.minStockLevel ?? 0)} onChange={(e) => setForm({ ...form, minStockLevel: e.target.value === '' ? '' : Number(e.target.value.replace(/,/g, '')) })} inputMode="decimal" inputProps={{ min: 0, step: 0.01 }} fullWidth size="small" />
             <CreatableSelect label="Location" value={String(form.location ?? '')} onChange={(v) => setForm({ ...form, location: v })} dropdownType="LOCATION" />
           </Box>
@@ -316,7 +315,7 @@ export default function InventoryPage() {
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
             <CreatableSelect label="Item" required value={String(txnForm.itemId ?? '')} onChange={(v) => setTxnForm({ ...txnForm, itemId: v })} optionsEndpoint="/inventory/items" />
             <TextField select label="Type" required value={txnForm.type ?? InventoryTxnType.IN} onChange={(e) => setTxnForm({ ...txnForm, type: e.target.value })} fullWidth size="small">
-              {enumToOptions(InventoryTxnType).map((opt) => <MenuItem key={opt.value} value={opt.value}>{opt.label}</MenuItem>)}
+              {enumToOptions(InventoryTxnType).filter((opt) => opt.value !== InventoryTxnType.IN).map((opt) => <MenuItem key={opt.value} value={opt.value}>{opt.label}</MenuItem>)}
             </TextField>
             <TextField label="Quantity" type="text" required value={formatIndianNumber(txnForm.quantity ?? '')} onChange={(e) => setTxnForm({ ...txnForm, quantity: e.target.value === '' ? '' : Number(e.target.value.replace(/,/g, '')) })} inputMode="decimal" inputProps={{ min: 0.01, step: 0.01 }} fullWidth size="small"
               helperText={txnForm.type === 'ADJUST' ? 'Set absolute stock value' : 'Positive number'} />

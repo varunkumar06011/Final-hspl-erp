@@ -17,75 +17,79 @@ model User {
   firebaseUid String   @unique
   phone       String   @unique
   name        String
-  role        String   // UserRole enum from shared/enums.ts
+  role        String // UserRole enum from shared/enums.ts
   projectId   String?  @db.Uuid
   isActive    Boolean  @default(true)
   pinHash     String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  project             Project?             @relation(fields: [projectId], references: [id])
-  auditLogs           AuditLog[]
-  approvalSteps       ApprovalStep[]
-  createdVendors      Vendor[]             @relation("VendorCreatedBy")
-  createdQuotations   Quotation[]          @relation("QuotationCreatedBy")
-  createdPOs          PurchaseOrder[]      @relation("POCreatedBy")
-  createdInvoices     VendorInvoice[]      @relation("InvoiceCreatedBy")
-  createdPayments     PaymentRequest[]     @relation("PaymentRequestCreatedBy")
-  createdGatePasses   GatePass[]           @relation("GatePassCreatedBy")
-  inventoryTxns       InventoryTransaction[]
-  createdPhases       Phase[]              @relation("PhaseCreatedBy")
-  createdActivities   Activity[]           @relation("ActivityCreatedBy")
-  uploadedPhotos      SitePhoto[]          @relation("PhotoUploadedBy")
-  createdIssues       Issue[]              @relation("IssueCreatedBy")
-  inspections         Inspection[]         @relation("InspectionInspector")
-  createdInspections  Inspection[]         @relation("InspectionCreatedBy")
-  uploadedDocuments   Document[]          @relation("DocumentUploadedBy")
-  gatePassOtpRequestedFor GatePass[]      @relation("GatePassOtpRequestedFor")
-  gatePassOtpApprovedBy   GatePass[]      @relation("GatePassOtpApprovedBy")
-  createdContracts    Contract[]          @relation("ContractCreatedBy")
-  createdDropdownOptions DropdownOption[]  @relation("DropdownOptionCreatedBy")
-  uploadedAttachments Attachment[]         @relation("AttachmentUploadedBy")
-  markedAttendance  StaffAttendance[]     @relation("AttendanceMarker")
-  pushSubscriptions PushSubscription[]
+  project                 Project?               @relation(fields: [projectId], references: [id])
+  auditLogs               AuditLog[]
+  approvalSteps           ApprovalStep[]
+  createdVendors          Vendor[]               @relation("VendorCreatedBy")
+  createdQuotations       Quotation[]            @relation("QuotationCreatedBy")
+  createdPOs              PurchaseOrder[]        @relation("POCreatedBy")
+  createdInvoices         VendorInvoice[]        @relation("InvoiceCreatedBy")
+  createdPayments         PaymentRequest[]       @relation("PaymentRequestCreatedBy")
+  createdGatePasses       GatePass[]             @relation("GatePassCreatedBy")
+  createdGoodsReceipts    GoodsReceipt[]         @relation("GoodsReceiptCreatedBy")
+  inspectedGoodsReceipts  GoodsReceipt[]         @relation("GoodsReceiptInspectedBy")
+  postedGoodsReceipts     GoodsReceipt[]         @relation("GoodsReceiptPostedBy")
+  inventoryTxns           InventoryTransaction[]
+  createdPhases           Phase[]                @relation("PhaseCreatedBy")
+  createdActivities       Activity[]             @relation("ActivityCreatedBy")
+  uploadedPhotos          SitePhoto[]            @relation("PhotoUploadedBy")
+  createdIssues           Issue[]                @relation("IssueCreatedBy")
+  inspections             Inspection[]           @relation("InspectionInspector")
+  createdInspections      Inspection[]           @relation("InspectionCreatedBy")
+  uploadedDocuments       Document[]             @relation("DocumentUploadedBy")
+  gatePassOtpRequestedFor GatePass[]             @relation("GatePassOtpRequestedFor")
+  gatePassOtpApprovedBy   GatePass[]             @relation("GatePassOtpApprovedBy")
+  createdContracts        Contract[]             @relation("ContractCreatedBy")
+  createdDropdownOptions  DropdownOption[]       @relation("DropdownOptionCreatedBy")
+  uploadedAttachments     Attachment[]           @relation("AttachmentUploadedBy")
+  markedAttendance        StaffAttendance[]      @relation("AttendanceMarker")
+  pushSubscriptions       PushSubscription[]
 
   @@map("users")
 }
 
 model Project {
-  id              String   @id @default(uuid()) @db.Uuid
+  id              String    @id @default(uuid()) @db.Uuid
   name            String
   description     String?
-  totalBudget     Decimal  @db.Decimal(15, 2)
+  totalBudget     Decimal   @db.Decimal(15, 2)
   startDate       DateTime
   endDate         DateTime?
-  status          String   @default("PLANNED") // ProjectStatus enum
+  status          String    @default("PLANNED") // ProjectStatus enum
   officeAddress   String?
   hospitalAddress String?
   gstNumber       String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
   deletedAt       DateTime?
 
-  users           User[]
-  vendors         Vendor[]
-  quotations      Quotation[]
-  purchaseOrders  PurchaseOrder[]
-  invoices        VendorInvoice[]
-  paymentRequests PaymentRequest[]
-  gatePasses      GatePass[]
-  inventoryItems  InventoryItem[]
-  phases          Phase[]
-  photos          SitePhoto[]
-  issues          Issue[]
-  inspections     Inspection[]
-  documents       Document[]
-  contracts       Contract[]
+  users             User[]
+  vendors           Vendor[]
+  quotations        Quotation[]
+  purchaseOrders    PurchaseOrder[]
+  invoices          VendorInvoice[]
+  paymentRequests   PaymentRequest[]
+  gatePasses        GatePass[]
+  goodsReceipts     GoodsReceipt[]
+  inventoryItems    InventoryItem[]
+  phases            Phase[]
+  photos            SitePhoto[]
+  issues            Issue[]
+  inspections       Inspection[]
+  documents         Document[]
+  contracts         Contract[]
   approvalWorkflows ApprovalWorkflow[]
-  auditLogs       AuditLog[]
-  dropdownOptions DropdownOption[]
-  attachments     Attachment[]
-  staff           Staff[]
+  auditLogs         AuditLog[]
+  dropdownOptions   DropdownOption[]
+  attachments       Attachment[]
+  staff             Staff[]
 
   @@map("projects")
 }
@@ -95,83 +99,83 @@ model Project {
 // ═══════════════════════════════════════════════════════════
 
 model Vendor {
-  id               String   @id @default(uuid()) @db.Uuid
-  vendorCode        String   @unique
-  projectId        String   @db.Uuid
-  name             String
-  contactPersonName String?
+  id                 String    @id @default(uuid()) @db.Uuid
+  vendorCode         String    @unique
+  projectId          String    @db.Uuid
+  name               String
+  contactPersonName  String?
   contactPersonPhone String?
-  referenceBy      String?
-  gstNumber        String?
-  panNumber        String?
-  category         String   @default("OTHER") // VendorCategory enum
-  bankName         String?
-  bankAccountNumber String?
-  ifscCode         String?
-  address          String?
-  phone            String?
-  email            String?
-  status           String   @default("ACTIVE") // VendorStatus enum
-  rating           Int      @default(0)
-  createdBy        String   @db.Uuid
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
-  deletedAt        DateTime?
+  referenceBy        String?
+  gstNumber          String?
+  panNumber          String?
+  category           String    @default("OTHER") // VendorCategory enum
+  bankName           String?
+  bankAccountNumber  String?
+  ifscCode           String?
+  address            String?
+  phone              String?
+  email              String?
+  status             String    @default("ACTIVE") // VendorStatus enum
+  rating             Int       @default(0)
+  createdBy          String    @db.Uuid
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  deletedAt          DateTime?
 
-  project          Project      @relation(fields: [projectId], references: [id])
-  createdByUser    User         @relation("VendorCreatedBy", fields: [createdBy], references: [id])
-  quotations       Quotation[]
-  purchaseOrders   PurchaseOrder[]
-  invoices         VendorInvoice[]
-  paymentRequests  PaymentRequest[]
-  contracts        Contract[]
-  activities       Activity[]
-  materials        VendorMaterial[]
+  project         Project          @relation(fields: [projectId], references: [id])
+  createdByUser   User             @relation("VendorCreatedBy", fields: [createdBy], references: [id])
+  quotations      Quotation[]
+  purchaseOrders  PurchaseOrder[]
+  invoices        VendorInvoice[]
+  paymentRequests PaymentRequest[]
+  contracts       Contract[]
+  activities      Activity[]
+  materials       VendorMaterial[]
 
   @@unique([projectId, name])
   @@map("vendors")
 }
 
 model VendorMaterial {
-  id           String   @id @default(uuid()) @db.Uuid
-  vendorId     String   @db.Uuid
-  name         String
-  unit         String?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id        String   @id @default(uuid()) @db.Uuid
+  vendorId  String   @db.Uuid
+  name      String
+  unit      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  vendor       Vendor   @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  vendor Vendor @relation(fields: [vendorId], references: [id], onDelete: Cascade)
 
   @@map("vendor_materials")
 }
 
 model Quotation {
-  id            String   @id @default(uuid()) @db.Uuid
-  projectId     String   @db.Uuid
-  vendorId      String   @db.Uuid
-  phaseId       String?  @db.Uuid
-  quotationNumber String
-  date          DateTime @default(now())
-  status        String   @default("PENDING") // QuotationStatus enum
-  totalAmount   Decimal  @db.Decimal(15, 2) @default(0)
-  gstAmount     Decimal  @db.Decimal(15, 2) @default(0)
-  grandTotal    Decimal  @db.Decimal(15, 2) @default(0)
-  notes         String?
-  filePath      String?
-  fileName      String?
-  fileMimeType  String?
-  createdBy     String   @db.Uuid
-  approvalWorkflowId String? @unique @db.Uuid
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  deletedAt     DateTime?
+  id                 String    @id @default(uuid()) @db.Uuid
+  projectId          String    @db.Uuid
+  vendorId           String    @db.Uuid
+  phaseId            String?   @db.Uuid
+  quotationNumber    String
+  date               DateTime  @default(now())
+  status             String    @default("PENDING") // QuotationStatus enum
+  totalAmount        Decimal   @default(0) @db.Decimal(15, 2)
+  gstAmount          Decimal   @default(0) @db.Decimal(15, 2)
+  grandTotal         Decimal   @default(0) @db.Decimal(15, 2)
+  notes              String?
+  filePath           String?
+  fileName           String?
+  fileMimeType       String?
+  createdBy          String    @db.Uuid
+  approvalWorkflowId String?   @unique @db.Uuid
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  deletedAt          DateTime?
 
-  project       Project         @relation(fields: [projectId], references: [id])
-  vendor        Vendor          @relation(fields: [vendorId], references: [id])
-  phase         Phase?          @relation(fields: [phaseId], references: [id])
-  createdByUser User            @relation("QuotationCreatedBy", fields: [createdBy], references: [id])
-  items         QuotationItem[]
-  purchaseOrders PurchaseOrder[]
+  project          Project           @relation(fields: [projectId], references: [id])
+  vendor           Vendor            @relation(fields: [vendorId], references: [id])
+  phase            Phase?            @relation(fields: [phaseId], references: [id])
+  createdByUser    User              @relation("QuotationCreatedBy", fields: [createdBy], references: [id])
+  items            QuotationItem[]
+  purchaseOrders   PurchaseOrder[]
   approvalWorkflow ApprovalWorkflow? @relation(fields: [approvalWorkflowId], references: [id])
 
   @@unique([projectId, quotationNumber])
@@ -188,39 +192,40 @@ model QuotationItem {
   amount       Decimal  @db.Decimal(15, 2)
   createdAt    DateTime @default(now())
 
-  quotation    Quotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  quotation Quotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
 
   @@map("quotation_items")
 }
 
 model PurchaseOrder {
-  id            String   @id @default(uuid()) @db.Uuid
-  projectId     String   @db.Uuid
-  vendorId      String   @db.Uuid
-  quotationId   String?  @db.Uuid
-  phaseId       String?  @db.Uuid
-  poNumber      String
-  date          DateTime @default(now())
-  status        String   @default("PENDING") // POStatus enum
-  deliveryDate  DateTime?
-  totalAmount   Decimal  @db.Decimal(15, 2) @default(0)
-  gstAmount     Decimal  @db.Decimal(15, 2) @default(0)
-  grandTotal    Decimal  @db.Decimal(15, 2) @default(0)
-  notes         String?
-  createdBy     String   @db.Uuid
-  approvalWorkflowId String? @unique @db.Uuid
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  deletedAt     DateTime?
+  id                 String    @id @default(uuid()) @db.Uuid
+  projectId          String    @db.Uuid
+  vendorId           String    @db.Uuid
+  quotationId        String?   @db.Uuid
+  phaseId            String?   @db.Uuid
+  poNumber           String
+  date               DateTime  @default(now())
+  status             String    @default("PENDING") // POStatus enum
+  deliveryDate       DateTime?
+  totalAmount        Decimal   @default(0) @db.Decimal(15, 2)
+  gstAmount          Decimal   @default(0) @db.Decimal(15, 2)
+  grandTotal         Decimal   @default(0) @db.Decimal(15, 2)
+  notes              String?
+  createdBy          String    @db.Uuid
+  approvalWorkflowId String?   @unique @db.Uuid
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  deletedAt          DateTime?
 
-  project       Project      @relation(fields: [projectId], references: [id])
-  vendor        Vendor       @relation(fields: [vendorId], references: [id])
-  quotation     Quotation?   @relation(fields: [quotationId], references: [id])
-  phase         Phase?       @relation(fields: [phaseId], references: [id])
-  createdByUser User         @relation("POCreatedBy", fields: [createdBy], references: [id])
-  items         POItem[]
-  invoices      VendorInvoice[]
-  gatePasses    GatePass[]
+  project          Project           @relation(fields: [projectId], references: [id])
+  vendor           Vendor            @relation(fields: [vendorId], references: [id])
+  quotation        Quotation?        @relation(fields: [quotationId], references: [id])
+  phase            Phase?            @relation(fields: [phaseId], references: [id])
+  createdByUser    User              @relation("POCreatedBy", fields: [createdBy], references: [id])
+  items            POItem[]
+  invoices         VendorInvoice[]
+  gatePasses       GatePass[]
+  goodsReceipts    GoodsReceipt[]
   approvalWorkflow ApprovalWorkflow? @relation(fields: [approvalWorkflowId], references: [id])
 
   @@unique([projectId, poNumber])
@@ -237,98 +242,99 @@ model POItem {
   amount       Decimal  @db.Decimal(15, 2)
   createdAt    DateTime @default(now())
 
-  purchaseOrder PurchaseOrder @relation(fields: [poId], references: [id], onDelete: Cascade)
+  purchaseOrder     PurchaseOrder      @relation(fields: [poId], references: [id], onDelete: Cascade)
+  goodsReceiptItems GoodsReceiptItem[]
 
   @@map("po_items")
 }
 
 model VendorInvoice {
-  id                  String   @id @default(uuid()) @db.Uuid
-  projectId           String   @db.Uuid
-  vendorId            String   @db.Uuid
-  poId                String?  @db.Uuid
-  invoiceCode         String   @unique
-  invoiceNumber       String
-  date                DateTime @default(now())
-  amount              Decimal  @db.Decimal(15, 2)
-  taxAmount           Decimal  @db.Decimal(15, 2) @default(0)
-  totalAmount         Decimal  @db.Decimal(15, 2)
-  advancePaid         Decimal  @db.Decimal(15, 2) @default(0)
-  advanceType         String?
-  advanceOtherType    String?
-  paymentStatus       String   @default("PENDING") // PaymentStatus enum
-  stockStatus         String   @default("PENDING") // PENDING | RECEIVED
-  deliveryDate        DateTime?
-  filePath            String?
-  fileName            String?
-  fileMimeType        String?
-  verificationStatus  String   @default("PENDING") // InvoiceVerificationStatus enum
-  inventoryAdded      Boolean  @default(false) // true once items added to inventory (via gate pass or payment)
-  notes               String?
-  createdBy           String   @db.Uuid
-  approvalWorkflowId  String?  @unique @db.Uuid
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
-  deletedAt           DateTime?
+  id                 String    @id @default(uuid()) @db.Uuid
+  projectId          String    @db.Uuid
+  vendorId           String    @db.Uuid
+  poId               String?   @db.Uuid
+  invoiceCode        String    @unique
+  invoiceNumber      String
+  date               DateTime  @default(now())
+  amount             Decimal   @db.Decimal(15, 2)
+  taxAmount          Decimal   @default(0) @db.Decimal(15, 2)
+  totalAmount        Decimal   @db.Decimal(15, 2)
+  advancePaid        Decimal   @default(0) @db.Decimal(15, 2)
+  advanceType        String?
+  advanceOtherType   String?
+  paymentStatus      String    @default("PENDING") // PaymentStatus enum
+  stockStatus        String    @default("PENDING") // PENDING | RECEIVED
+  deliveryDate       DateTime?
+  filePath           String?
+  fileName           String?
+  fileMimeType       String?
+  verificationStatus String    @default("PENDING") // InvoiceVerificationStatus enum
+  inventoryAdded     Boolean   @default(false) // true once items added to inventory (via gate pass or payment)
+  notes              String?
+  createdBy          String    @db.Uuid
+  approvalWorkflowId String?   @unique @db.Uuid
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  deletedAt          DateTime?
 
-  project             Project         @relation(fields: [projectId], references: [id])
-  vendor              Vendor          @relation(fields: [vendorId], references: [id])
-  purchaseOrder       PurchaseOrder?  @relation(fields: [poId], references: [id])
-  createdByUser       User            @relation("InvoiceCreatedBy", fields: [createdBy], references: [id])
-  paymentRequests     PaymentRequest[]
-  gatePasses          GatePass[]
-  approvalWorkflow    ApprovalWorkflow? @relation(fields: [approvalWorkflowId], references: [id])
+  project          Project           @relation(fields: [projectId], references: [id])
+  vendor           Vendor            @relation(fields: [vendorId], references: [id])
+  purchaseOrder    PurchaseOrder?    @relation(fields: [poId], references: [id])
+  createdByUser    User              @relation("InvoiceCreatedBy", fields: [createdBy], references: [id])
+  paymentRequests  PaymentRequest[]
+  gatePasses       GatePass[]
+  approvalWorkflow ApprovalWorkflow? @relation(fields: [approvalWorkflowId], references: [id])
 
   @@unique([vendorId, invoiceNumber])
   @@map("vendor_invoices")
 }
 
 model PaymentRequest {
-  id             String   @id @default(uuid()) @db.Uuid
-  projectId      String   @db.Uuid
-  invoiceId      String?  @db.Uuid
-  vendorId       String?  @db.Uuid
-  paymentCode    String   @unique
-  requestNumber  String
-  type           String   @default("INVOICE") // INVOICE | EXPENSE
-  amount         Decimal  @db.Decimal(15, 2)
-  status         String   @default("PENDING") // PaymentStatus enum
-  paymentMode    String?  // PaymentMode enum
-  description    String?
-  category       String?
-  expenseDate    DateTime?
-  filePath       String?
-  fileName       String?
-  fileMimeType   String?
-  notes          String?
-  createdBy      String   @db.Uuid
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-  deletedAt      DateTime?
+  id            String    @id @default(uuid()) @db.Uuid
+  projectId     String    @db.Uuid
+  invoiceId     String?   @db.Uuid
+  vendorId      String?   @db.Uuid
+  paymentCode   String    @unique
+  requestNumber String
+  type          String    @default("INVOICE") // INVOICE | EXPENSE
+  amount        Decimal   @db.Decimal(15, 2)
+  status        String    @default("PENDING") // PaymentStatus enum
+  paymentMode   String? // PaymentMode enum
+  description   String?
+  category      String?
+  expenseDate   DateTime?
+  filePath      String?
+  fileName      String?
+  fileMimeType  String?
+  notes         String?
+  createdBy     String    @db.Uuid
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  deletedAt     DateTime?
 
-  project        Project         @relation(fields: [projectId], references: [id])
-  invoice        VendorInvoice?  @relation(fields: [invoiceId], references: [id])
-  vendor         Vendor?         @relation(fields: [vendorId], references: [id])
-  createdByUser  User            @relation("PaymentRequestCreatedBy", fields: [createdBy], references: [id])
-  payments            Payment[]
-  approvalWorkflowId  String?  @unique @db.Uuid
-  approvalWorkflow    ApprovalWorkflow? @relation(fields: [approvalWorkflowId], references: [id])
+  project            Project           @relation(fields: [projectId], references: [id])
+  invoice            VendorInvoice?    @relation(fields: [invoiceId], references: [id])
+  vendor             Vendor?           @relation(fields: [vendorId], references: [id])
+  createdByUser      User              @relation("PaymentRequestCreatedBy", fields: [createdBy], references: [id])
+  payments           Payment[]
+  approvalWorkflowId String?           @unique @db.Uuid
+  approvalWorkflow   ApprovalWorkflow? @relation(fields: [approvalWorkflowId], references: [id])
 
   @@unique([projectId, requestNumber])
   @@map("payment_requests")
 }
 
 model Payment {
-  id                String   @id @default(uuid()) @db.Uuid
-  paymentRequestId  String   @db.Uuid
-  amount            Decimal  @db.Decimal(15, 2)
-  date              DateTime @default(now())
-  mode              String   // PaymentMode enum
-  reference         String?
-  status            String   @default("PAID") // PaymentStatus enum
-  createdAt         DateTime @default(now())
+  id               String   @id @default(uuid()) @db.Uuid
+  paymentRequestId String   @db.Uuid
+  amount           Decimal  @db.Decimal(15, 2)
+  date             DateTime @default(now())
+  mode             String // PaymentMode enum
+  reference        String?
+  status           String   @default("PAID") // PaymentStatus enum
+  createdAt        DateTime @default(now())
 
-  paymentRequest    PaymentRequest @relation(fields: [paymentRequestId], references: [id])
+  paymentRequest PaymentRequest @relation(fields: [paymentRequestId], references: [id])
 
   @@map("payments")
 }
@@ -338,21 +344,21 @@ model Payment {
 // ═══════════════════════════════════════════════════════════
 
 model ApprovalWorkflow {
-  id           String   @id @default(uuid()) @db.Uuid
-  entityType   String   // e.g., "PAYMENT_REQUEST", "PERMISSION_REQUEST"
-  entityId     String   @db.Uuid
-  projectId    String   @db.Uuid
-  status       String   @default("CREATED") // ApprovalStatus enum
-  currentStep  Int      @default(0)
-  minApprovers Int      @default(2)
+  id             String   @id @default(uuid()) @db.Uuid
+  entityType     String // e.g., "PAYMENT_REQUEST", "PERMISSION_REQUEST"
+  entityId       String   @db.Uuid
+  projectId      String   @db.Uuid
+  status         String   @default("CREATED") // ApprovalStatus enum
+  currentStep    Int      @default(0)
+  minApprovers   Int      @default(2)
   approvalPolicy String?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
-  project      Project         @relation(fields: [projectId], references: [id])
-  steps        ApprovalStep[]
+  project        Project         @relation(fields: [projectId], references: [id])
+  steps          ApprovalStep[]
   paymentRequest PaymentRequest?
-  quotation    Quotation?
+  quotation      Quotation?
   purchaseOrder  PurchaseOrder?
   vendorInvoice  VendorInvoice?
 
@@ -361,18 +367,18 @@ model ApprovalWorkflow {
 }
 
 model ApprovalStep {
-  id            String   @id @default(uuid()) @db.Uuid
-  workflowId    String   @db.Uuid
-  stepNumber    Int
-  approverRole  String   // UserRole enum — which role can approve this step
-  approverUserId String?  @db.Uuid
-  status        String   @default("PENDING") // ApprovalStepStatus enum
-  decidedAt     DateTime?
-  comments      String?
-  createdAt     DateTime @default(now())
+  id             String    @id @default(uuid()) @db.Uuid
+  workflowId     String    @db.Uuid
+  stepNumber     Int
+  approverRole   String // UserRole enum — which role can approve this step
+  approverUserId String?   @db.Uuid
+  status         String    @default("PENDING") // ApprovalStepStatus enum
+  decidedAt      DateTime?
+  comments       String?
+  createdAt      DateTime  @default(now())
 
-  workflow      ApprovalWorkflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
-  approverUser  User?            @relation(fields: [approverUserId], references: [id])
+  workflow     ApprovalWorkflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  approverUser User?            @relation(fields: [approverUserId], references: [id])
 
   @@map("approval_steps")
 }
@@ -382,41 +388,42 @@ model ApprovalStep {
 // ═══════════════════════════════════════════════════════════
 
 model GatePass {
-  id              String   @id @default(uuid()) @db.Uuid
-  projectId       String   @db.Uuid
-  poId            String   @db.Uuid
-  invoiceId       String?  @db.Uuid
-  passNumber      String
-  date            DateTime @default(now())
-  visitTime       String?
-  visitorName     String?
-  purpose         String?
-  vehicleType     String?
-  vehicleNumber   String?
-  driverName      String?
-  driverMobile    String?
-  materialMovement Boolean @default(true)
-  gatePassType    String   @default("NON_RETURNABLE")
-  photoProofPath  String?
-  remarks         String?
-  status          String   @default("PENDING") // PENDING | APPROVED
-  otpCode         String?
-  otpRequestedFor String?  @db.Uuid
-  otpApprovedBy   String?  @db.Uuid
-  otpApprovedAt   DateTime?
-  createdBy       String   @db.Uuid
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  deletedAt       DateTime?
+  id               String    @id @default(uuid()) @db.Uuid
+  projectId        String    @db.Uuid
+  poId             String    @db.Uuid
+  invoiceId        String?   @db.Uuid
+  passNumber       String
+  date             DateTime  @default(now())
+  visitTime        String?
+  visitorName      String?
+  purpose          String?
+  vehicleType      String?
+  vehicleNumber    String?
+  driverName       String?
+  driverMobile     String?
+  materialMovement Boolean   @default(true)
+  gatePassType     String    @default("NON_RETURNABLE")
+  photoProofPath   String?
+  remarks          String?
+  status           String    @default("PENDING") // PENDING | APPROVED
+  otpCode          String?
+  otpRequestedFor  String?   @db.Uuid
+  otpApprovedBy    String?   @db.Uuid
+  otpApprovedAt    DateTime?
+  createdBy        String    @db.Uuid
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  deletedAt        DateTime?
 
-  project              Project         @relation(fields: [projectId], references: [id])
-  purchaseOrder        PurchaseOrder   @relation(fields: [poId], references: [id])
-  invoice              VendorInvoice?  @relation(fields: [invoiceId], references: [id])
-  createdByUser        User            @relation("GatePassCreatedBy", fields: [createdBy], references: [id])
-  otpRequestedForUser  User?           @relation("GatePassOtpRequestedFor", fields: [otpRequestedFor], references: [id])
-  otpApprovedByUser    User?           @relation("GatePassOtpApprovedBy", fields: [otpApprovedBy], references: [id])
-  items                GatePassItem[]
-  inventoryTxns        InventoryTransaction[]
+  project             Project                @relation(fields: [projectId], references: [id])
+  purchaseOrder       PurchaseOrder          @relation(fields: [poId], references: [id])
+  invoice             VendorInvoice?         @relation(fields: [invoiceId], references: [id])
+  createdByUser       User                   @relation("GatePassCreatedBy", fields: [createdBy], references: [id])
+  otpRequestedForUser User?                  @relation("GatePassOtpRequestedFor", fields: [otpRequestedFor], references: [id])
+  otpApprovedByUser   User?                  @relation("GatePassOtpApprovedBy", fields: [otpApprovedBy], references: [id])
+  items               GatePassItem[]
+  inventoryTxns       InventoryTransaction[]
+  goodsReceipt        GoodsReceipt?
 
   @@unique([projectId, passNumber])
   @@map("gate_passes")
@@ -430,45 +437,96 @@ model GatePassItem {
   unit         String?
   createdAt    DateTime @default(now())
 
-  gatePass     GatePass @relation(fields: [gatePassId], references: [id], onDelete: Cascade)
+  gatePass GatePass @relation(fields: [gatePassId], references: [id], onDelete: Cascade)
 
   @@map("gate_pass_items")
 }
 
+model GoodsReceipt {
+  id            String    @id @default(uuid()) @db.Uuid
+  projectId     String    @db.Uuid
+  poId          String    @db.Uuid
+  gatePassId    String    @unique @db.Uuid
+  receiptNumber String
+  status        String    @default("PENDING_INSPECTION")
+  inspectedBy   String?   @db.Uuid
+  inspectedAt   DateTime?
+  postedBy      String?   @db.Uuid
+  postedAt      DateTime?
+  createdBy     String    @db.Uuid
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  deletedAt     DateTime?
+
+  project         Project                @relation(fields: [projectId], references: [id])
+  purchaseOrder   PurchaseOrder          @relation(fields: [poId], references: [id])
+  gatePass        GatePass               @relation(fields: [gatePassId], references: [id])
+  createdByUser   User                   @relation("GoodsReceiptCreatedBy", fields: [createdBy], references: [id])
+  inspectedByUser User?                  @relation("GoodsReceiptInspectedBy", fields: [inspectedBy], references: [id])
+  postedByUser    User?                  @relation("GoodsReceiptPostedBy", fields: [postedBy], references: [id])
+  inspection      Inspection?
+  items           GoodsReceiptItem[]
+  inventoryTxns   InventoryTransaction[]
+
+  @@unique([projectId, receiptNumber])
+  @@map("goods_receipts")
+}
+
+model GoodsReceiptItem {
+  id              String   @id @default(uuid()) @db.Uuid
+  goodsReceiptId  String   @db.Uuid
+  poItemId        String?  @db.Uuid
+  materialName    String
+  unit            String?
+  deliveredQty    Decimal  @db.Decimal(10, 2)
+  acceptedQty     Decimal  @default(0) @db.Decimal(10, 2)
+  rejectedQty     Decimal  @default(0) @db.Decimal(10, 2)
+  rejectionReason String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  goodsReceipt GoodsReceipt @relation(fields: [goodsReceiptId], references: [id], onDelete: Cascade)
+  poItem       POItem?      @relation(fields: [poItemId], references: [id])
+
+  @@map("goods_receipt_items")
+}
+
 model InventoryItem {
-  id            String   @id @default(uuid()) @db.Uuid
-  projectId     String   @db.Uuid
+  id            String    @id @default(uuid()) @db.Uuid
+  projectId     String    @db.Uuid
   name          String
   sku           String?
   category      String?
   unit          String
-  currentStock  Decimal  @db.Decimal(10, 2) @default(0)
-  minStockLevel Decimal  @db.Decimal(10, 2) @default(0)
+  currentStock  Decimal   @default(0) @db.Decimal(10, 2)
+  minStockLevel Decimal   @default(0) @db.Decimal(10, 2)
   location      String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
   deletedAt     DateTime?
 
-  project       Project                @relation(fields: [projectId], references: [id])
-  transactions  InventoryTransaction[]
+  project      Project                @relation(fields: [projectId], references: [id])
+  transactions InventoryTransaction[]
 
   @@unique([projectId, name])
   @@map("inventory_items")
 }
 
 model InventoryTransaction {
-  id           String   @id @default(uuid()) @db.Uuid
-  itemId       String   @db.Uuid
-  gatePassId   String?  @db.Uuid
-  type         String   // InventoryTxnType enum (IN / OUT / ADJUST)
-  quantity     Decimal  @db.Decimal(10, 2)
-  balanceAfter Decimal  @db.Decimal(10, 2)
-  userId       String   @db.Uuid
-  notes        String?
-  timestamp    DateTime @default(now())
+  id             String   @id @default(uuid()) @db.Uuid
+  itemId         String   @db.Uuid
+  gatePassId     String?  @db.Uuid
+  goodsReceiptId String?  @db.Uuid
+  type           String // InventoryTxnType enum (IN / OUT / ADJUST)
+  quantity       Decimal  @db.Decimal(10, 2)
+  balanceAfter   Decimal  @db.Decimal(10, 2)
+  userId         String   @db.Uuid
+  notes          String?
+  timestamp      DateTime @default(now())
 
   inventoryItem InventoryItem @relation(fields: [itemId], references: [id])
   gatePass      GatePass?     @relation(fields: [gatePassId], references: [id])
+  goodsReceipt  GoodsReceipt? @relation(fields: [goodsReceiptId], references: [id])
   user          User          @relation(fields: [userId], references: [id])
 
   @@map("inventory_transactions")
@@ -479,118 +537,120 @@ model InventoryTransaction {
 // ═══════════════════════════════════════════════════════════
 
 model Phase {
-  id             String   @id @default(uuid()) @db.Uuid
-  projectId      String   @db.Uuid
-  name           String
-  plannedStart   DateTime?
-  plannedEnd     DateTime?
-  actualStart    DateTime?
-  actualEnd      DateTime?
-  budgetAmount   Decimal  @db.Decimal(15, 2) @default(0)
-  progressPercent Decimal @db.Decimal(5, 2) @default(0)
-  status         String   @default("NOT_STARTED") // PhaseStatus enum
-  createdBy      String   @db.Uuid
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-  deletedAt      DateTime?
-
-  project        Project      @relation(fields: [projectId], references: [id])
-  createdByUser  User         @relation("PhaseCreatedBy", fields: [createdBy], references: [id])
-  activities     Activity[]
-  quotations     Quotation[]
-  purchaseOrders PurchaseOrder[]
-  photos           SitePhoto[]
-
-  @@map("phases")
-}
-
-model Activity {
-  id              String   @id @default(uuid()) @db.Uuid
-  phaseId         String   @db.Uuid
+  id              String    @id @default(uuid()) @db.Uuid
+  projectId       String    @db.Uuid
   name            String
   plannedStart    DateTime?
   plannedEnd      DateTime?
   actualStart     DateTime?
   actualEnd       DateTime?
-  assignedVendorId String? @db.Uuid
-  budgetAmount    Decimal  @db.Decimal(15, 2) @default(0)
-  progressPercent Decimal  @db.Decimal(5, 2) @default(0)
-  status          String   @default("NOT_STARTED") // ActivityStatus enum
-  dependencies    String?  // JSON array of activity IDs
-  createdBy       String   @db.Uuid
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  budgetAmount    Decimal   @default(0) @db.Decimal(15, 2)
+  progressPercent Decimal   @default(0) @db.Decimal(5, 2)
+  status          String    @default("NOT_STARTED") // PhaseStatus enum
+  createdBy       String    @db.Uuid
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
   deletedAt       DateTime?
 
-  phase           Phase     @relation(fields: [phaseId], references: [id], onDelete: Cascade)
-  assignedVendor  Vendor?   @relation(fields: [assignedVendorId], references: [id])
-  createdByUser   User      @relation("ActivityCreatedBy", fields: [createdBy], references: [id])
-  photos          SitePhoto[]
+  project        Project         @relation(fields: [projectId], references: [id])
+  createdByUser  User            @relation("PhaseCreatedBy", fields: [createdBy], references: [id])
+  activities     Activity[]
+  quotations     Quotation[]
+  purchaseOrders PurchaseOrder[]
+  photos         SitePhoto[]
+
+  @@map("phases")
+}
+
+model Activity {
+  id               String    @id @default(uuid()) @db.Uuid
+  phaseId          String    @db.Uuid
+  name             String
+  plannedStart     DateTime?
+  plannedEnd       DateTime?
+  actualStart      DateTime?
+  actualEnd        DateTime?
+  assignedVendorId String?   @db.Uuid
+  budgetAmount     Decimal   @default(0) @db.Decimal(15, 2)
+  progressPercent  Decimal   @default(0) @db.Decimal(5, 2)
+  status           String    @default("NOT_STARTED") // ActivityStatus enum
+  dependencies     String? // JSON array of activity IDs
+  createdBy        String    @db.Uuid
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  deletedAt        DateTime?
+
+  phase          Phase       @relation(fields: [phaseId], references: [id], onDelete: Cascade)
+  assignedVendor Vendor?     @relation(fields: [assignedVendorId], references: [id])
+  createdByUser  User        @relation("ActivityCreatedBy", fields: [createdBy], references: [id])
+  photos         SitePhoto[]
 
   @@map("activities")
 }
 
 model SitePhoto {
-  id          String   @id @default(uuid()) @db.Uuid
-  projectId   String   @db.Uuid
-  phaseId     String?  @db.Uuid
-  activityId  String?  @db.Uuid
-  zone        String?
-  imageUrl    String
-  caption     String?
-  takenAt     DateTime @default(now())
-  tag         String   @default("DURING") // PhotoTag enum
-  uploadedBy  String   @db.Uuid
-  createdAt   DateTime @default(now())
+  id         String   @id @default(uuid()) @db.Uuid
+  projectId  String   @db.Uuid
+  phaseId    String?  @db.Uuid
+  activityId String?  @db.Uuid
+  zone       String?
+  imageUrl   String
+  caption    String?
+  takenAt    DateTime @default(now())
+  tag        String   @default("DURING") // PhotoTag enum
+  uploadedBy String   @db.Uuid
+  createdAt  DateTime @default(now())
 
-  project     Project   @relation(fields: [projectId], references: [id])
-  phase       Phase?    @relation(fields: [phaseId], references: [id])
-  activity    Activity? @relation(fields: [activityId], references: [id])
-  uploadedByUser User   @relation("PhotoUploadedBy", fields: [uploadedBy], references: [id])
+  project        Project   @relation(fields: [projectId], references: [id])
+  phase          Phase?    @relation(fields: [phaseId], references: [id])
+  activity       Activity? @relation(fields: [activityId], references: [id])
+  uploadedByUser User      @relation("PhotoUploadedBy", fields: [uploadedBy], references: [id])
 
   @@map("site_photos")
 }
 
 model Issue {
-  id            String   @id @default(uuid()) @db.Uuid
-  projectId     String   @db.Uuid
-  category      String   // IssueCategory enum
-  severity      String   @default("MEDIUM") // IssueSeverity enum
-  title         String
-  description   String?
-  addressTo     String[] // array of User IDs (the 4 heads + self)
-  dateRaised    DateTime @default(now())
-  createdBy     String   @db.Uuid
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  deletedAt     DateTime?
+  id          String    @id @default(uuid()) @db.Uuid
+  projectId   String    @db.Uuid
+  category    String // IssueCategory enum
+  severity    String    @default("MEDIUM") // IssueSeverity enum
+  title       String
+  description String?
+  addressTo   String[] // array of User IDs (the 4 heads + self)
+  dateRaised  DateTime  @default(now())
+  createdBy   String    @db.Uuid
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
 
-  project       Project   @relation(fields: [projectId], references: [id])
-  createdByUser User      @relation("IssueCreatedBy", fields: [createdBy], references: [id])
+  project       Project @relation(fields: [projectId], references: [id])
+  createdByUser User    @relation("IssueCreatedBy", fields: [createdBy], references: [id])
 
   @@map("issues")
 }
 
 model Inspection {
-  id               String   @id @default(uuid()) @db.Uuid
-  projectId        String   @db.Uuid
+  id               String    @id @default(uuid()) @db.Uuid
+  projectId        String    @db.Uuid
   name             String
-  date             DateTime @default(now())
+  date             DateTime  @default(now())
   scheduledDate    DateTime?
-  checklist        Json?    // Array of { item, result (PASS/FAIL/N/A) }
-  defects          Json?    // Array of { description, severity }
+  checklist        Json? // Array of { item, result (PASS/FAIL/N/A) }
+  defects          Json? // Array of { description, severity }
   correctiveAction String?
-  status           String   @default("SCHEDULED") // InspectionStatus enum
-  inspectorId      String   @db.Uuid
+  status           String    @default("SCHEDULED") // InspectionStatus enum
+  inspectorId      String    @db.Uuid
   completedDate    DateTime?
-  createdBy        String   @db.Uuid
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  goodsReceiptId   String?   @unique @db.Uuid
+  createdBy        String    @db.Uuid
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
   deletedAt        DateTime?
 
-  project          Project   @relation(fields: [projectId], references: [id])
-  inspector        User      @relation("InspectionInspector", fields: [inspectorId], references: [id])
-  createdByUser    User      @relation("InspectionCreatedBy", fields: [createdBy], references: [id])
+  project       Project       @relation(fields: [projectId], references: [id])
+  goodsReceipt  GoodsReceipt? @relation(fields: [goodsReceiptId], references: [id])
+  inspector     User          @relation("InspectionInspector", fields: [inspectorId], references: [id])
+  createdByUser User          @relation("InspectionCreatedBy", fields: [createdBy], references: [id])
 
   @@map("inspections")
 }
@@ -600,94 +660,94 @@ model Inspection {
 // ═══════════════════════════════════════════════════════════
 
 model Document {
-  id          String   @id @default(uuid()) @db.Uuid
-  projectId   String   @db.Uuid
-  name        String   // name of the document
-  description String?  // what is this document
+  id          String    @id @default(uuid()) @db.Uuid
+  projectId   String    @db.Uuid
+  name        String // name of the document
+  description String? // what is this document
   resolveTo   String[] // array of User IDs (4 heads + self)
   fileName    String
   filePath    String
   mimeType    String
-  uploadedBy  String   @db.Uuid
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  uploadedBy  String    @db.Uuid
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
   deletedAt   DateTime?
 
-  project     Project   @relation(fields: [projectId], references: [id])
-  uploadedByUser User   @relation("DocumentUploadedBy", fields: [uploadedBy], references: [id])
+  project        Project @relation(fields: [projectId], references: [id])
+  uploadedByUser User    @relation("DocumentUploadedBy", fields: [uploadedBy], references: [id])
 
   @@map("documents")
 }
 
 model Contract {
-  id              String   @id @default(uuid()) @db.Uuid
-  projectId       String   @db.Uuid
-  vendorId        String   @db.Uuid
-  type            String   // ContractType enum
-  startDate       DateTime
-  endDate         DateTime?
-  value           Decimal  @db.Decimal(15, 2)
-  advancePercent  Decimal  @db.Decimal(5, 2) @default(0)
-  retentionPercent Decimal @db.Decimal(5, 2) @default(0)
-  status          String   @default("DRAFT") // ContractStatus enum
-  createdBy       String   @db.Uuid
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  deletedAt       DateTime?
+  id               String    @id @default(uuid()) @db.Uuid
+  projectId        String    @db.Uuid
+  vendorId         String    @db.Uuid
+  type             String // ContractType enum
+  startDate        DateTime
+  endDate          DateTime?
+  value            Decimal   @db.Decimal(15, 2)
+  advancePercent   Decimal   @default(0) @db.Decimal(5, 2)
+  retentionPercent Decimal   @default(0) @db.Decimal(5, 2)
+  status           String    @default("DRAFT") // ContractStatus enum
+  createdBy        String    @db.Uuid
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  deletedAt        DateTime?
 
-  project         Project             @relation(fields: [projectId], references: [id])
-  vendor          Vendor              @relation(fields: [vendorId], references: [id])
-  createdByUser   User                @relation("ContractCreatedBy", fields: [createdBy], references: [id])
-  milestones      ContractMilestone[]
+  project       Project             @relation(fields: [projectId], references: [id])
+  vendor        Vendor              @relation(fields: [vendorId], references: [id])
+  createdByUser User                @relation("ContractCreatedBy", fields: [createdBy], references: [id])
+  milestones    ContractMilestone[]
 
   @@map("contracts")
 }
 
 model ContractMilestone {
-  id          String   @id @default(uuid()) @db.Uuid
-  contractId  String   @db.Uuid
-  name        String
-  dueDate     DateTime?
-  amount      Decimal  @db.Decimal(15, 2)
-  status      String   @default("PENDING") // MilestoneStatus enum
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id         String    @id @default(uuid()) @db.Uuid
+  contractId String    @db.Uuid
+  name       String
+  dueDate    DateTime?
+  amount     Decimal   @db.Decimal(15, 2)
+  status     String    @default("PENDING") // MilestoneStatus enum
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
 
-  contract    Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  contract Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
 
   @@map("contract_milestones")
 }
 
 model Staff {
-  id          String   @id @default(uuid()) @db.Uuid
-  projectId   String   @db.Uuid
-  name        String
-  type        String   // COMPANY | LABOUR
-  role        String?
-  phone       String?
-  baseSalary  Decimal  @db.Decimal(15, 2) @default(0)
-  active      Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  deletedAt   DateTime?
+  id         String    @id @default(uuid()) @db.Uuid
+  projectId  String    @db.Uuid
+  name       String
+  type       String // COMPANY | LABOUR
+  role       String?
+  phone      String?
+  baseSalary Decimal   @default(0) @db.Decimal(15, 2)
+  active     Boolean   @default(true)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  deletedAt  DateTime?
 
-  project     Project           @relation(fields: [projectId], references: [id])
-  attendance  StaffAttendance[]
+  project    Project           @relation(fields: [projectId], references: [id])
+  attendance StaffAttendance[]
 
   @@map("staff")
 }
 
 model StaffAttendance {
-  id          String   @id @default(uuid()) @db.Uuid
-  staffId     String   @db.Uuid
-  date        DateTime
-  present     Boolean  @default(true)
-  notes       String?
-  markedBy    String   @db.Uuid
-  createdAt   DateTime @default(now())
+  id        String   @id @default(uuid()) @db.Uuid
+  staffId   String   @db.Uuid
+  date      DateTime
+  present   Boolean  @default(true)
+  notes     String?
+  markedBy  String   @db.Uuid
+  createdAt DateTime @default(now())
 
-  staff       Staff    @relation(fields: [staffId], references: [id], onDelete: Cascade)
-  marker      User     @relation("AttendanceMarker", fields: [markedBy], references: [id])
+  staff  Staff @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  marker User  @relation("AttendanceMarker", fields: [markedBy], references: [id])
 
   @@unique([staffId, date])
   @@map("staff_attendance")
@@ -698,18 +758,18 @@ model StaffAttendance {
 // ═══════════════════════════════════════════════════════════
 
 model AuditLog {
-  id          String   @id @default(uuid()) @db.Uuid
-  projectId   String?  @db.Uuid
-  userId      String   @db.Uuid
-  action      String   // AuditAction enum
-  entityType  String   // e.g., "VENDOR", "PAYMENT_REQUEST"
-  entityId    String   @db.Uuid
-  oldValue    Json?
-  newValue    Json?
-  timestamp   DateTime @default(now())
+  id         String   @id @default(uuid()) @db.Uuid
+  projectId  String?  @db.Uuid
+  userId     String   @db.Uuid
+  action     String // AuditAction enum
+  entityType String // e.g., "VENDOR", "PAYMENT_REQUEST"
+  entityId   String   @db.Uuid
+  oldValue   Json?
+  newValue   Json?
+  timestamp  DateTime @default(now())
 
-  project     Project? @relation(fields: [projectId], references: [id])
-  user        User     @relation(fields: [userId], references: [id])
+  project Project? @relation(fields: [projectId], references: [id])
+  user    User     @relation(fields: [userId], references: [id])
 
   @@index([entityType, entityId])
   @@index([projectId])
@@ -724,16 +784,16 @@ model AuditLog {
 model DropdownOption {
   id        String   @id @default(uuid()) @db.Uuid
   projectId String   @db.Uuid
-  type      String   // e.g., "VENDOR_CATEGORY", "UNIT", "LOCATION", "EXPENSE_TYPE", "ISSUE_CATEGORY"
-  value     String   // The stored value
-  label     String?  // Display label (defaults to value if null)
+  type      String // e.g., "VENDOR_CATEGORY", "UNIT", "LOCATION", "EXPENSE_TYPE", "ISSUE_CATEGORY"
+  value     String // The stored value
+  label     String? // Display label (defaults to value if null)
   isActive  Boolean  @default(true)
   createdBy String   @db.Uuid
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  project   Project  @relation(fields: [projectId], references: [id])
-  user      User     @relation("DropdownOptionCreatedBy", fields: [createdBy], references: [id])
+  project Project @relation(fields: [projectId], references: [id])
+  user    User    @relation("DropdownOptionCreatedBy", fields: [createdBy], references: [id])
 
   @@unique([projectId, type, value])
   @@index([projectId, type])
@@ -747,18 +807,18 @@ model DropdownOption {
 model Attachment {
   id          String   @id @default(uuid()) @db.Uuid
   projectId   String   @db.Uuid
-  entityType  String   // e.g., "VENDOR", "GATE_PASS", "INVENTORY_ITEM", "PURCHASE_ORDER"
+  entityType  String // e.g., "VENDOR", "GATE_PASS", "INVENTORY_ITEM", "PURCHASE_ORDER"
   entityId    String   @db.Uuid
   fileName    String
-  filePath    String   // Storage path/URL
+  filePath    String // Storage path/URL
   mimeType    String
-  fileType    String   // "IMAGE" or "DOCUMENT"
+  fileType    String // "IMAGE" or "DOCUMENT"
   description String?
   uploadedBy  String   @db.Uuid
   createdAt   DateTime @default(now())
 
-  project     Project  @relation(fields: [projectId], references: [id])
-  user        User     @relation("AttachmentUploadedBy", fields: [uploadedBy], references: [id])
+  project Project @relation(fields: [projectId], references: [id])
+  user    User    @relation("AttachmentUploadedBy", fields: [uploadedBy], references: [id])
 
   @@index([entityType, entityId])
   @@index([projectId])
@@ -773,7 +833,7 @@ model PushSubscription {
   id        String   @id @default(uuid()) @db.Uuid
   userId    String   @db.Uuid
   token     String   @unique // FCM registration token
-  userAgent String?  // browser/device info for identification
+  userAgent String? // browser/device info for identification
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

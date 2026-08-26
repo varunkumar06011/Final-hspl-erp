@@ -36,6 +36,50 @@ export default createCrudRouter({
     materials: { orderBy: { name: 'asc' } },
   },
   defaultSort: { vendorCode: 'asc' },
+  transformList: async (records, projectId) => {
+    const vendorIds = records.map((vendor) => String(vendor.id));
+    if (vendorIds.length === 0) return records;
+
+    const [invoices, paidRequests] = await Promise.all([
+      prisma.vendorInvoice.findMany({
+        where: { projectId, vendorId: { in: vendorIds }, deletedAt: null },
+        select: { vendorId: true, totalAmount: true, advancePaid: true },
+      }),
+      prisma.paymentRequest.findMany({
+        where: {
+          projectId,
+          invoiceId: { not: null },
+          status: 'PAID',
+          deletedAt: null,
+          invoice: { vendorId: { in: vendorIds } },
+        },
+        select: { amount: true, invoice: { select: { vendorId: true } } },
+      }),
+    ]);
+
+    const totals = new Map(vendorIds.map((vendorId) => [vendorId, { billed: 0, paid: 0 }]));
+    for (const invoice of invoices) {
+      const total = totals.get(invoice.vendorId);
+      if (total) {
+        total.billed += Number(invoice.totalAmount);
+        total.paid += Number(invoice.advancePaid);
+      }
+    }
+    for (const request of paidRequests) {
+      const total = request.invoice ? totals.get(request.invoice.vendorId) : undefined;
+      if (total) total.paid += Number(request.amount);
+    }
+
+    return records.map((vendor) => {
+      const total = totals.get(String(vendor.id)) ?? { billed: 0, paid: 0 };
+      return {
+        ...vendor,
+        totalBilled: total.billed,
+        totalPaid: total.paid,
+        outstanding: Math.max(0, total.billed - total.paid),
+      };
+    });
+  },
   transformCreate: async (body, userId, projectId) => {
     const vendorCode = await generateVendorCode();
     const materials = (body.materials as MaterialInput[] | undefined) ?? [];

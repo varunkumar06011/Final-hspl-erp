@@ -1,5 +1,5 @@
 import { Router, Response, NextFunction } from 'express';
-import { Permission, AuditAction, InventoryTxnType } from '@hospital-erp/shared';
+import { Permission, AuditAction, InventoryTxnType, UserRole } from '@hospital-erp/shared';
 import {
   createInventoryItemSchema,
   updateInventoryItemSchema,
@@ -69,8 +69,13 @@ router.post(
         return;
       }
 
+      if (req.body.currentStock !== undefined && Number(req.body.currentStock) !== 0) {
+        res.status(400).json({ error: 'Opening stock must be added through a goods receipt' });
+        return;
+      }
+
       const record = await prisma.inventoryItem.create({
-        data: { ...req.body, projectId },
+        data: { ...req.body, currentStock: 0, projectId },
       });
 
       await logAudit({
@@ -112,6 +117,11 @@ router.patch(
         return;
       }
 
+      if (req.body.currentStock !== undefined) {
+        res.status(400).json({ error: 'Stock changes must be recorded through a receipt or stock movement' });
+        return;
+      }
+
       const updated = await prisma.inventoryItem.update({
         where: { id: req.params.id },
         data: req.body,
@@ -144,6 +154,11 @@ router.delete(
       });
       if (!existing) {
         res.status(404).json({ error: 'Inventory item not found' });
+        return;
+      }
+
+      if (Number(existing.currentStock) !== 0) {
+        res.status(400).json({ error: 'Inventory items with stock cannot be deleted' });
         return;
       }
 
@@ -218,6 +233,14 @@ router.post(
       });
       if (!item) {
         res.status(404).json({ error: 'Inventory item not found' });
+        return;
+      }
+      if (req.body.type === InventoryTxnType.IN) {
+        res.status(400).json({ error: 'Inbound stock must be posted from an inspected goods receipt' });
+        return;
+      }
+      if (req.body.type === InventoryTxnType.ADJUST && ![UserRole.ADMIN, UserRole.ADMIN_2].includes(req.user!.role as UserRole)) {
+        res.status(403).json({ error: 'Only inventory administrators can make stock adjustments' });
         return;
       }
 

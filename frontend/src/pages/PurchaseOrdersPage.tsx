@@ -1,4 +1,4 @@
-﻿import { useState, useMemo, useEffect } from 'react';
+﻿import { useState, useMemo, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Box,
@@ -119,6 +119,7 @@ export default function PurchaseOrdersPage() {
   const queryClient = useQueryClient();
   const { user } = useAuthStore();
   const navigate = useNavigate();
+  const createSubmissionLocked = useRef(false);
 
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['/pos', page, pageSize, search, statusFilter],
@@ -206,12 +207,16 @@ export default function PurchaseOrdersPage() {
       return response.data;
     },
     onSuccess: () => {
+      createSubmissionLocked.current = false;
       queryClient.invalidateQueries({ queryKey: ['/pos'] });
       queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
       setCreateOpen(false);
       resetForm();
     },
-    onError: (err: unknown) => setError(extractErrorMessage(err)),
+    onError: (err: unknown) => {
+      createSubmissionLocked.current = false;
+      setError(extractErrorMessage(err));
+    },
   });
 
   const approveMutation = useMutation({
@@ -275,6 +280,13 @@ export default function PurchaseOrdersPage() {
       (s) => s.approverUserId === user.id && s.status === 'APPROVED'
     );
     return !alreadyApproved;
+  }
+
+  function handleCreatePO() {
+    if (createSubmissionLocked.current || createMutation.isPending) return;
+    createSubmissionLocked.current = true;
+    setError('');
+    createMutation.mutate();
   }
 
   function downloadPDF(poId: string, poNumber: string) {
@@ -541,8 +553,8 @@ export default function PurchaseOrdersPage() {
           <Button onClick={() => { setCreateOpen(false); resetForm(); }}>Cancel</Button>
           <Button
             variant="contained"
-            onClick={() => { setError(''); createMutation.mutate(); }}
-            disabled={(!selectedVendorId || !selectedQuotationId || !acknowledged) || createMutation.isPending}
+            onClick={handleCreatePO}
+            disabled={(!selectedVendorId || !selectedQuotationId || !acknowledged) || createMutation.isPending || createSubmissionLocked.current}
           >
             {createMutation.isPending ? <CircularProgress size={20} /> : 'Create PO'}
           </Button>

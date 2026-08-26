@@ -1,5 +1,5 @@
 import { Router, Response, NextFunction } from 'express';
-import { Permission, AuditAction, InvoiceVerificationStatus, PaymentStatus, StockStatus, UserRole, getRequiredApproverCount } from '@hospital-erp/shared';
+import { Permission, AuditAction, InvoiceVerificationStatus, PaymentStatus, StockStatus, UserRole, GoodsReceiptStatus, getRequiredApproverCount } from '@hospital-erp/shared';
 import { createInvoiceSchema, listInvoicesSchema, approvalActionSchema, updateInvoiceSchema, updateInvoiceStatusSchema } from '@hospital-erp/shared';
 import { prisma } from '../config/prisma';
 import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middleware/auth';
@@ -409,7 +409,7 @@ router.delete(
   }
 );
 
-// POST /:id/approve — approve invoice (any 2 of 4 head roles)
+// POST /:id/approve — approve invoice after receipt matching
 router.post(
   '/:id/approve',
   rbacMiddleware(Permission.VIEW_FINANCIALS),
@@ -424,6 +424,36 @@ router.post(
       if (!invoice || !invoice.approvalWorkflow) {
         res.status(404).json({ error: 'Invoice or approval workflow not found' });
         return;
+      }
+
+      if (invoice.poId) {
+        const receipts = await prisma.goodsReceipt.findMany({
+          where: { poId: invoice.poId, projectId, status: GoodsReceiptStatus.POSTED, deletedAt: null },
+          select: { items: { select: { acceptedQty: true, poItem: { select: { unitPrice: true } } } } },
+        });
+        const acceptedValue = receipts.reduce(
+          (total, receipt) => total + receipt.items.reduce((sum, item) => sum + Number(item.acceptedQty) * Number(item.poItem?.unitPrice ?? 0), 0),
+          0,
+        );
+        const otherInvoiceAmount = await prisma.vendorInvoice.aggregate({
+          where: {
+            poId: invoice.poId,
+            id: { not: invoice.id },
+            projectId,
+            deletedAt: null,
+            verificationStatus: { not: InvoiceVerificationStatus.REJECTED },
+          },
+          _sum: { amount: true },
+        });
+        const availableValue = acceptedValue - Number(otherInvoiceAmount._sum.amount ?? 0);
+        if (receipts.length === 0) {
+          res.status(400).json({ error: 'A posted goods receipt is required before approving a PO invoice' });
+          return;
+        }
+        if (Number(invoice.amount) > availableValue + 0.01) {
+          res.status(400).json({ error: `Invoice amount exceeds the available accepted goods value of ₹${Math.max(0, availableValue).toLocaleString('en-IN')}` });
+          return;
+        }
       }
 
       if (!HEAD_ROLES.includes(req.user!.role as UserRole)) {

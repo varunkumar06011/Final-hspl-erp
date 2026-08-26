@@ -247,14 +247,14 @@ export const approvalActionSchema = z.object({
 const gatePassItem = z.object({
   materialName: nonEmptyText(200),
   quantity: positiveQty,
-  unit: z.string().trim().max(20).optional(),
+  unit: z.string().trim().max(20).nullable().optional(),
 });
 export const createGatePassSchema = z.object({
   body: z.object({
     poId: uuid,
     items: z.preprocess(
       (value) => (typeof value === 'string' ? JSON.parse(value) : value),
-      z.array(gatePassItem).min(1).optional(),
+      z.array(gatePassItem).optional(),
     ),
     invoiceId: uuid.optional(),
     otpRequestedFor: uuid,
@@ -280,6 +280,30 @@ export const listGatePassesSchema = z.object({
 export const verifyGatePassOtpSchema = z.object({
   params: z.object({ id: uuid }),
   body: z.object({ idToken: z.string().min(1, 'Firebase ID token is required') }),
+});
+
+// ═══ Goods Receipts ═══
+const goodsReceiptDispositionItem = z.object({
+  id: uuid,
+  acceptedQty: qty,
+  rejectedQty: qty,
+  rejectionReason: z.string().trim().max(500).optional(),
+});
+export const createGoodsReceiptSchema = z.object({
+  body: z.object({ gatePassId: uuid }),
+});
+export const inspectGoodsReceiptSchema = z.object({
+  params: z.object({ id: uuid }),
+  body: z.object({
+    items: z.preprocess(
+      (value) => (typeof value === 'string' ? JSON.parse(value) : value),
+      z.array(goodsReceiptDispositionItem).min(1),
+    ),
+  }),
+});
+export const postGoodsReceiptSchema = z.object({
+  params: z.object({ id: uuid }),
+  body: z.object({}),
 });
 
 // ═══ Inventory ═══

@@ -43,7 +43,7 @@ import ResponsiveTable from '../components/ResponsiveTable';
 interface GatePassItem {
   materialName: string;
   quantity: number;
-  unit?: string;
+  unit?: string | null;
 }
 
 interface GatePassRow {
@@ -73,7 +73,14 @@ interface ApprovedPO {
   poNumber: string;
   vendor: { name: string; vendorCode: string };
   grandTotal: number;
-  items: { materialName: string; quantity: number; unit: string }[];
+  items: {
+    materialName: string;
+    quantity: number;
+    orderedQuantity: number;
+    receivedQuantity: number;
+    remainingQuantity: number;
+    unit: string | null;
+  }[];
   invoices: {
     id: string;
     invoiceCode: string;
@@ -597,7 +604,7 @@ export default function GatePassesPage() {
                 const poId = e.target.value;
                 const po = approvedPOs?.find((candidate) => candidate.id === poId);
                 setSelectedPoId(poId);
-                setReceivedQuantities(Object.fromEntries((po?.items ?? []).map((item) => [item.materialName, item.quantity])));
+                setReceivedQuantities(Object.fromEntries((po?.items ?? []).map((item) => [item.materialName, item.remainingQuantity])));
                 setSelectedInvoiceId('');
               }}
               fullWidth
@@ -633,14 +640,17 @@ export default function GatePassesPage() {
             {selectedPO && (
               <Box>
                 <Typography variant="body2" fontWeight={600} sx={{ mb: 1 }}>
-                  PO Items (inventory is updated separately)
+                  PO Items — enter the quantity received in this gatepass
                 </Typography>
                 <TableContainer component={Card} variant="outlined" sx={{ overflowX: 'auto' }}>
                   <Table size="small">
                     <TableHead>
                       <TableRow>
                         <TableCell sx={{ fontWeight: 600 }}>Material</TableCell>
-                        <TableCell sx={{ fontWeight: 600 }}>Qty</TableCell>
+                        <TableCell sx={{ fontWeight: 600 }}>Ordered</TableCell>
+                        <TableCell sx={{ fontWeight: 600 }}>Previously Received</TableCell>
+                        <TableCell sx={{ fontWeight: 600 }}>Receive Now</TableCell>
+                        <TableCell sx={{ fontWeight: 600 }}>Remaining</TableCell>
                         <TableCell sx={{ fontWeight: 600 }}>Unit</TableCell>
                       </TableRow>
                     </TableHead>
@@ -648,16 +658,19 @@ export default function GatePassesPage() {
                       {selectedPO.items?.map((item, idx) => (
                         <TableRow key={idx}>
                           <TableCell>{item.materialName}</TableCell>
+                          <TableCell>{item.orderedQuantity}</TableCell>
+                          <TableCell>{item.receivedQuantity}</TableCell>
                           <TableCell>
                             <TextField
                               type="number"
                               size="small"
-                              value={receivedQuantities[item.materialName] ?? item.quantity}
-                              onChange={(e) => setReceivedQuantities((current) => ({ ...current, [item.materialName]: Number(e.target.value) }))}
-                              inputProps={{ min: 0, max: item.quantity, step: 0.01 }}
+                              value={receivedQuantities[item.materialName] ?? item.remainingQuantity}
+                              onChange={(e) => setReceivedQuantities((current) => ({ ...current, [item.materialName]: e.target.value === '' ? 0 : Number(e.target.value) }))}
+                              inputProps={{ min: 0, max: item.remainingQuantity, step: 0.01 }}
                               sx={{ width: 100 }}
                             />
                           </TableCell>
+                          <TableCell>{Math.max(0, item.remainingQuantity - Number(receivedQuantities[item.materialName] ?? 0))}</TableCell>
                           <TableCell>{item.unit ?? '—'}</TableCell>
                         </TableRow>
                       ))}
@@ -665,7 +678,7 @@ export default function GatePassesPage() {
                   </Table>
                 </TableContainer>
                 <Typography variant="caption" color="text.secondary">
-                  Enter the quantity received. Items left at zero will be removed from this PO after approval and must be ordered later using a new PO.
+                  Ordered quantities are preserved. Previously received and remaining quantities are shown so you can create multiple gatepasses for partial deliveries. Zero means do not receive this item now; enter at least one quantity greater than zero.
                 </Typography>
               </Box>
             )}

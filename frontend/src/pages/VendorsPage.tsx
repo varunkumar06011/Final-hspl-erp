@@ -1,259 +1,53 @@
-import { useState, useRef } from 'react';
-import {
-  Box,
-  Button,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  TextField,
-  MenuItem,
-  Typography,
-  Alert,
-  CircularProgress,
-} from '@mui/material';
-import { Payment as PaymentIcon } from '@mui/icons-material';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
 import EntityPage from '../components/EntityPage';
-import { PaymentMode } from '@hospital-erp/shared';
-import { enumToOptions, formatDate, formatIndianNumber, STATUS_COLORS } from '../utils/enumOptions';
-import api, { extractErrorMessage } from '../config/api';
-
-interface PaymentDialogProps {
-  vendor: any;
-  open: boolean;
-  onClose: () => void;
-}
-
-function RecordPaymentDialog({ vendor, open, onClose }: PaymentDialogProps) {
-  const queryClient = useQueryClient();
-  const fileRef = useRef<HTMLInputElement>(null);
-  const [amount, setAmount] = useState('');
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
-  const [mode, setMode] = useState(PaymentMode.CASH);
-  const [reference, setReference] = useState('');
-  const [notes, setNotes] = useState('');
-  const [proofUrl, setProofUrl] = useState('');
-  const [fileName, setFileName] = useState('');
-  const [error, setError] = useState('');
-
-  const uploadMutation = useMutation({
-    mutationFn: async (file: File) => {
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('entityType', 'VENDOR');
-      formData.append('entityId', vendor.id);
-      const response = await api.post('/attachments/upload', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
-      return response.data;
-    },
-    onError: (err: unknown) => setError(extractErrorMessage(err)),
-  });
-
-  const paymentMutation = useMutation({
-    mutationFn: async () => {
-      const response = await api.post(`/vendors/${vendor.id}/payments`, {
-        amount: Number(amount),
-        date,
-        mode,
-        reference,
-        notes,
-        proofUrl,
-      });
-      return response.data;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['vendors'] });
-      onClose();
-    },
-    onError: (err: unknown) => setError(extractErrorMessage(err)),
-  });
-
-  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setError('');
-    try {
-      const data = await uploadMutation.mutateAsync(file);
-      setProofUrl(String(data.filePath ?? data.fileUrl ?? data.url ?? ''));
-      setFileName(file.name);
-    } catch {
-      // handled by onError
-    }
-  };
-
-  const handleSubmit = () => {
-    setError('');
-    if (!Number.isFinite(Number(amount)) || Number(amount) <= 0) {
-      setError('Amount must be greater than zero');
-      return;
-    }
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(new Date(date).getTime())) {
-      setError('Enter a valid payment date');
-      return;
-    }
-    if (reference.length > 100 || notes.length > 500) {
-      setError('Reference must be at most 100 characters and notes at most 500 characters');
-      return;
-    }
-    paymentMutation.mutate();
-  };
-
-  return (
-    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-      <DialogTitle>Record Payment — {vendor?.name}</DialogTitle>
-      <DialogContent>
-        {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
-        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
-          <TextField
-            label="Amount"
-            type="text"
-            value={formatIndianNumber(amount)}
-            onChange={(e) => setAmount(e.target.value.replace(/,/g, ''))}
-            inputMode="decimal"
-            inputProps={{ min: 0.01, step: 0.01 }}
-            required
-          />
-          <TextField
-            label="Date"
-            type="date"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-            InputLabelProps={{ shrink: true }}
-          />
-          <TextField
-            select
-            label="Mode"
-            value={mode}
-            onChange={(e) => setMode(e.target.value as PaymentMode)}
-          >
-            {enumToOptions(PaymentMode).map((opt) => (
-              <MenuItem key={opt.value} value={opt.value}>{opt.label}</MenuItem>
-            ))}
-          </TextField>
-          <TextField
-            label="Reference / Transaction ID"
-            value={reference}
-            onChange={(e) => setReference(e.target.value)}
-          />
-          <TextField
-            label="Notes"
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            multiline
-            rows={2}
-          />
-          <Box>
-            <input
-              ref={fileRef}
-              type="file"
-              style={{ display: 'none' }}
-              onChange={handleFile}
-            />
-            <Button
-              variant="outlined"
-              onClick={() => fileRef.current?.click()}
-              disabled={uploadMutation.isPending}
-            >
-              {uploadMutation.isPending ? <CircularProgress size={16} /> : 'Upload Payment Proof'}
-            </Button>
-            {fileName && (
-              <Typography variant="body2" sx={{ mt: 1 }}>
-                Uploaded: {fileName}
-              </Typography>
-            )}
-          </Box>
-        </Box>
-      </DialogContent>
-      <DialogActions sx={{ flexWrap: "wrap", gap: 1 }}>
-        <Button onClick={onClose}>Cancel</Button>
-        <Button
-          variant="contained"
-          onClick={handleSubmit}
-          disabled={paymentMutation.isPending}
-          startIcon={<PaymentIcon />}
-        >
-          {paymentMutation.isPending ? <CircularProgress size={16} /> : 'Record Payment'}
-        </Button>
-      </DialogActions>
-    </Dialog>
-  );
-}
+import { formatDate, STATUS_COLORS } from '../utils/enumOptions';
 
 export default function VendorsPage() {
-  const [paymentVendor, setPaymentVendor] = useState<any>(null);
-
   return (
-    <>
-      <EntityPage
-        title="Vendors"
-        endpoint="/vendors"
-        entityName="Vendor"
-        entityType="VENDOR"
-        columns={[
-          { key: 'vendorCode', label: 'Vendor ID' },
-          { key: 'name', label: 'Vendor Name' },
-          { key: 'category', label: 'Category' },
-          { key: 'gstNumber', label: 'GST No' },
-          { key: 'createdAt', label: 'Date', render: (r) => formatDate(r.createdAt) },
-          { key: 'phone', label: 'Phone' },
-          { key: 'materials', label: 'Materials', render: (r) => ((r.materials as { name: string }[] | undefined) ?? []).map((m) => m.name).join(', ') || '—' },
-          { key: 'referenceBy', label: 'Referred By' },
-          { key: 'totalBilled', label: 'Total Bill', render: (r) => `₹${Number(r.totalBilled ?? 0).toLocaleString('en-IN')}` },
-          { key: 'totalPaid', label: 'Paid', render: (r) => `₹${Number(r.totalPaid ?? 0).toLocaleString('en-IN')}` },
-          { key: 'outstanding', label: 'Outstanding', render: (r) => `₹${Number(r.outstanding ?? 0).toLocaleString('en-IN')}` },
-          { key: 'status', label: 'Status' },
-          {
-            key: 'recordPayment',
-            label: 'Payment',
-            render: (r) => (
-              <Button
-                size="small"
-                variant="outlined"
-                startIcon={<PaymentIcon />}
-                onClick={() => setPaymentVendor(r)}
-              >
-                Pay
-              </Button>
-            ),
-          },
-        ]}
-        statusKey="status"
-        statusColors={STATUS_COLORS}
-        fields={[
-          { name: 'name', label: 'Vendor Name', type: 'text', required: true },
-          { name: 'phone', label: 'Phone', type: 'text' },
-          { name: 'gstNumber', label: 'GST Number', type: 'text' },
-          { name: 'category', label: 'Vendor Category', type: 'select', required: true, dropdownType: 'VENDOR_CATEGORY', options: [
-            { value: 'LABOUR_SUPPLIER', label: 'Labour Supplier' },
-            { value: 'ELECTRICAL_CONTRACTOR', label: 'Electrical Contractor' },
-            { value: 'WOOD_WORK_CONTRACTOR', label: 'Wood Work Contractor' },
-            { value: 'MACHINERY_SUPPLIER', label: 'Machinery Supplier' },
-            { value: 'TOOL_SUPPLIER', label: 'Tool Supplier' },
-          ], defaultValue: 'LABOUR_SUPPLIER' },
-          { name: 'referenceBy', label: 'Referred By', type: 'select', options: [
-            { value: 'Nagarjuna Sir', label: 'Nagarjuna Sir' },
-            { value: 'Ashok Sir', label: 'Ashok Sir' },
-            { value: 'Kaushal Sir', label: 'Kaushal Sir' },
-            { value: 'Vinod Sir', label: 'Vinod Sir' },
-          ] },
-          { name: 'materials', label: 'Materials Supplied', type: 'materials-list' },
-          { name: 'panNumber', label: 'PAN Number', type: 'text' },
-          { name: 'bankName', label: 'Bank Name', type: 'text' },
-          { name: 'bankAccountNumber', label: 'Account Number', type: 'text' },
-          { name: 'ifscCode', label: 'IFSC Code', type: 'text' },
-          { name: 'address', label: 'Address', type: 'textarea' },
-          { name: 'email', label: 'Email', type: 'text' },
-        ]}
-      />
-      {paymentVendor && (
-        <RecordPaymentDialog
-          vendor={paymentVendor}
-          open={!!paymentVendor}
-          onClose={() => setPaymentVendor(null)}
-        />
-      )}
-    </>
+    <EntityPage
+      title="Vendors"
+      endpoint="/vendors"
+      entityName="Vendor"
+      entityType="VENDOR"
+      columns={[
+        { key: 'vendorCode', label: 'Vendor ID' },
+        { key: 'name', label: 'Vendor Name' },
+        { key: 'category', label: 'Category' },
+        { key: 'gstNumber', label: 'GST No' },
+        { key: 'createdAt', label: 'Date', render: (r) => formatDate(r.createdAt) },
+        { key: 'phone', label: 'Phone' },
+        { key: 'referenceBy', label: 'Referred By' },
+        { key: 'totalBilled', label: 'Total Bill', render: (r) => `₹${Number(r.totalBilled ?? 0).toLocaleString('en-IN')}` },
+        { key: 'totalPaid', label: 'Paid', render: (r) => `₹${Number(r.totalPaid ?? 0).toLocaleString('en-IN')}` },
+        { key: 'outstanding', label: 'Outstanding', render: (r) => `₹${Number(r.outstanding ?? 0).toLocaleString('en-IN')}` },
+        { key: 'status', label: 'Status' },
+      ]}
+      statusKey="status"
+      statusColors={STATUS_COLORS}
+      fields={[
+        { name: 'name', label: 'Vendor Name', type: 'text', required: true },
+        { name: 'phone', label: 'Phone', type: 'text' },
+        { name: 'gstNumber', label: 'GST Number', type: 'text' },
+        { name: 'category', label: 'Vendor Category', type: 'select', required: true, dropdownType: 'VENDOR_CATEGORY', options: [
+          { value: 'LABOUR_SUPPLIER', label: 'Labour Supplier' },
+          { value: 'ELECTRICAL_CONTRACTOR', label: 'Electrical Contractor' },
+          { value: 'WOOD_WORK_CONTRACTOR', label: 'Wood Work Contractor' },
+          { value: 'MACHINERY_SUPPLIER', label: 'Machinery Supplier' },
+          { value: 'TOOL_SUPPLIER', label: 'Tool Supplier' },
+        ], defaultValue: 'LABOUR_SUPPLIER' },
+        { name: 'referenceBy', label: 'Referred By', type: 'select', options: [
+          { value: 'Nagarjuna Sir', label: 'Nagarjuna Sir' },
+          { value: 'Ashok Sir', label: 'Ashok Sir' },
+          { value: 'Kaushal Sir', label: 'Kaushal Sir' },
+          { value: 'Vinod Sir', label: 'Vinod Sir' },
+        ] },
+        { name: 'materials', label: 'Materials Supplied', type: 'materials-list' },
+        { name: 'panNumber', label: 'PAN Number', type: 'text' },
+        { name: 'bankName', label: 'Bank Name', type: 'text' },
+        { name: 'bankAccountNumber', label: 'Account Number', type: 'text' },
+        { name: 'ifscCode', label: 'IFSC Code', type: 'text' },
+        { name: 'address', label: 'Address', type: 'textarea' },
+        { name: 'email', label: 'Email', type: 'text' },
+      ]}
+    />
   );
 }

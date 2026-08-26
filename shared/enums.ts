@@ -180,6 +180,13 @@ export enum GatePassStatus {
   EXPIRED = 'EXPIRED',
 }
 
+export enum GoodsReceiptStatus {
+  PENDING_INSPECTION = 'PENDING_INSPECTION',
+  READY_TO_POST = 'READY_TO_POST',
+  POSTED = 'POSTED',
+  REJECTED = 'REJECTED',
+}
+
 export enum IssueStatus {
   OPEN = 'OPEN',
   IN_PROGRESS = 'IN_PROGRESS',

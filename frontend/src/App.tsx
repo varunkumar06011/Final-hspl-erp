@@ -15,6 +15,8 @@ import PurchaseOrdersPage from './pages/PurchaseOrdersPage';
 import InvoicesPage from './pages/InvoicesPage';
 import PaymentsPage from './pages/PaymentsPage';
 import GatePassesPage from './pages/GatePassesPage';
+import GoodsReceiptsPage from './pages/GoodsReceiptsPage';
+import GSTRecordsPage from './pages/GSTRecordsPage';
 import InventoryPage from './pages/InventoryPage';
 import PhotosPage from './pages/PhotosPage';
 import IssuesPage from './pages/IssuesPage';
@@ -43,6 +45,8 @@ const ROUTES = [
   { path: '/invoices', element: <InvoicesPage /> },
   { path: '/payments', element: <PaymentsPage /> },
   { path: '/gate-passes', element: <GatePassesPage /> },
+  { path: '/goods-receipts', element: <GoodsReceiptsPage /> },
+  { path: '/gst-records', element: <GSTRecordsPage /> },
   { path: '/inventory', element: <InventoryPage /> },
   { path: '/labour', element: <LabourPage /> },
   { path: '/photos', element: <PhotosPage /> },
