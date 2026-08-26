@@ -24,6 +24,7 @@ import {
 import { useAuthStore } from '../stores/authStore';
 import { hasPermission, Permission, UserRole } from '@hospital-erp/shared';
 import { onForegroundMessage, enableNotifications, isPushSupported, getPermissionState } from '../config/notifications';
+import StatusLegend from './StatusLegend';
 
 const NAV_ITEMS = [
   { label: 'Dashboard', icon: <DashboardIcon />, path: '/' },
@@ -167,6 +168,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             </ListItem>
           ))}
         </List>
+        <StatusLegend />
       </Box>
     </>
   );

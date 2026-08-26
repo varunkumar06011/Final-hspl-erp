@@ -269,21 +269,28 @@ describe('Payment request & expense schemas', () => {
 // GATE PASSES — material entry/exit tracking with OTP verification.
 // ─────────────────────────────────────────────────────────────────────────────
 describe('Gate Pass schemas', () => {
-  it('createGatePassSchema requires both a poId and an otpRequestedFor user ID', () => {
-    // A gate pass without a PO is untraceable; without a recipient, the OTP
-    // has nobody to be sent to.
+  it('createGatePassSchema requires a PO, vehicle details, and an OTP recipient for material gatepasses', () => {
     expect(() => createGatePassSchema.parse({ body: { poId: id } })).toThrow();
     const parsed = createGatePassSchema.parse({
-      body: { poId: id, otpRequestedFor: id },
+      body: { poId: id, otpRequestedFor: id, vehicleType: 'TRUCK', vehicleNumber: 'AP39AB1234' },
     });
     expect(parsed.body.poId).toBe(id);
+    expect(parsed.body.vehicleType).toBe('TRUCK');
   });
 
   it('createGatePassSchema accepts an optional invoiceId (for invoice-linked deliveries)', () => {
     const parsed = createGatePassSchema.parse({
-      body: { poId: id, otpRequestedFor: id, invoiceId: otherId },
+      body: { poId: id, otpRequestedFor: id, invoiceId: otherId, vehicleType: 'LORRY', vehicleNumber: 'AP39AB1234' },
     });
     expect(parsed.body.invoiceId).toBe(otherId);
+  });
+
+  it('createGatePassSchema accepts simple visitor gatepasses without a PO or vehicle', () => {
+    const parsed = createGatePassSchema.parse({
+      body: { gatePassCategory: 'VISITOR', visitorName: 'Jane Doe', otpRequestedFor: id },
+    });
+    expect(parsed.body.gatePassCategory).toBe('VISITOR');
+    expect(parsed.body.poId).toBeUndefined();
   });
 
   it('verifyGatePassOtpSchema requires a Firebase idToken (the guard must authenticate before verifying)', () => {

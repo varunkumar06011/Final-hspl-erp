@@ -61,7 +61,7 @@ interface GatePassRow {
     poNumber: string;
     vendor: { name: string; vendorCode: string };
     items: GatePassItem[];
-  };
+  } | null;
   invoice: { id: string; invoiceCode: string; invoiceNumber: string } | null;
   items: GatePassItem[];
   otpRequestedForUser: { id: string; name: string; role: string; phone: string } | null;
@@ -113,6 +113,7 @@ export default function GatePassesPage() {
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [gatePassCategory, setGatePassCategory] = useState<'MATERIAL' | 'VISITOR'>('MATERIAL');
+  const [categoryConfirmed, setCategoryConfirmed] = useState(false);
   const [selectedPoId, setSelectedPoId] = useState('');
   const [selectedInvoiceId, setSelectedInvoiceId] = useState('');
   const [selectedHeadId, setSelectedHeadId] = useState('');
@@ -224,16 +225,19 @@ export default function GatePassesPage() {
         if (selectedInvoiceId) payload.append('invoiceId', selectedInvoiceId);
       }
       payload.append('otpRequestedFor', selectedHeadId);
-      if (visitorName) payload.append('visitorName', visitorName);
-      if (visitorPhone) payload.append('visitorPhone', visitorPhone);
-      if (visitDate) payload.append('visitDate', visitDate);
-      if (visitTime) payload.append('visitTime', visitTime);
-      if (purpose) payload.append('purpose', purpose);
-      if (vehicleType) payload.append('vehicleType', vehicleType);
-      if (vehicleNumber) payload.append('vehicleNumber', vehicleNumber);
-      if (driverName) payload.append('driverName', driverName);
-      if (driverMobile) payload.append('driverMobile', driverMobile);
-      payload.append('gatePassType', gatePassType);
+      if (gatePassCategory === 'VISITOR') {
+        if (visitorName) payload.append('visitorName', visitorName);
+        if (visitorPhone) payload.append('visitorPhone', visitorPhone);
+        if (visitDate) payload.append('visitDate', visitDate);
+        if (visitTime) payload.append('visitTime', visitTime);
+        if (purpose) payload.append('purpose', purpose);
+      } else {
+        payload.append('vehicleType', vehicleType);
+        payload.append('vehicleNumber', vehicleNumber.trim().toUpperCase());
+        if (driverName) payload.append('driverName', driverName);
+        if (driverMobile) payload.append('driverMobile', driverMobile);
+        payload.append('gatePassType', gatePassType);
+      }
       if (remarks) payload.append('remarks', remarks);
       if (photoProof) payload.append('photoProof', photoProof);
       const response = await api.post('/gate-passes', payload, {
@@ -299,6 +303,7 @@ export default function GatePassesPage() {
 
   function resetForm() {
     setGatePassCategory('MATERIAL');
+    setCategoryConfirmed(false);
     setSelectedPoId('');
     setSelectedInvoiceId('');
     setSelectedHeadId('');
@@ -607,22 +612,25 @@ export default function GatePassesPage() {
         <DialogTitle>Create Gate Pass</DialogTitle>
         <DialogContent>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
-            <TextField
-              select
-              label="Gate Pass Type"
-              value={gatePassCategory}
-              onChange={(e) => {
-                setGatePassCategory(e.target.value as 'MATERIAL' | 'VISITOR');
-                setSelectedPoId('');
-                setSelectedInvoiceId('');
-                setReceivedQuantities({});
-              }}
-              fullWidth
-              size="small"
-            >
-              <MenuItem value="MATERIAL">Material Delivery Gate Pass</MenuItem>
-              <MenuItem value="VISITOR">Visitor Gate Pass</MenuItem>
-            </TextField>
+            {!categoryConfirmed ? (
+              <TextField
+                select
+                label="Which gate pass do you need?"
+                value=""
+                onChange={(e) => {
+                  setGatePassCategory(e.target.value as 'MATERIAL' | 'VISITOR');
+                  setCategoryConfirmed(true);
+                }}
+                fullWidth
+                size="small"
+              >
+                <MenuItem value="MATERIAL">Material Delivery Gate Pass</MenuItem>
+                <MenuItem value="VISITOR">Visitor Gate Pass</MenuItem>
+              </TextField>
+            ) : <>
+            <Typography variant="body2" color="text.secondary">
+              {gatePassCategory === 'MATERIAL' ? 'Material Delivery Gate Pass' : 'Visitor Gate Pass'}
+            </Typography>
             {gatePassCategory === 'MATERIAL' && <>
             <TextField
               select
@@ -713,11 +721,12 @@ export default function GatePassesPage() {
             </>}
 
             <Typography variant="subtitle2" sx={{ mt: 1 }}>
-              {gatePassCategory === 'VISITOR' ? 'Visitor details' : 'Visitor and vehicle details (optional)'}
+              {gatePassCategory === 'VISITOR' ? 'Visitor details' : 'Vehicle details'}
             </Typography>
             <Box
               sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 2 }}
             >
+              {gatePassCategory === 'VISITOR' && <>
               <TextField
                 label="Visitor / person name"
                 value={visitorName}
@@ -725,12 +734,12 @@ export default function GatePassesPage() {
                 onChange={(e) => setVisitorName(e.target.value)}
                 size="small"
               />
-              {gatePassCategory === 'VISITOR' && <TextField
+              <TextField
                 label="Visitor phone"
                 value={visitorPhone}
                 onChange={(e) => setVisitorPhone(e.target.value)}
                 size="small"
-              />}
+              />
               <TextField
                 label="Visit date"
                 type="date"
@@ -753,18 +762,34 @@ export default function GatePassesPage() {
                 onChange={(e) => setPurpose(e.target.value)}
                 size="small"
               />
+              </>}
               {gatePassCategory === 'MATERIAL' && <>
               <TextField
+                select
                 label="Vehicle type"
                 value={vehicleType}
                 onChange={(e) => setVehicleType(e.target.value)}
                 size="small"
-              />
+                required
+              >
+                <MenuItem value="LORRY">Lorry</MenuItem>
+                <MenuItem value="TRUCK">Truck</MenuItem>
+                <MenuItem value="MINI_TRUCK">Mini Truck</MenuItem>
+                <MenuItem value="TRAILER">Trailer</MenuItem>
+                <MenuItem value="CAR">Car</MenuItem>
+                <MenuItem value="BIKE">Bike</MenuItem>
+                <MenuItem value="AUTO">Auto</MenuItem>
+                <MenuItem value="VAN">Van</MenuItem>
+                <MenuItem value="OTHER">Other</MenuItem>
+              </TextField>
               <TextField
                 label="Vehicle number"
                 value={vehicleNumber}
-                onChange={(e) => setVehicleNumber(e.target.value)}
+                onChange={(e) => setVehicleNumber(e.target.value.toUpperCase())}
                 size="small"
+                required
+                helperText="Example: AP39AB1234"
+                inputProps={{ maxLength: 20 }}
               />
               <TextField
                 label="Driver name"
@@ -830,6 +855,7 @@ export default function GatePassesPage() {
                 </MenuItem>
               ))}
             </TextField>
+            </>}
           </Box>
         </DialogContent>
         <DialogActions>
@@ -841,7 +867,7 @@ export default function GatePassesPage() {
           >
             Cancel
           </Button>
-          <Button
+          {categoryConfirmed && <Button
             variant="contained"
             onClick={() => {
               setError('');
@@ -860,7 +886,7 @@ export default function GatePassesPage() {
             ) : (
               'Create & Send OTP'
             )}
-          </Button>
+          </Button>}
         </DialogActions>
       </ResponsiveDialog>
 

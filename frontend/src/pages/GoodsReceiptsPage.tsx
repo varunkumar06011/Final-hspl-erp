@@ -22,6 +22,7 @@ import {
 import { Add as AddIcon, FactCheck as InspectIcon, Inventory as PostIcon } from '@mui/icons-material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import ResponsiveDialog from '../components/ResponsiveDialog';
+import AttachmentUpload from '../components/AttachmentUpload';
 import api, { extractErrorMessage } from '../config/api';
 import { GoodsReceiptStatus } from '@hospital-erp/shared';
 
@@ -197,6 +198,7 @@ export default function GoodsReceiptsPage() {
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
             Accepted quantities will be posted to usable inventory. Rejected quantities remain outside usable stock.
           </Typography>
+          {inspectReceipt && <AttachmentUpload entityType="GOODS_RECEIPT" entityId={inspectReceipt.id} />}
           {inspectReceipt?.items.map((item) => {
             const disposition = dispositions[item.id] ?? { acceptedQty: 0, rejectedQty: 0, rejectionReason: '' };
             return <Box key={item.id} sx={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr 1fr 2fr', gap: 1, mb: 1, alignItems: 'center' }}>

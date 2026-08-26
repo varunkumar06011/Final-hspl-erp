@@ -167,14 +167,23 @@ export function streamGatePassPdf(res: NodeJS.WritableStream, gatePass: any) {
   sectionTitle('Visitor and vehicle details', y);
   y += 20;
   const detailWidths = [166, 166, 167];
-  const details = [
-    ['Visitor / person', gatePass.visitorName],
-    ['Vehicle type', gatePass.vehicleType],
-    ['Vehicle number', gatePass.vehicleNumber],
-    ['Driver name', gatePass.driverName],
-    ['Driver mobile', gatePass.driverMobile],
-    ['Material movement', gatePass.materialMovement ? 'Yes' : 'No'],
-  ];
+  const details = gatePass.gatePassCategory === 'VISITOR'
+    ? [
+        ['Visitor / person', gatePass.visitorName],
+        ['Visitor phone', gatePass.visitorPhone],
+        ['Visit time', gatePass.visitTime],
+        ['Purpose', gatePass.purpose],
+        ['Gate pass status', gatePass.status],
+        ['Approval', approval],
+      ]
+    : [
+        ['Vehicle type', gatePass.vehicleType],
+        ['Vehicle number', gatePass.vehicleNumber],
+        ['Driver name', gatePass.driverName],
+        ['Driver mobile', gatePass.driverMobile],
+        ['Material movement', gatePass.materialMovement ? 'Yes' : 'No'],
+        ['Gate pass status', gatePass.status],
+      ];
   details.forEach(([label, value], index) => {
     const column = index % 3;
     const row = Math.floor(index / 3);

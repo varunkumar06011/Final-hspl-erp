@@ -264,8 +264,8 @@ export const createGatePassSchema = z.object({
     visitDate: dateStr.optional(),
     visitTime: z.string().trim().max(20).optional(),
     purpose: z.string().trim().max(500).optional(),
-    vehicleType: z.string().trim().max(50).optional(),
-    vehicleNumber: z.string().trim().max(50).optional(),
+    vehicleType: z.enum(['LORRY', 'TRUCK', 'MINI_TRUCK', 'TRAILER', 'CAR', 'BIKE', 'AUTO', 'VAN', 'OTHER']).optional(),
+    vehicleNumber: z.string().trim().max(20).optional(),
     driverName: z.string().trim().max(200).optional(),
     driverMobile: z.string().trim().max(30).optional(),
     materialMovement: z
@@ -280,8 +280,18 @@ export const createGatePassSchema = z.object({
   if (body.gatePassCategory === 'VISITOR' && !body.visitorName) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['body', 'visitorName'], message: 'Visitor name is required' });
   }
-  if (body.gatePassCategory === 'MATERIAL' && !body.poId) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['body', 'poId'], message: 'Purchase order is required for a material gatepass' });
+  if (body.gatePassCategory === 'MATERIAL') {
+    if (!body.poId) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['body', 'poId'], message: 'Purchase order is required for a material gatepass' });
+    }
+    if (!body.vehicleType) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['body', 'vehicleType'], message: 'Vehicle type is required for a material gatepass' });
+    }
+    if (!body.vehicleNumber) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['body', 'vehicleNumber'], message: 'Vehicle number is required for a material gatepass' });
+    } else if (!/^[A-Z]{2}[- ]?\d{1,2}[- ]?[A-Z]{1,3}[- ]?\d{1,4}$/i.test(body.vehicleNumber)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['body', 'vehicleNumber'], message: 'Enter a valid vehicle number, for example AP39AB1234' });
+    }
   }
 });
 export const listGatePassesSchema = z.object({

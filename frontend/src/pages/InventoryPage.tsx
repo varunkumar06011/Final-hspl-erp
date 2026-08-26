@@ -32,6 +32,7 @@ import {
   Search as SearchIcon,
   Refresh as RefreshIcon,
   SwapVert as SwapVertIcon,
+  PhotoCamera as PhotoCameraIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { InventoryTxnType } from '@hospital-erp/shared';
@@ -51,6 +52,8 @@ export default function InventoryPage() {
   const [editing, setEditing] = useState<Record<string, unknown> | null>(null);
   const [form, setForm] = useState<Record<string, unknown>>({});
   const [txnForm, setTxnForm] = useState<Record<string, unknown>>({});
+  const [txnPhoto, setTxnPhoto] = useState<File | null>(null);
+  const [attachmentTransactionId, setAttachmentTransactionId] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [error, setError] = useState('');
   const queryClient = useQueryClient();
@@ -105,14 +108,28 @@ export default function InventoryPage() {
   const txnMutation = useMutation({
     mutationFn: async (payload: Record<string, unknown>) => {
       const response = await api.post('/inventory/transactions', payload);
-      return response.data;
+      let photoUploadFailed = false;
+      if (txnPhoto) {
+        const formData = new FormData();
+        formData.append('file', txnPhoto);
+        formData.append('entityType', 'INVENTORY_TRANSACTION');
+        formData.append('entityId', response.data.id);
+        try {
+          await api.post('/attachments/upload', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
+        } catch {
+          photoUploadFailed = true;
+        }
+      }
+      return { transaction: response.data, photoUploadFailed };
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['/inventory/transactions'] });
       queryClient.invalidateQueries({ queryKey: ['/inventory/items'] });
       queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
       setTxnDialogOpen(false);
       setTxnForm({});
+      setTxnPhoto(null);
+      if (data.photoUploadFailed) setError('Stock movement recorded, but the optional photo could not be uploaded.');
     },
     onError: (err: unknown) => setError(extractErrorMessage(err)),
   });
@@ -172,7 +189,7 @@ export default function InventoryPage() {
           <IconButton onClick={() => refetch()} size="small"><RefreshIcon /></IconButton>
           {tab === 0 && (
             <>
-              <Button variant="outlined" startIcon={<SwapVertIcon />} onClick={() => { setTxnForm({ type: InventoryTxnType.OUT, quantity: 0 }); setTxnDialogOpen(true); }}>
+              <Button variant="outlined" startIcon={<SwapVertIcon />} onClick={() => { setTxnForm({ type: InventoryTxnType.OUT, quantity: 0 }); setTxnPhoto(null); setTxnDialogOpen(true); }}>
                 Stock Movement
               </Button>
               <Button variant="contained" startIcon={<AddIcon />} onClick={openCreate}>New Item</Button>
@@ -225,6 +242,7 @@ export default function InventoryPage() {
                   <TableCell sx={{ fontWeight: 600 }}>Balance After</TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>Gate Pass</TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>Notes</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Proof</TableCell>
                 </TableRow>
               )}
             </TableHead>
@@ -263,6 +281,9 @@ export default function InventoryPage() {
                     <TableCell data-label="Balance After">{String(row.balanceAfter ?? '—')}</TableCell>
                     <TableCell data-label="Gate Pass">{(row.gatePass as any)?.passNumber ?? '—'}</TableCell>
                     <TableCell data-label="Notes">{String(row.notes ?? '—')}</TableCell>
+                    <TableCell data-label="Proof">
+                      <Button size="small" onClick={() => setAttachmentTransactionId(String(row.id))}>View / Upload</Button>
+                    </TableCell>
                   </TableRow>
                 ))
               )}
@@ -314,12 +335,16 @@ export default function InventoryPage() {
         <DialogContent>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
             <CreatableSelect label="Item" required value={String(txnForm.itemId ?? '')} onChange={(v) => setTxnForm({ ...txnForm, itemId: v })} optionsEndpoint="/inventory/items" />
-            <TextField select label="Type" required value={txnForm.type ?? InventoryTxnType.IN} onChange={(e) => setTxnForm({ ...txnForm, type: e.target.value })} fullWidth size="small">
+            <TextField select label="Type" required value={txnForm.type ?? InventoryTxnType.OUT} onChange={(e) => setTxnForm({ ...txnForm, type: e.target.value })} fullWidth size="small">
               {enumToOptions(InventoryTxnType).filter((opt) => opt.value !== InventoryTxnType.IN).map((opt) => <MenuItem key={opt.value} value={opt.value}>{opt.label}</MenuItem>)}
             </TextField>
             <TextField label="Quantity" type="text" required value={formatIndianNumber(txnForm.quantity ?? '')} onChange={(e) => setTxnForm({ ...txnForm, quantity: e.target.value === '' ? '' : Number(e.target.value.replace(/,/g, '')) })} inputMode="decimal" inputProps={{ min: 0.01, step: 0.01 }} fullWidth size="small"
               helperText={txnForm.type === 'ADJUST' ? 'Set absolute stock value' : 'Positive number'} />
             <TextField label="Notes" value={txnForm.notes ?? ''} onChange={(e) => setTxnForm({ ...txnForm, notes: e.target.value })} fullWidth size="small" multiline rows={2} />
+            <Button component="label" variant="outlined" startIcon={<PhotoCameraIcon />}>
+              {txnPhoto ? `Photo: ${txnPhoto.name}` : 'Add photo proof (optional)'}
+              <input hidden type="file" accept="image/*" onChange={(e) => setTxnPhoto(e.target.files?.[0] ?? null)} />
+            </Button>
           </Box>
         </DialogContent>
         <DialogActions sx={{ flexWrap: "wrap", gap: 1 }}>
@@ -327,6 +352,16 @@ export default function InventoryPage() {
           <Button variant="contained" onClick={handleTransactionSubmit} disabled={txnMutation.isPending}>
             {txnMutation.isPending ? <CircularProgress size={20} /> : 'Record'}
           </Button>
+        </DialogActions>
+      </ResponsiveDialog>
+
+      <ResponsiveDialog open={!!attachmentTransactionId} onClose={() => setAttachmentTransactionId(null)} maxWidth="sm" fullWidth>
+        <DialogTitle>Stock Movement Proof</DialogTitle>
+        <DialogContent>
+          <AttachmentUpload entityType="INVENTORY_TRANSACTION" entityId={attachmentTransactionId} />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setAttachmentTransactionId(null)}>Close</Button>
         </DialogActions>
       </ResponsiveDialog>
 

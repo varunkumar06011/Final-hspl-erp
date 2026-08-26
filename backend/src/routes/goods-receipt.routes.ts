@@ -5,6 +5,7 @@ import {
   inspectGoodsReceiptSchema,
   postGoodsReceiptSchema,
 } from '@hospital-erp/shared';
+import { Prisma } from '@prisma/client';
 import { prisma } from '../config/prisma';
 import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middleware/auth';
 import { rbacMiddleware } from '../middleware/rbac';
@@ -24,6 +25,17 @@ const receiptInclude = {
   inspectedByUser: { select: { id: true, name: true } },
   postedByUser: { select: { id: true, name: true } },
 };
+
+async function generateInventorySku(tx: Prisma.TransactionClient, projectId: string, materialName: string): Promise<string> {
+  const base = `VGH-${materialName.toUpperCase().replace(/[^A-Z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 38) || 'MATERIAL'}`;
+  let candidate = base;
+  let suffix = 1;
+  while (await tx.inventoryItem.findFirst({ where: { projectId, sku: candidate, deletedAt: null }, select: { id: true } })) {
+    suffix += 1;
+    candidate = `${base.slice(0, 49 - String(suffix).length)}-${suffix}`;
+  }
+  return candidate;
+}
 
 async function generateReceiptNumber(projectId: string): Promise<string> {
   const receipts = await prisma.goodsReceipt.findMany({
@@ -272,7 +284,15 @@ router.post(
           });
           if (!inventoryItem) {
             inventoryItem = await tx.inventoryItem.create({
-              data: { projectId, name: line.materialName, unit: line.unit || 'nos', currentStock: 0, minStockLevel: 0 },
+              data: {
+                projectId,
+                name: line.materialName,
+                sku: await generateInventorySku(tx, projectId, line.materialName),
+                category: 'MATERIAL',
+                unit: line.unit || 'nos',
+                currentStock: 0,
+                minStockLevel: 0,
+              },
             });
           }
           const newBalance = Number(inventoryItem.currentStock) + Number(line.acceptedQty);
