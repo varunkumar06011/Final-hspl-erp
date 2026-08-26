@@ -106,18 +106,19 @@ if they reject good data, users can't do their jobs.
 
 ---
 
-### `ocr-service.test.ts` — OCR document extraction (local regex + Tesseract + Gemini fallback)
+### `ocr-service.test.ts` — OCR document extraction (local extraction + Gemini structuring)
 
 **What it covers:** the `extractFromFile` function that extracts structured data from quotation
-or invoice images/PDFs using a local pipeline: pdfjs-dist text extraction (digital PDFs) →
-Tesseract.js OCR (images/scanned PDFs) → regex parser → Gemini 2.5 Flash fallback (low confidence).
-This powers the "Scan quotation / Scan invoice" auto-fill buttons in the frontend.
+or invoice images/PDFs using local extraction followed by Gemini 2.5 Flash structuring. Digital
+PDFs use pdfjs-dist text extraction; images/scanned PDFs use Tesseract.js plus the original image
+for Gemini vision. The conservative regex parser remains the no-API fallback. This powers the
+"Scan quotation / Scan invoice" auto-fill buttons in the frontend.
 
 | Behavior verified | Why it matters |
 |-------------------|----------------|
 | Unsupported file types rejected with a helpful message | Users upload Word docs by mistake — the error tells them what's accepted. |
-| Quotation parsed from Tesseract OCR text without Gemini call | High-confidence regex parse should skip the LLM fallback (no API cost, no rate limits). |
-| Gemini fallback invoked when regex confidence is low | Messy/unusual documents still get accurate extraction via the LLM safety net. |
+| Variable-layout image is sent to Gemini vision for structuring | Gemini sees the original table geometry instead of trusting potentially reordered OCR columns. |
+| Local extraction and parser remain available without Gemini | The app still returns conservative partial data when no API key is configured or Gemini fails. |
 | Missing `GEMINI_API_KEY` returns regex result as-is | Graceful degradation — the app still works without the fallback configured. |
 | Gemini API errors return regex result, not a crash | If the fallback fails, partial data is better than no data. |
 | Corrupt PDF produces a friendly "Failed to read PDF" message | A scanned image renamed to `.pdf` will fail to parse — the user is told to upload a photo instead. |
@@ -133,7 +134,7 @@ dates, line items, and totals from raw text using regex rules — no API calls.
 | Date normalization handles DD/MM/YYYY, YYYY-MM-DD, "DD MMM YYYY", 2-digit years | Dates appear in many formats across vendor templates. |
 | Quotation extraction: vendor, number, date, line items, GST, totals | The full quotation auto-fill flow. |
 | Invoice extraction: vendor, number, dates, CGST+SGST sum, grand total | GST invoices split tax into CGST/SGST — must be summed. |
-| Confidence check fails on empty/garbage input | Triggers the Gemini fallback instead of returning useless data. |
+| Confidence check identifies empty/garbage local parses | Helps diagnose when the no-API fallback cannot confidently structure a document. |
 | Pipe-separated and space-separated columns both parsed | Different vendors use different table formats. |
 
 ---

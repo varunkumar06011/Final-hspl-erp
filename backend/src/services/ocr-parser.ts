@@ -333,10 +333,20 @@ function buildItemFromColumns(cols: string[], idx: ColumnIndex): OcrLineItem | n
 
   const quantity = idx.qty >= 0 && idx.qty < cols.length ? parseAmount(cols[idx.qty]) : null;
   const unitPrice = idx.rate >= 0 && idx.rate < cols.length ? parseAmount(cols[idx.rate]) : null;
+  const amount = idx.amount >= 0 && idx.amount < cols.length ? parseAmount(cols[idx.amount]) : null;
   const unit = idx.unit >= 0 && idx.unit < cols.length ? cols[idx.unit].trim() : undefined;
 
   // Reject rows where the "name" column is actually a number (misaligned).
   if (/^\d+(\.\d+)?$/.test(materialName)) return null;
+
+  // If all three numeric columns are available, validate their relationship.
+  // This prevents a column-shifted OCR row from being accepted by the local
+  // fallback. Layout-aware Gemini remains responsible for unusual tables.
+  if (quantity != null && unitPrice != null && amount != null && quantity > 0 && unitPrice > 0 && amount > 0) {
+    const expected = quantity * unitPrice;
+    const difference = Math.abs(expected - amount);
+    if (difference > Math.max(1, expected * 0.25)) return null;
+  }
 
   return {
     materialName,

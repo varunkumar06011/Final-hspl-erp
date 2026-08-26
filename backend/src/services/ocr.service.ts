@@ -2,17 +2,16 @@
  * OCR auto-fill service — orchestrates the extraction pipeline.
  *
  * Pipeline:
- *  1. Get raw text from the document:
- *     - Digital PDF → pdfjs-dist text extraction (local, fast)
- *     - Image / scanned PDF → Tesseract.js OCR (local, no API)
- *  2. Parse raw text into structured fields with regex rules (ocr-parser.ts)
- *  3. Assess confidence:
- *     - High → return immediately (no API call, no rate limits)
- *     - Low → fall back to Gemini 2.5 Flash LLM (ocr-gemini.ts)
+ *  1. Get raw document data locally:
+ *     - Digital PDF → pdfjs-dist text extraction
+ *     - Image / scanned PDF → Tesseract.js OCR plus rendered images
+ *  2. When Gemini is configured, use Gemini to structure the document. This
+ *     is important because vendor quotations do not share one table layout or
+ *     one set of headings, and regex rules can silently shift columns.
+ *  3. If Gemini is unavailable or fails, return the conservative local regex
+ *     parse as a no-API fallback.
  *
  * This eliminates the Groq dependency that was causing rate-limit failures.
- * Gemini is only called as a rare fallback (~10% of documents), so its free
- * tier (1500 req/day) is effectively unlimited for hospital-ERP volumes.
  */
 import sharp from 'sharp';
 import { createCanvas, CanvasRenderingContext2D } from 'canvas';
@@ -167,37 +166,35 @@ export async function extractFromFile(
     rawText = await ocrImage(png);
   }
 
-  // Step 2: Parse raw text with regex rules
-  console.log(`[OCR] Parsing ${rawText.length} chars with regex parser`);
-  const result = parseDocumentText(rawText, documentType);
+  // Always build the local result first. It is the fallback when the optional
+  // LLM is unavailable, and it also gives us useful diagnostics in the logs.
+  console.log(`[OCR] Parsing ${rawText.length} chars with local parser`);
+  const localResult = parseDocumentText(rawText, documentType);
+  const confidence = assessConfidence(localResult, documentType);
 
-  // Step 3: Assess confidence — fall back to Gemini if low
-  const confidence = assessConfidence(result, documentType);
-  if (confidence.ok) {
-    console.log(`[OCR] Regex parse OK (confidence: ${confidence.reason}), skipping LLM fallback`);
-    return result;
-  }
+  // Do not use the local parser as the authority for arbitrary layouts. A
+  // column-oriented OCR result can look superficially valid while assigning
+  // a quantity to the wrong column. Gemini receives the original image for
+  // visual layout understanding, not just Tesseract's reordered text.
+  if (isGeminiConfigured()) {
+    try {
+      if (rawImages && rawImages.length > 0) {
+        console.log('[OCR] Using Gemini vision to structure the document layout');
+        return await fallbackParseImages(rawImages, documentType);
+      }
 
-  console.log(`[OCR] Regex parse low confidence (${confidence.reason}), falling back to Gemini`);
-
-  if (!isGeminiConfigured()) {
-    console.warn('[OCR] Gemini fallback not configured (GEMINI_API_KEY missing), returning regex result as-is');
-    return result;
-  }
-
-  // Fallback strategy:
-  // - If we have raw images (image/scanned PDF), send them to Gemini vision —
-  //   it can do OCR + structuring in one shot, potentially better than Tesseract.
-  // - If we only have text (digital PDF), send the text to Gemini for structuring.
-  try {
-    if (rawImages && rawImages.length > 0) {
-      return await fallbackParseImages(rawImages, documentType);
+      console.log('[OCR] Using Gemini text to structure the digital PDF');
+      return await fallbackParseText(rawText, documentType);
+    } catch (fallbackErr) {
+      console.warn(
+        '[OCR] Gemini structuring failed, returning local result:',
+        fallbackErr instanceof Error ? fallbackErr.message : fallbackErr
+      );
     }
-    return await fallbackParseText(rawText, documentType);
-  } catch (fallbackErr) {
-    // If the fallback fails, return the regex result rather than crashing —
-    // partial data is better than no data.
-    console.warn('[OCR] Gemini fallback failed, returning regex result:', fallbackErr instanceof Error ? fallbackErr.message : fallbackErr);
-    return result;
+  } else {
+    console.warn('[OCR] Gemini not configured; using local parser');
   }
+
+  console.log(`[OCR] Local parser result retained (confidence: ${confidence.reason})`);
+  return localResult;
 }

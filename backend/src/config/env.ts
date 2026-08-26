@@ -28,7 +28,7 @@ const envSchema = z.object({
   STORAGE_MODE: z.enum(['local', 'supabase']).default('local'),
   LOCAL_STORAGE_PATH: z.string().default('./uploads'),
 
-  // Gemini (OCR auto-fill fallback — optional, only used when regex parser fails)
+  // Gemini (OCR document structuring — optional; local parser is used if omitted)
   GEMINI_API_KEY: z.string().optional(),
 
   // Camera (RTSP for gate pass video clips)

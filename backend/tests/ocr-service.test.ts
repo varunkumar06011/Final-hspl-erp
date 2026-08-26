@@ -61,13 +61,23 @@ describe('OCR Service — extractFromFile', () => {
     ).rejects.toThrow('Unsupported file type');
   });
 
-  it('parses a quotation from Tesseract OCR text (image path, no Gemini needed)', async () => {
-    // The mocked Tesseract returns text with a vendor, quotation number,
-    // date, line items, and grand total — high confidence, so no Gemini call.
-    // Set up fetch as a spy so we can assert it was never called.
+  it('uses Gemini vision to structure a variable-layout image', async () => {
+    // Even when local OCR produces plausible text, the original image is sent
+    // to Gemini so it can understand the document's actual table geometry.
+    const geminiResponse = {
+      vendorName: 'Mock Vendor Pvt Ltd',
+      quotationNumber: 'QT-100',
+      date: '2026-08-23',
+      lineItems: [{ materialName: 'Cement Bags', quantity: 10, unitPrice: 50 }],
+      gstAmount: null,
+      totalAmount: 500,
+      grandTotal: 500,
+    };
     global.fetch = vi.fn().mockResolvedValue({
       ok: true,
-      text: async () => JSON.stringify({ candidates: [{ content: { parts: [{ text: '{}' }] } }] }),
+      text: async () => JSON.stringify({
+        candidates: [{ content: { parts: [{ text: JSON.stringify(geminiResponse) }] } }],
+      }),
     }) as unknown as typeof fetch;
 
     const png = await onePixelPng();
@@ -75,15 +85,10 @@ describe('OCR Service — extractFromFile', () => {
 
     expect(result.vendorName).toBe('Mock Vendor Pvt Ltd');
     expect(result.quotationNumber).toBe('QT-100');
-    expect(result.date).toBe('2026-08-23');
-    expect(result.lineItems).toHaveLength(1);
-    expect(result.lineItems[0].materialName).toContain('Cement Bags');
     expect(result.lineItems[0].quantity).toBe(10);
     expect(result.lineItems[0].unitPrice).toBe(50);
     expect(result.grandTotal).toBe(500);
-
-    // Verify Gemini was NOT called (high confidence → no fallback)
-    expect(global.fetch).not.toHaveBeenCalled();
+    expect(global.fetch).toHaveBeenCalled();
   });
 
   it('falls back to Gemini when regex confidence is low (image path)', async () => {

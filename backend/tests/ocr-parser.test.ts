@@ -267,4 +267,43 @@ Grand Total                    65
     const result = parseDocumentText(text, 'QUOTATION');
     expect((result as any).lineItems).toHaveLength(2);
   });
+
+  it('parses the nine-row construction quote layout without shifting columns', () => {
+    const text = `
+Construction Quote
+Company Name: Bengaluru HSR
+Quotation No: CQ-2024-01
+Date: 05/13/2024
+
+Description of Work  Unit  Quantity  Rate per Unit  Total Cost
+Structural Steel     kg    1500      55             82500
+Electrical Wiring    meters 200      100            20000
+Plastering Work      sq. ft. 500     50             25000
+Skilled Labor        hours 100       300            30000
+work 1               Nos   245       260            63700
+Work 2               Nos   124       280            34720
+Work 3               Nos   245       850            208250
+Work 4               Nos   654       546            357084
+Work 5               Nos   345       256            88320
+Total                                      909574
+`;
+    const result = parseDocumentText(text, 'QUOTATION') as any;
+
+    expect(result.lineItems).toHaveLength(9);
+    expect(result.lineItems[0]).toMatchObject({
+      materialName: 'Structural Steel',
+      quantity: 1500,
+      unitPrice: 55,
+    });
+    expect(result.lineItems[6]).toMatchObject({
+      materialName: 'Work 3',
+      quantity: 245,
+      unitPrice: 850,
+    });
+    expect(result.lineItems[8]).toMatchObject({
+      materialName: 'Work 5',
+      quantity: 345,
+      unitPrice: 256,
+    });
+  });
 });

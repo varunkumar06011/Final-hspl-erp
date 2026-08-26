@@ -1,15 +1,16 @@
 /**
- * Gemini LLM fallback for OCR auto-fill.
+ * Gemini LLM document structuring for OCR auto-fill.
  *
- * Only called when the local regex parser (ocr-parser.ts) returns low-
- * confidence results. Uses Google Gemini 2.5 Flash which has a generous
- * free tier (15 RPM, 1500 req/day, 1M TPM) — far better than Groq's 8000 TPM.
+ * Used as the primary structuring engine when configured because vendor
+ * quotations do not share one table layout or one set of headings. The local
+ * regex parser remains the no-API fallback if Gemini is unavailable or fails.
+ * Uses Google Gemini 2.5 Flash, which has a generous free tier (15 RPM,
+ * 1500 req/day, 1M TPM) — far better than Groq's 8000 TPM.
  *
  * Two modes:
- *  - Text: when we have raw text (from pdfjs-dist or Tesseract) but the regex
- *    parser couldn't structure it. Send the text to Gemini's text model.
- *  - Vision: when OCR itself failed or produced garbage. Send the image
- *    directly to Gemini's vision model.
+ *  - Text: raw text from pdfjs-dist for digital PDFs.
+ *  - Vision: the original image for screenshots/scanned PDFs, preserving
+ *    table geometry that Tesseract's text output may reorder.
  */
 import { env } from '../config/env';
 import sharp from 'sharp';
