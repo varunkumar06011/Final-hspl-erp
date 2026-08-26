@@ -1,5 +1,5 @@
 import { Router, Response, NextFunction } from 'express';
-import { Permission, POStatus, AuditAction, UserRole } from '@hospital-erp/shared';
+import { Permission, POStatus, AuditAction, UserRole, GoodsReceiptStatus } from '@hospital-erp/shared';
 import { createPOSchema, listPOsSchema, approvalActionSchema } from '@hospital-erp/shared';
 import { prisma } from '../config/prisma';
 import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middleware/auth';
@@ -12,6 +12,22 @@ import PDFDocument from 'pdfkit';
 
 const router = Router();
 router.use(authMiddleware);
+
+// ─── Helper: compute accepted quantities from posted Goods Receipts ───
+async function getAcceptedQuantitiesByPo(poId: string): Promise<Map<string, number>> {
+  const receipts = await prisma.goodsReceipt.findMany({
+    where: { poId, deletedAt: null, status: GoodsReceiptStatus.POSTED },
+    select: { items: { select: { materialName: true, acceptedQty: true } } },
+  });
+  const acceptedByName = new Map<string, number>();
+  for (const receipt of receipts) {
+    for (const item of receipt.items) {
+      const name = item.materialName.toLowerCase();
+      acceptedByName.set(name, (acceptedByName.get(name) ?? 0) + Number(item.acceptedQty));
+    }
+  }
+  return acceptedByName;
+}
 
 const HEAD_ROLES = [UserRole.PROJECT_HEAD, UserRole.HEAD_OF_CONSTRUCTION, UserRole.ADMIN, UserRole.ADMIN_2];
 
@@ -101,7 +117,111 @@ router.get(
   }
 );
 
-// POST / — create PO from an approved quotation
+// GET /:id/delivery-trail — full delivery history for a PO
+router.get(
+  '/:id/delivery-trail',
+  rbacMiddleware(Permission.VIEW_FINANCIALS),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      const po = await prisma.purchaseOrder.findFirst({
+        where: { id: req.params.id, projectId, deletedAt: null },
+        select: {
+          id: true,
+          poNumber: true,
+          status: true,
+          items: true,
+          gatePasses: {
+            where: { deletedAt: null },
+            orderBy: { createdAt: 'asc' },
+            select: {
+              id: true,
+              passNumber: true,
+              status: true,
+              createdAt: true,
+              otpApprovedAt: true,
+              items: { select: { materialName: true, quantity: true, unit: true } },
+              goodsReceipt: {
+                select: {
+                  id: true,
+                  receiptNumber: true,
+                  status: true,
+                  inspectedAt: true,
+                  postedAt: true,
+                  items: {
+                    select: {
+                      materialName: true,
+                      deliveredQty: true,
+                      acceptedQty: true,
+                      rejectedQty: true,
+                      rejectionReason: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      });
+      if (!po) {
+        res.status(404).json({ error: 'Purchase order not found' });
+        return;
+      }
+
+      // Build per-item summary using accepted quantities from posted receipts
+      const acceptedMap = await getAcceptedQuantitiesByPo(po.id);
+      const itemSummary = po.items.map((item) => {
+        const ordered = Number(item.quantity);
+        const accepted = acceptedMap.get(item.materialName.toLowerCase()) ?? 0;
+        return {
+          materialName: item.materialName,
+          unit: item.unit,
+          orderedQuantity: ordered,
+          acceptedQuantity: accepted,
+          remainingQuantity: Math.max(0, ordered - accepted),
+        };
+      });
+
+      // Build delivery instances from gate passes
+      const deliveries = po.gatePasses.map((gp) => ({
+        gatePassId: gp.id,
+        passNumber: gp.passNumber,
+        gatePassStatus: gp.status,
+        gatePassDate: gp.createdAt,
+        approvedDate: gp.otpApprovedAt,
+        items: gp.items.map((gpi) => ({
+          materialName: gpi.materialName,
+          deliveredQty: Number(gpi.quantity),
+          unit: gpi.unit,
+        })),
+        goodsReceipt: gp.goodsReceipt
+          ? {
+              receiptNumber: gp.goodsReceipt.receiptNumber,
+              receiptStatus: gp.goodsReceipt.status,
+              inspectedAt: gp.goodsReceipt.inspectedAt,
+              postedAt: gp.goodsReceipt.postedAt,
+              items: gp.goodsReceipt.items.map((gri) => ({
+                materialName: gri.materialName,
+                deliveredQty: Number(gri.deliveredQty),
+                acceptedQty: Number(gri.acceptedQty),
+                rejectedQty: Number(gri.rejectedQty),
+                rejectionReason: gri.rejectionReason,
+              })),
+            }
+          : null,
+      }));
+
+      res.json({
+        poNumber: po.poNumber,
+        poStatus: po.status,
+        itemSummary,
+        deliveries,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
 router.post(
   '/',
   rbacMiddleware(Permission.CREATE_PO),
@@ -282,8 +402,8 @@ router.delete(
         res.status(403).json({ error: 'Only the creator can delete this purchase order' });
         return;
       }
-      if (existing.status === POStatus.APPROVED || existing.status === POStatus.DELIVERED) {
-        res.status(400).json({ error: 'Cannot delete an approved purchase order' });
+      if (existing.status === POStatus.APPROVED || existing.status === POStatus.PARTIALLY_DELIVERED || existing.status === POStatus.DELIVERED) {
+        res.status(400).json({ error: 'Cannot delete an approved, partially delivered, or delivered purchase order' });
         return;
       }
 

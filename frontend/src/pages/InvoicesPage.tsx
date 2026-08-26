@@ -36,6 +36,7 @@ import {
   Close as CloseIcon,
   Download as DownloadIcon,
   ExpandMore as ExpandMoreIcon,
+  Delete as DeleteIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { InvoiceVerificationStatus, UserRole } from '@hospital-erp/shared';
@@ -303,13 +304,18 @@ export default function InvoicesPage() {
     },
   });
 
-  // Fetch approved POs for the selected vendor
+  // Fetch eligible POs (approved, partially delivered, or delivered) for the selected vendor
   const { data: approvedPOs } = useQuery({
-    queryKey: ['/pos', 'approved', selectedVendorId],
+    queryKey: ['/pos', 'invoice-eligible', selectedVendorId],
     queryFn: async () => {
       if (!selectedVendorId) return [];
-      const response = await api.get('/purchase-orders', { params: { vendorId: selectedVendorId, status: 'APPROVED', pageSize: 100 } });
-      return response.data?.data ?? [];
+      const statuses = ['APPROVED', 'PARTIALLY_DELIVERED', 'DELIVERED'];
+      const responses = await Promise.all(
+        statuses.map((status) =>
+          api.get('/purchase-orders', { params: { vendorId: selectedVendorId, status, pageSize: 100 } }),
+        ),
+      );
+      return responses.flatMap((r) => r.data?.data ?? []);
     },
     enabled: !!selectedVendorId,
   });
@@ -438,6 +444,19 @@ export default function InvoicesPage() {
       queryClient.invalidateQueries({ queryKey: ['/invoices'] });
       queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
       setApprovalAction(null);
+    },
+    onError: (err: unknown) => setError(extractErrorMessage(err)),
+  });
+
+  const [deleteRow, setDeleteRow] = useState<InvoiceRow | null>(null);
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await api.delete(`/invoices/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
+      setDeleteRow(null);
     },
     onError: (err: unknown) => setError(extractErrorMessage(err)),
   });
@@ -589,6 +608,9 @@ export default function InvoicesPage() {
                             <IconButton size="small" color="success" onClick={() => setApprovalAction({ row, action: 'approve' })} title="Approve"><CheckIcon fontSize="small" /></IconButton>
                             <IconButton size="small" color="error" onClick={() => setApprovalAction({ row, action: 'reject' })} title="Reject"><CloseIcon fontSize="small" /></IconButton>
                           </>
+                        )}
+                        {row.verificationStatus !== InvoiceVerificationStatus.VERIFIED && (
+                          <IconButton size="small" color="error" onClick={() => setDeleteRow(row)} title="Delete"><DeleteIcon fontSize="small" /></IconButton>
                         )}
                       </Box>
                     </TableCell>
@@ -880,6 +902,22 @@ export default function InvoicesPage() {
           }
         }}
       />
+
+      <ResponsiveDialog open={deleteRow !== null} onClose={() => setDeleteRow(null)} maxWidth="xs" fullWidth>
+        <DialogTitle>Delete Invoice</DialogTitle>
+        <DialogContent>
+          <Typography>Are you sure you want to delete invoice <strong>{deleteRow?.invoiceCode}</strong>?</Typography>
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+            This action cannot be undone. Only invoices that are not verified can be deleted.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteRow(null)}>Cancel</Button>
+          <Button color="error" variant="contained" disabled={deleteMutation.isPending} onClick={() => deleteRow && deleteMutation.mutate(deleteRow.id)}>
+            {deleteMutation.isPending ? <CircularProgress size={20} /> : 'Delete'}
+          </Button>
+        </DialogActions>
+      </ResponsiveDialog>
     </Box>
   );
 }

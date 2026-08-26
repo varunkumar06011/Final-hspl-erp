@@ -39,6 +39,8 @@ import {
   PictureAsPdf as PdfIcon,
   ExpandMore as ExpandMoreIcon,
   LocalShipping as GatePassIcon,
+  Timeline as TimelineIcon,
+  Delete as DeleteIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { POStatus, UserRole } from '@hospital-erp/shared';
@@ -117,6 +119,7 @@ export default function PurchaseOrdersPage() {
   const [acknowledged, setAcknowledged] = useState(false);
   const [approvalAction, setApprovalAction] = useState<{ row: PORow; action: 'approve' | 'reject' } | null>(null);
   const [approvalPopup, setApprovalPopup] = useState<PORow | null>(null);
+  const [trailRow, setTrailRow] = useState<PORow | null>(null);
   const queryClient = useQueryClient();
   const { user } = useAuthStore();
   const navigate = useNavigate();
@@ -242,6 +245,19 @@ export default function PurchaseOrdersPage() {
       queryClient.invalidateQueries({ queryKey: ['/pos'] });
       queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
       setApprovalAction(null);
+    },
+    onError: (err: unknown) => setError(extractErrorMessage(err)),
+  });
+
+  const [deleteRow, setDeleteRow] = useState<PORow | null>(null);
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await api.delete(`/purchase-orders/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/pos'] });
+      queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
+      setDeleteRow(null);
     },
     onError: (err: unknown) => setError(extractErrorMessage(err)),
   });
@@ -392,6 +408,12 @@ export default function PurchaseOrdersPage() {
                         )}
                         {row.status === POStatus.APPROVED && (
                           <IconButton size="small" color="primary" onClick={() => navigate('/gate-passes')} title="Create Gate Pass"><GatePassIcon fontSize="small" /></IconButton>
+                        )}
+                        {(row.status === POStatus.APPROVED || row.status === POStatus.PARTIALLY_DELIVERED || row.status === POStatus.DELIVERED) && (
+                          <IconButton size="small" onClick={() => setTrailRow(row)} title="Delivery Trail"><TimelineIcon fontSize="small" /></IconButton>
+                        )}
+                        {row.status !== POStatus.APPROVED && row.status !== POStatus.PARTIALLY_DELIVERED && row.status !== POStatus.DELIVERED && (
+                          <IconButton size="small" color="error" onClick={() => setDeleteRow(row)} title="Delete"><DeleteIcon fontSize="small" /></IconButton>
                         )}
                       </Box>
                     </TableCell>
@@ -602,6 +624,208 @@ export default function PurchaseOrdersPage() {
           }
         }}
       />
+
+      {/* Delivery Trail Dialog */}
+      <DeliveryTrailDialog poId={trailRow?.id ?? null} poNumber={trailRow?.poNumber ?? ''} onClose={() => setTrailRow(null)} />
+
+      {/* Delete Confirmation Dialog */}
+      <ResponsiveDialog open={deleteRow !== null} onClose={() => setDeleteRow(null)} maxWidth="xs" fullWidth>
+        <DialogTitle>Delete Purchase Order</DialogTitle>
+        <DialogContent>
+          <Typography>Are you sure you want to delete purchase order <strong>{deleteRow?.poNumber}</strong>?</Typography>
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+            This action cannot be undone. Only purchase orders that are not approved, partially delivered, or delivered can be deleted.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteRow(null)}>Cancel</Button>
+          <Button color="error" variant="contained" disabled={deleteMutation.isPending} onClick={() => deleteRow && deleteMutation.mutate(deleteRow.id)}>
+            {deleteMutation.isPending ? <CircularProgress size={20} /> : 'Delete'}
+          </Button>
+        </DialogActions>
+      </ResponsiveDialog>
     </Box>
+  );
+}
+
+// ─── Delivery Trail Dialog ─────────────────────────────────
+interface DeliveryTrailData {
+  poNumber: string;
+  poStatus: string;
+  itemSummary: {
+    materialName: string;
+    unit: string | null;
+    orderedQuantity: number;
+    acceptedQuantity: number;
+    remainingQuantity: number;
+  }[];
+  deliveries: {
+    gatePassId: string;
+    passNumber: string;
+    gatePassStatus: string;
+    gatePassDate: string;
+    approvedDate: string | null;
+    items: { materialName: string; deliveredQty: number; unit: string | null }[];
+    goodsReceipt: {
+      receiptNumber: string;
+      receiptStatus: string;
+      inspectedAt: string | null;
+      postedAt: string | null;
+      items: {
+        materialName: string;
+        deliveredQty: number;
+        acceptedQty: number;
+        rejectedQty: number;
+        rejectionReason: string | null;
+      }[];
+    } | null;
+  }[];
+}
+
+function DeliveryTrailDialog({ poId, poNumber, onClose }: { poId: string | null; poNumber: string; onClose: () => void }) {
+  const { data, isLoading } = useQuery<DeliveryTrailData>({
+    queryKey: ['/pos', poId, 'delivery-trail'],
+    queryFn: async () => {
+      if (!poId) return null as unknown as DeliveryTrailData;
+      const response = await api.get(`/purchase-orders/${poId}/delivery-trail`);
+      return response.data;
+    },
+    enabled: !!poId,
+  });
+
+  return (
+    <ResponsiveDialog open={!!poId} onClose={onClose} maxWidth="md" fullWidth>
+      <DialogTitle>Delivery Trail — {poNumber}</DialogTitle>
+      <DialogContent>
+        {isLoading ? (
+          <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress /></Box>
+        ) : data ? (
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3, pt: 1 }}>
+            {/* Item Summary */}
+            <Box>
+              <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>Item Summary</Typography>
+              <TableContainer component={Card} variant="outlined" sx={{ overflowX: 'auto' }}>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell sx={{ fontWeight: 600 }}>Material</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>Ordered</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>Accepted</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>Remaining</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>Unit</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {data.itemSummary.map((item, idx) => (
+                      <TableRow key={idx}>
+                        <TableCell>{item.materialName}</TableCell>
+                        <TableCell>{formatIndianNumber(item.orderedQuantity)}</TableCell>
+                        <TableCell sx={{ color: item.acceptedQuantity > 0 ? 'success.main' : 'text.secondary' }}>{formatIndianNumber(item.acceptedQuantity)}</TableCell>
+                        <TableCell sx={{ color: item.remainingQuantity > 0 ? 'warning.main' : 'success.main' }}>{formatIndianNumber(item.remainingQuantity)}</TableCell>
+                        <TableCell>{item.unit ?? '—'}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </Box>
+
+            {/* Delivery Instances */}
+            <Box>
+              <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>
+                Delivery Instances ({data.deliveries.length})
+              </Typography>
+              {data.deliveries.length === 0 ? (
+                <Typography variant="body2" color="text.secondary">No deliveries yet.</Typography>
+              ) : (
+                data.deliveries.map((delivery, idx) => (
+                  <Accordion key={delivery.gatePassId} defaultExpanded={idx === data.deliveries.length - 1}>
+                    <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                        <Chip size="small" label={delivery.passNumber} color="primary" />
+                        <Chip size="small" label={delivery.gatePassStatus.replace(/_/g, ' ')} color={STATUS_COLORS[delivery.gatePassStatus] ?? 'default'} />
+                        <Typography variant="caption" color="text.secondary">{formatDate(delivery.gatePassDate)}</Typography>
+                      </Box>
+                    </AccordionSummary>
+                    <AccordionDetails>
+                      {/* Gate Pass Items */}
+                      <Typography variant="caption" fontWeight={600} color="text.secondary">GATE PASS ITEMS (delivered to gate)</Typography>
+                      <TableContainer component={Card} variant="outlined" sx={{ overflowX: 'auto', mb: 2 }}>
+                        <Table size="small">
+                          <TableHead>
+                            <TableRow>
+                              <TableCell sx={{ fontWeight: 600 }}>Material</TableCell>
+                              <TableCell sx={{ fontWeight: 600 }}>Delivered Qty</TableCell>
+                              <TableCell sx={{ fontWeight: 600 }}>Unit</TableCell>
+                            </TableRow>
+                          </TableHead>
+                          <TableBody>
+                            {delivery.items.map((item, i) => (
+                              <TableRow key={i}>
+                                <TableCell>{item.materialName}</TableCell>
+                                <TableCell>{formatIndianNumber(item.deliveredQty)}</TableCell>
+                                <TableCell>{item.unit ?? '—'}</TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </TableContainer>
+
+                      {/* Goods Receipt / Inspection Results */}
+                      {delivery.goodsReceipt ? (
+                        <>
+                          <Typography variant="caption" fontWeight={600} color="text.secondary">
+                            GOODS RECEIPT — {delivery.goodsReceipt.receiptNumber} ({delivery.goodsReceipt.receiptStatus.replace(/_/g, ' ')})
+                          </Typography>
+                          <TableContainer component={Card} variant="outlined" sx={{ overflowX: 'auto' }}>
+                            <Table size="small">
+                              <TableHead>
+                                <TableRow>
+                                  <TableCell sx={{ fontWeight: 600 }}>Material</TableCell>
+                                  <TableCell sx={{ fontWeight: 600 }}>Delivered</TableCell>
+                                  <TableCell sx={{ fontWeight: 600 }}>Accepted</TableCell>
+                                  <TableCell sx={{ fontWeight: 600 }}>Rejected</TableCell>
+                                  <TableCell sx={{ fontWeight: 600 }}>Reason</TableCell>
+                                </TableRow>
+                              </TableHead>
+                              <TableBody>
+                                {delivery.goodsReceipt.items.map((item, i) => (
+                                  <TableRow key={i}>
+                                    <TableCell>{item.materialName}</TableCell>
+                                    <TableCell>{formatIndianNumber(item.deliveredQty)}</TableCell>
+                                    <TableCell sx={{ color: 'success.main' }}>{formatIndianNumber(item.acceptedQty)}</TableCell>
+                                    <TableCell sx={{ color: item.rejectedQty > 0 ? 'error.main' : 'text.secondary' }}>{formatIndianNumber(item.rejectedQty)}</TableCell>
+                                    <TableCell>{item.rejectionReason ?? '—'}</TableCell>
+                                  </TableRow>
+                                ))}
+                              </TableBody>
+                            </Table>
+                          </TableContainer>
+                          {delivery.goodsReceipt.inspectedAt && (
+                            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                              Inspected: {formatDate(delivery.goodsReceipt.inspectedAt)}
+                              {delivery.goodsReceipt.postedAt && ` • Posted: ${formatDate(delivery.goodsReceipt.postedAt)}`}
+                            </Typography>
+                          )}
+                        </>
+                      ) : (
+                        <Alert severity="info" sx={{ mt: 1 }}>
+                          No Goods Receipt created yet for this gate pass. The material has arrived at the gate but has not been inspected or posted to inventory.
+                        </Alert>
+                      )}
+                    </AccordionDetails>
+                  </Accordion>
+                ))
+              )}
+            </Box>
+          </Box>
+        ) : (
+          <Typography color="text.secondary">No data available.</Typography>
+        )}
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose}>Close</Button>
+      </DialogActions>
+    </ResponsiveDialog>
   );
 }

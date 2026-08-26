@@ -104,6 +104,10 @@ router.get(
             where: { deletedAt: null, status: { in: ['PENDING', 'APPROVED'] } },
             select: { items: true },
           },
+          goodsReceipts: {
+            where: { deletedAt: null, status: 'POSTED' },
+            select: { items: { select: { materialName: true, acceptedQty: true } } },
+          },
           invoices: {
             where: { deletedAt: null, verificationStatus: 'VERIFIED' },
             select: {
@@ -118,12 +122,23 @@ router.get(
         orderBy: { createdAt: 'desc' },
       });
       // Return all approved POs (invoice is optional for gate pass creation)
+      // Received quantity is based on accepted quantities from posted Goods Receipts,
+      // not gate pass quantities, so rejected material is not counted as received.
       const result = pos.map((po) => {
-        const receivedByName = new Map<string, number>();
+        const acceptedByName = new Map<string, number>();
+        for (const receipt of po.goodsReceipts) {
+          for (const item of receipt.items) {
+            const name = item.materialName.toLowerCase();
+            acceptedByName.set(name, (acceptedByName.get(name) ?? 0) + Number(item.acceptedQty));
+          }
+        }
+        // Also count gate pass quantities that are approved but not yet inspected/posted
+        // so the user can see what is in transit (pending inspection)
+        const inTransitByName = new Map<string, number>();
         for (const gatePass of po.gatePasses) {
           for (const item of gatePass.items) {
             const name = item.materialName.toLowerCase();
-            receivedByName.set(name, (receivedByName.get(name) ?? 0) + Number(item.quantity));
+            inTransitByName.set(name, (inTransitByName.get(name) ?? 0) + Number(item.quantity));
           }
         }
         return {
@@ -133,13 +148,15 @@ router.get(
           grandTotal: Number(po.grandTotal),
           items: po.items.map((item) => {
             const orderedQuantity = Number(item.quantity);
-            const receivedQuantity = receivedByName.get(item.materialName.toLowerCase()) ?? 0;
+            const acceptedQuantity = acceptedByName.get(item.materialName.toLowerCase()) ?? 0;
+            const inTransitQuantity = Math.max(0, (inTransitByName.get(item.materialName.toLowerCase()) ?? 0) - acceptedQuantity);
             return {
               materialName: item.materialName,
               quantity: orderedQuantity,
               orderedQuantity,
-              receivedQuantity,
-              remainingQuantity: Math.max(0, orderedQuantity - receivedQuantity),
+              receivedQuantity: acceptedQuantity,
+              inTransitQuantity,
+              remainingQuantity: Math.max(0, orderedQuantity - acceptedQuantity),
               unit: item.unit,
             };
           }),
@@ -287,6 +304,10 @@ router.post(
               where: { deletedAt: null, status: { in: ['PENDING', 'APPROVED'] } },
               select: { items: true },
             },
+            goodsReceipts: {
+              where: { deletedAt: null, status: 'POSTED' },
+              select: { items: { select: { materialName: true, acceptedQty: true } } },
+            },
           },
         });
         if (!po) {
@@ -298,15 +319,26 @@ router.post(
           return;
         }
 
-        const receivedByName = new Map<string, number>();
+        // Accepted quantities from posted Goods Receipts
+        const acceptedByName = new Map<string, number>();
+        for (const receipt of po.goodsReceipts) {
+          for (const item of receipt.items) {
+            const name = item.materialName.toLowerCase();
+            acceptedByName.set(name, (acceptedByName.get(name) ?? 0) + Number(item.acceptedQty));
+          }
+        }
+        // Gate pass quantities in transit (approved but not yet posted as accepted)
+        const inTransitByName = new Map<string, number>();
         for (const existingGatePass of po.gatePasses) {
           for (const item of existingGatePass.items) {
             const name = item.materialName.toLowerCase();
-            receivedByName.set(name, (receivedByName.get(name) ?? 0) + Number(item.quantity));
+            inTransitByName.set(name, (inTransitByName.get(name) ?? 0) + Number(item.quantity));
           }
         }
+        // Remaining = ordered - accepted - in-transit (not yet inspected)
         const remainingByName = new Map(po.items.map((item) => [
-          item.materialName.toLowerCase(), Math.max(0, Number(item.quantity) - (receivedByName.get(item.materialName.toLowerCase()) ?? 0)),
+          item.materialName.toLowerCase(),
+          Math.max(0, Number(item.quantity) - (acceptedByName.get(item.materialName.toLowerCase()) ?? 0) - (inTransitByName.get(item.materialName.toLowerCase()) ?? 0)),
         ]));
         items = (rawItems
           ? (typeof rawItems === 'string' ? JSON.parse(rawItems) : rawItems)
@@ -533,26 +565,28 @@ router.post(
       });
 
       if (gatePass.poId) {
+        // PO status is based on accepted quantities from posted Goods Receipts,
+        // not gate pass quantities. Rejected material does not count as received.
         const poWithReceipts = await prisma.purchaseOrder.findUnique({
           where: { id: gatePass.poId },
           include: {
-          items: true,
-          gatePasses: {
-            where: { deletedAt: null, status: 'APPROVED' },
-            select: { items: true },
+            items: true,
+            goodsReceipts: {
+              where: { deletedAt: null, status: 'POSTED' },
+              select: { items: { select: { materialName: true, acceptedQty: true } } },
+            },
           },
-        },
-      });
+        });
       if (poWithReceipts) {
-        const receivedByName = new Map<string, number>();
-        for (const receipt of poWithReceipts.gatePasses) {
+        const acceptedByName = new Map<string, number>();
+        for (const receipt of poWithReceipts.goodsReceipts) {
           for (const item of receipt.items) {
             const name = item.materialName.toLowerCase();
-            receivedByName.set(name, (receivedByName.get(name) ?? 0) + Number(item.quantity));
+            acceptedByName.set(name, (acceptedByName.get(name) ?? 0) + Number(item.acceptedQty));
           }
         }
         const fullyReceived = poWithReceipts.items.every(
-          (item) => (receivedByName.get(item.materialName.toLowerCase()) ?? 0) >= Number(item.quantity),
+          (item) => (acceptedByName.get(item.materialName.toLowerCase()) ?? 0) >= Number(item.quantity),
         );
         await prisma.purchaseOrder.update({
           where: { id: gatePass.poId },

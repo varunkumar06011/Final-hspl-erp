@@ -220,7 +220,12 @@ export function createCrudRouter(config: CrudConfig): Router {
         }
 
         if (config.beforeDelete) {
-          await config.beforeDelete(req.params.id);
+          try {
+            await config.beforeDelete(req.params.id);
+          } catch (err) {
+            res.status(400).json({ error: err instanceof Error ? err.message : 'Cannot delete this record' });
+            return;
+          }
         }
 
         await model.update({

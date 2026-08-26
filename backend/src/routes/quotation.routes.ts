@@ -386,6 +386,10 @@ router.delete(
         res.status(404).json({ error: 'Quotation not found' });
         return;
       }
+      if (existing.status === QuotationStatus.APPROVED || existing.status === QuotationStatus.CONVERTED_TO_PO) {
+        res.status(400).json({ error: 'Cannot delete an approved quotation or one that has been converted to a purchase order' });
+        return;
+      }
 
       const storage = getStorageService();
       if (existing.filePath) {

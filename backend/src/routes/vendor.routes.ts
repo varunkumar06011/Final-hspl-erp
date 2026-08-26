@@ -10,6 +10,28 @@ interface MaterialInput {
   unit?: string;
 }
 
+// Block vendor deletion if any financial records reference it
+async function validateVendorDeletion(vendorId: string): Promise<void> {
+  const [invoices, quotations, pos, paymentRequests] = await Promise.all([
+    prisma.vendorInvoice.count({ where: { vendorId, deletedAt: null } }),
+    prisma.quotation.count({ where: { vendorId, deletedAt: null } }),
+    prisma.purchaseOrder.count({ where: { vendorId, deletedAt: null } }),
+    prisma.paymentRequest.count({ where: { vendorId, deletedAt: null } }),
+  ]);
+  if (invoices > 0) {
+    throw new Error(`Cannot delete vendor with ${invoices} existing invoice(s)`);
+  }
+  if (quotations > 0) {
+    throw new Error(`Cannot delete vendor with ${quotations} existing quotation(s)`);
+  }
+  if (pos > 0) {
+    throw new Error(`Cannot delete vendor with ${pos} existing purchase order(s)`);
+  }
+  if (paymentRequests > 0) {
+    throw new Error(`Cannot delete vendor with ${paymentRequests} existing payment request(s)`);
+  }
+}
+
 async function generateVendorCode(): Promise<string> {
   const vendors = await prisma.vendor.findMany({
     where: { vendorCode: { startsWith: 'VGH-' } },
@@ -144,4 +166,5 @@ export default createCrudRouter({
       url: '/vendors',
     });
   },
+  beforeDelete: validateVendorDeletion,
 });

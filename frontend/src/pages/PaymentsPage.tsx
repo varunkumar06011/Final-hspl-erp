@@ -40,6 +40,7 @@ import {
   ExpandMore as ExpandMoreIcon,
   Download as DownloadIcon,
   Receipt as ReceiptIcon,
+  Delete as DeleteIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { PaymentStatus, PaymentMode, UserRole } from '@hospital-erp/shared';
@@ -236,6 +237,19 @@ export default function PaymentsPage() {
       queryClient.invalidateQueries({ queryKey: ['/invoices'] });
       queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
       setApprovalAction(null);
+    },
+    onError: (err: unknown) => setError(extractErrorMessage(err)),
+  });
+
+  const [deleteRow, setDeleteRow] = useState<PaymentRequestRow | null>(null);
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await api.delete(`/payments/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/payments'] });
+      queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
+      setDeleteRow(null);
     },
     onError: (err: unknown) => setError(extractErrorMessage(err)),
   });
@@ -488,6 +502,9 @@ export default function PaymentsPage() {
                           )}
                           {row.payments.length > 0 && (
                             <Chip label="Paid" size="small" color="success" />
+                          )}
+                          {row.status !== PaymentStatus.APPROVED && row.status !== PaymentStatus.PAID && (
+                            <IconButton size="small" color="error" onClick={() => setDeleteRow(row)} title="Delete"><DeleteIcon fontSize="small" /></IconButton>
                           )}
                         </Box>
                       </TableCell>
@@ -825,6 +842,22 @@ export default function PaymentsPage() {
           }
         }}
       />
+
+      <ResponsiveDialog open={deleteRow !== null} onClose={() => setDeleteRow(null)} maxWidth="xs" fullWidth>
+        <DialogTitle>Delete Payment Request</DialogTitle>
+        <DialogContent>
+          <Typography>Are you sure you want to delete payment request <strong>{deleteRow?.paymentCode}</strong>?</Typography>
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+            This action cannot be undone. Only payment requests that are not approved or paid can be deleted.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteRow(null)}>Cancel</Button>
+          <Button color="error" variant="contained" disabled={deleteMutation.isPending} onClick={() => deleteRow && deleteMutation.mutate(deleteRow.id)}>
+            {deleteMutation.isPending ? <CircularProgress size={20} /> : 'Delete'}
+          </Button>
+        </DialogActions>
+      </ResponsiveDialog>
     </Box>
   );
 }

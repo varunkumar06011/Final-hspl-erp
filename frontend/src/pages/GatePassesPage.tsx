@@ -79,6 +79,7 @@ interface ApprovedPO {
     quantity: number;
     orderedQuantity: number;
     receivedQuantity: number;
+    inTransitQuantity: number;
     remainingQuantity: number;
     unit: string | null;
   }[];
@@ -684,7 +685,8 @@ export default function GatePassesPage() {
                       <TableRow>
                         <TableCell sx={{ fontWeight: 600 }}>Material</TableCell>
                         <TableCell sx={{ fontWeight: 600 }}>Ordered</TableCell>
-                        <TableCell sx={{ fontWeight: 600 }}>Previously Received</TableCell>
+                        <TableCell sx={{ fontWeight: 600 }}>Accepted</TableCell>
+                        <TableCell sx={{ fontWeight: 600 }}>In Transit</TableCell>
                         <TableCell sx={{ fontWeight: 600 }}>Receive Now</TableCell>
                         <TableCell sx={{ fontWeight: 600 }}>Remaining</TableCell>
                         <TableCell sx={{ fontWeight: 600 }}>Unit</TableCell>
@@ -696,6 +698,7 @@ export default function GatePassesPage() {
                           <TableCell>{item.materialName}</TableCell>
                           <TableCell>{item.orderedQuantity}</TableCell>
                           <TableCell>{item.receivedQuantity}</TableCell>
+                          <TableCell>{item.inTransitQuantity ?? 0}</TableCell>
                           <TableCell>
                             <TextField
                               type="number"
@@ -714,7 +717,7 @@ export default function GatePassesPage() {
                   </Table>
                 </TableContainer>
                 <Typography variant="caption" color="text.secondary">
-                  Ordered quantities are preserved. Previously received and remaining quantities are shown so you can create multiple gatepasses for partial deliveries. Zero means do not receive this item now; enter at least one quantity greater than zero.
+                  Accepted = quantity inspected and posted to inventory. In Transit = delivered to gate but not yet inspected. Remaining = ordered minus accepted minus in-transit. Enter at least one quantity greater than zero to receive.
                 </Typography>
               </Box>
             )}

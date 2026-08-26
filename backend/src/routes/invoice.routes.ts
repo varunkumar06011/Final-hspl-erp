@@ -149,6 +149,10 @@ router.post(
           res.status(400).json({ error: 'PO does not belong to the selected vendor' });
           return;
         }
+        if (!['APPROVED', 'PARTIALLY_DELIVERED', 'DELIVERED'].includes(po.status)) {
+          res.status(400).json({ error: 'Invoice can only be created against an approved, partially delivered, or delivered purchase order' });
+          return;
+        }
       }
 
       const invoiceCode = await generateInvoiceCode();

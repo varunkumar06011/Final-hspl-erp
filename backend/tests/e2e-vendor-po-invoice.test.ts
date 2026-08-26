@@ -24,8 +24,15 @@ const { tables, createModelMock, seedData } = vi.hoisted(() => {
     payment: new Map(),
     paymentRequest: new Map(),
     inventoryItem: new Map(),
+    inventoryTransaction: new Map(),
     issue: new Map(),
     phase: new Map(),
+    gatePass: new Map(),
+    gatePassItem: new Map(),
+    goodsReceipt: new Map(),
+    goodsReceiptItem: new Map(),
+    pOItem: new Map(),
+    inspection: new Map(),
   };
 
   // ─── Helper: match where clause ──────────────────────────
@@ -45,6 +52,8 @@ const { tables, createModelMock, seedData } = vi.hoisted(() => {
         const val = record[key];
         if (condition.in !== undefined) {
           if (!condition.in.includes(val)) return false;
+        } else if (condition.not !== undefined) {
+          if (val === condition.not) return false;
         } else if (condition.startsWith !== undefined) {
           if (typeof val !== 'string' || !val.startsWith(condition.startsWith)) return false;
         }
@@ -61,11 +70,16 @@ const { tables, createModelMock, seedData } = vi.hoisted(() => {
     const result = { ...record };
 
     // Context-aware: items maps to different tables depending on parent type
-    // POs have poNumber, quotations have quotationNumber
+    // POs have poNumber, quotations have quotationNumber, goods receipts have receiptNumber
     const isPO = 'poNumber' in record;
+    const isGoodsReceipt = 'receiptNumber' in record && 'gatePassId' in record;
     const relationMap: Record<string, { table: string; fk: string; isList: boolean; reverseFk?: string }> = {
       materials: { table: 'vendorMaterial', fk: 'vendorId', isList: true },
-      items: isPO ? { table: 'purchaseOrderItem', fk: 'poId', isList: true } : { table: 'quotationItem', fk: 'quotationId', isList: true },
+      items: isGoodsReceipt
+        ? { table: 'goodsReceiptItem', fk: 'goodsReceiptId', isList: true }
+        : isPO
+          ? { table: 'purchaseOrderItem', fk: 'poId', isList: true }
+          : { table: 'quotationItem', fk: 'quotationId', isList: true },
       steps: { table: 'approvalStep', fk: 'workflowId', isList: true },
       vendor: { table: 'vendor', fk: 'id', isList: false, reverseFk: 'vendorId' },
       quotation: { table: 'quotation', fk: 'id', isList: false, reverseFk: 'quotationId' },
@@ -80,6 +94,10 @@ const { tables, createModelMock, seedData } = vi.hoisted(() => {
       otpRequestedForUser: { table: 'user', fk: 'id', isList: false, reverseFk: 'otpRequestedFor' },
       otpApprovedByUser: { table: 'user', fk: 'id', isList: false, reverseFk: 'otpApprovedBy' },
       approverUser: { table: 'user', fk: 'id', isList: false, reverseFk: 'approverUserId' },
+      // Goods receipt relations
+      poItem: { table: 'purchaseOrderItem', fk: 'id', isList: false, reverseFk: 'poItemId' },
+      goodsReceipt: { table: 'goodsReceipt', fk: 'id', isList: false, reverseFk: 'goodsReceiptId' },
+      gatePass: { table: 'gatePass', fk: 'id', isList: false, reverseFk: 'gatePassId' },
     };
 
     for (const [relName, relConfig] of Object.entries(include)) {
@@ -91,8 +109,13 @@ const { tables, createModelMock, seedData } = vi.hoisted(() => {
         for (const child of tables[r.table].values()) {
           if (child[r.fk] === record.id) {
             let childResult = { ...child };
+            // Handle both include and select for nested relations
             if (typeof relConfig === 'object' && relConfig.include) {
               childResult = resolveIncludes(childResult, relConfig.include);
+            }
+            if (typeof relConfig === 'object' && relConfig.select) {
+              const nestedInc = selectToInclude(relConfig.select);
+              if (nestedInc) childResult = resolveIncludes(childResult, nestedInc);
             }
             children.push(childResult);
           }
@@ -115,6 +138,8 @@ const { tables, createModelMock, seedData } = vi.hoisted(() => {
               relResult = resolveIncludes(relResult, relConfig.include);
             }
             if (typeof relConfig === 'object' && relConfig.select) {
+              const nestedInc = selectToInclude(relConfig.select);
+              if (nestedInc) relResult = resolveIncludes(relResult, nestedInc);
               relResult = applySelect(relResult, relConfig.select);
             }
             (result as any)[relName] = relResult;
@@ -131,9 +156,36 @@ const { tables, createModelMock, seedData } = vi.hoisted(() => {
     if (!select) return record;
     const result: Record_ = {};
     for (const key of Object.keys(select)) {
-      if (key in record) result[key] = record[key];
+      if (key in record) {
+        // If the select value is an object with nested select, apply recursively
+        if (typeof select[key] === 'object' && select[key] !== null && !Array.isArray(select[key]) && select[key].select) {
+          if (Array.isArray(record[key])) {
+            result[key] = record[key].map((item: Record_) => applySelect(item, select[key].select));
+          } else if (record[key]) {
+            result[key] = applySelect(record[key] as Record_, select[key].select);
+          } else {
+            result[key] = record[key];
+          }
+        } else {
+          result[key] = record[key];
+        }
+      }
     }
     return result;
+  }
+
+  // Convert select with nested relation fields into include for relation resolution
+  function selectToInclude(select: any): any {
+    if (!select) return null;
+    const include: any = {};
+    let hasNested = false;
+    for (const [key, val] of Object.entries(select)) {
+      if (typeof val === 'object' && val !== null && !Array.isArray(val)) {
+        include[key] = val;
+        hasNested = true;
+      }
+    }
+    return hasNested ? include : null;
   }
 
   // ─── Helper: handle nested creates ───────────────────────
@@ -190,7 +242,11 @@ const { tables, createModelMock, seedData } = vi.hoisted(() => {
         if (skip) records = records.slice(skip);
         if (take) records = records.slice(0, take);
         if (include) records = records.map((r) => resolveIncludes(r, include));
-        if (select) records = records.map((r) => applySelect(r, select));
+        if (select) {
+          const nestedInclude = selectToInclude(select);
+          if (nestedInclude) records = records.map((r) => resolveIncludes(r, nestedInclude));
+          records = records.map((r) => applySelect(r, select));
+        }
         return records;
       }),
       findFirst: vi.fn(async ({ where, include, select }: any = {}) => {
@@ -198,7 +254,11 @@ const { tables, createModelMock, seedData } = vi.hoisted(() => {
           if (matchWhere(record, where)) {
             let result = { ...record };
             if (include) result = resolveIncludes(result, include);
-            if (select) result = applySelect(result, select);
+            if (select) {
+              const nestedInclude = selectToInclude(select);
+              if (nestedInclude) result = resolveIncludes(result, nestedInclude);
+              result = applySelect(result, select);
+            }
             return result;
           }
         }
@@ -220,7 +280,11 @@ const { tables, createModelMock, seedData } = vi.hoisted(() => {
         if (!record) return null;
         let result = { ...record };
         if (include) result = resolveIncludes(result, include);
-        if (select) result = applySelect(result, select);
+        if (select) {
+          const nestedInclude = selectToInclude(select);
+          if (nestedInclude) result = resolveIncludes(result, nestedInclude);
+          result = applySelect(result, select);
+        }
         return result;
       }),
       create: vi.fn(async ({ data, include }: any = {}) => {
@@ -238,6 +302,17 @@ const { tables, createModelMock, seedData } = vi.hoisted(() => {
           if (fetched) result = fetched;
         }
         return result;
+      }),
+      createMany: vi.fn(async ({ data }: any = {}) => {
+        const creates = Array.isArray(data) ? data : [data];
+        const created: any[] = [];
+        for (const createData of creates) {
+          const id = createData.id || crypto.randomUUID();
+          const record = { ...createData, id, createdAt: new Date(), updatedAt: new Date() };
+          table.set(id, record);
+          created.push(record);
+        }
+        return { count: created.length };
       }),
       update: vi.fn(async ({ where, data, include }: any = {}) => {
         let record: Record_ | undefined;
@@ -310,9 +385,15 @@ const { tables, createModelMock, seedData } = vi.hoisted(() => {
     const PROJECT_ID = '00000000-0000-0000-0000-000000000001';
     const USER_PH = { id: '00000000-0000-0000-0000-000000000010', firebaseUid: 'fb-head', phone: '+910000000010', name: 'Project Head', role: 'PROJECT_HEAD', projectId: PROJECT_ID, isActive: true };
     const USER_HOC = { id: '00000000-0000-0000-0000-000000000011', firebaseUid: 'fb-hoc', phone: '+910000000011', name: 'Head of Construction', role: 'HEAD_OF_CONSTRUCTION', projectId: PROJECT_ID, isActive: true };
+    const USER_ACC = { id: '00000000-0000-0000-0000-000000000012', firebaseUid: 'fb-acc', phone: '+910000000012', name: 'Accountant', role: 'ACCOUNTANT', projectId: PROJECT_ID, isActive: true };
+    const USER_ADMIN = { id: '00000000-0000-0000-0000-000000000013', firebaseUid: 'fb-admin', phone: '+910000000013', name: 'Admin', role: 'ADMIN', projectId: PROJECT_ID, isActive: true };
+    const USER_ADMIN2 = { id: '00000000-0000-0000-0000-000000000014', firebaseUid: 'fb-admin2', phone: '+910000000014', name: 'Admin 2', role: 'ADMIN_2', projectId: PROJECT_ID, isActive: true };
     const PROJECT = { id: PROJECT_ID, name: 'Test Hospital', status: 'ACTIVE', totalBudget: 10000000, officeAddress: 'Office 1', hospitalAddress: 'Hospital 1' };
     tables.user.set(USER_PH.id, { ...USER_PH });
     tables.user.set(USER_HOC.id, { ...USER_HOC });
+    tables.user.set(USER_ACC.id, { ...USER_ACC });
+    tables.user.set(USER_ADMIN.id, { ...USER_ADMIN });
+    tables.user.set(USER_ADMIN2.id, { ...USER_ADMIN2 });
     tables.project.set(PROJECT.id, { ...PROJECT });
   }
 
@@ -330,6 +411,7 @@ vi.mock('../src/config/prisma', () => ({
     quotationItem: createModelMock('quotationItem'),
     purchaseOrder: createModelMock('purchaseOrder'),
     purchaseOrderItem: createModelMock('purchaseOrderItem'),
+    pOItem: createModelMock('purchaseOrderItem'),
     vendorInvoice: createModelMock('vendorInvoice'),
     approvalWorkflow: createModelMock('approvalWorkflow'),
     approvalStep: createModelMock('approvalStep'),
@@ -337,8 +419,15 @@ vi.mock('../src/config/prisma', () => ({
     payment: createModelMock('payment'),
     paymentRequest: createModelMock('paymentRequest'),
     inventoryItem: createModelMock('inventoryItem'),
+    inventoryTransaction: createModelMock('inventoryTransaction'),
     issue: createModelMock('issue'),
     phase: createModelMock('phase'),
+    gatePass: createModelMock('gatePass'),
+    gatePassItem: createModelMock('gatePassItem'),
+    goodsReceipt: createModelMock('goodsReceipt'),
+    goodsReceiptItem: createModelMock('goodsReceiptItem'),
+    inspection: createModelMock('inspection'),
+    vendorMaterial_deleteMany: createModelMock('vendorMaterial'),
   },
 }));
 
@@ -364,6 +453,12 @@ vi.mock('../src/services/audit.service', () => ({
   logAudit: vi.fn(async () => {}),
 }));
 
+vi.mock('../src/services/push.service', () => ({
+  notifyAllHeads: vi.fn(async () => {}),
+  notifyUser: vi.fn(async () => {}),
+  notifyApprovers: vi.fn(async () => {}),
+}));
+
 // ─── Seed before importing app ───────────────────────────────
 seedData();
 
@@ -375,6 +470,9 @@ const request = supertest(app);
 // ─── Constants ───────────────────────────────────────────────
 const USER_PROJECT_HEAD = '00000000-0000-0000-0000-000000000010';
 const USER_HOC = '00000000-0000-0000-0000-000000000011';
+const USER_ACCOUNTANT = '00000000-0000-0000-0000-000000000012';
+const USER_ADMIN = '00000000-0000-0000-0000-000000000013';
+const USER_ADMIN2 = '00000000-0000-0000-0000-000000000014';
 
 function authAs(userId: string) {
   return { Authorization: `Bearer dev-token:${userId}` };
@@ -390,7 +488,7 @@ describe('E2E: Vendor → Quotation → PO → Invoice full flow', () => {
   it('1. Create a vendor with materials', async () => {
     const res = await request
       .post('/api/vendors')
-      .set(authAs(USER_PROJECT_HEAD))
+      .set(authAs(USER_ACCOUNTANT))
       .send({
         name: 'Test Vendor Pvt Ltd',
         contactPersonName: 'Ramesh',
@@ -414,7 +512,7 @@ describe('E2E: Vendor → Quotation → PO → Invoice full flow', () => {
   it('2. Create a quotation for the vendor (with matching materials)', async () => {
     const res = await request
       .post('/api/quotations')
-      .set(authAs(USER_PROJECT_HEAD))
+      .set(authAs(USER_ACCOUNTANT))
       .send({
         vendorId,
         items: [
@@ -462,14 +560,14 @@ describe('E2E: Vendor → Quotation → PO → Invoice full flow', () => {
     expect(res.body.status).not.toBe('APPROVED');
   });
 
-  it('5. Approve quotation — step 2 (by Head of Construction) → quotation becomes APPROVED', async () => {
+  it('5. Approve quotation — step 3 (by Admin, group 2) → quotation becomes APPROVED', async () => {
     const quotation = await request.get(`/api/quotations/${quotationId}`).set(authAs(USER_PROJECT_HEAD));
-    const step2Id = quotation.body.approvalWorkflow.steps[1].id;
+    const step3Id = quotation.body.approvalWorkflow.steps[2].id;
 
     const res = await request
-      .post(`/api/quotations/${quotationId}/approve/${step2Id}`)
-      .set(authAs(USER_HOC))
-      .send({ acknowledged: true, comments: 'Approved' });
+      .post(`/api/quotations/${quotationId}/approve/${step3Id}`)
+      .set(authAs(USER_ADMIN))
+      .send({ acknowledged: true, comments: 'Approved by Admin' });
 
     expect(res.status).toBe(200);
     expect(res.body.status).toBe('APPROVED');
@@ -478,7 +576,7 @@ describe('E2E: Vendor → Quotation → PO → Invoice full flow', () => {
   it('6. Create a Purchase Order from the approved quotation', async () => {
     const res = await request
       .post('/api/purchase-orders')
-      .set(authAs(USER_PROJECT_HEAD))
+      .set(authAs(USER_ACCOUNTANT))
       .send({
         vendorId,
         quotationId,
@@ -498,41 +596,34 @@ describe('E2E: Vendor → Quotation → PO → Invoice full flow', () => {
     poId = res.body.id;
   });
 
-  it('7. PO should have an approval workflow with 4 head-role steps, minApprovers=2', async () => {
+  it('7. PO should have an approval workflow with 2 admin steps, minApprovers=1, PO_SINGLE_APPROVER policy', async () => {
     const res = await request
       .get(`/api/purchase-orders/${poId}`)
       .set(authAs(USER_PROJECT_HEAD));
 
     expect(res.status).toBe(200);
     expect(res.body.approvalWorkflow).toBeDefined();
-    expect(res.body.approvalWorkflow.steps).toHaveLength(4);
-    expect(res.body.approvalWorkflow.minApprovers).toBe(2);
+    expect(res.body.approvalWorkflow.steps).toHaveLength(2);
+    expect(res.body.approvalWorkflow.minApprovers).toBe(1);
+    expect(res.body.approvalWorkflow.approvalPolicy).toBe('PO_SINGLE_APPROVER');
+    expect(res.body.approvalWorkflow.steps[0].approverRole).toBe(UserRole.ADMIN);
+    expect(res.body.approvalWorkflow.steps[1].approverRole).toBe(UserRole.ADMIN_2);
   });
 
-  it('8. Approve PO — first approval (by Project Head)', async () => {
+  it('8. Approve PO — by Admin → PO becomes APPROVED (single approver policy)', async () => {
     const res = await request
       .post(`/api/purchase-orders/${poId}/approve`)
-      .set(authAs(USER_PROJECT_HEAD))
-      .send({ acknowledged: true, comments: 'PO approved by Project Head' });
-
-    expect(res.status).toBe(200);
-    expect(res.body.status).not.toBe('APPROVED');
-  });
-
-  it('9. Approve PO — second approval (by Head of Construction) → PO becomes APPROVED', async () => {
-    const res = await request
-      .post(`/api/purchase-orders/${poId}/approve`)
-      .set(authAs(USER_HOC))
-      .send({ acknowledged: true, comments: 'PO approved by HoC' });
+      .set(authAs(USER_ADMIN))
+      .send({ acknowledged: true, comments: 'PO approved by Admin' });
 
     expect(res.status).toBe(200);
     expect(res.body.status).toBe('APPROVED');
   });
 
-  it('10. Same person cannot approve PO twice', async () => {
+  it('9. Same person cannot approve PO twice', async () => {
     const res = await request
       .post(`/api/purchase-orders/${poId}/approve`)
-      .set(authAs(USER_PROJECT_HEAD))
+      .set(authAs(USER_ADMIN))
       .send({ acknowledged: true, comments: 'Trying again' });
 
     expect(res.status).toBe(400);
@@ -542,7 +633,7 @@ describe('E2E: Vendor → Quotation → PO → Invoice full flow', () => {
   it('11. Create an invoice for the approved PO', async () => {
     const res = await request
       .post('/api/invoices')
-      .set(authAs(USER_PROJECT_HEAD))
+      .set(authAs(USER_ACCOUNTANT))
       .send({
         vendorId,
         poId,
@@ -559,13 +650,76 @@ describe('E2E: Vendor → Quotation → PO → Invoice full flow', () => {
     expect(res.body.invoiceCode).toMatch(/^VGH-IN\d{3}$/);
     expect(res.body.invoiceNumber).toBe(res.body.invoiceCode);
     expect(res.body.verificationStatus).toBe('PENDING');
-    expect(res.body.paymentStatus).toBe('PENDING');
+    expect(res.body.paymentStatus).toBe('PARTIALLY_PAID');
     expect(res.body.stockStatus).toBe('PENDING');
     expect(Number(res.body.totalAmount)).toBe(72750);
     invoiceId = res.body.id;
   });
 
-  it('12. Invoice should have an approval workflow with 4 head-role steps, minApprovers=2', async () => {
+  it('11b. Insert a posted goods receipt for the PO (so invoice can be approved)', async () => {
+    // Fetch the PO to get its items
+    const poRes = await request.get(`/api/purchase-orders/${poId}`).set(authAs(USER_PROJECT_HEAD));
+    const poItems = poRes.body.items;
+
+    // Directly insert a posted goods receipt into the mock database
+    const receiptId = 'gr-00000000-0000-0000-0000-000000000001';
+    const gatePassId = 'gp-00000000-0000-0000-0000-000000000001';
+    const projectId = '00000000-0000-0000-0000-000000000001';
+
+    // Create a gate pass (required for goods receipt relation)
+    tables.gatePass.set(gatePassId, {
+      id: gatePassId,
+      passNumber: 'VGH-GP001',
+      poId,
+      projectId,
+      type: 'MATERIAL',
+      status: 'APPROVED',
+      vehicleNumber: 'TS09AB1234',
+      driverName: 'Driver',
+      otpRecipientPhone: '+910000000010',
+      createdBy: USER_ACCOUNTANT,
+      deletedAt: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    // Create goods receipt with items matching PO
+    tables.goodsReceipt.set(receiptId, {
+      id: receiptId,
+      receiptNumber: 'VGH-GR001',
+      gatePassId,
+      poId,
+      projectId,
+      status: 'POSTED',
+      createdBy: USER_ACCOUNTANT,
+      inspectedBy: USER_ADMIN,
+      deletedAt: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    // Create goods receipt items with accepted quantities matching PO items
+    poItems.forEach((item: any, idx: number) => {
+      const griId = `gri-${idx + 1}-00000000-0000-0000-0000-000000000001`;
+      tables.goodsReceiptItem.set(griId, {
+        id: griId,
+        goodsReceiptId: receiptId,
+        poItemId: item.id,
+        materialName: item.materialName,
+        unit: item.unit,
+        orderedQty: item.quantity,
+        acceptedQty: item.quantity, // Full acceptance
+        rejectedQty: 0,
+        deletedAt: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+    });
+
+    expect(tables.goodsReceipt.size).toBeGreaterThan(0);
+  });
+
+  it('12. Invoice should have an approval workflow with 4 head-role steps, minApprovers=2, HEAD_GROUPS policy', async () => {
     const res = await request
       .get(`/api/invoices/${invoiceId}`)
       .set(authAs(USER_PROJECT_HEAD));
@@ -574,9 +728,10 @@ describe('E2E: Vendor → Quotation → PO → Invoice full flow', () => {
     expect(res.body.approvalWorkflow).toBeDefined();
     expect(res.body.approvalWorkflow.steps).toHaveLength(4);
     expect(res.body.approvalWorkflow.minApprovers).toBe(2);
+    expect(res.body.approvalWorkflow.approvalPolicy).toBe('HEAD_GROUPS');
   });
 
-  it('13. Approve invoice — first approval (by Project Head)', async () => {
+  it('13. Approve invoice — first approval (by Project Head, group 1)', async () => {
     const res = await request
       .post(`/api/invoices/${invoiceId}/approve`)
       .set(authAs(USER_PROJECT_HEAD))
@@ -586,11 +741,11 @@ describe('E2E: Vendor → Quotation → PO → Invoice full flow', () => {
     expect(res.body.verificationStatus).not.toBe('VERIFIED');
   });
 
-  it('14. Approve invoice — second approval (by Head of Construction) → invoice becomes VERIFIED', async () => {
+  it('14. Approve invoice — second approval (by Admin, group 2) → invoice becomes VERIFIED', async () => {
     const res = await request
       .post(`/api/invoices/${invoiceId}/approve`)
-      .set(authAs(USER_HOC))
-      .send({ acknowledged: true, comments: 'Invoice verified by HoC' });
+      .set(authAs(USER_ADMIN))
+      .send({ acknowledged: true, comments: 'Invoice verified by Admin' });
 
     expect(res.status).toBe(200);
     expect(res.body.verificationStatus).toBe('VERIFIED');
@@ -653,7 +808,7 @@ describe('E2E: Vendor → Quotation → PO → Invoice full flow', () => {
   it('20. Cannot create PO from a non-approved quotation', async () => {
     const quotRes = await request
       .post('/api/quotations')
-      .set(authAs(USER_PROJECT_HEAD))
+      .set(authAs(USER_ACCOUNTANT))
       .send({
         vendorId,
         items: [
@@ -668,7 +823,7 @@ describe('E2E: Vendor → Quotation → PO → Invoice full flow', () => {
 
     const poRes = await request
       .post('/api/purchase-orders')
-      .set(authAs(USER_PROJECT_HEAD))
+      .set(authAs(USER_ACCOUNTANT))
       .send({
         vendorId,
         quotationId: newQuotationId,
@@ -680,10 +835,10 @@ describe('E2E: Vendor → Quotation → PO → Invoice full flow', () => {
     expect(poRes.body.error).toContain('Only approved quotations');
   });
 
-  it('21. Cannot create quotation with materials not supplied by vendor', async () => {
+  it('21. Quotation with new materials auto-registers them to the vendor', async () => {
     const res = await request
       .post('/api/quotations')
-      .set(authAs(USER_PROJECT_HEAD))
+      .set(authAs(USER_ACCOUNTANT))
       .send({
         vendorId,
         items: [
@@ -693,8 +848,12 @@ describe('E2E: Vendor → Quotation → PO → Invoice full flow', () => {
         acknowledged: true,
       });
 
-    expect(res.status).toBe(400);
-    expect(res.body.error).toContain('not supplied by vendor');
+    expect(res.status).toBe(201);
+    expect(res.body.id).toBeDefined();
+    // The new material "Bricks" should be auto-registered to the vendor
+    const vendorRes = await request.get(`/api/vendors/${vendorId}`).set(authAs(USER_PROJECT_HEAD));
+    const materialNames = vendorRes.body.materials.map((m: any) => m.name);
+    expect(materialNames).toContain('Bricks');
   });
 
   it('22. Health check returns ok', async () => {

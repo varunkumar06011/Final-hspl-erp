@@ -171,6 +171,12 @@ export async function approve(stepId: string, userId: string, comments?: string)
     throw new Error(`Only ${step.approverRole} can approve this step`);
   }
 
+  // Segregation of duties: the creator of the entity cannot approve their own record
+  const creatorInfo = await findEntityCreator(step.workflow.entityType, step.workflow.entityId);
+  if (creatorInfo.createdBy && creatorInfo.createdBy === userId) {
+    throw new Error('You cannot approve a record you created');
+  }
+
   const existingDecision = await prisma.approvalStep.findFirst({
     where: {
       workflowId: step.workflowId,
@@ -301,6 +307,12 @@ export async function reject(stepId: string, userId: string, reason: string) {
 
   if (user.role !== step.approverRole) {
     throw new Error(`Only ${step.approverRole} can reject this step`);
+  }
+
+  // Segregation of duties: the creator of the entity cannot reject their own record
+  const creatorInfo = await findEntityCreator(step.workflow.entityType, step.workflow.entityId);
+  if (creatorInfo.createdBy && creatorInfo.createdBy === userId) {
+    throw new Error('You cannot reject a record you created');
   }
 
   const existingDecision = await prisma.approvalStep.findFirst({

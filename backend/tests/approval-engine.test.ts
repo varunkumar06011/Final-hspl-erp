@@ -83,8 +83,66 @@ vi.mock('../src/config/prisma', () => {
             'user-2': { id: 'user-2', role: UserRole.HEAD_OF_CONSTRUCTION, name: 'Admin Two' },
             'user-3': { id: 'user-3', role: UserRole.ADMIN, name: 'Admin Three' },
             'user-4': { id: 'user-4', role: UserRole.ADMIN_2, name: 'Admin Four' },
+            'creator-1': { id: 'creator-1', role: UserRole.ACCOUNTANT, name: 'Creator One' },
           };
           return users[where.id] ?? null;
+        }),
+      },
+      // Entity models used by findEntityCreator for segregation-of-duties checks
+      quotation: {
+        findUnique: vi.fn(({ where }: any) => {
+          const entities: Record<string, any> = {
+            'entity-1': { id: 'entity-1', createdBy: 'creator-1', projectId: 'project-1' },
+            'entity-2': { id: 'entity-2', createdBy: 'creator-1', projectId: 'project-1' },
+            'entity-3': { id: 'entity-3', createdBy: 'creator-1', projectId: 'project-1' },
+            'entity-4': { id: 'entity-4', createdBy: 'creator-1', projectId: 'project-1' },
+            'entity-5': { id: 'entity-5', createdBy: 'creator-1', projectId: 'project-1' },
+            'entity-6': { id: 'entity-6', createdBy: 'creator-1', projectId: 'project-1' },
+            'entity-self': { id: 'entity-self', createdBy: 'user-1', projectId: 'project-1' },
+          };
+          return entities[where.id] ?? null;
+        }),
+      },
+      purchaseOrder: {
+        findUnique: vi.fn(({ where }: any) => {
+          const entities: Record<string, any> = {
+            'entity-1': { id: 'entity-1', createdBy: 'creator-1', projectId: 'project-1' },
+            'entity-2': { id: 'entity-2', createdBy: 'creator-1', projectId: 'project-1' },
+            'entity-3': { id: 'entity-3', createdBy: 'creator-1', projectId: 'project-1' },
+            'entity-4': { id: 'entity-4', createdBy: 'creator-1', projectId: 'project-1' },
+            'entity-5': { id: 'entity-5', createdBy: 'creator-1', projectId: 'project-1' },
+            'entity-6': { id: 'entity-6', createdBy: 'creator-1', projectId: 'project-1' },
+            'entity-self': { id: 'entity-self', createdBy: 'user-1', projectId: 'project-1' },
+          };
+          return entities[where.id] ?? null;
+        }),
+      },
+      vendorInvoice: {
+        findUnique: vi.fn(({ where }: any) => {
+          const entities: Record<string, any> = {
+            'entity-1': { id: 'entity-1', createdBy: 'creator-1', projectId: 'project-1' },
+            'entity-2': { id: 'entity-2', createdBy: 'creator-1', projectId: 'project-1' },
+            'entity-3': { id: 'entity-3', createdBy: 'creator-1', projectId: 'project-1' },
+            'entity-4': { id: 'entity-4', createdBy: 'creator-1', projectId: 'project-1' },
+            'entity-5': { id: 'entity-5', createdBy: 'creator-1', projectId: 'project-1' },
+            'entity-6': { id: 'entity-6', createdBy: 'creator-1', projectId: 'project-1' },
+            'entity-self': { id: 'entity-self', createdBy: 'user-1', projectId: 'project-1' },
+          };
+          return entities[where.id] ?? null;
+        }),
+      },
+      paymentRequest: {
+        findUnique: vi.fn(({ where }: any) => {
+          const entities: Record<string, any> = {
+            'entity-1': { id: 'entity-1', createdBy: 'creator-1', projectId: 'project-1' },
+            'entity-2': { id: 'entity-2', createdBy: 'creator-1', projectId: 'project-1' },
+            'entity-3': { id: 'entity-3', createdBy: 'creator-1', projectId: 'project-1' },
+            'entity-4': { id: 'entity-4', createdBy: 'creator-1', projectId: 'project-1' },
+            'entity-5': { id: 'entity-5', createdBy: 'creator-1', projectId: 'project-1' },
+            'entity-6': { id: 'entity-6', createdBy: 'creator-1', projectId: 'project-1' },
+            'entity-self': { id: 'entity-self', createdBy: 'user-1', projectId: 'project-1' },
+          };
+          return entities[where.id] ?? null;
         }),
       },
     },
@@ -200,5 +258,45 @@ describe('Approval Engine Tests', () => {
     expect(approvedStep).toBeDefined();
     expect(approvedStep!.approverUserId).toBe('user-1');
     expect(approvedStep!.decidedAt).toBeDefined();
+  });
+
+  // ─── Segregation of Duties: Self-Approval Prevention ──────────────────
+  it('creator cannot approve their own record → error', async () => {
+    const wf = await initiate({
+      entityType: 'PAYMENT_REQUEST',
+      entityId: 'entity-self', // createdBy = 'user-1'
+      projectId: 'project-1',
+    });
+
+    // user-1 is PROJECT_HEAD and is the creator
+    const step1 = wf.steps[0]; // PROJECT_HEAD step
+    await expect(approve(step1.id, 'user-1', 'Self approving')).rejects.toThrow(
+      'You cannot approve a record you created'
+    );
+  });
+
+  it('creator cannot reject their own record → error', async () => {
+    const wf = await initiate({
+      entityType: 'PAYMENT_REQUEST',
+      entityId: 'entity-self', // createdBy = 'user-1'
+      projectId: 'project-1',
+    });
+
+    const step1 = wf.steps[0]; // PROJECT_HEAD step
+    await expect(reject(step1.id, 'user-1', 'Self rejecting')).rejects.toThrow(
+      'You cannot reject a record you created'
+    );
+  });
+
+  it('non-creator approver can approve normally', async () => {
+    const wf = await initiate({
+      entityType: 'PAYMENT_REQUEST',
+      entityId: 'entity-1', // createdBy = 'creator-1' (not user-1 or user-2)
+      projectId: 'project-1',
+    });
+
+    const step1 = wf.steps[0]; // PROJECT_HEAD step
+    const result = await approve(step1.id, 'user-1', 'Approved by non-creator');
+    expect(result.isFullyApproved).toBe(false); // needs 2 approvals
   });
 });

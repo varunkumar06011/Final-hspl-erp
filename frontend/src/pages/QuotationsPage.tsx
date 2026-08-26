@@ -37,6 +37,7 @@ import {
   Edit as EditIcon,
   ExpandMore as ExpandMoreIcon,
   Download as DownloadIcon,
+  Delete as DeleteIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { APPROVER_ROLES, QuotationStatus } from '@hospital-erp/shared';
@@ -257,6 +258,19 @@ export default function QuotationsPage() {
       queryClient.invalidateQueries({ queryKey: ['/quotations'] });
       queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
       setApprovalAction(null);
+    },
+    onError: (err: unknown) => setError(extractErrorMessage(err)),
+  });
+
+  const [deleteRow, setDeleteRow] = useState<QuotationRow | null>(null);
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await api.delete(`/quotations/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/quotations'] });
+      queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
+      setDeleteRow(null);
     },
     onError: (err: unknown) => setError(extractErrorMessage(err)),
   });
@@ -514,6 +528,9 @@ export default function QuotationsPage() {
                               <IconButton size="small" color="error" onClick={() => setApprovalAction({ row, step: pendingStep, action: 'reject' })} title="Reject"><CloseIcon fontSize="small" /></IconButton>
                             </>
                           )}
+                          {row.status !== QuotationStatus.APPROVED && row.status !== QuotationStatus.CONVERTED_TO_PO && (
+                            <IconButton size="small" color="error" onClick={() => setDeleteRow(row)} title="Delete"><DeleteIcon fontSize="small" /></IconButton>
+                          )}
                         </Box>
                       </TableCell>
                     </TableRow>
@@ -739,6 +756,22 @@ export default function QuotationsPage() {
           }
         }}
       />
+
+      <ResponsiveDialog open={deleteRow !== null} onClose={() => setDeleteRow(null)} maxWidth="xs" fullWidth>
+        <DialogTitle>Delete Quotation</DialogTitle>
+        <DialogContent>
+          <Typography>Are you sure you want to delete quotation <strong>{deleteRow?.quotationNumber}</strong>?</Typography>
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+            This action cannot be undone. Only quotations that are not approved or converted to a PO can be deleted.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteRow(null)}>Cancel</Button>
+          <Button color="error" variant="contained" disabled={deleteMutation.isPending} onClick={() => deleteRow && deleteMutation.mutate(deleteRow.id)}>
+            {deleteMutation.isPending ? <CircularProgress size={20} /> : 'Delete'}
+          </Button>
+        </DialogActions>
+      </ResponsiveDialog>
     </Box>
   );
 }

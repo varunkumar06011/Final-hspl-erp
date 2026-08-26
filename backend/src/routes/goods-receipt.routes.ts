@@ -351,6 +351,31 @@ router.post(
         projectId,
         newValue: { status: GoodsReceiptStatus.POSTED, postedBy: req.user!.id },
       });
+
+      // Update PO status based on accepted quantities from all posted receipts
+      const allReceipts = await prisma.goodsReceipt.findMany({
+        where: { poId: receipt.poId, deletedAt: null, status: GoodsReceiptStatus.POSTED },
+        select: { items: { select: { materialName: true, acceptedQty: true } } },
+      });
+      const poItems = await prisma.pOItem.findMany({
+        where: { poId: receipt.poId },
+        select: { materialName: true, quantity: true },
+      });
+      const acceptedByName = new Map<string, number>();
+      for (const r of allReceipts) {
+        for (const item of r.items) {
+          const name = item.materialName.toLowerCase();
+          acceptedByName.set(name, (acceptedByName.get(name) ?? 0) + Number(item.acceptedQty));
+        }
+      }
+      const fullyReceived = poItems.every(
+        (item) => (acceptedByName.get(item.materialName.toLowerCase()) ?? 0) >= Number(item.quantity),
+      );
+      await prisma.purchaseOrder.update({
+        where: { id: receipt.poId },
+        data: { status: fullyReceived ? 'DELIVERED' : 'PARTIALLY_DELIVERED' },
+      });
+
       res.json(posted);
     } catch (error) {
       next(error);
