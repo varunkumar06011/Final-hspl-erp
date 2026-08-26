@@ -36,7 +36,6 @@ const vendorMaterial = z.object({
   id: uuid.optional(),
   name: z.string().min(1).max(200),
   unit: z.string().max(20).optional(),
-  pricePerUnit: z.coerce.number().min(0).optional(),
 });
 export const createVendorSchema = z.object({
   body: z.object({
@@ -245,9 +244,18 @@ export const approvalActionSchema = z.object({
 });
 
 // ═══ Gate Passes ═══
+const gatePassItem = z.object({
+  materialName: nonEmptyText(200),
+  quantity: positiveQty,
+  unit: z.string().trim().max(20).optional(),
+});
 export const createGatePassSchema = z.object({
   body: z.object({
     poId: uuid,
+    items: z.preprocess(
+      (value) => (typeof value === 'string' ? JSON.parse(value) : value),
+      z.array(gatePassItem).min(1).optional(),
+    ),
     invoiceId: uuid.optional(),
     otpRequestedFor: uuid,
     visitorName: z.string().trim().max(200).optional(),

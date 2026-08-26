@@ -8,7 +8,6 @@ interface MaterialInput {
   id?: string;
   name: string;
   unit?: string;
-  pricePerUnit?: number;
 }
 
 async function generateVendorCode(): Promise<string> {
@@ -64,7 +63,6 @@ export default createCrudRouter({
         create: materials.map((m) => ({
           name: m.name,
           unit: m.unit ?? null,
-          pricePerUnit: m.pricePerUnit ?? null,
         })),
       },
     };
@@ -87,7 +85,6 @@ export default createCrudRouter({
         create: materials.map((m) => ({
           name: m.name,
           unit: m.unit ?? null,
-          pricePerUnit: m.pricePerUnit ?? null,
         })),
       };
     }

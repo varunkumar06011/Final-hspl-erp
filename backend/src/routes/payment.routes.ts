@@ -1,5 +1,5 @@
 import { Router, Response, NextFunction } from 'express';
-import { APPROVAL_CONFIG, Permission, AuditAction, PaymentStatus, UserRole, InvoiceVerificationStatus } from '@hospital-erp/shared';
+import { Permission, AuditAction, PaymentStatus, UserRole, InvoiceVerificationStatus, getRequiredApproverCount } from '@hospital-erp/shared';
 import {
   createPaymentRequestSchema,
   listPaymentRequestsSchema,
@@ -278,7 +278,8 @@ router.post(
             projectId,
             status: 'VERIFICATION',
             currentStep: 0,
-            minApprovers: APPROVAL_CONFIG.MIN_APPROVERS,
+            minApprovers: getRequiredApproverCount(Number(amount)),
+            approvalPolicy: 'HEAD_GROUPS',
             steps: {
               create: HEAD_ROLES.map((role, idx) => ({
                 stepNumber: idx + 1,
@@ -390,7 +391,8 @@ router.post(
             projectId,
             status: 'VERIFICATION',
             currentStep: 0,
-            minApprovers: APPROVAL_CONFIG.MIN_APPROVERS,
+            minApprovers: getRequiredApproverCount(Number(amount)),
+            approvalPolicy: 'HEAD_GROUPS',
             steps: {
               create: HEAD_ROLES.map((role, idx) => ({
                 stepNumber: idx + 1,

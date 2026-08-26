@@ -1,5 +1,5 @@
 import { Router, Response, NextFunction } from 'express';
-import { APPROVAL_CONFIG, APPROVER_ROLES, Permission, QuotationStatus, AuditAction } from '@hospital-erp/shared';
+import { APPROVER_ROLES, Permission, QuotationStatus, AuditAction, getRequiredApproverCount } from '@hospital-erp/shared';
 import { createQuotationSchema, listQuotationsSchema, approvalActionSchema } from '@hospital-erp/shared';
 import { prisma } from '../config/prisma';
 import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middleware/auth';
@@ -132,13 +132,13 @@ router.post(
       const vendorMaterialNames = vendor.materials.map((m) => m.name.toLowerCase());
       const newMaterials = items
         .filter((item) => !vendorMaterialNames.includes(item.materialName.toLowerCase()))
-        .map((item) => ({ name: item.materialName, pricePerUnit: item.unitPrice || null }));
+        .map((item) => ({ name: item.materialName, unit: item.unit || null }));
       if (newMaterials.length > 0) {
         await prisma.vendorMaterial.createMany({
           data: newMaterials.map((m) => ({
             vendorId: vendor.id,
             name: m.name,
-            pricePerUnit: m.pricePerUnit,
+            unit: m.unit,
           })),
         });
         console.log(`[Quotation] Auto-registered ${newMaterials.length} new material(s) for vendor "${vendor.name}"`);
@@ -200,7 +200,8 @@ router.post(
         entityType: 'QUOTATION',
         entityId: quotation.id,
         projectId,
-        minApprovers: APPROVAL_CONFIG.MIN_APPROVERS,
+        minApprovers: getRequiredApproverCount(grandTotal),
+        approvalPolicy: 'HEAD_GROUPS',
       });
 
       await prisma.quotation.update({
@@ -298,13 +299,13 @@ router.patch(
         const vendorMaterialNames = vendor?.materials.map((m) => m.name.toLowerCase()) ?? [];
         const newMaterials = items
           .filter((item) => !vendorMaterialNames.includes(item.materialName.toLowerCase()))
-          .map((item) => ({ name: item.materialName, pricePerUnit: item.unitPrice || null }));
+          .map((item) => ({ name: item.materialName, unit: item.unit || null }));
         if (newMaterials.length > 0 && vendor) {
           await prisma.vendorMaterial.createMany({
             data: newMaterials.map((m) => ({
               vendorId: vendor.id,
               name: m.name,
-              pricePerUnit: m.pricePerUnit,
+              unit: m.unit,
             })),
           });
           console.log(`[Quotation] Auto-registered ${newMaterials.length} new material(s) for vendor "${vendor.name}"`);

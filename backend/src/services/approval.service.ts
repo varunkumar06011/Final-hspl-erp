@@ -7,11 +7,30 @@ interface InitiateParams {
   entityId: string;
   projectId: string;
   minApprovers?: number;
+  approvalPolicy?: 'HEAD_GROUPS' | 'PO_SINGLE_APPROVER';
 }
 
 const STEP_ROLES: { stepNumber: number; approverRole: UserRole }[] = APPROVER_ROLES.map(
   (approverRole, index) => ({ stepNumber: index + 1, approverRole })
 );
+
+function satisfiesApprovalPolicy(policy: string | null | undefined, steps: { status: string; approverRole: string }[], required: number): boolean {
+  const approvedRoles = new Set(
+    steps.filter((step) => step.status === ApprovalStepStatus.APPROVED).map((step) => step.approverRole),
+  );
+
+  if (policy === 'PO_SINGLE_APPROVER') {
+    return approvedRoles.has(UserRole.ADMIN) || approvedRoles.has(UserRole.ADMIN_2);
+  }
+  if (policy !== 'HEAD_GROUPS') return approvedRoles.size >= required;
+
+  const firstGroupApproved = [UserRole.PROJECT_HEAD, UserRole.HEAD_OF_CONSTRUCTION]
+    .some((role) => approvedRoles.has(role));
+  const secondGroupApproved = [UserRole.ADMIN, UserRole.ADMIN_2]
+    .filter((role) => approvedRoles.has(role)).length;
+
+  return firstGroupApproved && secondGroupApproved >= (required >= 3 ? 2 : 1);
+}
 
 // ─── Entity type → Prisma model mapping for creator lookup ──
 const ENTITY_MODEL_MAP: Record<string, string> = {
@@ -100,6 +119,7 @@ export async function initiate({
   entityId,
   projectId,
   minApprovers,
+  approvalPolicy,
 }: InitiateParams) {
   const workflow = await prisma.approvalWorkflow.create({
     data: {
@@ -109,6 +129,7 @@ export async function initiate({
       status: ApprovalStatus.VERIFICATION,
       currentStep: 0,
       minApprovers: minApprovers ?? APPROVAL_CONFIG.MIN_APPROVERS,
+      approvalPolicy: approvalPolicy ?? null,
       steps: {
         create: STEP_ROLES.map((sr) => ({
           stepNumber: sr.stepNumber,
@@ -185,7 +206,7 @@ export async function approve(stepId: string, userId: string, comments?: string)
     (s: { status: string }) => s.status === ApprovalStepStatus.APPROVED
   );
 
-  if (approvedSteps.length >= workflow.minApprovers) {
+  if (approvedSteps.length >= workflow.minApprovers && satisfiesApprovalPolicy(workflow.approvalPolicy, workflow.steps, workflow.minApprovers)) {
     await prisma.approvalWorkflow.update({
       where: { id: workflow.id },
       data: { status: ApprovalStatus.APPROVED, currentStep: workflow.steps.length },

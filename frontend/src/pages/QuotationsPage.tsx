@@ -61,7 +61,7 @@ interface QuotationItem {
 interface VendorMaterial {
   id: string;
   name: string;
-  pricePerUnit?: number | null;
+  unit?: string | null;
 }
 
 interface Vendor {
@@ -310,8 +310,8 @@ export default function QuotationsPage() {
     const items = selectedVendor.materials.map((m) => ({
       materialName: m.name,
       quantity: 1,
-      unitPrice: m.pricePerUnit ? Number(m.pricePerUnit) : 0,
-      amount: m.pricePerUnit ? Number(m.pricePerUnit) : 0,
+      unitPrice: 0,
+      amount: 0,
     }));
     setLineItems(items);
     // All materials ticked by default

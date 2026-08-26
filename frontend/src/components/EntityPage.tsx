@@ -36,12 +36,11 @@ import CreatableSelect from './CreatableSelect';
 import SelectWithOther from './SelectWithOther';
 import AttachmentUpload from './AttachmentUpload';
 import ResponsiveTable from './ResponsiveTable';
-import { formatIndianNumber } from '../utils/enumOptions';
 
 export interface MaterialEntry {
   id?: string;
   name: string;
-  pricePerUnit?: number;
+  unit?: string;
 }
 
 export interface FieldDef {
@@ -390,7 +389,7 @@ export default function EntityPage({
                   setForm({ ...form, [field.name]: updated });
                 };
                 const addMaterial = () => {
-                  setForm({ ...form, [field.name]: [...materials, { name: '', pricePerUnit: undefined }] });
+                  setForm({ ...form, [field.name]: [...materials, { name: '', unit: '' }] });
                 };
                 const removeMaterial = (index: number) => {
                   setForm({ ...form, [field.name]: materials.filter((_, i) => i !== index) });
@@ -416,15 +415,12 @@ export default function EntityPage({
                         />
                         <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
                           <TextField
-                            label="Price / Unit"
-                            type="text"
-                            value={formatIndianNumber(mat.pricePerUnit ?? '')}
-                            onChange={(e) => updateMaterial(index, 'pricePerUnit', e.target.value === '' ? undefined : Number(e.target.value.replace(/,/g, '')))}
-                            inputMode="decimal"
+                            label="Unit"
+                            value={mat.unit ?? ''}
+                            onChange={(e) => updateMaterial(index, 'unit', e.target.value)}
                             size="small"
                             InputLabelProps={{ shrink: true }}
                             sx={{ flex: 1, minWidth: 0 }}
-                            inputProps={{ min: 0, step: 0.01 }}
                           />
                           <IconButton size="small" color="error" onClick={() => removeMaterial(index)} sx={{ flexShrink: 0 }}>
                             <RemoveIcon fontSize="small" />

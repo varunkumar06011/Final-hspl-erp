@@ -1,5 +1,5 @@
 import { Router, Response, NextFunction } from 'express';
-import { APPROVAL_CONFIG, Permission, AuditAction, InvoiceVerificationStatus, PaymentStatus, StockStatus, UserRole } from '@hospital-erp/shared';
+import { Permission, AuditAction, InvoiceVerificationStatus, PaymentStatus, StockStatus, UserRole, getRequiredApproverCount } from '@hospital-erp/shared';
 import { createInvoiceSchema, listInvoicesSchema, approvalActionSchema, updateInvoiceSchema, updateInvoiceStatusSchema } from '@hospital-erp/shared';
 import { prisma } from '../config/prisma';
 import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middleware/auth';
@@ -206,7 +206,8 @@ router.post(
           projectId,
           status: 'VERIFICATION',
           currentStep: 0,
-          minApprovers: APPROVAL_CONFIG.MIN_APPROVERS,
+          minApprovers: getRequiredApproverCount(Number(totalAmount)),
+          approvalPolicy: 'HEAD_GROUPS',
           steps: {
             create: HEAD_ROLES.map((role, idx) => ({
               stepNumber: idx + 1,

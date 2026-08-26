@@ -11,7 +11,12 @@ export const PAGINATION = {
 export const APPROVAL_CONFIG = {
   MIN_APPROVERS: 2,
   MAX_APPROVERS: 4,
+  THRESHOLD_AMOUNT: 100000,
 } as const;
+
+export function getRequiredApproverCount(amount: number): 2 | 3 {
+  return amount > APPROVAL_CONFIG.THRESHOLD_AMOUNT ? 3 : 2;
+}
 
 export const STORAGE = {
   BUCKETS: {

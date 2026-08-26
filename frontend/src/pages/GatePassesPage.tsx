@@ -107,6 +107,7 @@ export default function GatePassesPage() {
   const [selectedPoId, setSelectedPoId] = useState('');
   const [selectedInvoiceId, setSelectedInvoiceId] = useState('');
   const [selectedHeadId, setSelectedHeadId] = useState('');
+  const [receivedQuantities, setReceivedQuantities] = useState<Record<string, number>>({});
   const [visitorName, setVisitorName] = useState('');
   const [visitDate, setVisitDate] = useState('');
   const [visitTime, setVisitTime] = useState('');
@@ -200,6 +201,14 @@ export default function GatePassesPage() {
     mutationFn: async () => {
       const payload = new FormData();
       payload.append('poId', selectedPoId);
+      const poItems = selectedPO?.items ?? [];
+      payload.append('items', JSON.stringify(poItems
+        .filter((item) => Number(receivedQuantities[item.materialName] ?? item.quantity) > 0)
+        .map((item) => ({
+          materialName: item.materialName,
+          quantity: Number(receivedQuantities[item.materialName] ?? item.quantity),
+          unit: item.unit,
+        }))));
       payload.append('otpRequestedFor', selectedHeadId);
       if (selectedInvoiceId) payload.append('invoiceId', selectedInvoiceId);
       if (visitorName) payload.append('visitorName', visitorName);
@@ -250,13 +259,12 @@ export default function GatePassesPage() {
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['/gate-passes'] });
-      queryClient.invalidateQueries({ queryKey: ['/inventory'] });
       queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
       setOtpDialogOpen(null);
       setOtpInput('');
       confirmationResult = null;
       confirmationGatePassId = null;
-      setSuccessMsg(data.message || 'Gate pass approved! Items added to inventory.');
+      setSuccessMsg(data.message || 'Gate pass approved. Inventory has not been updated.');
       setTimeout(() => setSuccessMsg(''), 5000);
     },
     onError: (err: unknown) => setError(extractErrorMessage(err)),
@@ -279,6 +287,7 @@ export default function GatePassesPage() {
     setSelectedPoId('');
     setSelectedInvoiceId('');
     setSelectedHeadId('');
+    setReceivedQuantities({});
     setVisitorName('');
     setVisitDate('');
     setVisitTime('');
@@ -585,7 +594,10 @@ export default function GatePassesPage() {
               label="Purchase Order (approved)"
               value={selectedPoId}
               onChange={(e) => {
-                setSelectedPoId(e.target.value);
+                const poId = e.target.value;
+                const po = approvedPOs?.find((candidate) => candidate.id === poId);
+                setSelectedPoId(poId);
+                setReceivedQuantities(Object.fromEntries((po?.items ?? []).map((item) => [item.materialName, item.quantity])));
                 setSelectedInvoiceId('');
               }}
               fullWidth
@@ -621,7 +633,7 @@ export default function GatePassesPage() {
             {selectedPO && (
               <Box>
                 <Typography variant="body2" fontWeight={600} sx={{ mb: 1 }}>
-                  PO Items (will be added to inventory on approval)
+                  PO Items (inventory is updated separately)
                 </Typography>
                 <TableContainer component={Card} variant="outlined" sx={{ overflowX: 'auto' }}>
                   <Table size="small">
@@ -636,7 +648,16 @@ export default function GatePassesPage() {
                       {selectedPO.items?.map((item, idx) => (
                         <TableRow key={idx}>
                           <TableCell>{item.materialName}</TableCell>
-                          <TableCell>{item.quantity}</TableCell>
+                          <TableCell>
+                            <TextField
+                              type="number"
+                              size="small"
+                              value={receivedQuantities[item.materialName] ?? item.quantity}
+                              onChange={(e) => setReceivedQuantities((current) => ({ ...current, [item.materialName]: Number(e.target.value) }))}
+                              inputProps={{ min: 0, max: item.quantity, step: 0.01 }}
+                              sx={{ width: 100 }}
+                            />
+                          </TableCell>
                           <TableCell>{item.unit ?? '—'}</TableCell>
                         </TableRow>
                       ))}
@@ -644,7 +665,7 @@ export default function GatePassesPage() {
                   </Table>
                 </TableContainer>
                 <Typography variant="caption" color="text.secondary">
-                  Items from the PO will be auto-populated.
+                  Enter the quantity received. Items left at zero will be removed from this PO after approval and must be ordered later using a new PO.
                 </Typography>
               </Box>
             )}
@@ -802,7 +823,7 @@ export default function GatePassesPage() {
             <Typography variant="body2">
               An OTP was sent to <strong>{otpDialogOpen?.otpRequestedForUser?.name}</strong> at{' '}
               <strong>{otpDialogOpen?.otpRequestedForUser?.phone}</strong>. Enter the OTP they
-              provide to approve this gate pass and add items to inventory.
+              provide to approve this gate pass. Inventory is updated separately.
             </Typography>
             <TextField
               label="Enter OTP"

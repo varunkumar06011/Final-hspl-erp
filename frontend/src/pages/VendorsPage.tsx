@@ -15,7 +15,7 @@ import {
 import { Payment as PaymentIcon } from '@mui/icons-material';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import EntityPage from '../components/EntityPage';
-import { PaymentMode, VendorCategory } from '@hospital-erp/shared';
+import { PaymentMode } from '@hospital-erp/shared';
 import { enumToOptions, formatDate, formatIndianNumber, STATUS_COLORS } from '../utils/enumOptions';
 import api, { extractErrorMessage } from '../config/api';
 
@@ -198,9 +198,8 @@ export default function VendorsPage() {
           { key: 'gstNumber', label: 'GST No' },
           { key: 'createdAt', label: 'Date', render: (r) => formatDate(r.createdAt) },
           { key: 'phone', label: 'Phone' },
-          { key: 'material', label: 'Material' },
-          { key: 'subCategory', label: 'Sub Category' },
-          { key: 'unitPrice', label: 'Unit Price', render: (r) => `₹${Number(r.unitPrice ?? 0).toLocaleString('en-IN')}` },
+          { key: 'materials', label: 'Materials', render: (r) => ((r.materials as { name: string }[] | undefined) ?? []).map((m) => m.name).join(', ') || '—' },
+          { key: 'referenceBy', label: 'Referred By' },
           { key: 'totalBilled', label: 'Total Bill', render: (r) => `₹${Number(r.totalBilled ?? 0).toLocaleString('en-IN')}` },
           { key: 'totalPaid', label: 'Paid', render: (r) => `₹${Number(r.totalPaid ?? 0).toLocaleString('en-IN')}` },
           { key: 'outstanding', label: 'Outstanding', render: (r) => `₹${Number(r.outstanding ?? 0).toLocaleString('en-IN')}` },
@@ -226,10 +225,20 @@ export default function VendorsPage() {
           { name: 'name', label: 'Vendor Name', type: 'text', required: true },
           { name: 'phone', label: 'Phone', type: 'text' },
           { name: 'gstNumber', label: 'GST Number', type: 'text' },
-          { name: 'category', label: 'Vendor Category', type: 'select-with-other', required: true, options: [{ value: VendorCategory.MATERIAL_SUPPLIER, label: 'Material Supplier' }], defaultValue: VendorCategory.MATERIAL_SUPPLIER, otherLabel: 'Other', otherFieldLabel: 'Specify Vendor Category' },
-          { name: 'subCategory', label: 'Sub Category', type: 'text' },
-          { name: 'material', label: 'Material', type: 'text' },
-          { name: 'unitPrice', label: 'Unit Price', type: 'number' },
+          { name: 'category', label: 'Vendor Category', type: 'select', required: true, dropdownType: 'VENDOR_CATEGORY', options: [
+            { value: 'LABOUR_SUPPLIER', label: 'Labour Supplier' },
+            { value: 'ELECTRICAL_CONTRACTOR', label: 'Electrical Contractor' },
+            { value: 'WOOD_WORK_CONTRACTOR', label: 'Wood Work Contractor' },
+            { value: 'MACHINERY_SUPPLIER', label: 'Machinery Supplier' },
+            { value: 'TOOL_SUPPLIER', label: 'Tool Supplier' },
+          ], defaultValue: 'LABOUR_SUPPLIER' },
+          { name: 'referenceBy', label: 'Referred By', type: 'select', options: [
+            { value: 'Nagarjuna Sir', label: 'Nagarjuna Sir' },
+            { value: 'Ashok Sir', label: 'Ashok Sir' },
+            { value: 'Kaushal Sir', label: 'Kaushal Sir' },
+            { value: 'Vinod Sir', label: 'Vinod Sir' },
+          ] },
+          { name: 'materials', label: 'Materials Supplied', type: 'materials-list' },
           { name: 'panNumber', label: 'PAN Number', type: 'text' },
           { name: 'bankName', label: 'Bank Name', type: 'text' },
           { name: 'bankAccountNumber', label: 'Account Number', type: 'text' },

@@ -137,7 +137,6 @@ model VendorMaterial {
   vendorId     String   @db.Uuid
   name         String
   unit         String?
-  pricePerUnit Decimal? @db.Decimal(15, 2)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -346,6 +345,7 @@ model ApprovalWorkflow {
   status       String   @default("CREATED") // ApprovalStatus enum
   currentStep  Int      @default(0)
   minApprovers Int      @default(2)
+  approvalPolicy String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 

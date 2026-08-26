@@ -1,5 +1,5 @@
 import { Router, Response, NextFunction } from 'express';
-import { APPROVAL_CONFIG, Permission, POStatus, AuditAction, UserRole } from '@hospital-erp/shared';
+import { Permission, POStatus, AuditAction, UserRole } from '@hospital-erp/shared';
 import { createPOSchema, listPOsSchema, approvalActionSchema } from '@hospital-erp/shared';
 import { prisma } from '../config/prisma';
 import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middleware/auth';
@@ -159,7 +159,7 @@ router.post(
         include: poInclude,
       });
 
-      // Initiate approval workflow — any 2 of 4 head roles
+      // Initiate approval workflow — one approval from Kaushal Sir or Vinod Sir
       const workflow = await prisma.approvalWorkflow.create({
         data: {
           entityType: 'PURCHASE_ORDER',
@@ -167,9 +167,10 @@ router.post(
           projectId,
           status: 'VERIFICATION',
           currentStep: 0,
-          minApprovers: APPROVAL_CONFIG.MIN_APPROVERS,
+          minApprovers: 1,
+          approvalPolicy: 'PO_SINGLE_APPROVER',
           steps: {
-            create: HEAD_ROLES.map((role, idx) => ({
+            create: [UserRole.ADMIN, UserRole.ADMIN_2].map((role, idx) => ({
               stepNumber: idx + 1,
               approverRole: role,
               status: 'PENDING',
@@ -306,7 +307,7 @@ router.delete(
   }
 );
 
-// POST /:id/approve — approve PO (any 2 of 4 head roles)
+// POST /:id/approve — approve PO (Kaushal Sir or Vinod Sir)
 router.post(
   '/:id/approve',
   rbacMiddleware(Permission.VIEW_FINANCIALS),
