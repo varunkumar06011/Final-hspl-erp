@@ -28,8 +28,8 @@ const envSchema = z.object({
   STORAGE_MODE: z.enum(['local', 'supabase']).default('local'),
   LOCAL_STORAGE_PATH: z.string().default('./uploads'),
 
-  // Groq (OCR auto-fill)
-  GROQ_API_KEY: z.string().optional(),
+  // Gemini (OCR auto-fill fallback — optional, only used when regex parser fails)
+  GEMINI_API_KEY: z.string().optional(),
 
   // Camera (RTSP for gate pass video clips)
   CAMERA_RTSP_URL: z.string().optional(),

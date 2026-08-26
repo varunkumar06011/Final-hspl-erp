@@ -106,22 +106,35 @@ if they reject good data, users can't do their jobs.
 
 ---
 
-### `ocr-service.test.ts` — OCR document extraction (Groq vision API)
+### `ocr-service.test.ts` — OCR document extraction (local regex + Tesseract + Gemini fallback)
 
-**What it covers:** the `extractFromFile` function that sends a quotation or invoice image/PDF
-to the Groq vision model and parses the JSON response into structured fields.
+**What it covers:** the `extractFromFile` function that extracts structured data from quotation
+or invoice images/PDFs using a local pipeline: pdfjs-dist text extraction (digital PDFs) →
+Tesseract.js OCR (images/scanned PDFs) → regex parser → Gemini 2.5 Flash fallback (low confidence).
 This powers the "Scan quotation / Scan invoice" auto-fill buttons in the frontend.
 
 | Behavior verified | Why it matters |
 |-------------------|----------------|
 | Unsupported file types rejected with a helpful message | Users upload Word docs by mistake — the error tells them what's accepted. |
-| Missing `GROQ_API_KEY` throws a clear error | Without the key the OCR endpoint 500s; this gives a 500 with a useful message instead of a cryptic fetch error. |
-| Quotation JSON parsed into line items correctly | The whole point of OCR — extract materials, quantities, and prices. |
-| Invoice JSON parsed into fields correctly | Same for invoices — vendor name, invoice number, amounts. |
-| Markdown code fences stripped before parsing | LLMs sometimes wrap JSON in ` ```json ` fences; we handle that gracefully. |
-| Null/missing numeric fields coerced to `null`, line item numbers default to 0 | The model returns `null` when it can't read a field — we must not crash on that. |
-| Non-OK Groq API response throws with the status code | A 429 rate limit or 500 server error should surface the status, not a generic failure. |
+| Quotation parsed from Tesseract OCR text without Gemini call | High-confidence regex parse should skip the LLM fallback (no API cost, no rate limits). |
+| Gemini fallback invoked when regex confidence is low | Messy/unusual documents still get accurate extraction via the LLM safety net. |
+| Missing `GEMINI_API_KEY` returns regex result as-is | Graceful degradation — the app still works without the fallback configured. |
+| Gemini API errors return regex result, not a crash | If the fallback fails, partial data is better than no data. |
 | Corrupt PDF produces a friendly "Failed to read PDF" message | A scanned image renamed to `.pdf` will fail to parse — the user is told to upload a photo instead. |
+
+### `ocr-parser.test.ts` — Local regex document parser
+
+**What it covers:** the `parseDocumentText` function that extracts vendor name, document number,
+dates, line items, and totals from raw text using regex rules — no API calls.
+
+| Behavior verified | Why it matters |
+|-------------------|----------------|
+| Amount parsing handles Indian/Western/European formats, currency symbols | Vendor documents use varying number formats — all must parse correctly. |
+| Date normalization handles DD/MM/YYYY, YYYY-MM-DD, "DD MMM YYYY", 2-digit years | Dates appear in many formats across vendor templates. |
+| Quotation extraction: vendor, number, date, line items, GST, totals | The full quotation auto-fill flow. |
+| Invoice extraction: vendor, number, dates, CGST+SGST sum, grand total | GST invoices split tax into CGST/SGST — must be summed. |
+| Confidence check fails on empty/garbage input | Triggers the Gemini fallback instead of returning useless data. |
+| Pipe-separated and space-separated columns both parsed | Different vendors use different table formats. |
 
 ---
 
