@@ -52,8 +52,8 @@ interface Gatepass {
 }
 
 interface Disposition {
-  acceptedQty: number;
-  rejectedQty: number;
+  acceptedQty: number | '';
+  rejectedQty: number | '';
   rejectionReason: string;
 }
 
@@ -86,7 +86,12 @@ export default function GoodsReceiptsPage() {
   });
   const inspectMutation = useMutation({
     mutationFn: async () => (await api.post(`/goods-receipts/${inspectReceipt!.id}/inspect`, {
-      items: Object.entries(dispositions).map(([id, disposition]) => ({ id, ...disposition })),
+      items: Object.entries(dispositions).map(([id, disposition]) => ({
+        id,
+        acceptedQty: Number(disposition.acceptedQty || 0),
+        rejectedQty: Number(disposition.rejectedQty || 0),
+        rejectionReason: disposition.rejectionReason,
+      })),
     })).data,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/goods-receipts'] });
@@ -119,10 +124,37 @@ export default function GoodsReceiptsPage() {
   }
 
   function updateDisposition(id: string, field: keyof Disposition, value: string) {
-    setDispositions((current) => ({
-      ...current,
-      [id]: { ...current[id], [field]: field === 'rejectionReason' ? value : Number(value) },
-    }));
+    setDispositions((current) => {
+      const existing = current[id];
+      if (field === 'rejectionReason') {
+        return { ...current, [id]: { ...existing, rejectionReason: value } };
+      }
+
+      const numericValue = value === '' ? '' : Number(value);
+      if (field === 'rejectedQty') {
+        const delivered = inspectReceipt?.items.find((item) => item.id === id)?.deliveredQty ?? 0;
+        const rejected = numericValue === '' ? 0 : numericValue;
+        return {
+          ...current,
+          [id]: {
+            ...existing,
+            rejectedQty: numericValue,
+            acceptedQty: Math.max(0, Number(delivered) - rejected),
+          },
+        };
+      }
+
+      const delivered = inspectReceipt?.items.find((item) => item.id === id)?.deliveredQty ?? 0;
+      const accepted = numericValue === '' ? 0 : numericValue;
+      return {
+        ...current,
+        [id]: {
+          ...existing,
+          acceptedQty: numericValue,
+          rejectedQty: Math.max(0, Number(delivered) - accepted),
+        },
+      };
+    });
   }
 
   return (
@@ -196,7 +228,7 @@ export default function GoodsReceiptsPage() {
         <DialogTitle>Inspect {inspectReceipt?.receiptNumber}</DialogTitle>
         <DialogContent>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            Accepted quantities will be posted to usable inventory. Rejected quantities remain outside usable stock.
+            Accepted quantities will be posted to usable inventory. Rejected quantities remain outside usable stock. Entering a rejected quantity automatically reduces the accepted quantity.
           </Typography>
           {inspectReceipt && <AttachmentUpload entityType="GOODS_RECEIPT" entityId={inspectReceipt.id} />}
           {inspectReceipt?.items.map((item) => {

@@ -56,6 +56,7 @@ export interface FieldDef {
   readonly?: boolean;
   otherLabel?: string;
   otherFieldLabel?: string;
+  createOptionLabel?: string;
 }
 
 export interface ColumnDef {
@@ -364,6 +365,7 @@ export default function EntityPage({
                     optionsEndpoint={field.optionsEndpoint}
                     optionLabelKey={field.optionLabelKey}
                     dropdownType={field.dropdownType}
+                    createButtonLabel={field.createOptionLabel}
                   />
                 );
               }
@@ -413,19 +415,9 @@ export default function EntityPage({
                           InputLabelProps={{ shrink: true }}
                           sx={{ flex: 2, minWidth: 0 }}
                         />
-                        <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
-                          <TextField
-                            label="Unit"
-                            value={mat.unit ?? ''}
-                            onChange={(e) => updateMaterial(index, 'unit', e.target.value)}
-                            size="small"
-                            InputLabelProps={{ shrink: true }}
-                            sx={{ flex: 1, minWidth: 0 }}
-                          />
-                          <IconButton size="small" color="error" onClick={() => removeMaterial(index)} sx={{ flexShrink: 0 }}>
-                            <RemoveIcon fontSize="small" />
-                          </IconButton>
-                        </Box>
+                        <IconButton size="small" color="error" onClick={() => removeMaterial(index)} sx={{ flexShrink: 0 }}>
+                          <RemoveIcon fontSize="small" />
+                        </IconButton>
                       </Box>
                     ))}
                   </Box>

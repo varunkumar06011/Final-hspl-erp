@@ -14,6 +14,41 @@ import { validateMiddleware } from '../middleware/validate';
 import { logAudit } from '../services/audit.service';
 import { notifyAllHeads } from '../services/push.service';
 
+const CATEGORY_SKU_PREFIXES: Record<string, string> = {
+  MATERIAL: 'MAT',
+  ELECTRICAL: 'ELC',
+  MACHINERY: 'MCH',
+  TOOLS: 'TOL',
+  CONSUMABLE: 'CON',
+  STEEL: 'STL',
+  CEMENT: 'CMT',
+  WOOD: 'WOD',
+  PLUMBING: 'PLB',
+  HARDWARE: 'HRD',
+  PAINT: 'PNT',
+  SAFETY: 'SAF',
+};
+
+function categoryPrefix(category: string | null | undefined): string {
+  if (!category) return 'GEN';
+  const upper = category.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (CATEGORY_SKU_PREFIXES[upper]) return CATEGORY_SKU_PREFIXES[upper];
+  return upper.slice(0, 3) || 'GEN';
+}
+
+async function generateInventorySku(projectId: string, category: string | null): Promise<string> {
+  const prefix = categoryPrefix(category);
+  const existing = await prisma.inventoryItem.findMany({
+    where: { projectId, sku: { startsWith: `${prefix}-` }, deletedAt: null },
+    select: { sku: true },
+  });
+  const maxNumber = existing.reduce((max, item) => {
+    const match = item.sku?.match(/^([A-Z]+)-(\d+)$/);
+    return match ? Math.max(max, Number(match[2])) : max;
+  }, 0);
+  return `${prefix}-${String(maxNumber + 1).padStart(4, '0')}`;
+}
+
 const router = Router();
 router.use(authMiddleware);
 
@@ -74,8 +109,10 @@ router.post(
         return;
       }
 
+      const sku = req.body.sku || await generateInventorySku(projectId, req.body.category ?? null);
+
       const record = await prisma.inventoryItem.create({
-        data: { ...req.body, currentStock: 0, projectId },
+        data: { ...req.body, sku, currentStock: 0, projectId },
       });
 
       await logAudit({

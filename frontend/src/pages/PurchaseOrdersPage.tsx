@@ -63,6 +63,7 @@ interface Quotation {
   id: string;
   quotationNumber: string;
   totalAmount: number;
+  gstAmount: number;
   grandTotal: number;
   items: POItem[];
 }
@@ -457,7 +458,12 @@ export default function PurchaseOrdersPage() {
                 select
                 label="Quotation (approved only)"
                 value={selectedQuotationId}
-                onChange={(e) => setSelectedQuotationId(e.target.value)}
+                onChange={(e) => {
+                  const quotationId = e.target.value;
+                  const quotation = approvedQuotations?.find((item) => item.id === quotationId);
+                  setSelectedQuotationId(quotationId);
+                  setGstAmount(quotation ? String(quotation.gstAmount ?? 0) : '');
+                }}
                 fullWidth
                 size="small"
                 required

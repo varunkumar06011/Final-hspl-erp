@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Autocomplete, TextField, Chip } from '@mui/material';
+import { Autocomplete, Box, Button, TextField, Chip } from '@mui/material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../config/api';
 
@@ -14,6 +14,7 @@ interface CreatableSelectProps {
   optionsEndpoint?: string;
   optionLabelKey?: string;
   placeholder?: string;
+  createButtonLabel?: string;
 }
 
 export default function CreatableSelect({
@@ -27,6 +28,7 @@ export default function CreatableSelect({
   optionsEndpoint,
   optionLabelKey = 'name',
   placeholder,
+  createButtonLabel,
 }: CreatableSelectProps) {
   const queryClient = useQueryClient();
   const [inputValue, setInputValue] = useState('');
@@ -104,8 +106,17 @@ export default function CreatableSelect({
 
   const selectedOption = allOptions.find((o) => o.value === value) ?? null;
 
+  const handleCreateButton = () => {
+    if (!dropdownType || !createButtonLabel) return;
+    const newValue = window.prompt(`Enter ${createButtonLabel.toLowerCase()}`)?.trim();
+    if (!newValue) return;
+    createOptionMutation.mutate(newValue);
+    onChange(newValue);
+  };
+
   return (
-    <Autocomplete
+    <Box>
+      <Autocomplete
       size={size}
       value={selectedOption}
       inputValue={inputValue}
@@ -185,5 +196,11 @@ export default function CreatableSelect({
       clearOnBlur
       handleHomeEndKeys
     />
+      {createButtonLabel && (
+        <Button size="small" onClick={handleCreateButton} sx={{ mt: 0.5 }}>
+          + {createButtonLabel}
+        </Button>
+      )}
+    </Box>
   );
 }

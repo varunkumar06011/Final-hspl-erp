@@ -24,7 +24,6 @@ import {
 import { useAuthStore } from '../stores/authStore';
 import { hasPermission, Permission, UserRole } from '@hospital-erp/shared';
 import { onForegroundMessage, enableNotifications, isPushSupported, getPermissionState } from '../config/notifications';
-import StatusLegend from './StatusLegend';
 
 const NAV_ITEMS = [
   { label: 'Dashboard', icon: <DashboardIcon />, path: '/' },
@@ -85,8 +84,15 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
   // Listen for foreground push messages (when the tab is open)
+  // Only show popups for notifications sent within the last 2 minutes
+  // to prevent old queued messages from appearing as popups
   useEffect(() => {
     const unsubscribe = onForegroundMessage((payload) => {
+      const sentAt = Number(payload.data?.timestamp || 0);
+      const ageMs = Date.now() - sentAt;
+      if (sentAt > 0 && ageMs > 2 * 60 * 1000) {
+        return;
+      }
       const title = payload.notification?.title || payload.data?.title || 'New Notification';
       const body = payload.notification?.body || payload.data?.body || '';
       const url = payload.data?.url;
@@ -168,7 +174,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             </ListItem>
           ))}
         </List>
-        <StatusLegend />
       </Box>
     </>
   );

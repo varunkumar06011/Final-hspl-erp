@@ -77,8 +77,10 @@ async function sendPushToTokens(
 
   const message = {
     notification: { title, body },
-    data,
+    data: { ...data, timestamp: String(Date.now()) },
     tokens,
+    android: { ttl: 3600 },
+    webpush: { headers: { TTL: '3600' } },
   };
 
   try {

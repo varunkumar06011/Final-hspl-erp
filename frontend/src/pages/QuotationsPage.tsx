@@ -121,6 +121,7 @@ export default function QuotationsPage() {
   const [approvalAction, setApprovalAction] = useState<{ row: QuotationRow; step: ApprovalStep; action: 'approve' | 'reject' } | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const createSubmissionLocked = useRef(false);
   const queryClient = useQueryClient();
   const { user } = useAuthStore();
 
@@ -168,12 +169,16 @@ export default function QuotationsPage() {
       return response.data;
     },
     onSuccess: () => {
+      createSubmissionLocked.current = false;
       queryClient.invalidateQueries({ queryKey: ['/quotations'] });
       queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
       setCreateOpen(false);
       resetForm();
     },
-    onError: (err: unknown) => setError(extractErrorMessage(err)),
+    onError: (err: unknown) => {
+      createSubmissionLocked.current = false;
+      setError(extractErrorMessage(err));
+    },
   });
 
   const updateMutation = useMutation({
@@ -283,8 +288,17 @@ export default function QuotationsPage() {
   }
 
   function openCreate() {
+    createSubmissionLocked.current = false;
     resetForm();
     setCreateOpen(true);
+  }
+
+  function handleCreateQuotation() {
+    if (createSubmissionLocked.current || createMutation.isPending) return;
+    if (!validateQuotationForm()) return;
+    createSubmissionLocked.current = true;
+    setError('');
+    createMutation.mutate();
   }
 
   function openEdit(row: QuotationRow) {
@@ -692,8 +706,8 @@ export default function QuotationsPage() {
           <Button onClick={() => { setCreateOpen(false); setEditOpen(false); setEditing(null); resetForm(); }}>Cancel</Button>
           <Button
             variant="contained"
-            onClick={() => { setError(''); if (!validateQuotationForm()) return; if (editOpen) updateMutation.mutate(); else createMutation.mutate(); }}
-            disabled={createMutation.isPending || updateMutation.isPending}
+            onClick={editOpen ? () => { setError(''); if (validateQuotationForm()) updateMutation.mutate(); } : handleCreateQuotation}
+            disabled={createMutation.isPending || updateMutation.isPending || (!editOpen && (!acknowledged || createSubmissionLocked.current))}
           >
             {(createMutation.isPending || updateMutation.isPending) ? <CircularProgress size={20} /> : editOpen ? 'Update' : 'Create'}
           </Button>

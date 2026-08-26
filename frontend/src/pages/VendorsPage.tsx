@@ -27,12 +27,17 @@ export default function VendorsPage() {
         { name: 'name', label: 'Vendor Name', type: 'text', required: true },
         { name: 'phone', label: 'Phone', type: 'text' },
         { name: 'gstNumber', label: 'GST Number', type: 'text' },
-        { name: 'category', label: 'Vendor Category', type: 'select', required: true, dropdownType: 'VENDOR_CATEGORY', options: [
+        { name: 'category', label: 'Vendor Category', type: 'select', required: true, dropdownType: 'VENDOR_CATEGORY', createOptionLabel: 'New Category', options: [
           { value: 'LABOUR_SUPPLIER', label: 'Labour Supplier' },
           { value: 'ELECTRICAL_CONTRACTOR', label: 'Electrical Contractor' },
           { value: 'WOOD_WORK_CONTRACTOR', label: 'Wood Work Contractor' },
           { value: 'MACHINERY_SUPPLIER', label: 'Machinery Supplier' },
           { value: 'TOOL_SUPPLIER', label: 'Tool Supplier' },
+          { value: 'MATERIAL_SUPPLIER', label: 'Material Supplier' },
+          { value: 'SUBCONTRACTOR', label: 'Subcontractor' },
+          { value: 'SERVICE_PROVIDER', label: 'Service Provider' },
+          { value: 'EQUIPMENT_SUPPLIER', label: 'Equipment Supplier' },
+          { value: 'OTHER', label: 'Other' },
         ], defaultValue: 'LABOUR_SUPPLIER' },
         { name: 'referenceBy', label: 'Referred By', type: 'select', options: [
           { value: 'Nagarjuna Sir', label: 'Nagarjuna Sir' },
