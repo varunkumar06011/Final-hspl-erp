@@ -251,7 +251,8 @@ const gatePassItem = z.object({
 });
 export const createGatePassSchema = z.object({
   body: z.object({
-    poId: uuid,
+    gatePassCategory: z.enum(['MATERIAL', 'VISITOR']).default('MATERIAL'),
+    poId: uuid.optional(),
     items: z.preprocess(
       (value) => (typeof value === 'string' ? JSON.parse(value) : value),
       z.array(gatePassItem).optional(),
@@ -259,6 +260,7 @@ export const createGatePassSchema = z.object({
     invoiceId: uuid.optional(),
     otpRequestedFor: uuid,
     visitorName: z.string().trim().max(200).optional(),
+    visitorPhone: z.string().trim().max(30).optional(),
     visitDate: dateStr.optional(),
     visitTime: z.string().trim().max(20).optional(),
     purpose: z.string().trim().max(500).optional(),
@@ -273,6 +275,14 @@ export const createGatePassSchema = z.object({
     photoProofPath: z.string().trim().max(1000).optional(),
     remarks: z.string().trim().max(1000).optional(),
   }),
+}).superRefine((data, ctx) => {
+  const body = data.body;
+  if (body.gatePassCategory === 'VISITOR' && !body.visitorName) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['body', 'visitorName'], message: 'Visitor name is required' });
+  }
+  if (body.gatePassCategory === 'MATERIAL' && !body.poId) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['body', 'poId'], message: 'Purchase order is required for a material gatepass' });
+  }
 });
 export const listGatePassesSchema = z.object({
   query: pagination.extend({ status: z.string().optional() }),

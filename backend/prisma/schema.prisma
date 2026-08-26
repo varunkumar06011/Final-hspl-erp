@@ -390,8 +390,10 @@ model ApprovalStep {
 model GatePass {
   id               String    @id @default(uuid()) @db.Uuid
   projectId        String    @db.Uuid
-  poId             String    @db.Uuid
+  poId             String?   @db.Uuid
   invoiceId        String?   @db.Uuid
+  gatePassCategory String    @default("MATERIAL")
+  visitorPhone     String?
   passNumber       String
   date             DateTime  @default(now())
   visitTime        String?
@@ -416,7 +418,7 @@ model GatePass {
   deletedAt        DateTime?
 
   project             Project                @relation(fields: [projectId], references: [id])
-  purchaseOrder       PurchaseOrder          @relation(fields: [poId], references: [id])
+  purchaseOrder       PurchaseOrder?         @relation(fields: [poId], references: [id])
   invoice             VendorInvoice?         @relation(fields: [invoiceId], references: [id])
   createdByUser       User                   @relation("GatePassCreatedBy", fields: [createdBy], references: [id])
   otpRequestedForUser User?                  @relation("GatePassOtpRequestedFor", fields: [otpRequestedFor], references: [id])

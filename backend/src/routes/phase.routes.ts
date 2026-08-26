@@ -18,7 +18,7 @@ export default createCrudRouter({
     },
     createdByUser: { select: { id: true, name: true } },
   },
-  defaultSort: { createdAt: 'asc' },
+  defaultSort: { createdAt: 'desc' },
   afterCreate: async (record, _userId, projectId) => {
     await notifyAllHeads(projectId, {
       entityType: 'PHASE',

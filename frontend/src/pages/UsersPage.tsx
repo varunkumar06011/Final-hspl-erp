@@ -36,6 +36,8 @@ interface UserRow {
 
 const ROLE_LABELS: Record<UserRole, string> = {
   [UserRole.SUPERVISOR]: 'Supervisor',
+  [UserRole.ACCOUNTANT]: 'Accountant',
+  [UserRole.SITE_SUPERVISOR]: 'Site Supervisor',
   [UserRole.PROJECT_HEAD]: 'Project Head',
   [UserRole.HEAD_OF_CONSTRUCTION]: 'Head of Construction',
   [UserRole.ADMIN]: 'Admin 1',
@@ -89,7 +91,7 @@ export default function UsersPage() {
     <Box>
       <Typography variant="h5" fontWeight={600} sx={{ mb: 2, fontSize: { xs: '1.25rem', sm: '1.5rem' } }}>Users</Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        New signups start as Supervisors. Assign each privileged role to only one active user.
+        New signups start as Supervisors. Head approval roles are limited to one active user; Accountant and Site Supervisor roles can be assigned as needed.
       </Typography>
       {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
       {successMsg && <Alert severity="success" sx={{ mb: 2 }} onClose={() => setSuccessMsg('')}>{successMsg}</Alert>}

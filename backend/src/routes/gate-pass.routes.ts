@@ -70,7 +70,7 @@ const gatePassInclude = {
 // GET /heads — list the 4 head users for OTP selection (not filtered by projectId — heads may not be assigned to a project)
 router.get(
   '/heads',
-  rbacMiddleware(Permission.VIEW_FINANCIALS),
+  rbacMiddleware(Permission.VIEW_GATE_PASSES),
   async (_req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const users = await prisma.user.findMany({
@@ -91,7 +91,7 @@ router.get(
 // GET /approved-pos — list approved POs with their verified invoices and items (for gate pass creation)
 router.get(
   '/approved-pos',
-  rbacMiddleware(Permission.VIEW_FINANCIALS),
+  rbacMiddleware(Permission.VIEW_GATE_PASSES),
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const projectId = requireProjectId(req);
@@ -156,7 +156,7 @@ router.get(
 // GET / — list gate passes
 router.get(
   '/',
-  rbacMiddleware(Permission.VIEW_FINANCIALS),
+  rbacMiddleware(Permission.VIEW_GATE_PASSES),
   validateMiddleware(listGatePassesSchema),
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
@@ -192,7 +192,7 @@ router.get(
 // GET /:id
 router.get(
   '/:id',
-  rbacMiddleware(Permission.VIEW_FINANCIALS),
+  rbacMiddleware(Permission.VIEW_GATE_PASSES),
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const projectId = requireProjectId(req);
@@ -214,7 +214,7 @@ router.get(
 // GET /:id/pdf — download the gate pass PDF without requiring OTP approval
 router.get(
   '/:id/pdf',
-  rbacMiddleware(Permission.VIEW_FINANCIALS),
+  rbacMiddleware(Permission.VIEW_GATE_PASSES),
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const projectId = requireProjectId(req);
@@ -245,11 +245,13 @@ router.post(
     try {
       const projectId = requireProjectId(req);
       const {
+        gatePassCategory,
         poId,
         items: rawItems,
         invoiceId,
         otpRequestedFor,
         visitorName,
+        visitorPhone,
         visitDate,
         visitTime,
         purpose,
@@ -263,66 +265,80 @@ router.post(
         remarks,
       } = req.body;
 
-      // Validate PO exists and is approved
-      const po = await prisma.purchaseOrder.findFirst({
-        where: { id: poId, projectId, deletedAt: null },
-        include: {
-          items: true,
-          gatePasses: {
-            where: { deletedAt: null, status: { in: ['PENDING', 'APPROVED'] } },
-            select: { items: true },
+      const isVisitorGatePass = gatePassCategory === 'VISITOR';
+      let items: { materialName: string; quantity: number; unit?: string | null }[] = [];
+      let poItemsByName = new Map<string, { id: string; unit: string | null }>();
+
+      if (isVisitorGatePass) {
+        if (invoiceId || poId || rawItems) {
+          res.status(400).json({ error: 'Visitor gatepasses cannot include a PO, invoice, or material items' });
+          return;
+        }
+      } else {
+        if (!poId) {
+          res.status(400).json({ error: 'Purchase order is required for a material gatepass' });
+          return;
+        }
+        const po = await prisma.purchaseOrder.findFirst({
+          where: { id: poId, projectId, deletedAt: null },
+          include: {
+            items: true,
+            gatePasses: {
+              where: { deletedAt: null, status: { in: ['PENDING', 'APPROVED'] } },
+              select: { items: true },
+            },
           },
-        },
-      });
-      if (!po) {
-        res.status(400).json({ error: 'Purchase order not found' });
-        return;
-      }
-      if (!['APPROVED', 'PARTIALLY_DELIVERED'].includes(po.status)) {
-        res.status(400).json({ error: 'Purchase order must be approved first' });
-        return;
+        });
+        if (!po) {
+          res.status(400).json({ error: 'Purchase order not found' });
+          return;
+        }
+        if (!['APPROVED', 'PARTIALLY_DELIVERED'].includes(po.status)) {
+          res.status(400).json({ error: 'Purchase order must be approved first' });
+          return;
+        }
+
+        const receivedByName = new Map<string, number>();
+        for (const existingGatePass of po.gatePasses) {
+          for (const item of existingGatePass.items) {
+            const name = item.materialName.toLowerCase();
+            receivedByName.set(name, (receivedByName.get(name) ?? 0) + Number(item.quantity));
+          }
+        }
+        const remainingByName = new Map(po.items.map((item) => [
+          item.materialName.toLowerCase(), Math.max(0, Number(item.quantity) - (receivedByName.get(item.materialName.toLowerCase()) ?? 0)),
+        ]));
+        items = (rawItems
+          ? (typeof rawItems === 'string' ? JSON.parse(rawItems) : rawItems)
+          : po.items
+            .filter((item) => (remainingByName.get(item.materialName.toLowerCase()) ?? 0) > 0)
+            .map((item) => ({ materialName: item.materialName, quantity: remainingByName.get(item.materialName.toLowerCase()), unit: item.unit ?? undefined }))) as { materialName: string; quantity: number; unit?: string | null }[];
+        if (items.length === 0) {
+          res.status(400).json({ error: 'Enter at least one received item quantity greater than zero' });
+          return;
+        }
+        poItemsByName = new Map(po.items.map((item) => [item.materialName.toLowerCase(), { id: item.id, unit: item.unit }]));
+        const itemNames = new Set<string>();
+        for (const item of items) {
+          const normalizedName = item.materialName.toLowerCase();
+          if (itemNames.has(normalizedName)) {
+            res.status(400).json({ error: `Duplicate item ${item.materialName} is not allowed` });
+            return;
+          }
+          itemNames.add(normalizedName);
+          if (!poItemsByName.has(normalizedName)) {
+            res.status(400).json({ error: `Item ${item.materialName} is not part of the purchase order` });
+            return;
+          }
+          const remainingQuantity = remainingByName.get(normalizedName) ?? 0;
+          if (Number(item.quantity) > remainingQuantity) {
+            res.status(400).json({ error: `Received quantity for ${item.materialName} cannot exceed the remaining quantity of ${remainingQuantity}` });
+            return;
+          }
+        }
       }
 
-      const receivedByName = new Map<string, number>();
-      for (const gatePass of po.gatePasses) {
-        for (const item of gatePass.items) {
-          const name = item.materialName.toLowerCase();
-          receivedByName.set(name, (receivedByName.get(name) ?? 0) + Number(item.quantity));
-        }
-      }
-      const remainingByName = new Map(po.items.map((item) => [
-        item.materialName.toLowerCase(), Math.max(0, Number(item.quantity) - (receivedByName.get(item.materialName.toLowerCase()) ?? 0)),
-      ]));
-      const items = (rawItems
-        ? (typeof rawItems === 'string' ? JSON.parse(rawItems) : rawItems)
-        : po.items
-          .filter((item) => (remainingByName.get(item.materialName.toLowerCase()) ?? 0) > 0)
-          .map((item) => ({ materialName: item.materialName, quantity: remainingByName.get(item.materialName.toLowerCase()), unit: item.unit ?? undefined }))) as { materialName: string; quantity: number; unit?: string }[];
-      if (items.length === 0) {
-        res.status(400).json({ error: 'Enter at least one received item quantity greater than zero' });
-        return;
-      }
-      const poItemsByName = new Map(po.items.map((item) => [item.materialName.toLowerCase(), item]));
-      const itemNames = new Set<string>();
-      for (const item of items) {
-        const normalizedName = item.materialName.toLowerCase();
-        if (itemNames.has(normalizedName)) {
-          res.status(400).json({ error: `Duplicate item ${item.materialName} is not allowed` });
-          return;
-        }
-        itemNames.add(normalizedName);
-        const poItem = poItemsByName.get(normalizedName);
-        if (!poItem) {
-          res.status(400).json({ error: `Item ${item.materialName} is not part of the purchase order` });
-          return;
-        }
-        const remainingQuantity = remainingByName.get(normalizedName) ?? 0;
-        if (Number(item.quantity) > remainingQuantity) {
-          res.status(400).json({ error: `Received quantity for ${item.materialName} cannot exceed the remaining quantity of ${remainingQuantity}` });
-          return;
-        }
-      }
-
+      // Validate invoice only for material gatepasses.
       // Validate invoice only if provided (invoice is optional)
       if (invoiceId) {
         const invoice = await prisma.vendorInvoice.findFirst({
@@ -388,8 +404,10 @@ router.post(
       const gatePass = await prisma.gatePass.create({
         data: {
           projectId,
-          poId,
+          ...(poId ? { poId } : {}),
           ...(invoiceId ? { invoiceId } : {}),
+          gatePassCategory,
+          visitorPhone: visitorPhone || null,
           passNumber,
           ...(visitDate ? { date: new Date(visitDate) } : {}),
           visitTime: visitTime || null,
@@ -423,15 +441,15 @@ router.post(
         entityType: 'GATE_PASS',
         entityId: gatePass.id,
         projectId,
-        newValue: { passNumber, poId, invoiceId: invoiceId ?? null, otpRequestedFor },
+        newValue: { passNumber, gatePassCategory, poId: poId ?? null, invoiceId: invoiceId ?? null, otpRequestedFor },
       });
 
       // Notify all heads about the new gate pass
       notifyAllHeads(projectId, {
         entityType: 'GATE_PASS',
         entityId: gatePass.id,
-        title: 'New Gate Pass Created',
-        body: `Gate pass ${passNumber} — OTP sent to ${headUser.name}`,
+        title: gatePassCategory === 'VISITOR' ? 'New Visitor Gate Pass Created' : 'New Material Gate Pass Created',
+        body: `${gatePassCategory === 'VISITOR' ? 'Visitor' : 'Material'} gate pass ${passNumber} — OTP sent to ${headUser.name}`,
         url: '/gate-passes',
       }).catch((err) => console.error('[Push] Gate pass notification error:', err));
 
@@ -508,15 +526,16 @@ router.post(
         where: { id: gatePass.id },
         data: {
           status: 'APPROVED',
-          otpApprovedBy: req.user!.id,
+          otpApprovedBy: gatePass.otpRequestedForUser.id,
           otpApprovedAt: new Date(),
         },
         include: gatePassInclude,
       });
 
-      const poWithReceipts = await prisma.purchaseOrder.findUnique({
-        where: { id: gatePass.poId },
-        include: {
+      if (gatePass.poId) {
+        const poWithReceipts = await prisma.purchaseOrder.findUnique({
+          where: { id: gatePass.poId },
+          include: {
           items: true,
           gatePasses: {
             where: { deletedAt: null, status: 'APPROVED' },
@@ -540,14 +559,15 @@ router.post(
           data: { status: fullyReceived ? 'DELIVERED' : 'PARTIALLY_DELIVERED' },
         });
       }
+      }
 
       await logAudit({
-        userId: req.user!.id,
+        userId: gatePass.otpRequestedForUser.id,
         action: AuditAction.APPROVE,
         entityType: 'GATE_PASS',
         entityId: gatePass.id,
         projectId,
-        newValue: { status: 'APPROVED', inventoryUpdated: false },
+        newValue: { status: 'APPROVED', approvedBy: gatePass.otpRequestedForUser.id, requestedBy: req.user!.id, inventoryUpdated: false },
       });
 
       res.json({

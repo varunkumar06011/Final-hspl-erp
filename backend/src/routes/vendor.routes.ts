@@ -35,7 +35,7 @@ export default createCrudRouter({
     createdByUser: { select: { id: true, name: true } },
     materials: { orderBy: { name: 'asc' } },
   },
-  defaultSort: { vendorCode: 'asc' },
+  defaultSort: { createdAt: 'desc' },
   transformList: async (records, projectId) => {
     const vendorIds = records.map((vendor) => String(vendor.id));
     if (vendorIds.length === 0) return records;

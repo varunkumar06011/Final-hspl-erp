@@ -5,6 +5,8 @@
 
 export enum UserRole {
   SUPERVISOR = 'SUPERVISOR',
+  ACCOUNTANT = 'ACCOUNTANT',
+  SITE_SUPERVISOR = 'SITE_SUPERVISOR',
   PROJECT_HEAD = 'PROJECT_HEAD',
   HEAD_OF_CONSTRUCTION = 'HEAD_OF_CONSTRUCTION',
   ADMIN = 'ADMIN',
@@ -173,6 +175,11 @@ export enum GatePassType {
   OUTWARD = 'OUTWARD',
 }
 
+export enum GatePassCategory {
+  MATERIAL = 'MATERIAL',
+  VISITOR = 'VISITOR',
+}
+
 export enum GatePassStatus {
   PENDING = 'PENDING',
   APPROVED = 'APPROVED',
@@ -253,6 +260,7 @@ export enum Permission {
   CREATE_PAYMENT = 'CREATE_PAYMENT',
   // Site operations
   CREATE_GATE_PASS = 'CREATE_GATE_PASS',
+  VIEW_GATE_PASSES = 'VIEW_GATE_PASSES',
   MANAGE_INVENTORY = 'MANAGE_INVENTORY',
   // Construction
   MANAGE_PHASES = 'MANAGE_PHASES',
@@ -276,6 +284,7 @@ export const PERMISSION_MATRIX: Record<UserRole, Permission[]> = {
     Permission.VERIFY_INVOICE,
     Permission.VIEW_FINANCIALS,
     Permission.CREATE_GATE_PASS,
+    Permission.VIEW_GATE_PASSES,
     Permission.MANAGE_INVENTORY,
     Permission.MANAGE_PHASES,
     Permission.MANAGE_ACTIVITIES,
@@ -286,6 +295,20 @@ export const PERMISSION_MATRIX: Record<UserRole, Permission[]> = {
     Permission.MANAGE_CONTRACTS,
     Permission.MANAGE_LABOUR,
     Permission.VIEW_AUDIT_LOG,
+  ],
+  [UserRole.ACCOUNTANT]: [
+    Permission.CREATE_VENDOR,
+    Permission.CREATE_QUOTATION,
+    Permission.CREATE_PO,
+    Permission.VERIFY_INVOICE,
+    Permission.CREATE_PAYMENT,
+    Permission.CREATE_GATE_PASS,
+    Permission.VIEW_GATE_PASSES,
+    Permission.VIEW_FINANCIALS,
+  ],
+  [UserRole.SITE_SUPERVISOR]: [
+    Permission.CREATE_GATE_PASS,
+    Permission.VIEW_GATE_PASSES,
   ],
   [UserRole.PROJECT_HEAD]: [
     Permission.CREATE_VENDOR,
@@ -298,6 +321,7 @@ export const PERMISSION_MATRIX: Record<UserRole, Permission[]> = {
     Permission.MANAGE_USERS,
     Permission.MANAGE_APPROVALS_CONFIG,
     Permission.CREATE_GATE_PASS,
+    Permission.VIEW_GATE_PASSES,
     Permission.MANAGE_INVENTORY,
     Permission.MANAGE_PHASES,
     Permission.MANAGE_ACTIVITIES,
@@ -319,6 +343,7 @@ export const PERMISSION_MATRIX: Record<UserRole, Permission[]> = {
     Permission.VIEW_AUDIT_LOG,
     Permission.MANAGE_USERS,
     Permission.CREATE_GATE_PASS,
+    Permission.VIEW_GATE_PASSES,
     Permission.MANAGE_INVENTORY,
     Permission.MANAGE_PHASES,
     Permission.MANAGE_ACTIVITIES,
@@ -337,6 +362,7 @@ export const PERMISSION_MATRIX: Record<UserRole, Permission[]> = {
     Permission.VIEW_FINANCIALS,
     Permission.MANAGE_USERS,
     Permission.CREATE_GATE_PASS,
+    Permission.VIEW_GATE_PASSES,
     Permission.MANAGE_INVENTORY,
     Permission.MANAGE_PHASES,
     Permission.MANAGE_ACTIVITIES,
@@ -355,6 +381,7 @@ export const PERMISSION_MATRIX: Record<UserRole, Permission[]> = {
     Permission.VIEW_FINANCIALS,
     Permission.MANAGE_USERS,
     Permission.CREATE_GATE_PASS,
+    Permission.VIEW_GATE_PASSES,
     Permission.MANAGE_INVENTORY,
     Permission.MANAGE_PHASES,
     Permission.MANAGE_ACTIVITIES,

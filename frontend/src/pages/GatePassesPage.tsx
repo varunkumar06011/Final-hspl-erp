@@ -49,7 +49,8 @@ interface GatePassItem {
 interface GatePassRow {
   id: string;
   passNumber: string;
-  poId: string;
+  gatePassCategory: 'MATERIAL' | 'VISITOR';
+  poId: string | null;
   invoiceId: string | null;
   status: string;
   date: string;
@@ -111,11 +112,13 @@ export default function GatePassesPage() {
   const [otpInput, setOtpInput] = useState('');
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+  const [gatePassCategory, setGatePassCategory] = useState<'MATERIAL' | 'VISITOR'>('MATERIAL');
   const [selectedPoId, setSelectedPoId] = useState('');
   const [selectedInvoiceId, setSelectedInvoiceId] = useState('');
   const [selectedHeadId, setSelectedHeadId] = useState('');
   const [receivedQuantities, setReceivedQuantities] = useState<Record<string, number>>({});
   const [visitorName, setVisitorName] = useState('');
+  const [visitorPhone, setVisitorPhone] = useState('');
   const [visitDate, setVisitDate] = useState('');
   const [visitTime, setVisitTime] = useState('');
   const [purpose, setPurpose] = useState('');
@@ -207,18 +210,22 @@ export default function GatePassesPage() {
   const createMutation = useMutation({
     mutationFn: async () => {
       const payload = new FormData();
-      payload.append('poId', selectedPoId);
-      const poItems = selectedPO?.items ?? [];
-      payload.append('items', JSON.stringify(poItems
-        .filter((item) => Number(receivedQuantities[item.materialName] ?? item.quantity) > 0)
-        .map((item) => ({
-          materialName: item.materialName,
-          quantity: Number(receivedQuantities[item.materialName] ?? item.quantity),
-          unit: item.unit,
-        }))));
+      payload.append('gatePassCategory', gatePassCategory);
+      if (gatePassCategory === 'MATERIAL') {
+        payload.append('poId', selectedPoId);
+        const poItems = selectedPO?.items ?? [];
+        payload.append('items', JSON.stringify(poItems
+          .filter((item) => Number(receivedQuantities[item.materialName] ?? item.remainingQuantity) > 0)
+          .map((item) => ({
+            materialName: item.materialName,
+            quantity: Number(receivedQuantities[item.materialName] ?? item.remainingQuantity),
+            unit: item.unit,
+          }))));
+        if (selectedInvoiceId) payload.append('invoiceId', selectedInvoiceId);
+      }
       payload.append('otpRequestedFor', selectedHeadId);
-      if (selectedInvoiceId) payload.append('invoiceId', selectedInvoiceId);
       if (visitorName) payload.append('visitorName', visitorName);
+      if (visitorPhone) payload.append('visitorPhone', visitorPhone);
       if (visitDate) payload.append('visitDate', visitDate);
       if (visitTime) payload.append('visitTime', visitTime);
       if (purpose) payload.append('purpose', purpose);
@@ -291,11 +298,13 @@ export default function GatePassesPage() {
   const pagination = data?.pagination ?? { page: 1, pageSize: 20, total: 0, totalPages: 0 };
 
   function resetForm() {
+    setGatePassCategory('MATERIAL');
     setSelectedPoId('');
     setSelectedInvoiceId('');
     setSelectedHeadId('');
     setReceivedQuantities({});
     setVisitorName('');
+    setVisitorPhone('');
     setVisitDate('');
     setVisitTime('');
     setPurpose('');
@@ -474,6 +483,7 @@ export default function GatePassesPage() {
               <TableHead>
                 <TableRow>
                   <TableCell sx={{ fontWeight: 600 }}>Pass Number</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Type</TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>PO</TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>Invoice</TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>Vendor</TableCell>
@@ -488,13 +498,13 @@ export default function GatePassesPage() {
               <TableBody>
                 {isLoading ? (
                   <TableRow>
-                    <TableCell colSpan={10} align="center" sx={{ py: 4 }}>
+                    <TableCell colSpan={11} align="center" sx={{ py: 4 }}>
                       <CircularProgress size={32} />
                     </TableCell>
                   </TableRow>
                 ) : rows.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={10} align="center" sx={{ py: 4 }}>
+                    <TableCell colSpan={11} align="center" sx={{ py: 4 }}>
                       <Typography color="text.secondary">No gate passes found</Typography>
                     </TableCell>
                   </TableRow>
@@ -502,6 +512,7 @@ export default function GatePassesPage() {
                   rows.map((row) => (
                     <TableRow key={row.id} hover>
                       <TableCell data-label="Pass Number">{row.passNumber}</TableCell>
+                      <TableCell data-label="Type"><Chip size="small" label={row.gatePassCategory === 'VISITOR' ? 'Visitor' : 'Material'} color={row.gatePassCategory === 'VISITOR' ? 'info' : 'default'} /></TableCell>
                       <TableCell data-label="PO">{row.purchaseOrder?.poNumber ?? '—'}</TableCell>
                       <TableCell data-label="Invoice">{row.invoice?.invoiceCode ?? '—'}</TableCell>
                       <TableCell data-label="Vendor">
@@ -598,6 +609,23 @@ export default function GatePassesPage() {
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
             <TextField
               select
+              label="Gate Pass Type"
+              value={gatePassCategory}
+              onChange={(e) => {
+                setGatePassCategory(e.target.value as 'MATERIAL' | 'VISITOR');
+                setSelectedPoId('');
+                setSelectedInvoiceId('');
+                setReceivedQuantities({});
+              }}
+              fullWidth
+              size="small"
+            >
+              <MenuItem value="MATERIAL">Material Delivery Gate Pass</MenuItem>
+              <MenuItem value="VISITOR">Visitor Gate Pass</MenuItem>
+            </TextField>
+            {gatePassCategory === 'MATERIAL' && <>
+            <TextField
+              select
               label="Purchase Order (approved)"
               value={selectedPoId}
               onChange={(e) => {
@@ -682,9 +710,10 @@ export default function GatePassesPage() {
                 </Typography>
               </Box>
             )}
+            </>}
 
             <Typography variant="subtitle2" sx={{ mt: 1 }}>
-              Visitor and vehicle details (optional)
+              {gatePassCategory === 'VISITOR' ? 'Visitor details' : 'Visitor and vehicle details (optional)'}
             </Typography>
             <Box
               sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 2 }}
@@ -692,9 +721,16 @@ export default function GatePassesPage() {
               <TextField
                 label="Visitor / person name"
                 value={visitorName}
+                required={gatePassCategory === 'VISITOR'}
                 onChange={(e) => setVisitorName(e.target.value)}
                 size="small"
               />
+              {gatePassCategory === 'VISITOR' && <TextField
+                label="Visitor phone"
+                value={visitorPhone}
+                onChange={(e) => setVisitorPhone(e.target.value)}
+                size="small"
+              />}
               <TextField
                 label="Visit date"
                 type="date"
@@ -717,6 +753,7 @@ export default function GatePassesPage() {
                 onChange={(e) => setPurpose(e.target.value)}
                 size="small"
               />
+              {gatePassCategory === 'MATERIAL' && <>
               <TextField
                 label="Vehicle type"
                 value={vehicleType}
@@ -751,6 +788,7 @@ export default function GatePassesPage() {
                 <MenuItem value="NON_RETURNABLE">Non-returnable</MenuItem>
                 <MenuItem value="RETURNABLE">Returnable</MenuItem>
               </TextField>
+              </>}
               <TextField
                 label="Remarks"
                 value={remarks}
@@ -809,7 +847,13 @@ export default function GatePassesPage() {
               setError('');
               createMutation.mutate();
             }}
-            disabled={!selectedPoId || !selectedHeadId || createMutation.isPending || sendingOtp}
+            disabled={
+              !selectedHeadId ||
+              (gatePassCategory === 'MATERIAL' && !selectedPoId) ||
+              (gatePassCategory === 'VISITOR' && !visitorName.trim()) ||
+              createMutation.isPending ||
+              sendingOtp
+            }
           >
             {createMutation.isPending || sendingOtp ? (
               <CircularProgress size={20} />

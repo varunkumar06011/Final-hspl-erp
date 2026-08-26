@@ -567,67 +567,6 @@ router.post(
   }
 );
 
-// POST /:id/mark-stock-received — check for approved gate pass, then mark stock as received
-router.post(
-  '/:id/mark-stock-received',
-  rbacMiddleware(Permission.MANAGE_INVENTORY),
-  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
-    try {
-      const projectId = requireProjectId(req);
-      const invoice = await prisma.vendorInvoice.findFirst({
-        where: { id: req.params.id, projectId, deletedAt: null },
-      });
-      if (!invoice) {
-        res.status(404).json({ error: 'Invoice not found' });
-        return;
-      }
-      if (invoice.verificationStatus !== InvoiceVerificationStatus.VERIFIED) {
-        res.status(400).json({ error: 'Invoice must be approved first' });
-        return;
-      }
-      if (invoice.stockStatus === StockStatus.RECEIVED) {
-        res.status(400).json({ error: 'Stock already marked as received' });
-        return;
-      }
-
-      // STRICT RULE: No inventory entry without an approved gate pass for this invoice
-      const gatePass = await prisma.gatePass.findFirst({
-        where: { invoiceId: invoice.id, projectId, deletedAt: null, status: 'APPROVED' },
-      });
-      if (!gatePass) {
-        res.status(400).json({
-          error: 'No approved gate pass exists for this invoice. Create and approve a gate pass first — without a gate pass, no entry can be made in the inventory.',
-        });
-        return;
-      }
-
-      // Gate pass already added items to inventory during OTP approval — just mark as received
-      await prisma.vendorInvoice.update({
-        where: { id: invoice.id },
-        data: { stockStatus: StockStatus.RECEIVED },
-      });
-
-      await logAudit({
-        userId: req.user!.id,
-        action: AuditAction.UPDATE,
-        entityType: 'VENDOR_INVOICE',
-        entityId: invoice.id,
-        projectId,
-        newValue: { stockStatus: StockStatus.RECEIVED, gatePassId: gatePass.id },
-      });
-
-      const updated = await prisma.vendorInvoice.findUnique({
-        where: { id: invoice.id },
-        include: invoiceInclude,
-      });
-
-      res.json({ invoice: updated, message: 'Stock marked as received (items were added to inventory via gate pass).' });
-    } catch (error) {
-      next(error);
-    }
-  }
-);
-
 // PATCH /:id/status — update stock status only
 // Payment status is managed automatically by the installment workflow
 // (recalcInvoicePaymentStatus after each payment recording).
@@ -641,9 +580,12 @@ router.patch(
       const projectId = requireProjectId(req);
       const { paymentStatus, stockStatus } = req.body;
 
-      // Reject manual payment status overrides — only stock status is editable here
       if (paymentStatus) {
         res.status(400).json({ error: 'Payment status is managed automatically through the payment workflow. Use the Payments page to record installments.' });
+        return;
+      }
+      if (stockStatus) {
+        res.status(400).json({ error: 'Stock status is managed automatically through the Goods Receipt workflow.' });
         return;
       }
 

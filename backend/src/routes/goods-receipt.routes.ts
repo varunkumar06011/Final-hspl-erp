@@ -87,8 +87,8 @@ router.post(
         where: { id: req.body.gatePassId, projectId, status: 'APPROVED', deletedAt: null },
         include: { items: true, purchaseOrder: { include: { items: true } }, goodsReceipt: true },
       });
-      if (!gatePass) {
-        res.status(400).json({ error: 'Only an approved gatepass can create a goods receipt' });
+      if (!gatePass || !gatePass.purchaseOrder) {
+        res.status(400).json({ error: 'Only an approved material gatepass can create a goods receipt' });
         return;
       }
       if (gatePass.goodsReceipt) {
@@ -105,14 +105,14 @@ router.post(
       const receipt = await prisma.goodsReceipt.create({
         data: {
           projectId,
-          poId: gatePass.poId,
+          poId: gatePass.poId!,
           gatePassId: gatePass.id,
           receiptNumber,
           status: GoodsReceiptStatus.PENDING_INSPECTION,
           createdBy: req.user!.id,
           items: {
             create: gatePass.items.map((item) => ({
-              poItemId: poItems.get(item.materialName.toLowerCase())?.id,
+              poItemId: poItems.get(item.materialName.toLowerCase())?.id ?? undefined,
               materialName: item.materialName,
               unit: item.unit,
               deliveredQty: item.quantity,

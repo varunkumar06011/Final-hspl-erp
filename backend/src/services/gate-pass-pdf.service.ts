@@ -79,7 +79,9 @@ export function streamGatePassPdf(res: NodeJS.WritableStream, gatePass: any) {
     .font('Helvetica-Bold')
     .fontSize(10)
     .text(
-      `GATE PASS (${gatePass.gatePassType === 'RETURNABLE' ? 'RETURNABLE' : 'NON-RETURNABLE'})`,
+      gatePass.gatePassCategory === 'VISITOR'
+        ? 'VISITOR GATE PASS'
+        : `MATERIAL GATE PASS (${gatePass.gatePassType === 'RETURNABLE' ? 'RETURNABLE' : 'NON-RETURNABLE'})`,
       left,
       y,
       { width, align: 'center' },
@@ -89,7 +91,12 @@ export function streamGatePassPdf(res: NodeJS.WritableStream, gatePass: any) {
     .fillColor(muted)
     .font('Helvetica')
     .fontSize(7)
-    .text('For authorized material movement only', left, y, { width, align: 'center' });
+    .text(
+      gatePass.gatePassCategory === 'VISITOR' ? 'For authorized visitor entry only' : 'For authorized material movement only',
+      left,
+      y,
+      { width, align: 'center' },
+    );
   y += 14;
 
   // Document references and visit information.
@@ -119,11 +126,18 @@ export function streamGatePassPdf(res: NodeJS.WritableStream, gatePass: any) {
   y += rowHeight * 2;
 
   // Form-style From/To section matching the reference layout.
-  sectionTitle('Movement details', y);
+  sectionTitle(gatePass.gatePassCategory === 'VISITOR' ? 'Visit details' : 'Movement details', y);
   y += 20;
   const half = width / 2;
   cell('From', gatePass.project?.name, left, y, half, 48);
-  cell('To', gatePass.purchaseOrder?.vendor?.name, left + half, y, half, 48);
+  cell(
+    'To',
+    gatePass.gatePassCategory === 'VISITOR' ? gatePass.visitorName : gatePass.purchaseOrder?.vendor?.name,
+    left + half,
+    y,
+    half,
+    48,
+  );
   doc
     .fillColor(textDark)
     .font('Helvetica')
@@ -173,9 +187,10 @@ export function streamGatePassPdf(res: NodeJS.WritableStream, gatePass: any) {
   line(right, y, right, y + rowHeight * 2);
   y += rowHeight * 2;
 
-  sectionTitle('Material details', y);
-  y += 20;
-  const materialHeader = 22;
+  if (gatePass.gatePassCategory !== 'VISITOR') {
+    sectionTitle('Material details', y);
+    y += 20;
+    const materialHeader = 22;
   const qtyX = right - 92;
   doc.rect(left, y, width, materialHeader).fill(primary);
   doc
@@ -208,7 +223,8 @@ export function streamGatePassPdf(res: NodeJS.WritableStream, gatePass: any) {
   }
   line(qtyX, y - materialRows * 23 - materialHeader, qtyX, y);
   line(right - 47, y - materialRows * 23 - materialHeader, right - 47, y);
-  y += 2;
+    y += 2;
+  }
 
   sectionTitle('Gate record', y);
   y += 20;
