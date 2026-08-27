@@ -31,6 +31,9 @@ interface GSTRecord {
   gstRecorded: number;
   gstPaid: number;
   gstOutstanding: number;
+  cgstAmount?: number;
+  sgstAmount?: number;
+  igstAmount?: number;
   paymentStatus: 'PAID' | 'PARTIALLY_PAID' | 'OUTSTANDING' | 'UNBILLED';
   note: string;
 }
@@ -87,11 +90,13 @@ export default function GSTRecordsPage() {
           <Table size="small">
             <TableHead><TableRow>
               <TableCell>Source</TableCell><TableCell>Vendor</TableCell><TableCell>PO</TableCell>
-              <TableCell>Date</TableCell><TableCell>GST Recorded</TableCell><TableCell>GST Paid</TableCell>
+              <TableCell>Date</TableCell><TableCell>GST Recorded</TableCell>
+              <TableCell>CGST</TableCell><TableCell>SGST</TableCell><TableCell>IGST</TableCell>
+              <TableCell>GST Paid</TableCell>
               <TableCell>GST Outstanding</TableCell><TableCell>Status</TableCell>
             </TableRow></TableHead>
             <TableBody>
-              {records.length === 0 ? <TableRow><TableCell colSpan={8} align="center">No GST records found</TableCell></TableRow> : records.map((record) => (
+              {records.length === 0 ? <TableRow><TableCell colSpan={11} align="center">No GST records found</TableCell></TableRow> : records.map((record) => (
                 <TableRow key={record.id} hover title={record.note}>
                   <TableCell>
                     {record.sourceType === 'INVOICE' ? `Invoice: ${record.sourceNumber}` : `PO estimate: ${record.sourceNumber}`}
@@ -102,6 +107,9 @@ export default function GSTRecordsPage() {
                   <TableCell>{record.po?.poNumber ?? '—'}</TableCell>
                   <TableCell>{new Date(record.date).toLocaleDateString('en-IN')}</TableCell>
                   <TableCell>{money(record.gstRecorded)}</TableCell>
+                  <TableCell>{money(record.cgstAmount ?? 0)}</TableCell>
+                  <TableCell>{money(record.sgstAmount ?? 0)}</TableCell>
+                  <TableCell>{money(record.igstAmount ?? 0)}</TableCell>
                   <TableCell>{money(record.gstPaid)}</TableCell>
                   <TableCell>{money(record.gstOutstanding)}</TableCell>
                   <TableCell><Chip size="small" label={record.paymentStatus.replace(/_/g, ' ')} color={record.paymentStatus === 'PAID' ? 'success' : record.paymentStatus === 'UNBILLED' ? 'default' : 'warning'} /></TableCell>

@@ -5,12 +5,15 @@ import {
   POStatus,
   InvoiceVerificationStatus,
   InventoryTxnType,
+  InventoryItemType,
+  AssetStatus,
   PhaseStatus,
   ActivityStatus,
   PhotoTag,
   IssueSeverity,
   InspectionStatus,
   ContractStatus,
+  POPaymentType,
 } from '../enums.js';
 
 const uuid = z.string().uuid();
@@ -73,6 +76,7 @@ const quotationLineItem = z.object({
   quantity: positiveQty,
   unit: z.string().trim().max(20).optional(),
   unitPrice: money,
+  gstRate: z.coerce.number().finite().min(0).max(100).default(0),
 });
 
 // Accept items as JSON string (multipart/form-data) or array (JSON body)
@@ -85,7 +89,6 @@ export const createQuotationSchema = z.object({
   body: z.object({
     vendorId: uuid,
     items: itemsField,
-    gstAmount: money.optional(),
     acknowledged: acknowledgement,
   }),
 });
@@ -96,7 +99,6 @@ export const updateQuotationSchema = z.object({
       (val) => (val === undefined ? undefined : typeof val === 'string' ? JSON.parse(val) : val),
       z.array(quotationLineItem).min(1).optional(),
     ),
-    gstAmount: money.optional(),
   }),
 });
 export const listQuotationsSchema = z.object({
@@ -111,15 +113,30 @@ export const createPOSchema = z.object({
   body: z.object({
     vendorId: uuid,
     quotationId: uuid,
-    gstAmount: money.optional(),
+    paymentType: z.nativeEnum(POPaymentType),
     acknowledged: acknowledgement,
   }),
 });
 export const updatePOSchema = z.object({
   params: z.object({ id: uuid }),
+  body: z.object({}),
+});
+export const editPOSchema = z.object({
+  params: z.object({ id: uuid }),
   body: z.object({
-    gstAmount: money.optional(),
+    items: z.array(z.object({
+      materialName: z.string().min(1).max(200),
+      quantity: qty,
+      unit: z.string().min(1).max(20),
+      unitPrice: money,
+      gstRate: z.coerce.number().min(0).max(100),
+    })).min(1, 'At least one item is required'),
+    editReason: z.string().min(1, 'Edit reason is required').max(500),
   }),
+});
+export const regeneratePOSchema = z.object({
+  params: z.object({ id: uuid }),
+  body: z.object({}).optional(),
 });
 export const listPOsSchema = z.object({
   query: pagination.extend({
@@ -148,6 +165,9 @@ export const createInvoiceSchema = z
       invoiceNumber: z.string().trim().max(50).optional(),
       amount: positiveMoney,
       taxAmount: money.default(0),
+      cgstAmount: money.optional(),
+      sgstAmount: money.optional(),
+      igstAmount: money.optional(),
       totalAmount: positiveMoney,
       advancePaid: money.optional(),
       advanceType: z.string().trim().max(50).optional(),
@@ -178,6 +198,9 @@ export const updateInvoiceSchema = z.object({
   body: z.object({
     amount: money.optional(),
     taxAmount: money.optional(),
+    cgstAmount: money.optional(),
+    sgstAmount: money.optional(),
+    igstAmount: money.optional(),
     totalAmount: money.optional(),
     advancePaid: money.optional(),
     advanceType: z.string().max(50).optional(),
@@ -210,6 +233,17 @@ export const createExpenseSchema = z.object({
     category: nonEmptyText(100),
     expenseDate: dateStr.optional(),
     paymentMode: z.string().trim().max(50).optional(),
+  }),
+});
+export const createAdvancePaymentSchema = z.object({
+  body: z.object({
+    poId: uuid,
+    vendorId: uuid,
+    requestNumber: nonEmptyText(50),
+    amount: positiveMoney,
+    paymentMode: z.string().trim().max(50).optional(),
+    notes: z.string().trim().max(1000).optional(),
+    acknowledged: acknowledgement,
   }),
 });
 export const listPaymentRequestsSchema = z.object({
@@ -280,9 +314,7 @@ export const createGatePassSchema = z.object({
     if (!body.vehicleType) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['body', 'vehicleType'], message: 'Vehicle type is required for a material gatepass' });
     }
-    if (!body.vehicleNumber) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['body', 'vehicleNumber'], message: 'Vehicle number is required for a material gatepass' });
-    } else if (!/^[A-Z]{2}[- ]?\d{1,2}[- ]?[A-Z]{1,3}[- ]?\d{1,4}$/i.test(body.vehicleNumber)) {
+    if (body.vehicleNumber && !/^[A-Z]{2}[- ]?\d{1,2}[- ]?[A-Z]{1,3}[- ]?\d{1,4}$/i.test(body.vehicleNumber)) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['body', 'vehicleNumber'], message: 'Enter a valid vehicle number, for example AP39AB1234' });
     }
   }
@@ -337,6 +369,7 @@ export const createInventoryItemSchema = z.object({
     sku: z.string().max(50).optional(),
     category: z.string().max(100).optional(),
     unit: z.string().min(1).max(20),
+    itemType: z.nativeEnum(InventoryItemType).default(InventoryItemType.CONSUMABLE),
     currentStock: qty.default(0),
     minStockLevel: qty.default(0),
     location: z.string().max(200).optional(),
@@ -359,13 +392,86 @@ export const createInventoryTxnSchema = z.object({
   }),
 });
 export const listInventorySchema = z.object({
-  query: pagination.extend({ search: z.string().optional(), category: z.string().optional() }),
+  query: pagination.extend({ search: z.string().optional(), category: z.string().optional(), itemType: z.nativeEnum(InventoryItemType).optional() }),
 });
 export const listInventoryTxnsSchema = z.object({
   query: pagination.extend({
     itemId: uuid.optional(),
     type: z.nativeEnum(InventoryTxnType).optional(),
   }),
+});
+
+// ═══ Assets ═══
+export const listAssetsSchema = z.object({
+  query: pagination.extend({
+    inventoryItemId: uuid.optional(),
+    status: z.nativeEnum(AssetStatus).optional(),
+    location: z.string().optional(),
+    search: z.string().optional(),
+  }),
+});
+export const updateAssetSerialSchema = z.object({
+  params: z.object({ id: uuid }),
+  body: z.object({
+    serialNumber: z.string().max(200).optional(),
+    notes: z.string().max(500).optional(),
+  }),
+});
+export const issueAssetSchema = z.object({
+  params: z.object({ id: uuid }),
+  body: z.object({
+    issuedToDept: z.string().max(200).optional(),
+    issuedToPerson: z.string().max(200).optional(),
+    location: z.string().min(1).max(200),
+    notes: z.string().max(500).optional(),
+  }).refine((v) => v.issuedToDept || v.issuedToPerson, 'Either department or person must be provided'),
+});
+export const returnAssetSchema = z.object({
+  params: z.object({ id: uuid }),
+  body: z.object({
+    location: z.string().min(1).max(200).default('Main Store'),
+    notes: z.string().max(500).optional(),
+  }),
+});
+export const relocateAssetSchema = z.object({
+  params: z.object({ id: uuid }),
+  body: z.object({
+    location: z.string().min(1).max(200),
+    reason: z.string().max(500).optional(),
+  }),
+});
+export const sendMaintenanceSchema = z.object({
+  params: z.object({ id: uuid }),
+  body: z.object({
+    reason: z.string().min(1).max(500),
+    maintenanceVendor: z.string().max(200).optional(),
+    technician: z.string().max(200).optional(),
+    notes: z.string().max(500).optional(),
+    cost: money.optional(),
+  }),
+});
+export const completeMaintenanceSchema = z.object({
+  params: z.object({ id: uuid }),
+  body: z.object({
+    completionNotes: z.string().max(500).optional(),
+    finalCost: money.optional(),
+    returnToLocation: z.string().max(200).optional(),
+    issueDirectly: z.boolean().default(false),
+    issuedToDept: z.string().max(200).optional(),
+    issuedToPerson: z.string().max(200).optional(),
+  }),
+});
+export const retireAssetSchema = z.object({
+  params: z.object({ id: uuid }),
+  body: z.object({
+    reason: z.string().min(1).max(500),
+  }),
+});
+export const scanAssetSchema = z.object({
+  params: z.object({ assetId: z.string().regex(/^VGH-AST-\d+$/) }),
+  body: z.object({
+    location: z.string().max(200).optional(),
+  }).optional(),
 });
 
 // ═══ Phases & Activities ═══

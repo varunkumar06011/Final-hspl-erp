@@ -41,9 +41,11 @@ import {
   LocalShipping as GatePassIcon,
   Timeline as TimelineIcon,
   Delete as DeleteIcon,
+  Edit as EditIcon,
+  Autorenew as AutoRenewIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { POStatus, UserRole } from '@hospital-erp/shared';
+import { POStatus, UserRole, POPaymentType } from '@hospital-erp/shared';
 import { formatCurrency, formatDate, formatIndianNumber, STATUS_COLORS } from '../utils/enumOptions';
 import api, { extractErrorMessage } from '../config/api';
 import { useAuthStore } from '../stores/authStore';
@@ -59,6 +61,7 @@ interface POItem {
   unit?: string;
   unitPrice: number;
   amount: number;
+  gstRate?: number;
 }
 
 interface Quotation {
@@ -90,12 +93,21 @@ interface PORow {
   quotation: { id: string; quotationNumber: string };
   date: string;
   status: string;
+  paymentType: string;
   totalAmount: number;
   gstAmount: number;
   grandTotal: number;
   createdBy: string;
   createdByUser: { id: string; name: string };
   items: POItem[];
+  parentPoId?: string | null;
+  parentPo?: { id: string; poNumber: string } | null;
+  childPos?: { id: string; poNumber: string; regenerationNumber: number; status: string }[];
+  regenerationNumber?: number;
+  editReason?: string | null;
+  editedAt?: string | null;
+  editedByUser?: { id: string; name: string } | null;
+  regenerationData?: unknown;
   approvalWorkflow?: {
     id: string;
     status: string;
@@ -115,11 +127,13 @@ export default function PurchaseOrdersPage() {
   const [error, setError] = useState('');
   const [selectedVendorId, setSelectedVendorId] = useState('');
   const [selectedQuotationId, setSelectedQuotationId] = useState('');
-  const [gstAmount, setGstAmount] = useState('');
+  const [paymentType, setPaymentType] = useState<string>(POPaymentType.AFTER_DELIVERY);
   const [acknowledged, setAcknowledged] = useState(false);
   const [approvalAction, setApprovalAction] = useState<{ row: PORow; action: 'approve' | 'reject' } | null>(null);
   const [approvalPopup, setApprovalPopup] = useState<PORow | null>(null);
   const [trailRow, setTrailRow] = useState<PORow | null>(null);
+  const [editRow, setEditRow] = useState<PORow | null>(null);
+  const [regenRow, setRegenRow] = useState<PORow | null>(null);
   const queryClient = useQueryClient();
   const { user } = useAuthStore();
   const navigate = useNavigate();
@@ -205,7 +219,7 @@ export default function PurchaseOrdersPage() {
       const response = await api.post('/purchase-orders', {
         vendorId: selectedVendorId,
         quotationId: selectedQuotationId,
-        gstAmount: gstAmount || undefined,
+        paymentType,
         acknowledged,
       });
       return response.data;
@@ -274,12 +288,17 @@ export default function PurchaseOrdersPage() {
     return selectedQuotation.items.reduce((sum, i) => sum + Number(i.amount), 0);
   }, [selectedQuotation]);
 
-  const grandTotal = quotationTotal + (Number(gstAmount) || 0);
+  const gstAmount = useMemo(() => {
+    if (!selectedQuotation?.items) return 0;
+    return selectedQuotation.items.reduce((sum, i) => sum + Number(i.amount) * Number(i.gstRate ?? 0) / 100, 0);
+  }, [selectedQuotation]);
+
+  const grandTotal = quotationTotal + gstAmount;
 
   function resetForm() {
     setSelectedVendorId('');
     setSelectedQuotationId('');
-    setGstAmount('');
+    setPaymentType(POPaymentType.AFTER_DELIVERY);
     setAcknowledged(false);
     setError('');
   }
@@ -371,6 +390,7 @@ export default function PurchaseOrdersPage() {
                 <TableCell sx={{ fontWeight: 600 }}>Vendor</TableCell>
                 <TableCell sx={{ fontWeight: 600 }}>Quotation</TableCell>
                 <TableCell sx={{ fontWeight: 600 }}>Date</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>Payment Type</TableCell>
                 <TableCell sx={{ fontWeight: 600 }}>Total</TableCell>
                 <TableCell sx={{ fontWeight: 600 }}>GST</TableCell>
                 <TableCell sx={{ fontWeight: 600 }}>Grand Total</TableCell>
@@ -381,16 +401,51 @@ export default function PurchaseOrdersPage() {
             </TableHead>
             <TableBody>
               {isLoading ? (
-                <TableRow><TableCell colSpan={10} align="center" sx={{ py: 4 }}><CircularProgress size={32} /></TableCell></TableRow>
+                <TableRow><TableCell colSpan={11} align="center" sx={{ py: 4 }}><CircularProgress size={32} /></TableCell></TableRow>
               ) : rows.length === 0 ? (
-                <TableRow><TableCell colSpan={10} align="center" sx={{ py: 4 }}><Typography color="text.secondary">No purchase orders found</Typography></TableCell></TableRow>
+                <TableRow><TableCell colSpan={11} align="center" sx={{ py: 4 }}><Typography color="text.secondary">No purchase orders found</Typography></TableCell></TableRow>
               ) : (
                 rows.map((row) => (
                   <TableRow key={row.id} hover>
-                    <TableCell data-label="PO No">{row.poNumber}</TableCell>
+                    <TableCell data-label="PO No">
+                      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.25 }}>
+                        <Typography>{row.poNumber}</Typography>
+                        {row.parentPo && (
+                          <Typography variant="caption" color="text.secondary">
+                            from {row.parentPo.poNumber}
+                          </Typography>
+                        )}
+                        {row.childPos && row.childPos.length > 0 && (
+                          <Typography variant="caption" color="secondary.main">
+                            regen → {row.childPos.map((c) => c.poNumber).join(', ')}
+                          </Typography>
+                        )}
+                        {row.editReason && (
+                          <Typography variant="caption" color="warning.main" title={row.editReason}>
+                            edited
+                          </Typography>
+                        )}
+                      </Box>
+                    </TableCell>
                     <TableCell data-label="Vendor">{row.vendor?.vendorCode} - {row.vendor?.name ?? '—'}</TableCell>
                     <TableCell data-label="Quotation">{row.quotation?.quotationNumber ?? '—'}</TableCell>
                     <TableCell data-label="Date">{formatDate(row.date)}</TableCell>
+                    <TableCell data-label="Payment Type">
+                      <Chip
+                        size="small"
+                        label={row.paymentType === POPaymentType.ADVANCE
+                          ? 'Advance'
+                          : row.paymentType === POPaymentType.FULL_PAYMENT
+                            ? 'Full Payment'
+                            : 'After Delivery'}
+                        color={row.paymentType === POPaymentType.ADVANCE
+                          ? 'warning'
+                          : row.paymentType === POPaymentType.FULL_PAYMENT
+                            ? 'success'
+                            : 'info'}
+                        variant="outlined"
+                      />
+                    </TableCell>
                     <TableCell data-label="Total">{formatCurrency(row.totalAmount)}</TableCell>
                     <TableCell data-label="GST">{formatCurrency(row.gstAmount)}</TableCell>
                     <TableCell data-label="Grand Total">{formatCurrency(row.grandTotal)}</TableCell>
@@ -412,6 +467,12 @@ export default function PurchaseOrdersPage() {
                         {(row.status === POStatus.APPROVED || row.status === POStatus.PARTIALLY_DELIVERED || row.status === POStatus.DELIVERED) && (
                           <IconButton size="small" onClick={() => setTrailRow(row)} title="Delivery Trail"><TimelineIcon fontSize="small" /></IconButton>
                         )}
+                        {row.status === POStatus.PARTIALLY_DELIVERED && !row.parentPoId && (
+                          <IconButton size="small" color="warning" onClick={() => setEditRow(row)} title="Edit PO to Match Delivered"><EditIcon fontSize="small" /></IconButton>
+                        )}
+                        {row.status === POStatus.DELIVERED && !row.parentPoId && Array.isArray(row.regenerationData) && (row.regenerationData as unknown[]).length > 0 && (!row.childPos || row.childPos.length === 0) ? (
+                          <IconButton size="small" color="secondary" onClick={() => setRegenRow(row)} title="Generate Regenerated PO"><AutoRenewIcon fontSize="small" /></IconButton>
+                        ) : null}
                         {row.status !== POStatus.APPROVED && row.status !== POStatus.PARTIALLY_DELIVERED && row.status !== POStatus.DELIVERED && (
                           <IconButton size="small" color="error" onClick={() => setDeleteRow(row)} title="Delete"><DeleteIcon fontSize="small" /></IconButton>
                         )}
@@ -482,9 +543,7 @@ export default function PurchaseOrdersPage() {
                 value={selectedQuotationId}
                 onChange={(e) => {
                   const quotationId = e.target.value;
-                  const quotation = approvedQuotations?.find((item) => item.id === quotationId);
                   setSelectedQuotationId(quotationId);
-                  setGstAmount(quotation ? String(quotation.gstAmount ?? 0) : '');
                 }}
                 fullWidth
                 size="small"
@@ -496,6 +555,22 @@ export default function PurchaseOrdersPage() {
                 ))}
               </TextField>
             )}
+
+            {/* Payment Type Selection */}
+            <TextField
+              select
+              label="Payment Type"
+              value={paymentType}
+              onChange={(e) => setPaymentType(e.target.value)}
+              fullWidth
+              size="small"
+              required
+              helperText="Controls when payment happens and whether a gate pass needs an invoice"
+            >
+              <MenuItem value={POPaymentType.ADVANCE}>Against Advance — pay before delivery</MenuItem>
+              <MenuItem value={POPaymentType.AFTER_DELIVERY}>After Delivery — pay after goods arrive + invoice</MenuItem>
+              <MenuItem value={POPaymentType.FULL_PAYMENT}>Against Full Payment — full payment done, goods follow</MenuItem>
+            </TextField>
 
             {/* Items from quotation (read-only) */}
             {selectedQuotation?.items && selectedQuotation.items.length > 0 && (
@@ -510,6 +585,7 @@ export default function PurchaseOrdersPage() {
                         <TableCell sx={{ fontWeight: 600 }}>Qty</TableCell>
                         <TableCell sx={{ fontWeight: 600 }}>Unit</TableCell>
                         <TableCell sx={{ fontWeight: 600 }}>Unit Price</TableCell>
+                        <TableCell sx={{ fontWeight: 600 }}>GST %</TableCell>
                         <TableCell sx={{ fontWeight: 600 }}>Amount</TableCell>
                       </TableRow>
                     </TableHead>
@@ -521,6 +597,7 @@ export default function PurchaseOrdersPage() {
                           <TableCell>{item.quantity}</TableCell>
                           <TableCell>{item.unit ?? '—'}</TableCell>
                           <TableCell>{formatCurrency(item.unitPrice)}</TableCell>
+                          <TableCell>{Number(item.gstRate ?? 0)}%</TableCell>
                           <TableCell>{formatCurrency(item.amount)}</TableCell>
                         </TableRow>
                       ))}
@@ -538,7 +615,7 @@ export default function PurchaseOrdersPage() {
                           {formatCurrency(item.amount)}
                         </Typography>
                       </Box>
-                      <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 1 }}>
+                      <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 1 }}>
                         <Box>
                           <Typography variant="caption" color="text.secondary">Quantity</Typography>
                           <Typography variant="body2" fontWeight={600}>{item.quantity}</Typography>
@@ -551,21 +628,17 @@ export default function PurchaseOrdersPage() {
                           <Typography variant="caption" color="text.secondary">Unit Price</Typography>
                           <Typography variant="body2" fontWeight={600}>{formatCurrency(item.unitPrice)}</Typography>
                         </Box>
+                        <Box>
+                          <Typography variant="caption" color="text.secondary">GST %</Typography>
+                          <Typography variant="body2" fontWeight={600}>{Number(item.gstRate ?? 0)}%</Typography>
+                        </Box>
                       </Box>
                     </Card>
                   ))}
                 </Box>
                 <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: { xs: 'stretch', sm: 'flex-end' }, gap: 1, mt: 1 }}>
                   <Typography variant="body2" sx={{ textAlign: { xs: 'left', sm: 'right' } }}>Total: <strong>{formatCurrency(quotationTotal)}</strong></Typography>
-                  <TextField
-                    label="GST Amount (optional)"
-                    type="text"
-                    value={formatIndianNumber(gstAmount)}
-                    onChange={(e) => setGstAmount(e.target.value.replace(/,/g, ''))}
-                    inputMode="decimal"
-                    size="small"
-                    sx={{ width: { xs: '100%', sm: 200 } }}
-                  />
+                  <Typography variant="body2" sx={{ textAlign: { xs: 'left', sm: 'right' } }}>GST (auto-calculated): <strong>{formatCurrency(gstAmount)}</strong></Typography>
                   <Typography variant="body2" sx={{ textAlign: { xs: 'left', sm: 'right' } }}>Grand Total: <strong>{formatCurrency(grandTotal)}</strong></Typography>
                 </Box>
               </Box>
@@ -627,6 +700,12 @@ export default function PurchaseOrdersPage() {
 
       {/* Delivery Trail Dialog */}
       <DeliveryTrailDialog poId={trailRow?.id ?? null} poNumber={trailRow?.poNumber ?? ''} onClose={() => setTrailRow(null)} />
+
+      {/* Edit PO Dialog */}
+      <EditPODialog row={editRow} onClose={() => setEditRow(null)} onSuccess={() => { refetch(); setEditRow(null); }} />
+
+      {/* Regenerate PO Dialog */}
+      <RegeneratePODialog row={regenRow} onClose={() => setRegenRow(null)} onSuccess={() => { refetch(); setRegenRow(null); }} />
 
       {/* Delete Confirmation Dialog */}
       <ResponsiveDialog open={deleteRow !== null} onClose={() => setDeleteRow(null)} maxWidth="xs" fullWidth>
@@ -827,6 +906,291 @@ function DeliveryTrailDialog({ poId, poNumber, onClose }: { poId: string | null;
       </DialogContent>
       <DialogActions>
         <Button onClick={onClose}>Close</Button>
+      </DialogActions>
+    </ResponsiveDialog>
+  );
+}
+
+// ─── Edit PO Dialog ─────────────────────────────────
+interface EditItem {
+  materialName: string;
+  quantity: string;
+  unit: string;
+  unitPrice: string;
+  gstRate: string;
+  accepted: number;
+  selected: boolean;
+}
+
+function EditPODialog({ row, onClose, onSuccess }: { row: PORow | null; onClose: () => void; onSuccess: () => void }) {
+  const queryClient = useQueryClient();
+  const [items, setItems] = useState<EditItem[]>([]);
+  const [editReason, setEditReason] = useState('');
+  const [error, setError] = useState('');
+  const [deliveryData, setDeliveryData] = useState<{ itemSummary: { materialName: string; acceptedQuantity: number; orderedQuantity: number; remainingQuantity: number }[] } | null>(null);
+
+  // Fetch delivery trail data to show accepted quantities
+  useEffect(() => {
+    if (!row) return;
+    api.get(`/purchase-orders/${row.id}/delivery-trail`)
+      .then((res) => setDeliveryData(res.data))
+      .catch(() => setDeliveryData(null));
+  }, [row]);
+
+  // Initialize items from PO row
+  useEffect(() => {
+    if (!row) return;
+    const acceptedMap = new Map<string, number>();
+    if (deliveryData?.itemSummary) {
+      for (const item of deliveryData.itemSummary) {
+        acceptedMap.set(item.materialName.toLowerCase(), item.acceptedQuantity);
+      }
+    }
+    setItems(row.items.map((item) => ({
+      materialName: item.materialName,
+      quantity: String(item.quantity),
+      unit: item.unit ?? 'nos',
+      unitPrice: String(item.unitPrice),
+      gstRate: String(item.gstRate ?? 0),
+      accepted: acceptedMap.get(item.materialName.toLowerCase()) ?? 0,
+      selected: true,
+    })));
+    setEditReason('');
+    setError('');
+  }, [row, deliveryData]);
+
+  const mutation = useMutation({
+    mutationFn: async () => {
+      const selectedItems = items.filter((i) => i.selected);
+      if (selectedItems.length === 0) throw new Error('At least one item must be selected');
+      if (!editReason.trim()) throw new Error('Edit reason is required');
+      await api.post(`/purchase-orders/${row!.id}/edit`, {
+        items: selectedItems.map((i) => ({
+          materialName: i.materialName,
+          quantity: Number(i.quantity),
+          unit: i.unit,
+          unitPrice: Number(i.unitPrice),
+          gstRate: Number(i.gstRate),
+        })),
+        editReason: editReason.trim(),
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/pos'] });
+      onSuccess();
+    },
+    onError: (err: unknown) => setError(extractErrorMessage(err)),
+  });
+
+  const selectedItems = items.filter((i) => i.selected);
+  const totalAmount = selectedItems.reduce((sum, i) => sum + (Number(i.quantity) || 0) * (Number(i.unitPrice) || 0), 0);
+  const gstAmount = selectedItems.reduce((sum, i) => sum + (Number(i.quantity) || 0) * (Number(i.unitPrice) || 0) * (Number(i.gstRate) || 0) / 100, 0);
+  const grandTotal = totalAmount + gstAmount;
+  const remainingItems = items.filter((i) => (Number(i.quantity) || 0) - i.accepted > 0);
+
+  return (
+    <ResponsiveDialog open={!!row} onClose={onClose} maxWidth="md" fullWidth>
+      <DialogTitle>Edit PO — {row?.poNumber}</DialogTitle>
+      <DialogContent>
+        {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
+        <Alert severity="warning" sx={{ mb: 2 }}>
+          This PO was partially delivered. Edit quantities to match what was actually received.
+          The PO will go for re-approval. After re-approval, a "Generate Regenerated PO" button will appear for the remaining items.
+        </Alert>
+        <TableContainer component={Card} variant="outlined" sx={{ overflowX: 'auto', mb: 2 }}>
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell padding="checkbox" />
+                <TableCell sx={{ fontWeight: 600 }}>Material</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>Accepted</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>Qty</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>Unit</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>Unit Price</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>GST %</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {items.map((item, idx) => (
+                <TableRow key={idx} sx={{ opacity: item.selected ? 1 : 0.5 }}>
+                  <TableCell padding="checkbox">
+                    <input type="checkbox" checked={item.selected} onChange={(e) => {
+                      const next = [...items];
+                      next[idx] = { ...item, selected: e.target.checked };
+                      setItems(next);
+                    }} />
+                  </TableCell>
+                  <TableCell>{item.materialName}</TableCell>
+                  <TableCell>
+                    <Chip label={item.accepted} size="small" color="success" variant="outlined" />
+                  </TableCell>
+                  <TableCell>
+                    <TextField
+                      size="small"
+                      type="number"
+                      value={item.quantity}
+                      onChange={(e) => {
+                        const next = [...items];
+                        next[idx] = { ...item, quantity: e.target.value };
+                        setItems(next);
+                      }}
+                      sx={{ width: 80 }}
+                      error={item.selected && Number(item.quantity) < item.accepted}
+                      helperText={item.selected && Number(item.quantity) < item.accepted ? `Min: ${item.accepted}` : ''}
+                    />
+                  </TableCell>
+                  <TableCell>
+                    <TextField
+                      size="small"
+                      value={item.unit}
+                      onChange={(e) => {
+                        const next = [...items];
+                        next[idx] = { ...item, unit: e.target.value };
+                        setItems(next);
+                      }}
+                      sx={{ width: 70 }}
+                    />
+                  </TableCell>
+                  <TableCell>
+                    <TextField
+                      size="small"
+                      type="number"
+                      value={item.unitPrice}
+                      onChange={(e) => {
+                        const next = [...items];
+                        next[idx] = { ...item, unitPrice: e.target.value };
+                        setItems(next);
+                      }}
+                      sx={{ width: 100 }}
+                    />
+                  </TableCell>
+                  <TableCell>
+                    <TextField
+                      size="small"
+                      select
+                      value={item.gstRate}
+                      onChange={(e) => {
+                        const next = [...items];
+                        next[idx] = { ...item, gstRate: e.target.value };
+                        setItems(next);
+                      }}
+                      sx={{ width: 80 }}
+                    >
+                      {[0, 5, 12, 18, 28].map((r) => <MenuItem key={r} value={r}>{r}%</MenuItem>)}
+                    </TextField>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableContainer>
+
+        {/* Summary */}
+        <Box sx={{ display: 'flex', gap: 2, mb: 2, flexWrap: 'wrap' }}>
+          <Chip label={`Total: ₹${totalAmount.toLocaleString('en-IN')}`} />
+          <Chip label={`GST: ₹${gstAmount.toLocaleString('en-IN')}`} />
+          <Chip label={`Grand Total: ₹${grandTotal.toLocaleString('en-IN')}`} color="primary" />
+          {remainingItems.length > 0 && (
+            <Chip label={`${remainingItems.length} item(s) will be available for regeneration`} color="secondary" variant="outlined" />
+          )}
+        </Box>
+
+        <TextField
+          label="Edit Reason (required)"
+          value={editReason}
+          onChange={(e) => setEditReason(e.target.value)}
+          fullWidth
+          size="small"
+          multiline
+          rows={2}
+          placeholder="e.g. Vendor delivered 70 out of 100, closing PO at delivered quantity"
+        />
+      </DialogContent>
+      <DialogActions sx={{ flexWrap: 'wrap', gap: 1 }}>
+        <Button onClick={onClose}>Cancel</Button>
+        <Button
+          variant="contained"
+          color="warning"
+          onClick={() => mutation.mutate()}
+          disabled={mutation.isPending}
+        >
+          {mutation.isPending ? <CircularProgress size={20} /> : 'Edit & Send for Re-approval'}
+        </Button>
+      </DialogActions>
+    </ResponsiveDialog>
+  );
+}
+
+// ─── Regenerate PO Dialog ─────────────────────────────────
+function RegeneratePODialog({ row, onClose, onSuccess }: { row: PORow | null; onClose: () => void; onSuccess: () => void }) {
+  const queryClient = useQueryClient();
+  const [error, setError] = useState('');
+  const remainingItems = (row?.regenerationData as { materialName: string; quantity: number; unit: string; unitPrice: number; gstRate: number }[] | null) ?? [];
+
+  const mutation = useMutation({
+    mutationFn: async () => {
+      await api.post(`/purchase-orders/${row!.id}/regenerate`, {});
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/pos'] });
+      onSuccess();
+    },
+    onError: (err: unknown) => setError(extractErrorMessage(err)),
+  });
+
+  const totalAmount = remainingItems.reduce((sum, i) => sum + i.quantity * i.unitPrice, 0);
+  const gstAmount = remainingItems.reduce((sum, i) => sum + (i.quantity * i.unitPrice) * i.gstRate / 100, 0);
+  const grandTotal = totalAmount + gstAmount;
+
+  return (
+    <ResponsiveDialog open={!!row} onClose={onClose} maxWidth="sm" fullWidth>
+      <DialogTitle>Generate Regenerated PO — {row?.poNumber}</DialogTitle>
+      <DialogContent>
+        {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
+        <Alert severity="info" sx={{ mb: 2 }}>
+          This will create a new PO with the remaining items from the original PO.
+          The new PO will need its own approval.
+        </Alert>
+        <TableContainer component={Card} variant="outlined" sx={{ overflowX: 'auto', mb: 2 }}>
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell sx={{ fontWeight: 600 }}>Material</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>Qty</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>Unit</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>Unit Price</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>GST %</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {remainingItems.map((item, idx) => (
+                <TableRow key={idx}>
+                  <TableCell>{item.materialName}</TableCell>
+                  <TableCell>{item.quantity}</TableCell>
+                  <TableCell>{item.unit}</TableCell>
+                  <TableCell>₹{item.unitPrice.toLocaleString('en-IN')}</TableCell>
+                  <TableCell>{item.gstRate}%</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableContainer>
+        <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+          <Chip label={`Total: ₹${totalAmount.toLocaleString('en-IN')}`} />
+          <Chip label={`GST: ₹${gstAmount.toLocaleString('en-IN')}`} />
+          <Chip label={`Grand Total: ₹${grandTotal.toLocaleString('en-IN')}`} color="primary" />
+        </Box>
+      </DialogContent>
+      <DialogActions sx={{ flexWrap: 'wrap', gap: 1 }}>
+        <Button onClick={onClose}>Cancel</Button>
+        <Button
+          variant="contained"
+          color="secondary"
+          onClick={() => mutation.mutate()}
+          disabled={mutation.isPending}
+        >
+          {mutation.isPending ? <CircularProgress size={20} /> : 'Generate Regenerated PO'}
+        </Button>
       </DialogActions>
     </ResponsiveDialog>
   );

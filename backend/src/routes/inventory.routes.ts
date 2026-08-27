@@ -58,11 +58,12 @@ router.get(
   validateMiddleware(listInventorySchema),
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
-      const { page = 1, pageSize = 20, search, category } = req.query as Record<string, unknown>;
+      const { page = 1, pageSize = 20, search, category, itemType } = req.query as Record<string, unknown>;
       const where: Record<string, unknown> = {
         projectId: req.user!.projectId,
         deletedAt: null,
         ...(category ? { category } : {}),
+        ...(itemType ? { itemType } : {}),
       };
       if (search) {
         where.OR = [
@@ -157,6 +158,16 @@ router.patch(
       if (req.body.currentStock !== undefined) {
         res.status(400).json({ error: 'Stock changes must be recorded through a receipt or stock movement' });
         return;
+      }
+
+      // Lock itemType if item has transactions or assets
+      if (req.body.itemType !== undefined && req.body.itemType !== existing.itemType) {
+        const txnCount = await prisma.inventoryTransaction.count({ where: { itemId: existing.id } });
+        const assetCount = await prisma.asset.count({ where: { inventoryItemId: existing.id } });
+        if (txnCount > 0 || assetCount > 0) {
+          res.status(400).json({ error: 'Item type cannot be changed after transactions or assets exist. Delete and recreate the item if needed.' });
+          return;
+        }
       }
 
       const updated = await prisma.inventoryItem.update({

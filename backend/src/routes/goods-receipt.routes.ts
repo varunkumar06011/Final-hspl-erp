@@ -1,5 +1,5 @@
 import { Router, Response, NextFunction } from 'express';
-import { GoodsReceiptStatus, Permission, AuditAction, InspectionStatus } from '@hospital-erp/shared';
+import { GoodsReceiptStatus, Permission, AuditAction, InspectionStatus, InventoryItemType, AssetStatus, AssetMovementType } from '@hospital-erp/shared';
 import {
   createGoodsReceiptSchema,
   inspectGoodsReceiptSchema,
@@ -12,6 +12,7 @@ import { rbacMiddleware } from '../middleware/rbac';
 import { validateMiddleware } from '../middleware/validate';
 import { logAudit } from '../services/audit.service';
 import { notifyAllHeads } from '../services/push.service';
+import { generateAssetId } from './asset.routes';
 
 const router = Router();
 router.use(authMiddleware);
@@ -289,7 +290,20 @@ router.post(
       const projectId = requireProjectId(req);
       const receipt = await prisma.goodsReceipt.findFirst({
         where: { id: req.params.id, projectId, deletedAt: null },
-        include: { items: true, gatePass: true },
+        include: {
+          items: { include: { poItem: true } },
+          gatePass: { include: { invoice: true } },
+          purchaseOrder: {
+            include: {
+              vendor: { select: { id: true, name: true, vendorCode: true } },
+              quotation: { select: { quotationNumber: true, date: true } },
+              createdByUser: { select: { id: true, name: true } },
+              items: true,
+            },
+          },
+          createdByUser: { select: { id: true, name: true } },
+          inspectedByUser: { select: { id: true, name: true } },
+        },
       });
       if (!receipt) {
         res.status(404).json({ error: 'Goods receipt not found' });
@@ -324,6 +338,7 @@ router.post(
                 sku: await generateInventorySku(tx, projectId, 'MATERIAL'),
                 category: 'MATERIAL',
                 unit: line.unit || 'nos',
+                itemType: InventoryItemType.CONSUMABLE,
                 currentStock: 0,
                 minStockLevel: 0,
               },
@@ -343,6 +358,61 @@ router.post(
             },
           });
           await tx.inventoryItem.update({ where: { id: inventoryItem.id }, data: { currentStock: newBalance } });
+
+          // If this is an ASSET-type item, generate individual asset records
+          if (inventoryItem.itemType === InventoryItemType.ASSET) {
+            const acceptedCount = Math.floor(Number(line.acceptedQty));
+            const poItem = line.poItem;
+            const po = receipt.purchaseOrder;
+            const invoice = receipt.gatePass.invoice;
+            const unitPrice = poItem ? Number(poItem.unitPrice) : null;
+            const gstRate = poItem ? Number(poItem.gstRate) : null;
+            const gstAmount = unitPrice && gstRate ? unitPrice * gstRate / 100 : null;
+            const totalCost = unitPrice && gstAmount ? unitPrice + gstAmount : unitPrice;
+
+            for (let i = 0; i < acceptedCount; i++) {
+              const assetId = await generateAssetId(tx);
+              await tx.asset.create({
+                data: {
+                  projectId,
+                  inventoryItemId: inventoryItem.id,
+                  assetId,
+                  status: AssetStatus.ACTIVE,
+                  location: 'Main Store',
+                  // Frozen purchase chain
+                  vendorName: po?.vendor?.name ?? null,
+                  vendorCode: po?.vendor?.vendorCode ?? null,
+                  quotationNumber: po?.quotation?.quotationNumber ?? null,
+                  quotationDate: po?.quotation?.date ?? null,
+                  poNumber: po?.poNumber ?? null,
+                  poDate: po?.date ?? null,
+                  poPaymentType: po?.paymentType ?? null,
+                  invoiceNumber: invoice?.invoiceNumber ?? null,
+                  invoiceDate: invoice?.date ?? null,
+                  unitPrice: unitPrice ?? null,
+                  gstRate: gstRate ?? null,
+                  gstAmount: gstAmount ?? null,
+                  totalCost: totalCost ?? null,
+                  poCreatedBy: po?.createdByUser?.name ?? null,
+                  receiptNumber: receipt.receiptNumber,
+                  receiptDate: receipt.createdAt,
+                  gatePassNumber: receipt.gatePass.passNumber,
+                  receivedBy: receipt.inspectedByUser?.name ?? null,
+                  postedBy: req.user!.name,
+                },
+              });
+              await tx.assetMovement.create({
+                data: {
+                  assetId: (await tx.asset.findUnique({ where: { assetId }, select: { id: true } }))!.id,
+                  type: AssetMovementType.CREATED,
+                  toLocation: 'Main Store',
+                  toStatus: AssetStatus.ACTIVE,
+                  notes: `Created from ${receipt.receiptNumber} (PO: ${po?.poNumber ?? 'N/A'})`,
+                  userId: req.user!.id,
+                },
+              });
+            }
+          }
         }
         if (receipt.gatePass.invoiceId) {
           await tx.vendorInvoice.update({

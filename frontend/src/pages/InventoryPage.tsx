@@ -1,4 +1,5 @@
 ﻿import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Box,
   Typography,
@@ -35,7 +36,7 @@ import {
   PhotoCamera as PhotoCameraIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { InventoryTxnType } from '@hospital-erp/shared';
+import { InventoryTxnType, InventoryItemType } from '@hospital-erp/shared';
 import { enumToOptions, formatIndianNumber } from '../utils/enumOptions';
 import api, { extractErrorMessage } from '../config/api';
 import CreatableSelect from '../components/CreatableSelect';
@@ -43,6 +44,7 @@ import AttachmentUpload from '../components/AttachmentUpload';
 import ResponsiveTable from '../components/ResponsiveTable';
 
 export default function InventoryPage() {
+  const navigate = useNavigate();
   const [tab, setTab] = useState(0);
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(20);
@@ -138,7 +140,7 @@ export default function InventoryPage() {
   const pagination = data?.pagination ?? { page: 1, pageSize: 20, total: 0, totalPages: 0 };
 
   const openCreate = () => {
-    setForm({ name: '', unit: 'nos', minStockLevel: 0 });
+    setForm({ name: '', unit: 'nos', itemType: InventoryItemType.CONSUMABLE, minStockLevel: 0 });
     setEditing(null);
     setError('');
     setDialogOpen(true);
@@ -148,6 +150,7 @@ export default function InventoryPage() {
     setForm({
       name: row.name ?? '', sku: row.sku ?? '', category: row.category ?? '',
       unit: row.unit ?? 'nos',
+      itemType: row.itemType ?? InventoryItemType.CONSUMABLE,
       minStockLevel: row.minStockLevel ?? 0, location: row.location ?? '',
     });
     setEditing(row);
@@ -228,6 +231,7 @@ export default function InventoryPage() {
                   <TableCell sx={{ fontWeight: 600 }}>Name</TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>SKU</TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>Category</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Type</TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>Unit</TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>Stock</TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>Min Level</TableCell>
@@ -248,24 +252,33 @@ export default function InventoryPage() {
             </TableHead>
             <TableBody>
               {isLoading ? (
-                <TableRow><TableCell colSpan={8} align="center" sx={{ py: 4 }}><CircularProgress size={32} /></TableCell></TableRow>
+                <TableRow><TableCell colSpan={9} align="center" sx={{ py: 4 }}><CircularProgress size={32} /></TableCell></TableRow>
               ) : rows.length === 0 ? (
-                <TableRow><TableCell colSpan={8} align="center" sx={{ py: 4 }}><Typography color="text.secondary">No records found</Typography></TableCell></TableRow>
+                <TableRow><TableCell colSpan={9} align="center" sx={{ py: 4 }}><Typography color="text.secondary">No records found</Typography></TableCell></TableRow>
               ) : tab === 0 ? (
                 rows.map((row: Record<string, unknown>) => {
                   const lowStock = Number(row.currentStock) <= Number(row.minStockLevel) && Number(row.minStockLevel) > 0;
+                  const isAsset = row.itemType === InventoryItemType.ASSET;
                   return (
-                    <TableRow key={row.id as string} hover>
+                    <TableRow key={row.id as string} hover sx={isAsset ? { cursor: 'pointer' } : {}} onClick={isAsset ? () => navigate(`/assets/${row.id}`) : undefined}>
                       <TableCell data-label="Name">{String(row.name ?? '—')}</TableCell>
                       <TableCell data-label="SKU">{String(row.sku ?? '—')}</TableCell>
                       <TableCell data-label="Category">{String(row.category ?? '—')}</TableCell>
+                      <TableCell data-label="Type">
+                        <Chip
+                          label={isAsset ? 'Asset' : 'Consumable'}
+                          size="small"
+                          color={isAsset ? 'secondary' : 'primary'}
+                          variant="outlined"
+                        />
+                      </TableCell>
                       <TableCell data-label="Unit">{String(row.unit ?? '—')}</TableCell>
                       <TableCell data-label="Stock">
                         <Chip label={String(row.currentStock)} size="small" color={lowStock ? 'error' : 'default'} />
                       </TableCell>
                       <TableCell data-label="Min Level">{String(row.minStockLevel ?? 0)}</TableCell>
                       <TableCell data-label="Location">{String(row.location ?? '—')}</TableCell>
-                      <TableCell align="right" data-label="Actions">
+                      <TableCell align="right" data-label="Actions" onClick={(e) => e.stopPropagation()}>
                         <IconButton size="small" onClick={() => openEdit(row)}><EditIcon fontSize="small" /></IconButton>
                         <IconButton size="small" color="error" onClick={() => setDeleteConfirm(row.id as string)}><DeleteIcon fontSize="small" /></IconButton>
                       </TableCell>
@@ -311,6 +324,25 @@ export default function InventoryPage() {
             <TextField label="Name" required value={form.name ?? ''} onChange={(e) => setForm({ ...form, name: e.target.value })} fullWidth size="small" />
             <TextField label="SKU" value={form.sku ?? ''} onChange={(e) => setForm({ ...form, sku: e.target.value })} fullWidth size="small" />
             <CreatableSelect label="Category" value={String(form.category ?? '')} onChange={(v) => setForm({ ...form, category: v })} dropdownType="INVENTORY_CATEGORY" />
+            <TextField
+              select
+              label="Item Type"
+              value={String(form.itemType ?? InventoryItemType.CONSUMABLE)}
+              onChange={(e) => setForm({ ...form, itemType: e.target.value })}
+              fullWidth
+              size="small"
+              required
+              disabled={!!editing}
+              helperText={editing ? 'Type cannot be changed after creation' : undefined}
+            >
+              <MenuItem value={InventoryItemType.CONSUMABLE}>Consumable — used up by quantity</MenuItem>
+              <MenuItem value={InventoryItemType.ASSET}>Asset — durable equipment with individual unit tracking + QR</MenuItem>
+            </TextField>
+            {form.itemType === InventoryItemType.ASSET && (
+              <Alert severity="info" sx={{ py: 0.5 }}>
+                Each unit received via goods receipt will get a unique asset ID (e.g. VGH-AST-00001) and a printable QR sticker.
+              </Alert>
+            )}
             <CreatableSelect label="Unit" value={String(form.unit ?? '')} onChange={(v) => setForm({ ...form, unit: v })} required dropdownType="UNIT" />
             <TextField label="Min Stock Level" type="text" value={formatIndianNumber(form.minStockLevel ?? 0)} onChange={(e) => setForm({ ...form, minStockLevel: e.target.value === '' ? '' : Number(e.target.value.replace(/,/g, '')) })} inputMode="decimal" inputProps={{ min: 0, step: 0.01 }} fullWidth size="small" />
             <CreatableSelect label="Location" value={String(form.location ?? '')} onChange={(v) => setForm({ ...form, location: v })} dropdownType="LOCATION" />

@@ -5,7 +5,9 @@ import {
   listPaymentRequestsSchema,
   recordPaymentSchema,
   createExpenseSchema,
+  createAdvancePaymentSchema,
   approvalActionSchema,
+  POPaymentType,
 } from '@hospital-erp/shared';
 import { prisma } from '../config/prisma';
 import { Prisma } from '@prisma/client';
@@ -92,6 +94,7 @@ async function generatePaymentCode(): Promise<string> {
 const prInclude = {
   vendor: { select: { id: true, name: true, vendorCode: true } },
   invoice: { select: { id: true, invoiceCode: true, invoiceNumber: true, totalAmount: true } },
+  purchaseOrder: { select: { id: true, poNumber: true, grandTotal: true, paymentType: true } },
   createdByUser: { select: { id: true, name: true } },
   payments: true,
   approvalWorkflow: {
@@ -202,6 +205,216 @@ router.get(
       );
 
       res.json({ data: result });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// GET /pending-pos — list approved POs with ADVANCE or FULL_PAYMENT type that don't have an active advance payment request
+router.get(
+  '/pending-pos',
+  rbacMiddleware(Permission.VIEW_FINANCIALS),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+
+      const pos = await prisma.purchaseOrder.findMany({
+        where: {
+          projectId,
+          deletedAt: null,
+          status: { in: ['APPROVED', 'PARTIALLY_DELIVERED', 'DELIVERED'] },
+          paymentType: { in: [POPaymentType.ADVANCE, POPaymentType.FULL_PAYMENT] },
+        },
+        include: {
+          vendor: { select: { id: true, name: true, vendorCode: true } },
+          advancePaymentRequests: {
+            where: { deletedAt: null, status: { in: [PaymentStatus.PENDING, PaymentStatus.APPROVED] } },
+            select: { id: true, status: true, amount: true, requestNumber: true },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+
+      const result = pos.map((po) => {
+        const activeRequest = po.advancePaymentRequests.find(
+          (pr) => pr.status === PaymentStatus.PENDING || pr.status === PaymentStatus.APPROVED
+        );
+        const paidAdvances = po.advancePaymentRequests
+          .filter((pr) => pr.status === PaymentStatus.PAID)
+          .reduce((sum, pr) => sum + Number(pr.amount), 0);
+        return {
+          id: po.id,
+          poNumber: po.poNumber,
+          paymentType: po.paymentType,
+          grandTotal: Number(po.grandTotal),
+          vendor: po.vendor,
+          advancePaidToDate: paidAdvances,
+          outstanding: Math.max(0, Number(po.grandTotal) - paidAdvances),
+          activePaymentRequest: activeRequest
+            ? { id: activeRequest.id, status: activeRequest.status, amount: Number(activeRequest.amount), requestNumber: activeRequest.requestNumber }
+            : null,
+        };
+      });
+
+      res.json({ data: result });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// POST /po-advance — create advance payment request against a PO (with file upload + approval workflow)
+router.post(
+  '/po-advance',
+  rbacMiddleware(Permission.VIEW_FINANCIALS),
+  upload.single('file'),
+  validateMiddleware(createAdvancePaymentSchema),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      const { poId, vendorId, requestNumber, amount, paymentMode, notes } = req.body;
+
+      // Validate PO exists, belongs to project, is approved, and has the right payment type
+      const po = await prisma.purchaseOrder.findFirst({
+        where: { id: poId, projectId, deletedAt: null },
+        include: {
+          advancePaymentRequests: {
+            where: { deletedAt: null, status: { in: [PaymentStatus.PENDING, PaymentStatus.APPROVED] } },
+          },
+        },
+      });
+      if (!po) {
+        res.status(404).json({ error: 'Purchase order not found' });
+        return;
+      }
+      if (!['APPROVED', 'PARTIALLY_DELIVERED', 'DELIVERED'].includes(po.status)) {
+        res.status(400).json({ error: 'Purchase order must be approved first' });
+        return;
+      }
+      if (po.paymentType !== POPaymentType.ADVANCE && po.paymentType !== POPaymentType.FULL_PAYMENT) {
+        res.status(400).json({ error: 'Advance payments can only be created for POs with payment type ADVANCE or FULL_PAYMENT' });
+        return;
+      }
+      if (po.vendorId !== vendorId) {
+        res.status(400).json({ error: 'Vendor does not match the purchase order vendor' });
+        return;
+      }
+
+      // Check for existing active advance payment request
+      if (po.advancePaymentRequests.length > 0) {
+        res.status(409).json({ error: 'An active advance payment request already exists for this PO. Complete or reject it before creating another.' });
+        return;
+      }
+
+      // Check amount doesn't exceed PO grand total
+      const paidAdvances = await prisma.paymentRequest.aggregate({
+        where: { poId, status: PaymentStatus.PAID, deletedAt: null, type: 'ADVANCE' },
+        _sum: { amount: true },
+      });
+      const alreadyPaid = Number(paidAdvances._sum.amount) || 0;
+      const outstanding = Number(po.grandTotal) - alreadyPaid;
+      if (Number(amount) > outstanding) {
+        res.status(400).json({ error: `Advance amount cannot exceed outstanding balance of ${outstanding}` });
+        return;
+      }
+      if (Number(amount) <= 0) {
+        res.status(400).json({ error: 'Advance amount must be greater than zero' });
+        return;
+      }
+
+      // Handle file upload (proof of advance payment — e.g. bank transfer receipt)
+      let filePath: string | null = null;
+      let fileName: string | null = null;
+      let fileMimeType: string | null = null;
+      if (req.file) {
+        const isImage = req.file.mimetype.startsWith('image/');
+        const subPath = isImage ? 'images' : 'documents';
+        const paymentCode = await generatePaymentCode();
+        const prefixedFileName = `advance-payments/${subPath}/${paymentCode}-${req.file.originalname}`;
+        const storage = getStorageService();
+        const uploadResult = await storage.upload(req.file.buffer, prefixedFileName, req.file.mimetype, 'documents');
+        filePath = uploadResult.filePath;
+        fileName = req.file.originalname;
+        fileMimeType = req.file.mimetype;
+      }
+
+      const paymentCode = await generatePaymentCode();
+
+      const result = await prisma.$transaction(async (tx) => {
+        const created = await tx.paymentRequest.create({
+          data: {
+            projectId,
+            poId,
+            vendorId,
+            paymentCode,
+            requestNumber,
+            type: 'ADVANCE',
+            amount: Number(amount),
+            paymentMode: paymentMode ?? null,
+            notes: notes ?? null,
+            filePath,
+            fileName,
+            fileMimeType,
+            createdBy: req.user!.id,
+          },
+        });
+
+        const workflow = await prisma.approvalWorkflow.create({
+          data: {
+            entityType: 'PAYMENT_REQUEST',
+            entityId: created.id,
+            projectId,
+            status: 'VERIFICATION',
+            currentStep: 0,
+            minApprovers: getRequiredApproverCount(Number(amount)),
+            approvalPolicy: 'HEAD_GROUPS',
+            steps: {
+              create: HEAD_ROLES.map((role, idx) => ({
+                stepNumber: idx + 1,
+                approverRole: role,
+                status: 'PENDING',
+              })),
+            },
+          },
+          include: { steps: true },
+        });
+
+        await tx.paymentRequest.update({
+          where: { id: created.id },
+          data: { approvalWorkflowId: workflow.id },
+        });
+
+        return created;
+      });
+
+      await logAudit({
+        userId: req.user!.id,
+        action: AuditAction.CREATE,
+        entityType: 'PAYMENT_REQUEST',
+        entityId: result.id,
+        projectId,
+        newValue: { paymentCode, requestNumber, amount: String(amount), type: 'ADVANCE', poId },
+      });
+
+      const record = await prisma.paymentRequest.findUnique({
+        where: { id: result.id },
+        include: prInclude,
+      });
+
+      // Notify all approvers via push notification
+      if (record?.approvalWorkflow) {
+        notifyApprovers(projectId, HEAD_ROLES, {
+          approvalId: record.approvalWorkflow.id,
+          entityType: 'PAYMENT_REQUEST',
+          entityId: result.id,
+          title: 'New Approval Required',
+          body: `Advance payment ${paymentCode} — ₹${amount}`,
+          url: `/payments?approval=${record.approvalWorkflow.id}`,
+        }).catch((err) => console.error('[Push] Advance payment notification error:', err));
+      }
+
+      res.status(201).json(record);
     } catch (error) {
       next(error);
     }
@@ -630,7 +843,7 @@ router.post(
       const projectId = requireProjectId(req);
       const pr = await prisma.paymentRequest.findFirst({
         where: { id: req.params.id, projectId, deletedAt: null },
-        include: { payments: true, invoice: true },
+        include: { payments: true, invoice: true, purchaseOrder: true },
       });
       if (!pr) {
         res.status(404).json({ error: 'Payment request not found' });

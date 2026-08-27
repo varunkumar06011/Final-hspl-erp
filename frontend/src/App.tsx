@@ -18,6 +18,8 @@ import GatePassesPage from './pages/GatePassesPage';
 import GoodsReceiptsPage from './pages/GoodsReceiptsPage';
 import GSTRecordsPage from './pages/GSTRecordsPage';
 import InventoryPage from './pages/InventoryPage';
+import AssetDetailPage from './pages/AssetDetailPage';
+import AssetScanPage from './pages/AssetScanPage';
 import PhotosPage from './pages/PhotosPage';
 import IssuesPage from './pages/IssuesPage';
 import InspectionsPage from './pages/InspectionsPage';
@@ -48,6 +50,7 @@ const ROUTES = [
   { path: '/goods-receipts', element: <GoodsReceiptsPage /> },
   { path: '/gst-records', element: <GSTRecordsPage /> },
   { path: '/inventory', element: <InventoryPage /> },
+  { path: '/assets/:itemId', element: <AssetDetailPage /> },
   { path: '/labour', element: <LabourPage /> },
   { path: '/photos', element: <PhotosPage /> },
   { path: '/issues', element: <IssuesPage /> },
@@ -74,6 +77,8 @@ export default function App() {
             ) : (
               <Routes>
                 <Route path="/login" element={<LoginPage />} />
+                {/* Public route — asset QR scan, no auth required */}
+                <Route path="/scan/:assetId" element={<AssetScanPage />} />
                 <Route
                   path="/"
                   element={

@@ -43,7 +43,7 @@ import {
   Delete as DeleteIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { PaymentStatus, PaymentMode, UserRole } from '@hospital-erp/shared';
+import { PaymentStatus, PaymentMode, UserRole, POPaymentType } from '@hospital-erp/shared';
 import { formatCurrency, formatIndianNumber, STATUS_COLORS } from '../utils/enumOptions';
 import api, { extractErrorMessage } from '../config/api';
 import { useAuthStore } from '../stores/authStore';
@@ -79,6 +79,8 @@ interface PaymentRequestRow {
   vendor: { id: string; name: string; vendorCode: string } | null;
   invoiceId: string | null;
   invoice: { id: string; invoiceCode: string; invoiceNumber: string; totalAmount: number } | null;
+  poId: string | null;
+  purchaseOrder: { id: string; poNumber: string; grandTotal: number; paymentType: string } | null;
   createdBy: string;
   createdByUser: { id: string; name: string };
   payments: { id: string; amount: number; mode: string; reference: string | null; date: string }[];
@@ -108,6 +110,22 @@ interface PendingInvoice {
   } | null;
   createdBy: string;
   createdAt: string;
+}
+
+interface PendingPO {
+  id: string;
+  poNumber: string;
+  paymentType: string;
+  grandTotal: number;
+  vendor: { id: string; name: string; vendorCode: string };
+  advancePaidToDate: number;
+  outstanding: number;
+  activePaymentRequest: {
+    id: string;
+    status: string;
+    amount: number;
+    requestNumber: string;
+  } | null;
 }
 
 const HEAD_ROLES = [UserRole.PROJECT_HEAD, UserRole.HEAD_OF_CONSTRUCTION, UserRole.ADMIN, UserRole.ADMIN_2];
@@ -141,6 +159,10 @@ export default function PaymentsPage() {
   const [expenseOpen, setExpenseOpen] = useState(false);
   const [invoicePayOpen, setInvoicePayOpen] = useState<PendingInvoice | null>(null);
   const [invoicePayForm, setInvoicePayForm] = useState<Record<string, unknown>>({});
+  const [advancePayOpen, setAdvancePayOpen] = useState<PendingPO | null>(null);
+  const [advancePayForm, setAdvancePayForm] = useState<Record<string, unknown>>({});
+  const [advanceFile, setAdvanceFile] = useState<File | null>(null);
+  const advanceFileRef = useRef<HTMLInputElement>(null);
   const [approvalAction, setApprovalAction] = useState<{ row: PaymentRequestRow; action: 'approve' | 'reject' } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
@@ -170,6 +192,14 @@ export default function PaymentsPage() {
     },
   });
 
+  const { data: pendingPOs } = useQuery({
+    queryKey: ['/payments', 'pending-pos'],
+    queryFn: async () => {
+      const response = await api.get('/payments/pending-pos');
+      return response.data;
+    },
+  });
+
   const createInvoicePaymentMutation = useMutation({
     mutationFn: async (payload: Record<string, unknown>) => {
       const response = await api.post('/payments/invoice-payment', payload);
@@ -182,6 +212,35 @@ export default function PaymentsPage() {
       setInvoicePayOpen(null);
       setInvoicePayForm({});
       setSuccessMsg('Payment request created for invoice.');
+      setTimeout(() => setSuccessMsg(''), 3000);
+    },
+    onError: (err: unknown) => setError(extractErrorMessage(err)),
+  });
+
+  const createAdvancePaymentMutation = useMutation({
+    mutationFn: async () => {
+      const formData = new FormData();
+      formData.append('poId', String(advancePayOpen?.id ?? ''));
+      formData.append('vendorId', String(advancePayOpen?.vendor.id ?? ''));
+      formData.append('requestNumber', String(advancePayForm.requestNumber ?? ''));
+      formData.append('amount', String(advancePayForm.amount ?? ''));
+      if (advancePayForm.paymentMode) formData.append('paymentMode', String(advancePayForm.paymentMode));
+      if (advancePayForm.notes) formData.append('notes', String(advancePayForm.notes));
+      formData.append('acknowledged', 'true');
+      if (advanceFile) formData.append('file', advanceFile);
+      const response = await api.post('/payments/po-advance', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/payments'] });
+      queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
+      setAdvancePayOpen(null);
+      setAdvancePayForm({});
+      setAdvanceFile(null);
+      if (advanceFileRef.current) advanceFileRef.current.value = '';
+      setSuccessMsg('Advance payment request created and sent for approval.');
       setTimeout(() => setSuccessMsg(''), 3000);
     },
     onError: (err: unknown) => setError(extractErrorMessage(err)),
@@ -274,6 +333,7 @@ export default function PaymentsPage() {
   const rows: PaymentRequestRow[] = data?.data ?? [];
   const pagination = data?.pagination ?? { page: 1, pageSize: 20, total: 0, totalPages: 0 };
   const pendingInvoicesData: PendingInvoice[] = pendingInvoices?.data ?? [];
+  const pendingPOsData: PendingPO[] = pendingPOs?.data ?? [];
   const currentPaymentRequest = rows.find((row) => row.id === payOpen);
 
   // Auto-open approval dialog when navigated from a push notification
@@ -334,6 +394,7 @@ export default function PaymentsPage() {
 
       <Tabs value={tab} onChange={(_e, v) => setTab(v)} sx={{ mb: 2 }} variant="scrollable" scrollButtons="auto" allowScrollButtonsMobile>
         <Tab label={`Pending Invoices (${pendingInvoicesData.length})`} />
+        <Tab label={`Advance Payments (${pendingPOsData.length})`} />
         <Tab label="All Payment Requests" />
       </Tabs>
 
@@ -419,8 +480,86 @@ export default function PaymentsPage() {
         </Card>
       )}
 
-      {/* Tab 1: All Payment Requests */}
+      {/* Tab 1: Advance Payments (POs with ADVANCE or FULL_PAYMENT type) */}
       {tab === 1 && (
+        <Card>
+          <CardContent>
+            <Typography variant="h6" gutterBottom>POs Awaiting Advance Payment</Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              These purchase orders were created with an advance or full payment type. Record the advance payment with proof for approval.
+            </Typography>
+            {pendingPOsData.length === 0 ? (
+              <Typography color="text.secondary" sx={{ py: 3, textAlign: 'center' }}>No POs awaiting advance payment. All advance-type POs are fully paid or have active payment requests.</Typography>
+            ) : (
+              <ResponsiveTable>
+              <TableContainer sx={{ overflowX: 'auto' }}>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell sx={{ fontWeight: 600 }}>PO No</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>Vendor</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>Payment Type</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>Grand Total</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>Advance Paid</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>Outstanding</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>Actions</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {pendingPOsData.map((po) => (
+                      <TableRow key={po.id} hover>
+                        <TableCell data-label="PO No">{po.poNumber}</TableCell>
+                        <TableCell data-label="Vendor">{po.vendor?.vendorCode} - {po.vendor?.name}</TableCell>
+                        <TableCell data-label="Payment Type">
+                          <Chip
+                            size="small"
+                            label={po.paymentType === POPaymentType.ADVANCE ? 'Advance' : 'Full Payment'}
+                            color={po.paymentType === POPaymentType.ADVANCE ? 'warning' : 'success'}
+                            variant="outlined"
+                          />
+                        </TableCell>
+                        <TableCell data-label="Grand Total">{formatCurrency(po.grandTotal)}</TableCell>
+                        <TableCell data-label="Advance Paid">{po.advancePaidToDate > 0 ? formatCurrency(po.advancePaidToDate) : '—'}</TableCell>
+                        <TableCell data-label="Outstanding"><strong>{formatCurrency(po.outstanding)}</strong></TableCell>
+                        <TableCell data-label="Actions">
+                          {po.activePaymentRequest ? (
+                            <Chip
+                              size="small"
+                              color="warning"
+                              label={`Request ${po.activePaymentRequest.status}`}
+                            />
+                          ) : (
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              startIcon={<PaymentsIcon />}
+                              onClick={() => {
+                                setAdvancePayOpen(po);
+                                setAdvancePayForm({
+                                  amount: po.outstanding,
+                                  requestNumber: `ADV-${po.poNumber}`,
+                                  paymentMode: PaymentMode.BANK_TRANSFER,
+                                });
+                                setAdvanceFile(null);
+                              }}
+                            >
+                              Create Advance Payment
+                            </Button>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+              </ResponsiveTable>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Tab 2: All Payment Requests */}
+      {tab === 2 && (
         <Card>
           <Box sx={{ p: 2, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
             <TextField
@@ -435,6 +574,7 @@ export default function PaymentsPage() {
               <MenuItem value="">All</MenuItem>
               <MenuItem value="INVOICE">Invoice</MenuItem>
               <MenuItem value="EXPENSE">Expense</MenuItem>
+              <MenuItem value="ADVANCE">Advance</MenuItem>
             </TextField>
             <TextField select size="small" label="Status" value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(0); }} sx={{ width: 150 }}>
               <MenuItem value="">All</MenuItem>
@@ -467,11 +607,13 @@ export default function PaymentsPage() {
                   rows.map((row) => (
                     <TableRow key={row.id} hover>
                       <TableCell data-label="Code">{row.paymentCode}</TableCell>
-                      <TableCell data-label="Type"><Chip label={row.type} size="small" color={row.type === 'EXPENSE' ? 'secondary' : 'primary'} variant="outlined" /></TableCell>
-                      <TableCell data-label="Description / Invoice">
+                      <TableCell data-label="Type"><Chip label={row.type} size="small" color={row.type === 'EXPENSE' ? 'secondary' : row.type === 'ADVANCE' ? 'warning' : 'primary'} variant="outlined" /></TableCell>
+                      <TableCell data-label="Description / Invoice / PO">
                         {row.type === 'EXPENSE'
                           ? `${row.description ?? '—'}${row.category ? ` (${row.category})` : ''}`
-                          : row.invoice?.invoiceCode ?? '—'}
+                          : row.type === 'ADVANCE'
+                            ? `PO: ${row.purchaseOrder?.poNumber ?? '—'}`
+                            : row.invoice?.invoiceCode ?? '—'}
                       </TableCell>
                       <TableCell data-label="Vendor">{row.vendor ? `${row.vendor.vendorCode} - ${row.vendor.name}` : '—'}</TableCell>
                       <TableCell data-label="Amount">{formatCurrency(row.amount)}</TableCell>
@@ -530,13 +672,13 @@ export default function PaymentsPage() {
       )}
 
       {/* Approval details accordion */}
-      {tab === 1 && rows.length > 0 && rows.some((r) => r.approvalWorkflow) && (
+      {tab === 2 && rows.length > 0 && rows.some((r) => r.approvalWorkflow) && (
         <Box sx={{ mt: 2 }}>
           <Typography variant="h6" fontWeight={600} sx={{ mb: 1 }}>Approval Status</Typography>
           {rows.filter((r) => r.approvalWorkflow).map((row) => (
             <Accordion key={row.id}>
               <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                <Typography><strong>{row.paymentCode}</strong> — {row.type === 'EXPENSE' ? row.description : row.invoice?.invoiceCode} — {getApprovalCount(row)}/2 approved — <Chip label={row.status} size="small" color={STATUS_COLORS[row.status] ?? 'default'} /></Typography>
+                <Typography><strong>{row.paymentCode}</strong> — {row.type === 'EXPENSE' ? row.description : row.type === 'ADVANCE' ? `PO: ${row.purchaseOrder?.poNumber}` : row.invoice?.invoiceCode} — {getApprovalCount(row)}/2 approved — <Chip label={row.status} size="small" color={STATUS_COLORS[row.status] ?? 'default'} /></Typography>
               </AccordionSummary>
               <AccordionDetails>
                 <ApprovalStepsDisplay steps={row.approvalWorkflow!.steps} />
@@ -670,6 +812,107 @@ export default function PaymentsPage() {
             disabled={createInvoicePaymentMutation.isPending || !invoicePayForm.amount || Number(invoicePayForm.amount) <= 0}
           >
             {createInvoicePaymentMutation.isPending ? <CircularProgress size={20} /> : 'Create Payment Request'}
+          </Button>
+        </DialogActions>
+      </ResponsiveDialog>
+
+      {/* Create Advance Payment Dialog */}
+      <ResponsiveDialog open={!!advancePayOpen} onClose={() => { setAdvancePayOpen(null); setAdvanceFile(null); if (advanceFileRef.current) advanceFileRef.current.value = ''; }} maxWidth="sm" fullWidth>
+        <DialogTitle>Create Advance Payment for {advancePayOpen?.poNumber}</DialogTitle>
+        <DialogContent>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
+            <Typography variant="body2">Vendor: <strong>{advancePayOpen?.vendor?.name}</strong></Typography>
+            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1 }}>
+              <Typography variant="body2">PO Grand Total: <strong>{advancePayOpen ? formatCurrency(advancePayOpen.grandTotal) : ''}</strong></Typography>
+              <Typography variant="body2">Payment Type: <strong>{advancePayOpen?.paymentType === POPaymentType.ADVANCE ? 'Against Advance' : 'Against Full Payment'}</strong></Typography>
+              {advancePayOpen && advancePayOpen.advancePaidToDate > 0 && (
+                <Typography variant="body2">Advance Paid: <strong>{formatCurrency(advancePayOpen.advancePaidToDate)}</strong></Typography>
+              )}
+            </Box>
+            <Typography variant="body2" color="primary.main">Outstanding Balance: <strong>{advancePayOpen ? formatCurrency(advancePayOpen.outstanding) : ''}</strong></Typography>
+            <TextField
+              label="Request Number"
+              value={String(advancePayForm.requestNumber ?? '')}
+              onChange={(e) => setAdvancePayForm({ ...advancePayForm, requestNumber: e.target.value })}
+              fullWidth
+              size="small"
+              required
+            />
+            <TextField
+              label="Advance Amount"
+              type="text"
+              value={formatIndianNumber(advancePayForm.amount ?? '')}
+              onChange={(e) => {
+                const value = e.target.value.replace(/,/g, '');
+                const parsedAmount = Number(value);
+                setAdvancePayForm({
+                  ...advancePayForm,
+                  amount: value === ''
+                    ? ''
+                    : !Number.isFinite(parsedAmount)
+                      ? ''
+                      : advancePayOpen
+                        ? Math.min(parsedAmount, advancePayOpen.outstanding)
+                        : parsedAmount,
+                });
+              }}
+              inputMode="decimal"
+              inputProps={{ min: 0, max: advancePayOpen?.outstanding }}
+              fullWidth
+              size="small"
+              required
+              helperText={advancePayOpen ? `Maximum: ${formatCurrency(advancePayOpen.outstanding)}` : ''}
+            />
+            <TextField
+              select
+              label="Payment Mode"
+              value={String(advancePayForm.paymentMode ?? PaymentMode.BANK_TRANSFER)}
+              onChange={(e) => setAdvancePayForm({ ...advancePayForm, paymentMode: e.target.value })}
+              fullWidth
+              size="small"
+            >
+              {PAYMENT_MODES.map((m) => <MenuItem key={m} value={m}>{m.replace(/_/g, ' ')}</MenuItem>)}
+            </TextField>
+            <TextField
+              label="Notes"
+              value={String(advancePayForm.notes ?? '')}
+              onChange={(e) => setAdvancePayForm({ ...advancePayForm, notes: e.target.value })}
+              fullWidth
+              size="small"
+              multiline
+              rows={2}
+            />
+            <Box>
+              <Typography variant="body2" sx={{ mb: 1 }}>Proof of Advance Payment (bank transfer receipt, cheque, etc.)</Typography>
+              <input
+                ref={advanceFileRef}
+                type="file"
+                accept="application/pdf,image/jpeg,image/png,image/webp"
+                onChange={(e) => {
+                  const file = e.target.files?.[0] ?? null;
+                  setAdvanceFile(file);
+                }}
+                style={{ width: '100%' }}
+              />
+              {advanceFile && (
+                <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                  {advanceFile.name} ({(advanceFile.size / 1024).toFixed(0)} KB)
+                </Typography>
+              )}
+            </Box>
+          </Box>
+        </DialogContent>
+        <DialogActions sx={{ flexWrap: "wrap", gap: 1 }}>
+          <Button onClick={() => { setAdvancePayOpen(null); setAdvanceFile(null); if (advanceFileRef.current) advanceFileRef.current.value = ''; }}>Cancel</Button>
+          <Button
+            variant="contained"
+            onClick={() => {
+              setError('');
+              createAdvancePaymentMutation.mutate();
+            }}
+            disabled={createAdvancePaymentMutation.isPending || !advancePayForm.amount || Number(advancePayForm.amount) <= 0}
+          >
+            {createAdvancePaymentMutation.isPending ? <CircularProgress size={20} /> : 'Create Advance Payment Request'}
           </Button>
         </DialogActions>
       </ResponsiveDialog>

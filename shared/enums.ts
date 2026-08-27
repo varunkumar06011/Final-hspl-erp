@@ -120,6 +120,45 @@ export enum InventoryTxnType {
   ADJUST = 'ADJUST',
 }
 
+export enum InventoryItemType {
+  CONSUMABLE = 'CONSUMABLE',
+  ASSET = 'ASSET',
+}
+
+export enum AssetStatus {
+  ACTIVE = 'ACTIVE',
+  ISSUED = 'ISSUED',
+  UNDER_MAINTENANCE = 'UNDER_MAINTENANCE',
+  RETIRED = 'RETIRED',
+}
+
+export enum AssetMovementType {
+  CREATED = 'CREATED',
+  ISSUED = 'ISSUED',
+  RETURNED = 'RETURNED',
+  RELOCATED = 'RELOCATED',
+  MAINTENANCE_START = 'MAINTENANCE_START',
+  MAINTENANCE_COMPLETE = 'MAINTENANCE_COMPLETE',
+  RETIRED = 'RETIRED',
+  SCANNED = 'SCANNED',
+}
+
+// ═══════════════════════════════════════════════════════════
+// GST Rates (Indian GST slabs + 9% as requested)
+// ═══════════════════════════════════════════════════════════
+export const GST_RATES = [0, 5, 9, 12, 18, 28] as const;
+export type GstRate = (typeof GST_RATES)[number];
+
+// ═══════════════════════════════════════════════════════════
+// PO Payment Type — controls when payment happens and whether
+// a gate pass requires an invoice.
+// ═══════════════════════════════════════════════════════════
+export enum POPaymentType {
+  ADVANCE = 'ADVANCE',
+  AFTER_DELIVERY = 'AFTER_DELIVERY',
+  FULL_PAYMENT = 'FULL_PAYMENT',
+}
+
 export enum PhaseStatus {
   NOT_STARTED = 'NOT_STARTED',
   IN_PROGRESS = 'IN_PROGRESS',

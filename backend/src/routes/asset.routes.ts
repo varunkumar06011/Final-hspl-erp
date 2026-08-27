@@ -1,0 +1,841 @@
+import { Router, Response, NextFunction } from 'express';
+import { Permission, AuditAction, AssetStatus, AssetMovementType, UserRole } from '@hospital-erp/shared';
+import {
+  listAssetsSchema,
+  updateAssetSerialSchema,
+  issueAssetSchema,
+  returnAssetSchema,
+  relocateAssetSchema,
+  sendMaintenanceSchema,
+  completeMaintenanceSchema,
+  scanAssetSchema,
+} from '@hospital-erp/shared';
+import { prisma } from '../config/prisma';
+import { Prisma } from '@prisma/client';
+import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middleware/auth';
+import { optionalAuthMiddleware } from '../middleware/optional-auth';
+import { rbacMiddleware } from '../middleware/rbac';
+import { validateMiddleware } from '../middleware/validate';
+import { logAudit } from '../services/audit.service';
+
+const router = Router();
+
+const ASSET_ADMIN_ROLES = [UserRole.ADMIN, UserRole.ADMIN_2];
+
+const assetInclude = {
+  inventoryItem: { select: { id: true, name: true, category: true, unit: true, itemType: true } },
+  issuedByUser: { select: { id: true, name: true } },
+  movements: {
+    orderBy: { timestamp: 'desc' as const },
+    include: { user: { select: { id: true, name: true, role: true } } },
+    take: 50,
+  },
+  scans: {
+    orderBy: { timestamp: 'desc' as const },
+    include: { user: { select: { id: true, name: true } } },
+    take: 20,
+  },
+  maintenances: {
+    orderBy: { sentAt: 'desc' as const },
+    include: {
+      sentByUser: { select: { id: true, name: true } },
+      completedByUser: { select: { id: true, name: true } },
+    },
+  },
+};
+
+/**
+ * Generate the next human-readable asset ID: VGH-AST-00001, VGH-AST-00002, ...
+ */
+async function generateAssetId(tx: Prisma.TransactionClient): Promise<string> {
+  const lastAsset = await tx.asset.findFirst({
+    where: { assetId: { startsWith: 'VGH-AST-' } },
+    orderBy: { assetId: 'desc' },
+    select: { assetId: true },
+  });
+  let nextNum = 1;
+  if (lastAsset) {
+    const match = lastAsset.assetId.match(/^VGH-AST-(\d+)$/);
+    if (match) nextNum = parseInt(match[1], 10) + 1;
+  }
+  return `VGH-AST-${String(nextNum).padStart(5, '0')}`;
+}
+
+// GET / — list assets with filters
+router.get(
+  '/',
+  authMiddleware,
+  rbacMiddleware(Permission.MANAGE_INVENTORY),
+  validateMiddleware(listAssetsSchema),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      const { page, pageSize, inventoryItemId, status, location, search } = req.query as Record<string, unknown>;
+      const where: Prisma.AssetWhereInput = { projectId };
+      if (inventoryItemId) where.inventoryItemId = String(inventoryItemId);
+      if (status) where.status = String(status);
+      if (location) where.location = { contains: String(location), mode: 'insensitive' };
+      if (search) {
+        where.OR = [
+          { assetId: { contains: String(search), mode: 'insensitive' } },
+          { serialNumber: { contains: String(search), mode: 'insensitive' } },
+        ];
+      }
+
+      const [data, total] = await Promise.all([
+        prisma.asset.findMany({
+          where,
+          include: assetInclude,
+          orderBy: { assetId: 'asc' },
+          skip: (Number(page) - 1) * Number(pageSize),
+          take: Number(pageSize),
+        }),
+        prisma.asset.count({ where }),
+      ]);
+
+      res.json({
+        data,
+        pagination: { page: Number(page), pageSize: Number(pageSize), total, totalPages: Math.ceil(total / Number(pageSize)) },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// GET /:id — full asset lifecycle
+router.get(
+  '/:id',
+  authMiddleware,
+  rbacMiddleware(Permission.MANAGE_INVENTORY),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      const asset = await prisma.asset.findFirst({
+        where: { id: req.params.id, projectId },
+        include: assetInclude,
+      });
+      if (!asset) {
+        res.status(404).json({ error: 'Asset not found' });
+        return;
+      }
+      res.json(asset);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// PATCH /:id/serial — update serial number (only if not issued)
+router.patch(
+  '/:id/serial',
+  authMiddleware,
+  rbacMiddleware(Permission.MANAGE_INVENTORY),
+  validateMiddleware(updateAssetSerialSchema),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      const asset = await prisma.asset.findFirst({
+        where: { id: req.params.id, projectId },
+      });
+      if (!asset) {
+        res.status(404).json({ error: 'Asset not found' });
+        return;
+      }
+      if (asset.status === AssetStatus.ISSUED) {
+        res.status(400).json({ error: 'Serial number cannot be changed while asset is issued. Return it first.' });
+        return;
+      }
+      if (asset.status === AssetStatus.RETIRED) {
+        res.status(400).json({ error: 'Serial number cannot be changed for retired assets' });
+        return;
+      }
+
+      // Check serial number uniqueness if provided
+      if (req.body.serialNumber) {
+        const existing = await prisma.asset.findFirst({
+          where: { serialNumber: req.body.serialNumber, NOT: { id: asset.id } },
+        });
+        if (existing) {
+          res.status(409).json({ error: 'Another asset already has this serial number' });
+          return;
+        }
+      }
+
+      const oldValue = { serialNumber: asset.serialNumber, notes: asset.notes };
+      const updated = await prisma.asset.update({
+        where: { id: asset.id },
+        data: {
+          serialNumber: req.body.serialNumber ?? asset.serialNumber,
+          notes: req.body.notes ?? asset.notes,
+        },
+      });
+
+      await logAudit({
+        userId: req.user!.id,
+        action: AuditAction.UPDATE,
+        entityType: 'ASSET',
+        entityId: asset.id,
+        projectId,
+        oldValue,
+        newValue: { serialNumber: updated.serialNumber, notes: updated.notes },
+      });
+
+      res.json(updated);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// POST /:id/issue — issue asset to department/person
+router.post(
+  '/:id/issue',
+  authMiddleware,
+  rbacMiddleware(Permission.MANAGE_INVENTORY),
+  validateMiddleware(issueAssetSchema),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      const asset = await prisma.asset.findFirst({
+        where: { id: req.params.id, projectId },
+      });
+      if (!asset) {
+        res.status(404).json({ error: 'Asset not found' });
+        return;
+      }
+      if (asset.status !== AssetStatus.ACTIVE) {
+        res.status(400).json({ error: `Asset must be ACTIVE to issue. Current status: ${asset.status}` });
+        return;
+      }
+
+      const result = await prisma.$transaction(async (tx) => {
+        // Optimistic concurrency check
+        const claimed = await tx.asset.updateMany({
+          where: { id: asset.id, version: asset.version, status: AssetStatus.ACTIVE },
+          data: {
+            status: AssetStatus.ISSUED,
+            location: req.body.location,
+            issuedToDept: req.body.issuedToDept ?? null,
+            issuedToPerson: req.body.issuedToPerson ?? null,
+            issuedAt: new Date(),
+            issuedBy: req.user!.id,
+            version: { increment: 1 },
+          },
+        });
+        if (claimed.count !== 1) throw new Error('Asset was already modified by another user. Please refresh and try again.');
+
+        await tx.assetMovement.create({
+          data: {
+            assetId: asset.id,
+            type: AssetMovementType.ISSUED,
+            fromLocation: asset.location,
+            toLocation: req.body.location,
+            fromStatus: asset.status,
+            toStatus: AssetStatus.ISSUED,
+            issuedToDept: req.body.issuedToDept ?? null,
+            issuedToPerson: req.body.issuedToPerson ?? null,
+            notes: req.body.notes ?? null,
+            userId: req.user!.id,
+          },
+        });
+
+        // Also create inventory transaction (keeps Transactions tab working)
+        await tx.inventoryTransaction.create({
+          data: {
+            itemId: asset.inventoryItemId,
+            type: 'OUT',
+            quantity: 1,
+            balanceAfter: 0, // Balance is tracked per-item, not per-asset
+            userId: req.user!.id,
+            notes: `Asset ${asset.assetId} issued to ${req.body.issuedToDept ?? ''} ${req.body.issuedToPerson ?? ''}`.trim(),
+          },
+        });
+
+        return tx.asset.findUnique({ where: { id: asset.id }, include: assetInclude });
+      });
+
+      await logAudit({
+        userId: req.user!.id,
+        action: AuditAction.UPDATE,
+        entityType: 'ASSET',
+        entityId: asset.id,
+        projectId,
+        oldValue: { status: asset.status, location: asset.location },
+        newValue: { status: AssetStatus.ISSUED, location: req.body.location, issuedToDept: req.body.issuedToDept, issuedToPerson: req.body.issuedToPerson },
+      });
+
+      res.json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// POST /:id/return — return asset to stock
+router.post(
+  '/:id/return',
+  authMiddleware,
+  rbacMiddleware(Permission.MANAGE_INVENTORY),
+  validateMiddleware(returnAssetSchema),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      const asset = await prisma.asset.findFirst({
+        where: { id: req.params.id, projectId },
+      });
+      if (!asset) {
+        res.status(404).json({ error: 'Asset not found' });
+        return;
+      }
+      if (asset.status !== AssetStatus.ISSUED && asset.status !== AssetStatus.UNDER_MAINTENANCE) {
+        res.status(400).json({ error: `Asset must be ISSUED or UNDER_MAINTENANCE to return. Current status: ${asset.status}` });
+        return;
+      }
+
+      const result = await prisma.$transaction(async (tx) => {
+        const claimed = await tx.asset.updateMany({
+          where: { id: asset.id, version: asset.version },
+          data: {
+            status: AssetStatus.ACTIVE,
+            location: req.body.location,
+            issuedToDept: null,
+            issuedToPerson: null,
+            issuedAt: null,
+            issuedBy: null,
+            version: { increment: 1 },
+          },
+        });
+        if (claimed.count !== 1) throw new Error('Asset was already modified by another user. Please refresh and try again.');
+
+        await tx.assetMovement.create({
+          data: {
+            assetId: asset.id,
+            type: AssetMovementType.RETURNED,
+            fromLocation: asset.location,
+            toLocation: req.body.location,
+            fromStatus: asset.status,
+            toStatus: AssetStatus.ACTIVE,
+            notes: req.body.notes ?? null,
+            userId: req.user!.id,
+          },
+        });
+
+        await tx.inventoryTransaction.create({
+          data: {
+            itemId: asset.inventoryItemId,
+            type: 'IN',
+            quantity: 1,
+            balanceAfter: 0,
+            userId: req.user!.id,
+            notes: `Asset ${asset.assetId} returned to ${req.body.location}`,
+          },
+        });
+
+        return tx.asset.findUnique({ where: { id: asset.id }, include: assetInclude });
+      });
+
+      await logAudit({
+        userId: req.user!.id,
+        action: AuditAction.UPDATE,
+        entityType: 'ASSET',
+        entityId: asset.id,
+        projectId,
+        oldValue: { status: asset.status, location: asset.location },
+        newValue: { status: AssetStatus.ACTIVE, location: req.body.location },
+      });
+
+      res.json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// POST /:id/relocate — change location
+router.post(
+  '/:id/relocate',
+  authMiddleware,
+  rbacMiddleware(Permission.MANAGE_INVENTORY),
+  validateMiddleware(relocateAssetSchema),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      const asset = await prisma.asset.findFirst({
+        where: { id: req.params.id, projectId },
+      });
+      if (!asset) {
+        res.status(404).json({ error: 'Asset not found' });
+        return;
+      }
+      if (asset.status === AssetStatus.RETIRED) {
+        res.status(400).json({ error: 'Cannot relocate a retired asset' });
+        return;
+      }
+
+      const result = await prisma.$transaction(async (tx) => {
+        const claimed = await tx.asset.updateMany({
+          where: { id: asset.id, version: asset.version },
+          data: {
+            location: req.body.location,
+            version: { increment: 1 },
+          },
+        });
+        if (claimed.count !== 1) throw new Error('Asset was already modified by another user. Please refresh and try again.');
+
+        await tx.assetMovement.create({
+          data: {
+            assetId: asset.id,
+            type: AssetMovementType.RELOCATED,
+            fromLocation: asset.location,
+            toLocation: req.body.location,
+            reason: req.body.reason ?? null,
+            userId: req.user!.id,
+          },
+        });
+
+        return tx.asset.findUnique({ where: { id: asset.id }, include: assetInclude });
+      });
+
+      await logAudit({
+        userId: req.user!.id,
+        action: AuditAction.UPDATE,
+        entityType: 'ASSET',
+        entityId: asset.id,
+        projectId,
+        oldValue: { location: asset.location },
+        newValue: { location: req.body.location },
+      });
+
+      res.json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// POST /:id/maintenance — send asset for maintenance
+router.post(
+  '/:id/maintenance',
+  authMiddleware,
+  rbacMiddleware(Permission.MANAGE_INVENTORY),
+  validateMiddleware(sendMaintenanceSchema),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      const asset = await prisma.asset.findFirst({
+        where: { id: req.params.id, projectId },
+      });
+      if (!asset) {
+        res.status(404).json({ error: 'Asset not found' });
+        return;
+      }
+      if (asset.status === AssetStatus.RETIRED) {
+        res.status(400).json({ error: 'Cannot send a retired asset for maintenance' });
+        return;
+      }
+      if (asset.status === AssetStatus.UNDER_MAINTENANCE) {
+        res.status(400).json({ error: 'Asset is already under maintenance' });
+        return;
+      }
+
+      const result = await prisma.$transaction(async (tx) => {
+        const claimed = await tx.asset.updateMany({
+          where: { id: asset.id, version: asset.version },
+          data: {
+            status: AssetStatus.UNDER_MAINTENANCE,
+            version: { increment: 1 },
+          },
+        });
+        if (claimed.count !== 1) throw new Error('Asset was already modified by another user. Please refresh and try again.');
+
+        await tx.assetMaintenance.create({
+          data: {
+            assetId: asset.id,
+            reason: req.body.reason,
+            maintenanceVendor: req.body.maintenanceVendor ?? null,
+            technician: req.body.technician ?? null,
+            notes: req.body.notes ?? null,
+            cost: req.body.cost ?? null,
+            sentBy: req.user!.id,
+          },
+        });
+
+        await tx.assetMovement.create({
+          data: {
+            assetId: asset.id,
+            type: AssetMovementType.MAINTENANCE_START,
+            fromStatus: asset.status,
+            toStatus: AssetStatus.UNDER_MAINTENANCE,
+            notes: req.body.reason,
+            userId: req.user!.id,
+          },
+        });
+
+        return tx.asset.findUnique({ where: { id: asset.id }, include: assetInclude });
+      });
+
+      await logAudit({
+        userId: req.user!.id,
+        action: AuditAction.UPDATE,
+        entityType: 'ASSET',
+        entityId: asset.id,
+        projectId,
+        oldValue: { status: asset.status },
+        newValue: { status: AssetStatus.UNDER_MAINTENANCE, reason: req.body.reason },
+      });
+
+      res.json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// POST /:id/maintenance/complete — complete maintenance
+router.post(
+  '/:id/maintenance/complete',
+  authMiddleware,
+  rbacMiddleware(Permission.MANAGE_INVENTORY),
+  validateMiddleware(completeMaintenanceSchema),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      const asset = await prisma.asset.findFirst({
+        where: { id: req.params.id, projectId },
+      });
+      if (!asset) {
+        res.status(404).json({ error: 'Asset not found' });
+        return;
+      }
+      if (asset.status !== AssetStatus.UNDER_MAINTENANCE) {
+        res.status(400).json({ error: `Asset must be UNDER_MAINTENANCE to complete. Current status: ${asset.status}` });
+        return;
+      }
+
+      const targetStatus = req.body.issueDirectly ? AssetStatus.ISSUED : AssetStatus.ACTIVE;
+      const targetLocation = req.body.issueDirectly
+        ? req.body.returnToLocation ?? asset.location
+        : req.body.returnToLocation ?? 'Main Store';
+
+      const result = await prisma.$transaction(async (tx) => {
+        const claimed = await tx.asset.updateMany({
+          where: { id: asset.id, version: asset.version, status: AssetStatus.UNDER_MAINTENANCE },
+          data: {
+            status: targetStatus,
+            location: targetLocation,
+            ...(req.body.issueDirectly
+              ? {
+                  issuedToDept: req.body.issuedToDept ?? null,
+                  issuedToPerson: req.body.issuedToPerson ?? null,
+                  issuedAt: new Date(),
+                  issuedBy: req.user!.id,
+                }
+              : {
+                  issuedToDept: null,
+                  issuedToPerson: null,
+                  issuedAt: null,
+                  issuedBy: null,
+                }),
+            version: { increment: 1 },
+          },
+        });
+        if (claimed.count !== 1) throw new Error('Asset was already modified by another user. Please refresh and try again.');
+
+        // Find the latest open maintenance record and complete it
+        const openMaintenance = await tx.assetMaintenance.findFirst({
+          where: { assetId: asset.id, completedAt: null },
+          orderBy: { sentAt: 'desc' },
+        });
+        if (openMaintenance) {
+          await tx.assetMaintenance.update({
+            where: { id: openMaintenance.id },
+            data: {
+              completedAt: new Date(),
+              completedBy: req.user!.id,
+              completionNotes: req.body.completionNotes ?? null,
+              finalCost: req.body.finalCost ?? null,
+            },
+          });
+        }
+
+        await tx.assetMovement.create({
+          data: {
+            assetId: asset.id,
+            type: AssetMovementType.MAINTENANCE_COMPLETE,
+            fromStatus: AssetStatus.UNDER_MAINTENANCE,
+            toStatus: targetStatus,
+            fromLocation: asset.location,
+            toLocation: targetLocation,
+            notes: req.body.completionNotes ?? null,
+            userId: req.user!.id,
+          },
+        });
+
+        return tx.asset.findUnique({ where: { id: asset.id }, include: assetInclude });
+      });
+
+      await logAudit({
+        userId: req.user!.id,
+        action: AuditAction.UPDATE,
+        entityType: 'ASSET',
+        entityId: asset.id,
+        projectId,
+        oldValue: { status: AssetStatus.UNDER_MAINTENANCE },
+        newValue: { status: targetStatus, location: targetLocation },
+      });
+
+      res.json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// POST /:id/retire — permanently retire asset
+router.post(
+  '/:id/retire',
+  authMiddleware,
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      if (!ASSET_ADMIN_ROLES.includes(req.user!.role as UserRole)) {
+        res.status(403).json({ error: 'Only Admin and Admin 2 can retire assets' });
+        return;
+      }
+      const projectId = requireProjectId(req);
+      const asset = await prisma.asset.findFirst({
+        where: { id: req.params.id, projectId },
+      });
+      if (!asset) {
+        res.status(404).json({ error: 'Asset not found' });
+        return;
+      }
+      if (asset.status === AssetStatus.RETIRED) {
+        res.status(400).json({ error: 'Asset is already retired' });
+        return;
+      }
+
+      const reason = req.body.reason;
+      if (!reason || !String(reason).trim()) {
+        res.status(400).json({ error: 'Reason is required to retire an asset' });
+        return;
+      }
+
+      const result = await prisma.$transaction(async (tx) => {
+        const claimed = await tx.asset.updateMany({
+          where: { id: asset.id, version: asset.version },
+          data: {
+            status: AssetStatus.RETIRED,
+            version: { increment: 1 },
+          },
+        });
+        if (claimed.count !== 1) throw new Error('Asset was already modified by another user. Please refresh and try again.');
+
+        await tx.assetMovement.create({
+          data: {
+            assetId: asset.id,
+            type: AssetMovementType.RETIRED,
+            fromStatus: asset.status,
+            toStatus: AssetStatus.RETIRED,
+            reason: String(reason),
+            userId: req.user!.id,
+          },
+        });
+
+        return tx.asset.findUnique({ where: { id: asset.id }, include: assetInclude });
+      });
+
+      await logAudit({
+        userId: req.user!.id,
+        action: AuditAction.UPDATE,
+        entityType: 'ASSET',
+        entityId: asset.id,
+        projectId,
+        oldValue: { status: asset.status },
+        newValue: { status: AssetStatus.RETIRED, reason },
+      });
+
+      res.json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// GET /scan/:assetId — public endpoint (no auth required, limited fields)
+router.get(
+  '/scan/:assetId',
+  optionalAuthMiddleware,
+  validateMiddleware(scanAssetSchema),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const asset = await prisma.asset.findUnique({
+        where: { assetId: req.params.assetId },
+        include: {
+          inventoryItem: { select: { id: true, name: true, category: true, itemType: true } },
+        },
+      });
+      if (!asset) {
+        res.status(404).json({ error: 'Asset not found' });
+        return;
+      }
+
+      // If authenticated, record scan + update last scan info
+      if (req.user) {
+        // Deduplicate: skip if same user scanned within 60 seconds
+        const recentScan = await prisma.assetScan.findFirst({
+          where: {
+            assetId: asset.id,
+            userId: req.user.id,
+            timestamp: { gte: new Date(Date.now() - 60_000) },
+          },
+        });
+
+        if (!recentScan) {
+          const userAgent = String(req.headers['user-agent'] ?? '');
+          const location = req.body?.location ?? null;
+          await prisma.$transaction([
+            prisma.assetScan.create({
+              data: {
+                assetId: asset.id,
+                userId: req.user.id,
+                userAgent,
+                location: location ?? null,
+              },
+            }),
+            prisma.asset.update({
+              where: { id: asset.id },
+              data: {
+                lastScannedAt: new Date(),
+                lastScannedBy: req.user.id,
+                lastScanLocation: location ?? null,
+              },
+            }),
+            prisma.assetMovement.create({
+              data: {
+                assetId: asset.id,
+                type: AssetMovementType.SCANNED,
+                userId: req.user.id,
+                notes: location ? `Scanned at ${location}` : 'Scanned',
+              },
+            }),
+          ]);
+        }
+      }
+
+      // Public fields (always returned)
+      const publicFields = {
+        assetId: asset.assetId,
+        name: asset.inventoryItem.name,
+        category: asset.inventoryItem.category,
+        status: asset.status,
+      };
+
+      // If authenticated, return full lifecycle
+      if (req.user) {
+        const fullAsset = await prisma.asset.findUnique({
+          where: { id: asset.id },
+          include: assetInclude,
+        });
+        res.json({ ...publicFields, authenticated: true, full: fullAsset });
+      } else {
+        res.json({ ...publicFields, authenticated: false });
+      }
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// POST /:id/print-log — log that a QR sticker was printed
+router.post(
+  '/:id/print-log',
+  authMiddleware,
+  rbacMiddleware(Permission.MANAGE_INVENTORY),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      const asset = await prisma.asset.findFirst({
+        where: { id: req.params.id, projectId },
+      });
+      if (!asset) {
+        res.status(404).json({ error: 'Asset not found' });
+        return;
+      }
+
+      await logAudit({
+        userId: req.user!.id,
+        action: AuditAction.UPDATE,
+        entityType: 'ASSET',
+        entityId: asset.id,
+        projectId,
+        newValue: { action: 'QR_PRINTED', assetId: asset.assetId },
+      });
+
+      res.json({ message: 'Print logged' });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// GET /export/csv — export all assets for a project as CSV
+router.get(
+  '/export/csv',
+  authMiddleware,
+  rbacMiddleware(Permission.MANAGE_INVENTORY),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      const assets = await prisma.asset.findMany({
+        where: { projectId },
+        include: {
+          inventoryItem: { select: { name: true, category: true } },
+        },
+        orderBy: { assetId: 'asc' },
+      });
+
+      const headers = [
+        'Asset ID', 'Name', 'Serial Number', 'Status', 'Location',
+        'Issued To Dept', 'Issued To Person', 'Issued At',
+        'Vendor', 'PO Number', 'Invoice Number',
+        'Unit Price', 'GST Rate', 'GST Amount', 'Total Cost',
+        'Receipt Number', 'Received Date', 'Last Scanned At',
+      ];
+
+      const rows = assets.map((a) => [
+        a.assetId,
+        a.inventoryItem.name,
+        a.serialNumber ?? '',
+        a.status,
+        a.location,
+        a.issuedToDept ?? '',
+        a.issuedToPerson ?? '',
+        a.issuedAt ? new Date(a.issuedAt).toISOString() : '',
+        a.vendorName ?? '',
+        a.poNumber ?? '',
+        a.invoiceNumber ?? '',
+        a.unitPrice ? String(a.unitPrice) : '',
+        a.gstRate ? String(a.gstRate) : '',
+        a.gstAmount ? String(a.gstAmount) : '',
+        a.totalCost ? String(a.totalCost) : '',
+        a.receiptNumber ?? '',
+        a.receiptDate ? new Date(a.receiptDate).toISOString() : '',
+        a.lastScannedAt ? new Date(a.lastScannedAt).toISOString() : '',
+      ]);
+
+      const csv = [headers, ...rows]
+        .map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+        .join('\n');
+
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', `attachment; filename="assets-export-${new Date().toISOString().slice(0, 10)}.csv"`);
+      res.send(csv);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+export default router;
+export { generateAssetId };

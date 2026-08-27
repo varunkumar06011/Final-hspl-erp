@@ -40,7 +40,7 @@ import {
   Delete as DeleteIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { APPROVER_ROLES, QuotationStatus } from '@hospital-erp/shared';
+import { APPROVER_ROLES, QuotationStatus, GST_RATES } from '@hospital-erp/shared';
 import { formatCurrency, formatDate, formatIndianNumber, STATUS_COLORS } from '../utils/enumOptions';
 import api, { extractErrorMessage } from '../config/api';
 import { useAuthStore } from '../stores/authStore';
@@ -55,8 +55,10 @@ interface QuotationItem {
   id?: string;
   materialName: string;
   quantity: number | '';
-  unitPrice: number | '';
+  unit?: string | null;
+  unitPrice: string | number | '';
   amount: number;
+  gstRate: number;
 }
 
 interface VendorMaterial {
@@ -117,7 +119,6 @@ export default function QuotationsPage() {
   const [selectedVendorId, setSelectedVendorId] = useState('');
   const [lineItems, setLineItems] = useState<QuotationItem[]>([]);
   const [selectedMaterialNames, setSelectedMaterialNames] = useState<Set<string>>(new Set());
-  const [gstAmount, setGstAmount] = useState('');
   const [acknowledged, setAcknowledged] = useState(false);
   const [approvalAction, setApprovalAction] = useState<{ row: QuotationRow; step: ApprovalStep; action: 'approve' | 'reject' } | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -157,12 +158,13 @@ export default function QuotationsPage() {
 
   const createMutation = useMutation({
     mutationFn: async () => {
-      const filteredItems = lineItems.filter((i) => selectedMaterialNames.has(i.materialName));
+      const filteredItems = lineItems
+        .filter((i) => selectedMaterialNames.has(i.materialName))
+        .map((i) => ({ materialName: i.materialName, quantity: i.quantity, unit: i.unit, unitPrice: i.unitPrice, gstRate: i.gstRate }));
       const formData = new FormData();
       formData.append('vendorId', selectedVendorId);
       formData.append('items', JSON.stringify(filteredItems));
       formData.append('acknowledged', String(acknowledged));
-      if (gstAmount) formData.append('gstAmount', gstAmount);
       if (selectedFile) formData.append('file', selectedFile);
       const response = await api.post('/quotations', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
@@ -185,8 +187,7 @@ export default function QuotationsPage() {
   const updateMutation = useMutation({
     mutationFn: async () => {
       const formData = new FormData();
-      formData.append('items', JSON.stringify(lineItems));
-      if (gstAmount) formData.append('gstAmount', gstAmount);
+      formData.append('items', JSON.stringify(lineItems.filter((i) => selectedMaterialNames.has(i.materialName)).map((i) => ({ materialName: i.materialName, quantity: i.quantity, unit: i.unit, unitPrice: i.unitPrice, gstRate: i.gstRate }))));
       if (selectedFile) formData.append('file', selectedFile);
       const response = await api.patch(`/quotations/${editing!.id}`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
@@ -219,10 +220,6 @@ export default function QuotationsPage() {
     }
     if (items.some((item) => !Number.isFinite(Number(item.unitPrice)) || Number(item.unitPrice) < 0)) {
       setError('Unit price cannot be negative or invalid');
-      return false;
-    }
-    if (gstAmount !== '' && (!Number.isFinite(Number(gstAmount)) || Number(gstAmount) < 0)) {
-      setError('GST amount cannot be negative or invalid');
       return false;
     }
     if (!editOpen && !acknowledged) {
@@ -289,13 +286,18 @@ export default function QuotationsPage() {
     () => lineItems.filter((i) => selectedMaterialNames.has(i.materialName)).reduce((sum, i) => sum + Number(i.amount), 0),
     [lineItems, selectedMaterialNames]
   );
-  const grandTotal = totalAmount + (Number(gstAmount) || 0);
+  const gstAmount = useMemo(
+    () => lineItems
+      .filter((i) => selectedMaterialNames.has(i.materialName))
+      .reduce((sum, i) => sum + Number(i.amount) * Number(i.gstRate) / 100, 0),
+    [lineItems, selectedMaterialNames]
+  );
+  const grandTotal = totalAmount + gstAmount;
 
   function resetForm() {
     setSelectedVendorId('');
     setLineItems([]);
     setSelectedMaterialNames(new Set());
-    setGstAmount('');
     setAcknowledged(false);
     setSelectedFile(null);
     setError('');
@@ -324,9 +326,9 @@ export default function QuotationsPage() {
       quantity: Number(i.quantity),
       unitPrice: Number(i.unitPrice),
       amount: Number(i.amount),
+      gstRate: Number(i.gstRate) || 0,
     })));
     setSelectedMaterialNames(new Set(row.items.map((item) => item.materialName)));
-    setGstAmount(String(row.gstAmount ?? ''));
     setSelectedFile(null);
     setError('');
     setEditOpen(true);
@@ -340,11 +342,32 @@ export default function QuotationsPage() {
       quantity: 1,
       unitPrice: 0,
       amount: 0,
+      gstRate: 0,
     }));
     setLineItems(items);
     // All materials ticked by default
     setSelectedMaterialNames(new Set(selectedVendor.materials.map((m) => m.name)));
   }, [selectedVendor, createOpen]);
+
+  // In edit mode, merge in any vendor materials that were added after the quotation was created
+  // so they appear as unticked rows the user can opt into.
+  useEffect(() => {
+    if (!editOpen || !selectedVendor?.materials) return;
+    setLineItems((prev) => {
+      const existingNames = new Set(prev.map((i) => i.materialName));
+      const newItems = selectedVendor.materials
+        .filter((m) => !existingNames.has(m.name))
+        .map((m) => ({
+          materialName: m.name,
+          quantity: 1,
+          unitPrice: 0,
+          amount: 0,
+          gstRate: 0,
+        }));
+      if (newItems.length === 0) return prev;
+      return [...prev, ...newItems];
+    });
+  }, [selectedVendor, editOpen]);
 
   function updateLineItem(index: number, field: keyof QuotationItem, value: string | number) {
     const updated = [...lineItems];
@@ -354,6 +377,9 @@ export default function QuotationsPage() {
     }
     setLineItems(updated);
   }
+
+  // GST rate options for the dropdown
+  const gstRateOptions = GST_RATES;
 
   function canApprove(row: QuotationRow): ApprovalStep | null {
     if (!row.approvalWorkflow || !user || !APPROVER_ROLES.some((role) => role === user.role)) return null;
@@ -418,6 +444,7 @@ export default function QuotationsPage() {
             quantity: qty,
             unitPrice: price,
             amount: qty * price,
+            gstRate: 0,
           });
         }
       });
@@ -440,9 +467,6 @@ export default function QuotationsPage() {
       if (newItems.length > 0) {
         setError(`${newItems.length} new item(s) extracted from the document and added. Review and tick the ones you need.`);
       }
-    }
-    if (data.gstAmount != null) {
-      setGstAmount(String(data.gstAmount));
     }
     if (data.vendorId) {
       setSelectedVendorId(data.vendorId);
@@ -637,7 +661,7 @@ export default function QuotationsPage() {
                           sx={{ flex: 2, minWidth: 0 }}
                         />
                       </Box>
-                      <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', pl: { xs: 5.5, sm: 0 } }}>
+                      <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', pl: { xs: 5.5, sm: 0 }, flexWrap: { xs: 'wrap', sm: 'nowrap' } }}>
                         <TextField
                           label="Qty"
                           type="text"
@@ -652,12 +676,24 @@ export default function QuotationsPage() {
                           label="Unit Price"
                           type="text"
                           value={formatIndianNumber(item.unitPrice)}
-                          onChange={(e) => updateLineItem(index, 'unitPrice', e.target.value === '' ? '' : Number(e.target.value.replace(/,/g, '')))}
+                          onChange={(e) => updateLineItem(index, 'unitPrice', e.target.value === '' ? '' : e.target.value.replace(/,/g, ''))}
                           inputMode="decimal"
                           inputProps={{ min: 0, step: 0.01 }}
                           size="small"
                           sx={{ flex: 1, minWidth: 0 }}
                         />
+                        <TextField
+                          select
+                          label="GST %"
+                          value={item.gstRate}
+                          onChange={(e) => updateLineItem(index, 'gstRate', Number(e.target.value))}
+                          size="small"
+                          sx={{ flex: { xs: '1 1 80px', sm: '0 0 90px' }, minWidth: 80 }}
+                        >
+                          {gstRateOptions.map((rate) => (
+                            <MenuItem key={rate} value={rate}>{rate}%</MenuItem>
+                          ))}
+                        </TextField>
                         <TextField
                           label="Amount"
                           value={formatIndianNumber(item.amount)}
@@ -673,16 +709,7 @@ export default function QuotationsPage() {
                 {/* Totals */}
                 <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: { xs: 'stretch', sm: 'flex-end' }, gap: 1, mt: 1 }}>
                   <Typography variant="body2" sx={{ textAlign: { xs: 'left', sm: 'right' } }}>Total: <strong>{formatCurrency(totalAmount)}</strong></Typography>
-                  <TextField
-                    label="GST Amount (optional)"
-                    type="text"
-                    value={formatIndianNumber(gstAmount)}
-                    onChange={(e) => setGstAmount(e.target.value.replace(/,/g, ''))}
-                    inputMode="decimal"
-                    inputProps={{ min: 0, step: 0.01 }}
-                    size="small"
-                    sx={{ width: { xs: '100%', sm: 200 } }}
-                  />
+                  <Typography variant="body2" sx={{ textAlign: { xs: 'left', sm: 'right' } }}>GST (auto-calculated): <strong>{formatCurrency(gstAmount)}</strong></Typography>
                   <Typography variant="body2" sx={{ textAlign: { xs: 'left', sm: 'right' } }}>Grand Total: <strong>{formatCurrency(grandTotal)}</strong></Typography>
                 </Box>
               </Box>

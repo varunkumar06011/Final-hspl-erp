@@ -56,6 +56,7 @@ const gatePassInclude = {
       id: true,
       poNumber: true,
       vendor: { select: { id: true, name: true, vendorCode: true } },
+      quotation: { select: { id: true, quotationNumber: true } },
       items: true,
     },
   },
@@ -316,6 +317,14 @@ router.post(
         }
         if (!['APPROVED', 'PARTIALLY_DELIVERED'].includes(po.status)) {
           res.status(400).json({ error: 'Purchase order must be approved first' });
+          return;
+        }
+
+        // Enforce invoice requirement based on PO payment type:
+        // - AFTER_DELIVERY → invoice is required (goods delivered first, invoice follows)
+        // - ADVANCE / FULL_PAYMENT → invoice is not required
+        if (po.paymentType === 'AFTER_DELIVERY' && !invoiceId) {
+          res.status(400).json({ error: 'Invoice is required for this purchase order (payment type: After Delivery). Please create and attach an invoice before generating the gate pass.' });
           return;
         }
 

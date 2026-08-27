@@ -37,6 +37,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { RecaptchaVerifier, signInWithPhoneNumber } from 'firebase/auth';
 import { auth, isConfigured } from '../config/firebase';
 import { formatDate } from '../utils/enumOptions';
+import { POPaymentType } from '@hospital-erp/shared';
 import api, { extractErrorMessage } from '../config/api';
 import ResponsiveTable from '../components/ResponsiveTable';
 
@@ -73,6 +74,7 @@ interface ApprovedPO {
   id: string;
   poNumber: string;
   vendor: { name: string; vendorCode: string };
+  paymentType: string;
   grandTotal: number;
   items: {
     materialName: string;
@@ -226,7 +228,7 @@ export default function GatePassesPage() {
         if (purpose) payload.append('purpose', purpose);
       } else {
         payload.append('vehicleType', vehicleType);
-        payload.append('vehicleNumber', vehicleNumber.trim().toUpperCase());
+        if (vehicleNumber.trim()) payload.append('vehicleNumber', vehicleNumber.trim().toUpperCase());
         if (driverName) payload.append('driverName', driverName);
         if (driverMobile) payload.append('driverMobile', driverMobile);
         payload.append('gatePassType', gatePassType);
@@ -643,22 +645,30 @@ export default function GatePassesPage() {
               ))}
             </TextField>
 
-            {selectedPO && selectedPO.invoices.length > 0 && (
+            {selectedPO && selectedPO.paymentType === POPaymentType.AFTER_DELIVERY && (
               <TextField
                 select
-                label="Invoice (optional — select if available)"
+                label="Invoice (required — after delivery)"
                 value={selectedInvoiceId}
                 onChange={(e) => setSelectedInvoiceId(e.target.value)}
                 fullWidth
                 size="small"
+                required
+                error={!selectedInvoiceId}
+                helperText={!selectedInvoiceId ? 'Invoice is required for After Delivery payment type' : ''}
               >
-                <MenuItem value="">— None —</MenuItem>
+                <MenuItem value="">— Select Invoice —</MenuItem>
                 {selectedPO.invoices.map((inv) => (
                   <MenuItem key={inv.id} value={inv.id}>
                     {inv.invoiceCode} — {inv.invoiceNumber}
                   </MenuItem>
                 ))}
               </TextField>
+            )}
+            {selectedPO && (selectedPO.paymentType === POPaymentType.ADVANCE || selectedPO.paymentType === POPaymentType.FULL_PAYMENT) && (
+              <Alert severity="info" sx={{ py: 0.5 }}>
+                Invoice not required — this PO is {selectedPO.paymentType === POPaymentType.ADVANCE ? 'against advance payment' : 'against full payment'}.
+              </Alert>
             )}
 
             {selectedPO && (
@@ -766,7 +776,6 @@ export default function GatePassesPage() {
                 value={vehicleNumber}
                 onChange={(e) => setVehicleNumber(e.target.value.toUpperCase())}
                 size="small"
-                required
                 helperText="Example: AP39AB1234"
                 inputProps={{ maxLength: 20 }}
               />
@@ -855,6 +864,7 @@ export default function GatePassesPage() {
             disabled={
               !selectedHeadId ||
               (gatePassCategory === 'MATERIAL' && !selectedPoId) ||
+              (gatePassCategory === 'MATERIAL' && selectedPO?.paymentType === POPaymentType.AFTER_DELIVERY && !selectedInvoiceId) ||
               (gatePassCategory === 'VISITOR' && !visitorName.trim()) ||
               createMutation.isPending ||
               sendingOtp

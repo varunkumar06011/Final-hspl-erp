@@ -1,7 +1,8 @@
 import { Router, Response, NextFunction } from 'express';
-import { Permission, POStatus, AuditAction, UserRole, GoodsReceiptStatus } from '@hospital-erp/shared';
-import { createPOSchema, listPOsSchema, approvalActionSchema } from '@hospital-erp/shared';
+import { Permission, POStatus, AuditAction, UserRole, GoodsReceiptStatus, POPaymentType } from '@hospital-erp/shared';
+import { createPOSchema, listPOsSchema, approvalActionSchema, editPOSchema, regeneratePOSchema } from '@hospital-erp/shared';
 import { prisma } from '../config/prisma';
+import { Prisma } from '@prisma/client';
 import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middleware/auth';
 import { rbacMiddleware } from '../middleware/rbac';
 import { validateMiddleware } from '../middleware/validate';
@@ -44,11 +45,43 @@ async function generatePONumber(projectId: string): Promise<string> {
   return `VGH-PO${String(maxNum + 1).padStart(3, '0')}`;
 }
 
+/**
+ * Generate a regenerated PO number: VGH-REGPO{originalNum}/{regenSeq}
+ * e.g. original VGH-PO004 → first regen VGH-REGPO004/1, second VGH-REGPO004/2
+ */
+async function generateRegeneratedPONumber(parentPo: { poNumber: string; id: string }): Promise<string> {
+  const originalMatch = parentPo.poNumber.match(/^VGH-(?:REGPO(\d+)\/\d+|PO(\d+))$/);
+  const originalNum = originalMatch ? (originalMatch[1] ?? originalMatch[2]) : '001';
+  const childCount = await prisma.purchaseOrder.count({
+    where: { parentPoId: parentPo.id },
+  });
+  return `VGH-REGPO${originalNum}/${childCount + 1}`;
+}
+
+/**
+ * Recalculate PO status based on accepted quantities vs ordered quantities.
+ * Returns DELIVERED if all items are fully received, else PARTIALLY_DELIVERED.
+ */
+async function recalculatePoStatus(poId: string): Promise<string> {
+  const acceptedMap = await getAcceptedQuantitiesByPo(poId);
+  const poItems = await prisma.pOItem.findMany({
+    where: { poId },
+    select: { materialName: true, quantity: true },
+  });
+  const fullyReceived = poItems.every(
+    (item) => (acceptedMap.get(item.materialName.toLowerCase()) ?? 0) >= Number(item.quantity),
+  );
+  return fullyReceived ? POStatus.DELIVERED : POStatus.PARTIALLY_DELIVERED;
+}
+
 const poInclude = {
   vendor: { select: { id: true, name: true, vendorCode: true, phone: true, address: true, contactPersonName: true, contactPersonPhone: true } },
   quotation: { select: { id: true, quotationNumber: true } },
   items: true,
   createdByUser: { select: { id: true, name: true } },
+  editedByUser: { select: { id: true, name: true } },
+  parentPo: { select: { id: true, poNumber: true } },
+  childPos: { select: { id: true, poNumber: true, regenerationNumber: true, status: true } },
   approvalWorkflow: {
     include: {
       steps: {
@@ -228,7 +261,7 @@ router.post(
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const projectId = requireProjectId(req);
-      const { vendorId, quotationId, gstAmount } = req.body;
+      const { vendorId, quotationId, paymentType } = req.body;
 
       // Validate quotation exists, belongs to project, is approved, and matches vendor
       const quotation = await prisma.quotation.findFirst({
@@ -250,10 +283,11 @@ router.post(
 
       const poNumber = await generatePONumber(projectId);
       const totalAmount = Number(quotation.totalAmount);
-      const gst = Number(gstAmount) || 0;
+      // Auto-calculate GST from per-item gstRate (copied from quotation items)
+      const gst = quotation.items.reduce((sum, item) => sum + Number(item.amount) * Number(item.gstRate) / 100, 0);
       const grandTotal = totalAmount + gst;
 
-      // Create PO with items copied from quotation
+      // Create PO with items (including gstRate) copied from quotation
       const po = await prisma.purchaseOrder.create({
         data: {
           projectId,
@@ -261,6 +295,7 @@ router.post(
           quotationId,
           poNumber,
           status: POStatus.PENDING_APPROVAL,
+          paymentType,
           totalAmount,
           gstAmount: gst,
           grandTotal,
@@ -272,6 +307,7 @@ router.post(
               unit: item.unit,
               unitPrice: item.unitPrice,
               amount: item.amount,
+              gstRate: item.gstRate,
             })),
           },
         },
@@ -335,7 +371,7 @@ router.post(
   }
 );
 
-// PATCH /:id — update PO (only GST can be updated, and only if not approved)
+// PATCH /:id — update PO (no editable fields after GST became per-item; kept for future use)
 router.patch(
   '/:id',
   rbacMiddleware(Permission.CREATE_PO),
@@ -354,26 +390,10 @@ router.patch(
         return;
       }
 
-      const updateData: Record<string, unknown> = {};
-      if (req.body.gstAmount !== undefined) {
-        const gst = Number(req.body.gstAmount);
-        updateData.gstAmount = gst;
-        updateData.grandTotal = Number(existing.totalAmount) + gst;
-      }
-
-      const updated = await prisma.purchaseOrder.update({
+      // GST is now auto-calculated from per-item gstRate — no manual override
+      const updated = await prisma.purchaseOrder.findUnique({
         where: { id: existing.id },
-        data: updateData,
         include: poInclude,
-      });
-
-      await logAudit({
-        userId: req.user!.id,
-        action: AuditAction.UPDATE,
-        entityType: 'PURCHASE_ORDER',
-        entityId: existing.id,
-        projectId,
-        newValue: updateData,
       });
 
       res.json(updated);
@@ -472,10 +492,20 @@ router.post(
 
       // Only update PO status to APPROVED when fully approved (2 approvals)
       if (result.isFullyApproved) {
-        await prisma.purchaseOrder.update({
-          where: { id: po.id },
-          data: { status: POStatus.APPROVED },
-        });
+        // If this PO was edited (has editedAt), recalculate status based on accepted quantities
+        // An edited PO that matches what was delivered should be DELIVERED, not just APPROVED
+        if (po.editedAt) {
+          const newStatus = await recalculatePoStatus(po.id);
+          await prisma.purchaseOrder.update({
+            where: { id: po.id },
+            data: { status: newStatus },
+          });
+        } else {
+          await prisma.purchaseOrder.update({
+            where: { id: po.id },
+            data: { status: POStatus.APPROVED },
+          });
+        }
       }
 
       await logAudit({
@@ -638,6 +668,16 @@ router.get(
         doc.fillColor(TEXT_MUTED).font('Helvetica').text('Quotation:', margin + 340, y, { width: 55 });
         doc.fillColor(TEXT_DARK).font('Helvetica-Bold').text(po.quotation.quotationNumber, margin + 395, y, { width: 100 });
       }
+      y += 15;
+
+      // Payment type line
+      const paymentTypeLabel = po.paymentType === POPaymentType.ADVANCE
+        ? 'Against Advance'
+        : po.paymentType === POPaymentType.FULL_PAYMENT
+          ? 'Against Full Payment'
+          : 'After Delivery';
+      doc.fillColor(TEXT_MUTED).font('Helvetica').text('Payment Type:', margin, y, { width: 70 });
+      doc.fillColor(PRIMARY).font('Helvetica-Bold').text(paymentTypeLabel, margin + 70, y, { width: 200 });
       y += 15;
 
       // ── Info cards: 2 columns (Vendor on left, Addresses on right) ──
@@ -810,6 +850,308 @@ router.get(
         eligible: po.status === POStatus.APPROVED,
         status: po.status,
       });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// POST /:id/edit — edit a PARTIALLY_DELIVERED PO (reduce quantities to match delivered, re-approve)
+router.post(
+  '/:id/edit',
+  rbacMiddleware(Permission.CREATE_PO),
+  validateMiddleware(editPOSchema),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      const po = await prisma.purchaseOrder.findFirst({
+        where: { id: req.params.id, projectId, deletedAt: null },
+        include: { items: true },
+      });
+      if (!po) {
+        res.status(404).json({ error: 'Purchase order not found' });
+        return;
+      }
+      if (po.status !== POStatus.PARTIALLY_DELIVERED) {
+        res.status(400).json({ error: 'Only partially delivered POs can be edited' });
+        return;
+      }
+      if (po.parentPoId) {
+        res.status(400).json({ error: 'Regenerated POs cannot be edited. Edit the original PO instead.' });
+        return;
+      }
+
+      // Compute accepted quantities per material
+      const acceptedMap = await getAcceptedQuantitiesByPo(po.id);
+
+      // Validate: each submitted item's quantity must be >= accepted qty for that material
+      const newItems = req.body.items as { materialName: string; quantity: number; unit: string; unitPrice: number; gstRate: number }[];
+      for (const item of newItems) {
+        const accepted = acceptedMap.get(item.materialName.toLowerCase()) ?? 0;
+        if (item.quantity < accepted) {
+          res.status(400).json({
+            error: `Cannot reduce "${item.materialName}" below accepted quantity (${accepted}). Already delivered.`,
+          });
+          return;
+        }
+      }
+
+      // Compute remaining items for regeneration (items from original PO not included in edit, or reduced quantity)
+      const remainingItems: { materialName: string; quantity: number; unit: string; unitPrice: number; gstRate: number }[] = [];
+
+      for (const origItem of po.items) {
+        const accepted = acceptedMap.get(origItem.materialName.toLowerCase()) ?? 0;
+        const editedItem = newItems.find((i) => i.materialName === origItem.materialName);
+
+        if (!editedItem) {
+          // Item was deselected — remaining = original ordered - accepted
+          const remaining = Number(origItem.quantity) - accepted;
+          if (remaining > 0) {
+            remainingItems.push({
+              materialName: origItem.materialName,
+              quantity: remaining,
+              unit: origItem.unit ?? 'nos',
+              unitPrice: Number(origItem.unitPrice),
+              gstRate: Number(origItem.gstRate ?? 0),
+            });
+          }
+        } else {
+          // Item was edited — remaining = edited qty - accepted
+          const remaining = editedItem.quantity - accepted;
+          if (remaining > 0) {
+            remainingItems.push({
+              materialName: origItem.materialName,
+              quantity: remaining,
+              unit: editedItem.unit,
+              unitPrice: editedItem.unitPrice,
+              gstRate: editedItem.gstRate,
+            });
+          }
+        }
+      }
+
+      // Recalculate amounts from new items
+      const totalAmount = newItems.reduce((sum, i) => sum + i.quantity * i.unitPrice, 0);
+      const gstAmount = newItems.reduce((sum, i) => sum + (i.quantity * i.unitPrice) * i.gstRate / 100, 0);
+      const grandTotal = totalAmount + gstAmount;
+
+      // Snapshot old values for audit
+      const oldValue = {
+        items: po.items.map((i) => ({ materialName: i.materialName, quantity: Number(i.quantity), unitPrice: Number(i.unitPrice), gstRate: Number(i.gstRate ?? 0) })),
+        totalAmount: Number(po.totalAmount),
+        gstAmount: Number(po.gstAmount),
+        grandTotal: Number(po.grandTotal),
+      };
+
+      const result = await prisma.$transaction(async (tx) => {
+        // Delete existing items
+        await tx.pOItem.deleteMany({ where: { poId: po.id } });
+
+        // Create new items
+        await tx.pOItem.createMany({
+          data: newItems.map((i) => ({
+            poId: po.id,
+            materialName: i.materialName,
+            quantity: i.quantity,
+            unit: i.unit,
+            unitPrice: i.unitPrice,
+            amount: i.quantity * i.unitPrice,
+            gstRate: i.gstRate,
+          })),
+        });
+
+        // Store regeneration data for later, set edit metadata, reset status to PENDING_APPROVAL
+        const updated = await tx.purchaseOrder.update({
+          where: { id: po.id },
+          data: {
+            totalAmount,
+            gstAmount,
+            grandTotal,
+            editReason: req.body.editReason,
+            editedAt: new Date(),
+            editedBy: req.user!.id,
+            regenerationData: remainingItems.length > 0 ? remainingItems : Prisma.JsonNull,
+            status: POStatus.PENDING_APPROVAL,
+          },
+          include: poInclude,
+        });
+
+        // Reset the existing approval workflow — create fresh steps
+        if (po.approvalWorkflowId) {
+          // Delete old steps and reset workflow
+          await tx.approvalStep.deleteMany({ where: { workflowId: po.approvalWorkflowId } });
+          await tx.approvalWorkflow.update({
+            where: { id: po.approvalWorkflowId },
+            data: {
+              status: 'VERIFICATION',
+              currentStep: 0,
+              steps: {
+                create: [UserRole.ADMIN, UserRole.ADMIN_2].map((role, idx) => ({
+                  stepNumber: idx + 1,
+                  approverRole: role,
+                  status: 'PENDING',
+                })),
+              },
+            },
+          });
+        }
+
+        return updated;
+      });
+
+      await logAudit({
+        userId: req.user!.id,
+        action: AuditAction.UPDATE,
+        entityType: 'PURCHASE_ORDER',
+        entityId: po.id,
+        projectId,
+        oldValue,
+        newValue: { items: newItems, editReason: req.body.editReason, remainingItems },
+      });
+
+      // Notify approvers
+      notifyApprovers(projectId, PO_APPROVER_ROLES as UserRole[], {
+        approvalId: po.approvalWorkflowId ?? '',
+        entityType: 'PURCHASE_ORDER',
+        entityId: po.id,
+        title: 'PO Edited — Re-approval Required',
+        body: `${po.poNumber} was edited and needs re-approval`,
+        url: `/pos?approval=${po.approvalWorkflowId ?? ''}`,
+      }).catch((err) => console.error('[Push] PO edit notification error:', err));
+
+      res.json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// POST /:id/regenerate — generate a new PO for remaining items from an edited PO
+router.post(
+  '/:id/regenerate',
+  rbacMiddleware(Permission.CREATE_PO),
+  validateMiddleware(regeneratePOSchema),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      const po = await prisma.purchaseOrder.findFirst({
+        where: { id: req.params.id, projectId, deletedAt: null },
+      });
+      if (!po) {
+        res.status(404).json({ error: 'Purchase order not found' });
+        return;
+      }
+      if (po.parentPoId) {
+        res.status(400).json({ error: 'Cannot regenerate a regenerated PO. Regenerate from the original PO.' });
+        return;
+      }
+      if (!po.regenerationData || !Array.isArray(po.regenerationData) || (po.regenerationData as unknown[]).length === 0) {
+        res.status(400).json({ error: 'No remaining items to regenerate. Edit the PO first to reduce quantities.' });
+        return;
+      }
+      // Must be DELIVERED (i.e. edited PO was re-approved and status recalculated)
+      if (po.status !== POStatus.DELIVERED) {
+        res.status(400).json({ error: 'PO must be delivered (edited and re-approved) before regenerating.' });
+        return;
+      }
+      // Check no child PO already exists
+      const existingChild = await prisma.purchaseOrder.findFirst({
+        where: { parentPoId: po.id, deletedAt: null },
+      });
+      if (existingChild) {
+        res.status(400).json({ error: `Already regenerated to ${existingChild.poNumber}` });
+        return;
+      }
+
+      const remainingItems = po.regenerationData as { materialName: string; quantity: number; unit: string; unitPrice: number; gstRate: number }[];
+      const regenNumber = await generateRegeneratedPONumber(po);
+      const totalAmount = remainingItems.reduce((sum, i) => sum + i.quantity * i.unitPrice, 0);
+      const gstAmount = remainingItems.reduce((sum, i) => sum + (i.quantity * i.unitPrice) * i.gstRate / 100, 0);
+      const grandTotal = totalAmount + gstAmount;
+
+      const result = await prisma.$transaction(async (tx) => {
+        // Create regenerated PO
+        const regenPo = await tx.purchaseOrder.create({
+          data: {
+            projectId,
+            vendorId: po.vendorId,
+            quotationId: po.quotationId,
+            phaseId: po.phaseId,
+            poNumber: regenNumber,
+            status: POStatus.PENDING_APPROVAL,
+            paymentType: po.paymentType,
+            totalAmount,
+            gstAmount,
+            grandTotal,
+            createdBy: req.user!.id,
+            parentPoId: po.id,
+            regenerationNumber: 1,
+          },
+          include: poInclude,
+        });
+
+        // Create items
+        await tx.pOItem.createMany({
+          data: remainingItems.map((i) => ({
+            poId: regenPo.id,
+            materialName: i.materialName,
+            quantity: i.quantity,
+            unit: i.unit,
+            unitPrice: i.unitPrice,
+            amount: i.quantity * i.unitPrice,
+            gstRate: i.gstRate,
+          })),
+        });
+
+        // Initiate approval workflow
+        const workflow = await tx.approvalWorkflow.create({
+          data: {
+            entityType: 'PURCHASE_ORDER',
+            entityId: regenPo.id,
+            projectId,
+            status: 'VERIFICATION',
+            currentStep: 0,
+            minApprovers: 1,
+            approvalPolicy: 'PO_SINGLE_APPROVER',
+            steps: {
+              create: [UserRole.ADMIN, UserRole.ADMIN_2].map((role, idx) => ({
+                stepNumber: idx + 1,
+                approverRole: role,
+                status: 'PENDING',
+              })),
+            },
+          },
+          include: { steps: true },
+        });
+
+        await tx.purchaseOrder.update({
+          where: { id: regenPo.id },
+          data: { approvalWorkflowId: workflow.id },
+        });
+
+        return tx.purchaseOrder.findUnique({ where: { id: regenPo.id }, include: poInclude });
+      });
+
+      await logAudit({
+        userId: req.user!.id,
+        action: AuditAction.CREATE,
+        entityType: 'PURCHASE_ORDER',
+        entityId: result!.id,
+        projectId,
+        newValue: { poNumber: regenNumber, parentPoId: po.id, parentPoNumber: po.poNumber, items: remainingItems },
+      });
+
+      // Notify approvers
+      notifyApprovers(projectId, PO_APPROVER_ROLES as UserRole[], {
+        approvalId: result!.approvalWorkflowId ?? '',
+        entityType: 'PURCHASE_ORDER',
+        entityId: result!.id,
+        title: 'Regenerated PO — Approval Required',
+        body: `${regenNumber} (from ${po.poNumber}) needs approval`,
+        url: `/pos?approval=${result!.approvalWorkflowId ?? ''}`,
+      }).catch((err) => console.error('[Push] Regen PO notification error:', err));
+
+      res.json(result);
     } catch (error) {
       next(error);
     }

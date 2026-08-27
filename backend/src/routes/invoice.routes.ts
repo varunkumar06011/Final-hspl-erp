@@ -31,6 +31,35 @@ async function generateInvoiceCode(): Promise<string> {
   return `VGH-IN${String(maxNum + 1).padStart(3, '0')}`;
 }
 
+/**
+ * Extract the 2-digit state code from a GSTIN (first 2 characters).
+ * Returns null if the GSTIN is missing or malformed.
+ */
+function getGstStateCode(gstin: string | null | undefined): string | null {
+  if (!gstin) return null;
+  const match = gstin.match(/^(\d{2})[A-Z]{5}\d{4}[A-Z]{1}[A-Z0-9]{1}Z[A-Z0-9]{1}$/);
+  return match ? match[1] : null;
+}
+
+/**
+ * Split a GST amount into CGST/SGST/IGST based on the place-of-supply rule:
+ * - Same state (vendor and hospital GSTIN share the same state code) → CGST + SGST (each = gstAmount / 2)
+ * - Different states, or either GSTIN missing → IGST = full gstAmount
+ */
+function splitGst(gstAmount: number, vendorGstin: string | null, projectGstin: string | null): {
+  cgstAmount: number;
+  sgstAmount: number;
+  igstAmount: number;
+} {
+  const vendorState = getGstStateCode(vendorGstin);
+  const projectState = getGstStateCode(projectGstin);
+  if (vendorState && projectState && vendorState === projectState) {
+    const half = gstAmount / 2;
+    return { cgstAmount: half, sgstAmount: half, igstAmount: 0 };
+  }
+  return { cgstAmount: 0, sgstAmount: 0, igstAmount: gstAmount };
+}
+
 const invoiceInclude = {
   vendor: { select: { id: true, name: true, vendorCode: true } },
   purchaseOrder: {
@@ -155,6 +184,16 @@ router.post(
         }
       }
 
+      // Fetch project GSTIN for CGST/SGST/IGST split
+      const project = await prisma.project.findUnique({
+        where: { id: projectId },
+        select: { gstNumber: true },
+      });
+
+      // Auto-calculate CGST/SGST/IGST from the tax amount and state codes
+      const taxAmt = Number(taxAmount) || 0;
+      const split = splitGst(taxAmt, vendor.gstNumber, project?.gstNumber ?? null);
+
       const invoiceCode = await generateInvoiceCode();
       const finalInvoiceNumber = invoiceNumber || invoiceCode;
 
@@ -185,7 +224,10 @@ router.post(
           invoiceCode,
           invoiceNumber: finalInvoiceNumber,
           amount: Number(amount),
-          taxAmount: Number(taxAmount) || 0,
+          taxAmount: taxAmt,
+          cgstAmount: split.cgstAmount,
+          sgstAmount: split.sgstAmount,
+          igstAmount: split.igstAmount,
           totalAmount: Number(totalAmount),
           advancePaid: Number(advancePaid) || 0,
           advanceType: advanceType ?? null,
@@ -323,6 +365,21 @@ router.patch(
         if (req.body[key] !== undefined) {
           updateData[key] = req.body[key];
         }
+      }
+      // Recalculate CGST/SGST/IGST split when taxAmount changes
+      if (req.body.taxAmount !== undefined) {
+        const vendor = await prisma.vendor.findFirst({
+          where: { id: existing.vendorId },
+          select: { gstNumber: true },
+        });
+        const project = await prisma.project.findUnique({
+          where: { id: projectId },
+          select: { gstNumber: true },
+        });
+        const split = splitGst(taxAmount, vendor?.gstNumber ?? null, project?.gstNumber ?? null);
+        updateData.cgstAmount = split.cgstAmount;
+        updateData.sgstAmount = split.sgstAmount;
+        updateData.igstAmount = split.igstAmount;
       }
       if (req.body.deliveryDate !== undefined) {
         updateData.deliveryDate = req.body.deliveryDate ? new Date(req.body.deliveryDate) : null;

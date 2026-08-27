@@ -106,6 +106,7 @@ export function streamGatePassPdf(res: NodeJS.WritableStream, gatePass: any) {
   const meta = [
     ['GSTIN', gatePass.project?.gstNumber],
     ['PO number', gatePass.purchaseOrder?.poNumber],
+    ['Quotation number', gatePass.purchaseOrder?.quotation?.quotationNumber],
     ['Invoice number', gatePass.invoice?.invoiceNumber ?? gatePass.invoice?.invoiceCode],
     ['Visit date', date],
     ['Visit time', gatePass.visitTime],
@@ -113,6 +114,7 @@ export function streamGatePassPdf(res: NodeJS.WritableStream, gatePass: any) {
     ['Movement type', gatePass.gatePassType],
     ['Approval', approval],
   ];
+  const metaRows = Math.ceil(meta.length / 4);
   meta.forEach(([label, value], index) => {
     const column = index % 4;
     const row = Math.floor(index / 4);
@@ -122,8 +124,8 @@ export function streamGatePassPdf(res: NodeJS.WritableStream, gatePass: any) {
     line(x, cellY, x, cellY + rowHeight);
     if (column === 3) line(left, cellY + rowHeight, right, cellY + rowHeight);
   });
-  line(right, y, right, y + rowHeight * 2);
-  y += rowHeight * 2;
+  line(right, y, right, y + rowHeight * metaRows);
+  y += rowHeight * metaRows;
 
   // Form-style From/To section matching the reference layout.
   sectionTitle(gatePass.gatePassCategory === 'VISITOR' ? 'Visit details' : 'Movement details', y);

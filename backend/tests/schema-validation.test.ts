@@ -269,13 +269,18 @@ describe('Payment request & expense schemas', () => {
 // GATE PASSES — material entry/exit tracking with OTP verification.
 // ─────────────────────────────────────────────────────────────────────────────
 describe('Gate Pass schemas', () => {
-  it('createGatePassSchema requires a PO, vehicle details, and an OTP recipient for material gatepasses', () => {
+  it('createGatePassSchema requires a PO, vehicle type, and an OTP recipient for material gatepasses (vehicle number is optional)', () => {
     expect(() => createGatePassSchema.parse({ body: { poId: id } })).toThrow();
     const parsed = createGatePassSchema.parse({
       body: { poId: id, otpRequestedFor: id, vehicleType: 'TRUCK', vehicleNumber: 'AP39AB1234' },
     });
     expect(parsed.body.poId).toBe(id);
     expect(parsed.body.vehicleType).toBe('TRUCK');
+    // vehicle number is optional
+    const parsedNoVehicle = createGatePassSchema.parse({
+      body: { poId: id, otpRequestedFor: id, vehicleType: 'TRUCK' },
+    });
+    expect(parsedNoVehicle.body.vehicleNumber).toBeUndefined();
   });
 
   it('createGatePassSchema accepts an optional invoiceId (for invoice-linked deliveries)', () => {

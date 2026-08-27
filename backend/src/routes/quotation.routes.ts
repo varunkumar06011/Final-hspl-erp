@@ -22,6 +22,7 @@ interface QuotationLineItem {
   quantity: number;
   unit?: string;
   unitPrice: number;
+  gstRate?: number;
 }
 
 async function generateQuotationNumber(projectId: string): Promise<string> {
@@ -115,7 +116,6 @@ router.post(
       const items = typeof req.body.items === 'string'
         ? JSON.parse(req.body.items || '[]') as QuotationLineItem[]
         : (req.body.items || []) as QuotationLineItem[];
-      const gstAmount = Number(req.body.gstAmount) || 0;
 
       // Validate vendor exists and belongs to project
       const vendor = await prisma.vendor.findFirst({
@@ -144,15 +144,21 @@ router.post(
         console.log(`[Quotation] Auto-registered ${newMaterials.length} new material(s) for vendor "${vendor.name}"`);
       }
 
-      // Calculate totals
-      const itemsWithAmounts = items.map((item) => ({
-        materialName: item.materialName,
-        quantity: item.quantity,
-        unit: item.unit || null,
-        unitPrice: item.unitPrice,
-        amount: item.quantity * item.unitPrice,
-      }));
+      // Calculate totals — GST is auto-derived from per-item gstRate
+      const itemsWithAmounts = items.map((item) => {
+        const amount = item.quantity * item.unitPrice;
+        const rate = Number(item.gstRate) || 0;
+        return {
+          materialName: item.materialName,
+          quantity: item.quantity,
+          unit: item.unit || null,
+          unitPrice: item.unitPrice,
+          amount,
+          gstRate: rate,
+        };
+      });
       const totalAmount = itemsWithAmounts.reduce((sum, i) => sum + Number(i.amount), 0);
+      const gstAmount = itemsWithAmounts.reduce((sum, i) => sum + Number(i.amount) * Number(i.gstRate) / 100, 0);
       const grandTotal = totalAmount + gstAmount;
 
       const quotationNumber = await generateQuotationNumber(projectId);
@@ -310,24 +316,25 @@ router.patch(
           });
           console.log(`[Quotation] Auto-registered ${newMaterials.length} new material(s) for vendor "${vendor.name}"`);
         }
-        const itemsWithAmounts = items.map((item) => ({
-          materialName: item.materialName,
-          quantity: item.quantity,
-          unit: item.unit || null,
-          unitPrice: item.unitPrice,
-          amount: item.quantity * item.unitPrice,
-        }));
+        const itemsWithAmounts = items.map((item) => {
+          const amount = item.quantity * item.unitPrice;
+          const rate = Number(item.gstRate) || 0;
+          return {
+            materialName: item.materialName,
+            quantity: item.quantity,
+            unit: item.unit || null,
+            unitPrice: item.unitPrice,
+            amount,
+            gstRate: rate,
+          };
+        });
         const totalAmount = itemsWithAmounts.reduce((sum, i) => sum + Number(i.amount), 0);
-        const gstAmount = req.body.gstAmount ? Number(req.body.gstAmount) : Number(existing.gstAmount);
+        const gstAmount = itemsWithAmounts.reduce((sum, i) => sum + Number(i.amount) * Number(i.gstRate) / 100, 0);
         updateData.totalAmount = totalAmount;
         updateData.gstAmount = gstAmount;
         updateData.grandTotal = totalAmount + gstAmount;
         await prisma.quotationItem.deleteMany({ where: { quotationId: existing.id } });
         updateData.items = { create: itemsWithAmounts };
-      } else if (req.body.gstAmount !== undefined) {
-        const gstAmount = Number(req.body.gstAmount);
-        updateData.gstAmount = gstAmount;
-        updateData.grandTotal = Number(existing.totalAmount) + gstAmount;
       }
 
       // Handle file upload

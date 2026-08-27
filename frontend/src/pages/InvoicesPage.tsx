@@ -57,6 +57,7 @@ interface POItem {
   unit?: string;
   unitPrice: number;
   amount: number;
+  gstRate?: number;
 }
 
 interface ApprovalStep {
@@ -80,6 +81,9 @@ interface InvoiceRow {
   date: string;
   amount: number;
   taxAmount: number;
+  cgstAmount: number;
+  sgstAmount: number;
+  igstAmount: number;
   totalAmount: number;
   advancePaid: number;
   advanceType: string | null;
@@ -239,6 +243,9 @@ export default function InvoicesPage() {
   const [invoiceNumber, setInvoiceNumber] = useState('');
   const [amount, setAmount] = useState('');
   const [taxAmount, setTaxAmount] = useState('');
+  const [cgstAmount, setCgstAmount] = useState(0);
+  const [sgstAmount, setSgstAmount] = useState(0);
+  const [igstAmount, setIgstAmount] = useState(0);
   const [totalAmount, setTotalAmount] = useState('');
   const [hasAdvance, setHasAdvance] = useState(false);
   const [advancePaid, setAdvancePaid] = useState('');
@@ -339,10 +346,17 @@ export default function InvoicesPage() {
       setAmount(String(poTotal));
       setTaxAmount(poGst > 0 ? String(poGst) : '');
       setTotalAmount(String(poTotal + poGst));
+      // CGST/SGST/IGST will be computed by backend on save; clear preview here
+      setCgstAmount(0);
+      setSgstAmount(0);
+      setIgstAmount(0);
     } else {
       setAmount('');
       setTaxAmount('');
       setTotalAmount('');
+      setCgstAmount(0);
+      setSgstAmount(0);
+      setIgstAmount(0);
     }
   }, [selectedPO]);
 
@@ -551,7 +565,9 @@ export default function InvoicesPage() {
                 <TableCell sx={{ fontWeight: 600 }}>Vendor</TableCell>
                 <TableCell sx={{ fontWeight: 600 }}>PO</TableCell>
                 <TableCell sx={{ fontWeight: 600 }}>Amount</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Tax</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>CGST</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>SGST</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>IGST</TableCell>
                 <TableCell sx={{ fontWeight: 600 }}>Total</TableCell>
                 <TableCell sx={{ fontWeight: 600 }}>Advance</TableCell>
                 <TableCell sx={{ fontWeight: 600 }}>Payment</TableCell>
@@ -563,9 +579,9 @@ export default function InvoicesPage() {
             </TableHead>
             <TableBody>
               {isLoading ? (
-                <TableRow><TableCell colSpan={13} align="center" sx={{ py: 4 }}><CircularProgress size={32} /></TableCell></TableRow>
+                <TableRow><TableCell colSpan={15} align="center" sx={{ py: 4 }}><CircularProgress size={32} /></TableCell></TableRow>
               ) : rows.length === 0 ? (
-                <TableRow><TableCell colSpan={13} align="center" sx={{ py: 4 }}><Typography color="text.secondary">No invoices found</Typography></TableCell></TableRow>
+                <TableRow><TableCell colSpan={15} align="center" sx={{ py: 4 }}><Typography color="text.secondary">No invoices found</Typography></TableCell></TableRow>
               ) : (
                 rows.map((row) => (
                   <TableRow key={row.id} hover>
@@ -574,7 +590,9 @@ export default function InvoicesPage() {
                     <TableCell data-label="Vendor">{row.vendor?.vendorCode} - {row.vendor?.name ?? '—'}</TableCell>
                     <TableCell data-label="PO">{row.purchaseOrder?.poNumber ?? '—'}</TableCell>
                     <TableCell data-label="Amount">{formatCurrency(row.amount)}</TableCell>
-                    <TableCell data-label="Tax">{formatCurrency(row.taxAmount)}</TableCell>
+                    <TableCell data-label="CGST">{formatCurrency(row.cgstAmount)}</TableCell>
+                    <TableCell data-label="SGST">{formatCurrency(row.sgstAmount)}</TableCell>
+                    <TableCell data-label="IGST">{formatCurrency(row.igstAmount)}</TableCell>
                     <TableCell data-label="Total">{formatCurrency(row.totalAmount)}</TableCell>
                     <TableCell data-label="Advance">
                       {Number(row.advancePaid) > 0
@@ -713,6 +731,7 @@ export default function InvoicesPage() {
                           <TableCell sx={{ fontWeight: 600 }}>Qty</TableCell>
                           <TableCell sx={{ fontWeight: 600 }}>Unit</TableCell>
                           <TableCell sx={{ fontWeight: 600 }}>Unit Price</TableCell>
+                          <TableCell sx={{ fontWeight: 600 }}>GST %</TableCell>
                           <TableCell sx={{ fontWeight: 600 }}>Amount</TableCell>
                         </TableRow>
                       </TableHead>
@@ -724,6 +743,7 @@ export default function InvoicesPage() {
                             <TableCell data-label="Qty">{item.quantity}</TableCell>
                             <TableCell data-label="Unit">{item.unit ?? '—'}</TableCell>
                             <TableCell data-label="Unit Price">{formatCurrency(item.unitPrice)}</TableCell>
+                            <TableCell data-label="GST %">{Number(item.gstRate ?? 0)}%</TableCell>
                             <TableCell data-label="Amount">{formatCurrency(item.amount)}</TableCell>
                           </TableRow>
                         ))}
@@ -765,9 +785,35 @@ export default function InvoicesPage() {
               inputProps={{ min: 0, step: 0.01 }}
               fullWidth
               size="small"
-              helperText={selectedPoId && Number(selectedPO?.gstAmount) > 0 ? 'Auto-filled from PO GST' : 'Optional — enter if applicable'}
-              InputProps={selectedPoId && Number(selectedPO?.gstAmount) > 0 ? { readOnly: true } : undefined}
+              helperText={selectedPoId ? 'Auto-filled from PO (per-item GST rates)' : 'Enter GST amount — CGST/SGST/IGST split is auto-calculated on save'}
+              InputProps={selectedPoId ? { readOnly: true } : undefined}
             />
+            {/* CGST / SGST / IGST breakdown — auto-calculated by backend based on vendor vs hospital state */}
+            {Number(taxAmount) > 0 && (
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(3, 1fr)' }, gap: 1 }}>
+                <TextField
+                  label="CGST"
+                  value={formatIndianNumber(cgstAmount)}
+                  size="small"
+                  InputProps={{ readOnly: true }}
+                  helperText="Auto-calculated"
+                />
+                <TextField
+                  label="SGST"
+                  value={formatIndianNumber(sgstAmount)}
+                  size="small"
+                  InputProps={{ readOnly: true }}
+                  helperText="Auto-calculated"
+                />
+                <TextField
+                  label="IGST"
+                  value={formatIndianNumber(igstAmount)}
+                  size="small"
+                  InputProps={{ readOnly: true }}
+                  helperText="Auto-calculated"
+                />
+              </Box>
+            )}
             <TextField
               label="Total Amount (Amount + Tax)"
               type="text"
