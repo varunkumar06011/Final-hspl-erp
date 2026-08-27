@@ -340,34 +340,21 @@ router.post(
           item.materialName.toLowerCase(),
           Math.max(0, Number(item.quantity) - (acceptedByName.get(item.materialName.toLowerCase()) ?? 0) - (inTransitByName.get(item.materialName.toLowerCase()) ?? 0)),
         ]));
-        items = (rawItems
-          ? (typeof rawItems === 'string' ? JSON.parse(rawItems) : rawItems)
-          : po.items
-            .filter((item) => (remainingByName.get(item.materialName.toLowerCase()) ?? 0) > 0)
-            .map((item) => ({ materialName: item.materialName, quantity: remainingByName.get(item.materialName.toLowerCase()), unit: item.unit ?? undefined }))) as { materialName: string; quantity: number; unit?: string | null }[];
+
+        // Gate pass is an authorization document — auto-fill all remaining PO items.
+        // Actual delivered quantities are entered at goods receipt creation.
+        items = po.items
+          .filter((item) => (remainingByName.get(item.materialName.toLowerCase()) ?? 0) > 0)
+          .map((item) => ({
+            materialName: item.materialName,
+            quantity: remainingByName.get(item.materialName.toLowerCase())!,
+            unit: item.unit ?? undefined,
+          }));
         if (items.length === 0) {
-          res.status(400).json({ error: 'Enter at least one received item quantity greater than zero' });
+          res.status(400).json({ error: 'All items from this purchase order have already been delivered or are in transit' });
           return;
         }
         poItemsByName = new Map(po.items.map((item) => [item.materialName.toLowerCase(), { id: item.id, unit: item.unit }]));
-        const itemNames = new Set<string>();
-        for (const item of items) {
-          const normalizedName = item.materialName.toLowerCase();
-          if (itemNames.has(normalizedName)) {
-            res.status(400).json({ error: `Duplicate item ${item.materialName} is not allowed` });
-            return;
-          }
-          itemNames.add(normalizedName);
-          if (!poItemsByName.has(normalizedName)) {
-            res.status(400).json({ error: `Item ${item.materialName} is not part of the purchase order` });
-            return;
-          }
-          const remainingQuantity = remainingByName.get(normalizedName) ?? 0;
-          if (Number(item.quantity) > remainingQuantity) {
-            res.status(400).json({ error: `Received quantity for ${item.materialName} cannot exceed the remaining quantity of ${remainingQuantity}` });
-            return;
-          }
-        }
       }
 
       // Validate invoice only for material gatepasses.

@@ -47,7 +47,11 @@ interface Receipt {
 interface Gatepass {
   id: string;
   passNumber: string;
-  purchaseOrder: { poNumber: string; vendor: { name: string } };
+  purchaseOrder: {
+    poNumber: string;
+    vendor: { name: string };
+    items: { id: string; materialName: string; quantity: number; unit: string | null }[];
+  };
   items: { materialName: string; quantity: number; unit: string | null }[];
 }
 
@@ -62,6 +66,7 @@ export default function GoodsReceiptsPage() {
   const [inspectReceipt, setInspectReceipt] = useState<Receipt | null>(null);
   const [selectedGatepassId, setSelectedGatepassId] = useState('');
   const [dispositions, setDispositions] = useState<Record<string, Disposition>>({});
+  const [deliveredQty, setDeliveredQty] = useState<Record<string, number | string>>({});
   const [error, setError] = useState('');
   const queryClient = useQueryClient();
 
@@ -75,12 +80,23 @@ export default function GoodsReceiptsPage() {
   });
 
   const createMutation = useMutation({
-    mutationFn: async () => (await api.post('/goods-receipts', { gatePassId: selectedGatepassId })).data,
+    mutationFn: async () => {
+      const poItems = selectedGatepass?.purchaseOrder.items ?? [];
+      const items = poItems
+        .map((item) => ({
+          materialName: item.materialName,
+          deliveredQty: Number(deliveredQty[item.materialName] ?? 0),
+          unit: item.unit,
+        }))
+        .filter((item) => item.deliveredQty > 0);
+      return (await api.post('/goods-receipts', { gatePassId: selectedGatepassId, items })).data;
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/goods-receipts'] });
       queryClient.invalidateQueries({ queryKey: ['/goods-receipts/available-gatepasses'] });
       setCreateOpen(false);
       setSelectedGatepassId('');
+      setDeliveredQty({});
     },
     onError: (err: unknown) => setError(extractErrorMessage(err)),
   });
@@ -202,10 +218,10 @@ export default function GoodsReceiptsPage() {
         </TableContainer>
       </Card>
 
-      <ResponsiveDialog open={createOpen} onClose={() => setCreateOpen(false)} maxWidth="sm" fullWidth>
+      <ResponsiveDialog open={createOpen} onClose={() => setCreateOpen(false)} maxWidth="md" fullWidth>
         <DialogTitle>Create Goods Receipt</DialogTitle>
         <DialogContent>
-          <TextField select fullWidth size="small" label="Approved Gatepass" value={selectedGatepassId} onChange={(event) => setSelectedGatepassId(event.target.value)} sx={{ mt: 1 }}>
+          <TextField select fullWidth size="small" label="Approved Gatepass" value={selectedGatepassId} onChange={(event) => { setSelectedGatepassId(event.target.value); setDeliveredQty({}); }} sx={{ mt: 1 }}>
             {gatepassesQuery.data?.map((gatepass) => (
               <MenuItem key={gatepass.id} value={gatepass.id}>
                 {gatepass.passNumber} — {gatepass.purchaseOrder.poNumber} — {gatepass.purchaseOrder.vendor.name}
@@ -213,7 +229,44 @@ export default function GoodsReceiptsPage() {
             ))}
           </TextField>
           {selectedGatepass && <Box sx={{ mt: 2 }}>
-            {selectedGatepass.items.map((item) => <Typography key={item.materialName} variant="body2">{item.materialName}: {item.quantity} {item.unit ?? ''}</Typography>)}
+            <Typography variant="body2" fontWeight={600} sx={{ mb: 1 }}>
+              Enter the actual quantity delivered for each item:
+            </Typography>
+            <TableContainer component={Card} variant="outlined" sx={{ overflowX: 'auto' }}>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell sx={{ fontWeight: 600 }}>Material</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>Expected</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>Delivered</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>Unit</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {selectedGatepass.purchaseOrder.items.map((item) => (
+                    <TableRow key={item.id}>
+                      <TableCell>{item.materialName}</TableCell>
+                      <TableCell>{Number(item.quantity)}</TableCell>
+                      <TableCell>
+                        <TextField
+                          type="number"
+                          size="small"
+                          value={deliveredQty[item.materialName] ?? ''}
+                          onChange={(e) => setDeliveredQty((current) => ({ ...current, [item.materialName]: e.target.value }))}
+                          inputProps={{ min: 0, step: 0.01 }}
+                          sx={{ width: 100 }}
+                          placeholder="0"
+                        />
+                      </TableCell>
+                      <TableCell>{item.unit ?? '—'}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+            <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+              Expected = quantity from the purchase order. Delivered = actual quantity that arrived. If less than expected, the PO will be marked as partially delivered.
+            </Typography>
           </Box>}
         </DialogContent>
         <DialogActions>

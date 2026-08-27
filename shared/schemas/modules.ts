@@ -296,6 +296,11 @@ export const verifyGatePassOtpSchema = z.object({
 });
 
 // ═══ Goods Receipts ═══
+const goodsReceiptDeliveredItem = z.object({
+  materialName: nonEmptyText(200),
+  deliveredQty: qty,
+  unit: z.string().trim().max(20).nullable().optional(),
+});
 const goodsReceiptDispositionItem = z.object({
   id: uuid,
   acceptedQty: qty,
@@ -303,7 +308,13 @@ const goodsReceiptDispositionItem = z.object({
   rejectionReason: z.string().trim().max(500).optional(),
 });
 export const createGoodsReceiptSchema = z.object({
-  body: z.object({ gatePassId: uuid }),
+  body: z.object({
+    gatePassId: uuid,
+    items: z.preprocess(
+      (value) => (typeof value === 'string' ? JSON.parse(value) : value),
+      z.array(goodsReceiptDeliveredItem).min(1),
+    ),
+  }),
 });
 export const inspectGoodsReceiptSchema = z.object({
   params: z.object({ id: uuid }),

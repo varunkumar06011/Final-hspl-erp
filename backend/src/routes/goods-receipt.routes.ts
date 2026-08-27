@@ -82,7 +82,14 @@ router.get(
       const gatepasses = await prisma.gatePass.findMany({
         where: { projectId, status: 'APPROVED', deletedAt: null, goodsReceipt: null },
         include: {
-          purchaseOrder: { select: { id: true, poNumber: true, vendor: { select: { id: true, name: true, vendorCode: true } } } },
+          purchaseOrder: {
+            select: {
+              id: true,
+              poNumber: true,
+              vendor: { select: { id: true, name: true, vendorCode: true } },
+              items: { select: { id: true, materialName: true, quantity: true, unit: true } },
+            },
+          },
           items: true,
         },
         orderBy: { createdAt: 'desc' },
@@ -131,13 +138,20 @@ router.post(
         res.status(409).json({ error: 'A goods receipt already exists for this gatepass' });
         return;
       }
-      if (gatePass.items.length === 0) {
-        res.status(400).json({ error: 'The gatepass has no received items' });
-        return;
+
+      // Delivered quantities come from the request — the user enters what actually arrived
+      const deliveredItems = req.body.items as { materialName: string; deliveredQty: number; unit?: string | null }[];
+      const poItems = new Map(gatePass.purchaseOrder.items.map((item) => [item.materialName.toLowerCase(), item]));
+
+      // Validate each delivered item is part of the PO
+      for (const item of deliveredItems) {
+        if (!poItems.has(item.materialName.toLowerCase())) {
+          res.status(400).json({ error: `Item ${item.materialName} is not part of the purchase order` });
+          return;
+        }
       }
 
       const receiptNumber = await generateReceiptNumber(projectId);
-      const poItems = new Map(gatePass.purchaseOrder.items.map((item) => [item.materialName.toLowerCase(), item]));
       const receipt = await prisma.goodsReceipt.create({
         data: {
           projectId,
@@ -147,11 +161,11 @@ router.post(
           status: GoodsReceiptStatus.PENDING_INSPECTION,
           createdBy: req.user!.id,
           items: {
-            create: gatePass.items.map((item) => ({
+            create: deliveredItems.map((item) => ({
               poItemId: poItems.get(item.materialName.toLowerCase())?.id ?? undefined,
               materialName: item.materialName,
-              unit: item.unit,
-              deliveredQty: item.quantity,
+              unit: item.unit || poItems.get(item.materialName.toLowerCase())?.unit || null,
+              deliveredQty: item.deliveredQty,
             })),
           },
         },

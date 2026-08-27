@@ -118,7 +118,6 @@ export default function GatePassesPage() {
   const [selectedPoId, setSelectedPoId] = useState('');
   const [selectedInvoiceId, setSelectedInvoiceId] = useState('');
   const [selectedHeadId, setSelectedHeadId] = useState('');
-  const [receivedQuantities, setReceivedQuantities] = useState<Record<string, number>>({});
   const [visitorName, setVisitorName] = useState('');
   const [visitorPhone, setVisitorPhone] = useState('');
   const [visitDate, setVisitDate] = useState('');
@@ -216,14 +215,6 @@ export default function GatePassesPage() {
       payload.append('gatePassCategory', gatePassCategory);
       if (gatePassCategory === 'MATERIAL') {
         payload.append('poId', selectedPoId);
-        const poItems = selectedPO?.items ?? [];
-        payload.append('items', JSON.stringify(poItems
-          .filter((item) => Number(receivedQuantities[item.materialName] ?? item.remainingQuantity) > 0)
-          .map((item) => ({
-            materialName: item.materialName,
-            quantity: Number(receivedQuantities[item.materialName] ?? item.remainingQuantity),
-            unit: item.unit,
-          }))));
         if (selectedInvoiceId) payload.append('invoiceId', selectedInvoiceId);
       }
       payload.append('otpRequestedFor', selectedHeadId);
@@ -310,7 +301,6 @@ export default function GatePassesPage() {
     setSelectedPoId('');
     setSelectedInvoiceId('');
     setSelectedHeadId('');
-    setReceivedQuantities({});
     setVisitorName('');
     setVisitorPhone('');
     setVisitDate('');
@@ -638,9 +628,7 @@ export default function GatePassesPage() {
               value={selectedPoId}
               onChange={(e) => {
                 const poId = e.target.value;
-                const po = approvedPOs?.find((candidate) => candidate.id === poId);
                 setSelectedPoId(poId);
-                setReceivedQuantities(Object.fromEntries((po?.items ?? []).map((item) => [item.materialName, item.remainingQuantity])));
                 setSelectedInvoiceId('');
               }}
               fullWidth
@@ -676,7 +664,7 @@ export default function GatePassesPage() {
             {selectedPO && (
               <Box>
                 <Typography variant="body2" fontWeight={600} sx={{ mb: 1 }}>
-                  PO Items — enter the quantity received in this gatepass
+                  PO Items — expected delivery (actual quantities will be entered at goods receipt)
                 </Typography>
                 <TableContainer component={Card} variant="outlined" sx={{ overflowX: 'auto' }}>
                   <Table size="small">
@@ -686,8 +674,7 @@ export default function GatePassesPage() {
                         <TableCell sx={{ fontWeight: 600 }}>Ordered</TableCell>
                         <TableCell sx={{ fontWeight: 600 }}>Accepted</TableCell>
                         <TableCell sx={{ fontWeight: 600 }}>In Transit</TableCell>
-                        <TableCell sx={{ fontWeight: 600 }}>Receive Now</TableCell>
-                        <TableCell sx={{ fontWeight: 600 }}>Remaining</TableCell>
+                        <TableCell sx={{ fontWeight: 600 }}>Expected</TableCell>
                         <TableCell sx={{ fontWeight: 600 }}>Unit</TableCell>
                       </TableRow>
                     </TableHead>
@@ -698,17 +685,7 @@ export default function GatePassesPage() {
                           <TableCell>{item.orderedQuantity}</TableCell>
                           <TableCell>{item.receivedQuantity}</TableCell>
                           <TableCell>{item.inTransitQuantity ?? 0}</TableCell>
-                          <TableCell>
-                            <TextField
-                              type="number"
-                              size="small"
-                              value={receivedQuantities[item.materialName] ?? item.remainingQuantity}
-                              onChange={(e) => setReceivedQuantities((current) => ({ ...current, [item.materialName]: e.target.value === '' ? 0 : Number(e.target.value) }))}
-                              inputProps={{ min: 0, max: item.remainingQuantity, step: 0.01 }}
-                              sx={{ width: 100 }}
-                            />
-                          </TableCell>
-                          <TableCell>{Math.max(0, item.remainingQuantity - Number(receivedQuantities[item.materialName] ?? 0))}</TableCell>
+                          <TableCell>{item.remainingQuantity}</TableCell>
                           <TableCell>{item.unit ?? '—'}</TableCell>
                         </TableRow>
                       ))}
@@ -716,7 +693,7 @@ export default function GatePassesPage() {
                   </Table>
                 </TableContainer>
                 <Typography variant="caption" color="text.secondary">
-                  Accepted = quantity inspected and posted to inventory. In Transit = delivered to gate but not yet inspected. Remaining = ordered minus accepted minus in-transit. Enter at least one quantity greater than zero to receive.
+                  Accepted = quantity inspected and posted to inventory. In Transit = approved gate pass but not yet inspected. Expected = remaining quantity to be delivered. Actual delivered quantities will be recorded when creating the goods receipt.
                 </Typography>
               </Box>
             )}
