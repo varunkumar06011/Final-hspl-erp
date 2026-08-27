@@ -134,9 +134,10 @@ export async function notifyAllHeads(
   projectId: string,
   payload: NotificationPayload
 ): Promise<void> {
+  // Heads may not be assigned to a specific project, so we don't filter by projectId.
+  // We query all active users with head roles.
   const heads = await prisma.user.findMany({
     where: {
-      projectId,
       isActive: true,
       role: { in: [...APPROVER_ROLES] as string[] },
     },
@@ -191,10 +192,10 @@ export async function notifyApprovers(
   approverRoles: UserRole[],
   payload: ApprovalNotificationPayload
 ): Promise<void> {
-  // Find all active users in the project with one of the approver roles
+  // Approvers (heads) may not be assigned to a specific project, so we don't filter by projectId.
+  // We query all active users with the given approver roles.
   const approvers = await prisma.user.findMany({
     where: {
-      projectId,
       isActive: true,
       role: { in: approverRoles as string[] },
     },

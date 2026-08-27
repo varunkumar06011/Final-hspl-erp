@@ -136,6 +136,7 @@ export default function GatePassesPage() {
   );
   const [sendingOtp, setSendingOtp] = useState(false);
   const [resendingOtp, setResendingOtp] = useState(false);
+  const [deleteRow, setDeleteRow] = useState<GatePassRow | null>(null);
   const queryClient = useQueryClient();
 
   const { data, isLoading, refetch } = useQuery({
@@ -295,6 +296,7 @@ export default function GatePassesPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/gate-passes'] });
+      setDeleteRow(null);
     },
     onError: (err: unknown) => setError(extractErrorMessage(err)),
   });
@@ -566,10 +568,7 @@ export default function GatePassesPage() {
                               <IconButton
                                 size="small"
                                 color="error"
-                                onClick={() => {
-                                  if (confirm('Delete this gate pass?'))
-                                    deleteMutation.mutate(row.id);
-                                }}
+                                onClick={() => setDeleteRow(row)}
                               >
                                 <DeleteIcon fontSize="small" />
                               </IconButton>
@@ -946,6 +945,22 @@ export default function GatePassesPage() {
             disabled={!otpInput || verifyOtpMutation.isPending}
           >
             {verifyOtpMutation.isPending ? <CircularProgress size={20} /> : 'Verify & Approve'}
+          </Button>
+        </DialogActions>
+      </ResponsiveDialog>
+
+      <ResponsiveDialog open={deleteRow !== null} onClose={() => setDeleteRow(null)} maxWidth="xs" fullWidth>
+        <DialogTitle>Delete Gate Pass</DialogTitle>
+        <DialogContent>
+          <Typography>Are you sure you want to delete gate pass <strong>{deleteRow?.passNumber}</strong>?</Typography>
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+            This action cannot be undone. Only pending gate passes created by you can be deleted.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteRow(null)}>Cancel</Button>
+          <Button color="error" variant="contained" disabled={deleteMutation.isPending} onClick={() => deleteRow && deleteMutation.mutate(deleteRow.id)}>
+            {deleteMutation.isPending ? <CircularProgress size={20} /> : 'Delete'}
           </Button>
         </DialogActions>
       </ResponsiveDialog>

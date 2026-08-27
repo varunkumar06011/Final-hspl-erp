@@ -11,7 +11,6 @@ import {
   IssueSeverity,
   InspectionStatus,
   ContractStatus,
-  StockStatus,
 } from '../enums.js';
 
 const uuid = z.string().uuid();
@@ -184,12 +183,6 @@ export const updateInvoiceSchema = z.object({
     advanceType: z.string().max(50).optional(),
     advanceOtherType: z.string().max(100).optional(),
     deliveryDate: dateStr.optional(),
-  }),
-});
-export const updateInvoiceStatusSchema = z.object({
-  params: z.object({ id: uuid }),
-  body: z.object({
-    stockStatus: z.nativeEnum(StockStatus).optional(),
   }),
 });
 export const listInvoicesSchema = z.object({

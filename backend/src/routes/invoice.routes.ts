@@ -1,6 +1,6 @@
 import { Router, Response, NextFunction } from 'express';
 import { Permission, AuditAction, InvoiceVerificationStatus, PaymentStatus, StockStatus, UserRole, GoodsReceiptStatus, getRequiredApproverCount } from '@hospital-erp/shared';
-import { createInvoiceSchema, listInvoicesSchema, approvalActionSchema, updateInvoiceSchema, updateInvoiceStatusSchema } from '@hospital-erp/shared';
+import { createInvoiceSchema, listInvoicesSchema, approvalActionSchema, updateInvoiceSchema } from '@hospital-erp/shared';
 import { prisma } from '../config/prisma';
 import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middleware/auth';
 import { rbacMiddleware } from '../middleware/rbac';
@@ -565,74 +565,6 @@ router.post(
         include: invoiceInclude,
       });
       res.json(updated);
-    } catch (error) {
-      next(error);
-    }
-  }
-);
-
-// PATCH /:id/status — update stock status only
-// Payment status is managed automatically by the installment workflow
-// (recalcInvoicePaymentStatus after each payment recording).
-// Inventory is ONLY added via gate pass approval.
-router.patch(
-  '/:id/status',
-  rbacMiddleware(Permission.VIEW_FINANCIALS),
-  validateMiddleware(updateInvoiceStatusSchema),
-  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
-    try {
-      const projectId = requireProjectId(req);
-      const { paymentStatus, stockStatus } = req.body;
-
-      if (paymentStatus) {
-        res.status(400).json({ error: 'Payment status is managed automatically through the payment workflow. Use the Payments page to record installments.' });
-        return;
-      }
-      if (stockStatus) {
-        res.status(400).json({ error: 'Stock status is managed automatically through the Goods Receipt workflow.' });
-        return;
-      }
-
-      const invoice = await prisma.vendorInvoice.findFirst({
-        where: { id: req.params.id, projectId, deletedAt: null },
-        include: { purchaseOrder: { select: { id: true, poNumber: true } } },
-      });
-      if (!invoice) {
-        res.status(404).json({ error: 'Invoice not found' });
-        return;
-      }
-
-      const updateData: Record<string, unknown> = {};
-      if (stockStatus) updateData.stockStatus = stockStatus;
-
-      const updated = await prisma.vendorInvoice.update({
-        where: { id: invoice.id },
-        data: updateData,
-        include: invoiceInclude,
-      });
-
-      // Check if this invoice's PO has an approved gate pass (for informational warning)
-      let inventoryWarning: string | null = null;
-      if (invoice.poId) {
-        const gatePass = await prisma.gatePass.findFirst({
-          where: { poId: invoice.poId, projectId, deletedAt: null, status: 'APPROVED' },
-          select: { id: true, passNumber: true },
-        });
-        if (!gatePass) {
-          inventoryWarning = `WARNING: No approved gate pass exists for PO ${invoice.purchaseOrder?.poNumber ?? '—'}. Items have NOT been added to inventory. Create and approve a gate pass first.`;
-        }
-      }
-
-      await logAudit({
-        userId: req.user!.id,
-        action: AuditAction.UPDATE,
-        entityType: 'VENDOR_INVOICE',
-        entityId: invoice.id,
-        projectId,
-        newValue: { ...updateData, inventoryWarning },
-      });
-
-      res.json({ ...updated, inventoryWarning });
     } catch (error) {
       next(error);
     }

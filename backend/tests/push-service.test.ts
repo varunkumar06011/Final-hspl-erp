@@ -79,7 +79,7 @@ vi.mock('../src/config/prisma', () => ({
         return results.map((s) => (select?.token ? { token: s.token } : s));
       }),
     },
-    // user.findMany: used by notifyApprovers to find all approvers in a project.
+    // user.findMany: used by notifyApprovers to find all approvers.
     user: {
       findMany: vi.fn(async ({ where, select }: any) => {
         const roles = where.role?.in ?? [];
@@ -89,7 +89,7 @@ vi.mock('../src/config/prisma', () => ({
           { id: 'user-hoc', role: UserRole.HEAD_OF_CONSTRUCTION, projectId: 'p1', isActive: true },
         ];
         return users
-          .filter((u) => u.projectId === where.projectId && u.isActive === where.isActive)
+          .filter((u) => (where.projectId === undefined || u.projectId === where.projectId) && u.isActive === where.isActive)
           .filter((u) => roles.includes(u.role))
           .map((u) => (select?.id ? { id: u.id } : u));
       }),

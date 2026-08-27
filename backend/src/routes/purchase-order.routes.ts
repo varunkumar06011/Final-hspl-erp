@@ -30,6 +30,7 @@ async function getAcceptedQuantitiesByPo(poId: string): Promise<Map<string, numb
 }
 
 const HEAD_ROLES = [UserRole.PROJECT_HEAD, UserRole.HEAD_OF_CONSTRUCTION, UserRole.ADMIN, UserRole.ADMIN_2];
+const PO_APPROVER_ROLES = [UserRole.ADMIN, UserRole.ADMIN_2];
 
 async function generatePONumber(projectId: string): Promise<string> {
   const pos = await prisma.purchaseOrder.findMany({
@@ -444,9 +445,9 @@ router.post(
         return;
       }
 
-      // Check user is one of the 4 head roles
-      if (!HEAD_ROLES.includes(req.user!.role as UserRole)) {
-        res.status(403).json({ error: 'Only Project Head, Head of Construction, Admin, or Admin 2 can approve' });
+      // Check user is one of the PO approver roles (Admin or Admin 2)
+      if (!PO_APPROVER_ROLES.includes(req.user!.role as UserRole)) {
+        res.status(403).json({ error: 'Only Admin or Admin 2 can approve purchase orders' });
         return;
       }
 
@@ -516,8 +517,8 @@ router.post(
         return;
       }
 
-      if (!HEAD_ROLES.includes(req.user!.role as UserRole)) {
-        res.status(403).json({ error: 'Only Project Head, Head of Construction, Admin, or Admin 2 can reject' });
+      if (!PO_APPROVER_ROLES.includes(req.user!.role as UserRole)) {
+        res.status(403).json({ error: 'Only Admin or Admin 2 can reject purchase orders' });
         return;
       }
 

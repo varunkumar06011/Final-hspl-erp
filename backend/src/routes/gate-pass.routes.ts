@@ -629,6 +629,10 @@ router.delete(
         res.status(404).json({ error: 'Gate pass not found' });
         return;
       }
+      if (existing.createdBy !== req.user!.id) {
+        res.status(403).json({ error: 'Only the creator can delete this gate pass' });
+        return;
+      }
       if (existing.status === 'APPROVED') {
         res.status(400).json({ error: 'Cannot delete an approved gate pass' });
         return;
@@ -637,6 +641,14 @@ router.delete(
       await prisma.gatePass.update({
         where: { id: existing.id },
         data: { deletedAt: new Date() },
+      });
+
+      await logAudit({
+        userId: req.user!.id,
+        action: AuditAction.DELETE,
+        entityType: 'GATE_PASS',
+        entityId: existing.id,
+        projectId,
       });
 
       res.json({ message: 'Gate pass deleted' });
