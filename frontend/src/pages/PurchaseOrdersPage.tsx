@@ -666,7 +666,7 @@ interface DeliveryTrailData {
     gatePassDate: string;
     approvedDate: string | null;
     items: { materialName: string; deliveredQty: number; unit: string | null }[];
-    goodsReceipt: {
+    goodsReceipts: {
       receiptNumber: string;
       receiptStatus: string;
       inspectedAt: string | null;
@@ -678,7 +678,7 @@ interface DeliveryTrailData {
         rejectedQty: number;
         rejectionReason: string | null;
       }[];
-    } | null;
+    }[];
   }[];
 }
 
@@ -771,43 +771,45 @@ function DeliveryTrailDialog({ poId, poNumber, onClose }: { poId: string | null;
                         </Table>
                       </TableContainer>
 
-                      {/* Goods Receipt / Inspection Results */}
-                      {delivery.goodsReceipt ? (
-                        <>
-                          <Typography variant="caption" fontWeight={600} color="text.secondary">
-                            GOODS RECEIPT — {delivery.goodsReceipt.receiptNumber} ({delivery.goodsReceipt.receiptStatus.replace(/_/g, ' ')})
-                          </Typography>
-                          <TableContainer component={Card} variant="outlined" sx={{ overflowX: 'auto' }}>
-                            <Table size="small">
-                              <TableHead>
-                                <TableRow>
-                                  <TableCell sx={{ fontWeight: 600 }}>Material</TableCell>
-                                  <TableCell sx={{ fontWeight: 600 }}>Delivered</TableCell>
-                                  <TableCell sx={{ fontWeight: 600 }}>Accepted</TableCell>
-                                  <TableCell sx={{ fontWeight: 600 }}>Rejected</TableCell>
-                                  <TableCell sx={{ fontWeight: 600 }}>Reason</TableCell>
-                                </TableRow>
-                              </TableHead>
-                              <TableBody>
-                                {delivery.goodsReceipt.items.map((item, i) => (
-                                  <TableRow key={i}>
-                                    <TableCell>{item.materialName}</TableCell>
-                                    <TableCell>{formatIndianNumber(item.deliveredQty)}</TableCell>
-                                    <TableCell sx={{ color: 'success.main' }}>{formatIndianNumber(item.acceptedQty)}</TableCell>
-                                    <TableCell sx={{ color: item.rejectedQty > 0 ? 'error.main' : 'text.secondary' }}>{formatIndianNumber(item.rejectedQty)}</TableCell>
-                                    <TableCell>{item.rejectionReason ?? '—'}</TableCell>
-                                  </TableRow>
-                                ))}
-                              </TableBody>
-                            </Table>
-                          </TableContainer>
-                          {delivery.goodsReceipt.inspectedAt && (
-                            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
-                              Inspected: {formatDate(delivery.goodsReceipt.inspectedAt)}
-                              {delivery.goodsReceipt.postedAt && ` • Posted: ${formatDate(delivery.goodsReceipt.postedAt)}`}
+                      {/* Goods Receipts / Inspection Results */}
+                      {delivery.goodsReceipts.length > 0 ? (
+                        delivery.goodsReceipts.map((gr, grIdx) => (
+                          <Box key={grIdx} sx={{ mt: grIdx > 0 ? 2 : 0 }}>
+                            <Typography variant="caption" fontWeight={600} color="text.secondary">
+                              GOODS RECEIPT — {gr.receiptNumber} ({gr.receiptStatus.replace(/_/g, ' ')})
                             </Typography>
-                          )}
-                        </>
+                            <TableContainer component={Card} variant="outlined" sx={{ overflowX: 'auto' }}>
+                              <Table size="small">
+                                <TableHead>
+                                  <TableRow>
+                                    <TableCell sx={{ fontWeight: 600 }}>Material</TableCell>
+                                    <TableCell sx={{ fontWeight: 600 }}>Delivered</TableCell>
+                                    <TableCell sx={{ fontWeight: 600 }}>Accepted</TableCell>
+                                    <TableCell sx={{ fontWeight: 600 }}>Rejected</TableCell>
+                                    <TableCell sx={{ fontWeight: 600 }}>Reason</TableCell>
+                                  </TableRow>
+                                </TableHead>
+                                <TableBody>
+                                  {gr.items.map((item, i) => (
+                                    <TableRow key={i}>
+                                      <TableCell>{item.materialName}</TableCell>
+                                      <TableCell>{formatIndianNumber(item.deliveredQty)}</TableCell>
+                                      <TableCell sx={{ color: 'success.main' }}>{formatIndianNumber(item.acceptedQty)}</TableCell>
+                                      <TableCell sx={{ color: item.rejectedQty > 0 ? 'error.main' : 'text.secondary' }}>{formatIndianNumber(item.rejectedQty)}</TableCell>
+                                      <TableCell>{item.rejectionReason ?? '—'}</TableCell>
+                                    </TableRow>
+                                  ))}
+                                </TableBody>
+                              </Table>
+                            </TableContainer>
+                            {gr.inspectedAt && (
+                              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                                Inspected: {formatDate(gr.inspectedAt)}
+                                {gr.postedAt && ` • Posted: ${formatDate(gr.postedAt)}`}
+                              </Typography>
+                            )}
+                          </Box>
+                        ))
                       ) : (
                         <Alert severity="info" sx={{ mt: 1 }}>
                           No Goods Receipt created yet for this gate pass. The material has arrived at the gate but has not been inspected or posted to inventory.

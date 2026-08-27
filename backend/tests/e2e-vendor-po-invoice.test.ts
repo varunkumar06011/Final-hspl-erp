@@ -97,6 +97,7 @@ const { tables, createModelMock, seedData } = vi.hoisted(() => {
       // Goods receipt relations
       poItem: { table: 'purchaseOrderItem', fk: 'id', isList: false, reverseFk: 'poItemId' },
       goodsReceipt: { table: 'goodsReceipt', fk: 'id', isList: false, reverseFk: 'goodsReceiptId' },
+      goodsReceipts: { table: 'goodsReceipt', fk: 'id', isList: true, reverseFk: 'gatePassId' },
       gatePass: { table: 'gatePass', fk: 'id', isList: false, reverseFk: 'gatePassId' },
     };
 

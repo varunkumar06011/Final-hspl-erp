@@ -80,7 +80,7 @@ router.get(
     try {
       const projectId = requireProjectId(req);
       const gatepasses = await prisma.gatePass.findMany({
-        where: { projectId, status: 'APPROVED', deletedAt: null, goodsReceipt: null },
+        where: { projectId, status: 'APPROVED', deletedAt: null },
         include: {
           purchaseOrder: {
             select: {
@@ -128,14 +128,10 @@ router.post(
       const projectId = requireProjectId(req);
       const gatePass = await prisma.gatePass.findFirst({
         where: { id: req.body.gatePassId, projectId, status: 'APPROVED', deletedAt: null },
-        include: { items: true, purchaseOrder: { include: { items: true } }, goodsReceipt: true },
+        include: { items: true, purchaseOrder: { include: { items: true } } },
       });
       if (!gatePass || !gatePass.purchaseOrder) {
         res.status(400).json({ error: 'Only an approved material gatepass can create a goods receipt' });
-        return;
-      }
-      if (gatePass.goodsReceipt) {
-        res.status(409).json({ error: 'A goods receipt already exists for this gatepass' });
         return;
       }
 

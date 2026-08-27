@@ -142,7 +142,7 @@ router.get(
               createdAt: true,
               otpApprovedAt: true,
               items: { select: { materialName: true, quantity: true, unit: true } },
-              goodsReceipt: {
+              goodsReceipts: {
                 select: {
                   id: true,
                   receiptNumber: true,
@@ -195,21 +195,19 @@ router.get(
           deliveredQty: Number(gpi.quantity),
           unit: gpi.unit,
         })),
-        goodsReceipt: gp.goodsReceipt
-          ? {
-              receiptNumber: gp.goodsReceipt.receiptNumber,
-              receiptStatus: gp.goodsReceipt.status,
-              inspectedAt: gp.goodsReceipt.inspectedAt,
-              postedAt: gp.goodsReceipt.postedAt,
-              items: gp.goodsReceipt.items.map((gri) => ({
-                materialName: gri.materialName,
-                deliveredQty: Number(gri.deliveredQty),
-                acceptedQty: Number(gri.acceptedQty),
-                rejectedQty: Number(gri.rejectedQty),
-                rejectionReason: gri.rejectionReason,
-              })),
-            }
-          : null,
+        goodsReceipts: gp.goodsReceipts.map((gr) => ({
+          receiptNumber: gr.receiptNumber,
+          receiptStatus: gr.status,
+          inspectedAt: gr.inspectedAt,
+          postedAt: gr.postedAt,
+          items: gr.items.map((gri) => ({
+            materialName: gri.materialName,
+            deliveredQty: Number(gri.deliveredQty),
+            acceptedQty: Number(gri.acceptedQty),
+            rejectedQty: Number(gri.rejectedQty),
+            rejectionReason: gri.rejectionReason,
+          })),
+        })),
       }));
 
       res.json({

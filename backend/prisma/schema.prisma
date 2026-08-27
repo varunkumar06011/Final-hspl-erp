@@ -425,7 +425,7 @@ model GatePass {
   otpApprovedByUser   User?                  @relation("GatePassOtpApprovedBy", fields: [otpApprovedBy], references: [id])
   items               GatePassItem[]
   inventoryTxns       InventoryTransaction[]
-  goodsReceipt        GoodsReceipt?
+  goodsReceipts       GoodsReceipt[]
 
   @@unique([projectId, passNumber])
   @@map("gate_passes")
@@ -448,7 +448,7 @@ model GoodsReceipt {
   id            String    @id @default(uuid()) @db.Uuid
   projectId     String    @db.Uuid
   poId          String    @db.Uuid
-  gatePassId    String    @unique @db.Uuid
+  gatePassId    String    @db.Uuid
   receiptNumber String
   status        String    @default("PENDING_INSPECTION")
   inspectedBy   String?   @db.Uuid
