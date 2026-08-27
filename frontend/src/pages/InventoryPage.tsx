@@ -140,7 +140,7 @@ export default function InventoryPage() {
   const pagination = data?.pagination ?? { page: 1, pageSize: 20, total: 0, totalPages: 0 };
 
   const openCreate = () => {
-    setForm({ name: '', unit: 'nos', itemType: InventoryItemType.CONSUMABLE, minStockLevel: 0 });
+    setForm({ name: '', unit: 'nos', itemType: InventoryItemType.CONSUMABLE, currentStock: 0, minStockLevel: 0 });
     setEditing(null);
     setError('');
     setDialogOpen(true);
@@ -151,6 +151,7 @@ export default function InventoryPage() {
       name: row.name ?? '', sku: row.sku ?? '', category: row.category ?? '',
       unit: row.unit ?? 'nos',
       itemType: row.itemType ?? InventoryItemType.CONSUMABLE,
+      currentStock: row.currentStock ?? 0,
       minStockLevel: row.minStockLevel ?? 0, location: row.location ?? '',
     });
     setEditing(row);
@@ -163,13 +164,16 @@ export default function InventoryPage() {
       setError('Item name and unit are required');
       return;
     }
-    if (![form.currentStock, form.minStockLevel].every((value) => Number.isFinite(Number(value)) && Number(value) >= 0)) {
+    // For new items, currentStock is not user-editable (always 0)
+    const valuesToCheck = editing ? [form.currentStock, form.minStockLevel] : [form.minStockLevel];
+    if (!valuesToCheck.every((value) => Number.isFinite(Number(value)) && Number(value) >= 0)) {
       setError('Stock values must be zero or greater');
       return;
     }
     setError('');
     if (editing) {
-      updateMutation.mutate({ id: editing.id as string, payload: form });
+      const { currentStock, ...updatePayload } = form;
+      updateMutation.mutate({ id: editing.id as string, payload: updatePayload });
     } else {
       createMutation.mutate(form);
     }
