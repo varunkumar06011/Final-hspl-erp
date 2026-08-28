@@ -608,6 +608,20 @@ model Asset {
   receivedBy      String?
   postedBy        String?
 
+  // Regulatory identifiers (manufacturer's UDI/GTIN — scanned from product label)
+  udi             String?  // Unique Device Identifier (CDSCO requirement for Class C/D devices)
+  gtin            String?  // Global Trade Item Number (GS1 standard)
+
+  // Warranty & AMC tracking
+  warrantyExpiry  DateTime?
+  amcVendor       String?
+  amcExpiry       DateTime?
+
+  // Depreciation tracking (for accounting / fixed asset register)
+  usefulLifeYears Decimal? @db.Decimal(5, 1)   // e.g. 5.0 for a ventilator, 10.0 for a bed
+  depreciationMethod String?  // STRAIGHT_LINE | WRITTEN_DOWN_VALUE
+  salvageValue    Decimal? @db.Decimal(15, 2)  // Residual value at end of useful life
+
   // Relations
   project         Project           @relation(fields: [projectId], references: [id])
   inventoryItem   InventoryItem     @relation(fields: [inventoryItemId], references: [id])

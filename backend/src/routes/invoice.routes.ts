@@ -66,6 +66,9 @@ const invoiceInclude = {
     select: {
       id: true,
       poNumber: true,
+      date: true,
+      createdAt: true,
+      quotation: { select: { id: true, quotationNumber: true, date: true } },
       items: true,
     },
   },

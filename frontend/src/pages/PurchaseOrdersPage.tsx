@@ -90,8 +90,9 @@ interface PORow {
   vendorId: string;
   vendor: { id: string; name: string; vendorCode: string; phone?: string; address?: string };
   quotationId: string;
-  quotation: { id: string; quotationNumber: string };
+  quotation: { id: string; quotationNumber: string; date: string; createdAt: string };
   date: string;
+  createdAt: string;
   status: string;
   paymentType: string;
   totalAmount: number;
@@ -389,7 +390,8 @@ export default function PurchaseOrdersPage() {
                 <TableCell sx={{ fontWeight: 600 }}>PO No</TableCell>
                 <TableCell sx={{ fontWeight: 600 }}>Vendor</TableCell>
                 <TableCell sx={{ fontWeight: 600 }}>Quotation</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Date</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>PO Date</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>Generated On</TableCell>
                 <TableCell sx={{ fontWeight: 600 }}>Payment Type</TableCell>
                 <TableCell sx={{ fontWeight: 600 }}>Total</TableCell>
                 <TableCell sx={{ fontWeight: 600 }}>GST</TableCell>
@@ -401,9 +403,9 @@ export default function PurchaseOrdersPage() {
             </TableHead>
             <TableBody>
               {isLoading ? (
-                <TableRow><TableCell colSpan={11} align="center" sx={{ py: 4 }}><CircularProgress size={32} /></TableCell></TableRow>
+                <TableRow><TableCell colSpan={12} align="center" sx={{ py: 4 }}><CircularProgress size={32} /></TableCell></TableRow>
               ) : rows.length === 0 ? (
-                <TableRow><TableCell colSpan={11} align="center" sx={{ py: 4 }}><Typography color="text.secondary">No purchase orders found</Typography></TableCell></TableRow>
+                <TableRow><TableCell colSpan={12} align="center" sx={{ py: 4 }}><Typography color="text.secondary">No purchase orders found</Typography></TableCell></TableRow>
               ) : (
                 rows.map((row) => (
                   <TableRow key={row.id} hover>
@@ -429,7 +431,15 @@ export default function PurchaseOrdersPage() {
                     </TableCell>
                     <TableCell data-label="Vendor">{row.vendor?.vendorCode} - {row.vendor?.name ?? '—'}</TableCell>
                     <TableCell data-label="Quotation">{row.quotation?.quotationNumber ?? '—'}</TableCell>
-                    <TableCell data-label="Date">{formatDate(row.date)}</TableCell>
+                    <TableCell data-label="PO Date">
+                      {row.quotation && new Date(row.date) < new Date(row.quotation.date) ? (
+                        <Box>
+                          <Typography color="error" fontWeight={600}>{formatDate(row.date)}</Typography>
+                          <Typography variant="caption" color="error">Before quotation ({formatDate(row.quotation.date)})</Typography>
+                        </Box>
+                      ) : formatDate(row.date)}
+                    </TableCell>
+                    <TableCell data-label="Generated On"><Typography variant="caption" color="text.secondary">{formatDate(row.createdAt)}</Typography></TableCell>
                     <TableCell data-label="Payment Type">
                       <Chip
                         size="small"

@@ -3,6 +3,7 @@ import { Permission, AuditAction, AssetStatus, AssetMovementType, UserRole } fro
 import {
   listAssetsSchema,
   updateAssetSerialSchema,
+  updateAssetDetailsSchema,
   issueAssetSchema,
   returnAssetSchema,
   relocateAssetSchema,
@@ -70,16 +71,33 @@ router.get(
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const projectId = requireProjectId(req);
-      const { page, pageSize, inventoryItemId, status, location, search } = req.query as Record<string, unknown>;
+      const { page, pageSize, inventoryItemId, status, location, search, category, warrantyExpiring, amcExpiring } = req.query as Record<string, unknown>;
       const where: Prisma.AssetWhereInput = { projectId };
       if (inventoryItemId) where.inventoryItemId = String(inventoryItemId);
       if (status) where.status = String(status);
       if (location) where.location = { contains: String(location), mode: 'insensitive' };
+      if (category) where.inventoryItem = { category: { contains: String(category), mode: 'insensitive' } };
       if (search) {
         where.OR = [
           { assetId: { contains: String(search), mode: 'insensitive' } },
           { serialNumber: { contains: String(search), mode: 'insensitive' } },
+          { udi: { contains: String(search), mode: 'insensitive' } },
+          { gtin: { contains: String(search), mode: 'insensitive' } },
         ];
+      }
+      // Warranty expiring within N days
+      if (warrantyExpiring) {
+        const days = Number(warrantyExpiring);
+        const cutoff = new Date();
+        cutoff.setDate(cutoff.getDate() + days);
+        where.warrantyExpiry = { gte: new Date(), lte: cutoff };
+      }
+      // AMC expiring within N days
+      if (amcExpiring) {
+        const days = Number(amcExpiring);
+        const cutoff = new Date();
+        cutoff.setDate(cutoff.getDate() + days);
+        where.amcExpiry = { gte: new Date(), lte: cutoff };
       }
 
       const [data, total] = await Promise.all([
@@ -188,7 +206,83 @@ router.patch(
   }
 );
 
-// POST /:id/issue — issue asset to department/person
+// PATCH /:id/details — update asset details (serial, UDI, GTIN, warranty, AMC, depreciation)
+router.patch(
+  '/:id/details',
+  authMiddleware,
+  rbacMiddleware(Permission.MANAGE_INVENTORY),
+  validateMiddleware(updateAssetDetailsSchema),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      const asset = await prisma.asset.findFirst({
+        where: { id: req.params.id, projectId },
+      });
+      if (!asset) {
+        res.status(404).json({ error: 'Asset not found' });
+        return;
+      }
+      if (asset.status === AssetStatus.RETIRED) {
+        res.status(400).json({ error: 'Cannot update details for a retired asset' });
+        return;
+      }
+
+      // Check serial number uniqueness if being changed
+      if (req.body.serialNumber !== undefined && req.body.serialNumber) {
+        const existing = await prisma.asset.findFirst({
+          where: { serialNumber: req.body.serialNumber, NOT: { id: asset.id } },
+        });
+        if (existing) {
+          res.status(409).json({ error: 'Another asset already has this serial number' });
+          return;
+        }
+      }
+
+      const oldValue = {
+        serialNumber: asset.serialNumber,
+        notes: asset.notes,
+        udi: asset.udi,
+        gtin: asset.gtin,
+        warrantyExpiry: asset.warrantyExpiry,
+        amcVendor: asset.amcVendor,
+        amcExpiry: asset.amcExpiry,
+        usefulLifeYears: asset.usefulLifeYears,
+        depreciationMethod: asset.depreciationMethod,
+        salvageValue: asset.salvageValue,
+      };
+
+      const data: Record<string, unknown> = {};
+      const fields = ['serialNumber', 'notes', 'udi', 'gtin', 'amcVendor', 'depreciationMethod'] as const;
+      for (const f of fields) {
+        if (req.body[f] !== undefined) data[f] = req.body[f] ?? null;
+      }
+      if (req.body.warrantyExpiry !== undefined) data.warrantyExpiry = req.body.warrantyExpiry ? new Date(req.body.warrantyExpiry) : null;
+      if (req.body.amcExpiry !== undefined) data.amcExpiry = req.body.amcExpiry ? new Date(req.body.amcExpiry) : null;
+      if (req.body.usefulLifeYears !== undefined) data.usefulLifeYears = req.body.usefulLifeYears ?? null;
+      if (req.body.salvageValue !== undefined) data.salvageValue = req.body.salvageValue ?? null;
+
+      const updated = await prisma.asset.update({
+        where: { id: asset.id },
+        data,
+        include: assetInclude,
+      });
+
+      await logAudit({
+        userId: req.user!.id,
+        action: AuditAction.UPDATE,
+        entityType: 'ASSET',
+        entityId: asset.id,
+        projectId,
+        oldValue,
+        newValue: data,
+      });
+
+      res.json(updated);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
 router.post(
   '/:id/issue',
   authMiddleware,
@@ -779,6 +873,54 @@ router.post(
   }
 );
 
+// GET /stats — asset dashboard stats
+router.get(
+  '/stats',
+  authMiddleware,
+  rbacMiddleware(Permission.MANAGE_INVENTORY),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      const now = new Date();
+      const thirtyDaysLater = new Date();
+      thirtyDaysLater.setDate(thirtyDaysLater.getDate() + 30);
+
+      const [total, byStatus, warrantyExpiring, amcExpiring, byCategory] = await Promise.all([
+        prisma.asset.count({ where: { projectId } }),
+        prisma.asset.groupBy({ by: ['status'], where: { projectId }, _count: true }),
+        prisma.asset.count({ where: { projectId, warrantyExpiry: { gte: now, lte: thirtyDaysLater } } }),
+        prisma.asset.count({ where: { projectId, amcExpiry: { gte: now, lte: thirtyDaysLater } } }),
+        prisma.asset.findMany({
+          where: { projectId },
+          select: { inventoryItem: { select: { category: true } }, totalCost: true },
+        }),
+      ]);
+
+      const categoryMap = new Map<string, number>();
+      let totalValue = 0;
+      for (const a of byCategory) {
+        const cat = a.inventoryItem.category ?? 'Uncategorized';
+        categoryMap.set(cat, (categoryMap.get(cat) ?? 0) + 1);
+        if (a.totalCost) totalValue += Number(a.totalCost);
+      }
+
+      const statusCounts: Record<string, number> = {};
+      for (const s of byStatus) statusCounts[s.status] = s._count;
+
+      res.json({
+        total,
+        statusCounts,
+        warrantyExpiring,
+        amcExpiring,
+        totalValue,
+        categoryCounts: Object.fromEntries(categoryMap),
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
 // GET /export/csv — export all assets for a project as CSV
 router.get(
   '/export/csv',
@@ -796,17 +938,22 @@ router.get(
       });
 
       const headers = [
-        'Asset ID', 'Name', 'Serial Number', 'Status', 'Location',
+        'Asset ID', 'Name', 'Category', 'Serial Number', 'UDI', 'GTIN', 'Status', 'Location',
         'Issued To Dept', 'Issued To Person', 'Issued At',
         'Vendor', 'PO Number', 'Invoice Number',
         'Unit Price', 'GST Rate', 'GST Amount', 'Total Cost',
         'Receipt Number', 'Received Date', 'Last Scanned At',
+        'Warranty Expiry', 'AMC Vendor', 'AMC Expiry',
+        'Useful Life (Years)', 'Depreciation Method', 'Salvage Value',
       ];
 
       const rows = assets.map((a) => [
         a.assetId,
         a.inventoryItem.name,
+        a.inventoryItem.category ?? '',
         a.serialNumber ?? '',
+        a.udi ?? '',
+        a.gtin ?? '',
         a.status,
         a.location,
         a.issuedToDept ?? '',
@@ -822,6 +969,12 @@ router.get(
         a.receiptNumber ?? '',
         a.receiptDate ? new Date(a.receiptDate).toISOString() : '',
         a.lastScannedAt ? new Date(a.lastScannedAt).toISOString() : '',
+        a.warrantyExpiry ? new Date(a.warrantyExpiry).toISOString() : '',
+        a.amcVendor ?? '',
+        a.amcExpiry ? new Date(a.amcExpiry).toISOString() : '',
+        a.usefulLifeYears ? String(a.usefulLifeYears) : '',
+        a.depreciationMethod ?? '',
+        a.salvageValue ? String(a.salvageValue) : '',
       ]);
 
       const csv = [headers, ...rows]

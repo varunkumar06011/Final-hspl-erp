@@ -91,6 +91,7 @@ interface QuotationRow {
   vendorId: string;
   vendor: { id: string; name: string; vendorCode: string };
   date: string;
+  createdAt: string;
   status: string;
   totalAmount: number;
   gstAmount: number;
@@ -508,7 +509,8 @@ export default function QuotationsPage() {
               <TableRow>
                 <TableCell sx={{ fontWeight: 600 }}>Quotation No</TableCell>
                 <TableCell sx={{ fontWeight: 600 }}>Vendor</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Date</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>Quotation Date</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>Generated On</TableCell>
                 <TableCell sx={{ fontWeight: 600 }}>Total</TableCell>
                 <TableCell sx={{ fontWeight: 600 }}>GST</TableCell>
                 <TableCell sx={{ fontWeight: 600 }}>Grand Total</TableCell>
@@ -520,9 +522,9 @@ export default function QuotationsPage() {
             </TableHead>
             <TableBody>
               {isLoading ? (
-                <TableRow><TableCell colSpan={10} align="center" sx={{ py: 4 }}><CircularProgress size={32} /></TableCell></TableRow>
+                <TableRow><TableCell colSpan={11} align="center" sx={{ py: 4 }}><CircularProgress size={32} /></TableCell></TableRow>
               ) : rows.length === 0 ? (
-                <TableRow><TableCell colSpan={10} align="center" sx={{ py: 4 }}><Typography color="text.secondary">No quotations found</Typography></TableCell></TableRow>
+                <TableRow><TableCell colSpan={11} align="center" sx={{ py: 4 }}><Typography color="text.secondary">No quotations found</Typography></TableCell></TableRow>
               ) : (
                 rows.map((row) => {
                   const pendingStep = canApprove(row);
@@ -530,7 +532,8 @@ export default function QuotationsPage() {
                     <TableRow key={row.id} hover>
                       <TableCell data-label="Quotation No">{row.quotationNumber}</TableCell>
                       <TableCell data-label="Vendor">{row.vendor?.vendorCode} - {row.vendor?.name ?? '—'}</TableCell>
-                      <TableCell data-label="Date">{formatDate(row.date)}</TableCell>
+                      <TableCell data-label="Quotation Date">{formatDate(row.date)}</TableCell>
+                      <TableCell data-label="Generated On"><Typography variant="caption" color="text.secondary">{formatDate(row.createdAt)}</Typography></TableCell>
                       <TableCell data-label="Total">{formatCurrency(row.totalAmount)}</TableCell>
                       <TableCell data-label="GST">{formatCurrency(row.gstAmount)}</TableCell>
                       <TableCell data-label="Grand Total">{formatCurrency(row.grandTotal)}</TableCell>

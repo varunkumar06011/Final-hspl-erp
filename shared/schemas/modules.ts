@@ -408,6 +408,9 @@ export const listAssetsSchema = z.object({
     status: z.nativeEnum(AssetStatus).optional(),
     location: z.string().optional(),
     search: z.string().optional(),
+    category: z.string().optional(),
+    warrantyExpiring: z.coerce.number().optional(), // days threshold
+    amcExpiring: z.coerce.number().optional(), // days threshold
   }),
 });
 export const updateAssetSerialSchema = z.object({
@@ -415,6 +418,21 @@ export const updateAssetSerialSchema = z.object({
   body: z.object({
     serialNumber: z.string().max(200).optional(),
     notes: z.string().max(500).optional(),
+  }),
+});
+export const updateAssetDetailsSchema = z.object({
+  params: z.object({ id: uuid }),
+  body: z.object({
+    serialNumber: z.string().max(200).optional(),
+    notes: z.string().max(500).optional(),
+    udi: z.string().max(200).optional(),
+    gtin: z.string().max(200).optional(),
+    warrantyExpiry: z.string().datetime().optional(),
+    amcVendor: z.string().max(200).optional(),
+    amcExpiry: z.string().datetime().optional(),
+    usefulLifeYears: z.coerce.number().finite().min(0).max(100).optional(),
+    depreciationMethod: z.enum(['STRAIGHT_LINE', 'WRITTEN_DOWN_VALUE']).optional(),
+    salvageValue: money.optional(),
   }),
 });
 export const issueAssetSchema = z.object({

@@ -18,6 +18,7 @@ import GatePassesPage from './pages/GatePassesPage';
 import GoodsReceiptsPage from './pages/GoodsReceiptsPage';
 import GSTRecordsPage from './pages/GSTRecordsPage';
 import InventoryPage from './pages/InventoryPage';
+import AssetsPage from './pages/AssetsPage';
 import AssetDetailPage from './pages/AssetDetailPage';
 import AssetScanPage from './pages/AssetScanPage';
 import PhotosPage from './pages/PhotosPage';
@@ -50,6 +51,7 @@ const ROUTES = [
   { path: '/goods-receipts', element: <GoodsReceiptsPage /> },
   { path: '/gst-records', element: <GSTRecordsPage /> },
   { path: '/inventory', element: <InventoryPage /> },
+  { path: '/assets', element: <AssetsPage /> },
   { path: '/assets/:itemId', element: <AssetDetailPage /> },
   { path: '/labour', element: <LabourPage /> },
   { path: '/photos', element: <PhotosPage /> },

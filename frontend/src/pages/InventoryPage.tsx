@@ -278,7 +278,9 @@ export default function InventoryPage() {
                       </TableCell>
                       <TableCell data-label="Unit">{String(row.unit ?? '—')}</TableCell>
                       <TableCell data-label="Stock">
-                        <Chip label={String(row.currentStock)} size="small" color={lowStock ? 'error' : 'default'} />
+                        {isAsset
+                          ? <Chip label="See Assets" size="small" color="secondary" variant="outlined" onClick={(e) => { e.stopPropagation(); navigate(`/assets/${row.id}`); }} />
+                          : <Chip label={String(row.currentStock)} size="small" color={lowStock ? 'error' : 'default'} />}
                       </TableCell>
                       <TableCell data-label="Min Level">{String(row.minStockLevel ?? 0)}</TableCell>
                       <TableCell data-label="Location">{String(row.location ?? '—')}</TableCell>

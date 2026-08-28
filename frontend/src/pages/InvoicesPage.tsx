@@ -40,7 +40,7 @@ import {
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { InvoiceVerificationStatus, UserRole } from '@hospital-erp/shared';
-import { formatCurrency, formatIndianNumber, STATUS_COLORS } from '../utils/enumOptions';
+import { formatCurrency, formatDate, formatIndianNumber, STATUS_COLORS } from '../utils/enumOptions';
 import api, { extractErrorMessage } from '../config/api';
 import { useAuthStore } from '../stores/authStore';
 import { downloadFile } from '../utils/file';
@@ -77,8 +77,9 @@ interface InvoiceRow {
   vendorId: string;
   vendor: { id: string; name: string; vendorCode: string };
   poId: string | null;
-  purchaseOrder: { id: string; poNumber: string; items: POItem[] } | null;
+  purchaseOrder: { id: string; poNumber: string; date: string; createdAt: string; quotation: { id: string; quotationNumber: string; date: string } | null; items: POItem[] } | null;
   date: string;
+  createdAt: string;
   amount: number;
   taxAmount: number;
   cgstAmount: number;
@@ -564,6 +565,8 @@ export default function InvoicesPage() {
                 <TableCell sx={{ fontWeight: 600 }}>Invoice No</TableCell>
                 <TableCell sx={{ fontWeight: 600 }}>Vendor</TableCell>
                 <TableCell sx={{ fontWeight: 600 }}>PO</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>Invoice Date</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>Generated On</TableCell>
                 <TableCell sx={{ fontWeight: 600 }}>Amount</TableCell>
                 <TableCell sx={{ fontWeight: 600 }}>CGST</TableCell>
                 <TableCell sx={{ fontWeight: 600 }}>SGST</TableCell>
@@ -579,9 +582,9 @@ export default function InvoicesPage() {
             </TableHead>
             <TableBody>
               {isLoading ? (
-                <TableRow><TableCell colSpan={15} align="center" sx={{ py: 4 }}><CircularProgress size={32} /></TableCell></TableRow>
+                <TableRow><TableCell colSpan={17} align="center" sx={{ py: 4 }}><CircularProgress size={32} /></TableCell></TableRow>
               ) : rows.length === 0 ? (
-                <TableRow><TableCell colSpan={15} align="center" sx={{ py: 4 }}><Typography color="text.secondary">No invoices found</Typography></TableCell></TableRow>
+                <TableRow><TableCell colSpan={17} align="center" sx={{ py: 4 }}><Typography color="text.secondary">No invoices found</Typography></TableCell></TableRow>
               ) : (
                 rows.map((row) => (
                   <TableRow key={row.id} hover>
@@ -589,6 +592,20 @@ export default function InvoicesPage() {
                     <TableCell data-label="Invoice No">{row.invoiceNumber}</TableCell>
                     <TableCell data-label="Vendor">{row.vendor?.vendorCode} - {row.vendor?.name ?? '—'}</TableCell>
                     <TableCell data-label="PO">{row.purchaseOrder?.poNumber ?? '—'}</TableCell>
+                    <TableCell data-label="Invoice Date">
+                      {row.purchaseOrder && new Date(row.date) < new Date(row.purchaseOrder.date) ? (
+                        <Box>
+                          <Typography color="error" fontWeight={600}>{formatDate(row.date)}</Typography>
+                          <Typography variant="caption" color="error">Before PO ({formatDate(row.purchaseOrder.date)})</Typography>
+                        </Box>
+                      ) : row.purchaseOrder?.quotation && new Date(row.date) < new Date(row.purchaseOrder.quotation.date) ? (
+                        <Box>
+                          <Typography color="error" fontWeight={600}>{formatDate(row.date)}</Typography>
+                          <Typography variant="caption" color="error">Before quotation ({formatDate(row.purchaseOrder.quotation.date)})</Typography>
+                        </Box>
+                      ) : formatDate(row.date)}
+                    </TableCell>
+                    <TableCell data-label="Generated On"><Typography variant="caption" color="text.secondary">{formatDate(row.createdAt)}</Typography></TableCell>
                     <TableCell data-label="Amount">{formatCurrency(row.amount)}</TableCell>
                     <TableCell data-label="CGST">{formatCurrency(row.cgstAmount)}</TableCell>
                     <TableCell data-label="SGST">{formatCurrency(row.sgstAmount)}</TableCell>
