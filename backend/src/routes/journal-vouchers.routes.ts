@@ -475,6 +475,16 @@ async function postJournalVoucher(
   return prisma.$transaction(async (tx) => {
     const txnResults: string[] = [];
 
+    // Determine whether this JV involves a cash outflow (BANK or CASH credit).
+    // If so, budget head debits represent paid expenses, not just accruals —
+    // paidAmount should also increase. This makes accounting consistent regardless
+    // of whether the expense is entered via JV or via Expense → Payment.
+    const hasCashOutflow = jv.entries.some(
+      (e) =>
+        (e.accountType === JournalAccountType.BANK || e.accountType === JournalAccountType.CASH) &&
+        Number(e.credit) > 0,
+    );
+
     for (const entry of jv.entries) {
       const debit = Number(entry.debit);
       const credit = Number(entry.credit);
@@ -567,19 +577,43 @@ async function postJournalVoucher(
           if (!head) throw new Error('Budget head not found');
 
           // Debit to budget head = expense incurred (actual increases)
-          // For OWNER_EXPENSE type, cash already moved via owner, so both actual and paid increase
+          // Credit to budget head = expense reversal/correction (actual decreases)
+          // If cash moved (bank/cash credit or owner-expense), paid also adjusts.
+          // This ensures the same expense produces identical accounting whether
+          // entered via JV or via Expense → Payment, and allows ADJUSTMENT JVs
+          // to correct overstated actual/paid amounts via credit entries.
           if (debit > 0) {
             const newActual = Number(head.actualAmount) + debit;
             let newPaid = Number(head.paidAmount);
-            // For owner-expense JVs, the cash already moved (owner paid), so paid also increases
-            if (jv.type === JVType.OWNER_EXPENSE) {
+            const cashMoved = hasCashOutflow || jv.type === JVType.OWNER_EXPENSE;
+            if (cashMoved) {
               newPaid += debit;
             }
             await tx.budgetHead.update({
               where: { id: entry.budgetHeadId },
               data: { actualAmount: newActual, paidAmount: newPaid },
             });
-            txnResults.push(`budget_head:${head.particulars}:actual+${debit}${jv.type === JVType.OWNER_EXPENSE ? `:paid+${debit}` : ''}`);
+            txnResults.push(`budget_head:${head.particulars}:actual+${debit}${cashMoved ? `:paid+${debit}` : ''}`);
+          } else if (credit > 0) {
+            // Credit to budget head = reversal/correction of expense
+            const newActual = Math.max(0, Number(head.actualAmount) - credit);
+            let newPaid = Number(head.paidAmount);
+            // If cash is being returned (bank/cash debit = money back in),
+            // reduce paid as well. Otherwise only reduce actual.
+            const hasCashInflow = jv.entries.some(
+              (e) =>
+                (e.accountType === JournalAccountType.BANK || e.accountType === JournalAccountType.CASH) &&
+                Number(e.debit) > 0,
+            );
+            const cashReturned = hasCashInflow || jv.type === JVType.OWNER_REPAYMENT;
+            if (cashReturned) {
+              newPaid = Math.max(0, newPaid - credit);
+            }
+            await tx.budgetHead.update({
+              where: { id: entry.budgetHeadId },
+              data: { actualAmount: newActual, paidAmount: newPaid },
+            });
+            txnResults.push(`budget_head:${head.particulars}:actual-${credit}${cashReturned ? `:paid-${credit}` : ''}`);
           }
           break;
         }

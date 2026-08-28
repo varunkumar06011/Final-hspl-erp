@@ -37,6 +37,7 @@ router.get(
         const actual = Number(h.actualAmount);
         const paid = Number(h.paidAmount);
         const available = allocated - actual;
+        const uncommittedAvailable = allocated - committed - actual;
         const utilizationPct = allocated > 0 ? (actual / allocated) * 100 : 0;
         const paidPct = actual > 0 ? (paid / actual) * 100 : 0;
         return {
@@ -46,6 +47,7 @@ router.get(
           actual,
           paid,
           available,
+          uncommittedAvailable,
           utilizationPct: Math.round(utilizationPct * 100) / 100,
           paidPct: Math.round(paidPct * 100) / 100,
         };
@@ -58,8 +60,9 @@ router.get(
           actual: acc.actual + r.actual,
           paid: acc.paid + r.paid,
           available: acc.available + r.available,
+          uncommittedAvailable: acc.uncommittedAvailable + r.uncommittedAvailable,
         }),
-        { allocated: 0, committed: 0, actual: 0, paid: 0, available: 0 },
+        { allocated: 0, committed: 0, actual: 0, paid: 0, available: 0, uncommittedAvailable: 0 },
       );
 
       res.json({ data: report, totals });
@@ -294,6 +297,7 @@ router.get(
       const totalActual = budgetHeads.reduce((s, h) => s + Number(h.actualAmount), 0);
       const totalPaid = budgetHeads.reduce((s, h) => s + Number(h.paidAmount), 0);
       const totalAvailable = totalAllocated - totalActual;
+      const totalUncommittedAvailable = totalAllocated - totalCommitted - totalActual;
       const totalUnpaid = totalActual - totalPaid;
 
       const bankBalance = bankAccounts.reduce((s, a) => s + Number(a.currentBalance), 0);
@@ -309,6 +313,7 @@ router.get(
           totalActual,
           totalPaid,
           totalAvailable,
+          totalUncommittedAvailable,
           totalUnpaid,
           utilizationPct: totalAllocated > 0 ? Math.round((totalActual / totalAllocated) * 10000) / 100 : 0,
         },
@@ -715,7 +720,7 @@ router.get(
         const committed = Number(h.committedAmount);
         const actual = Number(h.actualAmount);
         const paid = Number(h.paidAmount);
-        const available = allocated - actual;
+        const available = allocated - committed - actual;
         const utilPct = allocated > 0 ? (actual / allocated) * 100 : 0;
         totalAllocated += allocated; totalCommitted += committed; totalActual += actual; totalPaid += paid;
 
@@ -757,7 +762,7 @@ router.get(
       xt += cols[4].w;
       doc.text(fmtMoney(totalPaid), xt, y + 7, { width: cols[5].w, align: 'right' });
       xt += cols[5].w;
-      const totalAvailable = totalAllocated - totalActual;
+      const totalAvailable = totalAllocated - totalCommitted - totalActual;
       doc.text(fmtMoney(totalAvailable), xt, y + 7, { width: cols[6].w, align: 'right' });
       y += 30;
 

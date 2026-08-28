@@ -300,7 +300,7 @@ export default function AssetDetailPage() {
     api.post(`/assets/${assetId}/print-log`).catch(() => {});
   };
 
-  const qrBaseUrl = import.meta.env.VITE_QR_BASE_URL || import.meta.env.VITE_API_URL?.replace('/api', '') || window.location.origin;
+  const qrBaseUrl = import.meta.env.VITE_QR_BASE_URL || window.location.origin;
 
   // Depreciation calculation
   const calcDepreciation = (asset: AssetRow | undefined) => {

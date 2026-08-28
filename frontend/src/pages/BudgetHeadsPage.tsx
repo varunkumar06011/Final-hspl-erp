@@ -300,7 +300,7 @@ export default function BudgetHeadsPage() {
             { label: 'Committed', value: summary.totalCommitted, color: 'info.main' },
             { label: 'Actual', value: summary.totalActual, color: 'warning.main' },
             { label: 'Paid', value: summary.totalPaid, color: 'success.main' },
-            { label: 'Available', value: summary.totalAvailable, color: 'secondary.main' },
+            { label: 'Available', value: summary.totalUncommittedAvailable ?? summary.totalAvailable, color: 'secondary.main' },
           ].map((card) => (
             <Card key={card.label} sx={{ p: 1.5 }}>
               <Typography variant="caption" color="text.secondary">{card.label}</Typography>
@@ -361,8 +361,9 @@ export default function BudgetHeadsPage() {
               ) : (
                 rows.map((row: Record<string, unknown>) => {
                   const allocated = Number(row.allocatedAmount ?? 0);
+                  const committed = Number(row.committedAmount ?? 0);
                   const actual = Number(row.actualAmount ?? 0);
-                  const available = allocated - actual;
+                  const available = allocated - committed - actual;
                   const utilization = allocated > 0 ? (actual / allocated) * 100 : 0;
                   return (
                     <TableRow key={row.id as string} hover>

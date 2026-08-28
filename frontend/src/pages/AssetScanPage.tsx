@@ -59,7 +59,7 @@ export default function AssetScanPage() {
       .finally(() => setLoading(false));
   }, [assetId]);
 
-  const qrBaseUrl = import.meta.env.VITE_QR_BASE_URL || import.meta.env.VITE_API_URL?.replace('/api', '') || window.location.origin;
+  const qrBaseUrl = import.meta.env.VITE_QR_BASE_URL || window.location.origin;
 
   if (loading) {
     return (

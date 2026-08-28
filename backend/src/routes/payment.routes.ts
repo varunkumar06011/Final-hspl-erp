@@ -29,14 +29,23 @@ const HEAD_ROLES = [UserRole.PROJECT_HEAD, UserRole.HEAD_OF_CONSTRUCTION, UserRo
 
 /**
  * Calculate paid-to-date for an invoice: advance + sum of all PAID payment request amounts.
- * Returns { paidToDate, outstanding, totalAmount, advancePaid, installmentsPaid }.
+ * Returns { paidToDate, outstanding, totalAmount, advancePaid, installmentsPaid,
+ *           poAdvancePaid, unclaimedAdvance }.
+ *
+ * poAdvancePaid: total actual PAID advance payment requests on the linked PO.
+ * unclaimedAdvance: paid on PO but not yet claimed by any invoice (poAdvancePaid - sum of all invoice advancePaid on that PO).
+ *
+ * These cross-reference fields expose the connection between actual PO advances and
+ * the invoice's claimed advance, preventing a parallel financial reality where the
+ * invoice says "advancePaid = ₹2L" while ₹3L was actually paid on the PO.
+ *
  * Accepts optional transaction client for use inside transactions.
  */
 async function getInvoicePaymentSummary(invoiceId: string, tx?: Prisma.TransactionClient) {
   const client = tx ?? prisma;
   const invoice = await client.vendorInvoice.findUnique({
     where: { id: invoiceId },
-    select: { totalAmount: true, advancePaid: true },
+    select: { totalAmount: true, advancePaid: true, poId: true },
   });
   if (!invoice) throw new Error('Invoice not found');
 
@@ -49,10 +58,38 @@ async function getInvoicePaymentSummary(invoiceId: string, tx?: Prisma.Transacti
 
   const advancePaid = Number(invoice.advancePaid) || 0;
   const totalAmount = Number(invoice.totalAmount) || 0;
-  const paidToDate = advancePaid + installmentsPaid;
+
+  // Cross-reference with actual paid advances on the linked PO.
+  // Use the maximum of the manual advancePaid and the actual PO paid advances
+  // (capped at invoice total) so outstanding can never ignore money that was
+  // actually paid. This prevents double-payment: if ₹50K was paid as an advance
+  // on the PO but the invoice's advancePaid was left at 0, the system still
+  // counts the ₹50K toward paidToDate and reduces outstanding accordingly.
+  let poAdvancePaid = 0;
+  let unclaimedAdvance = 0;
+  if (invoice.poId) {
+    const [paidAdvancesOnPo, claimedByInvoices] = await Promise.all([
+      client.paymentRequest.aggregate({
+        where: { poId: invoice.poId, type: 'ADVANCE', status: PaymentStatus.PAID, deletedAt: null },
+        _sum: { amount: true },
+      }),
+      client.vendorInvoice.aggregate({
+        where: { poId: invoice.poId, deletedAt: null },
+        _sum: { advancePaid: true },
+      }),
+    ]);
+    poAdvancePaid = Number(paidAdvancesOnPo._sum.amount) || 0;
+    const totalClaimed = Number(claimedByInvoices._sum.advancePaid) || 0;
+    unclaimedAdvance = Math.max(0, poAdvancePaid - totalClaimed);
+  }
+
+  // Use the higher of manual advancePaid and actual PO advance paid, capped at
+  // invoice total, to prevent double-payment while preserving backward compat.
+  const effectiveAdvance = Math.min(totalAmount, Math.max(advancePaid, poAdvancePaid));
+  const paidToDate = effectiveAdvance + installmentsPaid;
   const outstanding = totalAmount - paidToDate;
 
-  return { totalAmount, advancePaid, installmentsPaid, paidToDate, outstanding };
+  return { totalAmount, advancePaid, installmentsPaid, paidToDate, outstanding, poAdvancePaid, unclaimedAdvance };
 }
 
 /**
@@ -203,6 +240,8 @@ router.get(
             installmentsPaid: summary.installmentsPaid,
             paidToDate: summary.paidToDate,
             outstanding: summary.outstanding,
+            poAdvancePaid: summary.poAdvancePaid,
+            unclaimedAdvance: summary.unclaimedAdvance,
             activePaymentRequest: activeRequest
               ? {
                   id: activeRequest.id,
@@ -242,7 +281,7 @@ router.get(
         include: {
           vendor: { select: { id: true, name: true, vendorCode: true } },
           advancePaymentRequests: {
-            where: { deletedAt: null, status: { in: [PaymentStatus.PENDING, PaymentStatus.APPROVED] } },
+            where: { deletedAt: null, status: { in: [PaymentStatus.PENDING, PaymentStatus.APPROVED, PaymentStatus.PAID] } },
             select: { id: true, status: true, amount: true, requestNumber: true },
           },
         },
@@ -883,6 +922,18 @@ router.post(
         const bankAccountId = (req.body.bankAccountId as string) ?? null;
         const cashAccountId = (req.body.cashAccountId as string) ?? null;
 
+        // ── Enforce exactly one funding account ──
+        // A payment must debit either a bank account or a cash account, never both
+        // and never neither. Without this, a payment with no funding account would
+        // mark the request as PAID and increase budget paidAmount without actually
+        // decreasing any bank or cash balance — a phantom payment.
+        if (!bankAccountId && !cashAccountId) {
+          throw new Error('A funding account (bankAccountId or cashAccountId) is required to record a payment');
+        }
+        if (bankAccountId && cashAccountId) {
+          throw new Error('Specify either a bank account or a cash account, not both');
+        }
+
         // ── Finance integration: create bank/cash transaction ──
         if (bankAccountId) {
           const bankAccount = await tx.bankAccount.findFirst({
@@ -957,15 +1008,25 @@ router.post(
           data: { status: PaymentStatus.PAID },
         });
 
-        // ── Update budget head paidAmount ──
+        // ── Update budget head paidAmount (and actualAmount for EXPENSE type) ──
+        // For EXPENSE payments, the payment itself is the actual expense event
+        // (there is no separate accrual step), so both actualAmount and paidAmount
+        // increase. For INVOICE/ADVANCE payments, actualAmount was already posted
+        // at GRN time, so only paidAmount increases here.
         if (pr.budgetHeadId) {
           const head = await tx.budgetHead.findFirst({
             where: { id: pr.budgetHeadId, projectId, deletedAt: null },
           });
           if (head) {
+            const data: { paidAmount: number; actualAmount?: number } = {
+              paidAmount: Number(head.paidAmount) + paymentAmount,
+            };
+            if (pr.type === 'EXPENSE') {
+              data.actualAmount = Number(head.actualAmount) + paymentAmount;
+            }
             await tx.budgetHead.update({
               where: { id: pr.budgetHeadId },
-              data: { paidAmount: Number(head.paidAmount) + paymentAmount },
+              data,
             });
           }
         }

@@ -60,6 +60,37 @@ function splitGst(gstAmount: number, vendorGstin: string | null, projectGstin: s
   return { cgstAmount: 0, sgstAmount: 0, igstAmount: gstAmount };
 }
 
+/**
+ * Compute the advance balance available to claim on an invoice for a given PO.
+ *
+ * available = (total PAID advance payment requests on the PO)
+ *           - (sum of advancePaid already claimed by OTHER invoices on the same PO)
+ *
+ * This prevents double-claiming the same advance across multiple invoices.
+ * Pass `excludeInvoiceId` when updating an invoice so its own current claim
+ * is not counted against itself.
+ */
+async function getAvailableAdvanceForPo(poId: string, excludeInvoiceId?: string): Promise<number> {
+  const [paidAdvances, claimedByInvoices] = await Promise.all([
+    prisma.paymentRequest.aggregate({
+      where: { poId, type: 'ADVANCE', status: PaymentStatus.PAID, deletedAt: null },
+      _sum: { amount: true },
+    }),
+    prisma.vendorInvoice.aggregate({
+      where: {
+        poId,
+        deletedAt: null,
+        ...(excludeInvoiceId ? { id: { not: excludeInvoiceId } } : {}),
+      },
+      _sum: { advancePaid: true },
+    }),
+  ]);
+
+  const totalPaidAdvance = Number(paidAdvances._sum.amount) || 0;
+  const claimedByOthers = Number(claimedByInvoices._sum.advancePaid) || 0;
+  return Math.max(0, totalPaidAdvance - claimedByOthers);
+}
+
 const invoiceInclude = {
   vendor: { select: { id: true, name: true, vendorCode: true } },
   purchaseOrder: {
@@ -184,6 +215,17 @@ router.post(
         if (!['APPROVED', 'PARTIALLY_DELIVERED', 'DELIVERED'].includes(po.status)) {
           res.status(400).json({ error: 'Invoice can only be created against an approved, partially delivered, or delivered purchase order' });
           return;
+        }
+
+        // Validate advancePaid does not exceed the available advance on this PO
+        if (Number(advancePaid) > 0) {
+          const availableAdvance = await getAvailableAdvanceForPo(poId);
+          if (Number(advancePaid) > availableAdvance) {
+            res.status(400).json({
+              error: `Advance paid (${advancePaid}) exceeds the available advance balance (${availableAdvance}) on this PO. Available = paid advances minus advance already claimed by other invoices.`,
+            });
+            return;
+          }
         }
       }
 
@@ -361,6 +403,17 @@ router.patch(
       if (advancePaid > totalAmount) {
         res.status(400).json({ error: 'Advance paid cannot exceed invoice total' });
         return;
+      }
+
+      // Validate advancePaid does not exceed the available advance on the linked PO
+      if (existing.poId && advancePaid > 0) {
+        const availableAdvance = await getAvailableAdvanceForPo(existing.poId, existing.id);
+        if (advancePaid > availableAdvance) {
+          res.status(400).json({
+            error: `Advance paid (${advancePaid}) exceeds the available advance balance (${availableAdvance}) on this PO. Available = paid advances minus advance already claimed by other invoices.`,
+          });
+          return;
+        }
       }
 
       const updateData: Record<string, unknown> = {};
@@ -650,6 +703,7 @@ router.get(
           advanceOtherType: true,
           paymentStatus: true,
           createdAt: true,
+          poId: true,
         },
       });
       if (!invoice) {
@@ -723,7 +777,31 @@ router.get(
         .filter((pr) => pr.status === PaymentStatus.PAID)
         .reduce((sum, pr) => sum + Number(pr.amount), 0);
 
-      const paidToDate = advancePaid + installmentsPaid;
+      // Cross-reference with actual paid advances on the linked PO for transparency.
+      // Exposes divergence between the invoice's claimed advance and the actual
+      // advance paid on the PO, preventing a "parallel financial reality".
+      let poAdvancePaid = 0;
+      let unclaimedAdvance = 0;
+      if (invoice.poId) {
+        const [paidAdvancesOnPo, claimedByInvoices] = await Promise.all([
+          prisma.paymentRequest.aggregate({
+            where: { poId: invoice.poId, type: 'ADVANCE', status: PaymentStatus.PAID, deletedAt: null },
+            _sum: { amount: true },
+          }),
+          prisma.vendorInvoice.aggregate({
+            where: { poId: invoice.poId, deletedAt: null },
+            _sum: { advancePaid: true },
+          }),
+        ]);
+        poAdvancePaid = Number(paidAdvancesOnPo._sum.amount) || 0;
+        const totalClaimed = Number(claimedByInvoices._sum.advancePaid) || 0;
+        unclaimedAdvance = Math.max(0, poAdvancePaid - totalClaimed);
+      }
+
+      // Use the higher of manual advancePaid and actual PO advance paid, capped at
+      // invoice total, to prevent double-payment while preserving backward compat.
+      const effectiveAdvance = Math.min(totalAmount, Math.max(advancePaid, poAdvancePaid));
+      const paidToDate = effectiveAdvance + installmentsPaid;
       const outstanding = totalAmount - paidToDate;
 
       res.json({
@@ -733,6 +811,9 @@ router.get(
           invoiceNumber: invoice.invoiceNumber,
           totalAmount,
           advancePaid,
+          poAdvancePaid,
+          effectiveAdvance,
+          unclaimedAdvance,
           installmentsPaid,
           paidToDate,
           outstanding,

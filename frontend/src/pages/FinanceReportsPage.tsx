@@ -209,8 +209,8 @@ export default function FinanceReportsPage() {
                           <TableCell align="right">{formatCurrency(row.committedAmount)}</TableCell>
                           <TableCell align="right">{formatCurrency(row.actualAmount)}</TableCell>
                           <TableCell align="right">{formatCurrency(row.paidAmount)}</TableCell>
-                          <TableCell align="right" sx={{ fontWeight: 600, color: Number(row.available) < 0 ? 'error.main' : 'success.main' }}>
-                            {formatCurrency(row.available)}
+                          <TableCell align="right" sx={{ fontWeight: 600, color: Number(row.uncommittedAvailable ?? row.available) < 0 ? 'error.main' : 'success.main' }}>
+                            {formatCurrency(row.uncommittedAvailable ?? row.available)}
                           </TableCell>
                           <TableCell sx={{ minWidth: 100 }}>
                             <Stack spacing={0.5}>
@@ -234,8 +234,8 @@ export default function FinanceReportsPage() {
                         <TableCell align="right" sx={{ fontWeight: 700 }}>{formatCurrency(budgetReport.totals.committed)}</TableCell>
                         <TableCell align="right" sx={{ fontWeight: 700 }}>{formatCurrency(budgetReport.totals.actual)}</TableCell>
                         <TableCell align="right" sx={{ fontWeight: 700 }}>{formatCurrency(budgetReport.totals.paid)}</TableCell>
-                        <TableCell align="right" sx={{ fontWeight: 700, color: budgetReport.totals.available < 0 ? 'error.main' : 'success.main' }}>
-                          {formatCurrency(budgetReport.totals.available)}
+                        <TableCell align="right" sx={{ fontWeight: 700, color: (budgetReport.totals.uncommittedAvailable ?? budgetReport.totals.available) < 0 ? 'error.main' : 'success.main' }}>
+                          {formatCurrency(budgetReport.totals.uncommittedAvailable ?? budgetReport.totals.available)}
                         </TableCell>
                         <TableCell colSpan={2} />
                       </TableRow>

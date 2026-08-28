@@ -31,6 +31,7 @@ interface DashboardData {
     totalActual: number;
     totalPaid: number;
     totalAvailable: number;
+    totalUncommittedAvailable: number;
     totalUnpaid: number;
     utilizationPct: number;
   };
@@ -53,6 +54,7 @@ interface BudgetReport {
     actualAmount: number;
     paidAmount: number;
     available: number;
+    uncommittedAvailable: number;
     utilizationPct: number;
     paidPct: number;
     status: string;
@@ -63,6 +65,7 @@ interface BudgetReport {
     actual: number;
     paid: number;
     available: number;
+    uncommittedAvailable: number;
   };
 }
 
@@ -191,7 +194,7 @@ export default function FinanceDashboardPage() {
             {budgetHeads.map((head) => {
               const allocated = head.allocatedAmount;
               const actual = head.actualAmount;
-              const available = head.available;
+              const available = head.uncommittedAvailable ?? head.available;
               const pct = head.utilizationPct;
               const barColor = pct > 90 ? 'error' : pct > 70 ? 'warning' : 'success';
               return (
@@ -242,7 +245,7 @@ export default function FinanceDashboardPage() {
               { label: 'Committed', value: budgetReport.totals.committed, color: '#0288d1' },
               { label: 'Actual', value: budgetReport.totals.actual, color: '#ed6c02' },
               { label: 'Paid', value: budgetReport.totals.paid, color: '#2e7d32' },
-              { label: 'Available', value: budgetReport.totals.available, color: '#9c27b0' },
+              { label: 'Available', value: budgetReport.totals.uncommittedAvailable ?? budgetReport.totals.available, color: '#9c27b0' },
             ].map((item) => {
               const maxVal = budgetReport.totals.allocated || 1;
               const widthPct = Math.max(2, (item.value / maxVal) * 100);

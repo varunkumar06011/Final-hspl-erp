@@ -30,6 +30,45 @@ async function getAcceptedQuantitiesByPo(poId: string): Promise<Map<string, numb
   return acceptedByName;
 }
 
+// ─── Helper: compute total delivered value from posted GRNs ───
+// Matches GRN items to PO items by material name (case-insensitive) to get
+// unit prices and GST rates. Optional materialFilter restricts to a subset of
+// materials (used to separate delivered value for remaining vs deselected items).
+async function getDeliveredValueForPo(
+  poId: string,
+  poItems: { materialName: string; unitPrice: { toNumber?: () => number } | number; gstRate: { toNumber?: () => number } | number | null }[],
+  materialFilter?: Set<string>,
+): Promise<number> {
+  const receipts = await prisma.goodsReceipt.findMany({
+    where: { poId, deletedAt: null, status: GoodsReceiptStatus.POSTED },
+    select: { items: { select: { materialName: true, acceptedQty: true } } },
+  });
+
+  const itemMap = new Map<string, { unitPrice: number; gstRate: number }>();
+  for (const item of poItems) {
+    const name = item.materialName.toLowerCase();
+    if (materialFilter && !materialFilter.has(name)) continue;
+    const unitPrice = typeof item.unitPrice === 'number' ? item.unitPrice : Number(item.unitPrice);
+    const gstRate = item.gstRate === null ? 0 : (typeof item.gstRate === 'number' ? item.gstRate : Number(item.gstRate));
+    itemMap.set(name, { unitPrice, gstRate });
+  }
+
+  let deliveredValue = 0;
+  for (const receipt of receipts) {
+    for (const line of receipt.items) {
+      if (Number(line.acceptedQty) <= 0) continue;
+      const name = line.materialName.toLowerCase();
+      const item = itemMap.get(name);
+      if (item) {
+        const lineAmount = item.unitPrice * Number(line.acceptedQty);
+        const lineGst = lineAmount * item.gstRate / 100;
+        deliveredValue += lineAmount + lineGst;
+      }
+    }
+  }
+  return deliveredValue;
+}
+
 const HEAD_ROLES = [UserRole.PROJECT_HEAD, UserRole.HEAD_OF_CONSTRUCTION, UserRole.ADMIN, UserRole.ADMIN_2];
 const PO_APPROVER_ROLES = [UserRole.ADMIN, UserRole.ADMIN_2];
 
@@ -489,6 +528,29 @@ router.post(
         return;
       }
 
+      // ── Budget overrun check: warn but allow approval with override reason ──
+      // If committing this PO's grand total would exceed the budget head's allocated
+      // amount, require a non-empty comment (override reason) from the approver.
+      // Skip for edited POs: their commitment was already adjusted at edit time,
+      // so re-approval does not add any additional commitment.
+      if (po.budgetHeadId && !po.editedAt) {
+        const head = await prisma.budgetHead.findFirst({
+          where: { id: po.budgetHeadId, projectId, deletedAt: null },
+          select: { allocatedAmount: true, committedAmount: true, particulars: true },
+        });
+        if (head) {
+          const projectedCommitted = Number(head.committedAmount) + Number(po.grandTotal);
+          if (projectedCommitted > Number(head.allocatedAmount)) {
+            if (!req.body.comments || req.body.comments.trim().length === 0) {
+              res.status(400).json({
+                error: `Budget overrun: approving this PO will push budget head "${head.particulars}" committed amount to ${projectedCommitted}, exceeding the allocated ${Number(head.allocatedAmount)}. Provide an override reason in the comments to proceed.`,
+              });
+              return;
+            }
+          }
+        }
+      }
+
       // Approve the step
       const result = await approvalService.approve(step.id, req.user!.id, req.body.comments);
 
@@ -510,7 +572,10 @@ router.post(
         }
 
         // ── Finance integration: increase budget head committedAmount ──
-        if (po.budgetHeadId) {
+        // Skip for edited POs: their commitment was already adjusted at edit time
+        // (delta = newGrandTotal - oldGrandTotal). Adding grandTotal again here
+        // would double-count and permanently inflate the committed budget.
+        if (po.budgetHeadId && !po.editedAt) {
           const head = await prisma.budgetHead.findFirst({
             where: { id: po.budgetHeadId, projectId, deletedAt: null },
           });
@@ -581,6 +646,32 @@ router.post(
           where: { id: po.id },
           data: { status: POStatus.REJECTED },
         });
+
+        // ── Reverse commitment for edited POs on rejection ──
+        // When an edited PO is rejected, the commitment that was adjusted at edit
+        // time must be reversed. The remaining commitment for this PO is:
+        //   grandTotal - deliveredValueForRemainingItems
+        // (deliveredValue only includes items still in the edited PO; deselected
+        // items' commitment was already excluded at edit time.)
+        if (po.budgetHeadId && po.editedAt) {
+          const currentItems = await prisma.pOItem.findMany({
+            where: { poId: po.id },
+            select: { materialName: true, unitPrice: true, gstRate: true },
+          });
+          const deliveredForRemaining = await getDeliveredValueForPo(po.id, currentItems);
+          const remainingCommitment = Number(po.grandTotal) - deliveredForRemaining;
+          if (remainingCommitment !== 0) {
+            const head = await prisma.budgetHead.findFirst({
+              where: { id: po.budgetHeadId, projectId, deletedAt: null },
+            });
+            if (head) {
+              await prisma.budgetHead.update({
+                where: { id: po.budgetHeadId },
+                data: { committedAmount: Number(head.committedAmount) - remainingCommitment },
+              });
+            }
+          }
+        }
       }
 
       await logAudit({
@@ -958,6 +1049,22 @@ router.post(
         grandTotal: Number(po.grandTotal),
       };
 
+      // ── Compute delivered values for correct commitment adjustment ──
+      // The delta (newGrandTotal - oldGrandTotal) alone is insufficient when items
+      // are deselected: a deselected item's commitment may have already been
+      // converted to actual via GRN. Subtracting its full value via delta would
+      // over-reduce committed. The correct adjustment is:
+      //   delta + deliveredValueForDeselectedItems
+      // where deliveredValueForDeselectedItems = totalDelivered - deliveredForRemaining.
+      let commitmentAdjustment = grandTotal - Number(po.grandTotal); // base delta
+      if (po.budgetHeadId) {
+        const remainingMaterials = new Set(newItems.map((i) => i.materialName.toLowerCase()));
+        const totalDelivered = await getDeliveredValueForPo(po.id, po.items);
+        const deliveredForRemaining = await getDeliveredValueForPo(po.id, po.items, remainingMaterials);
+        const deliveredForDeselected = totalDelivered - deliveredForRemaining;
+        commitmentAdjustment = (grandTotal - Number(po.grandTotal)) + deliveredForDeselected;
+      }
+
       const result = await prisma.$transaction(async (tx) => {
         // Delete existing items
         await tx.pOItem.deleteMany({ where: { poId: po.id } });
@@ -990,6 +1097,22 @@ router.post(
           },
           include: poInclude,
         });
+
+        // ── Adjust budget head commitment ──
+        // The adjustment accounts for deselected items whose commitment was
+        // already converted to actual via GRN. See computation above.
+        // This is done at edit time so re-approval does NOT re-add the full total.
+        if (po.budgetHeadId && commitmentAdjustment !== 0) {
+          const head = await tx.budgetHead.findFirst({
+            where: { id: po.budgetHeadId, projectId, deletedAt: null },
+          });
+          if (head) {
+            await tx.budgetHead.update({
+              where: { id: po.budgetHeadId },
+              data: { committedAmount: Number(head.committedAmount) + commitmentAdjustment },
+            });
+          }
+        }
 
         // Reset the existing approval workflow — create fresh steps
         if (po.approvalWorkflowId) {
@@ -1098,6 +1221,7 @@ router.post(
             totalAmount,
             gstAmount,
             grandTotal,
+            budgetHeadId: po.budgetHeadId,
             createdBy: req.user!.id,
             parentPoId: po.id,
             regenerationNumber: 1,

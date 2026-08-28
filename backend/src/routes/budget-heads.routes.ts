@@ -1,5 +1,5 @@
 import { Router, Response, NextFunction } from 'express';
-import { Permission, AuditAction } from '@hospital-erp/shared';
+import { Permission, AuditAction, GoodsReceiptStatus, JournalAccountType } from '@hospital-erp/shared';
 import {
   createBudgetHeadSchema,
   updateBudgetHeadSchema,
@@ -95,6 +95,230 @@ router.post(
   },
 );
 
+// ── Recompute cached totals from source events ──
+// Rebuilds committedAmount, actualAmount, paidAmount for all budget heads in
+// the project from the immutable financial events (POs, GRNs, Payments, JVs).
+// This provides a financial audit trail: if cached totals ever drift due to
+// bugs or manual edits, they can be reconstructed from the source data.
+router.post(
+  '/recompute',
+  rbacMiddleware(Permission.MANAGE_FINANCE),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      const heads = await prisma.budgetHead.findMany({
+        where: { projectId, deletedAt: null },
+        select: { id: true, particulars: true, allocatedAmount: true, committedAmount: true, actualAmount: true, paidAmount: true },
+      });
+
+      const results: Array<{ id: string; particulars: string; before: { committed: number; actual: number; paid: number }; after: { committed: number; actual: number; paid: number }; drifted: boolean }> = [];
+
+      for (const head of heads) {
+        // ── Recompute committed ──
+        // For each non-rejected PO with this budget head:
+        //   committed contribution = grandTotal - deliveredValue
+        // (delivered value has been converted from committed to actual via GRN)
+        const pos = await prisma.purchaseOrder.findMany({
+          where: { projectId, budgetHeadId: head.id, deletedAt: null, status: { not: 'REJECTED' } },
+          select: {
+            id: true,
+            poNumber: true,
+            grandTotal: true,
+            status: true,
+            editedAt: true,
+            items: { select: { materialName: true, unitPrice: true, gstRate: true } },
+          },
+        });
+
+        let committed = 0;
+        for (const po of pos) {
+          // Compute delivered value for this PO from posted GRNs
+          const receipts = await prisma.goodsReceipt.findMany({
+            where: { poId: po.id, deletedAt: null, status: GoodsReceiptStatus.POSTED },
+            select: { items: { select: { materialName: true, acceptedQty: true } } },
+          });
+          const itemMap = new Map<string, { unitPrice: number; gstRate: number }>();
+          for (const item of po.items) {
+            itemMap.set(item.materialName.toLowerCase(), { unitPrice: Number(item.unitPrice), gstRate: Number(item.gstRate ?? 0) });
+          }
+          let deliveredValue = 0;
+          for (const receipt of receipts) {
+            for (const line of receipt.items) {
+              if (Number(line.acceptedQty) <= 0) continue;
+              const item = itemMap.get(line.materialName.toLowerCase());
+              if (item) {
+                const lineAmount = item.unitPrice * Number(line.acceptedQty);
+                const lineGst = lineAmount * item.gstRate / 100;
+                deliveredValue += lineAmount + lineGst;
+              }
+            }
+          }
+          committed += Math.max(0, Number(po.grandTotal) - deliveredValue);
+        }
+
+        // ── Recompute actual ──
+        // actual = GRN values + EXPENSE payment amounts + JV budget head debits
+        let actual = 0;
+
+        // GRN values (committed → actual conversion)
+        const grns = await prisma.goodsReceipt.findMany({
+          where: {
+            projectId,
+            deletedAt: null,
+            status: GoodsReceiptStatus.POSTED,
+            purchaseOrder: { budgetHeadId: head.id },
+          },
+          select: {
+            items: {
+              select: {
+                acceptedQty: true,
+                poItem: { select: { unitPrice: true, gstRate: true } },
+              },
+            },
+          },
+        });
+        for (const grn of grns) {
+          for (const line of grn.items) {
+            if (Number(line.acceptedQty) <= 0) continue;
+            const poItem = line.poItem;
+            if (poItem) {
+              const lineAmount = Number(poItem.unitPrice) * Number(line.acceptedQty);
+              const lineGst = lineAmount * Number(poItem.gstRate) / 100;
+              actual += lineAmount + lineGst;
+            }
+          }
+        }
+
+        // EXPENSE payments (payment IS the actual expense event)
+        const expensePayments = await prisma.payment.aggregate({
+          where: {
+            budgetHeadId: head.id,
+            paymentRequest: { type: 'EXPENSE', deletedAt: null },
+          },
+          _sum: { amount: true },
+        });
+        actual += Number(expensePayments._sum.amount) || 0;
+
+        // JV budget head debits (increase actual) and credits (decrease actual)
+        const [jvDebits, jvCredits] = await Promise.all([
+          prisma.journalEntry.aggregate({
+            where: {
+              budgetHeadId: head.id,
+              debit: { gt: 0 },
+              journalVoucher: { projectId, status: 'POSTED', deletedAt: null },
+            },
+            _sum: { debit: true },
+          }),
+          prisma.journalEntry.aggregate({
+            where: {
+              budgetHeadId: head.id,
+              credit: { gt: 0 },
+              journalVoucher: { projectId, status: 'POSTED', deletedAt: null },
+            },
+            _sum: { credit: true },
+          }),
+        ]);
+        actual += Number(jvDebits._sum.debit) || 0;
+        actual -= Number(jvCredits._sum.credit) || 0;
+
+        // ── Recompute paid ──
+        // paid = all payment amounts + JV debits where cash moved
+        let paid = 0;
+
+        // All payments (regardless of type — INVOICE, EXPENSE, ADVANCE)
+        const allPayments = await prisma.payment.aggregate({
+          where: {
+            budgetHeadId: head.id,
+            paymentRequest: { deletedAt: null },
+          },
+          _sum: { amount: true },
+        });
+        paid += Number(allPayments._sum.amount) || 0;
+
+        // JV entries where cash moved: debits increase paid, credits decrease paid
+        const jvEntriesAll = await prisma.journalEntry.findMany({
+          where: {
+            budgetHeadId: head.id,
+            OR: [{ debit: { gt: 0 } }, { credit: { gt: 0 } }],
+            journalVoucher: { projectId, status: 'POSTED', deletedAt: null },
+          },
+          select: {
+            debit: true,
+            credit: true,
+            journalVoucher: {
+              select: {
+                type: true,
+                entries: { select: { accountType: true, debit: true, credit: true } },
+              },
+            },
+          },
+        });
+        for (const entry of jvEntriesAll) {
+          const jv = entry.journalVoucher;
+          if (Number(entry.debit) > 0) {
+            const hasCashOutflow = jv.entries.some(
+              (e) =>
+                (e.accountType === JournalAccountType.BANK || e.accountType === JournalAccountType.CASH) &&
+                Number(e.credit) > 0,
+            );
+            if (hasCashOutflow || jv.type === 'OWNER_EXPENSE') {
+              paid += Number(entry.debit);
+            }
+          } else if (Number(entry.credit) > 0) {
+            const hasCashInflow = jv.entries.some(
+              (e) =>
+                (e.accountType === JournalAccountType.BANK || e.accountType === JournalAccountType.CASH) &&
+                Number(e.debit) > 0,
+            );
+            if (hasCashInflow || jv.type === 'OWNER_REPAYMENT') {
+              paid -= Number(entry.credit);
+            }
+          }
+        }
+
+        const before = {
+          committed: Number(head.committedAmount),
+          actual: Number(head.actualAmount),
+          paid: Number(head.paidAmount),
+        };
+        const after = { committed, actual, paid };
+        const drifted =
+          Math.abs(before.committed - after.committed) > 0.01 ||
+          Math.abs(before.actual - after.actual) > 0.01 ||
+          Math.abs(before.paid - after.paid) > 0.01;
+
+        if (drifted) {
+          await prisma.budgetHead.update({
+            where: { id: head.id },
+            data: { committedAmount: committed, actualAmount: actual, paidAmount: paid },
+          });
+        }
+
+        results.push({ id: head.id, particulars: head.particulars, before, after, drifted });
+      }
+
+      const driftedCount = results.filter((r) => r.drifted).length;
+
+      await logAudit({
+        userId: req.user!.id,
+        action: AuditAction.UPDATE,
+        entityType: 'BUDGET_HEAD',
+        entityId: projectId,
+        projectId,
+        newValue: { action: 'recompute', headsChecked: results.length, driftedCount, results },
+      });
+
+      res.json({
+        headsChecked: results.length,
+        driftedCount,
+        results,
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
 // ── Budget summary: total allocated, committed, actual, paid, available ──
 router.get(
   '/summary',
@@ -126,6 +350,7 @@ router.get(
         totalActual,
         totalPaid,
         totalAvailable: totalAllocated - totalActual,
+        totalUncommittedAvailable: totalAllocated - totalCommitted - totalActual,
         headCount: heads.length,
       });
     } catch (error) {
@@ -149,8 +374,192 @@ router.get(
         return;
       }
 
-      // Phase 3 will populate this with PO/invoice/payment/JV breakdowns.
-      // For now, return the cached amounts and a placeholder.
+      const budgetHeadId = head.id;
+      type Txn = {
+        date: string;
+        type: string;
+        reference: string;
+        description: string;
+        committed: number;
+        actual: number;
+        paid: number;
+      };
+      const transactions: Txn[] = [];
+
+      // 1. Approved POs with this budget head → committed events
+      const pos = await prisma.purchaseOrder.findMany({
+        where: { projectId, budgetHeadId, deletedAt: null },
+        select: {
+          id: true,
+          poNumber: true,
+          grandTotal: true,
+          status: true,
+          date: true,
+          editedAt: true,
+          parentPoId: true,
+        },
+        orderBy: { date: 'asc' },
+      });
+      for (const po of pos) {
+        if (po.status === 'REJECTED') continue;
+        transactions.push({
+          date: po.date.toISOString(),
+          type: po.parentPoId ? 'PO (Regenerated)' : 'PO Approval',
+          reference: po.poNumber,
+          description: `Committed on approved PO ${po.poNumber}`,
+          committed: Number(po.grandTotal),
+          actual: 0,
+          paid: 0,
+        });
+      }
+
+      // 2. Posted GRNs against POs with this budget head → committed→actual conversion
+      const grns = await prisma.goodsReceipt.findMany({
+        where: {
+          projectId,
+          deletedAt: null,
+          status: GoodsReceiptStatus.POSTED,
+          purchaseOrder: { budgetHeadId },
+        },
+        select: {
+          id: true,
+          receiptNumber: true,
+          createdAt: true,
+          items: {
+            select: { acceptedQty: true, poItem: { select: { unitPrice: true, gstRate: true } } },
+          },
+        },
+        orderBy: { createdAt: 'asc' },
+      });
+      for (const grn of grns) {
+        let grnValue = 0;
+        for (const line of grn.items) {
+          if (Number(line.acceptedQty) <= 0) continue;
+          const poItem = line.poItem;
+          if (poItem) {
+            const lineAmount = Number(poItem.unitPrice) * Number(line.acceptedQty);
+            const lineGst = lineAmount * Number(poItem.gstRate) / 100;
+            grnValue += lineAmount + lineGst;
+          }
+        }
+        if (grnValue > 0) {
+          transactions.push({
+            date: grn.createdAt.toISOString(),
+            type: 'GRN',
+            reference: grn.receiptNumber,
+            description: `Goods received — commitment converted to actual`,
+            committed: -grnValue,
+            actual: grnValue,
+            paid: 0,
+          });
+        }
+      }
+
+      // 3. Payments linked to this budget head → paid events
+      const payments = await prisma.payment.findMany({
+        where: {
+          budgetHeadId,
+          paymentRequest: { deletedAt: null },
+        },
+        select: {
+          id: true,
+          amount: true,
+          date: true,
+          mode: true,
+          paymentRequest: {
+            select: {
+              paymentCode: true,
+              type: true,
+              description: true,
+            },
+          },
+        },
+        orderBy: { date: 'asc' },
+      });
+      for (const pmt of payments) {
+        const isExpense = pmt.paymentRequest.type === 'EXPENSE';
+        transactions.push({
+          date: pmt.date.toISOString(),
+          type: 'Payment',
+          reference: pmt.paymentRequest.paymentCode,
+          description: pmt.paymentRequest.description ?? `Payment (${pmt.paymentRequest.type})`,
+          committed: 0,
+          actual: isExpense ? Number(pmt.amount) : 0,
+          paid: Number(pmt.amount),
+        });
+      }
+
+      // 4. Posted JV entries affecting this budget head → actual/paid events
+      //    Debits increase actual (and paid if cash moved out)
+      //    Credits decrease actual (and paid if cash moved back in)
+      const jvEntries = await prisma.journalEntry.findMany({
+        where: {
+          budgetHeadId,
+          OR: [{ debit: { gt: 0 } }, { credit: { gt: 0 } }],
+          journalVoucher: { projectId, status: 'POSTED', deletedAt: null },
+        },
+        select: {
+          id: true,
+          debit: true,
+          credit: true,
+          description: true,
+          journalVoucher: {
+            select: {
+              id: true,
+              jvNumber: true,
+              date: true,
+              type: true,
+              description: true,
+              entries: {
+                select: { accountType: true, debit: true, credit: true },
+              },
+            },
+          },
+        },
+        orderBy: { journalVoucher: { date: 'asc' } },
+      });
+      for (const entry of jvEntries) {
+        const jv = entry.journalVoucher;
+        const isDebit = Number(entry.debit) > 0;
+        const amount = isDebit ? Number(entry.debit) : Number(entry.credit);
+        if (isDebit) {
+          const hasCashOutflow = jv.entries.some(
+            (e) =>
+              (e.accountType === JournalAccountType.BANK || e.accountType === JournalAccountType.CASH) &&
+              Number(e.credit) > 0,
+          );
+          const cashMoved = hasCashOutflow || jv.type === 'OWNER_EXPENSE';
+          transactions.push({
+            date: jv.date.toISOString(),
+            type: 'Journal Voucher',
+            reference: jv.jvNumber,
+            description: entry.description ?? jv.description ?? `JV ${jv.jvNumber}`,
+            committed: 0,
+            actual: amount,
+            paid: cashMoved ? amount : 0,
+          });
+        } else {
+          const hasCashInflow = jv.entries.some(
+            (e) =>
+              (e.accountType === JournalAccountType.BANK || e.accountType === JournalAccountType.CASH) &&
+              Number(e.debit) > 0,
+          );
+          const cashReturned = hasCashInflow || jv.type === 'OWNER_REPAYMENT';
+          transactions.push({
+            date: jv.date.toISOString(),
+            type: 'Journal Voucher (Reversal)',
+            reference: jv.jvNumber,
+            description: entry.description ?? jv.description ?? `JV ${jv.jvNumber}`,
+            committed: 0,
+            actual: -amount,
+            paid: cashReturned ? -amount : 0,
+          });
+        }
+      }
+
+      // Sort all transactions by date
+      transactions.sort((a, b) => a.date.localeCompare(b.date));
+
       res.json({
         budgetHead: {
           id: head.id,
@@ -160,9 +569,9 @@ router.get(
           actualAmount: Number(head.actualAmount),
           paidAmount: Number(head.paidAmount),
           available: Number(head.allocatedAmount) - Number(head.actualAmount),
+          uncommittedAvailable: Number(head.allocatedAmount) - Number(head.committedAmount) - Number(head.actualAmount),
         },
-        transactions: [],
-        message: 'Detailed breakdown available after Phase 3 cost tagging',
+        transactions,
       });
     } catch (error) {
       next(error);

@@ -62,7 +62,7 @@ export default createCrudRouter({
     const vendorIds = records.map((vendor) => String(vendor.id));
     if (vendorIds.length === 0) return records;
 
-    const [invoices, paidRequests] = await Promise.all([
+    const [invoices, paidRequests, paidAdvances] = await Promise.all([
       prisma.vendorInvoice.findMany({
         where: { projectId, vendorId: { in: vendorIds }, deletedAt: null },
         select: { vendorId: true, totalAmount: true, advancePaid: true },
@@ -77,6 +77,19 @@ export default createCrudRouter({
         },
         select: { amount: true, invoice: { select: { vendorId: true } } },
       }),
+      // Also count PAID ADVANCE payment requests linked to POs for these vendors.
+      // Without this, PO-level advance payments never enter the vendor's "total paid"
+      // figure, creating a false impression that money hasn't been sent to the vendor.
+      prisma.paymentRequest.findMany({
+        where: {
+          projectId,
+          type: 'ADVANCE',
+          status: 'PAID',
+          deletedAt: null,
+          vendorId: { in: vendorIds },
+        },
+        select: { amount: true, vendorId: true },
+      }),
     ]);
 
     const totals = new Map(vendorIds.map((vendorId) => [vendorId, { billed: 0, paid: 0 }]));
@@ -90,6 +103,10 @@ export default createCrudRouter({
     for (const request of paidRequests) {
       const total = request.invoice ? totals.get(request.invoice.vendorId) : undefined;
       if (total) total.paid += Number(request.amount);
+    }
+    for (const advance of paidAdvances) {
+      const total = advance.vendorId ? totals.get(advance.vendorId) : undefined;
+      if (total) total.paid += Number(advance.amount);
     }
 
     return records.map((vendor) => {

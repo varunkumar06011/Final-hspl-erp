@@ -39,6 +39,13 @@ router.get(
                 poNumber: true,
                 gstAmount: true,
                 quotation: { select: { id: true, quotationNumber: true, gstAmount: true } },
+                // Include PAID advance payment requests on the linked PO so that
+                // actual advance payments are counted toward "paid", not just the
+                // manually-entered invoice.advancePaid field.
+                advancePaymentRequests: {
+                  where: { deletedAt: null, status: PaymentStatus.PAID, type: 'ADVANCE' },
+                  select: { amount: true },
+                },
               },
             },
             paymentRequests: {
@@ -68,9 +75,14 @@ router.get(
       const records = [
         ...invoices.map((invoice) => {
           const totalAmount = Number(invoice.totalAmount);
+          // Use actual paid advances on the linked PO (not just the manual
+          // invoice.advancePaid field) to determine how much has been paid.
+          const poAdvancePaid = invoice.purchaseOrder
+            ? invoice.purchaseOrder.advancePaymentRequests.reduce((sum, pr) => sum + Number(pr.amount), 0)
+            : 0;
           const paidAmount = Math.min(
             totalAmount,
-            Number(invoice.advancePaid) + invoice.paymentRequests.reduce((sum, payment) => sum + Number(payment.amount), 0),
+            Number(invoice.advancePaid) + poAdvancePaid + invoice.paymentRequests.reduce((sum, payment) => sum + Number(payment.amount), 0),
           );
           const gstRecorded = Number(invoice.taxAmount);
           const paidRatio = totalAmount > 0 ? paidAmount / totalAmount : 0;
