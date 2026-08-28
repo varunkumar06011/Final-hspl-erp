@@ -247,9 +247,9 @@ router.post(
   }
 );
 
-// POST / — manually create a new asset unit for an inventory item
+// POST /:itemId — manually create a new asset unit for an inventory item
 router.post(
-  '/',
+  '/:itemId',
   authMiddleware,
   rbacMiddleware(Permission.MANAGE_INVENTORY),
   validateMiddleware(createAssetSchema),
