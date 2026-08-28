@@ -154,6 +154,36 @@ export default function AssetDetailPage() {
     enabled: !!itemId,
   });
 
+  const { data: vendorsData } = useQuery({
+    queryKey: ['/vendors'],
+    queryFn: async () => {
+      const response = await api.get('/vendors', { params: { page: 1, pageSize: 1000 } });
+      return response.data;
+    },
+  });
+
+  const { data: posData } = useQuery({
+    queryKey: ['/purchase-orders', createForm.vendorId],
+    queryFn: async () => {
+      const params: Record<string, unknown> = { page: 1, pageSize: 1000, status: 'APPROVED' };
+      if (createForm.vendorId) params.vendorId = createForm.vendorId;
+      const response = await api.get('/purchase-orders', { params });
+      return response.data;
+    },
+    enabled: !!createForm.vendorId,
+  });
+
+  const { data: invoicesData } = useQuery({
+    queryKey: ['/invoices', createForm.vendorId],
+    queryFn: async () => {
+      const params: Record<string, unknown> = { page: 1, pageSize: 1000 };
+      if (createForm.vendorId) params.vendorId = createForm.vendorId;
+      const response = await api.get('/invoices', { params });
+      return response.data;
+    },
+    enabled: !!createForm.vendorId,
+  });
+
   const actionMutation = useMutation({
     mutationFn: async () => {
       if (!actionDialog) return;
@@ -216,6 +246,10 @@ export default function AssetDetailPage() {
 
   const rows: AssetRow[] = data?.data ?? [];
   const pagination = data?.pagination ?? { page: 1, pageSize: 20, total: 0, totalPages: 0 };
+
+  const vendors: { id: string; name: string }[] = (vendorsData?.data ?? []) as { id: string; name: string }[];
+  const purchaseOrders: { id: string; poNumber: string }[] = (posData?.data ?? []) as { id: string; poNumber: string }[];
+  const invoices: { id: string; invoiceNumber: string }[] = (invoicesData?.data ?? []) as { id: string; invoiceNumber: string }[];
 
   // For the detail view, pick the first asset when only one is selected
   const selectedAsset = rows.find((r) => selectedAssetIds.includes(r.id)) ?? rows[0];
@@ -793,9 +827,61 @@ export default function AssetDetailPage() {
               <MenuItem value="WRITTEN_DOWN_VALUE">Written Down Value</MenuItem>
             </TextField>
             <TextField label="Salvage Value" type="number" value={String(createForm.salvageValue ?? '')} onChange={(e) => setCreateForm({ ...createForm, salvageValue: e.target.value })} fullWidth size="small" inputProps={{ step: 0.01, min: 0 }} InputProps={{ startAdornment: <InputAdornment position="start">₹</InputAdornment> }} />
-            <TextField label="Vendor" value={String(createForm.vendorName ?? '')} onChange={(e) => setCreateForm({ ...createForm, vendorName: e.target.value })} fullWidth size="small" />
-            <TextField label="PO Number" value={String(createForm.poNumber ?? '')} onChange={(e) => setCreateForm({ ...createForm, poNumber: e.target.value })} fullWidth size="small" />
-            <TextField label="Invoice Number" value={String(createForm.invoiceNumber ?? '')} onChange={(e) => setCreateForm({ ...createForm, invoiceNumber: e.target.value })} fullWidth size="small" />
+            <TextField
+              select
+              label="Vendor"
+              value={String(createForm.vendorId ?? '')}
+              onChange={(e) => {
+                const vendorId = e.target.value;
+                const vendor = vendors.find((v) => v.id === vendorId);
+                setCreateForm({
+                  ...createForm,
+                  vendorId,
+                  vendorName: vendor?.name ?? '',
+                  poId: '',
+                  poNumber: '',
+                  invoiceId: '',
+                  invoiceNumber: '',
+                });
+              }}
+              fullWidth
+              size="small"
+            >
+              <MenuItem value=""><em>Select a vendor</em></MenuItem>
+              {vendors.map((v) => <MenuItem key={v.id} value={v.id}>{v.name}</MenuItem>)}
+            </TextField>
+            <TextField
+              select
+              label="PO Number"
+              value={String(createForm.poId ?? '')}
+              onChange={(e) => {
+                const poId = e.target.value;
+                const po = purchaseOrders.find((p) => p.id === poId);
+                setCreateForm({ ...createForm, poId, poNumber: po?.poNumber ?? '' });
+              }}
+              fullWidth
+              size="small"
+              disabled={!createForm.vendorId}
+            >
+              <MenuItem value=""><em>Select a PO</em></MenuItem>
+              {purchaseOrders.map((p) => <MenuItem key={p.id} value={p.id}>{p.poNumber}</MenuItem>)}
+            </TextField>
+            <TextField
+              select
+              label="Invoice Number"
+              value={String(createForm.invoiceId ?? '')}
+              onChange={(e) => {
+                const invoiceId = e.target.value;
+                const invoice = invoices.find((i) => i.id === invoiceId);
+                setCreateForm({ ...createForm, invoiceId, invoiceNumber: invoice?.invoiceNumber ?? '' });
+              }}
+              fullWidth
+              size="small"
+              disabled={!createForm.vendorId}
+            >
+              <MenuItem value=""><em>Select an invoice</em></MenuItem>
+              {invoices.map((i) => <MenuItem key={i.id} value={i.id}>{i.invoiceNumber}</MenuItem>)}
+            </TextField>
             <TextField label="Receipt Number" value={String(createForm.receiptNumber ?? '')} onChange={(e) => setCreateForm({ ...createForm, receiptNumber: e.target.value })} fullWidth size="small" />
             <TextField label="Unit Price" type="number" value={String(createForm.unitPrice ?? '')} onChange={(e) => setCreateForm({ ...createForm, unitPrice: e.target.value })} fullWidth size="small" inputProps={{ step: 0.01, min: 0 }} InputProps={{ startAdornment: <InputAdornment position="start">₹</InputAdornment> }} />
             <TextField label="Total Cost (incl. GST)" type="number" value={String(createForm.totalCost ?? '')} onChange={(e) => setCreateForm({ ...createForm, totalCost: e.target.value })} fullWidth size="small" inputProps={{ step: 0.01, min: 0 }} InputProps={{ startAdornment: <InputAdornment position="start">₹</InputAdornment> }} />
