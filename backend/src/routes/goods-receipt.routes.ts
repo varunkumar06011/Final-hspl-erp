@@ -163,6 +163,7 @@ router.post(
               materialName: item.materialName,
               unit: item.unit || poItems.get(item.materialName.toLowerCase())?.unit || null,
               deliveredQty: item.deliveredQty,
+              itemType: InventoryItemType.CONSUMABLE,
             })),
           },
         },
@@ -207,8 +208,8 @@ router.post(
         res.status(404).json({ error: 'Goods receipt not found' });
         return;
       }
-      if (receipt.status !== GoodsReceiptStatus.PENDING_INSPECTION) {
-        res.status(400).json({ error: 'This goods receipt has already been inspected or posted' });
+      if (receipt.status !== GoodsReceiptStatus.PENDING_INSPECTION && receipt.status !== GoodsReceiptStatus.READY_TO_POST) {
+        res.status(400).json({ error: 'This goods receipt has already been posted' });
         return;
       }
       if (receipt.createdBy === req.user!.id || receipt.gatePass.createdBy === req.user!.id) {
@@ -216,7 +217,7 @@ router.post(
         return;
       }
 
-      const submitted = new Map((req.body.items as { id: string; acceptedQty: number; rejectedQty: number; rejectionReason?: string }[]).map((item) => [item.id, item]));
+      const submitted = new Map((req.body.items as { id: string; acceptedQty: number; rejectedQty: number; rejectionReason?: string; itemType?: string }[]).map((item) => [item.id, item]));
       if (submitted.size !== receipt.items.length || receipt.items.some((item) => !submitted.has(item.id))) {
         res.status(400).json({ error: 'A disposition is required for every receipt item' });
         return;
@@ -233,9 +234,15 @@ router.post(
           res.status(400).json({ error: `A rejection reason is required for ${item.materialName}` });
           return;
         }
+        const lineItemType = (disposition.itemType as InventoryItemType) || InventoryItemType.CONSUMABLE;
+        if (lineItemType === InventoryItemType.ASSET && acceptedQty > 0 && acceptedQty !== Math.floor(acceptedQty)) {
+          res.status(400).json({ error: `Asset items must have whole-number quantities. ${item.materialName} has ${acceptedQty} accepted.` });
+          return;
+        }
       }
 
       const rejected = (req.body.items as { rejectedQty: number }[]).some((item) => Number(item.rejectedQty) > 0);
+      const isReinspection = receipt.status === GoodsReceiptStatus.READY_TO_POST;
       const result = await prisma.$transaction(async (tx) => {
         for (const item of receipt.items) {
           const disposition = submitted.get(item.id)!;
@@ -245,20 +252,32 @@ router.post(
               acceptedQty: Number(disposition.acceptedQty),
               rejectedQty: Number(disposition.rejectedQty),
               rejectionReason: disposition.rejectionReason?.trim() || null,
+              itemType: disposition.itemType ?? InventoryItemType.CONSUMABLE,
             },
           });
         }
-        await tx.inspection.create({
-          data: {
-            projectId,
-            name: `Goods receipt inspection ${receipt.receiptNumber}`,
-            status: rejected ? InspectionStatus.DEFECTS_FOUND : InspectionStatus.PASSED,
-            inspectorId: req.user!.id,
-            createdBy: req.user!.id,
-            completedDate: new Date(),
-            goodsReceiptId: receipt.id,
-          },
-        });
+        if (isReinspection && receipt.inspection) {
+          await tx.inspection.update({
+            where: { id: receipt.inspection.id },
+            data: {
+              status: rejected ? InspectionStatus.DEFECTS_FOUND : InspectionStatus.PASSED,
+              inspectorId: req.user!.id,
+              completedDate: new Date(),
+            },
+          });
+        } else {
+          await tx.inspection.create({
+            data: {
+              projectId,
+              name: `Goods receipt inspection ${receipt.receiptNumber}`,
+              status: rejected ? InspectionStatus.DEFECTS_FOUND : InspectionStatus.PASSED,
+              inspectorId: req.user!.id,
+              createdBy: req.user!.id,
+              completedDate: new Date(),
+              goodsReceiptId: receipt.id,
+            },
+          });
+        }
         return tx.goodsReceipt.update({
           where: { id: receipt.id },
           data: { status: GoodsReceiptStatus.READY_TO_POST, inspectedBy: req.user!.id, inspectedAt: new Date() },
@@ -327,9 +346,13 @@ router.post(
 
         for (const line of receipt.items) {
           if (Number(line.acceptedQty) <= 0) continue;
+          const lineItemType = (line.itemType as InventoryItemType) || InventoryItemType.CONSUMABLE;
           let inventoryItem = await tx.inventoryItem.findFirst({
             where: { projectId, name: { equals: line.materialName, mode: 'insensitive' }, deletedAt: null },
           });
+          if (inventoryItem && inventoryItem.itemType !== lineItemType) {
+            throw new Error(`Item "${line.materialName}" already exists in inventory as ${inventoryItem.itemType.toLowerCase()}, but this receipt marks it as ${lineItemType.toLowerCase()}. Change the item type on this receipt to match, or rename the material.`);
+          }
           if (!inventoryItem) {
             inventoryItem = await tx.inventoryItem.create({
               data: {
@@ -338,7 +361,7 @@ router.post(
                 sku: await generateInventorySku(tx, projectId, 'MATERIAL'),
                 category: 'MATERIAL',
                 unit: line.unit || 'nos',
-                itemType: InventoryItemType.CONSUMABLE,
+                itemType: lineItemType,
                 currentStock: 0,
                 minStockLevel: 0,
               },

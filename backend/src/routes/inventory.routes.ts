@@ -186,8 +186,12 @@ router.patch(
         return;
       }
 
-      // Lock itemType if item has transactions or assets
+      // Allow itemType change only when item has no stock, transactions, or assets
       if (req.body.itemType !== undefined && req.body.itemType !== existing.itemType) {
+        if (Number(existing.currentStock) !== 0) {
+          res.status(400).json({ error: 'Item type cannot be changed while stock is non-zero. Remove stock first.' });
+          return;
+        }
         const txnCount = await prisma.inventoryTransaction.count({ where: { itemId: existing.id } });
         const assetCount = await prisma.asset.count({ where: { inventoryItemId: existing.id } });
         if (txnCount > 0 || assetCount > 0) {
@@ -201,13 +205,19 @@ router.patch(
         data: req.body,
       });
 
+      const auditValue: Record<string, unknown> = { ...req.body };
+      if (req.body.itemType !== undefined && req.body.itemType !== existing.itemType) {
+        auditValue.itemTypeChanged = { from: existing.itemType, to: req.body.itemType };
+      }
+
       await logAudit({
         userId: req.user!.id,
         action: AuditAction.UPDATE,
         entityType: 'INVENTORY_ITEM',
         entityId: req.params.id,
         projectId: req.user!.projectId,
-        newValue: req.body,
+        oldValue: { name: existing.name, itemType: existing.itemType },
+        newValue: auditValue,
       });
 
       res.json(updated);

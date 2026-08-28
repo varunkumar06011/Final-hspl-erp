@@ -349,6 +349,7 @@ const goodsReceiptDispositionItem = z.object({
   acceptedQty: qty,
   rejectedQty: qty,
   rejectionReason: z.string().trim().max(500).optional(),
+  itemType: z.nativeEnum(InventoryItemType).default(InventoryItemType.CONSUMABLE),
 });
 export const createGoodsReceiptSchema = z.object({
   body: z.object({

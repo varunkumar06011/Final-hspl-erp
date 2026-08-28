@@ -338,8 +338,7 @@ export default function InventoryPage() {
               fullWidth
               size="small"
               required
-              disabled={!!editing}
-              helperText={editing ? 'Type cannot be changed after creation' : undefined}
+              helperText={editing ? 'Type can be changed only if item has no stock, transactions, or assets' : undefined}
             >
               <MenuItem value={InventoryItemType.CONSUMABLE}>Consumable — used up by quantity</MenuItem>
               <MenuItem value={InventoryItemType.ASSET}>Asset — durable equipment with individual unit tracking + QR</MenuItem>

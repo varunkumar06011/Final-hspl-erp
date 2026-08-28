@@ -538,6 +538,7 @@ model GoodsReceiptItem {
   acceptedQty     Decimal  @default(0) @db.Decimal(10, 2)
   rejectedQty     Decimal  @default(0) @db.Decimal(10, 2)
   rejectionReason String?
+  itemType        String   @default("CONSUMABLE") // InventoryItemType enum: CONSUMABLE | ASSET — set during inspection
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 

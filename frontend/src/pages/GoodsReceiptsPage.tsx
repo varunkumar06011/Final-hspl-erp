@@ -24,7 +24,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import ResponsiveDialog from '../components/ResponsiveDialog';
 import AttachmentUpload from '../components/AttachmentUpload';
 import api, { extractErrorMessage } from '../config/api';
-import { GoodsReceiptStatus } from '@hospital-erp/shared';
+import { GoodsReceiptStatus, InventoryItemType } from '@hospital-erp/shared';
 
 interface ReceiptItem {
   id: string;
@@ -33,6 +33,7 @@ interface ReceiptItem {
   deliveredQty: number;
   acceptedQty: number;
   rejectedQty: number;
+  itemType?: string;
 }
 
 interface Receipt {
@@ -59,6 +60,7 @@ interface Disposition {
   acceptedQty: number | '';
   rejectedQty: number | '';
   rejectionReason: string;
+  itemType: InventoryItemType;
 }
 
 export default function GoodsReceiptsPage() {
@@ -107,6 +109,7 @@ export default function GoodsReceiptsPage() {
         acceptedQty: Number(disposition.acceptedQty || 0),
         rejectedQty: Number(disposition.rejectedQty || 0),
         rejectionReason: disposition.rejectionReason,
+        itemType: disposition.itemType,
       })),
     })).data,
     onSuccess: () => {
@@ -136,6 +139,7 @@ export default function GoodsReceiptsPage() {
       acceptedQty: Number(item.deliveredQty),
       rejectedQty: 0,
       rejectionReason: '',
+      itemType: (item.itemType as InventoryItemType) || InventoryItemType.CONSUMABLE,
     }])));
   }
 
@@ -144,6 +148,9 @@ export default function GoodsReceiptsPage() {
       const existing = current[id];
       if (field === 'rejectionReason') {
         return { ...current, [id]: { ...existing, rejectionReason: value } };
+      }
+      if (field === 'itemType') {
+        return { ...current, [id]: { ...existing, itemType: value as InventoryItemType } };
       }
 
       const numericValue = value === '' ? '' : Number(value);
@@ -187,14 +194,16 @@ export default function GoodsReceiptsPage() {
           <Table size="small">
             <TableHead><TableRow>
               <TableCell>Receipt</TableCell><TableCell>PO</TableCell><TableCell>Gatepass</TableCell>
-              <TableCell>Vendor</TableCell><TableCell>Budget Head</TableCell><TableCell>Status</TableCell><TableCell>Actions</TableCell>
+              <TableCell>Vendor</TableCell><TableCell>Budget Head</TableCell><TableCell>Item Types</TableCell><TableCell>Status</TableCell><TableCell>Actions</TableCell>
             </TableRow></TableHead>
             <TableBody>
               {receiptsQuery.isLoading ? (
-                <TableRow><TableCell colSpan={7} align="center"><CircularProgress size={28} /></TableCell></TableRow>
+                <TableRow><TableCell colSpan={8} align="center"><CircularProgress size={28} /></TableCell></TableRow>
               ) : receipts.length === 0 ? (
-                <TableRow><TableCell colSpan={7} align="center">No goods receipts found</TableCell></TableRow>
-              ) : receipts.map((receipt) => (
+                <TableRow><TableCell colSpan={8} align="center">No goods receipts found</TableCell></TableRow>
+              ) : receipts.map((receipt) => {
+                const types = new Set(receipt.items.map((i) => i.itemType || 'CONSUMABLE'));
+                return (
                 <TableRow key={receipt.id} hover>
                   <TableCell>{receipt.receiptNumber}</TableCell>
                   <TableCell>{receipt.purchaseOrder.poNumber}</TableCell>
@@ -205,19 +214,29 @@ export default function GoodsReceiptsPage() {
                       ? <Chip size="small" variant="outlined" color="primary" label={receipt.purchaseOrder.budgetHead.particulars} />
                       : <Typography variant="caption" color="text.secondary">—</Typography>}
                   </TableCell>
+                  <TableCell>
+                    <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
+                      {types.has('ASSET') && <Chip size="small" label="Asset" color="secondary" variant="outlined" />}
+                      {types.has('CONSUMABLE') && <Chip size="small" label="Consumable" color="primary" variant="outlined" />}
+                    </Box>
+                  </TableCell>
                   <TableCell><Chip size="small" label={receipt.status.replace(/_/g, ' ')} /></TableCell>
                   <TableCell>
                     {receipt.status === GoodsReceiptStatus.PENDING_INSPECTION && (
                       <Button size="small" startIcon={<InspectIcon />} onClick={() => openInspection(receipt)}>Inspect</Button>
                     )}
                     {receipt.status === GoodsReceiptStatus.READY_TO_POST && (
-                      <Button size="small" color="success" startIcon={<PostIcon />} onClick={() => postMutation.mutate(receipt.id)} disabled={postMutation.isPending}>
-                        Post to Inventory
-                      </Button>
+                      <>
+                        <Button size="small" startIcon={<InspectIcon />} onClick={() => openInspection(receipt)}>Edit Inspection</Button>
+                        <Button size="small" color="success" startIcon={<PostIcon />} onClick={() => postMutation.mutate(receipt.id)} disabled={postMutation.isPending}>
+                          Post to Inventory
+                        </Button>
+                      </>
                     )}
                   </TableCell>
                 </TableRow>
-              ))}
+                );
+              })}
             </TableBody>
           </Table>
         </TableContainer>
@@ -286,16 +305,20 @@ export default function GoodsReceiptsPage() {
         <DialogTitle>Inspect {inspectReceipt?.receiptNumber}</DialogTitle>
         <DialogContent>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            Accepted quantities will be posted to usable inventory. Rejected quantities remain outside usable stock. Entering a rejected quantity automatically reduces the accepted quantity.
+            Accepted quantities will be posted to usable inventory. Rejected quantities remain outside usable stock. Entering a rejected quantity automatically reduces the accepted quantity. Mark each item as Consumable or Asset — assets get individual unit tracking with QR codes.
           </Typography>
           {inspectReceipt && <AttachmentUpload entityType="GOODS_RECEIPT" entityId={inspectReceipt.id} />}
           {inspectReceipt?.items.map((item) => {
-            const disposition = dispositions[item.id] ?? { acceptedQty: 0, rejectedQty: 0, rejectionReason: '' };
-            return <Box key={item.id} sx={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr 1fr 2fr', gap: 1, mb: 1, alignItems: 'center' }}>
+            const disposition = dispositions[item.id] ?? { acceptedQty: 0, rejectedQty: 0, rejectionReason: '', itemType: InventoryItemType.CONSUMABLE };
+            return <Box key={item.id} sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1.5fr 1fr 1fr 1.5fr 1.5fr' }, gap: 1, mb: 1, alignItems: 'center' }}>
               <Typography variant="body2">{item.materialName} ({item.deliveredQty})</Typography>
               <TextField size="small" label="Accepted" type="number" value={disposition.acceptedQty} onChange={(event) => updateDisposition(item.id, 'acceptedQty', event.target.value)} inputProps={{ min: 0, max: item.deliveredQty }} />
               <TextField size="small" label="Rejected" type="number" value={disposition.rejectedQty} onChange={(event) => updateDisposition(item.id, 'rejectedQty', event.target.value)} inputProps={{ min: 0, max: item.deliveredQty }} />
               <TextField size="small" label="Rejection reason" value={disposition.rejectionReason} onChange={(event) => updateDisposition(item.id, 'rejectionReason', event.target.value)} />
+              <TextField select size="small" label="Item Type" value={disposition.itemType} onChange={(event) => updateDisposition(item.id, 'itemType', event.target.value)}>
+                <MenuItem value={InventoryItemType.CONSUMABLE}>Consumable</MenuItem>
+                <MenuItem value={InventoryItemType.ASSET}>Asset</MenuItem>
+              </TextField>
             </Box>;
           })}
         </DialogContent>
