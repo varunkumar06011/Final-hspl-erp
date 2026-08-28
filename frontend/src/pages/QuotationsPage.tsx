@@ -235,8 +235,8 @@ export default function QuotationsPage() {
   };
 
   const approveMutation = useMutation({
-    mutationFn: async ({ quotationId, stepId, comments, acknowledged }: { quotationId: string; stepId: string; comments?: string; acknowledged: true }) => {
-      const response = await api.post(`/quotations/${quotationId}/approve/${stepId}`, { comments, acknowledged });
+    mutationFn: async ({ quotationId, comments, acknowledged }: { quotationId: string; comments?: string; acknowledged: true }) => {
+      const response = await api.post(`/quotations/${quotationId}/approve`, { comments, acknowledged });
       return response.data;
     },
     onSuccess: () => {
@@ -248,8 +248,8 @@ export default function QuotationsPage() {
   });
 
   const rejectMutation = useMutation({
-    mutationFn: async ({ quotationId, stepId, reason, acknowledged }: { quotationId: string; stepId: string; reason: string; acknowledged: true }) => {
-      const response = await api.post(`/quotations/${quotationId}/reject/${stepId}`, { reason, acknowledged });
+    mutationFn: async ({ quotationId, reason, acknowledged }: { quotationId: string; reason: string; acknowledged: true }) => {
+      const response = await api.post(`/quotations/${quotationId}/reject`, { reason, acknowledged });
       return response.data;
     },
     onSuccess: () => {
@@ -772,14 +772,12 @@ export default function QuotationsPage() {
           if (approvalAction.action === 'approve') {
             approveMutation.mutate({
               quotationId: approvalAction.row.id,
-              stepId: approvalAction.step.id,
               comments: payload.comments,
               acknowledged: true,
             });
           } else {
             rejectMutation.mutate({
               quotationId: approvalAction.row.id,
-              stepId: approvalAction.step.id,
               reason: payload.reason!,
               acknowledged: true,
             });

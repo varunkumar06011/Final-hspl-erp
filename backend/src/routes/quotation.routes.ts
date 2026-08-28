@@ -423,9 +423,9 @@ router.delete(
   }
 );
 
-// POST /:id/approve/:stepId — approve a step
+// POST /:id/approve — approve a quotation (any of 4 heads, in any order)
 router.post(
-  '/:id/approve/:stepId',
+  '/:id/approve',
   rbacMiddleware(Permission.VIEW_FINANCIALS),
   validateMiddleware(approvalActionSchema),
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
@@ -440,9 +440,27 @@ router.post(
         return;
       }
 
-      const step = quotation.approvalWorkflow.steps.find((candidate) => candidate.id === req.params.stepId);
-      if (!step || step.approverRole !== req.user!.role) {
-        res.status(403).json({ error: 'This approval step is not assigned to you' });
+      // Check user is one of the approver roles
+      if (!APPROVER_ROLES.some((role) => role === req.user!.role)) {
+        res.status(403).json({ error: 'Only heads can approve quotations' });
+        return;
+      }
+
+      // Find the pending step for this user's role
+      const step = quotation.approvalWorkflow.steps.find(
+        (s) => s.approverRole === req.user!.role && s.status === 'PENDING'
+      );
+      if (!step) {
+        res.status(400).json({ error: 'No pending step for your role, or you may have already approved' });
+        return;
+      }
+
+      // Check same person hasn't already approved
+      const alreadyApproved = quotation.approvalWorkflow.steps.find(
+        (s) => s.approverUserId === req.user!.id && s.status === 'APPROVED'
+      );
+      if (alreadyApproved) {
+        res.status(400).json({ error: 'You have already approved this quotation' });
         return;
       }
 
@@ -461,7 +479,7 @@ router.post(
         entityType: 'QUOTATION',
         entityId: quotation.id,
         projectId,
-        newValue: { stepId: req.params.stepId, comments: req.body.comments, acknowledged: true },
+        newValue: { stepId: step.id, comments: req.body.comments, acknowledged: true },
       });
 
       const updated = await prisma.quotation.findUnique({
@@ -475,9 +493,9 @@ router.post(
   }
 );
 
-// POST /:id/reject/:stepId — reject a step
+// POST /:id/reject — reject a quotation (any of 4 heads, in any order)
 router.post(
-  '/:id/reject/:stepId',
+  '/:id/reject',
   rbacMiddleware(Permission.VIEW_FINANCIALS),
   validateMiddleware(approvalActionSchema),
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
@@ -492,9 +510,27 @@ router.post(
         return;
       }
 
-      const step = quotation.approvalWorkflow.steps.find((candidate) => candidate.id === req.params.stepId);
-      if (!step || step.approverRole !== req.user!.role) {
-        res.status(403).json({ error: 'This rejection step is not assigned to you' });
+      // Check user is one of the approver roles
+      if (!APPROVER_ROLES.some((role) => role === req.user!.role)) {
+        res.status(403).json({ error: 'Only heads can reject quotations' });
+        return;
+      }
+
+      // Find the pending step for this user's role
+      const step = quotation.approvalWorkflow.steps.find(
+        (s) => s.approverRole === req.user!.role && s.status === 'PENDING'
+      );
+      if (!step) {
+        res.status(400).json({ error: 'No pending step for your role, or you may have already decided' });
+        return;
+      }
+
+      // Check same person hasn't already decided
+      const alreadyDecided = quotation.approvalWorkflow.steps.find(
+        (s) => s.approverUserId === req.user!.id && (s.status === 'APPROVED' || s.status === 'REJECTED')
+      );
+      if (alreadyDecided) {
+        res.status(400).json({ error: 'You have already decided on this quotation' });
         return;
       }
 
@@ -514,7 +550,7 @@ router.post(
         entityType: 'QUOTATION',
         entityId: quotation.id,
         projectId,
-        newValue: { stepId: req.params.stepId, reason, acknowledged: true },
+        newValue: { stepId: step.id, reason, acknowledged: true },
       });
 
       const updated = await prisma.quotation.findUnique({

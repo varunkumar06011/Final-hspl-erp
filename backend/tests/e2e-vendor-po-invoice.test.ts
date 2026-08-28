@@ -549,11 +549,8 @@ describe('E2E: Vendor → Quotation → PO → Invoice full flow', () => {
   });
 
   it('4. Approve quotation — step 1 (by Project Head)', async () => {
-    const quotation = await request.get(`/api/quotations/${quotationId}`).set(authAs(USER_PROJECT_HEAD));
-    const step1Id = quotation.body.approvalWorkflow.steps[0].id;
-
     const res = await request
-      .post(`/api/quotations/${quotationId}/approve/${step1Id}`)
+      .post(`/api/quotations/${quotationId}/approve`)
       .set(authAs(USER_PROJECT_HEAD))
       .send({ acknowledged: true, comments: 'Looks good' });
 
@@ -562,11 +559,8 @@ describe('E2E: Vendor → Quotation → PO → Invoice full flow', () => {
   });
 
   it('5. Approve quotation — step 3 (by Admin, group 2) → quotation becomes APPROVED', async () => {
-    const quotation = await request.get(`/api/quotations/${quotationId}`).set(authAs(USER_PROJECT_HEAD));
-    const step3Id = quotation.body.approvalWorkflow.steps[2].id;
-
     const res = await request
-      .post(`/api/quotations/${quotationId}/approve/${step3Id}`)
+      .post(`/api/quotations/${quotationId}/approve`)
       .set(authAs(USER_ADMIN))
       .send({ acknowledged: true, comments: 'Approved by Admin' });
 

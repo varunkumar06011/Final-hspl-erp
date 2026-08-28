@@ -38,6 +38,7 @@ const ENTITY_MODEL_MAP: Record<string, string> = {
   PURCHASE_ORDER: 'purchaseOrder',
   VENDOR_INVOICE: 'vendorInvoice',
   PAYMENT_REQUEST: 'paymentRequest',
+  JOURNAL_VOUCHER: 'journalVoucher',
 };
 
 const ENTITY_URL_MAP: Record<string, string> = {
@@ -45,6 +46,7 @@ const ENTITY_URL_MAP: Record<string, string> = {
   PURCHASE_ORDER: '/pos',
   VENDOR_INVOICE: '/invoices',
   PAYMENT_REQUEST: '/payments',
+  JOURNAL_VOUCHER: '/journal-vouchers',
 };
 
 const ENTITY_LABEL_MAP: Record<string, string> = {
@@ -52,6 +54,7 @@ const ENTITY_LABEL_MAP: Record<string, string> = {
   PURCHASE_ORDER: 'Purchase Order',
   VENDOR_INVOICE: 'Invoice',
   PAYMENT_REQUEST: 'Payment Request',
+  JOURNAL_VOUCHER: 'Journal Voucher',
 };
 
 async function findEntityCreator(entityType: string, entityId: string): Promise<{ createdBy: string | null; projectId: string; label: string }> {
@@ -169,12 +172,6 @@ export async function approve(stepId: string, userId: string, comments?: string)
 
   if (user.role !== step.approverRole) {
     throw new Error(`Only ${step.approverRole} can approve this step`);
-  }
-
-  // Segregation of duties: the creator of the entity cannot approve their own record
-  const creatorInfo = await findEntityCreator(step.workflow.entityType, step.workflow.entityId);
-  if (creatorInfo.createdBy && creatorInfo.createdBy === userId) {
-    throw new Error('You cannot approve a record you created');
   }
 
   const existingDecision = await prisma.approvalStep.findFirst({
@@ -307,12 +304,6 @@ export async function reject(stepId: string, userId: string, reason: string) {
 
   if (user.role !== step.approverRole) {
     throw new Error(`Only ${step.approverRole} can reject this step`);
-  }
-
-  // Segregation of duties: the creator of the entity cannot reject their own record
-  const creatorInfo = await findEntityCreator(step.workflow.entityType, step.workflow.entityId);
-  if (creatorInfo.createdBy && creatorInfo.createdBy === userId) {
-    throw new Error('You cannot reject a record you created');
   }
 
   const existingDecision = await prisma.approvalStep.findFirst({

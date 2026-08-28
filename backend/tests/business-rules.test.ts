@@ -327,14 +327,14 @@ function uuid(seed: string): string {
   return `${hex.slice(0,8)}-${hex.slice(8,12)}-${hex.slice(12,16)}-0000-000000000000`;
 }
 
-// ─── Issue 1: Self-approval blocked ─────────────────────────
-describe('Issue 1: Self-approval blocked (segregation of duties)', () => {
+// ─── Issue 1: Creator CAN approve their own record (segregation removed) ──
+describe('Issue 1: Creator can approve their own record', () => {
   beforeAll(async () => {
     // Create a vendor for quotation tests
     await prisma.vendor.create({ data: { id: uuid('vendor1'), name: 'V1', vendorCode: 'V001', projectId: PROJECT_ID, category: 'CONSTRUCTION', createdBy: USER_ACCOUNTANT } });
   });
 
-  it('creator approving their own record throws error', async () => {
+  it('creator approving their own record succeeds', async () => {
     const vendorId = uuid('vendor1');
     const quotation = await prisma.quotation.create({
       data: {
@@ -347,10 +347,11 @@ describe('Issue 1: Self-approval blocked (segregation of duties)', () => {
     const wf = await initiate({ entityType: 'QUOTATION', entityId: quotation.id, projectId: PROJECT_ID, approvalPolicy: 'HEAD_GROUPS' });
     const step1 = wf.steps[0]; // PROJECT_HEAD step
 
-    await expect(approve(step1.id, USER_PROJECT_HEAD, 'self approve')).rejects.toThrow('You cannot approve a record you created');
+    const result = await approve(step1.id, USER_PROJECT_HEAD, 'self approve');
+    expect(result.step.status).toBe('APPROVED');
   });
 
-  it('creator rejecting their own record throws error', async () => {
+  it('creator rejecting their own record succeeds', async () => {
     const vendorId = uuid('vendor1');
     const quotation = await prisma.quotation.create({
       data: {
@@ -363,7 +364,8 @@ describe('Issue 1: Self-approval blocked (segregation of duties)', () => {
     const wf = await initiate({ entityType: 'QUOTATION', entityId: quotation.id, projectId: PROJECT_ID, approvalPolicy: 'HEAD_GROUPS' });
     const step1 = wf.steps[0];
 
-    await expect(reject(step1.id, USER_PROJECT_HEAD, 'self reject')).rejects.toThrow('You cannot reject a record you created');
+    const result = await reject(step1.id, USER_PROJECT_HEAD, 'self reject');
+    expect(result.step.status).toBe('REJECTED');
   });
 
   it('non-creator can approve normally', async () => {

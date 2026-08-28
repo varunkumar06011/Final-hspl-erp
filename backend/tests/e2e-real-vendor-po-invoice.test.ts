@@ -198,11 +198,8 @@ describe('E2E (Real DB): Vendor → Quotation → PO → Invoice full flow', () 
   });
 
   it('4. Approve quotation — step 1 (by Project Head)', async () => {
-    const quotation = await request.get(`/api/quotations/${quotationId}`).set(authAs(userPhId));
-    const step1Id = quotation.body.approvalWorkflow.steps[0].id;
-
     const res = await request
-      .post(`/api/quotations/${quotationId}/approve/${step1Id}`)
+      .post(`/api/quotations/${quotationId}/approve`)
       .set(authAs(userPhId))
       .send({ acknowledged: true, comments: 'Looks good' });
 
@@ -211,11 +208,8 @@ describe('E2E (Real DB): Vendor → Quotation → PO → Invoice full flow', () 
   });
 
   it('5. Approve quotation — step 2 (by Head of Construction) → quotation becomes APPROVED', async () => {
-    const quotation = await request.get(`/api/quotations/${quotationId}`).set(authAs(userPhId));
-    const step2Id = quotation.body.approvalWorkflow.steps[1].id;
-
     const res = await request
-      .post(`/api/quotations/${quotationId}/approve/${step2Id}`)
+      .post(`/api/quotations/${quotationId}/approve`)
       .set(authAs(userHocId))
       .send({ acknowledged: true, comments: 'Approved' });
 

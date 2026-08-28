@@ -260,8 +260,8 @@ describe('Approval Engine Tests', () => {
     expect(approvedStep!.decidedAt).toBeDefined();
   });
 
-  // ─── Segregation of Duties: Self-Approval Prevention ──────────────────
-  it('creator cannot approve their own record → error', async () => {
+  // ─── Creator CAN approve their own record (segregation removed per business rule) ──
+  it('creator can approve their own record', async () => {
     const wf = await initiate({
       entityType: 'PAYMENT_REQUEST',
       entityId: 'entity-self', // createdBy = 'user-1'
@@ -270,12 +270,11 @@ describe('Approval Engine Tests', () => {
 
     // user-1 is PROJECT_HEAD and is the creator
     const step1 = wf.steps[0]; // PROJECT_HEAD step
-    await expect(approve(step1.id, 'user-1', 'Self approving')).rejects.toThrow(
-      'You cannot approve a record you created'
-    );
+    const result = await approve(step1.id, 'user-1', 'Self approving');
+    expect(result.step.status).toBe('APPROVED');
   });
 
-  it('creator cannot reject their own record → error', async () => {
+  it('creator can reject their own record', async () => {
     const wf = await initiate({
       entityType: 'PAYMENT_REQUEST',
       entityId: 'entity-self', // createdBy = 'user-1'
@@ -283,9 +282,8 @@ describe('Approval Engine Tests', () => {
     });
 
     const step1 = wf.steps[0]; // PROJECT_HEAD step
-    await expect(reject(step1.id, 'user-1', 'Self rejecting')).rejects.toThrow(
-      'You cannot reject a record you created'
-    );
+    const result = await reject(step1.id, 'user-1', 'Self rejecting');
+    expect(result.step.status).toBe('REJECTED');
   });
 
   it('non-creator approver can approve normally', async () => {
