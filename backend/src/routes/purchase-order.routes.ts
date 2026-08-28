@@ -71,9 +71,7 @@ async function recalculatePoStatus(poId: string): Promise<string> {
   const fullyReceived = poItems.every(
     (item) => (acceptedMap.get(item.materialName.toLowerCase()) ?? 0) >= Number(item.quantity),
   );
-  const status = fullyReceived ? POStatus.DELIVERED : POStatus.PARTIALLY_DELIVERED;
-  console.log('[recalculatePoStatus]', { poId, poItems: poItems.map(i => ({ name: i.materialName, qty: Number(i.quantity) })), accepted: Array.from(acceptedMap.entries()), fullyReceived, status });
-  return status;
+  return fullyReceived ? POStatus.DELIVERED : POStatus.PARTIALLY_DELIVERED;
 }
 
 const poInclude = {
@@ -493,7 +491,6 @@ router.post(
 
       // Approve the step
       const result = await approvalService.approve(step.id, req.user!.id, req.body.comments);
-      console.log('[PO Approve]', { poId: po.id, poNumber: po.poNumber, isFullyApproved: result.isFullyApproved, editedAt: po.editedAt, poStatus: po.status });
 
       // Only update PO status to APPROVED when fully approved (2 approvals)
       if (result.isFullyApproved) {
@@ -501,7 +498,6 @@ router.post(
         // An edited PO that matches what was delivered should be DELIVERED, not just APPROVED
         if (po.editedAt) {
           const newStatus = await recalculatePoStatus(po.id);
-          console.log('[PO Approve] Edited PO recalc:', { poId: po.id, poNumber: po.poNumber, editedAt: po.editedAt, newStatus });
           await prisma.purchaseOrder.update({
             where: { id: po.id },
             data: { status: newStatus },
@@ -980,7 +976,6 @@ router.post(
         });
 
         // Store regeneration data for later, set edit metadata, reset status to PENDING_APPROVAL
-        console.log('[PO Edit]', { poId: po.id, poNumber: po.poNumber, remainingItems, newItems: newItems.map(i => ({ name: i.materialName, qty: i.quantity })) });
         const updated = await tx.purchaseOrder.update({
           where: { id: po.id },
           data: {
