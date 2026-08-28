@@ -446,6 +446,29 @@ export const updateAssetDetailsSchema = z.object({
     salvageValue: money.optional(),
   }),
 });
+export const createAssetSchema = z.object({
+  params: z.object({ itemId: uuid }),
+  body: z.object({
+    serialNumber: z.string().max(200).optional(),
+    notes: z.string().max(500).optional(),
+    location: z.string().min(1).max(200).default('Main Store'),
+    udi: z.string().max(200).optional(),
+    gtin: z.string().max(200).optional(),
+    warrantyExpiry: z.string().datetime().optional(),
+    amcVendor: z.string().max(200).optional(),
+    amcExpiry: z.string().datetime().optional(),
+    usefulLifeYears: z.coerce.number().finite().min(0).max(100).optional(),
+    depreciationMethod: z.enum(['STRAIGHT_LINE', 'WRITTEN_DOWN_VALUE']).optional(),
+    salvageValue: money.optional(),
+    vendorName: z.string().max(200).optional(),
+    poNumber: z.string().max(100).optional(),
+    invoiceNumber: z.string().max(100).optional(),
+    receiptNumber: z.string().max(100).optional(),
+    unitPrice: money.optional(),
+    totalCost: money.optional(),
+    receiptDate: z.string().datetime().optional(),
+  }),
+});
 export const issueAssetSchema = z.object({
   params: z.object({ id: uuid }),
   body: z.object({

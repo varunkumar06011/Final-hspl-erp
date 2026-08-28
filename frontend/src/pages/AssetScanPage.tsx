@@ -29,6 +29,20 @@ const STATUS_LABELS: Record<string, string> = {
   RETIRED: 'Retired',
 };
 
+function fmtDate(value: unknown): string {
+  if (!value) return '—';
+  const d = new Date(String(value));
+  if (Number.isNaN(d.getTime())) return String(value);
+  return d.toLocaleDateString('en-IN');
+}
+
+function fmtMoney(value: unknown): string {
+  if (value === null || value === undefined) return '—';
+  const n = Number(value);
+  if (Number.isNaN(n)) return '—';
+  return `₹${n.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
+}
+
 export default function AssetScanPage() {
   const { assetId } = useParams<{ assetId: string }>();
   const navigate = useNavigate();
@@ -166,6 +180,18 @@ export default function AssetScanPage() {
                     <Typography>{String(full.serialNumber)}</Typography>
                   </Box>
                 )}
+                {!!full.udi && (
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <Typography color="text.secondary">UDI</Typography>
+                    <Typography>{String(full.udi)}</Typography>
+                  </Box>
+                )}
+                {!!full.gtin && (
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <Typography color="text.secondary">GTIN</Typography>
+                    <Typography>{String(full.gtin)}</Typography>
+                  </Box>
+                )}
                 {!!full.lastScannedAt && (
                   <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                     <Typography color="text.secondary">Last Scanned</Typography>
@@ -174,39 +200,81 @@ export default function AssetScanPage() {
                 )}
               </Box>
 
+              {/* Warranty & AMC */}
+              {(!!full.warrantyExpiry || !!full.amcExpiry || !!full.amcVendor) && (
+                <>
+                  <Typography variant="subtitle2" gutterBottom>Warranty & AMC</Typography>
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, mb: 2 }}>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <Typography color="text.secondary">Warranty Expiry</Typography>
+                      <Typography>{fmtDate(full.warrantyExpiry)}</Typography>
+                    </Box>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <Typography color="text.secondary">AMC Vendor</Typography>
+                      <Typography>{String(full.amcVendor ?? '—')}</Typography>
+                    </Box>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <Typography color="text.secondary">AMC Expiry</Typography>
+                      <Typography>{fmtDate(full.amcExpiry)}</Typography>
+                    </Box>
+                  </Box>
+                </>
+              )}
+
               {/* Purchase chain */}
-              {!!full.vendorName && (
+              {(!!full.vendorName || !!full.poNumber || !!full.invoiceNumber || !!full.receiptNumber || full.unitPrice || full.totalCost || full.receiptDate) && (
                 <>
                   <Typography variant="subtitle2" gutterBottom>Purchase Information</Typography>
                   <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, mb: 2 }}>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                       <Typography color="text.secondary">Vendor</Typography>
-                      <Typography>{String(full.vendorName)} ({String(full.vendorCode ?? '')})</Typography>
+                      <Typography>{String(full.vendorName ?? '—')}</Typography>
                     </Box>
-                    {!!full.poNumber && (
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <Typography color="text.secondary">PO Number</Typography>
-                        <Typography>{String(full.poNumber)}</Typography>
-                      </Box>
-                    )}
-                    {!!full.invoiceNumber && (
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <Typography color="text.secondary">Invoice Number</Typography>
-                        <Typography>{String(full.invoiceNumber)}</Typography>
-                      </Box>
-                    )}
-                    {!!full.unitPrice && (
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <Typography color="text.secondary">Unit Price</Typography>
-                        <Typography>₹{Number(full.unitPrice).toLocaleString('en-IN')}</Typography>
-                      </Box>
-                    )}
-                    {!!full.totalCost && (
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <Typography color="text.secondary">Total Cost (incl. GST)</Typography>
-                        <Typography fontWeight={600}>₹{Number(full.totalCost).toLocaleString('en-IN')}</Typography>
-                      </Box>
-                    )}
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <Typography color="text.secondary">PO Number</Typography>
+                      <Typography>{String(full.poNumber ?? '—')}</Typography>
+                    </Box>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <Typography color="text.secondary">Invoice Number</Typography>
+                      <Typography>{String(full.invoiceNumber ?? '—')}</Typography>
+                    </Box>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <Typography color="text.secondary">Receipt Number</Typography>
+                      <Typography>{String(full.receiptNumber ?? '—')}</Typography>
+                    </Box>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <Typography color="text.secondary">Purchase / Receipt Date</Typography>
+                      <Typography>{fmtDate(full.receiptDate)}</Typography>
+                    </Box>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <Typography color="text.secondary">Unit Price</Typography>
+                      <Typography>{fmtMoney(full.unitPrice)}</Typography>
+                    </Box>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <Typography color="text.secondary">Total Cost (incl. GST)</Typography>
+                      <Typography fontWeight={600}>{fmtMoney(full.totalCost)}</Typography>
+                    </Box>
+                  </Box>
+                </>
+              )}
+
+              {/* Depreciation */}
+              {(full.usefulLifeYears || full.depreciationMethod || full.salvageValue) && (
+                <>
+                  <Typography variant="subtitle2" gutterBottom>Depreciation</Typography>
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, mb: 2 }}>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <Typography color="text.secondary">Useful Life</Typography>
+                      <Typography>{full.usefulLifeYears ? `${full.usefulLifeYears} years` : '—'}</Typography>
+                    </Box>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <Typography color="text.secondary">Depreciation Method</Typography>
+                      <Typography>{String(full.depreciationMethod ?? '—').replace(/_/g, ' ')}</Typography>
+                    </Box>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <Typography color="text.secondary">Salvage Value</Typography>
+                      <Typography>{fmtMoney(full.salvageValue)}</Typography>
+                    </Box>
                   </Box>
                 </>
               )}

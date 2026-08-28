@@ -35,6 +35,7 @@ import {
   Refresh as RefreshIcon,
   Edit as EditIcon,
   Warning as WarningIcon,
+  Add as AddIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { QRCodeSVG } from 'qrcode.react';
@@ -94,6 +95,13 @@ interface AssetRow {
   poNumber: string | null;
   invoiceNumber: string | null;
   receiptNumber: string | null;
+  receiptDate: string | null;
+  poDate: string | null;
+  invoiceDate: string | null;
+  gatePassNumber: string | null;
+  postedBy: string | null;
+  gstRate: string | null;
+  gstAmount: string | null;
   movements: { id: string; type: string; fromLocation: string | null; toLocation: string | null; fromStatus: string | null; toStatus: string | null; reason: string | null; notes: string | null; timestamp: string; user: { id: string; name: string; role: string } }[];
   maintenances: { id: string; reason: string; maintenanceVendor: string | null; technician: string | null; notes: string | null; cost: string | null; sentAt: string; completedAt: string | null; completionNotes: string | null; finalCost: string | null; sentByUser: { name: string }; completedByUser: { name: string } | null }[];
   scans: { id: string; timestamp: string; location: string | null; user: { id: string; name: string } | null }[];
@@ -116,11 +124,6 @@ export default function AssetDetailPage() {
   const [actionForm, setActionForm] = useState<Record<string, unknown>>({});
   const [editDialog, setEditDialog] = useState<{ asset: AssetRow } | null>(null);
   const [editForm, setEditForm] = useState<Record<string, unknown>>({});
-  const [error, setError] = useState('');
-  const [successMsg, setSuccessMsg] = useState('');
-
-  const canRetire = user && (user.role === UserRole.ADMIN || user.role === UserRole.ADMIN_2);
-
   const { data: itemData } = useQuery({
     queryKey: ['/inventory/items', itemId],
     queryFn: async () => {
@@ -129,6 +132,15 @@ export default function AssetDetailPage() {
     },
     enabled: !!itemId,
   });
+
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createForm, setCreateForm] = useState<Record<string, unknown>>({
+    location: itemData?.location ?? 'Main Store',
+  });
+  const [error, setError] = useState('');
+  const [successMsg, setSuccessMsg] = useState('');
+
+  const canRetire = user && (user.role === UserRole.ADMIN || user.role === UserRole.ADMIN_2);
 
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['/assets', itemId, page, pageSize, statusFilter, search],
@@ -181,6 +193,22 @@ export default function AssetDetailPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/assets'] });
       setSuccessMsg('Asset records generated.');
+      setTimeout(() => setSuccessMsg(''), 3000);
+    },
+    onError: (err: unknown) => setError(extractErrorMessage(err)),
+  });
+
+  const createMutation = useMutation({
+    mutationFn: async () => {
+      if (!itemId) return;
+      await api.post(`/assets/${itemId}`, createForm);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/assets'] });
+      queryClient.invalidateQueries({ queryKey: ['/inventory/items'] });
+      setCreateOpen(false);
+      setCreateForm({ location: itemData?.location ?? 'Main Store' });
+      setSuccessMsg('Asset unit created.');
       setTimeout(() => setSuccessMsg(''), 3000);
     },
     onError: (err: unknown) => setError(extractErrorMessage(err)),
@@ -274,6 +302,7 @@ export default function AssetDetailPage() {
         <IconButton onClick={() => refetch()} size="small"><RefreshIcon /></IconButton>
         <Button variant="outlined" startIcon={<DownloadIcon />} onClick={handleExport} size="small">Export CSV</Button>
         <Button variant="outlined" startIcon={<PrintIcon />} onClick={() => setPrintOpen(true)} size="small" disabled={rows.length === 0}>Print QR Tags</Button>
+        <Button variant="contained" startIcon={<AddIcon />} onClick={() => { setCreateForm({ location: itemData?.location ?? 'Main Store' }); setCreateOpen(true); }} size="small">Add Asset Unit</Button>
       </Box>
 
       {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
@@ -332,16 +361,19 @@ export default function AssetDetailPage() {
                 <TableRow>
                   <TableCell colSpan={8} align="center" sx={{ py: 4 }}>
                     <Typography color="text.secondary" sx={{ mb: 1 }}>No asset units found for this item.</Typography>
-                    {Number(itemData?.currentStock ?? 0) > 0 && (
-                      <Button
-                        variant="contained"
-                        size="small"
-                        onClick={() => generateMutation.mutate()}
-                        disabled={generateMutation.isPending}
-                      >
-                        {generateMutation.isPending ? <CircularProgress size={20} /> : `Generate ${Math.floor(Number(itemData?.currentStock))} Asset Record${Number(itemData?.currentStock) === 1 ? '' : 's'}`}
-                      </Button>
-                    )}
+                    <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center', flexWrap: 'wrap' }}>
+                      <Button variant="contained" size="small" startIcon={<AddIcon />} onClick={() => { setCreateForm({ location: itemData?.location ?? 'Main Store' }); setCreateOpen(true); }}>Add Asset Unit</Button>
+                      {Number(itemData?.currentStock ?? 0) > 0 && (
+                        <Button
+                          variant="outlined"
+                          size="small"
+                          onClick={() => generateMutation.mutate()}
+                          disabled={generateMutation.isPending}
+                        >
+                          {generateMutation.isPending ? <CircularProgress size={20} /> : `Generate ${Math.floor(Number(itemData?.currentStock))} Asset Record${Number(itemData?.currentStock) === 1 ? '' : 's'}`}
+                        </Button>
+                      )}
+                    </Box>
                   </TableCell>
                 </TableRow>
               ) : rows.map((row) => (
@@ -738,6 +770,43 @@ export default function AssetDetailPage() {
           <Button onClick={() => setActionDialog(null)}>Cancel</Button>
           <Button variant="contained" onClick={() => actionMutation.mutate()} disabled={actionMutation.isPending}>
             {actionMutation.isPending ? <CircularProgress size={20} /> : 'Confirm'}
+          </Button>
+        </DialogActions>
+      </ResponsiveDialog>
+
+      {/* Create Asset Dialog */}
+      <ResponsiveDialog open={createOpen} onClose={() => { setCreateOpen(false); setCreateForm({ location: itemData?.location ?? 'Main Store' }); }} maxWidth="sm" fullWidth>
+        <DialogTitle>Add Asset Unit — {itemData ? String(itemData.name) : 'Asset'}</DialogTitle>
+        <DialogContent>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
+            <TextField label="Location" value={String(createForm.location ?? 'Main Store')} onChange={(e) => setCreateForm({ ...createForm, location: e.target.value })} fullWidth size="small" required />
+            <TextField label="Serial Number" value={String(createForm.serialNumber ?? '')} onChange={(e) => setCreateForm({ ...createForm, serialNumber: e.target.value })} fullWidth size="small" />
+            <TextField label="UDI (Unique Device Identifier)" value={String(createForm.udi ?? '')} onChange={(e) => setCreateForm({ ...createForm, udi: e.target.value })} fullWidth size="small" />
+            <TextField label="GTIN (Global Trade Item Number)" value={String(createForm.gtin ?? '')} onChange={(e) => setCreateForm({ ...createForm, gtin: e.target.value })} fullWidth size="small" />
+            <TextField label="Warranty Expiry" type="date" value={String(createForm.warrantyExpiry ?? '')} onChange={(e) => setCreateForm({ ...createForm, warrantyExpiry: e.target.value })} fullWidth size="small" InputLabelProps={{ shrink: true }} />
+            <TextField label="AMC Vendor" value={String(createForm.amcVendor ?? '')} onChange={(e) => setCreateForm({ ...createForm, amcVendor: e.target.value })} fullWidth size="small" />
+            <TextField label="AMC Expiry" type="date" value={String(createForm.amcExpiry ?? '')} onChange={(e) => setCreateForm({ ...createForm, amcExpiry: e.target.value })} fullWidth size="small" InputLabelProps={{ shrink: true }} />
+            <TextField label="Useful Life (Years)" type="number" value={String(createForm.usefulLifeYears ?? '')} onChange={(e) => setCreateForm({ ...createForm, usefulLifeYears: e.target.value })} fullWidth size="small" inputProps={{ step: 0.5, min: 0 }} helperText="For depreciation calculation" />
+            <TextField select label="Depreciation Method" value={String(createForm.depreciationMethod ?? '')} onChange={(e) => setCreateForm({ ...createForm, depreciationMethod: e.target.value })} fullWidth size="small">
+              <MenuItem value="">None</MenuItem>
+              <MenuItem value="STRAIGHT_LINE">Straight Line</MenuItem>
+              <MenuItem value="WRITTEN_DOWN_VALUE">Written Down Value</MenuItem>
+            </TextField>
+            <TextField label="Salvage Value" type="number" value={String(createForm.salvageValue ?? '')} onChange={(e) => setCreateForm({ ...createForm, salvageValue: e.target.value })} fullWidth size="small" inputProps={{ step: 0.01, min: 0 }} InputProps={{ startAdornment: <InputAdornment position="start">₹</InputAdornment> }} />
+            <TextField label="Vendor" value={String(createForm.vendorName ?? '')} onChange={(e) => setCreateForm({ ...createForm, vendorName: e.target.value })} fullWidth size="small" />
+            <TextField label="PO Number" value={String(createForm.poNumber ?? '')} onChange={(e) => setCreateForm({ ...createForm, poNumber: e.target.value })} fullWidth size="small" />
+            <TextField label="Invoice Number" value={String(createForm.invoiceNumber ?? '')} onChange={(e) => setCreateForm({ ...createForm, invoiceNumber: e.target.value })} fullWidth size="small" />
+            <TextField label="Receipt Number" value={String(createForm.receiptNumber ?? '')} onChange={(e) => setCreateForm({ ...createForm, receiptNumber: e.target.value })} fullWidth size="small" />
+            <TextField label="Unit Price" type="number" value={String(createForm.unitPrice ?? '')} onChange={(e) => setCreateForm({ ...createForm, unitPrice: e.target.value })} fullWidth size="small" inputProps={{ step: 0.01, min: 0 }} InputProps={{ startAdornment: <InputAdornment position="start">₹</InputAdornment> }} />
+            <TextField label="Total Cost (incl. GST)" type="number" value={String(createForm.totalCost ?? '')} onChange={(e) => setCreateForm({ ...createForm, totalCost: e.target.value })} fullWidth size="small" inputProps={{ step: 0.01, min: 0 }} InputProps={{ startAdornment: <InputAdornment position="start">₹</InputAdornment> }} />
+            <TextField label="Purchase / Receipt Date" type="date" value={String(createForm.receiptDate ?? '')} onChange={(e) => setCreateForm({ ...createForm, receiptDate: e.target.value })} fullWidth size="small" InputLabelProps={{ shrink: true }} />
+            <TextField label="Notes" value={String(createForm.notes ?? '')} onChange={(e) => setCreateForm({ ...createForm, notes: e.target.value })} fullWidth size="small" multiline rows={2} />
+          </Box>
+        </DialogContent>
+        <DialogActions sx={{ flexWrap: 'wrap', gap: 1 }}>
+          <Button onClick={() => { setCreateOpen(false); setCreateForm({ location: itemData?.location ?? 'Main Store' }); }}>Cancel</Button>
+          <Button variant="contained" onClick={() => createMutation.mutate()} disabled={createMutation.isPending}>
+            {createMutation.isPending ? <CircularProgress size={20} /> : 'Create Asset'}
           </Button>
         </DialogActions>
       </ResponsiveDialog>

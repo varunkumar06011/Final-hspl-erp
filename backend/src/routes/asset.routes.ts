@@ -2,6 +2,7 @@ import { Router, Response, NextFunction } from 'express';
 import { Permission, AuditAction, AssetStatus, AssetMovementType, UserRole, InventoryItemType } from '@hospital-erp/shared';
 import {
   listAssetsSchema,
+  createAssetSchema,
   updateAssetSerialSchema,
   updateAssetDetailsSchema,
   issueAssetSchema,
@@ -240,6 +241,99 @@ router.post(
       });
 
       res.status(201).json({ created: created.length });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// POST / — manually create a new asset unit for an inventory item
+router.post(
+  '/',
+  authMiddleware,
+  rbacMiddleware(Permission.MANAGE_INVENTORY),
+  validateMiddleware(createAssetSchema),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      const item = await prisma.inventoryItem.findFirst({
+        where: { id: req.params.itemId, projectId, deletedAt: null },
+      });
+      if (!item) {
+        res.status(404).json({ error: 'Inventory item not found' });
+        return;
+      }
+      if (item.itemType !== InventoryItemType.ASSET) {
+        res.status(400).json({ error: 'Only asset-type items can have asset records' });
+        return;
+      }
+
+      const data = req.body;
+      const result = await prisma.$transaction(async (tx) => {
+        const assetId = await generateAssetId(tx);
+        const asset = await tx.asset.create({
+          data: {
+            projectId,
+            inventoryItemId: item.id,
+            assetId,
+            status: AssetStatus.ACTIVE,
+            location: data.location,
+            serialNumber: data.serialNumber ?? null,
+            notes: data.notes ?? null,
+            udi: data.udi ?? null,
+            gtin: data.gtin ?? null,
+            warrantyExpiry: data.warrantyExpiry ? new Date(data.warrantyExpiry) : null,
+            amcVendor: data.amcVendor ?? null,
+            amcExpiry: data.amcExpiry ? new Date(data.amcExpiry) : null,
+            usefulLifeYears: data.usefulLifeYears ?? null,
+            depreciationMethod: data.depreciationMethod ?? null,
+            salvageValue: data.salvageValue ?? null,
+            vendorName: data.vendorName ?? null,
+            poNumber: data.poNumber ?? null,
+            invoiceNumber: data.invoiceNumber ?? null,
+            receiptNumber: data.receiptNumber ?? null,
+            unitPrice: data.unitPrice ?? null,
+            totalCost: data.totalCost ?? null,
+            receiptDate: data.receiptDate ? new Date(data.receiptDate) : null,
+          },
+        });
+        await tx.assetMovement.create({
+          data: {
+            assetId: asset.id,
+            type: AssetMovementType.CREATED,
+            toLocation: data.location,
+            toStatus: AssetStatus.ACTIVE,
+            notes: data.notes ?? 'Manually registered asset',
+            userId: req.user!.id,
+          },
+        });
+        await tx.inventoryTransaction.create({
+          data: {
+            itemId: item.id,
+            type: 'IN',
+            quantity: 1,
+            balanceAfter: Number(item.currentStock) + 1,
+            userId: req.user!.id,
+            notes: `Manual asset creation: ${assetId}`,
+          },
+        });
+        await tx.inventoryItem.update({
+          where: { id: item.id },
+          data: { currentStock: Number(item.currentStock) + 1 },
+        });
+        return tx.asset.findUnique({ where: { id: asset.id }, include: assetInclude });
+      });
+
+      await logAudit({
+        userId: req.user!.id,
+        action: AuditAction.CREATE,
+        entityType: 'ASSET',
+        entityId: result!.id,
+        projectId,
+        newValue: { assetId: result!.assetId, itemId: item.id },
+      });
+
+      res.status(201).json(result);
     } catch (error) {
       next(error);
     }
