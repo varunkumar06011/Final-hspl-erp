@@ -46,3 +46,21 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     return !!state.token && !!state.user;
   },
 }));
+
+// ─── Cross-tab sync: when another tab changes auth state in localStorage,
+// update the Zustand store so this tab reflects the change immediately.
+// Without this, a tab can have stale auth state until a page refresh.
+if (typeof window !== 'undefined') {
+  window.addEventListener('storage', (e) => {
+    if (e.key === 'firebaseToken') {
+      useAuthStore.setState({ token: e.newValue });
+    }
+    if (e.key === 'user') {
+      try {
+        useAuthStore.setState({ user: e.newValue ? JSON.parse(e.newValue) as UserResponse : null });
+      } catch {
+        useAuthStore.setState({ user: null });
+      }
+    }
+  });
+}
