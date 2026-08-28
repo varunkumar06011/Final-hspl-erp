@@ -320,13 +320,7 @@ router.post(
           return;
         }
 
-        // Enforce invoice requirement based on PO payment type:
-        // - AFTER_DELIVERY → invoice is required (goods delivered first, invoice follows)
-        // - ADVANCE / FULL_PAYMENT → invoice is not required
-        if (po.paymentType === 'AFTER_DELIVERY' && !invoiceId) {
-          res.status(400).json({ error: 'Invoice is required for this purchase order (payment type: After Delivery). Please create and attach an invoice before generating the gate pass.' });
-          return;
-        }
+        // Invoice is optional for all payment types. If provided, it is validated below.
 
         // Accepted quantities from posted Goods Receipts
         const acceptedByName = new Map<string, number>();
@@ -366,8 +360,7 @@ router.post(
         poItemsByName = new Map(po.items.map((item) => [item.materialName.toLowerCase(), { id: item.id, unit: item.unit }]));
       }
 
-      // Validate invoice only for material gatepasses.
-      // Validate invoice only if provided (invoice is optional)
+      // Validate invoice only if provided (invoice is optional for all payment types)
       if (invoiceId) {
         const invoice = await prisma.vendorInvoice.findFirst({
           where: { id: invoiceId, projectId, deletedAt: null },

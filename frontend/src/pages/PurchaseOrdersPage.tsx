@@ -109,6 +109,8 @@ interface PORow {
   editedAt?: string | null;
   editedByUser?: { id: string; name: string } | null;
   regenerationData?: unknown;
+  budgetHeadId?: string | null;
+  budgetHead?: { id: string; particulars: string } | null;
   approvalWorkflow?: {
     id: string;
     status: string;
@@ -129,6 +131,7 @@ export default function PurchaseOrdersPage() {
   const [selectedVendorId, setSelectedVendorId] = useState('');
   const [selectedQuotationId, setSelectedQuotationId] = useState('');
   const [paymentType, setPaymentType] = useState<string>(POPaymentType.AFTER_DELIVERY);
+  const [selectedBudgetHeadId, setSelectedBudgetHeadId] = useState('');
   const [acknowledged, setAcknowledged] = useState(false);
   const [approvalAction, setApprovalAction] = useState<{ row: PORow; action: 'approve' | 'reject' } | null>(null);
   const [approvalPopup, setApprovalPopup] = useState<PORow | null>(null);
@@ -204,6 +207,15 @@ export default function PurchaseOrdersPage() {
     enabled: !!selectedVendorId,
   });
 
+  const { data: budgetHeadsData } = useQuery({
+    queryKey: ['/budget-heads', 'all'],
+    queryFn: async () => {
+      const response = await api.get('/budget-heads', { params: { page: 1, pageSize: 200 } });
+      return response.data;
+    },
+  });
+  const budgetHeads: { id: string; particulars: string }[] = budgetHeadsData?.data ?? [];
+
   // Fetch the selected quotation to get its items
   const { data: selectedQuotation } = useQuery<Quotation | null>({
     queryKey: ['/quotations', selectedQuotationId],
@@ -222,6 +234,7 @@ export default function PurchaseOrdersPage() {
         quotationId: selectedQuotationId,
         paymentType,
         acknowledged,
+        budgetHeadId: selectedBudgetHeadId || undefined,
       });
       return response.data;
     },
@@ -300,6 +313,7 @@ export default function PurchaseOrdersPage() {
     setSelectedVendorId('');
     setSelectedQuotationId('');
     setPaymentType(POPaymentType.AFTER_DELIVERY);
+    setSelectedBudgetHeadId('');
     setAcknowledged(false);
     setError('');
   }
@@ -396,6 +410,7 @@ export default function PurchaseOrdersPage() {
                 <TableCell sx={{ fontWeight: 600 }}>Total</TableCell>
                 <TableCell sx={{ fontWeight: 600 }}>GST</TableCell>
                 <TableCell sx={{ fontWeight: 600 }}>Grand Total</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>Budget Head</TableCell>
                 <TableCell sx={{ fontWeight: 600 }}>Created By</TableCell>
                 <TableCell sx={{ fontWeight: 600 }}>Status</TableCell>
                 <TableCell sx={{ fontWeight: 600 }}>Actions</TableCell>
@@ -459,6 +474,13 @@ export default function PurchaseOrdersPage() {
                     <TableCell data-label="Total">{formatCurrency(row.totalAmount)}</TableCell>
                     <TableCell data-label="GST">{formatCurrency(row.gstAmount)}</TableCell>
                     <TableCell data-label="Grand Total">{formatCurrency(row.grandTotal)}</TableCell>
+                    <TableCell data-label="Budget Head">
+                      {row.budgetHead ? (
+                        <Chip label={row.budgetHead.particulars} size="small" variant="outlined" color="primary" />
+                      ) : (
+                        <Typography variant="caption" color="text.secondary">—</Typography>
+                      )}
+                    </TableCell>
                     <TableCell data-label="Created By">{row.createdByUser?.name ?? '—'}</TableCell>
                     <TableCell data-label="Status"><Chip label={row.status.replace(/_/g, ' ')} size="small" color={STATUS_COLORS[row.status] ?? 'default'} /></TableCell>
                     <TableCell data-label="Actions">
@@ -529,6 +551,7 @@ export default function PurchaseOrdersPage() {
       <ResponsiveDialog open={createOpen} onClose={() => { setCreateOpen(false); resetForm(); }} maxWidth="md" fullWidth sx={{ '& .MuiDialog-paper': { margin: { xs: 1 } } }}>
         <DialogTitle>Create Purchase Order</DialogTitle>
         <DialogContent>
+          {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1, flexWrap: 'wrap' }}>
             {/* Vendor Selection */}
             <TextField
@@ -580,6 +603,20 @@ export default function PurchaseOrdersPage() {
               <MenuItem value={POPaymentType.ADVANCE}>Against Advance — pay before delivery</MenuItem>
               <MenuItem value={POPaymentType.AFTER_DELIVERY}>After Delivery — pay after goods arrive + invoice</MenuItem>
               <MenuItem value={POPaymentType.FULL_PAYMENT}>Against Full Payment — full payment done, goods follow</MenuItem>
+            </TextField>
+
+            {/* Budget Head Selection */}
+            <TextField
+              select
+              label="Budget Head (optional)"
+              value={selectedBudgetHeadId}
+              onChange={(e) => setSelectedBudgetHeadId(e.target.value)}
+              fullWidth
+              size="small"
+              helperText="Tag this PO to a budget head for commitment tracking"
+            >
+              <MenuItem value="">— None —</MenuItem>
+              {budgetHeads.map((h) => <MenuItem key={h.id} value={h.id}>{h.particulars}</MenuItem>)}
             </TextField>
 
             {/* Items from quotation (read-only) */}
@@ -697,6 +734,8 @@ export default function PurchaseOrdersPage() {
         action={approvalAction?.action ?? 'approve'}
         entityLabel="Purchase Order"
         pending={approveMutation.isPending || rejectMutation.isPending}
+        error={error}
+        onClearError={() => setError('')}
         onClose={() => setApprovalAction(null)}
         onConfirm={(payload) => {
           if (!approvalAction) return;

@@ -700,6 +700,7 @@ export default function InvoicesPage() {
       <ResponsiveDialog open={createOpen} onClose={() => { setCreateOpen(false); resetForm(); }} maxWidth="md" fullWidth>
         <DialogTitle>Create Vendor Invoice</DialogTitle>
         <DialogContent>
+          {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
             {/* Vendor Selection */}
             <TextField
@@ -955,6 +956,8 @@ export default function InvoicesPage() {
         action={approvalAction?.action ?? 'approve'}
         entityLabel="Invoice"
         pending={approveMutation.isPending || rejectMutation.isPending}
+        error={error}
+        onClearError={() => setError('')}
         onClose={() => setApprovalAction(null)}
         onConfirm={(payload) => {
           if (!approvalAction) return;

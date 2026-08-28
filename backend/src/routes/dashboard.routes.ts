@@ -14,7 +14,7 @@ router.get(
     try {
       const projectId = requireProjectId(req);
 
-      const [project, committedAgg, paidAgg, pendingPayments, openIssues, inventoryItems, _activePhases, pendingQuotations, pendingQuotationValue, recentQuotations, pendingPOs, recentPOs, pendingInvoices, recentInvoices, pendingPaymentRequests, totalExpenseAmount, recentPayments] =
+      const [project, committedAgg, paidAgg, pendingPayments, openIssues, inventoryItems, _activePhases, pendingQuotations, pendingQuotationValue, recentQuotations, pendingPOs, recentPOs, pendingInvoices, recentInvoices, totalExpenseAmount, recentPayments] =
         await Promise.all([
           prisma.project.findUnique({
             where: { id: projectId },
@@ -26,17 +26,20 @@ router.get(
               deletedAt: null,
               status: { in: ['APPROVED', 'DELIVERED', 'PARTIALLY_DELIVERED'] },
             },
-            _sum: { totalAmount: true },
+            _sum: { grandTotal: true },
           }),
           prisma.payment.aggregate({
-            where: { paymentRequest: { projectId, deletedAt: null, status: 'PAID' } },
+            where: {
+              paymentRequest: { projectId, deletedAt: null },
+              status: 'PAID',
+            },
             _sum: { amount: true },
           }),
           prisma.paymentRequest.count({
             where: { projectId, deletedAt: null, status: 'PENDING' },
           }),
           prisma.issue.count({
-            where: { projectId, deletedAt: null },
+            where: { projectId, deletedAt: null, status: { not: 'CLOSED' } },
           }),
           prisma.inventoryItem.findMany({
             where: { projectId, deletedAt: null },
@@ -85,9 +88,6 @@ router.get(
             orderBy: { createdAt: 'desc' },
             take: 5,
           }),
-          prisma.paymentRequest.count({
-            where: { projectId, deletedAt: null, status: 'PENDING' },
-          }),
           prisma.paymentRequest.aggregate({
             where: { projectId, deletedAt: null, type: 'EXPENSE', status: 'PAID' },
             _sum: { amount: true },
@@ -110,7 +110,7 @@ router.get(
       ).length;
 
       const totalBudget = Number(project?.totalBudget ?? 0);
-      const committed = Number(committedAgg._sum.totalAmount ?? 0);
+      const committed = Number(committedAgg._sum.grandTotal ?? 0);
       const paid = Number(paidAgg._sum.amount ?? 0);
 
       res.json({
@@ -129,7 +129,7 @@ router.get(
           quotationNumber: q.quotationNumber,
           vendorName: q.vendor?.name ?? '—',
           vendorCode: q.vendor?.vendorCode ?? '',
-          totalAmount: Number(q.totalAmount),
+          grandTotal: Number(q.grandTotal),
           status: q.status,
           createdBy: q.createdByUser?.name ?? '—',
           createdAt: q.createdAt,
@@ -140,7 +140,7 @@ router.get(
           poNumber: p.poNumber,
           vendorName: p.vendor?.name ?? '—',
           vendorCode: p.vendor?.vendorCode ?? '',
-          totalAmount: Number(p.totalAmount),
+          grandTotal: Number(p.grandTotal),
           status: p.status,
           createdBy: p.createdByUser?.name ?? '—',
           createdAt: p.createdAt,
@@ -159,7 +159,6 @@ router.get(
           createdBy: i.createdByUser?.name ?? '—',
           createdAt: i.createdAt,
         })),
-        pendingPaymentRequests,
         totalExpenseAmount: Number(totalExpenseAmount._sum.amount ?? 0),
         recentPayments: recentPayments.map((p) => ({
           id: p.id,

@@ -39,7 +39,7 @@ interface Receipt {
   id: string;
   receiptNumber: string;
   status: GoodsReceiptStatus;
-  purchaseOrder: { poNumber: string; vendor: { name: string } };
+  purchaseOrder: { poNumber: string; vendor: { name: string }; budgetHead?: { id: string; particulars: string } | null };
   gatePass: { passNumber: string };
   items: ReceiptItem[];
 }
@@ -187,19 +187,24 @@ export default function GoodsReceiptsPage() {
           <Table size="small">
             <TableHead><TableRow>
               <TableCell>Receipt</TableCell><TableCell>PO</TableCell><TableCell>Gatepass</TableCell>
-              <TableCell>Vendor</TableCell><TableCell>Status</TableCell><TableCell>Actions</TableCell>
+              <TableCell>Vendor</TableCell><TableCell>Budget Head</TableCell><TableCell>Status</TableCell><TableCell>Actions</TableCell>
             </TableRow></TableHead>
             <TableBody>
               {receiptsQuery.isLoading ? (
-                <TableRow><TableCell colSpan={6} align="center"><CircularProgress size={28} /></TableCell></TableRow>
+                <TableRow><TableCell colSpan={7} align="center"><CircularProgress size={28} /></TableCell></TableRow>
               ) : receipts.length === 0 ? (
-                <TableRow><TableCell colSpan={6} align="center">No goods receipts found</TableCell></TableRow>
+                <TableRow><TableCell colSpan={7} align="center">No goods receipts found</TableCell></TableRow>
               ) : receipts.map((receipt) => (
                 <TableRow key={receipt.id} hover>
                   <TableCell>{receipt.receiptNumber}</TableCell>
                   <TableCell>{receipt.purchaseOrder.poNumber}</TableCell>
                   <TableCell>{receipt.gatePass.passNumber}</TableCell>
                   <TableCell>{receipt.purchaseOrder.vendor.name}</TableCell>
+                  <TableCell>
+                    {receipt.purchaseOrder.budgetHead
+                      ? <Chip size="small" variant="outlined" color="primary" label={receipt.purchaseOrder.budgetHead.particulars} />
+                      : <Typography variant="caption" color="text.secondary">—</Typography>}
+                  </TableCell>
                   <TableCell><Chip size="small" label={receipt.status.replace(/_/g, ' ')} /></TableCell>
                   <TableCell>
                     {receipt.status === GoodsReceiptStatus.PENDING_INSPECTION && (

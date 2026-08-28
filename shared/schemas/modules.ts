@@ -14,6 +14,11 @@ import {
   InspectionStatus,
   ContractStatus,
   POPaymentType,
+  BudgetHeadStatus,
+  BankTxnType,
+  CashTxnType,
+  JVType,
+  JournalAccountType,
 } from '../enums.js';
 
 const uuid = z.string().uuid();
@@ -115,6 +120,7 @@ export const createPOSchema = z.object({
     quotationId: uuid,
     paymentType: z.nativeEnum(POPaymentType),
     acknowledged: acknowledgement,
+    budgetHeadId: uuid.optional(),
   }),
 });
 export const updatePOSchema = z.object({
@@ -224,6 +230,7 @@ export const createPaymentRequestSchema = z.object({
     amount: positiveMoney,
     paymentMode: z.string().trim().max(50).optional(),
     notes: z.string().trim().max(1000).optional(),
+    budgetHeadId: uuid.optional(),
   }),
 });
 export const createExpenseSchema = z.object({
@@ -233,6 +240,7 @@ export const createExpenseSchema = z.object({
     category: nonEmptyText(100),
     expenseDate: dateStr.optional(),
     paymentMode: z.string().trim().max(50).optional(),
+    budgetHeadId: uuid.optional(),
   }),
 });
 export const createAdvancePaymentSchema = z.object({
@@ -244,6 +252,7 @@ export const createAdvancePaymentSchema = z.object({
     paymentMode: z.string().trim().max(50).optional(),
     notes: z.string().trim().max(1000).optional(),
     acknowledged: acknowledgement,
+    budgetHeadId: uuid.optional(),
   }),
 });
 export const listPaymentRequestsSchema = z.object({
@@ -259,6 +268,8 @@ export const recordPaymentSchema = z.object({
     amount: money,
     mode: z.string().min(1).max(50),
     reference: z.string().max(100).optional(),
+    bankAccountId: uuid.optional(),
+    cashAccountId: uuid.optional(),
   }),
 });
 export const approvalActionSchema = z.object({
@@ -611,6 +622,13 @@ export const updateIssueSchema = z.object({
 export const listIssuesSchema = z.object({
   query: pagination.extend({
     severity: z.nativeEnum(IssueSeverity).optional(),
+    status: z.string().optional(),
+  }),
+});
+export const closeIssueSchema = z.object({
+  params: z.object({ id: uuid }),
+  body: z.object({
+    closureNotes: z.string().trim().max(2000).optional(),
   }),
 });
 
@@ -790,5 +808,290 @@ export const listAttachmentsSchema = z.object({
     entityType: z.string().min(1).max(50).optional(),
     entityId: uuid.optional(),
     fileType: z.string().max(20).optional(),
+  }),
+});
+
+// ═══════════════════════════════════════════════════════════
+// Finance Module — Budget Heads, Bank, Cash
+// ═══════════════════════════════════════════════════════════
+
+// ── Budget Heads ──
+export const createBudgetHeadSchema = z.object({
+  body: z.object({
+    slNo: z.coerce.number().int().min(1),
+    particulars: nonEmptyText(200),
+    allocatedAmount: positiveMoney,
+  }),
+});
+export const updateBudgetHeadSchema = z.object({
+  params: z.object({ id: uuid }),
+  body: z.object({
+    slNo: z.coerce.number().int().min(1).optional(),
+    particulars: nonEmptyText(200).optional(),
+    allocatedAmount: money.optional(),
+    status: z.nativeEnum(BudgetHeadStatus).optional(),
+  }),
+});
+export const listBudgetHeadsSchema = z.object({
+  query: pagination.extend({
+    search: z.string().optional(),
+    status: z.nativeEnum(BudgetHeadStatus).optional(),
+  }),
+});
+export const importBudgetSchema = z.object({
+  body: z.object({
+    items: z
+      .array(
+        z.object({
+          sl_no: z.coerce.number().int().min(1),
+          particulars: z.string().min(1).max(200),
+          amount: positiveMoney,
+        }),
+      )
+      .min(1, 'At least one budget item is required'),
+  }),
+});
+
+// ── Bank Accounts ──
+export const createBankAccountSchema = z.object({
+  body: z.object({
+    accountName: nonEmptyText(200),
+    bankName: z.string().max(200).optional(),
+    accountNumber: z.string().max(50).optional(),
+    ifscCode: z.string().max(15).optional(),
+    openingBalance: money.default(0),
+  }),
+});
+export const updateBankAccountSchema = z.object({
+  params: z.object({ id: uuid }),
+  body: z.object({
+    accountName: nonEmptyText(200).optional(),
+    bankName: z.string().max(200).optional(),
+    accountNumber: z.string().max(50).optional(),
+    ifscCode: z.string().max(15).optional(),
+    isActive: z.boolean().optional(),
+  }),
+});
+export const listBankAccountsSchema = z.object({
+  query: pagination.extend({
+    search: z.string().optional(),
+    isActive: z.coerce.boolean().optional(),
+  }),
+});
+export const bankDepositSchema = z.object({
+  body: z.object({
+    amount: positiveMoney,
+    date: dateStr.optional(),
+    description: z.string().max(500).optional(),
+  }),
+});
+export const bankWithdrawSchema = bankDepositSchema;
+export const bankTransferSchema = z.object({
+  body: z.object({
+    fromAccountId: uuid,
+    toAccountId: uuid,
+    amount: positiveMoney,
+    date: dateStr.optional(),
+    description: z.string().max(500).optional(),
+  }),
+});
+export const listBankTransactionsSchema = z
+  .object({
+    query: pagination.extend({
+      startDate: dateStr.optional(),
+      endDate: dateStr.optional(),
+      type: z.nativeEnum(BankTxnType).optional(),
+    }),
+  })
+  .superRefine((data, ctx) => {
+    if (data.query.startDate && data.query.endDate && data.query.endDate < data.query.startDate) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['query', 'endDate'],
+        message: 'End date cannot be before start date',
+      });
+    }
+  });
+
+// ── Cash Accounts ──
+export const createCashAccountSchema = z.object({
+  body: z.object({
+    name: nonEmptyText(200),
+    openingBalance: money.default(0),
+  }),
+});
+export const updateCashAccountSchema = z.object({
+  params: z.object({ id: uuid }),
+  body: z.object({
+    name: nonEmptyText(200).optional(),
+    isActive: z.boolean().optional(),
+  }),
+});
+export const listCashAccountsSchema = z.object({
+  query: pagination.extend({
+    search: z.string().optional(),
+    isActive: z.coerce.boolean().optional(),
+  }),
+});
+export const cashTransferSchema = z.object({
+  body: z.object({
+    fromAccountId: uuid,
+    toAccountId: uuid,
+    amount: positiveMoney,
+    date: dateStr.optional(),
+    description: z.string().max(500).optional(),
+  }),
+});
+// Bank → Cash withdrawal (money leaves bank, enters cash)
+export const bankToCashSchema = z.object({
+  body: z.object({
+    bankAccountId: uuid,
+    cashAccountId: uuid,
+    amount: positiveMoney,
+    date: dateStr.optional(),
+    description: z.string().max(500).optional(),
+  }),
+});
+// Cash → Bank deposit (money leaves cash, enters bank)
+export const cashToBankSchema = bankToCashSchema;
+export const listCashTransactionsSchema = z
+  .object({
+    query: pagination.extend({
+      startDate: dateStr.optional(),
+      endDate: dateStr.optional(),
+      type: z.nativeEnum(CashTxnType).optional(),
+    }),
+  })
+  .superRefine((data, ctx) => {
+    if (data.query.startDate && data.query.endDate && data.query.endDate < data.query.startDate) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['query', 'endDate'],
+        message: 'End date cannot be before start date',
+      });
+    }
+  });
+
+// ═══════════════════════════════════════════════════════════
+// Finance Module — Journal Vouchers & Owner Account (Phase 2)
+// ═══════════════════════════════════════════════════════════
+
+// ── Owner Account ──
+export const createOwnerAccountSchema = z.object({
+  body: z.object({
+    ownerName: nonEmptyText(200),
+    openingBalance: money.default(0),
+  }),
+});
+export const updateOwnerAccountSchema = z.object({
+  params: z.object({ id: uuid }),
+  body: z.object({
+    ownerName: nonEmptyText(200).optional(),
+    isActive: z.boolean().optional(),
+  }),
+});
+export const listOwnerAccountsSchema = z.object({
+  query: pagination.extend({
+    search: z.string().optional(),
+  }),
+});
+// Owner contribution: money into company bank → owner balance increases
+export const ownerContributionSchema = z.object({
+  body: z.object({
+    bankAccountId: uuid,
+    amount: positiveMoney,
+    date: dateStr.optional(),
+    description: z.string().max(500).optional(),
+  }),
+});
+
+// ── Journal Vouchers ──
+const journalEntryInput = z.object({
+  accountType: z.nativeEnum(JournalAccountType),
+  accountId: uuid.optional(),      // bank/cash account ID if BANK/CASH
+  budgetHeadId: uuid.optional(),   // if BUDGET_HEAD
+  ownerAccountId: uuid.optional(), // if OWNER
+  debit: money.default(0),
+  credit: money.default(0),
+  description: z.string().max(500).optional(),
+});
+
+export const createJournalVoucherSchema = z
+  .object({
+    body: z.object({
+      type: z.nativeEnum(JVType),
+      date: dateStr.optional(),
+      description: z.string().max(1000).optional(),
+      entries: z.array(journalEntryInput).min(2, 'At least 2 entries required (one debit, one credit)'),
+    }),
+  })
+  .superRefine((data, ctx) => {
+    const { entries } = data.body;
+    const totalDebit = entries.reduce((sum, e) => sum + Number(e.debit), 0);
+    const totalCredit = entries.reduce((sum, e) => sum + Number(e.credit), 0);
+
+    if (Math.abs(totalDebit - totalCredit) > 0.01) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['body', 'entries'],
+        message: `Total debit (${totalDebit}) must equal total credit (${totalCredit})`,
+      });
+    }
+
+    if (totalDebit <= 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['body', 'entries'],
+        message: 'Total debit/credit must be greater than 0',
+      });
+    }
+
+    // Validate that accountId is provided for BANK/CASH entries
+    for (let i = 0; i < entries.length; i++) {
+      const entry = entries[i];
+      if ((entry.accountType === JournalAccountType.BANK || entry.accountType === JournalAccountType.CASH) && !entry.accountId) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['body', 'entries', i, 'accountId'],
+          message: `Account ID is required for ${entry.accountType} entries`,
+        });
+      }
+      if (entry.accountType === JournalAccountType.BUDGET_HEAD && !entry.budgetHeadId) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['body', 'entries', i, 'budgetHeadId'],
+          message: 'Budget head ID is required for BUDGET_HEAD entries',
+        });
+      }
+      if (entry.accountType === JournalAccountType.OWNER && !entry.ownerAccountId) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['body', 'entries', i, 'ownerAccountId'],
+          message: 'Owner account ID is required for OWNER entries',
+        });
+      }
+      // Each entry should have either debit or credit, not both
+      if (Number(entry.debit) > 0 && Number(entry.credit) > 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['body', 'entries', i],
+          message: 'An entry cannot have both debit and credit',
+        });
+      }
+    }
+  });
+
+export const listJournalVouchersSchema = z.object({
+  query: pagination.extend({
+    search: z.string().optional(),
+    type: z.nativeEnum(JVType).optional(),
+    status: z.string().optional(),
+  }),
+});
+export const jvApprovalActionSchema = z.object({
+  params: z.object({ id: uuid }),
+  body: z.object({
+    comments: z.string().max(1000).optional(),
+    reason: z.string().max(1000).optional(),
   }),
 });

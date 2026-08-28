@@ -17,6 +17,13 @@ import PaymentsPage from './pages/PaymentsPage';
 import GatePassesPage from './pages/GatePassesPage';
 import GoodsReceiptsPage from './pages/GoodsReceiptsPage';
 import GSTRecordsPage from './pages/GSTRecordsPage';
+import BudgetHeadsPage from './pages/BudgetHeadsPage';
+import BankAccountsPage from './pages/BankAccountsPage';
+import CashAccountsPage from './pages/CashAccountsPage';
+import OwnerAccountPage from './pages/OwnerAccountPage';
+import JournalVouchersPage from './pages/JournalVouchersPage';
+import FinanceDashboardPage from './pages/FinanceDashboardPage';
+import FinanceReportsPage from './pages/FinanceReportsPage';
 import InventoryPage from './pages/InventoryPage';
 import AssetsPage from './pages/AssetsPage';
 import AssetDetailPage from './pages/AssetDetailPage';
@@ -50,6 +57,13 @@ const ROUTES = [
   { path: '/gate-passes', element: <GatePassesPage /> },
   { path: '/goods-receipts', element: <GoodsReceiptsPage /> },
   { path: '/gst-records', element: <GSTRecordsPage /> },
+  { path: '/budget-heads', element: <BudgetHeadsPage /> },
+  { path: '/bank-accounts', element: <BankAccountsPage /> },
+  { path: '/cash-accounts', element: <CashAccountsPage /> },
+  { path: '/owner-accounts', element: <OwnerAccountPage /> },
+  { path: '/journal-vouchers', element: <JournalVouchersPage /> },
+  { path: '/finance-dashboard', element: <FinanceDashboardPage /> },
+  { path: '/finance-reports', element: <FinanceReportsPage /> },
   { path: '/inventory', element: <InventoryPage /> },
   { path: '/assets', element: <AssetsPage /> },
   { path: '/assets/:itemId', element: <AssetDetailPage /> },

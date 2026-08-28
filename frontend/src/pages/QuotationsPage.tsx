@@ -605,6 +605,7 @@ export default function QuotationsPage() {
       <ResponsiveDialog open={createOpen || editOpen} onClose={() => { setCreateOpen(false); setEditOpen(false); setEditing(null); }} maxWidth="md" fullWidth sx={{ '& .MuiDialog-paper': { margin: { xs: 1 } } }}>
         <DialogTitle>{editOpen ? `Edit Quotation ${editing?.quotationNumber ?? ''}` : 'Create Quotation'}</DialogTitle>
         <DialogContent>
+          {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1, flexWrap: 'wrap' }}>
             {/* Vendor Selection */}
             <TextField
@@ -766,6 +767,8 @@ export default function QuotationsPage() {
         action={approvalAction?.action ?? 'approve'}
         entityLabel="Quotation"
         pending={approveMutation.isPending || rejectMutation.isPending}
+        error={error}
+        onClearError={() => setError('')}
         onClose={() => setApprovalAction(null)}
         onConfirm={(payload) => {
           if (!approvalAction) return;

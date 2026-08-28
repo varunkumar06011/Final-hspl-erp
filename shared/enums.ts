@@ -150,8 +150,8 @@ export const GST_RATES = [0, 5, 9, 12, 18, 28] as const;
 export type GstRate = (typeof GST_RATES)[number];
 
 // ═══════════════════════════════════════════════════════════
-// PO Payment Type — controls when payment happens and whether
-// a gate pass requires an invoice.
+// PO Payment Type — controls when payment happens.
+// Invoice is optional for gate pass creation regardless of payment type.
 // ═══════════════════════════════════════════════════════════
 export enum POPaymentType {
   ADVANCE = 'ADVANCE',
@@ -278,6 +278,75 @@ export enum AuditAction {
 }
 
 // ═══════════════════════════════════════════════════════════
+// Finance Module — Budget, Bank, Cash, Journal Vouchers
+// ═══════════════════════════════════════════════════════════
+
+export enum BudgetHeadStatus {
+  ACTIVE = 'ACTIVE',
+  CLOSED = 'CLOSED',
+}
+
+// Bank/Cash transaction direction.
+// DEPOSIT/WITHDRAWAL = single-sided manual entries.
+// TRANSFER_IN/TRANSFER_OUT = one side of an atomic two-sided transfer.
+// REVERSAL_IN/REVERSAL_OUT = correction entries that undo a posted txn.
+export enum BankTxnType {
+  DEPOSIT = 'DEPOSIT',
+  WITHDRAWAL = 'WITHDRAWAL',
+  TRANSFER_IN = 'TRANSFER_IN',
+  TRANSFER_OUT = 'TRANSFER_OUT',
+  REVERSAL_IN = 'REVERSAL_IN',
+  REVERSAL_OUT = 'REVERSAL_OUT',
+}
+
+export enum CashTxnType {
+  IN = 'IN',
+  OUT = 'OUT',
+  TRANSFER_IN = 'TRANSFER_IN',
+  TRANSFER_OUT = 'TRANSFER_OUT',
+  REVERSAL_IN = 'REVERSAL_IN',
+  REVERSAL_OUT = 'REVERSAL_OUT',
+}
+
+// What created the account transaction.
+export enum AccountTxnRefType {
+  PAYMENT = 'PAYMENT',
+  JOURNAL_VOUCHER = 'JOURNAL_VOUCHER',
+  MANUAL_DEPOSIT = 'MANUAL_DEPOSIT',
+  MANUAL_WITHDRAWAL = 'MANUAL_WITHDRAWAL',
+  TRANSFER = 'TRANSFER',
+  REVERSAL = 'REVERSAL',
+}
+
+// Posted financial transaction lifecycle.
+// Only POSTED affects balances. REVERSED creates a reversal entry, never deletes.
+export enum FinancialTxnStatus {
+  DRAFT = 'DRAFT',
+  PENDING_APPROVAL = 'PENDING_APPROVAL',
+  APPROVED = 'APPROVED',
+  POSTED = 'POSTED',
+  REJECTED = 'REJECTED',
+  CANCELLED = 'CANCELLED',
+  REVERSED = 'REVERSED',
+}
+
+// Journal voucher business purpose.
+export enum JVType {
+  OWNER_EXPENSE = 'OWNER_EXPENSE',       // owner paid vendor directly → company owes owner
+  OWNER_REPAYMENT = 'OWNER_REPAYMENT',   // company repays owner from bank/cash
+  INTER_ACCOUNT = 'INTER_ACCOUNT',       // bank↔cash or bank↔bank or cash↔cash adjustment
+  ADJUSTMENT = 'ADJUSTMENT',             // miscellaneous correction
+}
+
+// Account types used inside journal entries (debit/credit legs).
+export enum JournalAccountType {
+  BANK = 'BANK',
+  CASH = 'CASH',
+  OWNER = 'OWNER',
+  BUDGET_HEAD = 'BUDGET_HEAD',
+}
+
+// ═══════════════════════════════════════════════════════════
 // Permission Matrix
 // ═══════════════════════════════════════════════════════════
 
@@ -291,6 +360,8 @@ export enum Permission {
   APPROVE_PAYMENT_STEP_2 = 'APPROVE_PAYMENT_STEP_2',
   VIEW_FINANCIALS = 'VIEW_FINANCIALS',
   EDIT_BUDGET = 'EDIT_BUDGET',
+  // Finance module — budget heads, bank/cash accounts, journal vouchers
+  MANAGE_FINANCE = 'MANAGE_FINANCE',
   // User management
   MANAGE_USERS = 'MANAGE_USERS',
   // Approvals config
@@ -344,6 +415,7 @@ export const PERMISSION_MATRIX: Record<UserRole, Permission[]> = {
     Permission.CREATE_GATE_PASS,
     Permission.VIEW_GATE_PASSES,
     Permission.VIEW_FINANCIALS,
+    Permission.MANAGE_FINANCE,
   ],
   [UserRole.SITE_SUPERVISOR]: [
     Permission.CREATE_GATE_PASS,
@@ -357,6 +429,7 @@ export const PERMISSION_MATRIX: Record<UserRole, Permission[]> = {
     Permission.APPROVE_PAYMENT_STEP_1,
     Permission.VIEW_FINANCIALS,
     Permission.EDIT_BUDGET,
+    Permission.MANAGE_FINANCE,
     Permission.MANAGE_USERS,
     Permission.MANAGE_APPROVALS_CONFIG,
     Permission.CREATE_GATE_PASS,
@@ -399,6 +472,7 @@ export const PERMISSION_MATRIX: Record<UserRole, Permission[]> = {
     Permission.VERIFY_INVOICE,
     Permission.APPROVE_PAYMENT_STEP_1,
     Permission.VIEW_FINANCIALS,
+    Permission.MANAGE_FINANCE,
     Permission.MANAGE_USERS,
     Permission.CREATE_GATE_PASS,
     Permission.VIEW_GATE_PASSES,
@@ -418,6 +492,7 @@ export const PERMISSION_MATRIX: Record<UserRole, Permission[]> = {
     Permission.VERIFY_INVOICE,
     Permission.APPROVE_PAYMENT_STEP_2,
     Permission.VIEW_FINANCIALS,
+    Permission.MANAGE_FINANCE,
     Permission.MANAGE_USERS,
     Permission.CREATE_GATE_PASS,
     Permission.VIEW_GATE_PASSES,

@@ -48,6 +48,7 @@ model User {
   createdActivities       Activity[]             @relation("ActivityCreatedBy")
   uploadedPhotos          SitePhoto[]            @relation("PhotoUploadedBy")
   createdIssues           Issue[]                @relation("IssueCreatedBy")
+  closedIssues            Issue[]                @relation("IssueClosedBy")
   inspections             Inspection[]           @relation("InspectionInspector")
   createdInspections      Inspection[]           @relation("InspectionCreatedBy")
   uploadedDocuments       Document[]             @relation("DocumentUploadedBy")
@@ -58,6 +59,12 @@ model User {
   uploadedAttachments     Attachment[]           @relation("AttachmentUploadedBy")
   markedAttendance        StaffAttendance[]      @relation("AttendanceMarker")
   pushSubscriptions       PushSubscription[]
+  bankTransactions        BankTransaction[]      @relation("BankTxnCreatedBy")
+  cashTransactions        CashTransaction[]      @relation("CashTxnCreatedBy")
+  createdJournalVouchers  JournalVoucher[]       @relation("JVCreatedBy")
+  postedJournalVouchers   JournalVoucher[]       @relation("JVPostedBy")
+  requestedBudgetRevisions BudgetRevision[]      @relation("BudgetRevisionRequestedBy")
+  reviewedBudgetRevisions  BudgetRevision[]      @relation("BudgetRevisionReviewedBy")
 
   @@map("users")
 }
@@ -98,6 +105,12 @@ model Project {
   dropdownOptions   DropdownOption[]
   attachments       Attachment[]
   staff             Staff[]
+  budgetHeads       BudgetHead[]
+  budgetRevisions   BudgetRevision[]
+  bankAccounts      BankAccount[]
+  cashAccounts      CashAccount[]
+  ownerAccounts     OwnerAccount[]
+  journalVouchers   JournalVoucher[]
 
   @@map("projects")
 }
@@ -230,6 +243,7 @@ model PurchaseOrder {
   editReason         String?
   editedAt           DateTime?
   editedBy           String?   @db.Uuid
+  budgetHeadId       String?   @db.Uuid // Phase 3: cost tagging for commitment tracking
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
   deletedAt          DateTime?
@@ -248,6 +262,7 @@ model PurchaseOrder {
   goodsReceipts    GoodsReceipt[]
   advancePaymentRequests PaymentRequest[]
   approvalWorkflow ApprovalWorkflow? @relation(fields: [approvalWorkflowId], references: [id])
+  budgetHead          BudgetHead?       @relation(fields: [budgetHeadId], references: [id])
 
   @@unique([projectId, poNumber])
   @@map("purchase_orders")
@@ -333,6 +348,7 @@ model PaymentRequest {
   fileName      String?
   fileMimeType  String?
   notes         String?
+  budgetHeadId  String?   @db.Uuid // Phase 3: cost tagging
   createdBy     String    @db.Uuid
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
@@ -342,6 +358,7 @@ model PaymentRequest {
   invoice            VendorInvoice?    @relation(fields: [invoiceId], references: [id])
   purchaseOrder      PurchaseOrder?    @relation(fields: [poId], references: [id])
   vendor             Vendor?           @relation(fields: [vendorId], references: [id])
+  budgetHead         BudgetHead?       @relation(fields: [budgetHeadId], references: [id])
   createdByUser      User              @relation("PaymentRequestCreatedBy", fields: [createdBy], references: [id])
   payments           Payment[]
   approvalWorkflowId String?           @unique @db.Uuid
@@ -359,9 +376,18 @@ model Payment {
   mode             String // PaymentMode enum
   reference        String?
   status           String   @default("PAID") // PaymentStatus enum
+  // Finance module links (Phase 1 — account linking; budgetHeadId used in Phase 3)
+  bankAccountId    String?  @db.Uuid
+  cashAccountId    String?  @db.Uuid
+  budgetHeadId     String?  @db.Uuid
+  postedAt         DateTime?
+  reversalOfId     String?  @db.Uuid
   createdAt        DateTime @default(now())
 
   paymentRequest PaymentRequest @relation(fields: [paymentRequestId], references: [id])
+  bankAccount    BankAccount?   @relation(fields: [bankAccountId], references: [id])
+  cashAccount    CashAccount?   @relation(fields: [cashAccountId], references: [id])
+  budgetHead     BudgetHead?    @relation(fields: [budgetHeadId], references: [id])
 
   @@map("payments")
 }
@@ -388,6 +414,7 @@ model ApprovalWorkflow {
   quotation      Quotation?
   purchaseOrder  PurchaseOrder?
   vendorInvoice  VendorInvoice?
+  journalVoucher JournalVoucher?
 
   @@unique([entityType, entityId])
   @@map("approval_workflows")
@@ -774,22 +801,29 @@ model SitePhoto {
 }
 
 model Issue {
-  id          String    @id @default(uuid()) @db.Uuid
-  projectId   String    @db.Uuid
-  category    String // IssueCategory enum
-  severity    String    @default("MEDIUM") // IssueSeverity enum
-  title       String
-  description String?
-  addressTo   String[] // array of User IDs (the 4 heads + self)
-  dateRaised  DateTime  @default(now())
-  createdBy   String    @db.Uuid
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  deletedAt   DateTime?
+  id              String    @id @default(uuid()) @db.Uuid
+  projectId       String    @db.Uuid
+  category        String // IssueCategory enum
+  severity        String    @default("MEDIUM") // IssueSeverity enum
+  title           String
+  description     String?
+  addressTo       String[] // array of User IDs (the 4 heads + self)
+  dateRaised      DateTime  @default(now())
+  status          String    @default("OPEN") // IssueStatus enum
+  closedAt        DateTime?
+  closedBy        String?   @db.Uuid
+  closurePhotoUrl String?
+  closureNotes    String?
+  createdBy       String    @db.Uuid
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  deletedAt       DateTime?
 
-  project       Project @relation(fields: [projectId], references: [id])
-  createdByUser User    @relation("IssueCreatedBy", fields: [createdBy], references: [id])
+  project        Project @relation(fields: [projectId], references: [id])
+  createdByUser  User    @relation("IssueCreatedBy", fields: [createdBy], references: [id])
+  closedByUser   User?   @relation("IssueClosedBy", fields: [closedBy], references: [id])
 
+  @@index([status])
   @@map("issues")
 }
 
@@ -1006,4 +1040,239 @@ model PushSubscription {
 
   @@index([userId])
   @@map("push_subscriptions")
+}
+
+// ═══════════════════════════════════════════════════════════
+// Finance Module — Budget Heads, Bank, Cash (Phase 1)
+// ═══════════════════════════════════════════════════════════
+
+model BudgetHead {
+  id              String   @id @default(uuid()) @db.Uuid
+  projectId       String   @db.Uuid
+  slNo            Int
+  particulars     String
+  allocatedAmount Decimal  @db.Decimal(15, 2)
+  // Cached derived amounts — NEVER user-edited. Updated only by financial posting ops.
+  committedAmount Decimal  @default(0) @db.Decimal(15, 2) // from approved POs not yet invoiced
+  actualAmount    Decimal  @default(0) @db.Decimal(15, 2) // from verified invoices + JV expense entries
+  paidAmount      Decimal  @default(0) @db.Decimal(15, 2) // from posted payments + JV cash movements
+  status          String   @default("ACTIVE") // BudgetHeadStatus enum
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  deletedAt       DateTime?
+
+  project  Project    @relation(fields: [projectId], references: [id])
+  payments Payment[]
+  journalEntries JournalEntry[]
+  paymentRequests PaymentRequest[]
+  purchaseOrders  PurchaseOrder[]
+  revisions       BudgetRevision[]
+
+  @@unique([projectId, slNo])
+  @@index([projectId])
+  @@map("budget_heads")
+}
+
+// ═══════════════════════════════════════════════════════════
+// Finance Module — Budget Revisions (Phase 6: edit approval + history)
+// ═══════════════════════════════════════════════════════════
+model BudgetRevision {
+  id              String   @id @default(uuid()) @db.Uuid
+  projectId       String   @db.Uuid
+  budgetHeadId    String   @db.Uuid
+  // Snapshot of values BEFORE the revision
+  oldSlNo         Int?
+  oldParticulars  String?
+  oldAllocated    Decimal? @db.Decimal(15, 2)
+  oldStatus       String?
+  // Proposed/new values
+  newSlNo         Int?
+  newParticulars  String?
+  newAllocated    Decimal? @db.Decimal(15, 2)
+  newStatus       String?
+  // Revision metadata
+  reason          String   // why the edit was requested
+  status          String   @default("PENDING") // PENDING | APPROVED | REJECTED | APPLIED
+  requestedBy     String   @db.Uuid
+  requestedAt     DateTime @default(now())
+  reviewedBy      String?  @db.Uuid
+  reviewedAt      DateTime?
+  reviewComments  String?
+  appliedAt       DateTime? // when the change was actually applied to the budget head
+  createdAt       DateTime @default(now())
+
+  project      Project      @relation(fields: [projectId], references: [id])
+  budgetHead   BudgetHead   @relation(fields: [budgetHeadId], references: [id], onDelete: Cascade)
+  requestedByUser User      @relation("BudgetRevisionRequestedBy", fields: [requestedBy], references: [id])
+  reviewedByUser  User?     @relation("BudgetRevisionReviewedBy", fields: [reviewedBy], references: [id])
+
+  @@index([projectId])
+  @@index([budgetHeadId])
+  @@index([status])
+  @@map("budget_revisions")
+}
+
+model BankAccount {
+  id              String   @id @default(uuid()) @db.Uuid
+  projectId       String   @db.Uuid
+  accountName     String
+  bankName        String?
+  accountNumber   String?
+  ifscCode        String?
+  openingBalance  Decimal  @default(0) @db.Decimal(15, 2)
+  currentBalance  Decimal  @default(0) @db.Decimal(15, 2) // cache — NEVER user-edited
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  deletedAt       DateTime?
+
+  project      Project           @relation(fields: [projectId], references: [id])
+  transactions BankTransaction[]
+  payments     Payment[]
+
+  @@index([projectId])
+  @@map("bank_accounts")
+}
+
+model BankTransaction {
+  id              String   @id @default(uuid()) @db.Uuid
+  bankAccountId   String   @db.Uuid
+  type            String // BankTxnType enum
+  amount          Decimal  @db.Decimal(15, 2)
+  balanceAfter    Decimal  @db.Decimal(15, 2) // snapshot at posting time
+  date            DateTime @default(now())
+  description     String?
+  referenceType   String // AccountTxnRefType enum
+  referenceId     String?  @db.Uuid
+  transferPairId  String?  @db.Uuid // links the two sides of an atomic transfer
+  status          String   @default("POSTED") // FinancialTxnStatus enum (POSTED | REVERSED)
+  reversalOfId    String?  @db.Uuid // original txn this reverses
+  createdBy       String   @db.Uuid
+  createdAt       DateTime @default(now())
+
+  bankAccount BankAccount @relation(fields: [bankAccountId], references: [id], onDelete: Cascade)
+  user        User        @relation("BankTxnCreatedBy", fields: [createdBy], references: [id])
+
+  @@index([bankAccountId, date])
+  @@index([referenceType, referenceId])
+  @@map("bank_transactions")
+}
+
+model CashAccount {
+  id              String   @id @default(uuid()) @db.Uuid
+  projectId       String   @db.Uuid
+  name            String
+  openingBalance  Decimal  @default(0) @db.Decimal(15, 2)
+  currentBalance  Decimal  @default(0) @db.Decimal(15, 2) // cache — NEVER user-edited
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  deletedAt       DateTime?
+
+  project      Project           @relation(fields: [projectId], references: [id])
+  transactions CashTransaction[]
+  payments     Payment[]
+
+  @@index([projectId])
+  @@map("cash_accounts")
+}
+
+model CashTransaction {
+  id              String   @id @default(uuid()) @db.Uuid
+  cashAccountId   String   @db.Uuid
+  type            String // CashTxnType enum
+  amount          Decimal  @db.Decimal(15, 2)
+  balanceAfter    Decimal  @db.Decimal(15, 2) // snapshot at posting time
+  date            DateTime @default(now())
+  description     String?
+  referenceType   String // AccountTxnRefType enum
+  referenceId     String?  @db.Uuid
+  transferPairId  String?  @db.Uuid // links the two sides of an atomic transfer
+  status          String   @default("POSTED") // FinancialTxnStatus enum (POSTED | REVERSED)
+  reversalOfId    String?  @db.Uuid // original txn this reverses
+  createdBy       String   @db.Uuid
+  createdAt       DateTime @default(now())
+
+  cashAccount CashAccount @relation(fields: [cashAccountId], references: [id], onDelete: Cascade)
+  user        User        @relation("CashTxnCreatedBy", fields: [createdBy], references: [id])
+
+  @@index([cashAccountId, date])
+  @@index([referenceType, referenceId])
+  @@map("cash_transactions")
+}
+
+// ═══════════════════════════════════════════════════════════
+// Finance Module — Journal Vouchers & Owner Account (Phase 2)
+// ═══════════════════════════════════════════════════════════
+
+model OwnerAccount {
+  id              String   @id @default(uuid()) @db.Uuid
+  projectId       String   @db.Uuid
+  ownerName       String
+  openingBalance  Decimal  @default(0) @db.Decimal(15, 2)
+  currentBalance  Decimal  @default(0) @db.Decimal(15, 2)
+    // POSITIVE = company owes owner (owner put in more than taken out)
+    // NEGATIVE = owner owes company (rare)
+    // NEVER user-edited. Updated only by:
+    //   - Owner contribution (money into company bank) → currentBalance += amount
+    //   - JV with OWNER credit (owner paid vendor directly) → currentBalance += amount
+    //   - JV with OWNER debit (company repays owner) → currentBalance -= amount
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  deletedAt       DateTime?
+
+  project         Project          @relation(fields: [projectId], references: [id])
+  journalEntries  JournalEntry[]
+
+  @@index([projectId])
+  @@map("owner_accounts")
+}
+
+model JournalVoucher {
+  id               String    @id @default(uuid()) @db.Uuid
+  projectId        String    @db.Uuid
+  jvNumber         String    @unique
+  date             DateTime  @default(now())
+  description      String?
+  type             String // JVType enum: OWNER_EXPENSE | OWNER_REPAYMENT | INTER_ACCOUNT | ADJUSTMENT
+  status           String    @default("DRAFT")
+    // DRAFT → PENDING_APPROVAL → APPROVED → POSTED
+    //         → REJECTED | CANCELLED
+  totalDebit       Decimal   @default(0) @db.Decimal(15, 2)
+  totalCredit      Decimal   @default(0) @db.Decimal(15, 2)
+  postedAt         DateTime?
+  postedBy         String?   @db.Uuid
+  approvalWorkflowId String? @unique @db.Uuid
+  createdBy        String    @db.Uuid
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  deletedAt        DateTime?
+
+  project          Project           @relation(fields: [projectId], references: [id])
+  approvalWorkflow ApprovalWorkflow? @relation(fields: [approvalWorkflowId], references: [id])
+  createdByUser    User              @relation("JVCreatedBy", fields: [createdBy], references: [id])
+  postedByUser     User?             @relation("JVPostedBy", fields: [postedBy], references: [id])
+  entries          JournalEntry[]
+
+  @@index([projectId])
+  @@map("journal_vouchers")
+}
+
+model JournalEntry {
+  id               String   @id @default(uuid()) @db.Uuid
+  journalVoucherId String   @db.Uuid
+  accountType      String // JournalAccountType enum: BANK | CASH | OWNER | BUDGET_HEAD
+  accountId        String?  @db.Uuid // bank/cash account ID if BANK/CASH
+  budgetHeadId     String?  @db.Uuid // if BUDGET_HEAD
+  ownerAccountId   String?  @db.Uuid // if OWNER
+  debit            Decimal  @default(0) @db.Decimal(15, 2)
+  credit           Decimal  @default(0) @db.Decimal(15, 2)
+  description      String?
+
+  journalVoucher JournalVoucher @relation(fields: [journalVoucherId], references: [id], onDelete: Cascade)
+  budgetHead     BudgetHead?    @relation(fields: [budgetHeadId], references: [id])
+  ownerAccount   OwnerAccount?  @relation(fields: [ownerAccountId], references: [id])
+
+  @@index([journalVoucherId])
+  @@map("journal_entries")
 }

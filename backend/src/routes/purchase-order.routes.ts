@@ -82,6 +82,7 @@ const poInclude = {
   editedByUser: { select: { id: true, name: true } },
   parentPo: { select: { id: true, poNumber: true } },
   childPos: { select: { id: true, poNumber: true, regenerationNumber: true, status: true } },
+  budgetHead: { select: { id: true, particulars: true } },
   approvalWorkflow: {
     include: {
       steps: {
@@ -299,6 +300,7 @@ router.post(
           totalAmount,
           gstAmount: gst,
           grandTotal,
+          budgetHeadId: req.body.budgetHeadId ?? null,
           createdBy: req.user!.id,
           items: {
             create: quotation.items.map((item) => ({
@@ -505,6 +507,19 @@ router.post(
             where: { id: po.id },
             data: { status: POStatus.APPROVED },
           });
+        }
+
+        // ── Finance integration: increase budget head committedAmount ──
+        if (po.budgetHeadId) {
+          const head = await prisma.budgetHead.findFirst({
+            where: { id: po.budgetHeadId, projectId, deletedAt: null },
+          });
+          if (head) {
+            await prisma.budgetHead.update({
+              where: { id: po.budgetHeadId },
+              data: { committedAmount: Number(head.committedAmount) + Number(po.grandTotal) },
+            });
+          }
         }
       }
 

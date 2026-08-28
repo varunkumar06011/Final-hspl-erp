@@ -2,6 +2,7 @@
 import {
   Box,
   Typography,
+  Stack,
   Button,
   Card,
   CardContent,
@@ -83,7 +84,9 @@ interface PaymentRequestRow {
   purchaseOrder: { id: string; poNumber: string; grandTotal: number; paymentType: string } | null;
   createdBy: string;
   createdByUser: { id: string; name: string };
-  payments: { id: string; amount: number; mode: string; reference: string | null; date: string }[];
+  payments: { id: string; amount: number; mode: string; reference: string | null; date: string; bankAccountId: string | null; cashAccountId: string | null; bankAccount: { id: string; accountName: string } | null; cashAccount: { id: string; name: string } | null }[];
+  budgetHeadId: string | null;
+  budgetHead: { id: string; particulars: string } | null;
   approvalWorkflow: {
     id: string;
     status: string;
@@ -200,6 +203,33 @@ export default function PaymentsPage() {
     },
   });
 
+  const { data: budgetHeadsData } = useQuery({
+    queryKey: ['/budget-heads', 'all'],
+    queryFn: async () => {
+      const response = await api.get('/budget-heads', { params: { page: 1, pageSize: 200 } });
+      return response.data;
+    },
+  });
+  const budgetHeads: { id: string; particulars: string }[] = budgetHeadsData?.data ?? [];
+
+  const { data: bankAccountsData } = useQuery({
+    queryKey: ['/bank-accounts', 'all'],
+    queryFn: async () => {
+      const response = await api.get('/bank-accounts', { params: { page: 1, pageSize: 100 } });
+      return response.data;
+    },
+  });
+  const bankAccounts: { id: string; accountName: string; currentBalance: number }[] = bankAccountsData?.data ?? [];
+
+  const { data: cashAccountsData } = useQuery({
+    queryKey: ['/cash-accounts', 'all'],
+    queryFn: async () => {
+      const response = await api.get('/cash-accounts', { params: { page: 1, pageSize: 100 } });
+      return response.data;
+    },
+  });
+  const cashAccounts: { id: string; name: string; currentBalance: number }[] = cashAccountsData?.data ?? [];
+
   const createInvoicePaymentMutation = useMutation({
     mutationFn: async (payload: Record<string, unknown>) => {
       const response = await api.post('/payments/invoice-payment', payload);
@@ -226,6 +256,7 @@ export default function PaymentsPage() {
       formData.append('amount', String(advancePayForm.amount ?? ''));
       if (advancePayForm.paymentMode) formData.append('paymentMode', String(advancePayForm.paymentMode));
       if (advancePayForm.notes) formData.append('notes', String(advancePayForm.notes));
+      if (advancePayForm.budgetHeadId) formData.append('budgetHeadId', String(advancePayForm.budgetHeadId));
       formData.append('acknowledged', 'true');
       if (advanceFile) formData.append('file', advanceFile);
       const response = await api.post('/payments/po-advance', formData, {
@@ -254,6 +285,7 @@ export default function PaymentsPage() {
       formData.append('category', String(expenseForm.category ?? ''));
       if (expenseForm.expenseDate) formData.append('expenseDate', String(expenseForm.expenseDate));
       if (expenseForm.paymentMode) formData.append('paymentMode', String(expenseForm.paymentMode));
+      if (expenseForm.budgetHeadId) formData.append('budgetHeadId', String(expenseForm.budgetHeadId));
       if (expenseFile) formData.append('file', expenseFile);
       const response = await api.post('/payments/expense', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
@@ -592,6 +624,7 @@ export default function PaymentsPage() {
                   <TableCell sx={{ fontWeight: 600 }}>Description / Invoice</TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>Vendor</TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>Amount</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Budget Head</TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>Approvals</TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>Status</TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>File</TableCell>
@@ -600,9 +633,9 @@ export default function PaymentsPage() {
               </TableHead>
               <TableBody>
                 {isLoading ? (
-                  <TableRow><TableCell colSpan={9} align="center" sx={{ py: 4 }}><CircularProgress size={32} /></TableCell></TableRow>
+                  <TableRow><TableCell colSpan={10} align="center" sx={{ py: 4 }}><CircularProgress size={32} /></TableCell></TableRow>
                 ) : rows.length === 0 ? (
-                  <TableRow><TableCell colSpan={9} align="center" sx={{ py: 4 }}><Typography color="text.secondary">No payment requests found</Typography></TableCell></TableRow>
+                  <TableRow><TableCell colSpan={10} align="center" sx={{ py: 4 }}><Typography color="text.secondary">No payment requests found</Typography></TableCell></TableRow>
                 ) : (
                   rows.map((row) => (
                     <TableRow key={row.id} hover>
@@ -617,12 +650,26 @@ export default function PaymentsPage() {
                       </TableCell>
                       <TableCell data-label="Vendor">{row.vendor ? `${row.vendor.vendorCode} - ${row.vendor.name}` : '—'}</TableCell>
                       <TableCell data-label="Amount">{formatCurrency(row.amount)}</TableCell>
+                      <TableCell data-label="Budget Head">
+                        {row.budgetHead
+                          ? <Chip label={row.budgetHead.particulars} size="small" variant="outlined" color="primary" />
+                          : <Typography variant="caption" color="text.secondary">—</Typography>}
+                      </TableCell>
                       <TableCell data-label="Approvals">
                         {row.approvalWorkflow
                           ? `${getApprovalCount(row)}/2`
                           : '—'}
                       </TableCell>
-                      <TableCell data-label="Status"><Chip label={row.status} size="small" color={STATUS_COLORS[row.status] ?? 'default'} /></TableCell>
+                      <TableCell data-label="Status">
+                        <Stack spacing={0.5} alignItems="flex-start">
+                          <Chip label={row.status} size="small" color={STATUS_COLORS[row.status] ?? 'default'} />
+                          {row.status === PaymentStatus.PAID && row.payments[0] && (
+                            <Typography variant="caption" color="text.secondary">
+                              {row.payments[0].bankAccount ? `via ${row.payments[0].bankAccount.accountName}` : row.payments[0].cashAccount ? `via ${row.payments[0].cashAccount.name}` : `via ${row.payments[0].mode}`}
+                            </Typography>
+                          )}
+                        </Stack>
+                      </TableCell>
                       <TableCell data-label="File">
                         {row.filePath
                           ? <IconButton size="small" onClick={() => handleDownload(row.id, row.fileName ?? 'file')}><DownloadIcon fontSize="small" /></IconButton>
@@ -692,6 +739,7 @@ export default function PaymentsPage() {
       <ResponsiveDialog open={!!invoicePayOpen} onClose={() => setInvoicePayOpen(null)} maxWidth="sm" fullWidth>
         <DialogTitle>Create Payment Request for {invoicePayOpen?.invoiceCode}</DialogTitle>
         <DialogContent>
+          {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
             <Typography variant="body2">Vendor: <strong>{invoicePayOpen?.vendor?.name}</strong></Typography>
             <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1 }}>
@@ -783,6 +831,17 @@ export default function PaymentsPage() {
               {PAYMENT_MODES.map((m) => <MenuItem key={m} value={m}>{m.replace(/_/g, ' ')}</MenuItem>)}
             </TextField>
             <TextField
+              select
+              label="Budget Head (optional)"
+              value={String(invoicePayForm.budgetHeadId ?? '')}
+              onChange={(e) => setInvoicePayForm({ ...invoicePayForm, budgetHeadId: e.target.value })}
+              fullWidth
+              size="small"
+            >
+              <MenuItem value="">— None —</MenuItem>
+              {budgetHeads.map((h) => <MenuItem key={h.id} value={h.id}>{h.particulars}</MenuItem>)}
+            </TextField>
+            <TextField
               label="Notes"
               value={String(invoicePayForm.notes ?? '')}
               onChange={(e) => setInvoicePayForm({ ...invoicePayForm, notes: e.target.value })}
@@ -807,6 +866,7 @@ export default function PaymentsPage() {
                 amount: Number(invoicePayForm.amount),
                 paymentMode: invoicePayForm.paymentMode || undefined,
                 notes: invoicePayForm.notes || undefined,
+                budgetHeadId: invoicePayForm.budgetHeadId || undefined,
               });
             }}
             disabled={createInvoicePaymentMutation.isPending || !invoicePayForm.amount || Number(invoicePayForm.amount) <= 0}
@@ -820,6 +880,7 @@ export default function PaymentsPage() {
       <ResponsiveDialog open={!!advancePayOpen} onClose={() => { setAdvancePayOpen(null); setAdvanceFile(null); if (advanceFileRef.current) advanceFileRef.current.value = ''; }} maxWidth="sm" fullWidth>
         <DialogTitle>Create Advance Payment for {advancePayOpen?.poNumber}</DialogTitle>
         <DialogContent>
+          {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
             <Typography variant="body2">Vendor: <strong>{advancePayOpen?.vendor?.name}</strong></Typography>
             <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1 }}>
@@ -872,6 +933,17 @@ export default function PaymentsPage() {
               size="small"
             >
               {PAYMENT_MODES.map((m) => <MenuItem key={m} value={m}>{m.replace(/_/g, ' ')}</MenuItem>)}
+            </TextField>
+            <TextField
+              select
+              label="Budget Head (optional)"
+              value={String(advancePayForm.budgetHeadId ?? '')}
+              onChange={(e) => setAdvancePayForm({ ...advancePayForm, budgetHeadId: e.target.value })}
+              fullWidth
+              size="small"
+            >
+              <MenuItem value="">— None —</MenuItem>
+              {budgetHeads.map((h) => <MenuItem key={h.id} value={h.id}>{h.particulars}</MenuItem>)}
             </TextField>
             <TextField
               label="Notes"
@@ -974,6 +1046,17 @@ export default function PaymentsPage() {
               >
                 {PAYMENT_MODES.map((m) => <MenuItem key={m} value={m}>{m.replace(/_/g, ' ')}</MenuItem>)}
               </TextField>
+              <TextField
+                select
+                label="Budget Head (optional)"
+                value={String(expenseForm.budgetHeadId ?? '')}
+                onChange={(e) => setExpenseForm({ ...expenseForm, budgetHeadId: e.target.value })}
+                size="small"
+                sx={{ flex: 1, minWidth: 0 }}
+              >
+                <MenuItem value="">— None —</MenuItem>
+                {budgetHeads.map((h) => <MenuItem key={h.id} value={h.id}>{h.particulars}</MenuItem>)}
+              </TextField>
             </Box>
             <Box>
               <input ref={fileRef} type="file" accept="image/*,application/pdf" style={{ display: 'none' }} onChange={(e) => {
@@ -1039,6 +1122,30 @@ export default function PaymentsPage() {
               {PAYMENT_MODES.map((m) => <MenuItem key={m} value={m}>{m.replace(/_/g, ' ')}</MenuItem>)}
             </TextField>
             <TextField
+              select
+              label="Pay from Bank Account (optional)"
+              value={String(payForm.bankAccountId ?? '')}
+              onChange={(e) => setPayForm({ ...payForm, bankAccountId: e.target.value, cashAccountId: '' })}
+              fullWidth
+              size="small"
+              helperText="Selecting an account will create a bank transaction and update balance"
+            >
+              <MenuItem value="">— None —</MenuItem>
+              {bankAccounts.map((a) => <MenuItem key={a.id} value={a.id}>{a.accountName} ({formatCurrency(a.currentBalance)})</MenuItem>)}
+            </TextField>
+            <TextField
+              select
+              label="Pay from Cash Account (optional)"
+              value={String(payForm.cashAccountId ?? '')}
+              onChange={(e) => setPayForm({ ...payForm, cashAccountId: e.target.value, bankAccountId: '' })}
+              fullWidth
+              size="small"
+              helperText="Selecting an account will create a cash transaction and update balance"
+            >
+              <MenuItem value="">— None —</MenuItem>
+              {cashAccounts.map((a) => <MenuItem key={a.id} value={a.id}>{a.name} ({formatCurrency(a.currentBalance)})</MenuItem>)}
+            </TextField>
+            <TextField
               label="Reference (cheque no, UPI ID, etc.)"
               value={String(payForm.reference ?? '')}
               onChange={(e) => setPayForm({ ...payForm, reference: e.target.value })}
@@ -1060,6 +1167,8 @@ export default function PaymentsPage() {
                   amount: Number(payForm.amount),
                   mode: payForm.mode,
                   reference: payForm.reference || undefined,
+                  bankAccountId: payForm.bankAccountId || undefined,
+                  cashAccountId: payForm.cashAccountId || undefined,
                 },
               });
             }}
@@ -1075,6 +1184,8 @@ export default function PaymentsPage() {
         action={approvalAction?.action ?? 'approve'}
         entityLabel="Payment Request"
         pending={approveMutation.isPending || rejectMutation.isPending}
+        error={error}
+        onClearError={() => setError('')}
         onClose={() => setApprovalAction(null)}
         onConfirm={(payload) => {
           if (!approvalAction) return;

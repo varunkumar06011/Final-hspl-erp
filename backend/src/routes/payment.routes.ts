@@ -1,5 +1,5 @@
 import { Router, Response, NextFunction } from 'express';
-import { Permission, AuditAction, PaymentStatus, UserRole, InvoiceVerificationStatus, getRequiredApproverCount } from '@hospital-erp/shared';
+import { Permission, AuditAction, PaymentStatus, UserRole, InvoiceVerificationStatus, getRequiredApproverCount, BankTxnType, CashTxnType, AccountTxnRefType } from '@hospital-erp/shared';
 import {
   createPaymentRequestSchema,
   listPaymentRequestsSchema,
@@ -96,7 +96,20 @@ const prInclude = {
   invoice: { select: { id: true, invoiceCode: true, invoiceNumber: true, totalAmount: true } },
   purchaseOrder: { select: { id: true, poNumber: true, grandTotal: true, paymentType: true } },
   createdByUser: { select: { id: true, name: true } },
-  payments: true,
+  payments: {
+    select: {
+      id: true,
+      amount: true,
+      mode: true,
+      reference: true,
+      date: true,
+      bankAccountId: true,
+      cashAccountId: true,
+      bankAccount: { select: { id: true, accountName: true } },
+      cashAccount: { select: { id: true, name: true } },
+    },
+  },
+  budgetHead: { select: { id: true, particulars: true } },
   approvalWorkflow: {
     include: {
       steps: {
@@ -356,6 +369,7 @@ router.post(
             filePath,
             fileName,
             fileMimeType,
+            budgetHeadId: req.body.budgetHeadId ?? null,
             createdBy: req.user!.id,
           },
         });
@@ -480,6 +494,7 @@ router.post(
             amount: Number(amount),
             paymentMode: paymentMode ?? null,
             notes: notes ?? null,
+            budgetHeadId: req.body.budgetHeadId ?? null,
             createdBy: req.user!.id,
           },
         });
@@ -593,6 +608,7 @@ router.post(
             filePath,
             fileName,
             fileMimeType,
+            budgetHeadId: req.body.budgetHeadId ?? null,
             createdBy: req.user!.id,
           },
         });
@@ -863,12 +879,76 @@ router.post(
       }
 
       const payment = await prisma.$transaction(async (tx) => {
+        const paymentAmount = Number(req.body.amount);
+        const bankAccountId = (req.body.bankAccountId as string) ?? null;
+        const cashAccountId = (req.body.cashAccountId as string) ?? null;
+
+        // ── Finance integration: create bank/cash transaction ──
+        if (bankAccountId) {
+          const bankAccount = await tx.bankAccount.findFirst({
+            where: { id: bankAccountId, projectId, deletedAt: null },
+          });
+          if (!bankAccount) throw new Error('Bank account not found in this project');
+          if (!bankAccount.isActive) throw new Error('Bank account is inactive');
+          const newBalance = Number(bankAccount.currentBalance) - paymentAmount;
+          if (newBalance < 0) throw new Error(`Insufficient balance in bank account ${bankAccount.accountName}`);
+          await tx.bankTransaction.create({
+            data: {
+              bankAccountId,
+              type: BankTxnType.WITHDRAWAL,
+              amount: paymentAmount,
+              balanceAfter: newBalance,
+              date: new Date(),
+              description: `Payment: ${pr.paymentCode} (${pr.type})`,
+              referenceType: AccountTxnRefType.PAYMENT,
+              referenceId: pr.id,
+              status: 'POSTED',
+              createdBy: req.user!.id,
+            },
+          });
+          await tx.bankAccount.update({
+            where: { id: bankAccountId },
+            data: { currentBalance: newBalance },
+          });
+        } else if (cashAccountId) {
+          const cashAccount = await tx.cashAccount.findFirst({
+            where: { id: cashAccountId, projectId, deletedAt: null },
+          });
+          if (!cashAccount) throw new Error('Cash account not found in this project');
+          if (!cashAccount.isActive) throw new Error('Cash account is inactive');
+          const newBalance = Number(cashAccount.currentBalance) - paymentAmount;
+          if (newBalance < 0) throw new Error(`Insufficient balance in cash account ${cashAccount.name}`);
+          await tx.cashTransaction.create({
+            data: {
+              cashAccountId,
+              type: CashTxnType.OUT,
+              amount: paymentAmount,
+              balanceAfter: newBalance,
+              date: new Date(),
+              description: `Payment: ${pr.paymentCode} (${pr.type})`,
+              referenceType: AccountTxnRefType.PAYMENT,
+              referenceId: pr.id,
+              status: 'POSTED',
+              createdBy: req.user!.id,
+            },
+          });
+          await tx.cashAccount.update({
+            where: { id: cashAccountId },
+            data: { currentBalance: newBalance },
+          });
+        }
+
+        // ── Create Payment record with finance links ──
         const created = await tx.payment.create({
           data: {
             paymentRequestId: pr.id,
-            amount: Number(req.body.amount),
+            amount: paymentAmount,
             mode: req.body.mode,
             reference: req.body.reference ?? null,
+            bankAccountId,
+            cashAccountId,
+            budgetHeadId: pr.budgetHeadId ?? null,
+            postedAt: new Date(),
           },
         });
 
@@ -876,6 +956,19 @@ router.post(
           where: { id: pr.id },
           data: { status: PaymentStatus.PAID },
         });
+
+        // ── Update budget head paidAmount ──
+        if (pr.budgetHeadId) {
+          const head = await tx.budgetHead.findFirst({
+            where: { id: pr.budgetHeadId, projectId, deletedAt: null },
+          });
+          if (head) {
+            await tx.budgetHead.update({
+              where: { id: pr.budgetHeadId },
+              data: { paidAmount: Number(head.paidAmount) + paymentAmount },
+            });
+          }
+        }
 
         // Recalculate invoice payment status inside the transaction
         if (pr.invoiceId) {

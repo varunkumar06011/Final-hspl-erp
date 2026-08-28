@@ -1,5 +1,5 @@
 ﻿import { useEffect, useState } from 'react';
-import { Button, DialogActions, DialogContent, DialogTitle, TextField } from '@mui/material';
+import { Alert, Button, DialogActions, DialogContent, DialogTitle, TextField } from '@mui/material';
 import ResponsiveDialog from './ResponsiveDialog';
 import AcknowledgementCheckbox from './AcknowledgementCheckbox';
 
@@ -8,6 +8,8 @@ interface ApprovalActionDialogProps {
   action: 'approve' | 'reject';
   entityLabel: string;
   pending?: boolean;
+  error?: string;
+  onClearError?: () => void;
   onClose: () => void;
   onConfirm: (payload: { comments?: string; reason?: string; acknowledged: true }) => void;
 }
@@ -17,6 +19,8 @@ export default function ApprovalActionDialog({
   action,
   entityLabel,
   pending = false,
+  error,
+  onClearError,
   onClose,
   onConfirm,
 }: ApprovalActionDialogProps) {
@@ -36,6 +40,7 @@ export default function ApprovalActionDialog({
     <ResponsiveDialog open={open} onClose={pending ? undefined : onClose} fullWidth maxWidth="sm">
       <DialogTitle>{isReject ? 'Reject' : 'Approve'} {entityLabel}</DialogTitle>
       <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '12px !important' }}>
+        {error && <Alert severity="error" sx={{ width: '100%' }} onClose={onClearError}>{error}</Alert>}
         <TextField
           label={isReject ? 'Reason for rejection' : 'Comments (optional)'}
           value={notes}

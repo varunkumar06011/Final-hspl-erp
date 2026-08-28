@@ -18,7 +18,7 @@ const router = Router();
 router.use(authMiddleware);
 
 const receiptInclude = {
-  purchaseOrder: { select: { id: true, poNumber: true, vendor: { select: { id: true, name: true, vendorCode: true } } } },
+  purchaseOrder: { select: { id: true, poNumber: true, vendor: { select: { id: true, name: true, vendorCode: true } }, budgetHead: { select: { id: true, particulars: true } } } },
   gatePass: { select: { id: true, passNumber: true, status: true, createdBy: true } },
   items: { include: { poItem: { select: { unitPrice: true } } } },
   inspection: { select: { id: true, status: true, inspectorId: true, completedDate: true } },
@@ -420,6 +420,37 @@ router.post(
             data: { stockStatus: 'RECEIVED' },
           });
         }
+
+        // ── Finance integration: convert commitment to actual on budget head ──
+        if (receipt.purchaseOrder?.budgetHeadId) {
+          const head = await tx.budgetHead.findFirst({
+            where: { id: receipt.purchaseOrder.budgetHeadId, projectId, deletedAt: null },
+          });
+          if (head) {
+            // Calculate accepted value: sum of acceptedQty * unitPrice (+ GST) per line
+            let grnValue = 0;
+            for (const line of receipt.items) {
+              if (Number(line.acceptedQty) <= 0) continue;
+              const poItem = line.poItem;
+              if (poItem) {
+                const lineAmount = Number(poItem.unitPrice) * Number(line.acceptedQty);
+                const lineGst = lineAmount * Number(poItem.gstRate) / 100;
+                grnValue += lineAmount + lineGst;
+              }
+            }
+            if (grnValue > 0) {
+              // Decrease committed (goods received, commitment fulfilled)
+              const newCommitted = Math.max(0, Number(head.committedAmount) - grnValue);
+              // Increase actual (expense is now incurred)
+              const newActual = Number(head.actualAmount) + grnValue;
+              await tx.budgetHead.update({
+                where: { id: receipt.purchaseOrder.budgetHeadId },
+                data: { committedAmount: newCommitted, actualAmount: newActual },
+              });
+            }
+          }
+        }
+
         return tx.goodsReceipt.findUnique({ where: { id: receipt.id }, include: receiptInclude });
       });
 

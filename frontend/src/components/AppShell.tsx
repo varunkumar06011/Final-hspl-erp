@@ -21,32 +21,50 @@ import {
   People as PeopleIcon,
   Logout as LogoutIcon,
   Notifications as NotificationsIcon,
+  AccountBalanceWallet as BudgetIcon,
+  Savings as BankIcon,
+  Payments as CashIcon,
+  Person as OwnerIcon,
+  ReceiptLong as JVIcon,
+  Dashboard as FinanceDashboardIcon,
+  Assessment as ReportsIcon,
 } from '@mui/icons-material';
 import { useAuthStore } from '../stores/authStore';
 import { hasPermission, Permission, UserRole } from '@hospital-erp/shared';
 import { onForegroundMessage, enableNotifications, isPushSupported, getPermissionState } from '../config/notifications';
 
 const NAV_ITEMS = [
-  { label: 'Dashboard', icon: <DashboardIcon />, path: '/' },
-  { label: 'Vendors', icon: <VendorIcon />, path: '/vendors', permission: Permission.VIEW_FINANCIALS },
-  { label: 'Quotations', icon: <ReceiptIcon />, path: '/quotations', permission: Permission.VIEW_FINANCIALS },
-  { label: 'Purchase Orders', icon: <ReceiptIcon />, path: '/pos', permission: Permission.VIEW_FINANCIALS },
-  { label: 'Gate Passes', icon: <GatePassIcon />, path: '/gate-passes', permission: Permission.VIEW_GATE_PASSES },
-  { label: 'Goods Receipts', icon: <ReceiptIcon />, path: '/goods-receipts', permission: Permission.MANAGE_INVENTORY },
-  { label: 'GST Records', icon: <ReceiptIcon />, path: '/gst-records', permission: Permission.VIEW_FINANCIALS },
-  { label: 'Invoices', icon: <ReceiptIcon />, path: '/invoices', permission: Permission.VIEW_FINANCIALS },
-  { label: 'Payments', icon: <PaymentIcon />, path: '/payments', permission: Permission.VIEW_FINANCIALS },
-  { label: 'Inventory', icon: <InventoryIcon />, path: '/inventory', permission: Permission.MANAGE_INVENTORY },
-  { label: 'Assets', icon: <AssetsIcon />, path: '/assets', permission: Permission.MANAGE_INVENTORY },
-  { label: 'Attendance', icon: <LabourIcon />, path: '/labour', permission: Permission.MANAGE_LABOUR },
-  { label: 'Site Photos', icon: <PhotoIcon />, path: '/photos', permission: Permission.UPLOAD_PHOTOS },
-  { label: 'Issues', icon: <IssueIcon />, path: '/issues', permission: Permission.MANAGE_ISSUES },
-  { label: 'Inspections', icon: <InspectionIcon />, path: '/inspections', permission: Permission.MANAGE_INSPECTIONS },
-  { label: 'Documents', icon: <DocumentIcon />, path: '/documents', permission: Permission.MANAGE_DOCUMENTS },
-  { label: 'Contracts', icon: <ContractIcon />, path: '/contracts', permission: Permission.MANAGE_CONTRACTS },
-  { label: 'Audit Log', icon: <AuditIcon />, path: '/audit', permission: Permission.VIEW_AUDIT_LOG },
-  { label: 'Users', icon: <PeopleIcon />, path: '/users', permission: Permission.MANAGE_USERS },
-  { label: 'Settings', icon: <SettingsIcon />, path: '/settings' },
+  { label: 'Dashboard', icon: <DashboardIcon />, path: '/', section: '' },
+  // ── Procurement ──
+  { label: 'Vendors', icon: <VendorIcon />, path: '/vendors', permission: Permission.VIEW_FINANCIALS, section: 'Procurement' },
+  { label: 'Quotations', icon: <ReceiptIcon />, path: '/quotations', permission: Permission.VIEW_FINANCIALS, section: 'Procurement' },
+  { label: 'Purchase Orders', icon: <ReceiptIcon />, path: '/pos', permission: Permission.VIEW_FINANCIALS, section: 'Procurement' },
+  { label: 'Gate Passes', icon: <GatePassIcon />, path: '/gate-passes', permission: Permission.VIEW_GATE_PASSES, section: 'Procurement' },
+  { label: 'Goods Receipts', icon: <ReceiptIcon />, path: '/goods-receipts', permission: Permission.MANAGE_INVENTORY, section: 'Procurement' },
+  { label: 'GST Records', icon: <ReceiptIcon />, path: '/gst-records', permission: Permission.VIEW_FINANCIALS, section: 'Procurement' },
+  { label: 'Invoices', icon: <ReceiptIcon />, path: '/invoices', permission: Permission.VIEW_FINANCIALS, section: 'Procurement' },
+  { label: 'Payments', icon: <PaymentIcon />, path: '/payments', permission: Permission.VIEW_FINANCIALS, section: 'Procurement' },
+  // ── Finance ──
+  { label: 'Finance Dashboard', icon: <FinanceDashboardIcon />, path: '/finance-dashboard', permission: Permission.VIEW_FINANCIALS, section: 'Finance' },
+  { label: 'Finance Reports', icon: <ReportsIcon />, path: '/finance-reports', permission: Permission.VIEW_FINANCIALS, section: 'Finance' },
+  { label: 'Budget Heads', icon: <BudgetIcon />, path: '/budget-heads', permission: Permission.VIEW_FINANCIALS, section: 'Finance' },
+  { label: 'Bank Accounts', icon: <BankIcon />, path: '/bank-accounts', permission: Permission.VIEW_FINANCIALS, section: 'Finance' },
+  { label: 'Cash Accounts', icon: <CashIcon />, path: '/cash-accounts', permission: Permission.VIEW_FINANCIALS, section: 'Finance' },
+  { label: 'Owner Account', icon: <OwnerIcon />, path: '/owner-accounts', permission: Permission.VIEW_FINANCIALS, section: 'Finance' },
+  { label: 'Journal Vouchers', icon: <JVIcon />, path: '/journal-vouchers', permission: Permission.VIEW_FINANCIALS, section: 'Finance' },
+  // ── Site Operations ──
+  { label: 'Inventory', icon: <InventoryIcon />, path: '/inventory', permission: Permission.MANAGE_INVENTORY, section: 'Site Operations' },
+  { label: 'Assets', icon: <AssetsIcon />, path: '/assets', permission: Permission.MANAGE_INVENTORY, section: 'Site Operations' },
+  { label: 'Attendance', icon: <LabourIcon />, path: '/labour', permission: Permission.MANAGE_LABOUR, section: 'Site Operations' },
+  { label: 'Site Photos', icon: <PhotoIcon />, path: '/photos', permission: Permission.UPLOAD_PHOTOS, section: 'Site Operations' },
+  { label: 'Issues', icon: <IssueIcon />, path: '/issues', permission: Permission.MANAGE_ISSUES, section: 'Site Operations' },
+  { label: 'Inspections', icon: <InspectionIcon />, path: '/inspections', permission: Permission.MANAGE_INSPECTIONS, section: 'Site Operations' },
+  { label: 'Documents', icon: <DocumentIcon />, path: '/documents', permission: Permission.MANAGE_DOCUMENTS, section: 'Site Operations' },
+  { label: 'Contracts', icon: <ContractIcon />, path: '/contracts', permission: Permission.MANAGE_CONTRACTS, section: 'Site Operations' },
+  // ── Admin ──
+  { label: 'Audit Log', icon: <AuditIcon />, path: '/audit', permission: Permission.VIEW_AUDIT_LOG, section: 'Admin' },
+  { label: 'Users', icon: <PeopleIcon />, path: '/users', permission: Permission.MANAGE_USERS, section: 'Admin' },
+  { label: 'Settings', icon: <SettingsIcon />, path: '/settings', section: 'Admin' },
 ];
 
 const ROLE_COLORS: Record<UserRole, string> = {
@@ -157,24 +175,46 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       <Toolbar />
       <Box sx={{ overflow: 'auto' }}>
         <List>
-          {NAV_ITEMS.filter((item) => !item.permission || (user && hasPermission(user.role as UserRole, item.permission))).map((item) => (
-            <ListItem
-              key={item.path}
-              button
-              onClick={() => handleNavigate(item.path)}
-              selected={location.pathname === item.path}
-              sx={{
-                '&.Mui-selected': {
-                  bgcolor: 'primary.light',
-                  borderRight: '4px solid',
-                  borderColor: 'primary.main',
-                },
-              }}
-            >
-              <ListItemIcon sx={{ minWidth: 40 }}>{item.icon}</ListItemIcon>
-              <ListItemText primary={item.label} primaryTypographyProps={{ fontSize: 14 }} />
-            </ListItem>
-          ))}
+          {NAV_ITEMS.filter((item) => !item.permission || (user && hasPermission(user.role as UserRole, item.permission))).map((item, idx, arr) => {
+            const prevItem = idx > 0 ? arr[idx - 1] : null;
+            const showSectionHeader = item.section !== '' && (!prevItem || prevItem.section !== item.section);
+            return (
+              <Box key={item.path}>
+                {showSectionHeader && (
+                  <Typography
+                    variant="overline"
+                    sx={{
+                      display: 'block',
+                      px: 2.5,
+                      pt: 2,
+                      pb: 0.5,
+                      color: 'text.secondary',
+                      fontSize: '0.7rem',
+                      fontWeight: 700,
+                      letterSpacing: '0.08em',
+                    }}
+                  >
+                    {item.section}
+                  </Typography>
+                )}
+                <ListItem
+                  button
+                  onClick={() => handleNavigate(item.path)}
+                  selected={location.pathname === item.path}
+                  sx={{
+                    '&.Mui-selected': {
+                      bgcolor: 'primary.light',
+                      borderRight: '4px solid',
+                      borderColor: 'primary.main',
+                    },
+                  }}
+                >
+                  <ListItemIcon sx={{ minWidth: 40 }}>{item.icon}</ListItemIcon>
+                  <ListItemText primary={item.label} primaryTypographyProps={{ fontSize: 14 }} />
+                </ListItem>
+              </Box>
+            );
+          })}
         </List>
       </Box>
     </>

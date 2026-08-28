@@ -25,6 +25,13 @@ import attachmentRoutes from './attachment.routes';
 import settingsRoutes from './settings.routes';
 import ocrRoutes from './ocr.routes';
 import notificationRoutes from './notification.routes';
+import budgetHeadRoutes from './budget-heads.routes';
+import bankAccountRoutes from './bank-accounts.routes';
+import cashAccountRoutes from './cash-accounts.routes';
+import ownerAccountRoutes from './owner-account.routes';
+import journalVoucherRoutes from './journal-vouchers.routes';
+import financeReportRoutes from './finance-reports.routes';
+import budgetRevisionRoutes from './budget-revisions.routes';
 
 const router = Router();
 
@@ -54,5 +61,12 @@ router.use('/attachments', attachmentRoutes);
 router.use('/settings', settingsRoutes);
 router.use('/ocr', ocrRoutes);
 router.use('/notifications', notificationRoutes);
+router.use('/budget-heads', budgetHeadRoutes);
+router.use('/bank-accounts', bankAccountRoutes);
+router.use('/cash-accounts', cashAccountRoutes);
+router.use('/owner-accounts', ownerAccountRoutes);
+router.use('/journal-vouchers', journalVoucherRoutes);
+router.use('/finance-reports', financeReportRoutes);
+router.use('/budget-revisions', budgetRevisionRoutes);
 
 export default router;

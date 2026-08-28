@@ -37,7 +37,6 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { RecaptchaVerifier, signInWithPhoneNumber } from 'firebase/auth';
 import { auth, isConfigured } from '../config/firebase';
 import { formatDate } from '../utils/enumOptions';
-import { POPaymentType } from '@hospital-erp/shared';
 import api, { extractErrorMessage } from '../config/api';
 import ResponsiveTable from '../components/ResponsiveTable';
 
@@ -645,19 +644,17 @@ export default function GatePassesPage() {
               ))}
             </TextField>
 
-            {selectedPO && selectedPO.paymentType === POPaymentType.AFTER_DELIVERY && (
+            {selectedPO && selectedPO.invoices.length > 0 && (
               <TextField
                 select
-                label="Invoice (required — after delivery)"
+                label="Invoice (optional)"
                 value={selectedInvoiceId}
                 onChange={(e) => setSelectedInvoiceId(e.target.value)}
                 fullWidth
                 size="small"
-                required
-                error={!selectedInvoiceId}
-                helperText={!selectedInvoiceId ? 'Invoice is required for After Delivery payment type' : ''}
+                helperText="Attach a verified invoice if available — can be added later at goods receipt"
               >
-                <MenuItem value="">— Select Invoice —</MenuItem>
+                <MenuItem value="">— None —</MenuItem>
                 {selectedPO.invoices.map((inv) => (
                   <MenuItem key={inv.id} value={inv.id}>
                     {inv.invoiceCode} — {inv.invoiceNumber}
@@ -665,9 +662,9 @@ export default function GatePassesPage() {
                 ))}
               </TextField>
             )}
-            {selectedPO && (selectedPO.paymentType === POPaymentType.ADVANCE || selectedPO.paymentType === POPaymentType.FULL_PAYMENT) && (
+            {selectedPO && selectedPO.invoices.length === 0 && (
               <Alert severity="info" sx={{ py: 0.5 }}>
-                Invoice not required — this PO is {selectedPO.paymentType === POPaymentType.ADVANCE ? 'against advance payment' : 'against full payment'}.
+                No invoice attached — you can create and attach one later if needed.
               </Alert>
             )}
 
@@ -864,7 +861,6 @@ export default function GatePassesPage() {
             disabled={
               !selectedHeadId ||
               (gatePassCategory === 'MATERIAL' && !selectedPoId) ||
-              (gatePassCategory === 'MATERIAL' && selectedPO?.paymentType === POPaymentType.AFTER_DELIVERY && !selectedInvoiceId) ||
               (gatePassCategory === 'VISITOR' && !visitorName.trim()) ||
               createMutation.isPending ||
               sendingOtp
