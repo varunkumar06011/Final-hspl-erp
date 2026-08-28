@@ -121,6 +121,55 @@ router.get(
   }
 );
 
+// GET /stats — asset dashboard stats
+// NOTE: must be registered before GET /:id, otherwise /:id shadows /stats
+router.get(
+  '/stats',
+  authMiddleware,
+  rbacMiddleware(Permission.MANAGE_INVENTORY),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      const now = new Date();
+      const thirtyDaysLater = new Date();
+      thirtyDaysLater.setDate(thirtyDaysLater.getDate() + 30);
+
+      const [total, byStatus, warrantyExpiring, amcExpiring, byCategory] = await Promise.all([
+        prisma.asset.count({ where: { projectId } }),
+        prisma.asset.groupBy({ by: ['status'], where: { projectId }, _count: true }),
+        prisma.asset.count({ where: { projectId, warrantyExpiry: { gte: now, lte: thirtyDaysLater } } }),
+        prisma.asset.count({ where: { projectId, amcExpiry: { gte: now, lte: thirtyDaysLater } } }),
+        prisma.asset.findMany({
+          where: { projectId },
+          select: { inventoryItem: { select: { category: true } }, totalCost: true },
+        }),
+      ]);
+
+      const categoryMap = new Map<string, number>();
+      let totalValue = 0;
+      for (const a of byCategory) {
+        const cat = a.inventoryItem.category ?? 'Uncategorized';
+        categoryMap.set(cat, (categoryMap.get(cat) ?? 0) + 1);
+        if (a.totalCost) totalValue += Number(a.totalCost);
+      }
+
+      const statusCounts: Record<string, number> = {};
+      for (const s of byStatus) statusCounts[s.status] = s._count;
+
+      res.json({
+        total,
+        statusCounts,
+        warrantyExpiring,
+        amcExpiring,
+        totalValue,
+        categoryCounts: Object.fromEntries(categoryMap),
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
 // GET /:id — full asset lifecycle
 router.get(
   '/:id',
@@ -867,54 +916,6 @@ router.post(
       });
 
       res.json({ message: 'Print logged' });
-    } catch (error) {
-      next(error);
-    }
-  }
-);
-
-// GET /stats — asset dashboard stats
-router.get(
-  '/stats',
-  authMiddleware,
-  rbacMiddleware(Permission.MANAGE_INVENTORY),
-  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
-    try {
-      const projectId = requireProjectId(req);
-      const now = new Date();
-      const thirtyDaysLater = new Date();
-      thirtyDaysLater.setDate(thirtyDaysLater.getDate() + 30);
-
-      const [total, byStatus, warrantyExpiring, amcExpiring, byCategory] = await Promise.all([
-        prisma.asset.count({ where: { projectId } }),
-        prisma.asset.groupBy({ by: ['status'], where: { projectId }, _count: true }),
-        prisma.asset.count({ where: { projectId, warrantyExpiry: { gte: now, lte: thirtyDaysLater } } }),
-        prisma.asset.count({ where: { projectId, amcExpiry: { gte: now, lte: thirtyDaysLater } } }),
-        prisma.asset.findMany({
-          where: { projectId },
-          select: { inventoryItem: { select: { category: true } }, totalCost: true },
-        }),
-      ]);
-
-      const categoryMap = new Map<string, number>();
-      let totalValue = 0;
-      for (const a of byCategory) {
-        const cat = a.inventoryItem.category ?? 'Uncategorized';
-        categoryMap.set(cat, (categoryMap.get(cat) ?? 0) + 1);
-        if (a.totalCost) totalValue += Number(a.totalCost);
-      }
-
-      const statusCounts: Record<string, number> = {};
-      for (const s of byStatus) statusCounts[s.status] = s._count;
-
-      res.json({
-        total,
-        statusCounts,
-        warrantyExpiring,
-        amcExpiring,
-        totalValue,
-        categoryCounts: Object.fromEntries(categoryMap),
-      });
     } catch (error) {
       next(error);
     }
