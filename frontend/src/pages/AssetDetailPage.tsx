@@ -173,6 +173,19 @@ export default function AssetDetailPage() {
     onError: (err: unknown) => setError(extractErrorMessage(err)),
   });
 
+  const generateMutation = useMutation({
+    mutationFn: async () => {
+      if (!itemId) return;
+      await api.post(`/assets/generate/${itemId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/assets'] });
+      setSuccessMsg('Asset records generated.');
+      setTimeout(() => setSuccessMsg(''), 3000);
+    },
+    onError: (err: unknown) => setError(extractErrorMessage(err)),
+  });
+
   const rows: AssetRow[] = data?.data ?? [];
   const pagination = data?.pagination ?? { page: 1, pageSize: 20, total: 0, totalPages: 0 };
 
@@ -316,7 +329,21 @@ export default function AssetDetailPage() {
               {isLoading ? (
                 <TableRow><TableCell colSpan={8} align="center" sx={{ py: 4 }}><CircularProgress size={32} /></TableCell></TableRow>
               ) : rows.length === 0 ? (
-                <TableRow><TableCell colSpan={8} align="center" sx={{ py: 4 }}><Typography color="text.secondary">No assets found</Typography></TableCell></TableRow>
+                <TableRow>
+                  <TableCell colSpan={8} align="center" sx={{ py: 4 }}>
+                    <Typography color="text.secondary" sx={{ mb: 1 }}>No asset units found for this item.</Typography>
+                    {Number(itemData?.currentStock ?? 0) > 0 && (
+                      <Button
+                        variant="contained"
+                        size="small"
+                        onClick={() => generateMutation.mutate()}
+                        disabled={generateMutation.isPending}
+                      >
+                        {generateMutation.isPending ? <CircularProgress size={20} /> : `Generate ${Math.floor(Number(itemData?.currentStock))} Asset Record${Number(itemData?.currentStock) === 1 ? '' : 's'}`}
+                      </Button>
+                    )}
+                  </TableCell>
+                </TableRow>
               ) : rows.map((row) => (
                 <TableRow
                   key={row.id}

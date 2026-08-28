@@ -503,6 +503,10 @@ export const scanAssetSchema = z.object({
   }).optional(),
 });
 
+export const generateAssetsSchema = z.object({
+  params: z.object({ itemId: uuid }),
+});
+
 // ═══ Phases & Activities ═══
 export const createPhaseSchema = z
   .object({

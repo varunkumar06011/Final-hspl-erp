@@ -1,5 +1,5 @@
 import { Router, Response, NextFunction } from 'express';
-import { Permission, AuditAction, AssetStatus, AssetMovementType, UserRole } from '@hospital-erp/shared';
+import { Permission, AuditAction, AssetStatus, AssetMovementType, UserRole, InventoryItemType } from '@hospital-erp/shared';
 import {
   listAssetsSchema,
   updateAssetSerialSchema,
@@ -10,6 +10,7 @@ import {
   sendMaintenanceSchema,
   completeMaintenanceSchema,
   scanAssetSchema,
+  generateAssetsSchema,
 } from '@hospital-erp/shared';
 import { prisma } from '../config/prisma';
 import { Prisma } from '@prisma/client';
@@ -164,6 +165,81 @@ router.get(
         totalValue,
         categoryCounts: Object.fromEntries(categoryMap),
       });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// POST /generate/:itemId — generate missing individual asset records for an
+// inventory item whose stock was received before per-unit asset tracking was
+// introduced (or otherwise lacks asset rows). Creates one Asset per missing unit.
+router.post(
+  '/generate/:itemId',
+  authMiddleware,
+  rbacMiddleware(Permission.MANAGE_INVENTORY),
+  validateMiddleware(generateAssetsSchema),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      const item = await prisma.inventoryItem.findFirst({
+        where: { id: req.params.itemId, projectId, deletedAt: null },
+      });
+      if (!item) {
+        res.status(404).json({ error: 'Inventory item not found' });
+        return;
+      }
+      if (item.itemType !== InventoryItemType.ASSET) {
+        res.status(400).json({ error: 'Only asset-type items can have asset records' });
+        return;
+      }
+
+      const existingCount = await prisma.asset.count({ where: { inventoryItemId: item.id, projectId } });
+      const targetCount = Math.floor(Number(item.currentStock));
+      const missing = targetCount - existingCount;
+      if (missing <= 0) {
+        res.json({ created: 0, message: 'All asset records already exist for this item.' });
+        return;
+      }
+
+      const created = await prisma.$transaction(async (tx) => {
+        const assets: { id: string; assetId: string }[] = [];
+        for (let i = 0; i < missing; i++) {
+          const assetId = await generateAssetId(tx);
+          const asset = await tx.asset.create({
+            data: {
+              projectId,
+              inventoryItemId: item.id,
+              assetId,
+              status: AssetStatus.ACTIVE,
+              location: item.location ?? 'Main Store',
+            },
+          });
+          await tx.assetMovement.create({
+            data: {
+              assetId: asset.id,
+              type: AssetMovementType.CREATED,
+              toLocation: item.location ?? 'Main Store',
+              toStatus: AssetStatus.ACTIVE,
+              notes: 'Generated to match received stock',
+              userId: req.user!.id,
+            },
+          });
+          assets.push({ id: asset.id, assetId: asset.assetId });
+        }
+        return assets;
+      });
+
+      await logAudit({
+        userId: req.user!.id,
+        action: AuditAction.CREATE,
+        entityType: 'ASSET',
+        entityId: item.id,
+        projectId,
+        newValue: { generated: created.length, itemId: item.id },
+      });
+
+      res.status(201).json({ created: created.length });
     } catch (error) {
       next(error);
     }
