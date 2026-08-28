@@ -1,5 +1,6 @@
 -- Finance Module Phase 6: Budget Revisions (edit approval + history)
-CREATE TABLE "budget_revisions" (
+-- Idempotent: safe to re-run if partially applied.
+CREATE TABLE IF NOT EXISTS "budget_revisions" (
     "id" UUID NOT NULL DEFAULT gen_random_uuid(),
     "projectId" UUID NOT NULL,
     "budgetHeadId" UUID NOT NULL,
@@ -25,23 +26,39 @@ CREATE TABLE "budget_revisions" (
 );
 
 -- Foreign keys
-ALTER TABLE "budget_revisions"
-  ADD CONSTRAINT "budget_revisions_projectId_fkey"
-  FOREIGN KEY ("projectId") REFERENCES "projects"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'budget_revisions_projectId_fkey') THEN
+    ALTER TABLE "budget_revisions"
+      ADD CONSTRAINT "budget_revisions_projectId_fkey"
+      FOREIGN KEY ("projectId") REFERENCES "projects"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+END $$;
 
-ALTER TABLE "budget_revisions"
-  ADD CONSTRAINT "budget_revisions_budgetHeadId_fkey"
-  FOREIGN KEY ("budgetHeadId") REFERENCES "budget_heads"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'budget_revisions_budgetHeadId_fkey') THEN
+    ALTER TABLE "budget_revisions"
+      ADD CONSTRAINT "budget_revisions_budgetHeadId_fkey"
+      FOREIGN KEY ("budgetHeadId") REFERENCES "budget_heads"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  END IF;
+END $$;
 
-ALTER TABLE "budget_revisions"
-  ADD CONSTRAINT "budget_revisions_requestedBy_fkey"
-  FOREIGN KEY ("requestedBy") REFERENCES "users"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'budget_revisions_requestedBy_fkey') THEN
+    ALTER TABLE "budget_revisions"
+      ADD CONSTRAINT "budget_revisions_requestedBy_fkey"
+      FOREIGN KEY ("requestedBy") REFERENCES "users"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+END $$;
 
-ALTER TABLE "budget_revisions"
-  ADD CONSTRAINT "budget_revisions_reviewedBy_fkey"
-  FOREIGN KEY ("reviewedBy") REFERENCES "users"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'budget_revisions_reviewedBy_fkey') THEN
+    ALTER TABLE "budget_revisions"
+      ADD CONSTRAINT "budget_revisions_reviewedBy_fkey"
+      FOREIGN KEY ("reviewedBy") REFERENCES "users"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+  END IF;
+END $$;
 
 -- Indexes
-CREATE INDEX "budget_revisions_projectId_idx" ON "budget_revisions"("projectId");
-CREATE INDEX "budget_revisions_budgetHeadId_idx" ON "budget_revisions"("budgetHeadId");
-CREATE INDEX "budget_revisions_status_idx" ON "budget_revisions"("status");
+CREATE INDEX IF NOT EXISTS "budget_revisions_projectId_idx" ON "budget_revisions"("projectId");
+CREATE INDEX IF NOT EXISTS "budget_revisions_budgetHeadId_idx" ON "budget_revisions"("budgetHeadId");
+CREATE INDEX IF NOT EXISTS "budget_revisions_status_idx" ON "budget_revisions"("status");
