@@ -213,6 +213,7 @@ export default function PurchaseOrdersPage() {
       const response = await api.get('/budget-heads', { params: { page: 1, pageSize: 200 } });
       return response.data;
     },
+    refetchOnMount: 'always',
   });
   const budgetHeads: { id: string; particulars: string }[] = budgetHeadsData?.data ?? [];
 

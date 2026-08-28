@@ -121,6 +121,7 @@ export default function BudgetHeadsPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/budget-heads'] });
+      queryClient.invalidateQueries({ queryKey: ['/budget-heads', 'all'] });
       setImportOpen(false);
       setImportText('');
       setError('');
