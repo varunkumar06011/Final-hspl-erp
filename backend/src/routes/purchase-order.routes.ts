@@ -916,8 +916,8 @@ router.post(
             });
           }
         } else {
-          // Item was edited — remaining = edited qty - accepted
-          const remaining = editedItem.quantity - accepted;
+          // Item was edited — remaining = original qty - edited qty (the portion cut from the PO that needs a new vendor)
+          const remaining = Number(origItem.quantity) - editedItem.quantity;
           if (remaining > 0) {
             remainingItems.push({
               materialName: origItem.materialName,
