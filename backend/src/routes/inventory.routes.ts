@@ -1,5 +1,5 @@
 import { Router, Response, NextFunction } from 'express';
-import { Permission, AuditAction, InventoryTxnType, UserRole } from '@hospital-erp/shared';
+import { Permission, AuditAction, InventoryTxnType, UserRole, InventoryItemType, AssetStatus, AssetMovementType } from '@hospital-erp/shared';
 import {
   createInventoryItemSchema,
   updateInventoryItemSchema,
@@ -13,6 +13,7 @@ import { rbacMiddleware } from '../middleware/rbac';
 import { validateMiddleware } from '../middleware/validate';
 import { logAudit } from '../services/audit.service';
 import { notifyAllHeads } from '../services/push.service';
+import { generateAssetId } from './asset.routes';
 
 const CATEGORY_SKU_PREFIXES: Record<string, string> = {
   MATERIAL: 'MAT',
@@ -115,6 +116,31 @@ router.post(
       const record = await prisma.inventoryItem.create({
         data: { ...req.body, sku, currentStock: 0, projectId },
       });
+
+      if (record.itemType === InventoryItemType.ASSET) {
+        await prisma.$transaction(async (tx) => {
+          const assetId = await generateAssetId(tx);
+          const asset = await tx.asset.create({
+            data: {
+              projectId,
+              inventoryItemId: record.id,
+              assetId,
+              status: AssetStatus.ACTIVE,
+              location: record.location ?? 'Main Store',
+            },
+          });
+          await tx.assetMovement.create({
+            data: {
+              assetId: asset.id,
+              type: AssetMovementType.CREATED,
+              toLocation: record.location ?? 'Main Store',
+              toStatus: AssetStatus.ACTIVE,
+              notes: 'Created with inventory item',
+              userId: req.user!.id,
+            },
+          });
+        });
+      }
 
       await logAudit({
         userId: req.user!.id,

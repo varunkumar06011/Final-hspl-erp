@@ -192,7 +192,7 @@ export default function AssetDetailPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/assets'] });
-      setSuccessMsg('Asset records generated.');
+      setSuccessMsg('Asset records backfilled.');
       setTimeout(() => setSuccessMsg(''), 3000);
     },
     onError: (err: unknown) => setError(extractErrorMessage(err)),
@@ -208,7 +208,7 @@ export default function AssetDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['/inventory/items'] });
       setCreateOpen(false);
       setCreateForm({ location: itemData?.location ?? 'Main Store' });
-      setSuccessMsg('Asset unit created.');
+      setSuccessMsg('Asset set up.');
       setTimeout(() => setSuccessMsg(''), 3000);
     },
     onError: (err: unknown) => setError(extractErrorMessage(err)),
@@ -302,7 +302,7 @@ export default function AssetDetailPage() {
         <IconButton onClick={() => refetch()} size="small"><RefreshIcon /></IconButton>
         <Button variant="outlined" startIcon={<DownloadIcon />} onClick={handleExport} size="small">Export CSV</Button>
         <Button variant="outlined" startIcon={<PrintIcon />} onClick={() => setPrintOpen(true)} size="small" disabled={rows.length === 0}>Print QR Tags</Button>
-        <Button variant="contained" startIcon={<AddIcon />} onClick={() => { setCreateForm({ location: itemData?.location ?? 'Main Store' }); setCreateOpen(true); }} size="small">Add Asset Unit</Button>
+        <Button variant="contained" startIcon={<AddIcon />} onClick={() => { setCreateForm({ location: itemData?.location ?? 'Main Store' }); setCreateOpen(true); }} size="small">Set up Asset</Button>
       </Box>
 
       {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
@@ -360,9 +360,9 @@ export default function AssetDetailPage() {
               ) : rows.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={8} align="center" sx={{ py: 4 }}>
-                    <Typography color="text.secondary" sx={{ mb: 1 }}>No asset units found for this item.</Typography>
+                    <Typography color="text.secondary" sx={{ mb: 1 }}>Asset details have not been set up yet.</Typography>
                     <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center', flexWrap: 'wrap' }}>
-                      <Button variant="contained" size="small" startIcon={<AddIcon />} onClick={() => { setCreateForm({ location: itemData?.location ?? 'Main Store' }); setCreateOpen(true); }}>Add Asset Unit</Button>
+                      <Button variant="contained" size="small" startIcon={<AddIcon />} onClick={() => { setCreateForm({ location: itemData?.location ?? 'Main Store' }); setCreateOpen(true); }}>Set up Asset</Button>
                       {Number(itemData?.currentStock ?? 0) > 0 && (
                         <Button
                           variant="outlined"
@@ -776,7 +776,7 @@ export default function AssetDetailPage() {
 
       {/* Create Asset Dialog */}
       <ResponsiveDialog open={createOpen} onClose={() => { setCreateOpen(false); setCreateForm({ location: itemData?.location ?? 'Main Store' }); }} maxWidth="sm" fullWidth>
-        <DialogTitle>Add Asset Unit — {itemData ? String(itemData.name) : 'Asset'}</DialogTitle>
+        <DialogTitle>Set up Asset — {itemData ? String(itemData.name) : 'Asset'}</DialogTitle>
         <DialogContent>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
             <TextField label="Location" value={String(createForm.location ?? 'Main Store')} onChange={(e) => setCreateForm({ ...createForm, location: e.target.value })} fullWidth size="small" required />
@@ -806,7 +806,7 @@ export default function AssetDetailPage() {
         <DialogActions sx={{ flexWrap: 'wrap', gap: 1 }}>
           <Button onClick={() => { setCreateOpen(false); setCreateForm({ location: itemData?.location ?? 'Main Store' }); }}>Cancel</Button>
           <Button variant="contained" onClick={() => createMutation.mutate()} disabled={createMutation.isPending}>
-            {createMutation.isPending ? <CircularProgress size={20} /> : 'Create Asset'}
+            {createMutation.isPending ? <CircularProgress size={20} /> : 'Set up Asset'}
           </Button>
         </DialogActions>
       </ResponsiveDialog>
