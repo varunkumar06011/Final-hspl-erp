@@ -280,8 +280,14 @@ router.get(
       const summary = staff.map((s) => {
         const presentDays = s.attendance.filter((a) => a.present).length;
         const absentDays = s.attendance.filter((a) => !a.present).length;
-        const totalDays = s.attendance.length;
-        const salaryForPeriod = Number(s.baseSalary) * (totalDays > 0 ? presentDays / totalDays : 0);
+        const markedDays = s.attendance.length;
+        // Prorate salary over the calendar days in the selected period (inclusive),
+        // not just the days that were marked. Previously the denominator was the
+        // count of attendance rows, so a supervisor who marked only present days
+        // would yield presentDays/markedDays = 1 and pay the full salary even
+        // though the worker missed several unmarked days.
+        const periodDays = Math.max(1, Math.round((end.getTime() - start.getTime()) / 86400000) + 1);
+        const salaryForPeriod = Number(s.baseSalary) * (presentDays / periodDays);
         return {
           id: s.id,
           name: s.name,
@@ -290,7 +296,8 @@ router.get(
           baseSalary: Number(s.baseSalary),
           presentDays,
           absentDays,
-          totalDays,
+          totalDays: markedDays,
+          periodDays,
           salaryForPeriod,
         };
       });

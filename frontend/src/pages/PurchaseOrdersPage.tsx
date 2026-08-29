@@ -494,7 +494,7 @@ export default function PurchaseOrdersPage() {
                             <IconButton size="small" color="error" onClick={() => setApprovalAction({ row, action: 'reject' })} title="Reject"><CloseIcon fontSize="small" /></IconButton>
                           </>
                         )}
-                        {row.status === POStatus.APPROVED && (
+                        {(row.status === POStatus.APPROVED || row.status === POStatus.PARTIALLY_DELIVERED) && (
                           <IconButton size="small" color="primary" onClick={() => navigate('/gate-passes')} title="Create Gate Pass"><GatePassIcon fontSize="small" /></IconButton>
                         )}
                         {(row.status === POStatus.APPROVED || row.status === POStatus.PARTIALLY_DELIVERED || row.status === POStatus.DELIVERED) && (

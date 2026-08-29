@@ -553,13 +553,23 @@ router.post(
           },
         });
 
-        // Also create inventory transaction (keeps Transactions tab working)
+        // Also create inventory transaction and decrement stock so the
+        // InventoryItem.currentStock stays in sync with the asset register.
+        const invItem = await tx.inventoryItem.findUnique({
+          where: { id: asset.inventoryItemId },
+          select: { currentStock: true },
+        });
+        const newBalance = Number(invItem?.currentStock ?? 0) - 1;
+        await tx.inventoryItem.update({
+          where: { id: asset.inventoryItemId },
+          data: { currentStock: newBalance },
+        });
         await tx.inventoryTransaction.create({
           data: {
             itemId: asset.inventoryItemId,
             type: 'OUT',
             quantity: 1,
-            balanceAfter: 0, // Balance is tracked per-item, not per-asset
+            balanceAfter: newBalance,
             userId: req.user!.id,
             notes: `Asset ${asset.assetId} issued to ${req.body.issuedToDept ?? ''} ${req.body.issuedToPerson ?? ''}`.trim(),
           },
@@ -634,16 +644,34 @@ router.post(
           },
         });
 
-        await tx.inventoryTransaction.create({
-          data: {
-            itemId: asset.inventoryItemId,
-            type: 'IN',
-            quantity: 1,
-            balanceAfter: 0,
-            userId: req.user!.id,
-            notes: `Asset ${asset.assetId} returned to ${req.body.location}`,
-          },
-        });
+        // ── B21: Only restore inventory stock when returning from ISSUED ──
+        // Maintenance (sendMaintenance) does NOT decrement currentStock — the
+        // asset stays counted in inventory while being repaired. So returning
+        // from UNDER_MAINTENANCE must NOT increment stock either, otherwise we
+        // create phantom inventory (+1 for an asset that was never removed).
+        // Only ISSUED assets were decremented at issue time, so only they get
+        // the +1 restoration here.
+        if (asset.status === AssetStatus.ISSUED) {
+          const invItem = await tx.inventoryItem.findUnique({
+            where: { id: asset.inventoryItemId },
+            select: { currentStock: true },
+          });
+          const newBalance = Number(invItem?.currentStock ?? 0) + 1;
+          await tx.inventoryItem.update({
+            where: { id: asset.inventoryItemId },
+            data: { currentStock: newBalance },
+          });
+          await tx.inventoryTransaction.create({
+            data: {
+              itemId: asset.inventoryItemId,
+              type: 'IN',
+              quantity: 1,
+              balanceAfter: newBalance,
+              userId: req.user!.id,
+              notes: `Asset ${asset.assetId} returned to ${req.body.location}`,
+            },
+          });
+        }
 
         return tx.asset.findUnique({ where: { id: asset.id }, include: assetInclude });
       });
@@ -884,6 +912,32 @@ router.post(
             userId: req.user!.id,
           },
         });
+
+        // ── B20: If issuing directly from maintenance, decrement inventory stock ──
+        // Maintenance itself doesn't change stock (the asset stays in inventory
+        // while being repaired). But issuing directly means the asset leaves
+        // inventory, so currentStock must decrease by 1 — same as a regular issue.
+        if (req.body.issueDirectly) {
+          const invItem = await tx.inventoryItem.findUnique({
+            where: { id: asset.inventoryItemId },
+            select: { currentStock: true },
+          });
+          const newBalance = Number(invItem?.currentStock ?? 0) - 1;
+          await tx.inventoryItem.update({
+            where: { id: asset.inventoryItemId },
+            data: { currentStock: newBalance },
+          });
+          await tx.inventoryTransaction.create({
+            data: {
+              itemId: asset.inventoryItemId,
+              type: 'OUT',
+              quantity: 1,
+              balanceAfter: newBalance,
+              userId: req.user!.id,
+              notes: `Asset ${asset.assetId} issued directly from maintenance to ${req.body.issuedToDept ?? ''} ${req.body.issuedToPerson ?? ''}`.trim(),
+            },
+          });
+        }
 
         return tx.asset.findUnique({ where: { id: asset.id }, include: assetInclude });
       });

@@ -475,15 +475,37 @@ async function postJournalVoucher(
   return prisma.$transaction(async (tx) => {
     const txnResults: string[] = [];
 
-    // Determine whether this JV involves a cash outflow (BANK or CASH credit).
-    // If so, budget head debits represent paid expenses, not just accruals —
-    // paidAmount should also increase. This makes accounting consistent regardless
-    // of whether the expense is entered via JV or via Expense → Payment.
-    const hasCashOutflow = jv.entries.some(
-      (e) =>
-        (e.accountType === JournalAccountType.BANK || e.accountType === JournalAccountType.CASH) &&
-        Number(e.credit) > 0,
+    // ── Compute cash movement totals to allocate "paid" correctly per budget head ──
+    // Previously a single global hasCashOutflow flag marked EVERY budget-head debit
+    // in the JV as paid if any bank/cash credit existed — cross-contaminating
+    // unrelated accrual debits. Now we allocate the actual cash outflow
+    // proportionally across all budget-head debits, so total paid can never
+    // exceed the cash that actually moved. Owner-expense JVs treat owner
+    // credits as a funding source (like cash).
+    const isCashType = (t: string) => t === JournalAccountType.BANK || t === JournalAccountType.CASH;
+    const cashOutflow = jv.entries.reduce((sum, e) => {
+      if (isCashType(e.accountType) && Number(e.credit) > 0) return sum + Number(e.credit);
+      if (jv.type === JVType.OWNER_EXPENSE && e.accountType === JournalAccountType.OWNER && Number(e.credit) > 0) return sum + Number(e.credit);
+      return sum;
+    }, 0);
+    const totalBhDebit = jv.entries.reduce(
+      (sum, e) => (e.accountType === JournalAccountType.BUDGET_HEAD && Number(e.debit) > 0 ? sum + Number(e.debit) : sum),
+      0,
     );
+    const cashInflow = jv.entries.reduce((sum, e) => {
+      if (isCashType(e.accountType) && Number(e.debit) > 0) return sum + Number(e.debit);
+      if (jv.type === JVType.OWNER_REPAYMENT && e.accountType === JournalAccountType.OWNER && Number(e.debit) > 0) return sum + Number(e.debit);
+      return sum;
+    }, 0);
+    const totalBhCredit = jv.entries.reduce(
+      (sum, e) => (e.accountType === JournalAccountType.BUDGET_HEAD && Number(e.credit) > 0 ? sum + Number(e.credit) : sum),
+      0,
+    );
+    // Per-debit paid share: proportional, capped so the sum equals cashOutflow.
+    const paidShare = (debit: number) =>
+      totalBhDebit > 0 ? debit * Math.min(1, cashOutflow / totalBhDebit) : 0;
+    const reversedShare = (credit: number) =>
+      totalBhCredit > 0 ? credit * Math.min(1, cashInflow / totalBhCredit) : 0;
 
     for (const entry of jv.entries) {
       const debit = Number(entry.debit);
@@ -584,36 +606,24 @@ async function postJournalVoucher(
           // to correct overstated actual/paid amounts via credit entries.
           if (debit > 0) {
             const newActual = Number(head.actualAmount) + debit;
-            let newPaid = Number(head.paidAmount);
-            const cashMoved = hasCashOutflow || jv.type === JVType.OWNER_EXPENSE;
-            if (cashMoved) {
-              newPaid += debit;
-            }
+            const paidPortion = paidShare(debit);
+            const newPaid = Number(head.paidAmount) + paidPortion;
             await tx.budgetHead.update({
               where: { id: entry.budgetHeadId },
               data: { actualAmount: newActual, paidAmount: newPaid },
             });
-            txnResults.push(`budget_head:${head.particulars}:actual+${debit}${cashMoved ? `:paid+${debit}` : ''}`);
+            txnResults.push(`budget_head:${head.particulars}:actual+${debit}${paidPortion > 0 ? `:paid+${paidPortion.toFixed(2)}` : ''}`);
           } else if (credit > 0) {
             // Credit to budget head = reversal/correction of expense
             const newActual = Math.max(0, Number(head.actualAmount) - credit);
-            let newPaid = Number(head.paidAmount);
-            // If cash is being returned (bank/cash debit = money back in),
-            // reduce paid as well. Otherwise only reduce actual.
-            const hasCashInflow = jv.entries.some(
-              (e) =>
-                (e.accountType === JournalAccountType.BANK || e.accountType === JournalAccountType.CASH) &&
-                Number(e.debit) > 0,
-            );
-            const cashReturned = hasCashInflow || jv.type === JVType.OWNER_REPAYMENT;
-            if (cashReturned) {
-              newPaid = Math.max(0, newPaid - credit);
-            }
+            // Reduce paid only by the portion of cash that is being returned.
+            const reversedPaid = reversedShare(credit);
+            const newPaid = Math.max(0, Number(head.paidAmount) - reversedPaid);
             await tx.budgetHead.update({
               where: { id: entry.budgetHeadId },
               data: { actualAmount: newActual, paidAmount: newPaid },
             });
-            txnResults.push(`budget_head:${head.particulars}:actual-${credit}${cashReturned ? `:paid-${credit}` : ''}`);
+            txnResults.push(`budget_head:${head.particulars}:actual-${credit}${reversedPaid > 0 ? `:paid-${reversedPaid.toFixed(2)}` : ''}`);
           }
           break;
         }

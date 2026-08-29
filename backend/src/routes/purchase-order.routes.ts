@@ -15,50 +15,77 @@ const router = Router();
 router.use(authMiddleware);
 
 // ─── Helper: compute accepted quantities from posted Goods Receipts ───
-async function getAcceptedQuantitiesByPo(poId: string): Promise<Map<string, number>> {
+// Keyed by poItemId for correct per-line tracking (a PO may have the same
+// material on multiple lines at different rates). A material-name fallback map
+// is also returned for legacy GR items that have no poItemId.
+async function getAcceptedQuantitiesByPo(poId: string): Promise<{
+  byPoItemId: Map<string, number>;
+  byName: Map<string, number>;
+}> {
   const receipts = await prisma.goodsReceipt.findMany({
     where: { poId, deletedAt: null, status: GoodsReceiptStatus.POSTED },
-    select: { items: { select: { materialName: true, acceptedQty: true } } },
+    select: { items: { select: { poItemId: true, materialName: true, acceptedQty: true } } },
   });
-  const acceptedByName = new Map<string, number>();
+  const byPoItemId = new Map<string, number>();
+  const byName = new Map<string, number>();
   for (const receipt of receipts) {
     for (const item of receipt.items) {
+      const qty = Number(item.acceptedQty);
+      if (item.poItemId) {
+        byPoItemId.set(item.poItemId, (byPoItemId.get(item.poItemId) ?? 0) + qty);
+      }
       const name = item.materialName.toLowerCase();
-      acceptedByName.set(name, (acceptedByName.get(name) ?? 0) + Number(item.acceptedQty));
+      byName.set(name, (byName.get(name) ?? 0) + qty);
     }
   }
-  return acceptedByName;
+  return { byPoItemId, byName };
+}
+
+// Lookup accepted qty for a PO item, preferring poItemId, falling back to name.
+function acceptedForPoItem(
+  acc: { byPoItemId: Map<string, number>; byName: Map<string, number> },
+  item: { id?: string; materialName: string },
+): number {
+  if (item.id && acc.byPoItemId.has(item.id)) {
+    return acc.byPoItemId.get(item.id)!;
+  }
+  return acc.byName.get(item.materialName.toLowerCase()) ?? 0;
 }
 
 // ─── Helper: compute total delivered value from posted GRNs ───
-// Matches GRN items to PO items by material name (case-insensitive) to get
-// unit prices and GST rates. Optional materialFilter restricts to a subset of
-// materials (used to separate delivered value for remaining vs deselected items).
+// Matches GRN items to PO items by poItemId (correct per-line tracking), with a
+// material-name fallback for legacy GR items. Optional materialFilter restricts
+// to a subset of materials (used to separate delivered value for remaining vs
+// deselected items).
 async function getDeliveredValueForPo(
   poId: string,
-  poItems: { materialName: string; unitPrice: { toNumber?: () => number } | number; gstRate: { toNumber?: () => number } | number | null }[],
+  poItems: { id?: string; materialName: string; unitPrice: { toNumber?: () => number } | number; gstRate: { toNumber?: () => number } | number | null }[],
   materialFilter?: Set<string>,
 ): Promise<number> {
   const receipts = await prisma.goodsReceipt.findMany({
     where: { poId, deletedAt: null, status: GoodsReceiptStatus.POSTED },
-    select: { items: { select: { materialName: true, acceptedQty: true } } },
+    select: { items: { select: { poItemId: true, materialName: true, acceptedQty: true } } },
   });
 
-  const itemMap = new Map<string, { unitPrice: number; gstRate: number }>();
+  const itemByPoItemId = new Map<string, { unitPrice: number; gstRate: number }>();
+  const itemByName = new Map<string, { unitPrice: number; gstRate: number }>();
   for (const item of poItems) {
     const name = item.materialName.toLowerCase();
     if (materialFilter && !materialFilter.has(name)) continue;
     const unitPrice = typeof item.unitPrice === 'number' ? item.unitPrice : Number(item.unitPrice);
     const gstRate = item.gstRate === null ? 0 : (typeof item.gstRate === 'number' ? item.gstRate : Number(item.gstRate));
-    itemMap.set(name, { unitPrice, gstRate });
+    const entry = { unitPrice, gstRate };
+    if (item.id) itemByPoItemId.set(item.id, entry);
+    itemByName.set(name, entry);
   }
 
   let deliveredValue = 0;
   for (const receipt of receipts) {
     for (const line of receipt.items) {
       if (Number(line.acceptedQty) <= 0) continue;
-      const name = line.materialName.toLowerCase();
-      const item = itemMap.get(name);
+      const item =
+        (line.poItemId ? itemByPoItemId.get(line.poItemId) : undefined) ??
+        itemByName.get(line.materialName.toLowerCase());
       if (item) {
         const lineAmount = item.unitPrice * Number(line.acceptedQty);
         const lineGst = lineAmount * item.gstRate / 100;
@@ -102,13 +129,13 @@ async function generateRegeneratedPONumber(parentPo: { poNumber: string; id: str
  * Returns DELIVERED if all items are fully received, else PARTIALLY_DELIVERED.
  */
 async function recalculatePoStatus(poId: string): Promise<string> {
-  const acceptedMap = await getAcceptedQuantitiesByPo(poId);
+  const acc = await getAcceptedQuantitiesByPo(poId);
   const poItems = await prisma.pOItem.findMany({
     where: { poId },
-    select: { materialName: true, quantity: true },
+    select: { id: true, materialName: true, quantity: true },
   });
   const fullyReceived = poItems.every(
-    (item) => (acceptedMap.get(item.materialName.toLowerCase()) ?? 0) >= Number(item.quantity),
+    (item) => acceptedForPoItem(acc, item) >= Number(item.quantity),
   );
   return fullyReceived ? POStatus.DELIVERED : POStatus.PARTIALLY_DELIVERED;
 }
@@ -246,7 +273,7 @@ router.get(
       const acceptedMap = await getAcceptedQuantitiesByPo(po.id);
       const itemSummary = po.items.map((item) => {
         const ordered = Number(item.quantity);
-        const accepted = acceptedMap.get(item.materialName.toLowerCase()) ?? 0;
+        const accepted = acceptedForPoItem(acceptedMap, item);
         return {
           materialName: item.materialName,
           unit: item.unit,
@@ -327,58 +354,63 @@ router.post(
       const gst = quotation.items.reduce((sum, item) => sum + Number(item.amount) * Number(item.gstRate) / 100, 0);
       const grandTotal = totalAmount + gst;
 
-      // Create PO with items (including gstRate) copied from quotation
-      const po = await prisma.purchaseOrder.create({
-        data: {
-          projectId,
-          vendorId,
-          quotationId,
-          poNumber,
-          status: POStatus.PENDING_APPROVAL,
-          paymentType,
-          totalAmount,
-          gstAmount: gst,
-          grandTotal,
-          budgetHeadId: req.body.budgetHeadId ?? null,
-          createdBy: req.user!.id,
-          items: {
-            create: quotation.items.map((item) => ({
-              materialName: item.materialName,
-              quantity: item.quantity,
-              unit: item.unit,
-              unitPrice: item.unitPrice,
-              amount: item.amount,
-              gstRate: item.gstRate,
-            })),
+      // Create PO + approval workflow atomically so a rollback can't leave an
+      // orphan workflow or a PO without its workflow linkage.
+      const { po, workflow } = await prisma.$transaction(async (tx) => {
+        const po = await tx.purchaseOrder.create({
+          data: {
+            projectId,
+            vendorId,
+            quotationId,
+            poNumber,
+            status: POStatus.PENDING_APPROVAL,
+            paymentType,
+            totalAmount,
+            gstAmount: gst,
+            grandTotal,
+            budgetHeadId: req.body.budgetHeadId ?? null,
+            createdBy: req.user!.id,
+            items: {
+              create: quotation.items.map((item) => ({
+                materialName: item.materialName,
+                quantity: item.quantity,
+                unit: item.unit,
+                unitPrice: item.unitPrice,
+                amount: item.amount,
+                gstRate: item.gstRate,
+              })),
+            },
           },
-        },
-        include: poInclude,
-      });
+          include: poInclude,
+        });
 
-      // Initiate approval workflow — one approval from Kaushal Sir or Vinod Sir
-      const workflow = await prisma.approvalWorkflow.create({
-        data: {
-          entityType: 'PURCHASE_ORDER',
-          entityId: po.id,
-          projectId,
-          status: 'VERIFICATION',
-          currentStep: 0,
-          minApprovers: 1,
-          approvalPolicy: 'PO_SINGLE_APPROVER',
-          steps: {
-            create: [UserRole.ADMIN, UserRole.ADMIN_2].map((role, idx) => ({
-              stepNumber: idx + 1,
-              approverRole: role,
-              status: 'PENDING',
-            })),
+        // Initiate approval workflow — one approval from Kaushal Sir or Vinod Sir
+        const workflow = await tx.approvalWorkflow.create({
+          data: {
+            entityType: 'PURCHASE_ORDER',
+            entityId: po.id,
+            projectId,
+            status: 'VERIFICATION',
+            currentStep: 0,
+            minApprovers: 1,
+            approvalPolicy: 'PO_SINGLE_APPROVER',
+            steps: {
+              create: [UserRole.ADMIN, UserRole.ADMIN_2].map((role, idx) => ({
+                stepNumber: idx + 1,
+                approverRole: role,
+                status: 'PENDING',
+              })),
+            },
           },
-        },
-        include: { steps: true },
-      });
+          include: { steps: true },
+        });
 
-      await prisma.purchaseOrder.update({
-        where: { id: po.id },
-        data: { approvalWorkflowId: workflow.id },
+        await tx.purchaseOrder.update({
+          where: { id: po.id },
+          data: { approvalWorkflowId: workflow.id },
+        });
+
+        return { po, workflow };
       });
 
       await logAudit({
@@ -656,7 +688,7 @@ router.post(
         if (po.budgetHeadId && po.editedAt) {
           const currentItems = await prisma.pOItem.findMany({
             where: { poId: po.id },
-            select: { materialName: true, unitPrice: true, gstRate: true },
+            select: { id: true, materialName: true, unitPrice: true, gstRate: true },
           });
           const deliveredForRemaining = await getDeliveredValueForPo(po.id, currentItems);
           const remainingCommitment = Number(po.grandTotal) - deliveredForRemaining;
@@ -993,7 +1025,7 @@ router.post(
       // Validate: each submitted item's quantity must be >= accepted qty for that material
       const newItems = req.body.items as { materialName: string; quantity: number; unit: string; unitPrice: number; gstRate: number }[];
       for (const item of newItems) {
-        const accepted = acceptedMap.get(item.materialName.toLowerCase()) ?? 0;
+        const accepted = acceptedMap.byName.get(item.materialName.toLowerCase()) ?? 0;
         if (item.quantity < accepted) {
           res.status(400).json({
             error: `Cannot reduce "${item.materialName}" below accepted quantity (${accepted}). Already delivered.`,
@@ -1006,7 +1038,7 @@ router.post(
       const remainingItems: { materialName: string; quantity: number; unit: string; unitPrice: number; gstRate: number }[] = [];
 
       for (const origItem of po.items) {
-        const accepted = acceptedMap.get(origItem.materialName.toLowerCase()) ?? 0;
+        const accepted = acceptedForPoItem(acceptedMap, origItem);
         const editedItem = newItems.find((i) => i.materialName === origItem.materialName);
 
         if (!editedItem) {

@@ -236,8 +236,12 @@ export async function approve(stepId: string, userId: string, comments?: string)
     };
   }
 
+  // Find the next pending step, but never regress currentStep — if a higher-
+  // numbered step was approved out of order (e.g. step 3 approved while step 2
+  // is still pending), currentStep must stay at 3, not drop back to 2.
   const nextStep = workflow.steps.find(
-    (s: { status: string; stepNumber: number }) => s.status === ApprovalStepStatus.PENDING
+    (s: { status: string; stepNumber: number }) =>
+      s.status === ApprovalStepStatus.PENDING && s.stepNumber > workflow.currentStep,
   );
 
   let newStatus = workflow.status;

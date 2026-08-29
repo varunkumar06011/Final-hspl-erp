@@ -224,6 +224,7 @@ export enum GatePassStatus {
   APPROVED = 'APPROVED',
   REJECTED = 'REJECTED',
   EXPIRED = 'EXPIRED',
+  DELIVERED = 'DELIVERED',
 }
 
 export enum GoodsReceiptStatus {

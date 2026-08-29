@@ -1,5 +1,5 @@
 import { Router, Response, NextFunction } from 'express';
-import { Permission, AuditAction, GoodsReceiptStatus, JournalAccountType } from '@hospital-erp/shared';
+import { Permission, AuditAction, GoodsReceiptStatus, JournalAccountType, JVType } from '@hospital-erp/shared';
 import {
   createBudgetHeadSchema,
   updateBudgetHeadSchema,
@@ -54,29 +54,50 @@ router.post(
       const projectId = requireProjectId(req);
       const items = req.body.items as Array<{ sl_no: number; particulars: string; amount: number }>;
 
-      // Replace existing budget heads for this project (within a transaction)
+      // Upsert budget heads by slNo, preserving existing IDs so that historical
+      // transactions (POs, payments, JVs, GRNs) keep their budgetHeadId linkage.
+      // Previously this route soft-deleted every head and created new ones with
+      // new UUIDs, orphaning all committed/actual/paid history.
       const result = await prisma.$transaction(async (tx) => {
-        // Soft-delete existing heads
-        await tx.budgetHead.updateMany({
+        const existing = await tx.budgetHead.findMany({
           where: { projectId, deletedAt: null },
-          data: { deletedAt: new Date() },
+          select: { id: true, slNo: true },
         });
+        const existingBySlNo = new Map(existing.map((h) => [h.slNo, h]));
 
-        // Create new heads
-        const created = await Promise.all(
-          items.map((item) =>
-            tx.budgetHead.create({
+        const updated: typeof existing = [];
+        for (const item of items) {
+          const match = existingBySlNo.get(item.sl_no);
+          if (match) {
+            // Update in place — keeps the same id, preserving all FK references
+            await tx.budgetHead.update({
+              where: { id: match.id },
+              data: {
+                particulars: item.particulars,
+                allocatedAmount: item.amount,
+                deletedAt: null, // revive if it was previously soft-deleted
+              },
+            });
+            updated.push(match);
+            existingBySlNo.delete(item.sl_no);
+          } else {
+            // New head — create it
+            const created = await tx.budgetHead.create({
               data: {
                 projectId,
                 slNo: item.sl_no,
                 particulars: item.particulars,
                 allocatedAmount: item.amount,
               },
-            }),
-          ),
-        );
+            });
+            updated.push(created);
+          }
+        }
+        // NOTE: existing heads whose slNo is not in the import are intentionally
+        // left untouched — they may have linked transactions and must not be
+        // silently deleted.
 
-        return created;
+        return updated;
       });
 
       await logAudit({
@@ -255,24 +276,34 @@ router.post(
         });
         for (const entry of jvEntriesAll) {
           const jv = entry.journalVoucher;
+          // Allocate cash outflow proportionally across all budget-head debits
+          // in this JV, so a cash credit funding one head does not mark an
+          // unrelated accrual debit in the same JV as paid.
+          const isCashType = (t: string) => t === JournalAccountType.BANK || t === JournalAccountType.CASH;
           if (Number(entry.debit) > 0) {
-            const hasCashOutflow = jv.entries.some(
-              (e) =>
-                (e.accountType === JournalAccountType.BANK || e.accountType === JournalAccountType.CASH) &&
-                Number(e.credit) > 0,
+            const cashOutflow = jv.entries.reduce((sum, e) => {
+              if (isCashType(e.accountType) && Number(e.credit) > 0) return sum + Number(e.credit);
+              if (jv.type === JVType.OWNER_EXPENSE && e.accountType === JournalAccountType.OWNER && Number(e.credit) > 0) return sum + Number(e.credit);
+              return sum;
+            }, 0);
+            const totalBhDebit = jv.entries.reduce(
+              (sum, e) => (e.accountType === JournalAccountType.BUDGET_HEAD && Number(e.debit) > 0 ? sum + Number(e.debit) : sum),
+              0,
             );
-            if (hasCashOutflow || jv.type === 'OWNER_EXPENSE') {
-              paid += Number(entry.debit);
-            }
+            const share = totalBhDebit > 0 ? Number(entry.debit) * Math.min(1, cashOutflow / totalBhDebit) : 0;
+            paid += share;
           } else if (Number(entry.credit) > 0) {
-            const hasCashInflow = jv.entries.some(
-              (e) =>
-                (e.accountType === JournalAccountType.BANK || e.accountType === JournalAccountType.CASH) &&
-                Number(e.debit) > 0,
+            const cashInflow = jv.entries.reduce((sum, e) => {
+              if (isCashType(e.accountType) && Number(e.debit) > 0) return sum + Number(e.debit);
+              if (jv.type === JVType.OWNER_REPAYMENT && e.accountType === JournalAccountType.OWNER && Number(e.debit) > 0) return sum + Number(e.debit);
+              return sum;
+            }, 0);
+            const totalBhCredit = jv.entries.reduce(
+              (sum, e) => (e.accountType === JournalAccountType.BUDGET_HEAD && Number(e.credit) > 0 ? sum + Number(e.credit) : sum),
+              0,
             );
-            if (hasCashInflow || jv.type === 'OWNER_REPAYMENT') {
-              paid -= Number(entry.credit);
-            }
+            const share = totalBhCredit > 0 ? Number(entry.credit) * Math.min(1, cashInflow / totalBhCredit) : 0;
+            paid -= share;
           }
         }
 
@@ -522,13 +553,18 @@ router.get(
         const jv = entry.journalVoucher;
         const isDebit = Number(entry.debit) > 0;
         const amount = isDebit ? Number(entry.debit) : Number(entry.credit);
+        const isCashType = (t: string) => t === JournalAccountType.BANK || t === JournalAccountType.CASH;
         if (isDebit) {
-          const hasCashOutflow = jv.entries.some(
-            (e) =>
-              (e.accountType === JournalAccountType.BANK || e.accountType === JournalAccountType.CASH) &&
-              Number(e.credit) > 0,
+          const cashOutflow = jv.entries.reduce((sum, e) => {
+            if (isCashType(e.accountType) && Number(e.credit) > 0) return sum + Number(e.credit);
+            if (jv.type === JVType.OWNER_EXPENSE && e.accountType === JournalAccountType.OWNER && Number(e.credit) > 0) return sum + Number(e.credit);
+            return sum;
+          }, 0);
+          const totalBhDebit = jv.entries.reduce(
+            (sum, e) => (e.accountType === JournalAccountType.BUDGET_HEAD && Number(e.debit) > 0 ? sum + Number(e.debit) : sum),
+            0,
           );
-          const cashMoved = hasCashOutflow || jv.type === 'OWNER_EXPENSE';
+          const paidPortion = totalBhDebit > 0 ? amount * Math.min(1, cashOutflow / totalBhDebit) : 0;
           transactions.push({
             date: jv.date.toISOString(),
             type: 'Journal Voucher',
@@ -536,15 +572,19 @@ router.get(
             description: entry.description ?? jv.description ?? `JV ${jv.jvNumber}`,
             committed: 0,
             actual: amount,
-            paid: cashMoved ? amount : 0,
+            paid: paidPortion,
           });
         } else {
-          const hasCashInflow = jv.entries.some(
-            (e) =>
-              (e.accountType === JournalAccountType.BANK || e.accountType === JournalAccountType.CASH) &&
-              Number(e.debit) > 0,
+          const cashInflow = jv.entries.reduce((sum, e) => {
+            if (isCashType(e.accountType) && Number(e.debit) > 0) return sum + Number(e.debit);
+            if (jv.type === JVType.OWNER_REPAYMENT && e.accountType === JournalAccountType.OWNER && Number(e.debit) > 0) return sum + Number(e.debit);
+            return sum;
+          }, 0);
+          const totalBhCredit = jv.entries.reduce(
+            (sum, e) => (e.accountType === JournalAccountType.BUDGET_HEAD && Number(e.credit) > 0 ? sum + Number(e.credit) : sum),
+            0,
           );
-          const cashReturned = hasCashInflow || jv.type === 'OWNER_REPAYMENT';
+          const reversedPortion = totalBhCredit > 0 ? amount * Math.min(1, cashInflow / totalBhCredit) : 0;
           transactions.push({
             date: jv.date.toISOString(),
             type: 'Journal Voucher (Reversal)',
@@ -552,7 +592,7 @@ router.get(
             description: entry.description ?? jv.description ?? `JV ${jv.jvNumber}`,
             committed: 0,
             actual: -amount,
-            paid: cashReturned ? -amount : 0,
+            paid: -reversedPortion,
           });
         }
       }

@@ -429,6 +429,50 @@ vi.mock('../src/config/prisma', () => ({
     goodsReceiptItem: createModelMock('goodsReceiptItem'),
     inspection: createModelMock('inspection'),
     vendorMaterial_deleteMany: createModelMock('vendorMaterial'),
+    $transaction: vi.fn(async (fn: any) => {
+      // In-memory mock: just execute the callback with `prisma` as `tx`,
+      // since all models share the same in-memory maps.
+      const prismaProxy = new Proxy({}, {
+        get: (_target, prop) => {
+          // Return the same model mocks for any property access
+          const models: Record<string, any> = {
+            user: createModelMock('user'),
+            project: createModelMock('project'),
+            vendor: createModelMock('vendor'),
+            vendorMaterial: createModelMock('vendorMaterial'),
+            quotation: createModelMock('quotation'),
+            quotationItem: createModelMock('quotationItem'),
+            purchaseOrder: createModelMock('purchaseOrder'),
+            purchaseOrderItem: createModelMock('purchaseOrderItem'),
+            pOItem: createModelMock('purchaseOrderItem'),
+            vendorInvoice: createModelMock('vendorInvoice'),
+            approvalWorkflow: createModelMock('approvalWorkflow'),
+            approvalStep: createModelMock('approvalStep'),
+            auditLog: createModelMock('auditLog'),
+            payment: createModelMock('payment'),
+            paymentRequest: createModelMock('paymentRequest'),
+            inventoryItem: createModelMock('inventoryItem'),
+            inventoryTransaction: createModelMock('inventoryTransaction'),
+            issue: createModelMock('issue'),
+            phase: createModelMock('phase'),
+            gatePass: createModelMock('gatePass'),
+            gatePassItem: createModelMock('gatePassItem'),
+            goodsReceipt: createModelMock('goodsReceipt'),
+            goodsReceiptItem: createModelMock('goodsReceiptItem'),
+            inspection: createModelMock('inspection'),
+            bankAccount: createModelMock('bankAccount'),
+            cashAccount: createModelMock('cashAccount'),
+            bankTransaction: createModelMock('bankTransaction'),
+            cashTransaction: createModelMock('cashTransaction'),
+            budgetHead: createModelMock('budgetHead'),
+            asset: createModelMock('asset'),
+            assetMovement: createModelMock('assetMovement'),
+          };
+          return models[prop as string];
+        },
+      });
+      return fn(prismaProxy);
+    }),
   },
 }));
 

@@ -295,9 +295,6 @@ export default function AssetScanPage() {
                 </>
               ) : null}
 
-              <Button variant="outlined" fullWidth onClick={() => navigate('/inventory')}>
-                Go to Inventory
-              </Button>
             </>
           )}
         </CardContent>

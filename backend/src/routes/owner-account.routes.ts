@@ -130,7 +130,8 @@ router.get(
         return;
       }
 
-      // Get all journal entries for this owner account (only from POSTED JVs)
+      // Get all journal entries for this owner account (only from POSTED JVs),
+      // ordered oldest-first so the running balance accumulates correctly.
       const entries = await prisma.journalEntry.findMany({
         where: {
           ownerAccountId: req.params.id,
@@ -141,10 +142,11 @@ router.get(
             select: { id: true, jvNumber: true, date: true, type: true, description: true },
           },
         },
-        orderBy: { journalVoucher: { date: 'desc' } },
+        orderBy: { journalVoucher: { date: 'asc' } },
       });
 
-      // Build running balance statement
+      // Build running balance statement forward (oldest → newest) so each
+      // balanceAfter reflects the cumulative balance at that point in time.
       let runningBalance = Number(ownerAccount.openingBalance);
       const statement = entries.map((entry) => {
         // Credit to owner = company owes owner more (balance increases)
@@ -173,7 +175,7 @@ router.get(
           openingBalance: Number(ownerAccount.openingBalance),
           currentBalance: Number(ownerAccount.currentBalance),
         },
-        statement: statement.reverse(), // most recent first
+        statement: statement.reverse(), // most recent first for display
       });
     } catch (error) {
       next(error);

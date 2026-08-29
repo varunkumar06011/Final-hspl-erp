@@ -60,13 +60,12 @@ async function getInvoicePaymentSummary(invoiceId: string, tx?: Prisma.Transacti
   const totalAmount = Number(invoice.totalAmount) || 0;
 
   // Cross-reference with actual paid advances on the linked PO.
-  // Use the maximum of the manual advancePaid and the actual PO paid advances
-  // (capped at invoice total) so outstanding can never ignore money that was
-  // actually paid. This prevents double-payment: if ₹50K was paid as an advance
-  // on the PO but the invoice's advancePaid was left at 0, the system still
-  // counts the ₹50K toward paidToDate and reduces outstanding accordingly.
+  // The unclaimed portion of PO advances (paid but not yet claimed on any
+  // invoice) is allocated to invoices in date order so the SAME advance is
+  // never counted against multiple invoices — preventing double-payment.
   let poAdvancePaid = 0;
   let unclaimedAdvance = 0;
+  let allocatedUnclaimed = 0;
   if (invoice.poId) {
     const [paidAdvancesOnPo, claimedByInvoices] = await Promise.all([
       client.paymentRequest.aggregate({
@@ -81,11 +80,32 @@ async function getInvoicePaymentSummary(invoiceId: string, tx?: Prisma.Transacti
     poAdvancePaid = Number(paidAdvancesOnPo._sum.amount) || 0;
     const totalClaimed = Number(claimedByInvoices._sum.advancePaid) || 0;
     unclaimedAdvance = Math.max(0, poAdvancePaid - totalClaimed);
+
+    // Allocate unclaimed advance to invoices in date order, each capped at its
+    // remaining (totalAmount - its own advancePaid), until exhausted.
+    if (unclaimedAdvance > 0) {
+      const poInvoices = await client.vendorInvoice.findMany({
+        where: { poId: invoice.poId, deletedAt: null },
+        select: { id: true, totalAmount: true, advancePaid: true, date: true },
+        orderBy: { date: 'asc' },
+      });
+      let remainingPool = unclaimedAdvance;
+      for (const inv of poInvoices) {
+        if (remainingPool <= 0) break;
+        const cap = Math.max(0, Number(inv.totalAmount) - Number(inv.advancePaid));
+        const share = Math.min(remainingPool, cap);
+        if (inv.id === invoiceId) {
+          allocatedUnclaimed = share;
+          break;
+        }
+        remainingPool -= share;
+      }
+    }
   }
 
-  // Use the higher of manual advancePaid and actual PO advance paid, capped at
-  // invoice total, to prevent double-payment while preserving backward compat.
-  const effectiveAdvance = Math.min(totalAmount, Math.max(advancePaid, poAdvancePaid));
+  // This invoice's effective advance = its own claimed advance + its allocated
+  // share of unclaimed PO advances, capped at the invoice total.
+  const effectiveAdvance = Math.min(totalAmount, advancePaid + allocatedUnclaimed);
   const paidToDate = effectiveAdvance + installmentsPaid;
   const outstanding = totalAmount - paidToDate;
 
@@ -413,7 +433,7 @@ router.post(
           },
         });
 
-        const workflow = await prisma.approvalWorkflow.create({
+        const workflow = await tx.approvalWorkflow.create({
           data: {
             entityType: 'PAYMENT_REQUEST',
             entityId: created.id,
@@ -538,7 +558,7 @@ router.post(
           },
         });
 
-        const workflow = await prisma.approvalWorkflow.create({
+        const workflow = await tx.approvalWorkflow.create({
           data: {
             entityType: 'PAYMENT_REQUEST',
             entityId: created.id,
@@ -652,7 +672,7 @@ router.post(
           },
         });
 
-        const workflow = await prisma.approvalWorkflow.create({
+        const workflow = await tx.approvalWorkflow.create({
           data: {
             entityType: 'PAYMENT_REQUEST',
             entityId: created.id,
@@ -922,6 +942,34 @@ router.post(
         const bankAccountId = (req.body.bankAccountId as string) ?? null;
         const cashAccountId = (req.body.cashAccountId as string) ?? null;
 
+        // ── A15: Atomically claim the payment request to prevent double payment ──
+        // Two concurrent /pay calls can both pass the pre-transaction check
+        // (pr.payments.length === 0). This atomic updateMany ensures only one
+        // call can transition the request from APPROVED → PAID; the other gets
+        // count=0 and aborts. The `status: APPROVED` filter is the lock.
+        const claimed = await tx.paymentRequest.updateMany({
+          where: { id: pr.id, status: PaymentStatus.APPROVED },
+          data: { status: PaymentStatus.PAID },
+        });
+        if (claimed.count !== 1) {
+          throw new Error('Payment has already been recorded by another request');
+        }
+
+        // ── C20: Guard against overpaying beyond the current outstanding ──
+        // The pre-transaction check only blocks when fully paid. Inside the
+        // transaction we also verify the payment amount does not exceed the
+        // current outstanding (which may have shrunk since the request was
+        // approved due to other payments or advance claims).
+        if (pr.invoiceId) {
+          const { outstanding } = await getInvoicePaymentSummary(pr.invoiceId, tx);
+          if (outstanding <= 0.01) {
+            throw new Error('Invoice is already fully paid; cannot record this payment');
+          }
+          if (paymentAmount > outstanding + 0.01) {
+            throw new Error(`Payment amount ${paymentAmount} exceeds current outstanding ${outstanding.toFixed(2)}`);
+          }
+        }
+
         // ── Enforce exactly one funding account ──
         // A payment must debit either a bank account or a cash account, never both
         // and never neither. Without this, a payment with no funding account would
@@ -934,21 +982,34 @@ router.post(
           throw new Error('Specify either a bank account or a cash account, not both');
         }
 
-        // ── Finance integration: create bank/cash transaction ──
+        // ── A16: Atomic bank/cash balance updates ──
+        // Use Prisma's atomic `decrement` operator instead of read→modify→write
+        // in JS. This prevents lost updates under concurrent payments: two
+        // transactions that both read the same balance would overwrite each
+        // other with the same computed value, losing one deduction. The
+        // `decrement` operation is applied at the DB level and is serialized.
+        // We read the account first only for the insufficient-balance check and
+        // to record the resulting balanceAfter in the transaction log.
         if (bankAccountId) {
           const bankAccount = await tx.bankAccount.findFirst({
             where: { id: bankAccountId, projectId, deletedAt: null },
           });
           if (!bankAccount) throw new Error('Bank account not found in this project');
           if (!bankAccount.isActive) throw new Error('Bank account is inactive');
-          const newBalance = Number(bankAccount.currentBalance) - paymentAmount;
-          if (newBalance < 0) throw new Error(`Insufficient balance in bank account ${bankAccount.accountName}`);
+          if (Number(bankAccount.currentBalance) < paymentAmount) {
+            throw new Error(`Insufficient balance in bank account ${bankAccount.accountName}`);
+          }
+          const updatedBank = await tx.bankAccount.update({
+            where: { id: bankAccountId },
+            data: { currentBalance: { decrement: paymentAmount } },
+            select: { currentBalance: true },
+          });
           await tx.bankTransaction.create({
             data: {
               bankAccountId,
               type: BankTxnType.WITHDRAWAL,
               amount: paymentAmount,
-              balanceAfter: newBalance,
+              balanceAfter: updatedBank.currentBalance,
               date: new Date(),
               description: `Payment: ${pr.paymentCode} (${pr.type})`,
               referenceType: AccountTxnRefType.PAYMENT,
@@ -956,10 +1017,6 @@ router.post(
               status: 'POSTED',
               createdBy: req.user!.id,
             },
-          });
-          await tx.bankAccount.update({
-            where: { id: bankAccountId },
-            data: { currentBalance: newBalance },
           });
         } else if (cashAccountId) {
           const cashAccount = await tx.cashAccount.findFirst({
@@ -967,14 +1024,20 @@ router.post(
           });
           if (!cashAccount) throw new Error('Cash account not found in this project');
           if (!cashAccount.isActive) throw new Error('Cash account is inactive');
-          const newBalance = Number(cashAccount.currentBalance) - paymentAmount;
-          if (newBalance < 0) throw new Error(`Insufficient balance in cash account ${cashAccount.name}`);
+          if (Number(cashAccount.currentBalance) < paymentAmount) {
+            throw new Error(`Insufficient balance in cash account ${cashAccount.name}`);
+          }
+          const updatedCash = await tx.cashAccount.update({
+            where: { id: cashAccountId },
+            data: { currentBalance: { decrement: paymentAmount } },
+            select: { currentBalance: true },
+          });
           await tx.cashTransaction.create({
             data: {
               cashAccountId,
               type: CashTxnType.OUT,
               amount: paymentAmount,
-              balanceAfter: newBalance,
+              balanceAfter: updatedCash.currentBalance,
               date: new Date(),
               description: `Payment: ${pr.paymentCode} (${pr.type})`,
               referenceType: AccountTxnRefType.PAYMENT,
@@ -982,10 +1045,6 @@ router.post(
               status: 'POSTED',
               createdBy: req.user!.id,
             },
-          });
-          await tx.cashAccount.update({
-            where: { id: cashAccountId },
-            data: { currentBalance: newBalance },
           });
         }
 
@@ -1001,11 +1060,6 @@ router.post(
             budgetHeadId: pr.budgetHeadId ?? null,
             postedAt: new Date(),
           },
-        });
-
-        await tx.paymentRequest.update({
-          where: { id: pr.id },
-          data: { status: PaymentStatus.PAID },
         });
 
         // ── Update budget head paidAmount (and actualAmount for EXPENSE type) ──

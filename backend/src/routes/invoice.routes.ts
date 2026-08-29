@@ -261,58 +261,64 @@ router.post(
         fileMimeType = req.file.mimetype;
       }
 
-      const invoice = await prisma.vendorInvoice.create({
-        data: {
-          projectId,
-          vendorId,
-          poId: poId ?? null,
-          invoiceCode,
-          invoiceNumber: finalInvoiceNumber,
-          amount: Number(amount),
-          taxAmount: taxAmt,
-          cgstAmount: split.cgstAmount,
-          sgstAmount: split.sgstAmount,
-          igstAmount: split.igstAmount,
-          totalAmount: Number(totalAmount),
-          advancePaid: Number(advancePaid) || 0,
-          advanceType: advanceType ?? null,
-          advanceOtherType: advanceOtherType ?? null,
-          paymentStatus: (Number(advancePaid) || 0) > 0 ? PaymentStatus.PARTIALLY_PAID : PaymentStatus.PENDING,
-          stockStatus: StockStatus.PENDING,
-          deliveryDate: deliveryDate ? new Date(deliveryDate) : null,
-          filePath,
-          fileName,
-          fileMimeType,
-          verificationStatus: InvoiceVerificationStatus.PENDING,
-          createdBy: req.user!.id,
-        },
-        include: invoiceInclude,
-      });
-
-      // Initiate approval workflow — any 2 of 4 head roles
-      const workflow = await prisma.approvalWorkflow.create({
-        data: {
-          entityType: 'VENDOR_INVOICE',
-          entityId: invoice.id,
-          projectId,
-          status: 'VERIFICATION',
-          currentStep: 0,
-          minApprovers: getRequiredApproverCount(Number(totalAmount)),
-          approvalPolicy: 'HEAD_GROUPS',
-          steps: {
-            create: HEAD_ROLES.map((role, idx) => ({
-              stepNumber: idx + 1,
-              approverRole: role,
-              status: 'PENDING',
-            })),
+      // Create invoice + approval workflow atomically so a rollback can't leave
+      // an orphan workflow or an invoice without its workflow linkage.
+      const { invoice, workflow } = await prisma.$transaction(async (tx) => {
+        const invoice = await tx.vendorInvoice.create({
+          data: {
+            projectId,
+            vendorId,
+            poId: poId ?? null,
+            invoiceCode,
+            invoiceNumber: finalInvoiceNumber,
+            amount: Number(amount),
+            taxAmount: taxAmt,
+            cgstAmount: split.cgstAmount,
+            sgstAmount: split.sgstAmount,
+            igstAmount: split.igstAmount,
+            totalAmount: Number(totalAmount),
+            advancePaid: Number(advancePaid) || 0,
+            advanceType: advanceType ?? null,
+            advanceOtherType: advanceOtherType ?? null,
+            paymentStatus: (Number(advancePaid) || 0) > 0 ? PaymentStatus.PARTIALLY_PAID : PaymentStatus.PENDING,
+            stockStatus: StockStatus.PENDING,
+            deliveryDate: deliveryDate ? new Date(deliveryDate) : null,
+            filePath,
+            fileName,
+            fileMimeType,
+            verificationStatus: InvoiceVerificationStatus.PENDING,
+            createdBy: req.user!.id,
           },
-        },
-        include: { steps: true },
-      });
+          include: invoiceInclude,
+        });
 
-      await prisma.vendorInvoice.update({
-        where: { id: invoice.id },
-        data: { approvalWorkflowId: workflow.id },
+        // Initiate approval workflow — any 2 of 4 head roles
+        const workflow = await tx.approvalWorkflow.create({
+          data: {
+            entityType: 'VENDOR_INVOICE',
+            entityId: invoice.id,
+            projectId,
+            status: 'VERIFICATION',
+            currentStep: 0,
+            minApprovers: getRequiredApproverCount(Number(totalAmount)),
+            approvalPolicy: 'HEAD_GROUPS',
+            steps: {
+              create: HEAD_ROLES.map((role, idx) => ({
+                stepNumber: idx + 1,
+                approverRole: role,
+                status: 'PENDING',
+              })),
+            },
+          },
+          include: { steps: true },
+        });
+
+        await tx.vendorInvoice.update({
+          where: { id: invoice.id },
+          data: { approvalWorkflowId: workflow.id },
+        });
+
+        return { invoice, workflow };
       });
 
       await logAudit({

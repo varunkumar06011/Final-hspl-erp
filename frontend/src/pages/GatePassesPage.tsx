@@ -531,7 +531,7 @@ export default function GatePassesPage() {
                         <Chip
                           label={row.status}
                           size="small"
-                          color={row.status === 'APPROVED' ? 'success' : 'warning'}
+                          color={row.status === 'APPROVED' ? 'success' : row.status === 'DELIVERED' ? 'info' : 'warning'}
                         />
                       </TableCell>
                       <TableCell data-label="Actions">

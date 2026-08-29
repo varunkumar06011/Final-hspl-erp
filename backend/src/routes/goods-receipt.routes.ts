@@ -1,5 +1,5 @@
 import { Router, Response, NextFunction } from 'express';
-import { GoodsReceiptStatus, Permission, AuditAction, InspectionStatus, InventoryItemType, AssetStatus, AssetMovementType } from '@hospital-erp/shared';
+import { GoodsReceiptStatus, Permission, AuditAction, InspectionStatus, InventoryItemType, AssetStatus, AssetMovementType, GatePassStatus } from '@hospital-erp/shared';
 import {
   createGoodsReceiptSchema,
   inspectGoodsReceiptSchema,
@@ -144,6 +144,38 @@ router.post(
       for (const item of deliveredItems) {
         if (!poItems.has(item.materialName.toLowerCase())) {
           res.status(400).json({ error: `Item ${item.materialName} is not part of the purchase order` });
+          return;
+        }
+      }
+
+      // Enforce that cumulative delivered quantity does not exceed the PO ordered
+      // quantity. Already-accepted quantities from posted GRNs are counted so that
+      // a second delivery cannot push the total past the ordered amount.
+      const postedReceipts = await prisma.goodsReceipt.findMany({
+        where: { poId: gatePass.poId!, deletedAt: null, status: GoodsReceiptStatus.POSTED },
+        select: { items: { select: { poItemId: true, materialName: true, acceptedQty: true } } },
+      });
+      const acceptedByPoItemId = new Map<string, number>();
+      const acceptedByName = new Map<string, number>();
+      for (const r of postedReceipts) {
+        for (const line of r.items) {
+          const qty = Number(line.acceptedQty);
+          if (line.poItemId) acceptedByPoItemId.set(line.poItemId, (acceptedByPoItemId.get(line.poItemId) ?? 0) + qty);
+          const name = line.materialName.toLowerCase();
+          acceptedByName.set(name, (acceptedByName.get(name) ?? 0) + qty);
+        }
+      }
+      for (const item of deliveredItems) {
+        const poItem = poItems.get(item.materialName.toLowerCase())!;
+        const alreadyAccepted =
+          (poItem.id && acceptedByPoItemId.has(poItem.id)
+            ? acceptedByPoItemId.get(poItem.id)!
+            : acceptedByName.get(item.materialName.toLowerCase()) ?? 0);
+        const ordered = Number(poItem.quantity);
+        if (alreadyAccepted + Number(item.deliveredQty) > ordered + 0.01) {
+          res.status(400).json({
+            error: `Cannot deliver ${item.deliveredQty} ${item.materialName}: ${alreadyAccepted} already accepted, only ${ordered} ordered`,
+          });
           return;
         }
       }
@@ -444,6 +476,15 @@ router.post(
           });
         }
 
+        // ── Mark the gate pass as DELIVERED so it is no longer counted as in-transit ──
+        // Once a goods receipt is posted, the authorized shipment has been received;
+        // keeping it APPROVED would cause the in-transit calculation to double-count
+        // already-delivered quantities against the PO remaining quantity.
+        await tx.gatePass.update({
+          where: { id: receipt.gatePassId },
+          data: { status: GatePassStatus.DELIVERED },
+        });
+
         // ── Finance integration: convert commitment to actual on budget head ──
         if (receipt.purchaseOrder?.budgetHeadId) {
           const head = await tx.budgetHead.findFirst({
@@ -489,21 +530,29 @@ router.post(
       // Update PO status based on accepted quantities from all posted receipts
       const allReceipts = await prisma.goodsReceipt.findMany({
         where: { poId: receipt.poId, deletedAt: null, status: GoodsReceiptStatus.POSTED },
-        select: { items: { select: { materialName: true, acceptedQty: true } } },
+        select: { items: { select: { poItemId: true, materialName: true, acceptedQty: true } } },
       });
       const poItems = await prisma.pOItem.findMany({
         where: { poId: receipt.poId },
-        select: { materialName: true, quantity: true },
+        select: { id: true, materialName: true, quantity: true },
       });
+      const acceptedByPoItemId = new Map<string, number>();
       const acceptedByName = new Map<string, number>();
       for (const r of allReceipts) {
         for (const item of r.items) {
+          const qty = Number(item.acceptedQty);
+          if (item.poItemId) {
+            acceptedByPoItemId.set(item.poItemId, (acceptedByPoItemId.get(item.poItemId) ?? 0) + qty);
+          }
           const name = item.materialName.toLowerCase();
-          acceptedByName.set(name, (acceptedByName.get(name) ?? 0) + Number(item.acceptedQty));
+          acceptedByName.set(name, (acceptedByName.get(name) ?? 0) + qty);
         }
       }
       const fullyReceived = poItems.every(
-        (item) => (acceptedByName.get(item.materialName.toLowerCase()) ?? 0) >= Number(item.quantity),
+        (item) =>
+          (item.id && acceptedByPoItemId.has(item.id)
+            ? acceptedByPoItemId.get(item.id)!
+            : acceptedByName.get(item.materialName.toLowerCase()) ?? 0) >= Number(item.quantity),
       );
       await prisma.purchaseOrder.update({
         where: { id: receipt.poId },
