@@ -155,6 +155,7 @@ model Vendor {
   contracts       Contract[]
   activities      Activity[]
   materials       VendorMaterial[]
+  assets          Asset[]
 
   @@unique([projectId, name])
   @@map("vendors")
@@ -201,6 +202,8 @@ model Quotation {
   items            QuotationItem[]
   purchaseOrders   PurchaseOrder[]
   workTasks        WorkTask[]
+  workTaskLinks    WorkTaskQuotation[]
+  assets           Asset[]
   approvalWorkflow ApprovalWorkflow? @relation(fields: [approvalWorkflowId], references: [id])
 
   @@unique([projectId, quotationNumber])
@@ -266,6 +269,7 @@ model PurchaseOrder {
   goodsReceipts    GoodsReceipt[]
   workTasks        WorkTask[]
   advancePaymentRequests PaymentRequest[]
+  assets           Asset[]
   approvalWorkflow ApprovalWorkflow? @relation(fields: [approvalWorkflowId], references: [id])
   budgetHead          BudgetHead?       @relation(fields: [budgetHeadId], references: [id])
 
@@ -485,6 +489,7 @@ model GatePass {
   items               GatePassItem[]
   inventoryTxns       InventoryTransaction[]
   goodsReceipts       GoodsReceipt[]
+  assets              Asset[]
 
   @@unique([projectId, passNumber])
   @@map("gate_passes")
@@ -528,6 +533,7 @@ model GoodsReceipt {
   inspection      Inspection?
   items           GoodsReceiptItem[]
   inventoryTxns   InventoryTransaction[]
+  assets          Asset[]
 
   @@unique([projectId, receiptNumber])
   @@map("goods_receipts")
@@ -641,6 +647,15 @@ model Asset {
   receivedBy      String?
   postedBy        String?
 
+  // Live traceability links (FKs to the source records — populated at GRN posting
+  // and backfilled from the frozen snapshot strings above). These enable full
+  // forward/reverse traceability without relying on string lookups.
+  poId            String?  @db.Uuid
+  grnId           String?  @db.Uuid
+  vendorId        String?  @db.Uuid
+  quotationId     String?  @db.Uuid
+  gatePassId      String?  @db.Uuid
+
   // Regulatory identifiers (manufacturer's UDI/GTIN — scanned from product label)
   udi             String?  // Unique Device Identifier (CDSCO requirement for Class C/D devices)
   gtin            String?  // Global Trade Item Number (GS1 standard)
@@ -660,12 +675,20 @@ model Asset {
   inventoryItem   InventoryItem     @relation(fields: [inventoryItemId], references: [id])
   issuedByUser    User?             @relation("AssetIssuedBy", fields: [issuedBy], references: [id])
   lastScannedByUser User?           @relation("AssetLastScannedBy", fields: [lastScannedBy], references: [id])
+  purchaseOrder   PurchaseOrder?    @relation(fields: [poId], references: [id])
+  goodsReceipt    GoodsReceipt?     @relation(fields: [grnId], references: [id])
+  vendor          Vendor?           @relation(fields: [vendorId], references: [id])
+  quotation       Quotation?        @relation(fields: [quotationId], references: [id])
+  gatePass        GatePass?         @relation(fields: [gatePassId], references: [id])
   movements       AssetMovement[]
   scans           AssetScan[]
   maintenances    AssetMaintenance[]
 
   @@index([projectId, status])
   @@index([inventoryItemId])
+  @@index([poId])
+  @@index([grnId])
+  @@index([vendorId])
   @@map("assets")
 }
 
@@ -858,10 +881,29 @@ model WorkTask {
   assignedToUser   User?          @relation("WorkTaskAssignedTo", fields: [assignedTo], references: [id])
   linkedQuotation  Quotation?     @relation(fields: [linkedQuotationId], references: [id])
   linkedPo         PurchaseOrder? @relation(fields: [linkedPoId], references: [id])
+  quotations       WorkTaskQuotation[]
 
   @@index([projectId, scheduledDate])
   @@index([status])
   @@map("work_tasks")
+}
+
+// Join table — a single work task can generate multiple quotations over time
+// (e.g. re-quote with a different vendor). WorkTask.linkedQuotationId still
+// points to the latest/active quotation so the Work Calendar view is unchanged.
+model WorkTaskQuotation {
+  id           String   @id @default(uuid()) @db.Uuid
+  workTaskId   String   @db.Uuid
+  quotationId  String   @db.Uuid
+  createdBy    String   @db.Uuid
+  createdAt    DateTime @default(now())
+
+  workTask   WorkTask   @relation(fields: [workTaskId], references: [id], onDelete: Cascade)
+  quotation  Quotation  @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+
+  @@unique([workTaskId, quotationId])
+  @@index([quotationId])
+  @@map("work_task_quotations")
 }
 
 model Inspection {

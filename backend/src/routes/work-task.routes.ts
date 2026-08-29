@@ -1,15 +1,19 @@
 import { Router, Response, NextFunction } from 'express';
-import { Permission } from '@hospital-erp/shared';
+import { Permission, WorkTaskStatus, AuditAction } from '@hospital-erp/shared';
 import {
   createWorkTaskSchema,
   updateWorkTaskSchema,
   listWorkTasksSchema,
   calendarWorkTasksSchema,
+  generateWorkTaskQuotationSchema,
 } from '@hospital-erp/shared';
 import { createCrudRouter } from '../utils/crudFactory';
 import { prisma } from '../config/prisma';
 import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middleware/auth';
+import { rbacMiddleware } from '../middleware/rbac';
 import { validateMiddleware } from '../middleware/validate';
+import { logAudit } from '../services/audit.service';
+import { createQuotation, type QuotationLineItem } from '../services/quotation.service';
 
 const router = Router();
 
@@ -17,10 +21,24 @@ const WORK_TASK_INCLUDE = {
   createdByUser: { select: { id: true, name: true } },
   assignedToUser: { select: { id: true, name: true, role: true } },
   linkedQuotation: {
-    select: { id: true, quotationNumber: true, vendor: { select: { id: true, name: true } } },
+    select: { id: true, quotationNumber: true, status: true, vendor: { select: { id: true, name: true } } },
   },
   linkedPo: {
     select: { id: true, poNumber: true, vendor: { select: { id: true, name: true } } },
+  },
+  quotations: {
+    orderBy: { createdAt: 'desc' as const },
+    include: {
+      quotation: {
+        select: {
+          id: true,
+          quotationNumber: true,
+          status: true,
+          grandTotal: true,
+          vendor: { select: { id: true, name: true } },
+        },
+      },
+    },
   },
 };
 
@@ -113,6 +131,69 @@ router.get(
       });
       res.json({ data: purchaseOrders });
     } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// POST /:id/generate-quotation — create a quotation from a work task and link
+// it. A work task may accumulate multiple quotations over time (e.g. re-quote
+// with a different vendor); the latest one is also mirrored onto
+// linkedQuotationId so the Work Calendar view keeps working unchanged.
+router.post(
+  '/:id/generate-quotation',
+  rbacMiddleware(Permission.CREATE_QUOTATION),
+  validateMiddleware(generateWorkTaskQuotationSchema),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      const workTask = await prisma.workTask.findFirst({
+        where: { id: req.params.id, projectId, deletedAt: null },
+      });
+      if (!workTask) {
+        res.status(404).json({ error: 'Work task not found' });
+        return;
+      }
+
+      const items = req.body.items as QuotationLineItem[];
+      const quotation = await createQuotation({
+        projectId,
+        vendorId: req.body.vendorId,
+        items,
+        createdBy: req.user!.id,
+      });
+
+      // Link the quotation to the work task (join row + latest pointer) and
+      // advance the work task into IN_PROGRESS if it was still only planned.
+      await prisma.workTaskQuotation.create({
+        data: {
+          workTaskId: workTask.id,
+          quotationId: quotation.id,
+          createdBy: req.user!.id,
+        },
+      });
+      const statusPatch =
+        workTask.status === WorkTaskStatus.PLANNED ? { status: WorkTaskStatus.IN_PROGRESS } : {};
+      await prisma.workTask.update({
+        where: { id: workTask.id },
+        data: { linkedQuotationId: quotation.id, ...statusPatch },
+      });
+
+      await logAudit({
+        userId: req.user!.id,
+        action: AuditAction.UPDATE,
+        entityType: 'WORK_TASK',
+        entityId: workTask.id,
+        projectId,
+        newValue: { generatedQuotationId: quotation.id, quotationNumber: quotation.quotationNumber },
+      });
+
+      res.status(201).json(quotation);
+    } catch (error) {
+      if (error instanceof Error && error.message === 'Vendor not found') {
+        res.status(400).json({ error: error.message });
+        return;
+      }
       next(error);
     }
   }

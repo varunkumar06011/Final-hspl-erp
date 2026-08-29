@@ -704,6 +704,16 @@ export const calendarWorkTasksSchema = z.object({
   }),
 });
 
+// Generate a quotation directly from a work task (Work tab). Reuses the same
+// line-item shape as a normal quotation; the work task is linked afterwards.
+export const generateWorkTaskQuotationSchema = z.object({
+  params: z.object({ id: uuid }),
+  body: z.object({
+    vendorId: uuid,
+    items: itemsField,
+  }),
+});
+
 // ═══ Inspections ═══
 export const createInspectionSchema = z.object({
   body: z.object({

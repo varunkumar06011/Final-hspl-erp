@@ -1,15 +1,19 @@
 import { Router, Response, NextFunction } from 'express';
-import { APPROVER_ROLES, Permission, QuotationStatus, AuditAction, getRequiredApproverCount } from '@hospital-erp/shared';
+import { APPROVER_ROLES, Permission, QuotationStatus, AuditAction } from '@hospital-erp/shared';
 import { createQuotationSchema, listQuotationsSchema, approvalActionSchema } from '@hospital-erp/shared';
 import { prisma } from '../config/prisma';
 import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middleware/auth';
 import { rbacMiddleware } from '../middleware/rbac';
 import { validateMiddleware } from '../middleware/validate';
 import { logAudit } from '../services/audit.service';
-import { generateSequenceNumber } from '../services/sequence.service';
 import * as approvalService from '../services/approval.service';
-import { notifyApprovers } from '../services/push.service';
 import { getStorageService, serveFile } from '../services/storage.service';
+import {
+  createQuotation,
+  generateQuotationNumber,
+  quotationInclude,
+  type QuotationLineItem,
+} from '../services/quotation.service';
 import multer from 'multer';
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 100 * 1024 * 1024 } });
@@ -17,25 +21,6 @@ const allowedQuotationFileTypes = ['application/pdf', 'image/jpeg', 'image/png',
 
 const router = Router();
 router.use(authMiddleware);
-
-interface QuotationLineItem {
-  materialName: string;
-  quantity: number;
-  unit?: string;
-  unitPrice: number;
-  gstRate?: number;
-}
-
-async function generateQuotationNumber(projectId: string): Promise<string> {
-  return generateSequenceNumber('quotation', 'quotationNumber', 'VGH-Q', 3, { projectId });
-}
-
-const quotationInclude = {
-  vendor: { select: { id: true, name: true, vendorCode: true } },
-  items: true,
-  createdByUser: { select: { id: true, name: true } },
-  approvalWorkflow: { include: { steps: { orderBy: { stepNumber: 'asc' as const }, include: { approverUser: { select: { id: true, name: true, role: true } } } } } },
-};
 
 // GET / — list quotations
 router.get(
@@ -110,50 +95,8 @@ router.post(
         ? JSON.parse(req.body.items || '[]') as QuotationLineItem[]
         : (req.body.items || []) as QuotationLineItem[];
 
-      // Validate vendor exists and belongs to project
-      const vendor = await prisma.vendor.findFirst({
-        where: { id: vendorId, projectId, deletedAt: null },
-        include: { materials: true },
-      });
-      if (!vendor) {
-        res.status(400).json({ error: 'Vendor not found' });
-        return;
-      }
-
-      // Auto-register any materials from the quotation that aren't yet in vendor's materials
-      // (e.g. items extracted via OCR that don't match existing vendor materials)
-      const vendorMaterialNames = vendor.materials.map((m) => m.name.toLowerCase());
-      const newMaterials = items
-        .filter((item) => !vendorMaterialNames.includes(item.materialName.toLowerCase()))
-        .map((item) => ({ name: item.materialName, unit: item.unit || null }));
-      if (newMaterials.length > 0) {
-        await prisma.vendorMaterial.createMany({
-          data: newMaterials.map((m) => ({
-            vendorId: vendor.id,
-            name: m.name,
-            unit: m.unit,
-          })),
-        });
-        console.log(`[Quotation] Auto-registered ${newMaterials.length} new material(s) for vendor "${vendor.name}"`);
-      }
-
-      // Calculate totals — GST is auto-derived from per-item gstRate
-      const itemsWithAmounts = items.map((item) => {
-        const amount = item.quantity * item.unitPrice;
-        const rate = Number(item.gstRate) || 0;
-        return {
-          materialName: item.materialName,
-          quantity: item.quantity,
-          unit: item.unit || null,
-          unitPrice: item.unitPrice,
-          amount,
-          gstRate: rate,
-        };
-      });
-      const totalAmount = itemsWithAmounts.reduce((sum, i) => sum + Number(i.amount), 0);
-      const gstAmount = itemsWithAmounts.reduce((sum, i) => sum + Number(i.amount) * Number(i.gstRate) / 100, 0);
-      const grandTotal = totalAmount + gstAmount;
-
+      // Generate the quotation number up front so it can be used for the file
+      // prefix; it is passed into createQuotation to avoid regenerating it.
       const quotationNumber = await generateQuotationNumber(projectId);
 
       // Handle file upload
@@ -175,65 +118,24 @@ router.post(
         fileMimeType = req.file.mimetype;
       }
 
-      // Create quotation
-      const quotation = await prisma.quotation.create({
-        data: {
-          projectId,
-          vendorId,
-          quotationNumber,
-          status: QuotationStatus.SUBMITTED,
-          totalAmount,
-          gstAmount,
-          grandTotal,
-          filePath,
-          fileName,
-          fileMimeType,
-          createdBy: req.user!.id,
-          items: { create: itemsWithAmounts },
-        },
-        include: quotationInclude,
-      });
-
-      // Initiate approval workflow
-      const workflow = await approvalService.initiate({
-        entityType: 'QUOTATION',
-        entityId: quotation.id,
+      const result = await createQuotation({
         projectId,
-        minApprovers: getRequiredApproverCount(grandTotal),
-        approvalPolicy: 'HEAD_GROUPS',
-      });
-
-      await prisma.quotation.update({
-        where: { id: quotation.id },
-        data: { approvalWorkflowId: workflow.id },
-      });
-
-      await logAudit({
-        userId: req.user!.id,
-        action: AuditAction.CREATE,
-        entityType: 'QUOTATION',
-        entityId: quotation.id,
-        projectId,
-        newValue: { quotationNumber, vendorId, totalAmount, grandTotal, acknowledged: true },
-      });
-
-      // Notify all approvers via push notification
-      notifyApprovers(projectId, [...APPROVER_ROLES], {
-        approvalId: workflow.id,
-        entityType: 'QUOTATION',
-        entityId: quotation.id,
-        title: 'New Approval Required',
-        body: `Quotation ${quotationNumber} from ${quotation.vendor?.name ?? 'vendor'} — ₹${grandTotal}`,
-        url: `/quotations?approval=${workflow.id}`,
-      }).catch((err) => console.error('[Push] Quotation notification error:', err));
-
-      const result = await prisma.quotation.findUnique({
-        where: { id: quotation.id },
-        include: quotationInclude,
+        vendorId,
+        items,
+        createdBy: req.user!.id,
+        quotationNumber,
+        filePath,
+        fileName,
+        fileMimeType,
       });
 
       res.status(201).json(result);
     } catch (error) {
+      // Surface known validation errors (e.g. "Vendor not found") as 400s
+      if (error instanceof Error && error.message === 'Vendor not found') {
+        res.status(400).json({ error: error.message });
+        return;
+      }
       next(error);
     }
   }
