@@ -15,7 +15,6 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  IconButton,
   Chip,
   Alert,
   CircularProgress,
@@ -24,7 +23,6 @@ import {
 import ResponsiveDialog from '../components/ResponsiveDialog';
 import {
   Add as AddIcon,
-  Refresh as RefreshIcon,
   Search as SearchIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -34,6 +32,7 @@ import api, { extractErrorMessage } from '../config/api';
 import { SecureImage } from '../components/SecureImage';
 import CreatableSelect from '../components/CreatableSelect';
 import ResponsiveTable from '../components/ResponsiveTable';
+import RefreshButton from '../components/RefreshButton';
 
 export default function PhotosPage() {
   const [page, setPage] = useState(0);
@@ -95,7 +94,7 @@ export default function PhotosPage() {
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap' }}>
         <Typography variant="h5" fontWeight={600} sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' } }}>Site Photos</Typography>
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', justifyContent: { xs: 'flex-end', md: 'flex-end' }, width: { xs: '100%', md: 'auto' } }}>
-          <IconButton onClick={() => refetch()} size="small"><RefreshIcon /></IconButton>
+          <RefreshButton onClick={() => refetch()} />
           <Button variant="contained" startIcon={<AddIcon />} onClick={() => { setForm({ tag: PhotoTag.DURING }); setError(''); setDialogOpen(true); }}>
             Upload Photo
           </Button>

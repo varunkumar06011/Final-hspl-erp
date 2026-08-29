@@ -30,7 +30,6 @@ import ResponsiveDialog from '../components/ResponsiveDialog';
 import ApprovalStepsDisplay from '../components/ApprovalStepsDisplay';
 import {
   Add as AddIcon,
-  Refresh as RefreshIcon,
   Search as SearchIcon,
   Check as CheckIcon,
   Close as CloseIcon,
@@ -49,6 +48,7 @@ import AcknowledgementCheckbox from '../components/AcknowledgementCheckbox';
 import ApprovalActionDialog from '../components/ApprovalActionDialog';
 import OcrAutoFill, { type OcrQuotationData } from '../components/OcrAutoFill';
 import ResponsiveTable from '../components/ResponsiveTable';
+import RefreshButton from '../components/RefreshButton';
 import { useApprovalDeepLink } from '../utils/useApprovalDeepLink';
 
 interface QuotationItem {
@@ -479,7 +479,7 @@ export default function QuotationsPage() {
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap' }}>
         <Typography variant="h5" fontWeight={600} sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' } }}>Quotations</Typography>
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', justifyContent: { xs: 'flex-end', md: 'flex-end' }, width: { xs: '100%', md: 'auto' } }}>
-          <IconButton onClick={() => refetch()} size="small"><RefreshIcon /></IconButton>
+          <RefreshButton onClick={() => refetch()} />
           <Button variant="contained" startIcon={<AddIcon />} onClick={openCreate}>Add Quotation</Button>
         </Box>
       </Box>

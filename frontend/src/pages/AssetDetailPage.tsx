@@ -32,7 +32,6 @@ import {
   ArrowBack as ArrowBackIcon,
   Download as DownloadIcon,
   Print as PrintIcon,
-  Refresh as RefreshIcon,
   Edit as EditIcon,
   Warning as WarningIcon,
   Add as AddIcon,
@@ -44,6 +43,7 @@ import { enumToOptions, formatDate } from '../utils/enumOptions';
 import api, { extractErrorMessage } from '../config/api';
 import { useAuthStore } from '../stores/authStore';
 import AttachmentUpload from '../components/AttachmentUpload';
+import RefreshButton from '../components/RefreshButton';
 
 const STATUS_COLORS: Record<string, 'success' | 'warning' | 'info' | 'error' | 'default'> = {
   ACTIVE: 'success',
@@ -333,7 +333,7 @@ export default function AssetDetailPage() {
           {itemData ? String(itemData.name) : 'Asset'} — Units
         </Typography>
         <Box sx={{ flexGrow: 1 }} />
-        <IconButton onClick={() => refetch()} size="small"><RefreshIcon /></IconButton>
+        <RefreshButton onClick={() => refetch()} />
         <Button variant="outlined" startIcon={<DownloadIcon />} onClick={handleExport} size="small">Export CSV</Button>
         <Button variant="outlined" startIcon={<PrintIcon />} onClick={() => setPrintOpen(true)} size="small" disabled={rows.length === 0}>Print QR Tags</Button>
         <Button variant="contained" startIcon={<AddIcon />} onClick={() => { setCreateForm({ location: itemData?.location ?? 'Main Store' }); setCreateOpen(true); }} size="small">Set up Asset</Button>

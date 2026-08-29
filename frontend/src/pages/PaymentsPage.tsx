@@ -32,9 +32,9 @@ import {
 import ResponsiveDialog from '../components/ResponsiveDialog';
 import ApprovalStepsDisplay from '../components/ApprovalStepsDisplay';
 import AcknowledgementCheckbox from '../components/AcknowledgementCheckbox';
+import RefreshButton from '../components/RefreshButton';
 import {
   Add as AddIcon,
-  Refresh as RefreshIcon,
   Search as SearchIcon,
   Check as CheckIcon,
   Close as CloseIcon,
@@ -419,7 +419,7 @@ export default function PaymentsPage() {
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap' }}>
         <Typography variant="h5" fontWeight={600} sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' } }}>Payments</Typography>
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', justifyContent: { xs: 'flex-end', md: 'flex-end' }, width: { xs: '100%', md: 'auto' } }}>
-          <IconButton onClick={() => refetch()} size="small"><RefreshIcon /></IconButton>
+          <RefreshButton onClick={() => refetch()} />
           <Button variant="outlined" startIcon={<ReceiptIcon />} onClick={() => setTab(0)}>Pending Invoices</Button>
           <Button variant="contained" startIcon={<AddIcon />} onClick={() => { setExpenseForm({}); setExpenseFile(null); setExpenseOpen(true); }}>Add Daily Expense</Button>
         </Box>

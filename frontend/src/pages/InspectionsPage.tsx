@@ -25,7 +25,6 @@ import {
 import ResponsiveDialog from '../components/ResponsiveDialog';
 import {
   Add as AddIcon,
-  Refresh as RefreshIcon,
   Search as SearchIcon,
   Edit as EditIcon,
   Delete as DeleteIcon,
@@ -35,6 +34,7 @@ import { InspectionStatus } from '@hospital-erp/shared';
 import { enumToOptions, formatDate, STATUS_COLORS } from '../utils/enumOptions';
 import api, { extractErrorMessage } from '../config/api';
 import ResponsiveTable from '../components/ResponsiveTable';
+import RefreshButton from '../components/RefreshButton';
 
 interface InspectionRow {
   id: string;
@@ -129,7 +129,7 @@ export default function InspectionsPage() {
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap' }}>
         <Typography variant="h5" fontWeight={600} sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' } }}>Inspections</Typography>
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', justifyContent: { xs: 'flex-end', md: 'flex-end' }, width: { xs: '100%', md: 'auto' } }}>
-          <IconButton onClick={() => refetch()} size="small"><RefreshIcon /></IconButton>
+          <RefreshButton onClick={() => refetch()} />
           <Button variant="contained" startIcon={<AddIcon />} onClick={openCreate}>New Inspection</Button>
         </Box>
       </Box>

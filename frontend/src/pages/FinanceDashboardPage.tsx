@@ -5,14 +5,12 @@ import {
   Card,
   Grid,
   LinearProgress,
-  IconButton,
   Alert,
   CircularProgress,
   Stack,
   Chip,
 } from '@mui/material';
 import {
-  Refresh as RefreshIcon,
   AccountBalance as BankIcon,
   Payments as CashIcon,
   AccountBalanceWallet as BudgetIcon,
@@ -20,8 +18,9 @@ import {
   TrendingUp as UtilizationIcon,
   TrendingDown as UnpaidIcon,
 } from '@mui/icons-material';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '../config/api';
+import RefreshButton from '../components/RefreshButton';
 import { formatCurrency } from '../utils/enumOptions';
 
 interface DashboardData {
@@ -71,6 +70,7 @@ interface BudgetReport {
 
 export default function FinanceDashboardPage() {
   const [error, setError] = useState('');
+  const queryClient = useQueryClient();
 
   const { data: dashboard, isLoading } = useQuery<DashboardData>({
     queryKey: ['/finance-reports/dashboard'],
@@ -107,7 +107,7 @@ export default function FinanceDashboardPage() {
     <Box sx={{ minWidth: 0, overflow: 'hidden' }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
         <Typography variant="h5" fontWeight={600}>Finance Dashboard</Typography>
-        <IconButton onClick={() => window.location.reload()} size="small"><RefreshIcon /></IconButton>
+        <RefreshButton onClick={() => queryClient.invalidateQueries()} />
       </Box>
 
       {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}

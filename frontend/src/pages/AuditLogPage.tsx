@@ -11,19 +11,19 @@ import {
   TableRow,
   TablePagination,
   TextField,
-  IconButton,
   Chip,
   Alert,
   CircularProgress,
   MenuItem,
   InputAdornment,
 } from '@mui/material';
-import { Refresh as RefreshIcon, Search as SearchIcon } from '@mui/icons-material';
+import { Search as SearchIcon } from '@mui/icons-material';
 import { useQuery } from '@tanstack/react-query';
 import { AuditAction } from '@hospital-erp/shared';
 import { enumToOptions } from '../utils/enumOptions';
 import api from '../config/api';
 import ResponsiveTable from '../components/ResponsiveTable';
+import RefreshButton from '../components/RefreshButton';
 
 interface AuditLogRow {
   id: string;
@@ -140,7 +140,7 @@ export default function AuditLogPage() {
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap' }}>
         <Typography variant="h5" fontWeight={600} sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' } }}>Audit Log</Typography>
-        <IconButton onClick={() => refetch()} size="small"><RefreshIcon /></IconButton>
+        <RefreshButton onClick={() => refetch()} />
       </Box>
 
       <Card>

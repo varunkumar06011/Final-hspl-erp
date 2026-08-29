@@ -36,6 +36,7 @@ import CreatableSelect from './CreatableSelect';
 import SelectWithOther from './SelectWithOther';
 import AttachmentUpload from './AttachmentUpload';
 import ResponsiveTable from './ResponsiveTable';
+import RefreshButton from './RefreshButton';
 
 export interface MaterialEntry {
   id?: string;
@@ -226,9 +227,7 @@ export default function EntityPage({
           {title}
         </Typography>
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', justifyContent: { xs: 'flex-end', md: 'flex-end' }, alignItems: 'center', width: { xs: '100%', md: 'auto' }, minWidth: { md: 'max-content' } }}>
-          <IconButton onClick={() => refetch()} size="small">
-            <RefreshIcon />
-          </IconButton>
+          <RefreshButton onClick={() => refetch()} />
           {canCreate && (
             <Button variant="contained" startIcon={<AddIcon />} onClick={openCreate}>
               New {entityName}

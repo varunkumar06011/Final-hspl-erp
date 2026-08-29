@@ -16,18 +16,17 @@ import {
   Chip,
   Alert,
   CircularProgress,
-  IconButton,
   Stack,
   Grid,
   LinearProgress,
 } from '@mui/material';
 import {
-  Refresh as RefreshIcon,
   Download as DownloadIcon,
   PictureAsPdf as PdfIcon,
 } from '@mui/icons-material';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '../config/api';
+import RefreshButton from '../components/RefreshButton';
 import { formatCurrency } from '../utils/enumOptions';
 
 type TabValue = 'budget' | 'cashflow' | 'accounts' | 'owner' | 'reconciliation' | 'aging';
@@ -35,6 +34,7 @@ type TabValue = 'budget' | 'cashflow' | 'accounts' | 'owner' | 'reconciliation' 
 export default function FinanceReportsPage() {
   const [tab, setTab] = useState<TabValue>('budget');
   const [error, setError] = useState('');
+  const queryClient = useQueryClient();
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [cashFlowQuery, setCashFlowQuery] = useState(0);
@@ -147,7 +147,7 @@ export default function FinanceReportsPage() {
     <Box sx={{ minWidth: 0, overflow: 'hidden' }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
         <Typography variant="h5" fontWeight={600}>Finance Reports</Typography>
-        <IconButton onClick={() => window.location.reload()} size="small"><RefreshIcon /></IconButton>
+        <RefreshButton onClick={() => queryClient.invalidateQueries()} />
       </Box>
 
       {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}

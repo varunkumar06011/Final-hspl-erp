@@ -39,6 +39,7 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { extractErrorMessage } from '../config/api';
 import ResponsiveDialog from '../components/ResponsiveDialog';
+import RefreshButton from '../components/RefreshButton';
 import { formatCurrency, formatIndianNumber, formatDate } from '../utils/enumOptions';
 
 interface CashAccount {
@@ -358,7 +359,7 @@ export default function CashAccountsPage() {
           Cash Accounts
         </Typography>
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-          <IconButton onClick={() => refetch()} size="small"><RefreshIcon /></IconButton>
+          <RefreshButton onClick={() => refetch()} />
           <Button variant="outlined" startIcon={<BankIcon />} onClick={() => openBankCash('BANK_TO_CASH')}>Bank → Cash</Button>
           <Button variant="outlined" startIcon={<CashIcon />} onClick={() => openBankCash('CASH_TO_BANK')}>Cash → Bank</Button>
           <Button variant="outlined" startIcon={<TransferIcon />} onClick={openTransfer}>Transfer</Button>

@@ -24,7 +24,6 @@ import {
   Divider,
 } from '@mui/material';
 import {
-  Refresh as RefreshIcon,
   Download as DownloadIcon,
   ViewModule as ViewModuleIcon,
   ViewList as ViewListIcon,
@@ -33,6 +32,7 @@ import {
 } from '@mui/icons-material';
 import { useQuery } from '@tanstack/react-query';
 import api, { extractErrorMessage } from '../config/api';
+import RefreshButton from '../components/RefreshButton';
 
 const STATUS_COLORS: Record<string, 'success' | 'warning' | 'info' | 'error' | 'default'> = {
   ACTIVE: 'success',
@@ -112,7 +112,7 @@ export default function AssetsPage() {
           Asset Management
         </Typography>
         <Box sx={{ flexGrow: 1 }} />
-        <IconButton onClick={() => refetch()} size="small"><RefreshIcon /></IconButton>
+        <RefreshButton onClick={() => refetch()} />
         <Button variant="outlined" startIcon={<DownloadIcon />} onClick={handleExport} size="small">Export CSV</Button>
       </Box>
 

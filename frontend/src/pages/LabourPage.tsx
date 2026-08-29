@@ -30,7 +30,6 @@ import {
 import ResponsiveDialog from '../components/ResponsiveDialog';
 import {
   Add as AddIcon,
-  Refresh as RefreshIcon,
   Search as SearchIcon,
   Edit as EditIcon,
   Delete as DeleteIcon,
@@ -41,6 +40,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { formatCurrency, formatDate, formatIndianNumber } from '../utils/enumOptions';
 import api, { extractErrorMessage } from '../config/api';
 import ResponsiveTable from '../components/ResponsiveTable';
+import RefreshButton from '../components/RefreshButton';
 
 interface Staff {
   id: string;
@@ -224,7 +224,7 @@ export default function AttendancePage() {
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap' }}>
         <Typography variant="h5" fontWeight={600} sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' } }}>Attendance</Typography>
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', justifyContent: { xs: 'flex-end', md: 'flex-end' }, width: { xs: '100%', md: 'auto' } }}>
-          <IconButton onClick={() => { refetchStaff(); refetchAttendance(); refetchSummary(); }} size="small"><RefreshIcon /></IconButton>
+          <RefreshButton onClick={() => { refetchStaff(); refetchAttendance(); refetchSummary(); }} />
           <Button variant="contained" startIcon={<AddIcon />} onClick={openCreateStaff}>Add Staff</Button>
         </Box>
       </Box>
