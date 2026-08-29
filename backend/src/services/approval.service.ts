@@ -1,6 +1,7 @@
 import { prisma } from '../config/prisma';
-import { APPROVER_ROLES, ApprovalStatus, ApprovalStepStatus, UserRole, APPROVAL_CONFIG } from '@hospital-erp/shared';
+import { APPROVER_ROLES, ApprovalStatus, ApprovalStepStatus, UserRole, APPROVAL_CONFIG, AuditAction } from '@hospital-erp/shared';
 import { notifyAllHeads, notifyUser, NotificationPayload } from './push.service';
+import { logAudit } from './audit.service';
 
 interface InitiateParams {
   entityType: string;
@@ -196,6 +197,17 @@ export async function approve(stepId: string, userId: string, comments?: string)
     },
   });
 
+  // ── D20: Write approval decisions to the audit log ──
+  await logAudit({
+    userId,
+    action: AuditAction.APPROVE,
+    entityType: step.workflow.entityType,
+    entityId: step.workflow.entityId,
+    projectId: step.workflow.projectId,
+    oldValue: { stepStatus: ApprovalStepStatus.PENDING, stepNumber: step.stepNumber },
+    newValue: { stepStatus: ApprovalStepStatus.APPROVED, stepNumber: step.stepNumber, comments },
+  }).catch((err) => console.error('[Audit] Approval log error:', err));
+
   const workflow = await prisma.approvalWorkflow.findUnique({
     where: { id: step.workflowId },
     include: { steps: { orderBy: { stepNumber: 'asc' } } },
@@ -330,6 +342,17 @@ export async function reject(stepId: string, userId: string, reason: string) {
       comments: reason,
     },
   });
+
+  // ── D20: Write rejection decisions to the audit log ──
+  await logAudit({
+    userId,
+    action: AuditAction.REJECT,
+    entityType: step.workflow.entityType,
+    entityId: step.workflow.entityId,
+    projectId: step.workflow.projectId,
+    oldValue: { stepStatus: ApprovalStepStatus.PENDING, stepNumber: step.stepNumber },
+    newValue: { stepStatus: ApprovalStepStatus.REJECTED, stepNumber: step.stepNumber, reason },
+  }).catch((err) => console.error('[Audit] Rejection log error:', err));
 
   const workflow = await prisma.approvalWorkflow.findUnique({
     where: { id: step.workflowId },

@@ -190,6 +190,18 @@ router.post(
         return;
       }
 
+      // ── A18: Reconcile totalAmount with amount + taxAmount ──
+      // Without this, a user can create amount=0, taxAmount=0, totalAmount=100000.
+      // Approval only checks invoice.amount against accepted goods value, so the
+      // invoice becomes VERIFIED and payments use the inflated totalAmount.
+      const expectedTotal = Number(amount) + Number(taxAmount);
+      if (Math.abs(Number(totalAmount) - expectedTotal) > 0.01) {
+        res.status(400).json({
+          error: `Total amount (${totalAmount}) must equal amount (${amount}) + tax amount (${taxAmount}) = ${expectedTotal}`,
+        });
+        return;
+      }
+
       // Validate vendor
       const vendor = await prisma.vendor.findFirst({
         where: { id: vendorId, projectId, deletedAt: null },
@@ -472,6 +484,37 @@ router.patch(
         include: invoiceInclude,
       });
 
+      // ── A23: Recalculate payment status after PATCH ──
+      // PATCH can change totalAmount, amount, taxAmount, and advancePaid.
+      // Without recalculating, the paymentStatus stays stale (e.g. PENDING
+      // even when advancePaid now equals totalAmount), causing duplicate
+      // payment requests and incorrect ledger reports.
+      if (req.body.totalAmount !== undefined || req.body.advancePaid !== undefined || req.body.amount !== undefined) {
+        const paidRequests = await prisma.paymentRequest.aggregate({
+          where: { invoiceId: existing.id, status: 'PAID', deletedAt: null },
+          _sum: { amount: true },
+        });
+        const installmentsPaid = Number(paidRequests._sum.amount) || 0;
+        const newTotal = Number(updated.totalAmount);
+        const newAdvance = Number(updated.advancePaid) || 0;
+        const paidToDate = newAdvance + installmentsPaid;
+        const outstanding = newTotal - paidToDate;
+        let newPaymentStatus: string;
+        if (outstanding <= 0) {
+          newPaymentStatus = 'PAID';
+        } else if (paidToDate > 0) {
+          newPaymentStatus = 'PARTIALLY_PAID';
+        } else {
+          newPaymentStatus = 'PENDING';
+        }
+        if (newPaymentStatus !== updated.paymentStatus) {
+          await prisma.vendorInvoice.update({
+            where: { id: existing.id },
+            data: { paymentStatus: newPaymentStatus },
+          });
+        }
+      }
+
       await logAudit({
         userId: req.user!.id,
         action: AuditAction.UPDATE,
@@ -575,6 +618,22 @@ router.post(
         }
         if (Number(invoice.amount) > availableValue + 0.01) {
           res.status(400).json({ error: `Invoice amount exceeds the available accepted goods value of ₹${Math.max(0, availableValue).toLocaleString('en-IN')}` });
+          return;
+        }
+        // Also verify totalAmount (amount + tax) is not materially larger than
+        // accepted goods value plus recognized tax — prevents over-billing.
+        const acceptedTax = receipts.reduce(
+          (total, receipt) => total + receipt.items.reduce((sum, item) => {
+            const lineAmount = Number(item.acceptedQty) * Number(item.poItem?.unitPrice ?? 0);
+            // Approximate tax from the invoice's own tax ratio
+            const taxRatio = Number(invoice.amount) > 0 ? Number(invoice.taxAmount) / Number(invoice.amount) : 0;
+            return sum + lineAmount * taxRatio;
+          }, 0),
+          0,
+        );
+        const availableTotal = availableValue + acceptedTax;
+        if (Number(invoice.totalAmount) > availableTotal + 0.01) {
+          res.status(400).json({ error: `Invoice total (${invoice.totalAmount}) exceeds available accepted value + tax of ₹${Math.max(0, availableTotal).toLocaleString('en-IN')}` });
           return;
         }
       }

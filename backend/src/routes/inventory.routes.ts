@@ -323,6 +323,17 @@ router.post(
         res.status(400).json({ error: 'Inbound stock must be posted from an inspected goods receipt' });
         return;
       }
+      // ── B24: Asset-typed items must only move via the asset lifecycle ──
+      // Generic OUT/ADJUST on an ASSET item would change currentStock without
+      // updating the underlying Asset status, causing the register and stock
+      // to diverge. Asset issues, returns, maintenance, and retirement all go
+      // through dedicated endpoints that keep both in sync.
+      if (item.itemType === InventoryItemType.ASSET) {
+        res.status(400).json({
+          error: 'Asset-typed items cannot be adjusted via generic inventory transactions. Use the asset issue/return/maintenance/retire workflow instead.',
+        });
+        return;
+      }
       if (req.body.type === InventoryTxnType.ADJUST && ![UserRole.ADMIN, UserRole.ADMIN_2].includes(req.user!.role as UserRole)) {
         res.status(403).json({ error: 'Only inventory administrators can make stock adjustments' });
         return;
@@ -343,7 +354,12 @@ router.post(
           return;
         }
       } else {
+        // ── B27: Prevent negative stock on ADJUST ──
         newBalance = quantity;
+        if (newBalance < 0) {
+          res.status(400).json({ error: `Adjustment would set stock to a negative value (${newBalance})` });
+          return;
+        }
       }
 
       const [txn] = await prisma.$transaction([

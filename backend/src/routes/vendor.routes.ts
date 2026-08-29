@@ -97,7 +97,11 @@ export default createCrudRouter({
       const total = totals.get(invoice.vendorId);
       if (total) {
         total.billed += Number(invoice.totalAmount);
-        total.paid += Number(invoice.advancePaid);
+        // A19: Do NOT add invoice.advancePaid to total.paid here.
+        // advancePaid is a manual claim on the invoice, not actual cash sent.
+        // The actual cash is counted below from PAID payment requests and
+        // PAID PO advance payments. Adding advancePaid here double-counts the
+        // same physical advance (once as a claim, once as the actual payment).
       }
     }
     for (const request of paidRequests) {

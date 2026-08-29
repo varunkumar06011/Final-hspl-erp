@@ -138,6 +138,27 @@ router.post(
 
       // Delivered quantities come from the request — the user enters what actually arrived
       const deliveredItems = req.body.items as { materialName: string; deliveredQty: number; unit?: string | null }[];
+
+      // ── E10: Validate delivered items against gate pass items, not PO items ──
+      // The gate pass is the source of truth for what was physically dispatched.
+      // Matching against PO items by materialName breaks when the PO has
+      // duplicate material names (e.g. same material at different prices).
+      const gatePassItems = new Map(gatePass.items.map((item) => [item.materialName.toLowerCase(), item]));
+      for (const item of deliveredItems) {
+        const gpItem = gatePassItems.get(item.materialName.toLowerCase());
+        if (!gpItem) {
+          res.status(400).json({ error: `Item ${item.materialName} was not on gate pass ${gatePass.passNumber}` });
+          return;
+        }
+        if (Number(item.deliveredQty) > Number(gpItem.quantity) + 0.01) {
+          res.status(400).json({
+            error: `Delivered quantity (${item.deliveredQty}) for ${item.materialName} exceeds gate pass quantity (${gpItem.quantity})`,
+          });
+          return;
+        }
+      }
+
+      // Still need PO items for poItemId linkage and unit fallback
       const poItems = new Map(gatePass.purchaseOrder.items.map((item) => [item.materialName.toLowerCase(), item]));
 
       // Validate each delivered item is part of the PO
@@ -503,9 +524,20 @@ router.post(
               }
             }
             if (grnValue > 0) {
-              // Decrease committed (goods received, commitment fulfilled)
-              const newCommitted = Math.max(0, Number(head.committedAmount) - grnValue);
-              // Increase actual (expense is now incurred)
+              // ── A22: Do not silently cap committed at 0 ──
+              // If grnValue > committedAmount (due to PO edits, tax rounding, or
+              // multiple returns), silently capping at 0 makes committed + actual
+              // diverge from the true budget picture. Instead, throw so the
+              // discrepancy is surfaced and investigated.
+              const currentCommitted = Number(head.committedAmount);
+              if (grnValue > currentCommitted + 0.01) {
+                throw new Error(
+                  `GRN value (₹${grnValue.toFixed(2)}) exceeds committed budget (₹${currentCommitted.toFixed(2)}) ` +
+                  `on head "${head.particulars}". This may indicate a PO edit or tax rounding issue. ` +
+                  `Please run budget recompute or adjust the PO before posting.`
+                );
+              }
+              const newCommitted = currentCommitted - grnValue;
               const newActual = Number(head.actualAmount) + grnValue;
               await tx.budgetHead.update({
                 where: { id: receipt.purchaseOrder.budgetHeadId },

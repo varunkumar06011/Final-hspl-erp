@@ -605,7 +605,15 @@ async function postJournalVoucher(
           // entered via JV or via Expense → Payment, and allows ADJUSTMENT JVs
           // to correct overstated actual/paid amounts via credit entries.
           if (debit > 0) {
-            const newActual = Number(head.actualAmount) + debit;
+            // ── C27: Prevent overspend beyond allocated budget ──
+            const projectedActual = Number(head.actualAmount) + debit;
+            if (projectedActual > Number(head.allocatedAmount) + 0.01) {
+              throw new Error(
+                `Debit of ₹${debit.toFixed(2)} to budget head "${head.particulars}" would exceed allocated budget ` +
+                `(allocated: ₹${Number(head.allocatedAmount).toFixed(2)}, current actual: ₹${Number(head.actualAmount).toFixed(2)})`
+              );
+            }
+            const newActual = projectedActual;
             const paidPortion = paidShare(debit);
             const newPaid = Number(head.paidAmount) + paidPortion;
             await tx.budgetHead.update({
@@ -615,10 +623,28 @@ async function postJournalVoucher(
             txnResults.push(`budget_head:${head.particulars}:actual+${debit}${paidPortion > 0 ? `:paid+${paidPortion.toFixed(2)}` : ''}`);
           } else if (credit > 0) {
             // Credit to budget head = reversal/correction of expense
-            const newActual = Math.max(0, Number(head.actualAmount) - credit);
-            // Reduce paid only by the portion of cash that is being returned.
+            // ── C25: Validate before clamping instead of silently dropping ──
+            // If the credit exceeds the current actualAmount or the reversed
+            // paid portion exceeds paidAmount, throwing surfaces the error
+            // instead of silently discarding the excess and corrupting the
+            // link between the journal and the budget cache.
+            const currentActual = Number(head.actualAmount);
+            if (credit > currentActual + 0.01) {
+              throw new Error(
+                `Credit of ₹${credit.toFixed(2)} to budget head "${head.particulars}" exceeds current actual amount ` +
+                `(₹${currentActual.toFixed(2)}). Reduce the credit or post a correction JV first.`
+              );
+            }
+            const newActual = currentActual - credit;
             const reversedPaid = reversedShare(credit);
-            const newPaid = Math.max(0, Number(head.paidAmount) - reversedPaid);
+            const currentPaid = Number(head.paidAmount);
+            if (reversedPaid > currentPaid + 0.01) {
+              throw new Error(
+                `Reversed paid portion of ₹${reversedPaid.toFixed(2)} exceeds current paid amount ` +
+                `(₹${currentPaid.toFixed(2)}) on budget head "${head.particulars}".`
+              );
+            }
+            const newPaid = Math.max(0, currentPaid - reversedPaid);
             await tx.budgetHead.update({
               where: { id: entry.budgetHeadId },
               data: { actualAmount: newActual, paidAmount: newPaid },

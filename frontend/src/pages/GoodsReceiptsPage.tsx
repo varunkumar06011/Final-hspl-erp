@@ -156,19 +156,21 @@ export default function GoodsReceiptsPage() {
       const numericValue = value === '' ? '' : Number(value);
       if (field === 'rejectedQty') {
         const delivered = inspectReceipt?.items.find((item) => item.id === id)?.deliveredQty ?? 0;
-        const rejected = numericValue === '' ? 0 : numericValue;
+        // ── E09: Cap rejected at deliveredQty to prevent accepted+rejected > delivered ──
+        const rejected = numericValue === '' ? 0 : Math.min(numericValue, Number(delivered));
         return {
           ...current,
           [id]: {
             ...existing,
-            rejectedQty: numericValue,
+            rejectedQty: rejected,
             acceptedQty: Math.max(0, Number(delivered) - rejected),
           },
         };
       }
 
       const delivered = inspectReceipt?.items.find((item) => item.id === id)?.deliveredQty ?? 0;
-      const accepted = numericValue === '' ? 0 : numericValue;
+      // ── E09: Cap accepted at deliveredQty to prevent accepted+rejected > delivered ──
+      const accepted = numericValue === '' ? 0 : Math.min(numericValue, Number(delivered));
       return {
         ...current,
         [id]: {

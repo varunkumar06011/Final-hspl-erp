@@ -428,7 +428,8 @@ router.post(
             filePath,
             fileName,
             fileMimeType,
-            budgetHeadId: req.body.budgetHeadId ?? null,
+            // ── C26: Inherit budgetHeadId from the PO if not explicitly provided ──
+            budgetHeadId: req.body.budgetHeadId ?? po.budgetHeadId ?? null,
             createdBy: req.user!.id,
           },
         });
@@ -506,6 +507,7 @@ router.post(
 
       const invoice = await prisma.vendorInvoice.findFirst({
         where: { id: invoiceId, projectId, deletedAt: null },
+        include: { purchaseOrder: { select: { budgetHeadId: true } } },
       });
       if (!invoice) {
         res.status(404).json({ error: 'Invoice not found' });
@@ -553,7 +555,8 @@ router.post(
             amount: Number(amount),
             paymentMode: paymentMode ?? null,
             notes: notes ?? null,
-            budgetHeadId: req.body.budgetHeadId ?? null,
+            // ── C26: Inherit budgetHeadId from the invoice's PO if not provided ──
+            budgetHeadId: req.body.budgetHeadId ?? invoice.purchaseOrder?.budgetHeadId ?? null,
             createdBy: req.user!.id,
           },
         });
@@ -1072,6 +1075,19 @@ router.post(
             where: { id: pr.budgetHeadId, projectId, deletedAt: null },
           });
           if (head) {
+            // ── C27: Prevent overspend beyond allocated budget ──
+            // For EXPENSE payments, actualAmount increases. If the new actual
+            // would exceed allocatedAmount, block the payment rather than
+            // silently driving available budget negative.
+            if (pr.type === 'EXPENSE') {
+              const projectedActual = Number(head.actualAmount) + paymentAmount;
+              if (projectedActual > Number(head.allocatedAmount) + 0.01) {
+                throw new Error(
+                  `Payment of ₹${paymentAmount.toFixed(2)} would exceed the allocated budget for "${head.particulars}" ` +
+                  `(allocated: ₹${Number(head.allocatedAmount).toFixed(2)}, current actual: ₹${Number(head.actualAmount).toFixed(2)})`
+                );
+              }
+            }
             const data: { paidAmount: number; actualAmount?: number } = {
               paidAmount: Number(head.paidAmount) + paymentAmount,
             };

@@ -258,8 +258,8 @@ const { tables, createModelMock, seedData } = vi.hoisted(() => {
   return { tables, createModelMock, seedData };
 });
 
-vi.mock('../src/config/prisma', () => ({
-  prisma: {
+vi.mock('../src/config/prisma', () => {
+  const prisma = {
     user: createModelMock('user'),
     project: createModelMock('project'),
     vendor: createModelMock('vendor'),
@@ -283,8 +283,12 @@ vi.mock('../src/config/prisma', () => ({
     goodsReceipt: createModelMock('goodsReceipt'),
     goodsReceiptItem: createModelMock('goodsReceiptItem'),
     inspection: createModelMock('inspection'),
-  },
-}));
+  };
+  // $transaction executes the callback with prisma itself as `tx`,
+  // since all models share the same in-memory state.
+  (prisma as any).$transaction = vi.fn(async (fn: any) => fn(prisma));
+  return { prisma };
+});
 
 vi.mock('../src/config/firebase', () => ({ verifyFirebaseToken: vi.fn() }));
 vi.mock('../src/socket', () => ({ initSocketServer: vi.fn() }));

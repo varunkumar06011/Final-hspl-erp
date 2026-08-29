@@ -981,6 +981,14 @@ router.post(
         res.status(400).json({ error: 'Asset is already retired' });
         return;
       }
+      // ── B22: Only ACTIVE assets can be retired ──
+      // Retiring an ISSUED or UNDER_MAINTENANCE asset would leave the
+      // inventory/issue state inconsistent. The asset must be returned to
+      // ACTIVE first, then retired.
+      if (asset.status !== AssetStatus.ACTIVE) {
+        res.status(400).json({ error: `Asset must be ACTIVE to retire. Current status: ${asset.status}. Return the asset first.` });
+        return;
+      }
 
       const reason = req.body.reason;
       if (!reason || !String(reason).trim()) {
@@ -990,7 +998,7 @@ router.post(
 
       const result = await prisma.$transaction(async (tx) => {
         const claimed = await tx.asset.updateMany({
-          where: { id: asset.id, version: asset.version },
+          where: { id: asset.id, version: asset.version, status: AssetStatus.ACTIVE },
           data: {
             status: AssetStatus.RETIRED,
             version: { increment: 1 },
@@ -1006,6 +1014,29 @@ router.post(
             toStatus: AssetStatus.RETIRED,
             reason: String(reason),
             userId: req.user!.id,
+          },
+        });
+
+        // ── B22: Decrement inventory stock on retirement ──
+        // A retired asset is permanently removed from the register, so
+        // currentStock must decrease by 1 to keep inventory reconciled.
+        const invItem = await tx.inventoryItem.findUnique({
+          where: { id: asset.inventoryItemId },
+          select: { currentStock: true },
+        });
+        const newBalance = Number(invItem?.currentStock ?? 0) - 1;
+        await tx.inventoryItem.update({
+          where: { id: asset.inventoryItemId },
+          data: { currentStock: newBalance },
+        });
+        await tx.inventoryTransaction.create({
+          data: {
+            itemId: asset.inventoryItemId,
+            type: 'OUT',
+            quantity: 1,
+            balanceAfter: newBalance,
+            userId: req.user!.id,
+            notes: `Asset ${asset.assetId} retired: ${String(reason)}`,
           },
         });
 
