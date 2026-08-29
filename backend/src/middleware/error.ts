@@ -2,6 +2,20 @@ import { Request, Response, NextFunction } from 'express';
 import { Prisma } from '@prisma/client';
 import { ZodError } from 'zod';
 
+/**
+ * Detect a ZodError that may come from a different instance of the `zod`
+ * library (dual-package hazard between the backend and the
+ * `@hospital-erp/shared` workspace).
+ */
+function isZodError(err: unknown): err is ZodError {
+  if (err instanceof ZodError) return true;
+  if (err && typeof err === 'object') {
+    const e = err as Record<string, unknown>;
+    return e.name === 'ZodError' && Array.isArray(e.errors);
+  }
+  return false;
+}
+
 export function errorMiddleware(
   err: Error & { status?: number; code?: string; meta?: Record<string, unknown> },
   _req: Request,
@@ -10,10 +24,14 @@ export function errorMiddleware(
 ): void {
   console.error('Unhandled error:', err.message);
 
-  if (err instanceof ZodError) {
+  if (isZodError(err)) {
+    const errs = (err as ZodError).errors ?? (err as { issues: unknown[] }).issues ?? [];
     res.status(400).json({
       error: 'Validation failed',
-      details: err.errors.map((e) => ({ path: e.path.join('.'), message: e.message })),
+      details: errs.map((e: { path?: unknown[]; message?: string }) => ({
+        path: Array.isArray(e.path) ? e.path.join('.') : '',
+        message: e.message,
+      })),
     });
     return;
   }

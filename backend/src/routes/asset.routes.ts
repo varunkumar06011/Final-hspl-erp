@@ -1089,21 +1089,18 @@ router.post(
         // ── B22: Decrement inventory stock on retirement ──
         // A retired asset is permanently removed from the register, so
         // currentStock must decrease by 1 to keep inventory reconciled.
-        const invItem = await tx.inventoryItem.findUnique({
+        // Atomic decrement — DB applies the delta; read back for balanceAfter.
+        const stockUpdated = await tx.inventoryItem.update({
           where: { id: asset.inventoryItemId },
+          data: { currentStock: { decrement: 1 } },
           select: { currentStock: true },
-        });
-        const newBalance = Number(invItem?.currentStock ?? 0) - 1;
-        await tx.inventoryItem.update({
-          where: { id: asset.inventoryItemId },
-          data: { currentStock: newBalance },
         });
         await tx.inventoryTransaction.create({
           data: {
             itemId: asset.inventoryItemId,
             type: 'OUT',
             quantity: 1,
-            balanceAfter: newBalance,
+            balanceAfter: Number(stockUpdated.currentStock),
             userId: req.user!.id,
             notes: `Asset ${asset.assetId} retired: ${String(reason)}`,
           },

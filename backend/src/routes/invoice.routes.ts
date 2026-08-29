@@ -222,6 +222,16 @@ router.post(
           return;
         }
 
+        // ── Validate invoice amount does not exceed PO grand total ──
+        // Without this, a user can create an invoice for many times the PO
+        // value, inflating the payable amount beyond what was actually ordered.
+        if (Number(totalAmount) > Number(po.grandTotal) + 0.01) {
+          res.status(400).json({
+            error: `Invoice total (${totalAmount}) exceeds the purchase order grand total (${po.grandTotal})`,
+          });
+          return;
+        }
+
         // Validate advancePaid does not exceed the available advance on this PO
         if (Number(advancePaid) > 0) {
           const availableAdvance = await getAvailableAdvanceForPo(poId);

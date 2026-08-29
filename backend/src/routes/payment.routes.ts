@@ -980,10 +980,14 @@ router.post(
         // mark the request as PAID and increase budget paidAmount without actually
         // decreasing any bank or cash balance — a phantom payment.
         if (!bankAccountId && !cashAccountId) {
-          throw new Error('A funding account (bankAccountId or cashAccountId) is required to record a payment');
+          const err = new Error('A funding account (bankAccountId or cashAccountId) is required to record a payment');
+          (err as Error & { status: number }).status = 400;
+          throw err;
         }
         if (bankAccountId && cashAccountId) {
-          throw new Error('Specify either a bank account or a cash account, not both');
+          const err = new Error('Specify either a bank account or a cash account, not both');
+          (err as Error & { status: number }).status = 400;
+          throw err;
         }
 
         // ── A16: Atomic bank/cash balance updates ──
