@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Box,
@@ -42,10 +42,9 @@ import {
   WorkTaskPriority,
   Permission,
   UserRole,
-  GST_RATES,
   hasPermission,
 } from '@hospital-erp/shared';
-import { enumToOptions, formatCurrency, formatDate, formatIndianNumber, STATUS_COLORS } from '../utils/enumOptions';
+import { enumToOptions, formatDate, STATUS_COLORS } from '../utils/enumOptions';
 import api, { extractErrorMessage } from '../config/api';
 import { useAuthStore } from '../stores/authStore';
 
@@ -70,11 +69,13 @@ interface WorkTask {
   scheduledDate: string;
   deadlineDate: string | null;
   assignedTo: string | null;
+  assignedVendorId: string | null;
   linkedQuotationId: string | null;
   linkedPoId: string | null;
   createdBy: string;
   createdByUser: { id: string; name: string };
   assignedToUser: { id: string; name: string; role: string } | null;
+  assignedVendor: { id: string; name: string; vendorCode: string } | null;
   linkedQuotation: { id: string; quotationNumber: string; status: string; vendor: { id: string; name: string } } | null;
   linkedPo: { id: string; poNumber: string; vendor: { id: string; name: string } } | null;
   quotations: WorkTaskQuotationLink[];
@@ -84,22 +85,6 @@ interface AssignableUser {
   id: string;
   name: string;
   role: string;
-}
-
-interface Vendor {
-  id: string;
-  name: string;
-  vendorCode: string;
-  materials: { id: string; name: string; unit?: string | null }[];
-}
-
-interface QuotationItem {
-  materialName: string;
-  quantity: number | '';
-  unit?: string | null;
-  unitPrice: string | number | '';
-  amount: number;
-  gstRate: number;
 }
 
 const PRIORITY_DOT: Record<string, string> = {
@@ -128,6 +113,7 @@ const EMPTY_FORM: Record<string, unknown> = {
   scheduledDate: todayISO(),
   deadlineDate: '',
   assignedTo: '',
+  assignedVendorId: '',
 };
 
 export default function WorkListPage() {
@@ -143,12 +129,6 @@ export default function WorkListPage() {
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
-
-  // Generate-quotation dialog state
-  const [quoteForTask, setQuoteForTask] = useState<WorkTask | null>(null);
-  const [quoteVendorId, setQuoteVendorId] = useState('');
-  const [quoteItems, setQuoteItems] = useState<QuotationItem[]>([]);
-  const [quoteError, setQuoteError] = useState('');
 
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -176,22 +156,11 @@ export default function WorkListPage() {
   });
 
   const { data: vendorsData } = useQuery({
-    queryKey: ['/vendors', 'for-work-quote'],
+    queryKey: ['/vendors', 'for-work'],
     queryFn: async () => {
       const response = await api.get('/vendors', { params: { pageSize: 100 } });
       return response.data;
     },
-    enabled: canCreateQuotation,
-  });
-
-  const { data: selectedVendor } = useQuery<Vendor | null>({
-    queryKey: ['/vendors', quoteVendorId],
-    queryFn: async () => {
-      if (!quoteVendorId) return null;
-      const response = await api.get(`/vendors/${quoteVendorId}`);
-      return response.data;
-    },
-    enabled: !!quoteVendorId,
   });
 
   const invalidateAll = () => {
@@ -229,30 +198,6 @@ export default function WorkListPage() {
     onError: (err: unknown) => setError(extractErrorMessage(err)),
   });
 
-  const generateQuoteMutation = useMutation({
-    mutationFn: async () => {
-      const items = quoteItems.map((i) => ({
-        materialName: i.materialName,
-        quantity: Number(i.quantity),
-        unit: i.unit || undefined,
-        unitPrice: Number(i.unitPrice),
-        gstRate: i.gstRate,
-      }));
-      const response = await api.post(`/work-tasks/${quoteForTask!.id}/generate-quotation`, {
-        vendorId: quoteVendorId,
-        items,
-      });
-      return response.data;
-    },
-    onSuccess: () => {
-      invalidateAll();
-      closeQuoteDialog();
-      setSuccessMsg('Quotation generated and linked to work item.');
-      setTimeout(() => setSuccessMsg(''), 4000);
-    },
-    onError: (err: unknown) => setQuoteError(extractErrorMessage(err)),
-  });
-
   const rows: WorkTask[] = data?.data ?? [];
   const pagination = data?.pagination ?? { page: 1, pageSize: 20, total: 0, totalPages: 0 };
   const vendors: { id: string; name: string; vendorCode: string }[] = vendorsData?.data ?? [];
@@ -276,6 +221,7 @@ export default function WorkListPage() {
       scheduledDate: toISODate(new Date(task.scheduledDate)),
       deadlineDate: task.deadlineDate ? toISODate(new Date(task.deadlineDate)) : '',
       assignedTo: task.assignedTo ?? '',
+      assignedVendorId: task.assignedVendorId ?? '',
     });
     setError('');
     setFormOpen(true);
@@ -301,79 +247,17 @@ export default function WorkListPage() {
       scheduledDate: form.scheduledDate,
       deadlineDate: form.deadlineDate ? form.deadlineDate : undefined,
       assignedTo: form.assignedTo || undefined,
+      assignedVendorId: form.assignedVendorId || undefined,
     };
     saveMutation.mutate(payload);
   }
 
-  // ── Generate-quotation dialog helpers ──
-  function openQuoteDialog(task: WorkTask) {
-    setQuoteForTask(task);
-    setQuoteVendorId('');
-    setQuoteItems([]);
-    setQuoteError('');
-  }
-
-  function closeQuoteDialog() {
-    setQuoteForTask(null);
-    setQuoteVendorId('');
-    setQuoteItems([]);
-    setQuoteError('');
-  }
-
-  // Auto-populate line items from vendor materials when a vendor is picked
-  useEffect(() => {
-    if (!quoteForTask || !selectedVendor?.materials) return;
-    const items = selectedVendor.materials.map((m) => ({
-      materialName: m.name,
-      quantity: 1 as const,
-      unit: m.unit,
-      unitPrice: 0,
-      amount: 0,
-      gstRate: 0,
-    }));
-    setQuoteItems(items);
-  }, [selectedVendor, quoteForTask]);
-
-  function updateQuoteItem(index: number, field: keyof QuotationItem, value: string | number) {
-    const updated = [...quoteItems];
-    updated[index] = { ...updated[index], [field]: value };
-    if (field === 'quantity' || field === 'unitPrice') {
-      updated[index].amount = Number(updated[index].quantity) * Number(updated[index].unitPrice);
-    }
-    setQuoteItems(updated);
-  }
-
-  function addQuoteItem() {
-    setQuoteItems([...quoteItems, { materialName: '', quantity: 1, unitPrice: 0, amount: 0, gstRate: 0 }]);
-  }
-
-  function removeQuoteItem(index: number) {
-    setQuoteItems(quoteItems.filter((_, i) => i !== index));
-  }
-
-  const quoteTotal = quoteItems.reduce((sum, i) => sum + Number(i.amount), 0);
-  const quoteGst = quoteItems.reduce((sum, i) => sum + Number(i.amount) * Number(i.gstRate) / 100, 0);
-  const quoteGrand = quoteTotal + quoteGst;
-
-  function handleGenerateQuote() {
-    if (!quoteVendorId) {
-      setQuoteError('Please select a vendor');
-      return;
-    }
-    if (quoteItems.length === 0) {
-      setQuoteError('Add at least one line item');
-      return;
-    }
-    if (quoteItems.some((i) => !i.materialName.trim() || !Number.isFinite(Number(i.quantity)) || Number(i.quantity) <= 0)) {
-      setQuoteError('Each item must have a name and a quantity greater than zero');
-      return;
-    }
-    if (quoteItems.some((i) => !Number.isFinite(Number(i.unitPrice)) || Number(i.unitPrice) < 0)) {
-      setQuoteError('Unit price cannot be negative or invalid');
-      return;
-    }
-    setQuoteError('');
-    generateQuoteMutation.mutate();
+  // ── Raise to Quotation — navigates to the Quotations page with the create
+  // dialog auto-opened, pre-filled with the work task's assigned vendor (if any).
+  function raiseToQuotation(task: WorkTask) {
+    const params = new URLSearchParams({ create: 'true', workTaskId: task.id });
+    if (task.assignedVendorId) params.set('vendorId', task.assignedVendorId);
+    navigate(`/quotations?${params.toString()}`);
   }
 
   return (
@@ -428,6 +312,7 @@ export default function WorkListPage() {
                   <TableCell>Priority</TableCell>
                   <TableCell>Status</TableCell>
                   <TableCell>Assigned</TableCell>
+                  <TableCell>Vendor</TableCell>
                   <TableCell>Scheduled</TableCell>
                   <TableCell>Quotations</TableCell>
                   <TableCell>PO</TableCell>
@@ -436,9 +321,9 @@ export default function WorkListPage() {
               </TableHead>
               <TableBody>
                 {isLoading ? (
-                  <TableRow><TableCell colSpan={9} sx={{ textAlign: 'center', py: 4 }}><CircularProgress size={24} /></TableCell></TableRow>
+                  <TableRow><TableCell colSpan={10} sx={{ textAlign: 'center', py: 4 }}><CircularProgress size={24} /></TableCell></TableRow>
                 ) : rows.length === 0 ? (
-                  <TableRow><TableCell colSpan={9} sx={{ textAlign: 'center', py: 4, color: 'text.secondary' }}>No work items yet.</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={10} sx={{ textAlign: 'center', py: 4, color: 'text.secondary' }}>No work items yet.</TableCell></TableRow>
                 ) : rows.map((task) => (
                   <TableRow key={task.id} hover>
                     <TableCell data-label="Title">
@@ -458,6 +343,7 @@ export default function WorkListPage() {
                       <Chip size="small" label={task.status.replace(/_/g, ' ')} color={STATUS_COLORS[task.status] ?? 'default'} />
                     </TableCell>
                     <TableCell data-label="Assigned">{task.assignedToUser?.name ?? '—'}</TableCell>
+                    <TableCell data-label="Vendor">{task.assignedVendor?.name ?? '—'}</TableCell>
                     <TableCell data-label="Scheduled">{formatDate(task.scheduledDate)}</TableCell>
                     <TableCell data-label="Quotations">
                       <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
@@ -479,13 +365,11 @@ export default function WorkListPage() {
                       ) : <Typography variant="body2" color="text.secondary">—</Typography>}
                     </TableCell>
                     <TableCell data-label="Actions" align="right">
-                      <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 0.5 }}>
+                      <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 0.5, alignItems: 'center' }}>
                         {canCreateQuotation && (
-                          <Tooltip title="Generate Quotation">
-                            <IconButton size="small" color="primary" onClick={() => openQuoteDialog(task)}>
-                              <QuoteIcon fontSize="small" />
-                            </IconButton>
-                          </Tooltip>
+                          <Button size="small" variant="outlined" color="primary" startIcon={<QuoteIcon />} onClick={() => raiseToQuotation(task)}>
+                            Raise to Quotation
+                          </Button>
                         )}
                         {canManageWork && (
                           <Tooltip title="Edit">
@@ -543,118 +427,16 @@ export default function WorkListPage() {
               <MenuItem value="">Unassigned</MenuItem>
               {(assignableUsers as AssignableUser[] | undefined)?.map((u) => <MenuItem key={u.id} value={u.id}>{u.name} ({u.role.replace(/_/g, ' ').toLowerCase()})</MenuItem>)}
             </TextField>
+            <TextField select label="Assign Vendor" value={String(form.assignedVendorId ?? '')} onChange={(e) => setForm({ ...form, assignedVendorId: e.target.value })} fullWidth>
+              <MenuItem value="">No vendor assigned</MenuItem>
+              {vendors.map((v) => <MenuItem key={v.id} value={v.id}>{v.vendorCode} - {v.name}</MenuItem>)}
+            </TextField>
           </Stack>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => { setFormOpen(false); setEditingId(null); setForm({}); }}>Cancel</Button>
           <Button variant="contained" onClick={handleSave} disabled={saveMutation.isPending}>
             {saveMutation.isPending ? <CircularProgress size={20} /> : editingId ? 'Update' : 'Create'}
-          </Button>
-        </DialogActions>
-      </ResponsiveDialog>
-
-      {/* Generate Quotation dialog */}
-      <ResponsiveDialog open={!!quoteForTask} onClose={closeQuoteDialog} maxWidth="md" fullWidth sx={{ '& .MuiDialog-paper': { margin: { xs: 1 } } }}>
-        <DialogTitle>Generate Quotation — {quoteForTask?.title}</DialogTitle>
-        <DialogContent>
-          {quoteError && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setQuoteError('')}>{quoteError}</Alert>}
-          <Stack spacing={2} sx={{ pt: 1 }}>
-            <TextField
-              select
-              label="Vendor"
-              value={quoteVendorId}
-              onChange={(e) => { setQuoteVendorId(e.target.value); setQuoteItems([]); }}
-              fullWidth
-              size="small"
-              required
-            >
-              {vendors.map((v) => <MenuItem key={v.id} value={v.id}>{v.vendorCode} - {v.name}</MenuItem>)}
-            </TextField>
-
-            {quoteVendorId && (
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <Typography variant="body2" fontWeight={600}>Line Items</Typography>
-                  <Button size="small" startIcon={<AddIcon />} onClick={addQuoteItem}>Add Item</Button>
-                </Box>
-                {selectedVendor?.materials?.length === 0 && quoteItems.length === 0 && (
-                  <Alert severity="info">This vendor has no registered materials. Use "Add Item" to enter items manually.</Alert>
-                )}
-                {quoteItems.map((item, index) => (
-                  <Box key={index} sx={{
-                    display: 'flex',
-                    flexDirection: { xs: 'column', sm: 'row' },
-                    gap: 1,
-                    alignItems: { xs: 'stretch', sm: 'center' },
-                    py: { xs: 1, sm: 0 },
-                    borderBottom: { xs: '1px solid', sm: 'none' },
-                    borderColor: { xs: 'divider', sm: 'transparent' },
-                  }}>
-                    <TextField
-                      label="Material"
-                      value={item.materialName}
-                      onChange={(e) => updateQuoteItem(index, 'materialName', e.target.value)}
-                      size="small"
-                      sx={{ flex: 2, minWidth: 0 }}
-                    />
-                    <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: { xs: 'wrap', sm: 'nowrap' } }}>
-                      <TextField
-                        label="Qty"
-                        type="text"
-                        value={formatIndianNumber(item.quantity)}
-                        onChange={(e) => updateQuoteItem(index, 'quantity', e.target.value === '' ? '' : Number(e.target.value.replace(/,/g, '')))}
-                        inputMode="decimal"
-                        size="small"
-                        sx={{ flex: 1, minWidth: 70 }}
-                      />
-                      <TextField
-                        label="Unit Price"
-                        type="text"
-                        value={formatIndianNumber(item.unitPrice)}
-                        onChange={(e) => updateQuoteItem(index, 'unitPrice', e.target.value === '' ? '' : e.target.value.replace(/,/g, ''))}
-                        inputMode="decimal"
-                        size="small"
-                        sx={{ flex: 1, minWidth: 90 }}
-                      />
-                      <TextField
-                        select
-                        label="GST %"
-                        value={item.gstRate}
-                        onChange={(e) => updateQuoteItem(index, 'gstRate', Number(e.target.value))}
-                        size="small"
-                        sx={{ flex: '0 0 90px', minWidth: 80 }}
-                      >
-                        {GST_RATES.map((rate) => <MenuItem key={rate} value={rate}>{rate}%</MenuItem>)}
-                      </TextField>
-                      <TextField
-                        label="Amount"
-                        value={formatIndianNumber(item.amount)}
-                        size="small"
-                        disabled
-                        sx={{ flex: 1, minWidth: 90 }}
-                      />
-                      <IconButton size="small" color="error" onClick={() => removeQuoteItem(index)}><DeleteIcon fontSize="small" /></IconButton>
-                    </Box>
-                  </Box>
-                ))}
-
-                <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: { xs: 'stretch', sm: 'flex-end' }, gap: 0.5, mt: 1 }}>
-                  <Typography variant="body2">Total: <strong>{formatCurrency(quoteTotal)}</strong></Typography>
-                  <Typography variant="body2">GST: <strong>{formatCurrency(quoteGst)}</strong></Typography>
-                  <Typography variant="body2">Grand Total: <strong>{formatCurrency(quoteGrand)}</strong></Typography>
-                </Box>
-              </Box>
-            )}
-          </Stack>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={closeQuoteDialog}>Cancel</Button>
-          <Button
-            variant="contained"
-            onClick={handleGenerateQuote}
-            disabled={generateQuoteMutation.isPending || !quoteVendorId || quoteItems.length === 0}
-          >
-            {generateQuoteMutation.isPending ? <CircularProgress size={20} /> : 'Generate Quotation'}
           </Button>
         </DialogActions>
       </ResponsiveDialog>

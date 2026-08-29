@@ -156,6 +156,7 @@ model Vendor {
   activities      Activity[]
   materials       VendorMaterial[]
   assets          Asset[]
+  assignedWorkTasks WorkTask[]  @relation("WorkTaskAssignedVendor")
 
   @@unique([projectId, name])
   @@map("vendors")
@@ -869,6 +870,7 @@ model WorkTask {
   scheduledDate     DateTime  // calendar day (date portion used; stored at UTC midnight)
   deadlineDate      DateTime? // optional deadline
   assignedTo        String?   @db.Uuid
+  assignedVendorId  String?   @db.Uuid
   linkedQuotationId String?   @db.Uuid
   linkedPoId        String?   @db.Uuid
   createdBy         String    @db.Uuid
@@ -879,6 +881,7 @@ model WorkTask {
   project          Project        @relation(fields: [projectId], references: [id])
   createdByUser    User           @relation("WorkTaskCreatedBy", fields: [createdBy], references: [id])
   assignedToUser   User?          @relation("WorkTaskAssignedTo", fields: [assignedTo], references: [id])
+  assignedVendor   Vendor?        @relation("WorkTaskAssignedVendor", fields: [assignedVendorId], references: [id])
   linkedQuotation  Quotation?     @relation(fields: [linkedQuotationId], references: [id])
   linkedPo         PurchaseOrder? @relation(fields: [linkedPoId], references: [id])
   quotations       WorkTaskQuotation[]

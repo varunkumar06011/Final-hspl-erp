@@ -98,6 +98,7 @@ export const createQuotationSchema = z.object({
     vendorId: uuid,
     items: itemsField,
     acknowledged: acknowledgement,
+    workTaskId: uuid.optional(),
   }),
 });
 export const updateQuotationSchema = z.object({
@@ -679,6 +680,7 @@ const workTaskBody = z.object({
   scheduledDate: dateStr,
   deadlineDate: dateStr.optional(),
   assignedTo: uuid.optional(),
+  assignedVendorId: uuid.optional(),
   linkedQuotationId: uuid.optional(),
   linkedPoId: uuid.optional(),
 });

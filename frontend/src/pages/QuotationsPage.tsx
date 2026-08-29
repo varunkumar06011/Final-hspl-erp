@@ -1,4 +1,5 @@
 ﻿import { useState, useMemo, useRef, useEffect } from 'react';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
   Box,
   Typography,
@@ -125,6 +126,9 @@ export default function QuotationsPage() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const createSubmissionLocked = useRef(false);
+  const workTaskIdRef = useRef<string | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { user } = useAuthStore();
 
@@ -166,6 +170,7 @@ export default function QuotationsPage() {
       formData.append('vendorId', selectedVendorId);
       formData.append('items', JSON.stringify(filteredItems));
       formData.append('acknowledged', String(acknowledged));
+      if (workTaskIdRef.current) formData.append('workTaskId', workTaskIdRef.current);
       if (selectedFile) formData.append('file', selectedFile);
       const response = await api.post('/quotations', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
@@ -176,8 +181,14 @@ export default function QuotationsPage() {
       createSubmissionLocked.current = false;
       queryClient.invalidateQueries({ queryKey: ['/quotations'] });
       queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['/work-tasks'] });
       setCreateOpen(false);
       resetForm();
+      // If raised from the Work tab, go back there after creating.
+      if (workTaskIdRef.current) {
+        navigate('/work');
+        workTaskIdRef.current = null;
+      }
     },
     onError: (err: unknown) => {
       createSubmissionLocked.current = false;
@@ -282,6 +293,21 @@ export default function QuotationsPage() {
     const step = canApprove(row);
     if (step) setApprovalAction({ row, step, action: 'approve' });
   });
+
+  // Deep-link from the Work tab: ?create=true&workTaskId=xxx&vendorId=yyy
+  // auto-opens the create dialog with the vendor pre-selected.
+  useEffect(() => {
+    if (searchParams.get('create') !== 'true') return;
+    workTaskIdRef.current = searchParams.get('workTaskId');
+    const preVendorId = searchParams.get('vendorId');
+    createSubmissionLocked.current = false;
+    resetForm();
+    if (preVendorId) setSelectedVendorId(preVendorId);
+    setCreateOpen(true);
+    // Clean the URL so a refresh doesn't re-trigger.
+    setSearchParams({}, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   const totalAmount = useMemo(
     () => lineItems.filter((i) => selectedMaterialNames.has(i.materialName)).reduce((sum, i) => sum + Number(i.amount), 0),

@@ -24,6 +24,7 @@ export interface CreateQuotationInput {
   items: QuotationLineItem[];
   createdBy: string;
   quotationNumber?: string;
+  workTaskId?: string;
   filePath?: string | null;
   fileName?: string | null;
   fileMimeType?: string | null;
@@ -67,6 +68,7 @@ export async function createQuotation(input: CreateQuotationInput) {
     items,
     createdBy,
     quotationNumber: providedNumber,
+    workTaskId,
     filePath = null,
     fileName = null,
     fileMimeType = null,
@@ -174,6 +176,25 @@ export async function createQuotation(input: CreateQuotationInput) {
     body: `Quotation ${quotationNumber} from ${quotation.vendor?.name ?? 'vendor'} — ₹${grandTotal}`,
     url: `/quotations?approval=${workflow.id}`,
   }).catch((err) => console.error('[Push] Quotation notification error:', err));
+
+  // If raised from a work task, link the quotation back to it and advance
+  // the work task from PLANNED to IN_PROGRESS.
+  if (workTaskId) {
+    await prisma.workTaskQuotation.create({
+      data: { workTaskId, quotationId: quotation.id, createdBy },
+    }).catch(() => {
+      // The unique constraint may fire if already linked — safe to ignore.
+    });
+    const workTask = await prisma.workTask.findFirst({
+      where: { id: workTaskId, projectId },
+      select: { status: true },
+    });
+    const statusPatch = workTask?.status === 'PLANNED' ? { status: 'IN_PROGRESS' } : {};
+    await prisma.workTask.update({
+      where: { id: workTaskId },
+      data: { linkedQuotationId: quotation.id, ...statusPatch },
+    });
+  }
 
   return result;
 }

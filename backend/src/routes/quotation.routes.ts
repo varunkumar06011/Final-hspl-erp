@@ -124,6 +124,7 @@ router.post(
         items,
         createdBy: req.user!.id,
         quotationNumber,
+        workTaskId: req.body.workTaskId,
         filePath,
         fileName,
         fileMimeType,

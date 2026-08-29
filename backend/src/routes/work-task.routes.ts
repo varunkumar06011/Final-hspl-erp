@@ -20,6 +20,7 @@ const router = Router();
 const WORK_TASK_INCLUDE = {
   createdByUser: { select: { id: true, name: true } },
   assignedToUser: { select: { id: true, name: true, role: true } },
+  assignedVendor: { select: { id: true, name: true, vendorCode: true } },
   linkedQuotation: {
     select: { id: true, quotationNumber: true, status: true, vendor: { select: { id: true, name: true } } },
   },
