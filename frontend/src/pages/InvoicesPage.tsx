@@ -39,7 +39,7 @@ import {
   Delete as DeleteIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { InvoiceVerificationStatus, UserRole } from '@hospital-erp/shared';
+import { InvoiceVerificationStatus, UserRole, STORAGE } from '@hospital-erp/shared';
 import { formatCurrency, formatDate, formatIndianNumber, STATUS_COLORS } from '../utils/enumOptions';
 import api, { extractErrorMessage } from '../config/api';
 import { useAuthStore } from '../stores/authStore';
@@ -430,8 +430,9 @@ export default function InvoicesPage() {
       setError('Specify the advance payment type');
       return false;
     }
-    if (selectedFile && (!['application/pdf', 'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/bmp', 'image/tiff'].includes(selectedFile.type) || selectedFile.size > 100 * 1024 * 1024)) {
-      setError('Invoice file must be a PDF or image (JPG, PNG, GIF, WebP, BMP, TIFF) smaller than 100 MB');
+    // ── E13: Use shared STORAGE.MAX_FILE_SIZE_MB instead of hard-coded 100 MB ──
+    if (selectedFile && (!['application/pdf', 'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/bmp', 'image/tiff'].includes(selectedFile.type) || selectedFile.size > STORAGE.MAX_FILE_SIZE_MB * 1024 * 1024)) {
+      setError(`Invoice file must be a PDF or image (JPG, PNG, GIF, WebP, BMP, TIFF) smaller than ${STORAGE.MAX_FILE_SIZE_MB} MB`);
       return false;
     }
     return true;

@@ -53,10 +53,11 @@ class LocalStorageService implements StorageService {
     const path = await import('path');
 
     const uploadDir = path.join(env.LOCAL_STORAGE_PATH ?? './uploads', bucket);
-    await fs.mkdir(uploadDir, { recursive: true });
-
     const uniqueName = `${Date.now()}-${fileName}`;
     const filePath = path.join(uploadDir, uniqueName);
+
+    // Create all parent directories (fileName may contain subdirs like "images/photo.png")
+    await fs.mkdir(path.dirname(filePath), { recursive: true });
 
     await fs.writeFile(filePath, file);
 

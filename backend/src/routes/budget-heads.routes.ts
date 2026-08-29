@@ -143,8 +143,11 @@ router.post(
         // For each non-rejected PO with this budget head:
         //   committed contribution = grandTotal - deliveredValue
         // (delivered value has been converted from committed to actual via GRN)
+        // ── C22: Only count genuinely committed POs (APPROVED, PARTIALLY_DELIVERED, DELIVERED) ──
+        // Previously excluded only REJECTED, so DRAFT/PENDING_APPROVAL/CANCELLED POs
+        // inflated committedAmount and hid available budget.
         const pos = await tx.purchaseOrder.findMany({
-          where: { projectId, budgetHeadId: head.id, deletedAt: null, status: { not: 'REJECTED' } },
+          where: { projectId, budgetHeadId: head.id, deletedAt: null, status: { in: ['APPROVED', 'PARTIALLY_DELIVERED', 'DELIVERED'] } },
           select: {
             id: true,
             poNumber: true,
@@ -429,8 +432,9 @@ router.get(
       const transactions: Txn[] = [];
 
       // 1. Approved POs with this budget head → committed events
+      // ── C29: Only include genuinely committed POs, not drafts/pending/cancelled ──
       const pos = await prisma.purchaseOrder.findMany({
-        where: { projectId, budgetHeadId, deletedAt: null },
+        where: { projectId, budgetHeadId, deletedAt: null, status: { in: ['APPROVED', 'PARTIALLY_DELIVERED', 'DELIVERED'] } },
         select: {
           id: true,
           poNumber: true,
@@ -443,7 +447,6 @@ router.get(
         orderBy: { date: 'asc' },
       });
       for (const po of pos) {
-        if (po.status === 'REJECTED') continue;
         transactions.push({
           date: po.date.toISOString(),
           type: po.parentPoId ? 'PO (Regenerated)' : 'PO Approval',
