@@ -4,7 +4,6 @@
     { "source": "/manifest.webmanifest", "destination": "/manifest.webmanifest" },
     { "source": "/icon.svg", "destination": "/icon.svg" },
     { "source": "/icon-maskable.svg", "destination": "/icon-maskable.svg" },
-    { "source": "/assets/:path*", "destination": "/assets/:path*" },
-    { "source": "/((?!firebase-messaging-sw.js|manifest.webmanifest|icon.svg|icon-maskable.svg|assets).*)", "destination": "/index.html" }
+    { "source": "/((?!firebase-messaging-sw.js|manifest.webmanifest|icon.svg|icon-maskable.svg).*)", "destination": "/index.html" }
   ]
 }
