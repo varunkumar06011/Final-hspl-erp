@@ -96,31 +96,31 @@ interface ChainCardProps {
   defaultExpanded?: boolean;
 }
 
-function ChainCard({ step, label, badge, badgeColor, subtitle, onOpen, openLabel, children, defaultExpanded = false }: ChainCardProps) {
+function ChainCard({ step, label, badge, badgeColor, subtitle, onOpen, openLabel, children, defaultExpanded = false, hideOpen }: ChainCardProps & { hideOpen?: boolean }) {
   const [expanded, setExpanded] = useState(defaultExpanded);
   const hasDetails = !!children;
   return (
-    <Card variant="outlined" sx={{ position: 'relative' }}>
-      <Box sx={{ position: 'absolute', left: -12, top: 16, width: 28, height: 28, borderRadius: '50%', bgcolor: 'primary.main', color: 'common.white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 700, zIndex: 1 }}>
+    <Card variant="outlined" sx={{ position: 'relative', overflow: 'visible' }}>
+      <Box sx={{ position: 'absolute', left: { xs: 12, sm: -12 }, top: { xs: 12, sm: 16 }, width: { xs: 24, sm: 28 }, height: { xs: 24, sm: 28 }, borderRadius: '50%', bgcolor: 'primary.main', color: 'common.white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: { xs: 11, sm: 13 }, fontWeight: 700, zIndex: 1 }}>
         {step}
       </Box>
-      <CardContent sx={{ pb: '16px !important' }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap', ml: 3 }}>
+      <CardContent sx={{ pl: { xs: '40px !important', sm: '16px !important' }, pb: '16px !important' }}>
+        <Box sx={{ display: 'flex', alignItems: { xs: 'flex-start', sm: 'center' }, gap: 1, flexWrap: 'wrap', ml: { xs: 0, sm: 3 } }}>
           <Typography variant="overline" color="text.secondary">{label}</Typography>
           <Chip size="small" label={badge} color={(STATUS_COLORS[badgeColor ?? ''] ?? 'default') as never} />
-          {subtitle && <Typography variant="body2" color="text.secondary">{subtitle}</Typography>}
+          {subtitle && <Typography variant="body2" color="text.secondary" sx={{ fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>{subtitle}</Typography>}
           <Box sx={{ flexGrow: 1 }} />
           {hasDetails && (
             <Button size="small" onClick={() => setExpanded((e) => !e)} endIcon={<ExpandMoreIcon sx={{ transform: expanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />}>
               {expanded ? 'Less' : 'Details'}
             </Button>
           )}
-          {onOpen && openLabel && (
+          {onOpen && openLabel && !hideOpen && (
             <Button size="small" startIcon={<OpenInNewIcon />} onClick={onOpen}>{openLabel}</Button>
           )}
         </Box>
         <Collapse in={expanded}>
-          <Box sx={{ mt: 1.5, ml: 3 }}>{children}</Box>
+          <Box sx={{ mt: 1.5, ml: { xs: 0, sm: 3 } }}>{children}</Box>
         </Collapse>
       </CardContent>
     </Card>
@@ -129,19 +129,24 @@ function ChainCard({ step, label, badge, badgeColor, subtitle, onOpen, openLabel
 
 function Field({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, py: 0.25 }}>
-      <Typography variant="body2" color="text.secondary">{label}</Typography>
-      <Typography variant="body2" fontWeight={500} sx={{ textAlign: 'right' }}>{value}</Typography>
+    <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, justifyContent: { sm: 'space-between' }, gap: { xs: 0, sm: 2 }, py: 0.25 }}>
+      <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.65rem', sm: '0.75rem' } }}>{label}</Typography>
+      <Typography variant="body2" fontWeight={500} sx={{ textAlign: { xs: 'left', sm: 'right' }, fontSize: { xs: '0.8rem', sm: '0.875rem' } }}>{value}</Typography>
     </Box>
   );
 }
 
-export default function TraceabilityChain({ trace }: { trace: TraceData }) {
+export default function TraceabilityChain({ trace, hideNavigation = false }: { trace: TraceData; hideNavigation?: boolean }) {
   const navigate = useNavigate();
   const { vendor, quotation, purchaseOrder: po, gatePass, goodsReceipt: grn } = trace;
 
+  function openProps(to: string, label: string): { onOpen?: () => void; openLabel?: string } {
+    if (hideNavigation) return {};
+    return { onOpen: () => navigate(to), openLabel: label };
+  }
+
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pl: 2, position: 'relative' }}>
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pl: { xs: 0.5, sm: 2 }, position: 'relative' }}>
       {/* Vendor */}
       {vendor && (
         <ChainCard
@@ -149,8 +154,7 @@ export default function TraceabilityChain({ trace }: { trace: TraceData }) {
           label="Vendor"
           badge={vendor.vendorCode}
           subtitle={vendor.name}
-          onOpen={() => navigate('/vendors')}
-          openLabel="Open Vendors"
+          {...openProps('/vendors', 'Open Vendors')}
           defaultExpanded
         >
           <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1 }}>
@@ -179,8 +183,7 @@ export default function TraceabilityChain({ trace }: { trace: TraceData }) {
           badge={quotation.quotationNumber}
           badgeColor={quotation.status}
           subtitle={`${formatDate(quotation.date)} • ${money(quotation.grandTotal)}`}
-          onOpen={() => navigate('/quotations')}
-          openLabel="Open Quotations"
+          {...openProps('/quotations', 'Open Quotations')}
         >
           <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1 }}>
             <Field label="Quotation Number" value={quotation.quotationNumber} />
@@ -198,7 +201,7 @@ export default function TraceabilityChain({ trace }: { trace: TraceData }) {
           )}
           {quotation.items && quotation.items.length > 0 && (
             <TableContainer component={Card} variant="outlined" sx={{ mt: 1.5, overflowX: 'auto' }}>
-              <Table size="small">
+              <Table size="small" sx={{ '& .MuiTableCell-root': { p: { xs: '4px', sm: '8px' }, fontSize: { xs: '0.7rem', sm: '0.875rem' }, whiteSpace: 'nowrap' } }}>
                 <TableHead>
                   <TableRow>
                     <TableCell sx={{ fontWeight: 600 }}>Material</TableCell>
@@ -235,8 +238,7 @@ export default function TraceabilityChain({ trace }: { trace: TraceData }) {
           badge={po.poNumber}
           badgeColor={po.status}
           subtitle={`${formatDate(po.date)} • ${money(po.grandTotal)}`}
-          onOpen={() => navigate('/pos')}
-          openLabel="Open POs"
+          {...openProps('/pos', 'Open POs')}
         >
           <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1 }}>
             <Field label="PO Number" value={po.poNumber} />
@@ -252,7 +254,7 @@ export default function TraceabilityChain({ trace }: { trace: TraceData }) {
           </Box>
           {po.items && po.items.length > 0 && (
             <TableContainer component={Card} variant="outlined" sx={{ mt: 1.5, overflowX: 'auto' }}>
-              <Table size="small">
+              <Table size="small" sx={{ '& .MuiTableCell-root': { p: { xs: '4px', sm: '8px' }, fontSize: { xs: '0.7rem', sm: '0.875rem' }, whiteSpace: 'nowrap' } }}>
                 <TableHead>
                   <TableRow>
                     <TableCell sx={{ fontWeight: 600 }}>Material</TableCell>
@@ -289,8 +291,7 @@ export default function TraceabilityChain({ trace }: { trace: TraceData }) {
           badge={gatePass.passNumber}
           badgeColor={gatePass.status}
           subtitle={`${formatDate(gatePass.date)} • ${statusLabel(gatePass.gatePassType ?? '')}`}
-          onOpen={() => navigate('/goods-receipts')}
-          openLabel="Open GRNs"
+          {...openProps('/goods-receipts', 'Open GRNs')}
         >
           <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1 }}>
             <Field label="Pass Number" value={gatePass.passNumber} />
@@ -304,7 +305,7 @@ export default function TraceabilityChain({ trace }: { trace: TraceData }) {
           {gatePass.remarks && <Field label="Remarks" value={gatePass.remarks} />}
           {gatePass.items && gatePass.items.length > 0 && (
             <TableContainer component={Card} variant="outlined" sx={{ mt: 1.5, overflowX: 'auto' }}>
-              <Table size="small">
+              <Table size="small" sx={{ '& .MuiTableCell-root': { p: { xs: '4px', sm: '8px' }, fontSize: { xs: '0.7rem', sm: '0.875rem' }, whiteSpace: 'nowrap' } }}>
                 <TableHead>
                   <TableRow>
                     <TableCell sx={{ fontWeight: 600 }}>Material</TableCell>
@@ -335,8 +336,7 @@ export default function TraceabilityChain({ trace }: { trace: TraceData }) {
           badge={grn.receiptNumber}
           badgeColor={grn.status}
           subtitle={`${formatDate(grn.createdAt)} • ${statusLabel(grn.status)}`}
-          onOpen={() => navigate('/goods-receipts')}
-          openLabel="Open GRNs"
+          {...openProps('/goods-receipts', 'Open GRNs')}
           defaultExpanded
         >
           <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1 }}>
@@ -352,7 +352,7 @@ export default function TraceabilityChain({ trace }: { trace: TraceData }) {
           </Box>
           {grn.items && grn.items.length > 0 && (
             <TableContainer component={Card} variant="outlined" sx={{ mt: 1.5, overflowX: 'auto' }}>
-              <Table size="small">
+              <Table size="small" sx={{ '& .MuiTableCell-root': { p: { xs: '4px', sm: '8px' }, fontSize: { xs: '0.7rem', sm: '0.875rem' }, whiteSpace: 'nowrap' } }}>
                 <TableHead>
                   <TableRow>
                     <TableCell sx={{ fontWeight: 600 }}>Material</TableCell>
@@ -385,8 +385,7 @@ export default function TraceabilityChain({ trace }: { trace: TraceData }) {
         label="Asset"
         badge={trace.assetId}
         subtitle="This unit"
-        onOpen={() => navigate(`/scan/${trace.assetId}`)}
-        openLabel="Scan View"
+        {...openProps(`/scan/${trace.assetId}`, 'Scan View')}
         defaultExpanded
       />
 

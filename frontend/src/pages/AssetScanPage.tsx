@@ -299,7 +299,7 @@ export default function AssetScanPage() {
               {/* Full procurement traceability chain */}
               <Divider sx={{ my: 2 }} />
               <Typography variant="h6" gutterBottom>Procurement Traceability</Typography>
-              <TraceabilityChain trace={full as unknown as TraceData} />
+              <TraceabilityChain trace={full as unknown as TraceData} hideNavigation />
 
             </>
           )}
