@@ -70,6 +70,8 @@ export const STATUS_COLORS: Record<string, 'default' | 'primary' | 'secondary' |
   OPEN: 'error',
   RESOLVED: 'success',
   CLOSED: 'default',
+  PLANNED: 'default',
+  DONE: 'success',
   SCHEDULED: 'info',
   DEFECTS_FOUND: 'warning',
   CORRECTIVE_ACTION: 'warning',

@@ -11,6 +11,7 @@ import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
 import VendorsPage from './pages/VendorsPage';
 import QuotationsPage from './pages/QuotationsPage';
+import WorkCalendarPage from './pages/WorkCalendarPage';
 import PurchaseOrdersPage from './pages/PurchaseOrdersPage';
 import InvoicesPage from './pages/InvoicesPage';
 import PaymentsPage from './pages/PaymentsPage';
@@ -51,6 +52,7 @@ const queryClient = new QueryClient({
 const ROUTES = [
   { path: '/vendors', element: <VendorsPage /> },
   { path: '/quotations', element: <QuotationsPage /> },
+  { path: '/work', element: <WorkCalendarPage /> },
   { path: '/pos', element: <PurchaseOrdersPage /> },
   { path: '/invoices', element: <InvoicesPage /> },
   { path: '/payments', element: <PaymentsPage /> },

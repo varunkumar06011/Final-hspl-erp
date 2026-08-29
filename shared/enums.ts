@@ -241,6 +241,29 @@ export enum IssueStatus {
   CLOSED = 'CLOSED',
 }
 
+// Work calendar — scheduling/assignment board that sits before quotations.
+export enum WorkTaskType {
+  PROCUREMENT = 'PROCUREMENT',
+  INSPECTION = 'INSPECTION',
+  MEETING = 'MEETING',
+  DELIVERY = 'DELIVERY',
+  SITE_WORK = 'SITE_WORK',
+  OTHER = 'OTHER',
+}
+
+export enum WorkTaskStatus {
+  PLANNED = 'PLANNED',
+  IN_PROGRESS = 'IN_PROGRESS',
+  DONE = 'DONE',
+  CANCELLED = 'CANCELLED',
+}
+
+export enum WorkTaskPriority {
+  LOW = 'LOW',
+  MEDIUM = 'MEDIUM',
+  HIGH = 'HIGH',
+}
+
 export enum DocumentStatus {
   DRAFT = 'DRAFT',
   SUBMITTED = 'SUBMITTED',
@@ -379,6 +402,8 @@ export enum Permission {
   UPLOAD_PHOTOS = 'UPLOAD_PHOTOS',
   MANAGE_ISSUES = 'MANAGE_ISSUES',
   MANAGE_INSPECTIONS = 'MANAGE_INSPECTIONS',
+  // Work calendar — schedule/assign work before quotations
+  MANAGE_WORK_TASKS = 'MANAGE_WORK_TASKS',
   // Governance
   MANAGE_DOCUMENTS = 'MANAGE_DOCUMENTS',
   MANAGE_CONTRACTS = 'MANAGE_CONTRACTS',
@@ -391,6 +416,7 @@ export const PERMISSION_MATRIX: Record<UserRole, Permission[]> = {
   [UserRole.SUPERVISOR]: [
     Permission.CREATE_VENDOR,
     Permission.CREATE_QUOTATION,
+    Permission.MANAGE_WORK_TASKS,
     Permission.CREATE_PO,
     Permission.VERIFY_INVOICE,
     Permission.VIEW_FINANCIALS,
@@ -410,6 +436,7 @@ export const PERMISSION_MATRIX: Record<UserRole, Permission[]> = {
   [UserRole.ACCOUNTANT]: [
     Permission.CREATE_VENDOR,
     Permission.CREATE_QUOTATION,
+    Permission.MANAGE_WORK_TASKS,
     Permission.CREATE_PO,
     Permission.VERIFY_INVOICE,
     Permission.CREATE_PAYMENT,
@@ -425,6 +452,7 @@ export const PERMISSION_MATRIX: Record<UserRole, Permission[]> = {
   [UserRole.PROJECT_HEAD]: [
     Permission.CREATE_VENDOR,
     Permission.CREATE_QUOTATION,
+    Permission.MANAGE_WORK_TASKS,
     Permission.CREATE_PO,
     Permission.VERIFY_INVOICE,
     Permission.APPROVE_PAYMENT_STEP_1,
@@ -449,6 +477,7 @@ export const PERMISSION_MATRIX: Record<UserRole, Permission[]> = {
   [UserRole.HEAD_OF_CONSTRUCTION]: [
     Permission.CREATE_VENDOR,
     Permission.CREATE_QUOTATION,
+    Permission.MANAGE_WORK_TASKS,
     Permission.CREATE_PO,
     Permission.VERIFY_INVOICE,
     Permission.APPROVE_PAYMENT_STEP_2,
@@ -469,6 +498,7 @@ export const PERMISSION_MATRIX: Record<UserRole, Permission[]> = {
   [UserRole.ADMIN]: [
     Permission.CREATE_VENDOR,
     Permission.CREATE_QUOTATION,
+    Permission.MANAGE_WORK_TASKS,
     Permission.CREATE_PO,
     Permission.VERIFY_INVOICE,
     Permission.APPROVE_PAYMENT_STEP_1,
@@ -489,6 +519,7 @@ export const PERMISSION_MATRIX: Record<UserRole, Permission[]> = {
   [UserRole.ADMIN_2]: [
     Permission.CREATE_VENDOR,
     Permission.CREATE_QUOTATION,
+    Permission.MANAGE_WORK_TASKS,
     Permission.CREATE_PO,
     Permission.VERIFY_INVOICE,
     Permission.APPROVE_PAYMENT_STEP_2,

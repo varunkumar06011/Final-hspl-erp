@@ -49,6 +49,8 @@ model User {
   uploadedPhotos          SitePhoto[]            @relation("PhotoUploadedBy")
   createdIssues           Issue[]                @relation("IssueCreatedBy")
   closedIssues            Issue[]                @relation("IssueClosedBy")
+  createdWorkTasks        WorkTask[]             @relation("WorkTaskCreatedBy")
+  assignedWorkTasks       WorkTask[]             @relation("WorkTaskAssignedTo")
   inspections             Inspection[]           @relation("InspectionInspector")
   createdInspections      Inspection[]           @relation("InspectionCreatedBy")
   uploadedDocuments       Document[]             @relation("DocumentUploadedBy")
@@ -97,6 +99,7 @@ model Project {
   phases            Phase[]
   photos            SitePhoto[]
   issues            Issue[]
+  workTasks         WorkTask[]
   inspections       Inspection[]
   documents         Document[]
   contracts         Contract[]
@@ -197,6 +200,7 @@ model Quotation {
   createdByUser    User              @relation("QuotationCreatedBy", fields: [createdBy], references: [id])
   items            QuotationItem[]
   purchaseOrders   PurchaseOrder[]
+  workTasks        WorkTask[]
   approvalWorkflow ApprovalWorkflow? @relation(fields: [approvalWorkflowId], references: [id])
 
   @@unique([projectId, quotationNumber])
@@ -260,6 +264,7 @@ model PurchaseOrder {
   invoices         VendorInvoice[]
   gatePasses       GatePass[]
   goodsReceipts    GoodsReceipt[]
+  workTasks        WorkTask[]
   advancePaymentRequests PaymentRequest[]
   approvalWorkflow ApprovalWorkflow? @relation(fields: [approvalWorkflowId], references: [id])
   budgetHead          BudgetHead?       @relation(fields: [budgetHeadId], references: [id])
@@ -826,6 +831,38 @@ model Issue {
 
   @@index([status])
   @@map("issues")
+}
+
+// Work calendar — scheduled/assigned work that sits before quotations in the
+// procurement flow. May optionally link to the quotation/PO it turns into.
+model WorkTask {
+  id                String    @id @default(uuid()) @db.Uuid
+  projectId         String    @db.Uuid
+  title             String
+  description       String?
+  type              String    @default("OTHER") // WorkTaskType enum
+  status            String    @default("PLANNED") // WorkTaskStatus enum
+  priority          String    @default("MEDIUM") // WorkTaskPriority enum
+  scheduledDate     DateTime  // calendar day (date portion used; stored at UTC midnight)
+  startTime         String?   // "HH:mm" 24-hour, optional
+  endTime           String?   // "HH:mm" 24-hour, optional
+  assignedTo        String?   @db.Uuid
+  linkedQuotationId String?   @db.Uuid
+  linkedPoId        String?   @db.Uuid
+  createdBy         String    @db.Uuid
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  deletedAt         DateTime?
+
+  project          Project        @relation(fields: [projectId], references: [id])
+  createdByUser    User           @relation("WorkTaskCreatedBy", fields: [createdBy], references: [id])
+  assignedToUser   User?          @relation("WorkTaskAssignedTo", fields: [assignedTo], references: [id])
+  linkedQuotation  Quotation?     @relation(fields: [linkedQuotationId], references: [id])
+  linkedPo         PurchaseOrder? @relation(fields: [linkedPoId], references: [id])
+
+  @@index([projectId, scheduledDate])
+  @@index([status])
+  @@map("work_tasks")
 }
 
 model Inspection {

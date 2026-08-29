@@ -5,6 +5,7 @@ import {
   Menu as MenuIcon,
   Dashboard as DashboardIcon,
   Business as VendorIcon,
+  Event as WorkIcon,
   Receipt as ReceiptIcon,
   AccountBalance as PaymentIcon,
   LocalShipping as GatePassIcon,
@@ -37,6 +38,7 @@ const NAV_ITEMS = [
   { label: 'Dashboard', icon: <DashboardIcon />, path: '/', section: '' },
   // ── Procurement ──
   { label: 'Vendors', icon: <VendorIcon />, path: '/vendors', permission: Permission.VIEW_FINANCIALS, section: 'Procurement' },
+  { label: 'Work Calendar', icon: <WorkIcon />, path: '/work', permission: Permission.MANAGE_WORK_TASKS, section: 'Procurement' },
   { label: 'Quotations', icon: <ReceiptIcon />, path: '/quotations', permission: Permission.VIEW_FINANCIALS, section: 'Procurement' },
   { label: 'Purchase Orders', icon: <ReceiptIcon />, path: '/pos', permission: Permission.VIEW_FINANCIALS, section: 'Procurement' },
   { label: 'Gate Passes', icon: <GatePassIcon />, path: '/gate-passes', permission: Permission.VIEW_GATE_PASSES, section: 'Procurement' },
