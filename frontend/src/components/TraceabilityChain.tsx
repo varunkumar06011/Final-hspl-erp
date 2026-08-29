@@ -129,9 +129,9 @@ function ChainCard({ step, label, badge, badgeColor, subtitle, onOpen, openLabel
 
 function Field({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, justifyContent: { sm: 'space-between' }, gap: { xs: 0, sm: 2 }, py: 0.25 }}>
-      <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.65rem', sm: '0.75rem' } }}>{label}</Typography>
-      <Typography variant="body2" fontWeight={500} sx={{ textAlign: { xs: 'left', sm: 'right' }, fontSize: { xs: '0.8rem', sm: '0.875rem' } }}>{value}</Typography>
+    <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '130px 1fr', sm: '170px 1fr' }, gap: 1.5, py: 0.5, alignItems: 'start' }}>
+      <Typography variant="body2" color="text.secondary" sx={{ wordBreak: 'break-word' }}>{label}</Typography>
+      <Box sx={{ fontSize: '0.875rem', fontWeight: 500, wordBreak: 'break-word' }}>{value}</Box>
     </Box>
   );
 }
@@ -157,21 +157,26 @@ export default function TraceabilityChain({ trace, hideNavigation = false }: { t
           {...openProps('/vendors', 'Open Vendors')}
           defaultExpanded
         >
-          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1 }}>
+          <Box sx={{ display: 'flex', flexDirection: 'column' }}>
             <Field label="Vendor Code" value={vendor.vendorCode} />
             <Field label="Category" value={vendor.category ?? '—'} />
             <Field label="Status" value={<Chip size="small" label={statusLabel(vendor.status ?? 'ACTIVE')} color={(STATUS_COLORS[vendor.status ?? ''] ?? 'default') as never} />} />
             <Field label="GST Number" value={vendor.gstNumber ?? '—'} />
             <Field label="Contact Person" value={vendor.contactPersonName ?? '—'} />
             <Field label="Contact Phone" value={vendor.contactPersonPhone ?? vendor.phone ?? '—'} />
+            {vendor.referenceBy && (
+              <Field
+                label="Referred By"
+                value={
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                    <PersonIcon fontSize="small" color="action" />
+                    {vendor.referenceBy}
+                  </Box>
+                }
+              />
+            )}
+            {vendor.address && <Field label="Address" value={vendor.address} />}
           </Box>
-          {vendor.referenceBy && (
-            <Box sx={{ mt: 1, display: 'flex', alignItems: 'center', gap: 0.5 }}>
-              <PersonIcon fontSize="small" color="action" />
-              <Typography variant="body2"><strong>Referred By:</strong> {vendor.referenceBy}</Typography>
-            </Box>
-          )}
-          {vendor.address && <Field label="Address" value={vendor.address} />}
         </ChainCard>
       )}
 
@@ -185,7 +190,7 @@ export default function TraceabilityChain({ trace, hideNavigation = false }: { t
           subtitle={`${formatDate(quotation.date)} • ${money(quotation.grandTotal)}`}
           {...openProps('/quotations', 'Open Quotations')}
         >
-          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1 }}>
+          <Box sx={{ display: 'flex', flexDirection: 'column' }}>
             <Field label="Quotation Number" value={quotation.quotationNumber} />
             <Field label="Date" value={formatDate(quotation.date)} />
             <Field label="Status" value={<Chip size="small" label={statusLabel(quotation.status)} color={(STATUS_COLORS[quotation.status] ?? 'default') as never} />} />
@@ -240,7 +245,7 @@ export default function TraceabilityChain({ trace, hideNavigation = false }: { t
           subtitle={`${formatDate(po.date)} • ${money(po.grandTotal)}`}
           {...openProps('/pos', 'Open POs')}
         >
-          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1 }}>
+          <Box sx={{ display: 'flex', flexDirection: 'column' }}>
             <Field label="PO Number" value={po.poNumber} />
             <Field label="Date" value={formatDate(po.date)} />
             <Field label="Status" value={<Chip size="small" label={statusLabel(po.status)} color={(STATUS_COLORS[po.status] ?? 'default') as never} />} />
@@ -249,8 +254,8 @@ export default function TraceabilityChain({ trace, hideNavigation = false }: { t
             <Field label="Subtotal" value={money(po.totalAmount)} />
             {po.budgetHead && <Field label="Budget Head" value={po.budgetHead.particulars} />}
             {po.createdByUser && <Field label="Created By" value={po.createdByUser.name} />}
-            {po.regenerationNumber && po.regenerationNumber > 0 && <Field label="Regeneration #" value={String(po.regenerationNumber)} />}
-            {po.editReason && <Field label="Edit Reason" value={po.editReason} />}
+            {Number(po.regenerationNumber) > 0 && <Field label="Regeneration #" value={String(po.regenerationNumber)} />}
+            {po.editReason?.trim() && <Field label="Edit Reason" value={po.editReason} />}
           </Box>
           {po.items && po.items.length > 0 && (
             <TableContainer component={Card} variant="outlined" sx={{ mt: 1.5, overflowX: 'auto' }}>
@@ -293,7 +298,7 @@ export default function TraceabilityChain({ trace, hideNavigation = false }: { t
           subtitle={`${formatDate(gatePass.date)} • ${statusLabel(gatePass.gatePassType ?? '')}`}
           {...openProps('/goods-receipts', 'Open GRNs')}
         >
-          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1 }}>
+          <Box sx={{ display: 'flex', flexDirection: 'column' }}>
             <Field label="Pass Number" value={gatePass.passNumber} />
             <Field label="Date" value={formatDate(gatePass.date)} />
             <Field label="Status" value={<Chip size="small" label={statusLabel(gatePass.status)} color={(STATUS_COLORS[gatePass.status] ?? 'default') as never} />} />
@@ -339,7 +344,7 @@ export default function TraceabilityChain({ trace, hideNavigation = false }: { t
           {...openProps('/goods-receipts', 'Open GRNs')}
           defaultExpanded
         >
-          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1 }}>
+          <Box sx={{ display: 'flex', flexDirection: 'column' }}>
             <Field label="Receipt Number" value={grn.receiptNumber} />
             <Field label="Created" value={formatDate(grn.createdAt)} />
             <Field label="Status" value={<Chip size="small" label={statusLabel(grn.status)} color={(STATUS_COLORS[grn.status] ?? 'default') as never} />} />
