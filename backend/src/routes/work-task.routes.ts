@@ -143,6 +143,7 @@ router.get(
 // linkedQuotationId so the Work Calendar view keeps working unchanged.
 router.post(
   '/:id/generate-quotation',
+  authMiddleware,
   rbacMiddleware(Permission.CREATE_QUOTATION),
   validateMiddleware(generateWorkTaskQuotationSchema),
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {

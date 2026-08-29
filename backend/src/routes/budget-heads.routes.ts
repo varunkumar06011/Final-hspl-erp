@@ -41,7 +41,8 @@ const crudRouter = createCrudRouter({
 
 const router = Router();
 router.use(authMiddleware);
-router.use(crudRouter);
+
+// ── Custom routes (mounted BEFORE CRUD router so /:id does not shadow them) ──
 
 // ── Import budget from JSON (draft budget format) ──
 // Body: { items: [{ sl_no, particulars, amount }] }
@@ -342,7 +343,7 @@ router.post(
 
         const driftedCount = results.filter((r) => r.drifted).length;
         return { results, driftedCount };
-      });
+      }, { timeout: 60000, maxWait: 90000 });
 
       await logAudit({
         userId: req.user!.id,
@@ -632,5 +633,9 @@ router.get(
     }
   },
 );
+
+// ── Base CRUD (mounted AFTER custom routes so /:id does not shadow
+//    /import, /recompute, /summary, or /:id/breakdown) ──
+router.use(crudRouter);
 
 export default router;
