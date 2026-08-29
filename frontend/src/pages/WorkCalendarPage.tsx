@@ -91,7 +91,12 @@ const PRIORITY_DOT: Record<string, string> = {
 };
 
 function toISODate(d: Date): string {
-  return d.toISOString().slice(0, 10);
+  // Use LOCAL date components — toISOString() shifts to UTC and rolls the
+  // date back by one day for users east of GMT (e.g. IST +5:30).
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 }
 
 function todayKey(): string {
