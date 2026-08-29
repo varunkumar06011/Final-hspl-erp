@@ -100,12 +100,12 @@ function ChainCard({ step, label, badge, badgeColor, subtitle, onOpen, openLabel
   const [expanded, setExpanded] = useState(defaultExpanded);
   const hasDetails = !!children;
   return (
-    <Card variant="outlined" sx={{ position: 'relative', overflow: 'visible' }}>
-      <Box sx={{ position: 'absolute', left: { xs: 12, sm: -12 }, top: { xs: 12, sm: 16 }, width: { xs: 24, sm: 28 }, height: { xs: 24, sm: 28 }, borderRadius: '50%', bgcolor: 'primary.main', color: 'common.white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: { xs: 11, sm: 13 }, fontWeight: 700, zIndex: 1 }}>
-        {step}
-      </Box>
-      <CardContent sx={{ pl: { xs: '40px !important', sm: '16px !important' }, pb: '16px !important' }}>
-        <Box sx={{ display: 'flex', alignItems: { xs: 'flex-start', sm: 'center' }, gap: 1, flexWrap: 'wrap', ml: { xs: 0, sm: 3 } }}>
+    <Card variant="outlined">
+      <CardContent sx={{ pb: '16px !important' }}>
+        <Box sx={{ display: 'flex', alignItems: { xs: 'flex-start', sm: 'center' }, gap: 1, flexWrap: 'wrap' }}>
+          <Box sx={{ width: { xs: 24, sm: 28 }, height: { xs: 24, sm: 28 }, minWidth: { xs: 24, sm: 28 }, borderRadius: '50%', bgcolor: 'primary.main', color: 'common.white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: { xs: 11, sm: 13 }, fontWeight: 700 }}>
+            {step}
+          </Box>
           <Typography variant="overline" color="text.secondary">{label}</Typography>
           <Chip size="small" label={badge} color={(STATUS_COLORS[badgeColor ?? ''] ?? 'default') as never} />
           {subtitle && <Typography variant="body2" color="text.secondary" sx={{ fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>{subtitle}</Typography>}
@@ -120,7 +120,7 @@ function ChainCard({ step, label, badge, badgeColor, subtitle, onOpen, openLabel
           )}
         </Box>
         <Collapse in={expanded}>
-          <Box sx={{ mt: 1.5, ml: { xs: 0, sm: 3 } }}>{children}</Box>
+          <Box sx={{ mt: 1.5 }}>{children}</Box>
         </Collapse>
       </CardContent>
     </Card>
@@ -146,7 +146,7 @@ export default function TraceabilityChain({ trace, hideNavigation = false }: { t
   }
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pl: { xs: 0.5, sm: 2 }, position: 'relative' }}>
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
       {/* Vendor */}
       {vendor && (
         <ChainCard
