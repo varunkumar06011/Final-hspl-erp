@@ -19,12 +19,14 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
-import { Add as AddIcon, FactCheck as InspectIcon, Inventory as PostIcon } from '@mui/icons-material';
+import { Add as AddIcon, FactCheck as InspectIcon, Inventory as PostIcon, Visibility as ViewIcon } from '@mui/icons-material';
+import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import ResponsiveDialog from '../components/ResponsiveDialog';
 import AttachmentUpload from '../components/AttachmentUpload';
 import api, { extractErrorMessage } from '../config/api';
 import { GoodsReceiptStatus, InventoryItemType } from '@hospital-erp/shared';
+import { formatDate, STATUS_COLORS } from '../utils/enumOptions';
 
 interface ReceiptItem {
   id: string;
@@ -34,6 +36,39 @@ interface ReceiptItem {
   acceptedQty: number;
   rejectedQty: number;
   itemType?: string;
+}
+
+interface GRNDetail {
+  id: string;
+  receiptNumber: string;
+  status: string;
+  createdAt: string;
+  inspectedAt: string | null;
+  postedAt: string | null;
+  items: {
+    id: string; materialName: string; unit: string | null; deliveredQty: number; acceptedQty: number;
+    rejectedQty: number; rejectionReason: string | null; itemType: string;
+    poItem: { unitPrice: string; gstRate: string; quantity: string } | null;
+  }[];
+  inspection: { status: string; completedDate: string | null } | null;
+  purchaseOrder: {
+    id: string; poNumber: string; date: string; status: string; paymentType: string; grandTotal: string;
+    vendor: { id: string; name: string; vendorCode: string; referenceBy: string | null; contactPersonName: string | null; phone: string | null };
+    quotation: { id: string; quotationNumber: string; date: string } | null;
+    budgetHead: { id: string; particulars: string } | null;
+    createdByUser: { name: string } | null;
+    items: { materialName: string; quantity: string; unit: string | null; unitPrice: string; gstRate: string; amount: string }[];
+  };
+  gatePass: {
+    id: string; passNumber: string; date: string; status: string; gatePassType: string;
+    vehicleNumber: string | null; driverName: string | null; driverMobile: string | null;
+    items: { materialName: string; quantity: number; unit: string | null }[];
+    createdByUser: { name: string } | null;
+  };
+  assets: { id: string; assetId: string; status: string; location: string; serialNumber: string | null; totalCost: string | null; warrantyExpiry: string | null; inventoryItem: { id: string; name: string } }[];
+  createdByUser: { name: string } | null;
+  inspectedByUser: { name: string } | null;
+  postedByUser: { name: string } | null;
 }
 
 interface Receipt {
@@ -63,9 +98,170 @@ interface Disposition {
   itemType: InventoryItemType;
 }
 
+function money(v: string | number | null | undefined): string {
+  if (v === null || v === undefined) return '—';
+  const n = Number(v);
+  if (Number.isNaN(n)) return '—';
+  return `₹${n.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
+}
+
+function statusLabel(s: string | null): string {
+  if (!s) return '—';
+  return s.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function GRNDetailDialog({ id, open, onClose }: { id: string | null; open: boolean; onClose: () => void }) {
+  const navigate = useNavigate();
+  const { data, isLoading } = useQuery<GRNDetail>({
+    queryKey: ['/goods-receipts', id],
+    queryFn: async () => {
+      const res = await api.get(`/goods-receipts/${id}`);
+      return res.data;
+    },
+    enabled: !!id,
+  });
+
+  return (
+    <ResponsiveDialog open={open} onClose={onClose} maxWidth="lg" fullWidth>
+      <DialogTitle>{isLoading ? 'Goods Receipt Details' : data ? `GRN ${data.receiptNumber}` : 'Goods Receipt Details'}</DialogTitle>
+      <DialogContent>
+        {isLoading ? (
+          <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress /></Box>
+        ) : !data ? (
+          <Typography color="text.secondary">Receipt not found.</Typography>
+        ) : (
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
+            {/* Header */}
+            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr 1fr' }, gap: 1 }}>
+              <Box>
+                <Typography variant="caption" color="text.secondary">Status</Typography>
+                <Chip size="small" label={statusLabel(data.status)} color={(STATUS_COLORS[data.status] ?? 'default') as never} />
+              </Box>
+              <Box>
+                <Typography variant="caption" color="text.secondary">Created</Typography>
+                <Typography variant="body2">{formatDate(data.createdAt)}</Typography>
+              </Box>
+              <Box>
+                <Typography variant="caption" color="text.secondary">Posted</Typography>
+                <Typography variant="body2">{data.postedAt ? formatDate(data.postedAt) : '—'}</Typography>
+              </Box>
+              <Box>
+                <Typography variant="caption" color="text.secondary">Created By</Typography>
+                <Typography variant="body2">{data.createdByUser?.name ?? '—'}</Typography>
+              </Box>
+              <Box>
+                <Typography variant="caption" color="text.secondary">Inspected By</Typography>
+                <Typography variant="body2">{data.inspectedByUser?.name ?? '—'}</Typography>
+              </Box>
+              <Box>
+                <Typography variant="caption" color="text.secondary">Posted By</Typography>
+                <Typography variant="body2">{data.postedByUser?.name ?? '—'}</Typography>
+              </Box>
+            </Box>
+
+            {/* Purchase Order */}
+            <Card variant="outlined" sx={{ p: 2 }}>
+              <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>Purchase Order</Typography>
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1 }}>
+                <Box><Typography variant="caption" color="text.secondary">PO Number</Typography><Typography variant="body2">{data.purchaseOrder.poNumber}</Typography></Box>
+                <Box><Typography variant="caption" color="text.secondary">Date</Typography><Typography variant="body2">{formatDate(data.purchaseOrder.date)}</Typography></Box>
+                <Box><Typography variant="caption" color="text.secondary">Vendor</Typography><Typography variant="body2">{data.purchaseOrder.vendor.name} ({data.purchaseOrder.vendor.vendorCode})</Typography></Box>
+                <Box><Typography variant="caption" color="text.secondary">Referred By</Typography><Typography variant="body2">{data.purchaseOrder.vendor.referenceBy ?? '—'}</Typography></Box>
+                <Box><Typography variant="caption" color="text.secondary">Payment Type</Typography><Typography variant="body2">{statusLabel(data.purchaseOrder.paymentType)}</Typography></Box>
+                <Box><Typography variant="caption" color="text.secondary">Grand Total</Typography><Typography variant="body2">{money(data.purchaseOrder.grandTotal)}</Typography></Box>
+                {data.purchaseOrder.budgetHead && <Box><Typography variant="caption" color="text.secondary">Budget Head</Typography><Typography variant="body2">{data.purchaseOrder.budgetHead.particulars}</Typography></Box>}
+              </Box>
+            </Card>
+
+            {/* Gate Pass */}
+            <Card variant="outlined" sx={{ p: 2 }}>
+              <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>Gate Pass</Typography>
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1 }}>
+                <Box><Typography variant="caption" color="text.secondary">Pass Number</Typography><Typography variant="body2">{data.gatePass.passNumber}</Typography></Box>
+                <Box><Typography variant="caption" color="text.secondary">Date</Typography><Typography variant="body2">{formatDate(data.gatePass.date)}</Typography></Box>
+                <Box><Typography variant="caption" color="text.secondary">Type</Typography><Typography variant="body2">{statusLabel(data.gatePass.gatePassType)}</Typography></Box>
+                <Box><Typography variant="caption" color="text.secondary">Vehicle</Typography><Typography variant="body2">{data.gatePass.vehicleNumber ?? '—'}</Typography></Box>
+                <Box><Typography variant="caption" color="text.secondary">Driver</Typography><Typography variant="body2">{data.gatePass.driverName ? `${data.gatePass.driverName} ${data.gatePass.driverMobile || ''}` : '—'}</Typography></Box>
+              </Box>
+            </Card>
+
+            {/* Items */}
+            <Box>
+              <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>Receipt Items</Typography>
+              <TableContainer component={Card} variant="outlined" sx={{ overflowX: 'auto' }}>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell sx={{ fontWeight: 600 }}>Material</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>Delivered</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>Accepted</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>Rejected</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>Reason</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>Type</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {data.items.map((item) => (
+                      <TableRow key={item.id}>
+                        <TableCell>{item.materialName}</TableCell>
+                        <TableCell>{item.deliveredQty}</TableCell>
+                        <TableCell sx={{ color: 'success.main' }}>{item.acceptedQty}</TableCell>
+                        <TableCell sx={{ color: item.rejectedQty > 0 ? 'error.main' : 'text.secondary' }}>{item.rejectedQty}</TableCell>
+                        <TableCell>{item.rejectionReason ?? '—'}</TableCell>
+                        <TableCell><Chip size="small" label={statusLabel(item.itemType)} /></TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </Box>
+
+            {/* Assets */}
+            {data.assets.length > 0 && (
+              <Box>
+                <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>Assets Generated ({data.assets.length})</Typography>
+                <TableContainer component={Card} variant="outlined" sx={{ overflowX: 'auto' }}>
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow>
+                        <TableCell sx={{ fontWeight: 600 }}>Asset ID</TableCell>
+                        <TableCell sx={{ fontWeight: 600 }}>Item</TableCell>
+                        <TableCell sx={{ fontWeight: 600 }}>Serial</TableCell>
+                        <TableCell sx={{ fontWeight: 600 }}>Status</TableCell>
+                        <TableCell sx={{ fontWeight: 600 }}>Location</TableCell>
+                        <TableCell sx={{ fontWeight: 600 }}>Cost</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {data.assets.map((asset) => (
+                        <TableRow key={asset.id} hover sx={{ cursor: 'pointer' }} onClick={() => navigate(`/scan/${asset.assetId}`)}>
+                          <TableCell><strong>{asset.assetId}</strong></TableCell>
+                          <TableCell>{asset.inventoryItem.name}</TableCell>
+                          <TableCell>{asset.serialNumber ?? '—'}</TableCell>
+                          <TableCell><Chip size="small" label={statusLabel(asset.status)} color={(STATUS_COLORS[asset.status] ?? 'default') as never} /></TableCell>
+                          <TableCell>{asset.location}</TableCell>
+                          <TableCell>{money(asset.totalCost)}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              </Box>
+            )}
+          </Box>
+        )}
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose}>Close</Button>
+      </DialogActions>
+    </ResponsiveDialog>
+  );
+}
+
 export default function GoodsReceiptsPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [inspectReceipt, setInspectReceipt] = useState<Receipt | null>(null);
+  const [detailId, setDetailId] = useState<string | null>(null);
   const [selectedGatepassId, setSelectedGatepassId] = useState('');
   const [dispositions, setDispositions] = useState<Record<string, Disposition>>({});
   const [deliveredQty, setDeliveredQty] = useState<Record<string, number | string>>({});
@@ -224,6 +420,7 @@ export default function GoodsReceiptsPage() {
                   </TableCell>
                   <TableCell><Chip size="small" label={receipt.status.replace(/_/g, ' ')} /></TableCell>
                   <TableCell>
+                    <Button size="small" startIcon={<ViewIcon />} onClick={() => setDetailId(receipt.id)}>Details</Button>
                     {receipt.status === GoodsReceiptStatus.PENDING_INSPECTION && (
                       <Button size="small" startIcon={<InspectIcon />} onClick={() => openInspection(receipt)}>Inspect</Button>
                     )}
@@ -302,6 +499,12 @@ export default function GoodsReceiptsPage() {
           </Button>
         </DialogActions>
       </ResponsiveDialog>
+
+      <GRNDetailDialog
+        id={detailId}
+        open={!!detailId}
+        onClose={() => setDetailId(null)}
+      />
 
       <ResponsiveDialog open={!!inspectReceipt} onClose={() => setInspectReceipt(null)} maxWidth="md" fullWidth>
         <DialogTitle>Inspect {inspectReceipt?.receiptNumber}</DialogTitle>

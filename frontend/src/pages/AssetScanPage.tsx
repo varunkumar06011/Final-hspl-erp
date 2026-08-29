@@ -14,6 +14,7 @@ import {
 import { Lock as LockIcon, Login as LoginIcon } from '@mui/icons-material';
 import { QRCodeSVG } from 'qrcode.react';
 import api from '../config/api';
+import TraceabilityChain, { TraceData } from '../components/TraceabilityChain';
 
 const STATUS_COLORS: Record<string, 'success' | 'warning' | 'info' | 'error' | 'default'> = {
   ACTIVE: 'success',
@@ -294,6 +295,11 @@ export default function AssetScanPage() {
                   </Box>
                 </>
               ) : null}
+
+              {/* Full procurement traceability chain */}
+              <Divider sx={{ my: 2 }} />
+              <Typography variant="h6" gutterBottom>Procurement Traceability</Typography>
+              <TraceabilityChain trace={full as unknown as TraceData} />
 
             </>
           )}

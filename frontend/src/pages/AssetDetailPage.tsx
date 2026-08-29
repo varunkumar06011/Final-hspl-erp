@@ -44,6 +44,7 @@ import api, { extractErrorMessage } from '../config/api';
 import { useAuthStore } from '../stores/authStore';
 import AttachmentUpload from '../components/AttachmentUpload';
 import RefreshButton from '../components/RefreshButton';
+import TraceabilityChain, { TraceData } from '../components/TraceabilityChain';
 
 const STATUS_COLORS: Record<string, 'success' | 'warning' | 'info' | 'error' | 'default'> = {
   ACTIVE: 'success',
@@ -253,6 +254,17 @@ export default function AssetDetailPage() {
 
   // For the detail view, pick the first asset when only one is selected
   const selectedAsset = rows.find((r) => selectedAssetIds.includes(r.id)) ?? rows[0];
+
+  // Traceability chain for the selected asset (fetched on demand when the
+  // Traceability tab is opened, to avoid loading the full chain for every row).
+  const { data: traceData, isLoading: traceLoading } = useQuery<TraceData>({
+    queryKey: ['/assets', selectedAsset?.id, 'trace'],
+    queryFn: async () => {
+      const response = await api.get(`/assets/${selectedAsset!.id}/trace`);
+      return response.data;
+    },
+    enabled: !!selectedAsset && tab === 4,
+  });
 
   const statusCounts = rows.reduce((acc: Record<string, number>, row) => {
     const s = String(row.status);
@@ -492,6 +504,7 @@ export default function AssetDetailPage() {
               <Tab label={`Movement (${selectedAsset.movements?.length ?? 0})`} />
               <Tab label={`Maintenance (${selectedAsset.maintenances?.length ?? 0})`} />
               <Tab label={`Scans (${selectedAsset.scans?.length ?? 0})`} />
+              <Tab label="Traceability" />
               <Tab label="Documents" />
             </Tabs>
           </Box>
@@ -703,8 +716,21 @@ export default function AssetDetailPage() {
             </CardContent>
           )}
 
-          {/* Documents Tab */}
+          {/* Traceability Tab — full procurement chain */}
           {tab === 4 && (
+            <CardContent>
+              {traceLoading ? (
+                <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress /></Box>
+              ) : traceData ? (
+                <TraceabilityChain trace={traceData} />
+              ) : (
+                <Typography color="text.secondary">No traceability data available.</Typography>
+              )}
+            </CardContent>
+          )}
+
+          {/* Documents Tab */}
+          {tab === 5 && (
             <CardContent>
               <AttachmentUpload entityType="ASSET" entityId={selectedAsset.id} />
             </CardContent>

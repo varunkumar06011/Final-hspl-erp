@@ -363,6 +363,82 @@ router.get(
   }
 );
 
+// GET /:id/trace — full procurement chain traceability for an asset.
+// Returns the live linked records (vendor + referenceBy, quotation, purchase
+// order + items + budget head + created-by, gate pass + items, goods receipt +
+// inspection + created/inspected/posted-by users) so the frontend can render a
+// complete backtrackable history. Falls back to snapshot strings when a FK is
+// null (e.g. legacy assets whose source record was deleted).
+const traceInclude = {
+  inventoryItem: { select: { id: true, name: true, category: true, unit: true, itemType: true } },
+  vendor: {
+    select: {
+      id: true, vendorCode: true, name: true, referenceBy: true, contactPersonName: true,
+      contactPersonPhone: true, phone: true, email: true, gstNumber: true, address: true, category: true, status: true,
+    },
+  },
+  quotation: {
+    select: {
+      id: true, quotationNumber: true, date: true, status: true, totalAmount: true, gstAmount: true,
+      grandTotal: true, fileName: true, filePath: true, fileMimeType: true,
+      items: { select: { id: true, materialName: true, quantity: true, unit: true, unitPrice: true, amount: true, gstRate: true } },
+      createdByUser: { select: { id: true, name: true } },
+    },
+  },
+  purchaseOrder: {
+    select: {
+      id: true, poNumber: true, date: true, status: true, paymentType: true, deliveryDate: true,
+      totalAmount: true, gstAmount: true, grandTotal: true, notes: true, regenerationNumber: true, editReason: true,
+      vendor: { select: { id: true, name: true, vendorCode: true, referenceBy: true } },
+      quotation: { select: { id: true, quotationNumber: true, date: true } },
+      budgetHead: { select: { id: true, particulars: true } },
+      createdByUser: { select: { id: true, name: true } },
+      items: { select: { id: true, materialName: true, quantity: true, unit: true, unitPrice: true, gstRate: true, amount: true } },
+    },
+  },
+  gatePass: {
+    select: {
+      id: true, passNumber: true, date: true, status: true, gatePassType: true, vehicleNumber: true,
+      driverName: true, driverMobile: true, remarks: true,
+      items: { select: { id: true, materialName: true, quantity: true, unit: true } },
+      createdByUser: { select: { id: true, name: true } },
+    },
+  },
+  goodsReceipt: {
+    select: {
+      id: true, receiptNumber: true, status: true, createdAt: true, inspectedAt: true, postedAt: true,
+      items: { select: { id: true, materialName: true, deliveredQty: true, acceptedQty: true, rejectedQty: true, rejectionReason: true, itemType: true } },
+      inspection: { select: { id: true, status: true, completedDate: true } },
+      createdByUser: { select: { id: true, name: true } },
+      inspectedByUser: { select: { id: true, name: true } },
+      postedByUser: { select: { id: true, name: true } },
+    },
+  },
+};
+
+router.get(
+  '/:id/trace',
+  authMiddleware,
+  rbacMiddleware(Permission.MANAGE_INVENTORY),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      const asset = await prisma.asset.findFirst({
+        where: { id: req.params.id, projectId },
+        include: traceInclude,
+      });
+      if (!asset) {
+        res.status(404).json({ error: 'Asset not found' });
+        return;
+      }
+      res.json(asset);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+
 // PATCH /:id/serial — update serial number (only if not issued)
 router.patch(
   '/:id/serial',
@@ -1129,11 +1205,18 @@ router.get(
         status: asset.status,
       };
 
-      // If authenticated, return full lifecycle
+      // If authenticated, return full lifecycle + traceability chain
       if (req.user) {
         const fullAsset = await prisma.asset.findUnique({
           where: { id: asset.id },
-          include: assetInclude,
+          include: {
+            ...assetInclude,
+            vendor: { select: { id: true, vendorCode: true, name: true, referenceBy: true, contactPersonName: true, contactPersonPhone: true, phone: true, address: true } },
+            quotation: { select: { id: true, quotationNumber: true, date: true, status: true, grandTotal: true } },
+            purchaseOrder: { select: { id: true, poNumber: true, date: true, status: true, paymentType: true, grandTotal: true, vendor: { select: { id: true, name: true, vendorCode: true } }, budgetHead: { select: { id: true, particulars: true } }, createdByUser: { select: { id: true, name: true } }, items: { select: { id: true, materialName: true, quantity: true, unit: true, unitPrice: true, gstRate: true } } } },
+            gatePass: { select: { id: true, passNumber: true, date: true, status: true, gatePassType: true, items: { select: { id: true, materialName: true, quantity: true, unit: true } }, createdByUser: { select: { id: true, name: true } } } },
+            goodsReceipt: { select: { id: true, receiptNumber: true, status: true, createdAt: true, inspectedAt: true, postedAt: true, items: { select: { id: true, materialName: true, deliveredQty: true, acceptedQty: true, rejectedQty: true, itemType: true } }, inspection: { select: { id: true, status: true, completedDate: true } }, createdByUser: { select: { id: true, name: true } }, inspectedByUser: { select: { id: true, name: true } }, postedByUser: { select: { id: true, name: true } } } },
+          },
         });
         res.json({ ...publicFields, authenticated: true, full: fullAsset });
       } else {

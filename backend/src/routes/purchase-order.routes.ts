@@ -225,6 +225,19 @@ router.get(
           poNumber: true,
           status: true,
           items: true,
+          assets: {
+            orderBy: { assetId: 'asc' },
+            select: {
+              id: true,
+              assetId: true,
+              status: true,
+              location: true,
+              serialNumber: true,
+              totalCost: true,
+              receiptNumber: true,
+              inventoryItem: { select: { id: true, name: true } },
+            },
+          },
           gatePasses: {
             where: { deletedAt: null },
             orderBy: { createdAt: 'asc' },
@@ -308,6 +321,16 @@ router.get(
         poStatus: po.status,
         itemSummary,
         deliveries,
+        assets: po.assets.map((a) => ({
+          id: a.id,
+          assetId: a.assetId,
+          status: a.status,
+          location: a.location,
+          serialNumber: a.serialNumber,
+          totalCost: a.totalCost ? Number(a.totalCost) : null,
+          receiptNumber: a.receiptNumber,
+          itemName: a.inventoryItem.name,
+        })),
       });
     } catch (error) {
       next(error);

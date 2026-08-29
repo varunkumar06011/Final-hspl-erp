@@ -1,4 +1,4 @@
-﻿import { useState, useCallback } from 'react';
+﻿import { useState, useCallback, type ReactNode } from 'react';
 import {
   Box,
   Typography,
@@ -77,6 +77,7 @@ interface EntityPageProps {
   statusKey?: string;
   statusColors?: Record<string, 'default' | 'primary' | 'secondary' | 'error' | 'info' | 'success' | 'warning'>;
   canCreate?: boolean;
+  rowActions?: (row: Record<string, unknown>) => ReactNode;
 }
 
 export default function EntityPage({
@@ -90,6 +91,7 @@ export default function EntityPage({
   statusKey,
   statusColors,
   canCreate = true,
+  rowActions,
 }: EntityPageProps) {
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(20);
@@ -316,6 +318,7 @@ export default function EntityPage({
                     ))}
                     {canCreate && (
                       <TableCell align="right" data-label="Actions">
+                        {rowActions?.(row)}
                         <IconButton size="small" onClick={() => openEdit(row)}>
                           <EditIcon fontSize="small" />
                         </IconButton>

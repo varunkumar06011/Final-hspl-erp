@@ -809,9 +809,20 @@ interface DeliveryTrailData {
       }[];
     }[];
   }[];
+  assets: {
+    id: string;
+    assetId: string;
+    status: string;
+    location: string;
+    serialNumber: string | null;
+    totalCost: number | null;
+    receiptNumber: string | null;
+    itemName: string;
+  }[];
 }
 
 function DeliveryTrailDialog({ poId, poNumber, onClose }: { poId: string | null; poNumber: string; onClose: () => void }) {
+  const navigate = useNavigate();
   const { data, isLoading } = useQuery<DeliveryTrailData>({
     queryKey: ['/pos', poId, 'delivery-trail'],
     queryFn: async () => {
@@ -947,6 +958,45 @@ function DeliveryTrailDialog({ poId, poNumber, onClose }: { poId: string | null;
                     </AccordionDetails>
                   </Accordion>
                 ))
+              )}
+            </Box>
+
+            {/* Assets Generated */}
+            <Box>
+              <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>
+                Assets Generated ({data.assets?.length ?? 0})
+              </Typography>
+              {data.assets && data.assets.length > 0 ? (
+                <TableContainer component={Card} variant="outlined" sx={{ overflowX: 'auto' }}>
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow>
+                        <TableCell sx={{ fontWeight: 600 }}>Asset ID</TableCell>
+                        <TableCell sx={{ fontWeight: 600 }}>Item</TableCell>
+                        <TableCell sx={{ fontWeight: 600 }}>Serial</TableCell>
+                        <TableCell sx={{ fontWeight: 600 }}>Status</TableCell>
+                        <TableCell sx={{ fontWeight: 600 }}>Location</TableCell>
+                        <TableCell sx={{ fontWeight: 600 }}>GRN</TableCell>
+                        <TableCell sx={{ fontWeight: 600 }}>Cost</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {data.assets.map((a) => (
+                        <TableRow key={a.id} hover sx={{ cursor: 'pointer' }} onClick={() => navigate(`/scan/${a.assetId}`)}>
+                          <TableCell><strong>{a.assetId}</strong></TableCell>
+                          <TableCell>{a.itemName}</TableCell>
+                          <TableCell>{a.serialNumber ?? '—'}</TableCell>
+                          <TableCell><Chip size="small" label={a.status.replace(/_/g, ' ')} color={(STATUS_COLORS[a.status] ?? 'default') as never} /></TableCell>
+                          <TableCell>{a.location}</TableCell>
+                          <TableCell>{a.receiptNumber ?? '—'}</TableCell>
+                          <TableCell>{a.totalCost != null ? `₹${a.totalCost.toLocaleString('en-IN')}` : '—'}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              ) : (
+                <Typography variant="body2" color="text.secondary">No individual asset records generated from this PO.</Typography>
               )}
             </Box>
           </Box>

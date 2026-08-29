@@ -1,7 +1,10 @@
 import { Permission } from '@hospital-erp/shared';
 import { createVendorSchema, updateVendorSchema, listVendorsSchema } from '@hospital-erp/shared';
+import { Response, NextFunction } from 'express';
 import { prisma } from '../config/prisma';
 import { createCrudRouter } from '../utils/crudFactory';
+import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middleware/auth';
+import { rbacMiddleware } from '../middleware/rbac';
 import { notifyAllHeads } from '../services/push.service';
 import { generateSequenceNumber } from '../services/sequence.service';
 
@@ -37,7 +40,7 @@ async function generateVendorCode(): Promise<string> {
   return generateSequenceNumber('vendor', 'vendorCode', 'VGH-', 3);
 }
 
-export default createCrudRouter({
+const router = createCrudRouter({
   entityType: 'VENDOR',
   model: 'vendor',
   createPermission: Permission.CREATE_VENDOR,
@@ -182,3 +185,58 @@ export default createCrudRouter({
   },
   beforeDelete: validateVendorDeletion,
 });
+
+// GET /:id/trace — all records linked to a vendor (reverse traceability).
+// Returns quotations, purchase orders, assets, invoices, and payment requests
+// so the vendor view can show a complete history of everything tied to them.
+router.get(
+  '/:id/trace',
+  authMiddleware,
+  rbacMiddleware(Permission.VIEW_FINANCIALS),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      const vendor = await prisma.vendor.findFirst({
+        where: { id: req.params.id, projectId, deletedAt: null },
+        select: {
+          id: true, vendorCode: true, name: true, referenceBy: true, contactPersonName: true,
+          contactPersonPhone: true, phone: true, email: true, gstNumber: true, address: true,
+          category: true, status: true, rating: true,
+          quotations: {
+            where: { deletedAt: null },
+            orderBy: { createdAt: 'desc' },
+            select: { id: true, quotationNumber: true, date: true, status: true, grandTotal: true },
+          },
+          purchaseOrders: {
+            where: { deletedAt: null },
+            orderBy: { createdAt: 'desc' },
+            select: { id: true, poNumber: true, date: true, status: true, grandTotal: true, budgetHead: { select: { id: true, particulars: true } } },
+          },
+          assets: {
+            orderBy: { assetId: 'asc' },
+            select: { id: true, assetId: true, status: true, location: true, totalCost: true, inventoryItem: { select: { id: true, name: true } } },
+          },
+          invoices: {
+            where: { deletedAt: null },
+            orderBy: { createdAt: 'desc' },
+            select: { id: true, invoiceNumber: true, date: true, totalAmount: true, stockStatus: true },
+          },
+          paymentRequests: {
+            where: { deletedAt: null },
+            orderBy: { createdAt: 'desc' },
+            select: { id: true, requestNumber: true, amount: true, status: true, type: true, createdAt: true },
+          },
+        },
+      });
+      if (!vendor) {
+        res.status(404).json({ error: 'Vendor not found' });
+        return;
+      }
+      res.json(vendor);
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+export default router;

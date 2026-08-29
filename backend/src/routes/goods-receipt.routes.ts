@@ -114,6 +114,72 @@ router.get(
   },
 );
 
+// GET /:id — single goods receipt with full traceability (PO, vendor, gate
+// pass, inspection, users, and every individual asset generated from it).
+router.get(
+  '/:id',
+  rbacMiddleware(Permission.VIEW_FINANCIALS),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      const receipt = await prisma.goodsReceipt.findFirst({
+        where: { id: req.params.id, projectId, deletedAt: null },
+        select: {
+          id: true,
+          receiptNumber: true,
+          status: true,
+          createdAt: true,
+          inspectedAt: true,
+          postedAt: true,
+          items: {
+            select: {
+              id: true, materialName: true, unit: true, deliveredQty: true, acceptedQty: true,
+              rejectedQty: true, rejectionReason: true, itemType: true,
+              poItem: { select: { unitPrice: true, gstRate: true, quantity: true } },
+            },
+          },
+          inspection: { select: { id: true, status: true, completedDate: true } },
+          purchaseOrder: {
+            select: {
+              id: true, poNumber: true, date: true, status: true, paymentType: true, grandTotal: true,
+              vendor: { select: { id: true, name: true, vendorCode: true, referenceBy: true, contactPersonName: true, phone: true } },
+              quotation: { select: { id: true, quotationNumber: true, date: true } },
+              budgetHead: { select: { id: true, particulars: true } },
+              createdByUser: { select: { id: true, name: true } },
+            },
+          },
+          gatePass: {
+            select: {
+              id: true, passNumber: true, date: true, status: true, gatePassType: true,
+              vehicleNumber: true, driverName: true, driverMobile: true,
+              items: { select: { id: true, materialName: true, quantity: true, unit: true } },
+              createdByUser: { select: { id: true, name: true } },
+            },
+          },
+          assets: {
+            orderBy: { assetId: 'asc' },
+            select: {
+              id: true, assetId: true, status: true, location: true, serialNumber: true,
+              totalCost: true, warrantyExpiry: true,
+              inventoryItem: { select: { id: true, name: true } },
+            },
+          },
+          createdByUser: { select: { id: true, name: true } },
+          inspectedByUser: { select: { id: true, name: true } },
+          postedByUser: { select: { id: true, name: true } },
+        },
+      });
+      if (!receipt) {
+        res.status(404).json({ error: 'Goods receipt not found' });
+        return;
+      }
+      res.json(receipt);
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
 router.post(
   '/',
   rbacMiddleware(Permission.MANAGE_INVENTORY),
@@ -474,6 +540,12 @@ router.post(
                   gatePassNumber: receipt.gatePass.passNumber,
                   receivedBy: receipt.inspectedByUser?.name ?? null,
                   postedBy: req.user!.name,
+                  // Live traceability links
+                  poId: po?.id ?? null,
+                  grnId: receipt.id,
+                  vendorId: po?.vendor?.id ?? null,
+                  quotationId: po?.quotationId ?? null,
+                  gatePassId: receipt.gatePassId,
                 },
               });
               await tx.assetMovement.create({
