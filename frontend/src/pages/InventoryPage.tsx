@@ -24,6 +24,9 @@ import {
   InputAdornment,
   Tabs,
   Tab,
+  Grid,
+  Stack,
+  LinearProgress,
 } from '@mui/material';
 import ResponsiveDialog from '../components/ResponsiveDialog';
 import {
@@ -33,6 +36,11 @@ import {
   Search as SearchIcon,
   SwapVert as SwapVertIcon,
   PhotoCamera as PhotoCameraIcon,
+  Inventory2 as ItemsIcon,
+  History as HistoryIcon,
+  Warning as WarningIcon,
+  Category as CategoryIcon,
+  Layers as LayersIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { InventoryTxnType, InventoryItemType } from '@hospital-erp/shared';
@@ -71,6 +79,24 @@ export default function InventoryPage() {
       return response.data;
     },
   });
+
+  // Fetch all items (up to 100) for summary stats — independent of pagination/search
+  const { data: statsData } = useQuery({
+    queryKey: ['/inventory/items', 'stats'],
+    queryFn: async () => {
+      const response = await api.get('/inventory/items', { params: { page: 1, pageSize: 100 } });
+      return response.data;
+    },
+  });
+  const statsItems: Record<string, unknown>[] = statsData?.data ?? [];
+  const stats = {
+    total: statsItems.length,
+    lowStock: statsItems.filter(
+      (i) => Number(i.minStockLevel) > 0 && Number(i.currentStock) <= Number(i.minStockLevel),
+    ).length,
+    assets: statsItems.filter((i) => i.itemType === InventoryItemType.ASSET).length,
+    consumables: statsItems.filter((i) => i.itemType === InventoryItemType.CONSUMABLE).length,
+  };
 
   const createMutation = useMutation({
     mutationFn: async (payload: Record<string, unknown>) => {
@@ -207,14 +233,71 @@ export default function InventoryPage() {
 
       {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
 
-      <Tabs value={tab} onChange={(_, v) => { setTab(v); setPage(0); }} sx={{ mb: 2 }} variant="scrollable" scrollButtons="auto" allowScrollButtonsMobile>
-        <Tab label="Items" />
-        <Tab label="Transactions" />
+      {/* Summary stat cards */}
+      {tab === 0 && (
+        <Grid container spacing={2} sx={{ mb: 2 }}>
+          <Grid item xs={6} sm={3}>
+            <Card sx={{ p: 2, height: '100%' }}>
+              <Stack direction="row" spacing={1.5} alignItems="flex-start">
+                <Box sx={{ color: 'primary.main', mt: 0.5 }}><ItemsIcon /></Box>
+                <Box>
+                  <Typography variant="caption" color="text.secondary">Total Items</Typography>
+                  <Typography variant="h6" sx={{ color: 'primary.main', fontWeight: 600 }}>{stats.total}</Typography>
+                </Box>
+              </Stack>
+            </Card>
+          </Grid>
+          <Grid item xs={6} sm={3}>
+            <Card sx={{ p: 2, height: '100%', borderColor: stats.lowStock > 0 ? 'error.main' : undefined }}>
+              <Stack direction="row" spacing={1.5} alignItems="flex-start">
+                <Box sx={{ color: stats.lowStock > 0 ? 'error.main' : 'text.secondary', mt: 0.5 }}><WarningIcon /></Box>
+                <Box>
+                  <Typography variant="caption" color="text.secondary">Low Stock</Typography>
+                  <Typography variant="h6" sx={{ color: stats.lowStock > 0 ? 'error.main' : 'text.primary', fontWeight: 600 }}>{stats.lowStock}</Typography>
+                </Box>
+              </Stack>
+            </Card>
+          </Grid>
+          <Grid item xs={6} sm={3}>
+            <Card sx={{ p: 2, height: '100%' }}>
+              <Stack direction="row" spacing={1.5} alignItems="flex-start">
+                <Box sx={{ color: 'secondary.main', mt: 0.5 }}><LayersIcon /></Box>
+                <Box>
+                  <Typography variant="caption" color="text.secondary">Assets</Typography>
+                  <Typography variant="h6" sx={{ color: 'secondary.main', fontWeight: 600 }}>{stats.assets}</Typography>
+                </Box>
+              </Stack>
+            </Card>
+          </Grid>
+          <Grid item xs={6} sm={3}>
+            <Card sx={{ p: 2, height: '100%' }}>
+              <Stack direction="row" spacing={1.5} alignItems="flex-start">
+                <Box sx={{ color: 'success.main', mt: 0.5 }}><CategoryIcon /></Box>
+                <Box>
+                  <Typography variant="caption" color="text.secondary">Consumables</Typography>
+                  <Typography variant="h6" sx={{ color: 'success.main', fontWeight: 600 }}>{stats.consumables}</Typography>
+                </Box>
+              </Stack>
+            </Card>
+          </Grid>
+        </Grid>
+      )}
+
+      <Tabs
+        value={tab}
+        onChange={(_, v) => { setTab(v); setPage(0); }}
+        sx={{ mb: 2 }}
+        variant="scrollable"
+        scrollButtons="auto"
+        allowScrollButtonsMobile
+      >
+        <Tab icon={<ItemsIcon />} iconPosition="start" label="Items" />
+        <Tab icon={<HistoryIcon />} iconPosition="start" label="Transactions" />
       </Tabs>
 
-      <Card>
+      <Card sx={{ overflow: 'hidden' }}>
         {tab === 0 && (
-          <Box sx={{ p: 2 }}>
+          <Box sx={{ p: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
             <TextField
               size="small"
               placeholder="Search items..."
@@ -223,6 +306,15 @@ export default function InventoryPage() {
               InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> }}
               sx={{ width: { xs: '100%', sm: 300 } }}
             />
+            {stats.lowStock > 0 && (
+              <Chip
+                icon={<WarningIcon />}
+                color="error"
+                size="small"
+                label={`${stats.lowStock} item${stats.lowStock > 1 ? 's' : ''} below min level`}
+                variant="outlined"
+              />
+            )}
           </Box>
         )}
 
@@ -231,7 +323,7 @@ export default function InventoryPage() {
           <Table size="small">
             <TableHead>
               {tab === 0 ? (
-                <TableRow>
+                <TableRow sx={{ bgcolor: 'grey.50' }}>
                   <TableCell sx={{ fontWeight: 600 }}>Name</TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>SKU</TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>Category</TableCell>
@@ -243,7 +335,7 @@ export default function InventoryPage() {
                   <TableCell align="right" sx={{ fontWeight: 600 }}>Actions</TableCell>
                 </TableRow>
               ) : (
-                <TableRow>
+                <TableRow sx={{ bgcolor: 'grey.50' }}>
                   <TableCell sx={{ fontWeight: 600 }}>Item</TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>Type</TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>Qty</TableCell>
@@ -258,16 +350,43 @@ export default function InventoryPage() {
               {isLoading ? (
                 <TableRow><TableCell colSpan={9} align="center" sx={{ py: 4 }}><CircularProgress size={32} /></TableCell></TableRow>
               ) : rows.length === 0 ? (
-                <TableRow><TableCell colSpan={9} align="center" sx={{ py: 4 }}><Typography color="text.secondary">No records found</Typography></TableCell></TableRow>
+                <TableRow>
+                  <TableCell colSpan={9} align="center" sx={{ py: 6 }}>
+                    <Stack spacing={1} alignItems="center">
+                      <ItemsIcon sx={{ fontSize: 40, color: 'text.disabled' }} />
+                      <Typography color="text.secondary">
+                        {tab === 0 ? 'No inventory items yet. Click "New Item" to add one.' : 'No stock movements recorded yet.'}
+                      </Typography>
+                    </Stack>
+                  </TableCell>
+                </TableRow>
               ) : tab === 0 ? (
                 rows.map((row: Record<string, unknown>) => {
-                  const lowStock = Number(row.currentStock) <= Number(row.minStockLevel) && Number(row.minStockLevel) > 0;
+                  const currentStock = Number(row.currentStock);
+                  const minStock = Number(row.minStockLevel);
+                  const lowStock = minStock > 0 && currentStock <= minStock;
+                  const outOfStock = currentStock === 0;
                   const isAsset = row.itemType === InventoryItemType.ASSET;
+                  const stockPct = minStock > 0 ? Math.min(100, (currentStock / (minStock * 2)) * 100) : 100;
                   return (
-                    <TableRow key={row.id as string} hover sx={isAsset ? { cursor: 'pointer' } : {}} onClick={isAsset ? () => navigate(`/assets/${row.id}`) : undefined}>
-                      <TableCell data-label="Name">{String(row.name ?? '—')}</TableCell>
-                      <TableCell data-label="SKU">{String(row.sku ?? '—')}</TableCell>
-                      <TableCell data-label="Category">{String(row.category ?? '—')}</TableCell>
+                    <TableRow
+                      key={row.id as string}
+                      hover
+                      sx={{
+                        ...(isAsset ? { cursor: 'pointer' } : {}),
+                        ...(lowStock ? { bgcolor: 'rgba(211, 47, 47, 0.04)' } : {}),
+                      }}
+                      onClick={isAsset ? () => navigate(`/assets/${row.id}`) : undefined}
+                    >
+                      <TableCell data-label="Name" sx={{ fontWeight: 500 }}>{String(row.name ?? '—')}</TableCell>
+                      <TableCell data-label="SKU">
+                        <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.8rem', color: 'text.secondary' }}>
+                          {String(row.sku ?? '—')}
+                        </Typography>
+                      </TableCell>
+                      <TableCell data-label="Category">
+                        {row.category ? <Chip label={String(row.category)} size="small" variant="outlined" /> : '—'}
+                      </TableCell>
                       <TableCell data-label="Type">
                         <Chip
                           label={isAsset ? 'Asset' : 'Consumable'}
@@ -278,11 +397,35 @@ export default function InventoryPage() {
                       </TableCell>
                       <TableCell data-label="Unit">{String(row.unit ?? '—')}</TableCell>
                       <TableCell data-label="Stock">
-                        {isAsset
-                          ? <Chip label="See Assets" size="small" color="secondary" variant="outlined" onClick={(e) => { e.stopPropagation(); navigate(`/assets/${row.id}`); }} />
-                          : <Chip label={String(row.currentStock)} size="small" color={lowStock ? 'error' : 'default'} />}
+                        {isAsset ? (
+                          <Chip label="See Assets" size="small" color="secondary" variant="outlined" onClick={(e) => { e.stopPropagation(); navigate(`/assets/${row.id}`); }} />
+                        ) : (
+                          <Stack spacing={0.5} sx={{ minWidth: 80 }}>
+                            <Stack direction="row" spacing={0.5} alignItems="center">
+                              <Typography
+                                variant="body2"
+                                sx={{
+                                  fontWeight: 600,
+                                  color: outOfStock ? 'error.main' : lowStock ? 'warning.main' : 'text.primary',
+                                }}
+                              >
+                                {formatIndianNumber(currentStock)}
+                              </Typography>
+                              {outOfStock && <Chip label="Out" size="small" color="error" sx={{ height: 16, '& .MuiChip-label': { px: 0.5, fontSize: '0.6rem' } }} />}
+                              {!outOfStock && lowStock && <Chip label="Low" size="small" color="warning" sx={{ height: 16, '& .MuiChip-label': { px: 0.5, fontSize: '0.6rem' } }} />}
+                            </Stack>
+                            {minStock > 0 && (
+                              <LinearProgress
+                                variant="determinate"
+                                value={stockPct}
+                                color={outOfStock ? 'error' : lowStock ? 'warning' : 'success'}
+                                sx={{ height: 4, borderRadius: 2 }}
+                              />
+                            )}
+                          </Stack>
+                        )}
                       </TableCell>
-                      <TableCell data-label="Min Level">{String(row.minStockLevel ?? 0)}</TableCell>
+                      <TableCell data-label="Min Level">{minStock > 0 ? formatIndianNumber(minStock) : '—'}</TableCell>
                       <TableCell data-label="Location">{String(row.location ?? '—')}</TableCell>
                       <TableCell align="right" data-label="Actions" onClick={(e) => e.stopPropagation()}>
                         <IconButton size="small" onClick={() => openEdit(row)}><EditIcon fontSize="small" /></IconButton>
@@ -294,10 +437,16 @@ export default function InventoryPage() {
               ) : (
                 rows.map((row: Record<string, unknown>) => (
                   <TableRow key={row.id as string} hover>
-                    <TableCell data-label="Item">{(row.inventoryItem as any)?.name ?? '—'}</TableCell>
-                    <TableCell data-label="Type"><Chip label={String(row.type)} size="small" color={row.type === 'IN' ? 'success' : row.type === 'OUT' ? 'warning' : 'default'} /></TableCell>
-                    <TableCell data-label="Qty">{String(row.quantity ?? '—')}</TableCell>
-                    <TableCell data-label="Balance After">{String(row.balanceAfter ?? '—')}</TableCell>
+                    <TableCell data-label="Item" sx={{ fontWeight: 500 }}>{(row.inventoryItem as any)?.name ?? '—'}</TableCell>
+                    <TableCell data-label="Type">
+                      <Chip
+                        label={String(row.type)}
+                        size="small"
+                        color={row.type === 'IN' ? 'success' : row.type === 'OUT' ? 'warning' : 'default'}
+                      />
+                    </TableCell>
+                    <TableCell data-label="Qty" sx={{ fontWeight: 600 }}>{formatIndianNumber(Number(row.quantity ?? 0))}</TableCell>
+                    <TableCell data-label="Balance After">{formatIndianNumber(Number(row.balanceAfter ?? 0))}</TableCell>
                     <TableCell data-label="Gate Pass">{(row.gatePass as any)?.passNumber ?? '—'}</TableCell>
                     <TableCell data-label="Notes">{String(row.notes ?? '—')}</TableCell>
                     <TableCell data-label="Proof">

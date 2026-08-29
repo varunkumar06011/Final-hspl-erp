@@ -30,7 +30,6 @@ import {
   Delete as DeleteIcon,
   Search as SearchIcon,
   Refresh as RefreshIcon,
-  Upload as UploadIcon,
   History as HistoryIcon,
   Check as CheckIcon,
   Close as CloseIcon,
@@ -46,10 +45,8 @@ export default function BudgetHeadsPage() {
   const [pageSize, setPageSize] = useState(25);
   const [search, setSearch] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [importOpen, setImportOpen] = useState(false);
   const [editing, setEditing] = useState<Record<string, unknown> | null>(null);
   const [form, setForm] = useState<Record<string, unknown>>({});
-  const [importText, setImportText] = useState('');
   const [error, setError] = useState('');
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [revisionDialogOpen, setRevisionDialogOpen] = useState(false);
@@ -111,21 +108,6 @@ export default function BudgetHeadsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/budget-heads'] });
       setDeleteConfirm(null);
-    },
-    onError: (err: unknown) => setError(extractErrorMessage(err)),
-  });
-
-  const importMutation = useMutation({
-    mutationFn: async (items: Array<{ sl_no: number; particulars: string; amount: number }>) => {
-      const response = await api.post('/budget-heads/import', { items });
-      return response.data;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/budget-heads'] });
-      queryClient.invalidateQueries({ queryKey: ['/budget-heads', 'all'] });
-      setImportOpen(false);
-      setImportText('');
-      setError('');
     },
     onError: (err: unknown) => setError(extractErrorMessage(err)),
   });
@@ -242,24 +224,6 @@ export default function BudgetHeadsPage() {
     }
   };
 
-  const handleImport = () => {
-    try {
-      const parsed = JSON.parse(importText);
-      if (!parsed.budget_items || !Array.isArray(parsed.budget_items)) {
-        setError('JSON must have a "budget_items" array');
-        return;
-      }
-      const items = parsed.budget_items.map((item: { sl_no: number; particulars: string; amount: number }) => ({
-        sl_no: item.sl_no,
-        particulars: item.particulars,
-        amount: item.amount,
-      }));
-      importMutation.mutate(items);
-    } catch {
-      setError('Invalid JSON format');
-    }
-  };
-
   const rows = data?.data ?? [];
   const pagination = data?.pagination ?? { page: 1, pageSize: 25, total: 0, totalPages: 0 };
   const submitting = createMutation.isPending || updateMutation.isPending;
@@ -282,9 +246,6 @@ export default function BudgetHeadsPage() {
               Pending Revisions ({pendingRevisions.data.length})
             </Button>
           )}
-          <Button variant="outlined" startIcon={<UploadIcon />} onClick={() => setImportOpen(true)}>
-            Import
-          </Button>
           <Button variant="contained" startIcon={<AddIcon />} onClick={openCreate}>
             New Budget Head
           </Button>
@@ -355,7 +316,7 @@ export default function BudgetHeadsPage() {
                 </TableCell></TableRow>
               ) : rows.length === 0 ? (
                 <TableRow><TableCell colSpan={10} align="center" sx={{ py: 4 }}>
-                  <Typography color="text.secondary">No budget heads found. Click "Import" to load from your draft budget JSON.</Typography>
+                  <Typography color="text.secondary">No budget heads found. Click "New Budget Head" to create one.</Typography>
                 </TableCell></TableRow>
               ) : (
                 rows.map((row: Record<string, unknown>) => {
@@ -451,36 +412,6 @@ export default function BudgetHeadsPage() {
           <Button onClick={closeDialog}>Cancel</Button>
           <Button variant="contained" onClick={handleSubmit} disabled={submitting}>
             {submitting ? <CircularProgress size={20} /> : editing ? 'Update' : 'Create'}
-          </Button>
-        </DialogActions>
-      </ResponsiveDialog>
-
-      {/* Import dialog */}
-      <ResponsiveDialog open={importOpen} onClose={() => setImportOpen(false)} maxWidth="md" fullWidth>
-        <DialogTitle>Import Budget from JSON</DialogTitle>
-        <DialogContent>
-          {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-            Paste your draft budget JSON here. Expected format: <code>{'{ "budget_items": [{ "sl_no": 1, "particulars": "...", "amount": 1000000 }] }'}</code>
-          </Typography>
-          <TextField
-            multiline
-            rows={12}
-            fullWidth
-            value={importText}
-            onChange={(e) => setImportText(e.target.value)}
-            placeholder='Paste JSON here...'
-            size="small"
-            sx={{ fontFamily: 'monospace' }}
-          />
-          <Alert severity="warning" sx={{ mt: 1 }}>
-            This will replace all existing budget heads for this project.
-          </Alert>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setImportOpen(false)}>Cancel</Button>
-          <Button variant="contained" onClick={handleImport} disabled={importMutation.isPending} startIcon={<UploadIcon />}>
-            {importMutation.isPending ? <CircularProgress size={20} /> : 'Import'}
           </Button>
         </DialogActions>
       </ResponsiveDialog>

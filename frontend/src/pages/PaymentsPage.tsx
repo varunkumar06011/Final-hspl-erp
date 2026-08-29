@@ -208,7 +208,7 @@ export default function PaymentsPage() {
   const { data: budgetHeadsData } = useQuery({
     queryKey: ['/budget-heads', 'all'],
     queryFn: async () => {
-      const response = await api.get('/budget-heads', { params: { page: 1, pageSize: 200 } });
+      const response = await api.get('/budget-heads', { params: { page: 1, pageSize: 100 } });
       return response.data;
     },
   });

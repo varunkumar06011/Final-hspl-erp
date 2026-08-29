@@ -157,7 +157,7 @@ export default function AssetDetailPage() {
   const { data: vendorsData } = useQuery({
     queryKey: ['/vendors'],
     queryFn: async () => {
-      const response = await api.get('/vendors', { params: { page: 1, pageSize: 1000 } });
+      const response = await api.get('/vendors', { params: { page: 1, pageSize: 100 } });
       return response.data;
     },
   });
@@ -165,7 +165,7 @@ export default function AssetDetailPage() {
   const { data: posData } = useQuery({
     queryKey: ['/purchase-orders', createForm.vendorId],
     queryFn: async () => {
-      const params: Record<string, unknown> = { page: 1, pageSize: 1000, status: 'APPROVED' };
+      const params: Record<string, unknown> = { page: 1, pageSize: 100, status: 'APPROVED' };
       if (createForm.vendorId) params.vendorId = createForm.vendorId;
       const response = await api.get('/purchase-orders', { params });
       return response.data;
@@ -176,7 +176,7 @@ export default function AssetDetailPage() {
   const { data: invoicesData } = useQuery({
     queryKey: ['/invoices', createForm.vendorId],
     queryFn: async () => {
-      const params: Record<string, unknown> = { page: 1, pageSize: 1000 };
+      const params: Record<string, unknown> = { page: 1, pageSize: 100 };
       if (createForm.vendorId) params.vendorId = createForm.vendorId;
       const response = await api.get('/invoices', { params });
       return response.data;

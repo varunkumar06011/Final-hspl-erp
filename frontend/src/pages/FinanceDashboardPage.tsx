@@ -101,7 +101,11 @@ export default function FinanceDashboardPage() {
   }
 
   const d = dashboard;
-  const budgetHeads = budgetReport?.data ?? [];
+  // Only show budget heads that have been "started" — i.e., have committed, actual, or paid amounts.
+  // Budget heads with no usage are hidden to keep the breakdown focused on active heads.
+  const budgetHeads = (budgetReport?.data ?? []).filter(
+    (h) => h.committedAmount > 0 || h.actualAmount > 0 || h.paidAmount > 0,
+  );
 
   return (
     <Box sx={{ minWidth: 0, overflow: 'hidden' }}>
@@ -182,12 +186,44 @@ export default function FinanceDashboardPage() {
         </Grid>
       </Grid>
 
-      {/* Budget Breakdown */}
-      <Card sx={{ p: 2, mb: 3 }}>
+      {/* Budget Summary Bar (visual) */}
+      {budgetReport && (
+        <Card sx={{ p: 2, mb: 3 }}>
+          <Typography variant="h6" fontWeight={600} sx={{ mb: 2 }}>Budget Summary</Typography>
+          <Grid container spacing={2}>
+            {[
+              { label: 'Allocated', value: budgetReport.totals.allocated, color: '#1976d2' },
+              { label: 'Committed', value: budgetReport.totals.committed, color: '#0288d1' },
+              { label: 'Actual', value: budgetReport.totals.actual, color: '#ed6c02' },
+              { label: 'Paid', value: budgetReport.totals.paid, color: '#2e7d32' },
+              { label: 'Available', value: budgetReport.totals.uncommittedAvailable ?? budgetReport.totals.available, color: '#9c27b0' },
+            ].map((item) => {
+              const maxVal = budgetReport.totals.allocated || 1;
+              const widthPct = Math.max(2, (item.value / maxVal) * 100);
+              return (
+                <Grid item xs={12} key={item.label}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                    <Typography variant="body2" sx={{ width: 100, flexShrink: 0 }}>{item.label}</Typography>
+                    <Box sx={{ flex: 1, height: 24, bgcolor: 'grey.100', borderRadius: 1, overflow: 'hidden' }}>
+                      <Box sx={{ width: `${widthPct}%`, height: '100%', bgcolor: item.color, borderRadius: 1, transition: 'width 0.5s' }} />
+                    </Box>
+                    <Typography variant="body2" sx={{ width: 140, textAlign: 'right', fontWeight: 600 }}>
+                      {formatCurrency(item.value)}
+                    </Typography>
+                  </Box>
+                </Grid>
+              );
+            })}
+          </Grid>
+        </Card>
+      )}
+
+      {/* Budget Head Breakdown — only heads that have been started (committed/actual/paid > 0) */}
+      <Card sx={{ p: 2 }}>
         <Typography variant="h6" fontWeight={600} sx={{ mb: 2 }}>Budget Head Breakdown</Typography>
         {budgetHeads.length === 0 ? (
           <Typography color="text.secondary" sx={{ py: 2, textAlign: 'center' }}>
-            No budget heads found. Import budget data to see the breakdown.
+            No budget heads have been used yet. Budget heads with no committed, actual, or paid amounts are hidden.
           </Typography>
         ) : (
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
@@ -234,38 +270,6 @@ export default function FinanceDashboardPage() {
           </Box>
         )}
       </Card>
-
-      {/* Budget Summary Bar (visual) */}
-      {budgetReport && (
-        <Card sx={{ p: 2 }}>
-          <Typography variant="h6" fontWeight={600} sx={{ mb: 2 }}>Budget Summary</Typography>
-          <Grid container spacing={2}>
-            {[
-              { label: 'Allocated', value: budgetReport.totals.allocated, color: '#1976d2' },
-              { label: 'Committed', value: budgetReport.totals.committed, color: '#0288d1' },
-              { label: 'Actual', value: budgetReport.totals.actual, color: '#ed6c02' },
-              { label: 'Paid', value: budgetReport.totals.paid, color: '#2e7d32' },
-              { label: 'Available', value: budgetReport.totals.uncommittedAvailable ?? budgetReport.totals.available, color: '#9c27b0' },
-            ].map((item) => {
-              const maxVal = budgetReport.totals.allocated || 1;
-              const widthPct = Math.max(2, (item.value / maxVal) * 100);
-              return (
-                <Grid item xs={12} key={item.label}>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                    <Typography variant="body2" sx={{ width: 100, flexShrink: 0 }}>{item.label}</Typography>
-                    <Box sx={{ flex: 1, height: 24, bgcolor: 'grey.100', borderRadius: 1, overflow: 'hidden' }}>
-                      <Box sx={{ width: `${widthPct}%`, height: '100%', bgcolor: item.color, borderRadius: 1, transition: 'width 0.5s' }} />
-                    </Box>
-                    <Typography variant="body2" sx={{ width: 140, textAlign: 'right', fontWeight: 600 }}>
-                      {formatCurrency(item.value)}
-                    </Typography>
-                  </Box>
-                </Grid>
-              );
-            })}
-          </Grid>
-        </Card>
-      )}
     </Box>
   );
 }
