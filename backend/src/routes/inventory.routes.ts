@@ -340,45 +340,72 @@ router.post(
       }
 
       const quantity = Number(req.body.quantity);
+      const absQty = Math.abs(quantity);
       const currentStock = Number(item.currentStock);
-      let newBalance: number;
 
-      if (req.body.type === InventoryTxnType.IN) {
-        newBalance = currentStock + Math.abs(quantity);
-      } else if (req.body.type === InventoryTxnType.OUT) {
-        newBalance = currentStock - Math.abs(quantity);
-        if (newBalance < 0) {
-          res.status(400).json({
-            error: `Insufficient stock. Current: ${currentStock}, Requested: ${Math.abs(quantity)}`,
-          });
-          return;
-        }
-      } else {
-        // ── B27: Prevent negative stock on ADJUST ──
-        newBalance = quantity;
-        if (newBalance < 0) {
-          res.status(400).json({ error: `Adjustment would set stock to a negative value (${newBalance})` });
-          return;
-        }
+      // ── A18: Atomic stock update ──
+      // The previous read→calculate→write let two concurrent issues both
+      // compute from the same currentStock and overwrite each other, losing
+      // one deduction. We now use Prisma's atomic increment/decrement so the
+      // DB applies the delta. The read above is only for the insufficient-stock
+      // check and the audit snapshot; the authoritative new balance is read
+      // back after the atomic update for the transaction log's balanceAfter.
+      // The stock update and the transaction-log row are written in the SAME
+      // transaction so a failure rolls back both.
+      if (req.body.type === InventoryTxnType.OUT && currentStock < absQty) {
+        res.status(400).json({
+          error: `Insufficient stock. Current: ${currentStock}, Requested: ${absQty}`,
+        });
+        return;
+      }
+      if (req.body.type === InventoryTxnType.ADJUST && quantity < 0) {
+        res.status(400).json({ error: `Adjustment would set stock to a negative value (${quantity})` });
+        return;
       }
 
-      const [txn] = await prisma.$transaction([
-        prisma.inventoryTransaction.create({
+      const txn = await prisma.$transaction(async (tx) => {
+        let resultingStock: number;
+        if (req.body.type === InventoryTxnType.IN) {
+          // Inbound is blocked above for generic movements, but keep the branch
+          // for safety/consistency.
+          const updated = await tx.inventoryItem.update({
+            where: { id: item.id },
+            data: { currentStock: { increment: absQty } },
+            select: { currentStock: true },
+          });
+          resultingStock = Number(updated.currentStock);
+        } else if (req.body.type === InventoryTxnType.OUT) {
+          const updated = await tx.inventoryItem.update({
+            where: { id: item.id },
+            data: { currentStock: { decrement: absQty } },
+            select: { currentStock: true },
+          });
+          resultingStock = Number(updated.currentStock);
+        } else {
+          // ADJUST sets an absolute value (admin override). This is an
+          // intentional reset, not a delta, so a direct set is correct here.
+          // ADJUST is restricted to ADMIN/ADMIN_2 and rare, so the
+          // last-writer-wins risk is acceptable for this explicit override.
+          await tx.inventoryItem.update({
+            where: { id: item.id },
+            data: { currentStock: quantity },
+          });
+          resultingStock = quantity;
+        }
+
+        return tx.inventoryTransaction.create({
           data: {
             itemId: item.id,
             gatePassId: req.body.gatePassId ?? null,
             type: req.body.type,
             quantity,
-            balanceAfter: newBalance,
+            balanceAfter: resultingStock,
             userId: req.user!.id,
             notes: req.body.notes ?? null,
           },
-        }),
-        prisma.inventoryItem.update({
-          where: { id: item.id },
-          data: { currentStock: newBalance },
-        }),
-      ]);
+        });
+      });
+      const newBalance = Number(txn.balanceAfter);
 
       await logAudit({
         userId: req.user!.id,

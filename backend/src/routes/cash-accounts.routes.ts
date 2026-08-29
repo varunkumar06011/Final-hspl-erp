@@ -313,14 +313,12 @@ interface PostCashTxnArgs {
 
 export async function postCashTransaction(args: PostCashTxnArgs) {
   return prisma.$transaction(async (tx) => {
+    // Read only for validation; the balance is updated atomically below.
     const account = await tx.cashAccount.findFirst({
       where: { id: args.cashAccountId, projectId: args.projectId, deletedAt: null },
     });
     if (!account) throw new Error('Cash account not found');
     if (!account.isActive) throw new Error('Cash account is inactive');
-
-    const currentBalance = Number(account.currentBalance);
-    let newBalance: number;
 
     const isIn = [CashTxnType.IN, CashTxnType.TRANSFER_IN, CashTxnType.REVERSAL_IN].includes(
       args.type as CashTxnType,
@@ -329,14 +327,19 @@ export async function postCashTransaction(args: PostCashTxnArgs) {
       args.type as CashTxnType,
     );
 
-    if (isIn) {
-      newBalance = currentBalance + args.amount;
-    } else if (isOut) {
-      newBalance = currentBalance - args.amount;
-      if (newBalance < 0) throw new Error('Insufficient balance in cash account');
-    } else {
-      throw new Error(`Invalid cash transaction type: ${args.type}`);
+    if (!isIn && !isOut) throw new Error(`Invalid cash transaction type: ${args.type}`);
+    if (isOut && Number(account.currentBalance) < args.amount) {
+      throw new Error('Insufficient balance in cash account');
     }
+
+    // Atomic balance update — DB applies the delta, preventing lost updates
+    // under concurrent postings.
+    const updated = await tx.cashAccount.update({
+      where: { id: args.cashAccountId },
+      data: { currentBalance: isIn ? { increment: args.amount } : { decrement: args.amount } },
+      select: { currentBalance: true },
+    });
+    const newBalance = Number(updated.currentBalance);
 
     const transaction = await tx.cashTransaction.create({
       data: {
@@ -351,11 +354,6 @@ export async function postCashTransaction(args: PostCashTxnArgs) {
         status: 'POSTED',
         createdBy: args.userId,
       },
-    });
-
-    await tx.cashAccount.update({
-      where: { id: args.cashAccountId },
-      data: { currentBalance: newBalance },
     });
 
     return { transaction, newBalance };
@@ -385,12 +383,25 @@ export async function transferCashToCash(args: TransferCashArgs) {
     if (!fromAccount) throw new Error('Source cash account not found');
     if (!toAccount) throw new Error('Destination cash account not found');
     if (!fromAccount.isActive || !toAccount.isActive) throw new Error('One or both accounts are inactive');
-
-    const fromBalance = Number(fromAccount.currentBalance) - args.amount;
-    if (fromBalance < 0) throw new Error('Insufficient balance in source account');
-    const toBalance = Number(toAccount.currentBalance) + args.amount;
+    if (Number(fromAccount.currentBalance) < args.amount) {
+      throw new Error('Insufficient balance in source account');
+    }
 
     const transferPairId = crypto.randomUUID();
+
+    // Atomic two-sided balance update.
+    const [updatedFrom, updatedTo] = await Promise.all([
+      tx.cashAccount.update({
+        where: { id: args.fromAccountId },
+        data: { currentBalance: { decrement: args.amount } },
+        select: { currentBalance: true },
+      }),
+      tx.cashAccount.update({
+        where: { id: args.toAccountId },
+        data: { currentBalance: { increment: args.amount } },
+        select: { currentBalance: true },
+      }),
+    ]);
 
     const [fromTxn, toTxn] = await Promise.all([
       tx.cashTransaction.create({
@@ -398,7 +409,7 @@ export async function transferCashToCash(args: TransferCashArgs) {
           cashAccountId: args.fromAccountId,
           type: CashTxnType.TRANSFER_OUT,
           amount: args.amount,
-          balanceAfter: fromBalance,
+          balanceAfter: Number(updatedFrom.currentBalance),
           date: args.date,
           description: args.description,
           referenceType: AccountTxnRefType.TRANSFER,
@@ -412,7 +423,7 @@ export async function transferCashToCash(args: TransferCashArgs) {
           cashAccountId: args.toAccountId,
           type: CashTxnType.TRANSFER_IN,
           amount: args.amount,
-          balanceAfter: toBalance,
+          balanceAfter: Number(updatedTo.currentBalance),
           date: args.date,
           description: args.description,
           referenceType: AccountTxnRefType.TRANSFER,
@@ -420,17 +431,6 @@ export async function transferCashToCash(args: TransferCashArgs) {
           status: 'POSTED',
           createdBy: args.userId,
         },
-      }),
-    ]);
-
-    await Promise.all([
-      tx.cashAccount.update({
-        where: { id: args.fromAccountId },
-        data: { currentBalance: fromBalance },
-      }),
-      tx.cashAccount.update({
-        where: { id: args.toAccountId },
-        data: { currentBalance: toBalance },
       }),
     ]);
 
@@ -462,12 +462,25 @@ export async function transferBankToCash(args: BankCashTransferArgs) {
     if (!bankAcct) throw new Error('Bank account not found');
     if (!cashAcct) throw new Error('Cash account not found');
     if (!bankAcct.isActive || !cashAcct.isActive) throw new Error('One or both accounts are inactive');
-
-    const bankBalance = Number(bankAcct.currentBalance) - args.amount;
-    if (bankBalance < 0) throw new Error('Insufficient balance in bank account');
-    const cashBalance = Number(cashAcct.currentBalance) + args.amount;
+    if (Number(bankAcct.currentBalance) < args.amount) {
+      throw new Error('Insufficient balance in bank account');
+    }
 
     const transferPairId = crypto.randomUUID();
+
+    // Atomic two-sided balance update.
+    const [updatedBank, updatedCash] = await Promise.all([
+      tx.bankAccount.update({
+        where: { id: args.bankAccountId },
+        data: { currentBalance: { decrement: args.amount } },
+        select: { currentBalance: true },
+      }),
+      tx.cashAccount.update({
+        where: { id: args.cashAccountId },
+        data: { currentBalance: { increment: args.amount } },
+        select: { currentBalance: true },
+      }),
+    ]);
 
     const [bankTxn, cashTxn] = await Promise.all([
       tx.bankTransaction.create({
@@ -475,7 +488,7 @@ export async function transferBankToCash(args: BankCashTransferArgs) {
           bankAccountId: args.bankAccountId,
           type: BankTxnType.TRANSFER_OUT,
           amount: args.amount,
-          balanceAfter: bankBalance,
+          balanceAfter: Number(updatedBank.currentBalance),
           date: args.date,
           description: args.description,
           referenceType: AccountTxnRefType.TRANSFER,
@@ -489,7 +502,7 @@ export async function transferBankToCash(args: BankCashTransferArgs) {
           cashAccountId: args.cashAccountId,
           type: CashTxnType.TRANSFER_IN,
           amount: args.amount,
-          balanceAfter: cashBalance,
+          balanceAfter: Number(updatedCash.currentBalance),
           date: args.date,
           description: args.description,
           referenceType: AccountTxnRefType.TRANSFER,
@@ -497,17 +510,6 @@ export async function transferBankToCash(args: BankCashTransferArgs) {
           status: 'POSTED',
           createdBy: args.userId,
         },
-      }),
-    ]);
-
-    await Promise.all([
-      tx.bankAccount.update({
-        where: { id: args.bankAccountId },
-        data: { currentBalance: bankBalance },
-      }),
-      tx.cashAccount.update({
-        where: { id: args.cashAccountId },
-        data: { currentBalance: cashBalance },
       }),
     ]);
 
@@ -529,12 +531,25 @@ export async function transferCashToBank(args: BankCashTransferArgs) {
     if (!bankAcct) throw new Error('Bank account not found');
     if (!cashAcct) throw new Error('Cash account not found');
     if (!bankAcct.isActive || !cashAcct.isActive) throw new Error('One or both accounts are inactive');
-
-    const cashBalance = Number(cashAcct.currentBalance) - args.amount;
-    if (cashBalance < 0) throw new Error('Insufficient balance in cash account');
-    const bankBalance = Number(bankAcct.currentBalance) + args.amount;
+    if (Number(cashAcct.currentBalance) < args.amount) {
+      throw new Error('Insufficient balance in cash account');
+    }
 
     const transferPairId = crypto.randomUUID();
+
+    // Atomic two-sided balance update.
+    const [updatedCash, updatedBank] = await Promise.all([
+      tx.cashAccount.update({
+        where: { id: args.cashAccountId },
+        data: { currentBalance: { decrement: args.amount } },
+        select: { currentBalance: true },
+      }),
+      tx.bankAccount.update({
+        where: { id: args.bankAccountId },
+        data: { currentBalance: { increment: args.amount } },
+        select: { currentBalance: true },
+      }),
+    ]);
 
     const [cashTxn, bankTxn] = await Promise.all([
       tx.cashTransaction.create({
@@ -542,7 +557,7 @@ export async function transferCashToBank(args: BankCashTransferArgs) {
           cashAccountId: args.cashAccountId,
           type: CashTxnType.TRANSFER_OUT,
           amount: args.amount,
-          balanceAfter: cashBalance,
+          balanceAfter: Number(updatedCash.currentBalance),
           date: args.date,
           description: args.description,
           referenceType: AccountTxnRefType.TRANSFER,
@@ -556,7 +571,7 @@ export async function transferCashToBank(args: BankCashTransferArgs) {
           bankAccountId: args.bankAccountId,
           type: BankTxnType.TRANSFER_IN,
           amount: args.amount,
-          balanceAfter: bankBalance,
+          balanceAfter: Number(updatedBank.currentBalance),
           date: args.date,
           description: args.description,
           referenceType: AccountTxnRefType.TRANSFER,
@@ -564,17 +579,6 @@ export async function transferCashToBank(args: BankCashTransferArgs) {
           status: 'POSTED',
           createdBy: args.userId,
         },
-      }),
-    ]);
-
-    await Promise.all([
-      tx.cashAccount.update({
-        where: { id: args.cashAccountId },
-        data: { currentBalance: cashBalance },
-      }),
-      tx.bankAccount.update({
-        where: { id: args.bankAccountId },
-        data: { currentBalance: bankBalance },
       }),
     ]);
 

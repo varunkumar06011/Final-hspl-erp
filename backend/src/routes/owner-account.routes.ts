@@ -69,8 +69,13 @@ router.post(
         if (!bankAccount) throw new Error('Bank account not found');
         if (!bankAccount.isActive) throw new Error('Bank account is inactive');
 
-        // 1. Create bank deposit transaction
-        const bankBalance = Number(bankAccount.currentBalance) + Number(amount);
+        // 1. Atomic bank balance increase (DB applies the delta).
+        const updatedBank = await tx.bankAccount.update({
+          where: { id: bankAccountId as string },
+          data: { currentBalance: { increment: Number(amount) } },
+          select: { currentBalance: true },
+        });
+        const bankBalance = Number(updatedBank.currentBalance);
         const bankTxn = await tx.bankTransaction.create({
           data: {
             bankAccountId: bankAccountId as string,
@@ -85,17 +90,14 @@ router.post(
             createdBy: req.user!.id,
           },
         });
-        await tx.bankAccount.update({
-          where: { id: bankAccountId as string },
-          data: { currentBalance: bankBalance },
-        });
 
-        // 2. Increase owner balance (company owes owner more)
-        const newOwnerBalance = Number(ownerAccount.currentBalance) + Number(amount);
-        await tx.ownerAccount.update({
+        // 2. Atomic owner balance increase (company owes owner more).
+        const updatedOwner = await tx.ownerAccount.update({
           where: { id: req.params.id },
-          data: { currentBalance: newOwnerBalance },
+          data: { currentBalance: { increment: Number(amount) } },
+          select: { currentBalance: true },
         });
+        const newOwnerBalance = Number(updatedOwner.currentBalance);
 
         // ── C28: Create a POSTED JournalVoucher so the contribution appears ──
         // in the owner statement. Without this, the statement (which only

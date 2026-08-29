@@ -376,9 +376,12 @@ router.post(
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const projectId = requireProjectId(req);
+      // Pre-check for a fast, user-friendly 400. The authoritative claim is
+      // the atomic updateMany inside postJournalVoucher — two concurrent post
+      // requests can both pass this read but only one will win the claim.
       const jv = await prisma.journalVoucher.findFirst({
         where: { id: req.params.id, projectId, deletedAt: null },
-        include: { entries: true },
+        select: { id: true, jvNumber: true, type: true, date: true, description: true, status: true },
       });
       if (!jv) {
         res.status(404).json({ error: 'Journal voucher not found' });
@@ -458,22 +461,36 @@ async function postJournalVoucher(
     type: string;
     date: Date;
     description: string | null;
-    entries: Array<{
-      id: string;
-      accountType: string;
-      accountId: string | null;
-      budgetHeadId: string | null;
-      ownerAccountId: string | null;
-      debit: Prisma.Decimal;
-      credit: Prisma.Decimal;
-      description: string | null;
-    }>;
   },
   projectId: string,
   userId: string,
 ) {
   return prisma.$transaction(async (tx) => {
     const txnResults: string[] = [];
+
+    // ── A17: Atomically claim the JV to prevent double posting ──
+    // Two concurrent /post calls can both pass the route's pre-transaction
+    // APPROVED check. This atomic updateMany ensures only one can transition
+    // the JV from APPROVED → POSTED; the other gets count=0 and aborts. The
+    // `status: APPROVED` filter is the lock. If the financial work below
+    // throws, the whole transaction (including this claim) rolls back, so the
+    // JV returns to APPROVED and can be retried.
+    const claimed = await tx.journalVoucher.updateMany({
+      where: { id: jv.id, status: 'APPROVED' },
+      data: { status: 'POSTED', postedAt: new Date(), postedBy: userId },
+    });
+    if (claimed.count !== 1) {
+      throw new Error('JV is already being posted or is no longer APPROVED');
+    }
+
+    // Re-fetch entries inside the transaction so we post against the rows that
+    // existed at claim time, not a stale read from before the transaction.
+    const fresh = await tx.journalVoucher.findUnique({
+      where: { id: jv.id },
+      include: { entries: true },
+    });
+    if (!fresh) throw new Error('Journal voucher not found');
+    const entries = fresh.entries;
 
     // ── Compute cash movement totals to allocate "paid" correctly per budget head ──
     // Previously a single global hasCashOutflow flag marked EVERY budget-head debit
@@ -483,31 +500,63 @@ async function postJournalVoucher(
     // exceed the cash that actually moved. Owner-expense JVs treat owner
     // credits as a funding source (like cash).
     const isCashType = (t: string) => t === JournalAccountType.BANK || t === JournalAccountType.CASH;
-    const cashOutflow = jv.entries.reduce((sum, e) => {
+    const cashOutflow = entries.reduce((sum, e) => {
       if (isCashType(e.accountType) && Number(e.credit) > 0) return sum + Number(e.credit);
       if (jv.type === JVType.OWNER_EXPENSE && e.accountType === JournalAccountType.OWNER && Number(e.credit) > 0) return sum + Number(e.credit);
       return sum;
     }, 0);
-    const totalBhDebit = jv.entries.reduce(
+    const totalBhDebit = entries.reduce(
       (sum, e) => (e.accountType === JournalAccountType.BUDGET_HEAD && Number(e.debit) > 0 ? sum + Number(e.debit) : sum),
       0,
     );
-    const cashInflow = jv.entries.reduce((sum, e) => {
+    const cashInflow = entries.reduce((sum, e) => {
       if (isCashType(e.accountType) && Number(e.debit) > 0) return sum + Number(e.debit);
       if (jv.type === JVType.OWNER_REPAYMENT && e.accountType === JournalAccountType.OWNER && Number(e.debit) > 0) return sum + Number(e.debit);
       return sum;
     }, 0);
-    const totalBhCredit = jv.entries.reduce(
+    const totalBhCredit = entries.reduce(
       (sum, e) => (e.accountType === JournalAccountType.BUDGET_HEAD && Number(e.credit) > 0 ? sum + Number(e.credit) : sum),
       0,
     );
-    // Per-debit paid share: proportional, capped so the sum equals cashOutflow.
-    const paidShare = (debit: number) =>
-      totalBhDebit > 0 ? debit * Math.min(1, cashOutflow / totalBhDebit) : 0;
-    const reversedShare = (credit: number) =>
-      totalBhCredit > 0 ? credit * Math.min(1, cashInflow / totalBhCredit) : 0;
 
-    for (const entry of jv.entries) {
+    // ── Rounding-safe proportional allocation (C29) ──
+    // Naive proportional shares (debit * cashOutflow/totalBhDebit) can produce
+    // fractions that, when rounded to Decimal(15,2), sum to slightly less or
+    // more than the cash that actually moved (e.g. ₹33.33 × 3 = ₹99.99 instead
+    // of ₹100.00). Over many JVs these paise differences accumulate. We round
+    // each share to 2 decimals and assign the residual to the LAST debit/credit
+    // line so the total paid/reversed always equals the cash moved exactly.
+    const round2 = (x: number) => Math.round((x + Number.EPSILON) * 100) / 100;
+    const debitEntries = entries.filter((e) => e.accountType === JournalAccountType.BUDGET_HEAD && Number(e.debit) > 0);
+    const creditEntries = entries.filter((e) => e.accountType === JournalAccountType.BUDGET_HEAD && Number(e.credit) > 0);
+    const debitRatio = totalBhDebit > 0 ? Math.min(1, cashOutflow / totalBhDebit) : 0;
+    const creditRatio = totalBhCredit > 0 ? Math.min(1, cashInflow / totalBhCredit) : 0;
+
+    const paidByEntryId = new Map<string, number>();
+    let allocatedPaid = 0;
+    debitEntries.forEach((e, idx) => {
+      if (idx === debitEntries.length - 1) {
+        paidByEntryId.set(e.id, Math.max(0, round2(cashOutflow) - round2(allocatedPaid)));
+      } else {
+        const share = round2(Number(e.debit) * debitRatio);
+        paidByEntryId.set(e.id, share);
+        allocatedPaid += share;
+      }
+    });
+
+    const reversedByEntryId = new Map<string, number>();
+    let allocatedReversed = 0;
+    creditEntries.forEach((e, idx) => {
+      if (idx === creditEntries.length - 1) {
+        reversedByEntryId.set(e.id, Math.max(0, round2(cashInflow) - round2(allocatedReversed)));
+      } else {
+        const share = round2(Number(e.credit) * creditRatio);
+        reversedByEntryId.set(e.id, share);
+        allocatedReversed += share;
+      }
+    });
+
+    for (const entry of entries) {
       const debit = Number(entry.debit);
       const credit = Number(entry.credit);
 
@@ -523,19 +572,25 @@ async function postJournalVoucher(
           // Debit to bank = money IN (deposit), Credit to bank = money OUT (withdrawal)
           const isDeposit = debit > 0;
           const amount = isDeposit ? debit : credit;
-          const currentBalance = Number(account.currentBalance);
-          const newBalance = isDeposit ? currentBalance + amount : currentBalance - amount;
-          if (newBalance < 0) throw new Error(`Insufficient balance in bank account ${account.accountName}`);
+          if (!isDeposit && Number(account.currentBalance) < amount) {
+            throw new Error(`Insufficient balance in bank account ${account.accountName}`);
+          }
 
           const txnType = isDeposit ? BankTxnType.DEPOSIT : BankTxnType.WITHDRAWAL;
           const refType = isDeposit ? AccountTxnRefType.MANUAL_DEPOSIT : AccountTxnRefType.MANUAL_WITHDRAWAL;
 
+          // Atomic balance update — DB applies the delta.
+          const updated = await tx.bankAccount.update({
+            where: { id: entry.accountId },
+            data: { currentBalance: isDeposit ? { increment: amount } : { decrement: amount } },
+            select: { currentBalance: true },
+          });
           await tx.bankTransaction.create({
             data: {
               bankAccountId: entry.accountId,
               type: txnType,
               amount,
-              balanceAfter: newBalance,
+              balanceAfter: Number(updated.currentBalance),
               date: jv.date,
               description: entry.description ?? jv.description ?? `JV ${jv.jvNumber}`,
               referenceType: refType,
@@ -543,10 +598,6 @@ async function postJournalVoucher(
               status: 'POSTED',
               createdBy: userId,
             },
-          });
-          await tx.bankAccount.update({
-            where: { id: entry.accountId },
-            data: { currentBalance: newBalance },
           });
           txnResults.push(`bank:${isDeposit ? 'deposit' : 'withdrawal'}:${amount}`);
           break;
@@ -562,19 +613,25 @@ async function postJournalVoucher(
 
           const isIn = debit > 0;
           const amount = isIn ? debit : credit;
-          const currentBalance = Number(account.currentBalance);
-          const newBalance = isIn ? currentBalance + amount : currentBalance - amount;
-          if (newBalance < 0) throw new Error(`Insufficient balance in cash account ${account.name}`);
+          if (!isIn && Number(account.currentBalance) < amount) {
+            throw new Error(`Insufficient balance in cash account ${account.name}`);
+          }
 
           const txnType = isIn ? CashTxnType.IN : CashTxnType.OUT;
           const refType = isIn ? AccountTxnRefType.MANUAL_DEPOSIT : AccountTxnRefType.MANUAL_WITHDRAWAL;
 
+          // Atomic balance update — DB applies the delta.
+          const updated = await tx.cashAccount.update({
+            where: { id: entry.accountId },
+            data: { currentBalance: isIn ? { increment: amount } : { decrement: amount } },
+            select: { currentBalance: true },
+          });
           await tx.cashTransaction.create({
             data: {
               cashAccountId: entry.accountId,
               type: txnType,
               amount,
-              balanceAfter: newBalance,
+              balanceAfter: Number(updated.currentBalance),
               date: jv.date,
               description: entry.description ?? jv.description ?? `JV ${jv.jvNumber}`,
               referenceType: refType,
@@ -582,10 +639,6 @@ async function postJournalVoucher(
               status: 'POSTED',
               createdBy: userId,
             },
-          });
-          await tx.cashAccount.update({
-            where: { id: entry.accountId },
-            data: { currentBalance: newBalance },
           });
           txnResults.push(`cash:${isIn ? 'in' : 'out'}:${amount}`);
           break;
@@ -613,12 +666,15 @@ async function postJournalVoucher(
                 `(allocated: ₹${Number(head.allocatedAmount).toFixed(2)}, current actual: ₹${Number(head.actualAmount).toFixed(2)})`
               );
             }
-            const newActual = projectedActual;
-            const paidPortion = paidShare(debit);
-            const newPaid = Number(head.paidAmount) + paidPortion;
+            const paidPortion = paidByEntryId.get(entry.id) ?? 0;
+            // Atomic increments — DB applies both deltas, preventing lost updates
+            // when a JV and a payment hit the same budget head concurrently.
             await tx.budgetHead.update({
               where: { id: entry.budgetHeadId },
-              data: { actualAmount: newActual, paidAmount: newPaid },
+              data: {
+                actualAmount: { increment: debit },
+                paidAmount: { increment: paidPortion },
+              },
             });
             txnResults.push(`budget_head:${head.particulars}:actual+${debit}${paidPortion > 0 ? `:paid+${paidPortion.toFixed(2)}` : ''}`);
           } else if (credit > 0) {
@@ -635,8 +691,7 @@ async function postJournalVoucher(
                 `(₹${currentActual.toFixed(2)}). Reduce the credit or post a correction JV first.`
               );
             }
-            const newActual = currentActual - credit;
-            const reversedPaid = reversedShare(credit);
+            const reversedPaid = reversedByEntryId.get(entry.id) ?? 0;
             const currentPaid = Number(head.paidAmount);
             if (reversedPaid > currentPaid + 0.01) {
               throw new Error(
@@ -644,10 +699,13 @@ async function postJournalVoucher(
                 `(₹${currentPaid.toFixed(2)}) on budget head "${head.particulars}".`
               );
             }
-            const newPaid = Math.max(0, currentPaid - reversedPaid);
+            // Atomic decrements — DB applies both deltas.
             await tx.budgetHead.update({
               where: { id: entry.budgetHeadId },
-              data: { actualAmount: newActual, paidAmount: newPaid },
+              data: {
+                actualAmount: { decrement: credit },
+                paidAmount: { decrement: reversedPaid },
+              },
             });
             txnResults.push(`budget_head:${head.particulars}:actual-${credit}${reversedPaid > 0 ? `:paid-${reversedPaid.toFixed(2)}` : ''}`);
           }
@@ -663,12 +721,15 @@ async function postJournalVoucher(
 
           // Credit to owner = company owes owner more (balance increases)
           // Debit to owner = company owes owner less (balance decreases)
-          const newBalance = Number(owner.currentBalance) + credit - debit;
-          await tx.ownerAccount.update({
+          // Atomic update — increment handles both directions (credit - debit;
+          // a negative increment is a decrement).
+          const delta = credit - debit;
+          const updated = await tx.ownerAccount.update({
             where: { id: entry.ownerAccountId },
-            data: { currentBalance: newBalance },
+            data: { currentBalance: { increment: delta } },
+            select: { currentBalance: true },
           });
-          txnResults.push(`owner:${credit > 0 ? 'credit' : 'debit'}:${credit > 0 ? credit : debit}:balance=${newBalance}`);
+          txnResults.push(`owner:${credit > 0 ? 'credit' : 'debit'}:${credit > 0 ? credit : debit}:balance=${Number(updated.currentBalance)}`);
           break;
         }
 
@@ -676,16 +737,6 @@ async function postJournalVoucher(
           throw new Error(`Unknown account type: ${entry.accountType}`);
       }
     }
-
-    // Mark JV as POSTED
-    await tx.journalVoucher.update({
-      where: { id: jv.id },
-      data: {
-        status: 'POSTED',
-        postedAt: new Date(),
-        postedBy: userId,
-      },
-    });
 
     return { transactions: txnResults };
   });

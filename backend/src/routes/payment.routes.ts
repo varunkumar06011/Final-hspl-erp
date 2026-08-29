@@ -943,7 +943,15 @@ router.post(
         // If we mark it first, getInvoicePaymentSummary would count this very
         // request as an already-paid installment, making outstanding=0 and
         // falsely rejecting the payment as "already fully paid".
+        //
+        // ── C30: Serialize concurrent payments on the same invoice ──
+        // Two different APPROVED payment requests for the same invoice can both
+        // compute the same outstanding balance and pay, because the read and the
+        // claim are separate. SELECT ... FOR UPDATE on the invoice row forces
+        // them to run one-at-a-time, so the outstanding check is always based on
+        // the latest recorded payments.
         if (pr.invoiceId) {
+          await tx.$queryRaw`SELECT id FROM "vendor_invoices" WHERE id = ${pr.invoiceId}::uuid FOR UPDATE`;
           const { outstanding } = await getInvoicePaymentSummary(pr.invoiceId, tx);
           if (outstanding <= 0.01) {
             throw new Error('Invoice is already fully paid; cannot record this payment');
@@ -1081,15 +1089,17 @@ router.post(
                 );
               }
             }
-            const data: { paidAmount: number; actualAmount?: number } = {
-              paidAmount: Number(head.paidAmount) + paymentAmount,
+            // Atomic increment — DB applies the delta, preventing lost updates
+            // when multiple payments hit the same budget head concurrently.
+            const budgetData: { paidAmount: { increment: number }; actualAmount?: { increment: number } } = {
+              paidAmount: { increment: paymentAmount },
             };
             if (pr.type === 'EXPENSE') {
-              data.actualAmount = Number(head.actualAmount) + paymentAmount;
+              budgetData.actualAmount = { increment: paymentAmount };
             }
             await tx.budgetHead.update({
               where: { id: pr.budgetHeadId },
-              data,
+              data: budgetData,
             });
           }
         }

@@ -485,7 +485,16 @@ router.post(
               },
             });
           }
-          const newBalance = Number(inventoryItem.currentStock) + Number(line.acceptedQty);
+          // ── A18: Atomic stock increment ──
+          // DB applies the delta, preventing lost updates when a stock issue
+          // (or another GRN) touches this item concurrently. The resulting
+          // balance is read back for the transaction log's balanceAfter.
+          const updatedItem = await tx.inventoryItem.update({
+            where: { id: inventoryItem.id },
+            data: { currentStock: { increment: Number(line.acceptedQty) } },
+            select: { currentStock: true },
+          });
+          const newBalance = Number(updatedItem.currentStock);
           await tx.inventoryTransaction.create({
             data: {
               itemId: inventoryItem.id,
@@ -498,7 +507,6 @@ router.post(
               notes: `Accepted from ${receipt.receiptNumber}`,
             },
           });
-          await tx.inventoryItem.update({ where: { id: inventoryItem.id }, data: { currentStock: newBalance } });
 
           // If this is an ASSET-type item, generate individual asset records
           if (inventoryItem.itemType === InventoryItemType.ASSET) {
@@ -608,11 +616,14 @@ router.post(
                   `Please run budget recompute or adjust the PO before posting.`
                 );
               }
-              const newCommitted = currentCommitted - grnValue;
-              const newActual = Number(head.actualAmount) + grnValue;
+              // Atomic deltas — DB applies both, preventing lost updates when
+              // multiple GRNs (or a GRN + JV) hit the same budget head concurrently.
               await tx.budgetHead.update({
                 where: { id: receipt.purchaseOrder.budgetHeadId },
-                data: { committedAmount: newCommitted, actualAmount: newActual },
+                data: {
+                  committedAmount: { decrement: grnValue },
+                  actualAmount: { increment: grnValue },
+                },
               });
             }
           }

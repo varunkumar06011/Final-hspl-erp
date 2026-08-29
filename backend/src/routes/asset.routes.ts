@@ -307,19 +307,21 @@ router.post(
             userId: req.user!.id,
           },
         });
+        // Atomic stock increment — DB applies the delta; read back for balanceAfter.
+        const stockUpdated = await tx.inventoryItem.update({
+          where: { id: item.id },
+          data: { currentStock: { increment: 1 } },
+          select: { currentStock: true },
+        });
         await tx.inventoryTransaction.create({
           data: {
             itemId: item.id,
             type: 'IN',
             quantity: 1,
-            balanceAfter: Number(item.currentStock) + 1,
+            balanceAfter: Number(stockUpdated.currentStock),
             userId: req.user!.id,
             notes: `Manual asset creation: ${assetId}`,
           },
-        });
-        await tx.inventoryItem.update({
-          where: { id: item.id },
-          data: { currentStock: Number(item.currentStock) + 1 },
         });
         return tx.asset.findUnique({ where: { id: asset.id }, include: assetInclude });
       });
@@ -631,21 +633,18 @@ router.post(
 
         // Also create inventory transaction and decrement stock so the
         // InventoryItem.currentStock stays in sync with the asset register.
-        const invItem = await tx.inventoryItem.findUnique({
+        // Atomic decrement — DB applies the delta; read back for balanceAfter.
+        const stockUpdated = await tx.inventoryItem.update({
           where: { id: asset.inventoryItemId },
+          data: { currentStock: { decrement: 1 } },
           select: { currentStock: true },
-        });
-        const newBalance = Number(invItem?.currentStock ?? 0) - 1;
-        await tx.inventoryItem.update({
-          where: { id: asset.inventoryItemId },
-          data: { currentStock: newBalance },
         });
         await tx.inventoryTransaction.create({
           data: {
             itemId: asset.inventoryItemId,
             type: 'OUT',
             quantity: 1,
-            balanceAfter: newBalance,
+            balanceAfter: Number(stockUpdated.currentStock),
             userId: req.user!.id,
             notes: `Asset ${asset.assetId} issued to ${req.body.issuedToDept ?? ''} ${req.body.issuedToPerson ?? ''}`.trim(),
           },
@@ -728,21 +727,18 @@ router.post(
         // Only ISSUED assets were decremented at issue time, so only they get
         // the +1 restoration here.
         if (asset.status === AssetStatus.ISSUED) {
-          const invItem = await tx.inventoryItem.findUnique({
+          // Atomic increment — DB applies the delta; read back for balanceAfter.
+          const stockUpdated = await tx.inventoryItem.update({
             where: { id: asset.inventoryItemId },
+            data: { currentStock: { increment: 1 } },
             select: { currentStock: true },
-          });
-          const newBalance = Number(invItem?.currentStock ?? 0) + 1;
-          await tx.inventoryItem.update({
-            where: { id: asset.inventoryItemId },
-            data: { currentStock: newBalance },
           });
           await tx.inventoryTransaction.create({
             data: {
               itemId: asset.inventoryItemId,
               type: 'IN',
               quantity: 1,
-              balanceAfter: newBalance,
+              balanceAfter: Number(stockUpdated.currentStock),
               userId: req.user!.id,
               notes: `Asset ${asset.assetId} returned to ${req.body.location}`,
             },
@@ -994,21 +990,18 @@ router.post(
         // while being repaired). But issuing directly means the asset leaves
         // inventory, so currentStock must decrease by 1 — same as a regular issue.
         if (req.body.issueDirectly) {
-          const invItem = await tx.inventoryItem.findUnique({
+          // Atomic decrement — DB applies the delta; read back for balanceAfter.
+          const stockUpdated = await tx.inventoryItem.update({
             where: { id: asset.inventoryItemId },
+            data: { currentStock: { decrement: 1 } },
             select: { currentStock: true },
-          });
-          const newBalance = Number(invItem?.currentStock ?? 0) - 1;
-          await tx.inventoryItem.update({
-            where: { id: asset.inventoryItemId },
-            data: { currentStock: newBalance },
           });
           await tx.inventoryTransaction.create({
             data: {
               itemId: asset.inventoryItemId,
               type: 'OUT',
               quantity: 1,
-              balanceAfter: newBalance,
+              balanceAfter: Number(stockUpdated.currentStock),
               userId: req.user!.id,
               notes: `Asset ${asset.assetId} issued directly from maintenance to ${req.body.issuedToDept ?? ''} ${req.body.issuedToPerson ?? ''}`.trim(),
             },

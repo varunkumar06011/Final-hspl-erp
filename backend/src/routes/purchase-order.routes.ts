@@ -624,15 +624,12 @@ router.post(
         // (delta = newGrandTotal - oldGrandTotal). Adding grandTotal again here
         // would double-count and permanently inflate the committed budget.
         if (po.budgetHeadId && !po.editedAt) {
-          const head = await prisma.budgetHead.findFirst({
-            where: { id: po.budgetHeadId, projectId, deletedAt: null },
+          // Atomic increment — DB applies the delta, preventing lost updates
+          // when multiple POs against the same budget head are approved concurrently.
+          await prisma.budgetHead.update({
+            where: { id: po.budgetHeadId },
+            data: { committedAmount: { increment: Number(po.grandTotal) } },
           });
-          if (head) {
-            await prisma.budgetHead.update({
-              where: { id: po.budgetHeadId },
-              data: { committedAmount: Number(head.committedAmount) + Number(po.grandTotal) },
-            });
-          }
         }
       }
 
@@ -709,15 +706,11 @@ router.post(
           const deliveredForRemaining = await getDeliveredValueForPo(po.id, currentItems);
           const remainingCommitment = Number(po.grandTotal) - deliveredForRemaining;
           if (remainingCommitment !== 0) {
-            const head = await prisma.budgetHead.findFirst({
-              where: { id: po.budgetHeadId, projectId, deletedAt: null },
+            // Atomic decrement — DB applies the delta.
+            await prisma.budgetHead.update({
+              where: { id: po.budgetHeadId },
+              data: { committedAmount: { decrement: remainingCommitment } },
             });
-            if (head) {
-              await prisma.budgetHead.update({
-                where: { id: po.budgetHeadId },
-                data: { committedAmount: Number(head.committedAmount) - remainingCommitment },
-              });
-            }
           }
         }
       }
@@ -1151,15 +1144,12 @@ router.post(
         // already converted to actual via GRN. See computation above.
         // This is done at edit time so re-approval does NOT re-add the full total.
         if (po.budgetHeadId && commitmentAdjustment !== 0) {
-          const head = await tx.budgetHead.findFirst({
-            where: { id: po.budgetHeadId, projectId, deletedAt: null },
+          // Atomic adjustment — increment handles both directions (negative
+          // commitmentAdjustment decrements). Prevents lost updates.
+          await tx.budgetHead.update({
+            where: { id: po.budgetHeadId },
+            data: { committedAmount: { increment: commitmentAdjustment } },
           });
-          if (head) {
-            await tx.budgetHead.update({
-              where: { id: po.budgetHeadId },
-              data: { committedAmount: Number(head.committedAmount) + commitmentAdjustment },
-            });
-          }
         }
 
         // Reset the existing approval workflow — create fresh steps

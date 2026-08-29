@@ -247,15 +247,17 @@ interface PostBankTxnArgs {
 
 export async function postBankTransaction(args: PostBankTxnArgs) {
   return prisma.$transaction(async (tx) => {
-    // Lock the account row for safe balance update
+    // Read the account only for validation (existence, active, insufficient
+    // balance). The balance itself is updated atomically below via Prisma's
+    // `increment`/`decrement` operators, which apply at the DB level and are
+    // serialized by the row lock the UPDATE acquires. This prevents lost
+    // updates under concurrent postings (read→calculate→write would let two
+    // concurrent transactions overwrite each other's computed balance).
     const account = await tx.bankAccount.findFirst({
       where: { id: args.bankAccountId, projectId: args.projectId, deletedAt: null },
     });
     if (!account) throw new Error('Bank account not found');
     if (!account.isActive) throw new Error('Bank account is inactive');
-
-    const currentBalance = Number(account.currentBalance);
-    let newBalance: number;
 
     // IN types increase balance, OUT types decrease balance
     const isIn = [BankTxnType.DEPOSIT, BankTxnType.TRANSFER_IN, BankTxnType.REVERSAL_IN].includes(
@@ -265,14 +267,18 @@ export async function postBankTransaction(args: PostBankTxnArgs) {
       args.type as BankTxnType,
     );
 
-    if (isIn) {
-      newBalance = currentBalance + args.amount;
-    } else if (isOut) {
-      newBalance = currentBalance - args.amount;
-      if (newBalance < 0) throw new Error('Insufficient balance in bank account');
-    } else {
-      throw new Error(`Invalid bank transaction type: ${args.type}`);
+    if (!isIn && !isOut) throw new Error(`Invalid bank transaction type: ${args.type}`);
+    if (isOut && Number(account.currentBalance) < args.amount) {
+      throw new Error('Insufficient balance in bank account');
     }
+
+    // Atomic balance update — the DB applies the delta, not a JS-computed value.
+    const updated = await tx.bankAccount.update({
+      where: { id: args.bankAccountId },
+      data: { currentBalance: isIn ? { increment: args.amount } : { decrement: args.amount } },
+      select: { currentBalance: true },
+    });
+    const newBalance = Number(updated.currentBalance);
 
     const transaction = await tx.bankTransaction.create({
       data: {
@@ -287,11 +293,6 @@ export async function postBankTransaction(args: PostBankTxnArgs) {
         status: 'POSTED',
         createdBy: args.userId,
       },
-    });
-
-    await tx.bankAccount.update({
-      where: { id: args.bankAccountId },
-      data: { currentBalance: newBalance },
     });
 
     return { transaction, newBalance };
@@ -321,13 +322,27 @@ export async function transferBankToBank(args: TransferBankArgs) {
     if (!fromAccount) throw new Error('Source bank account not found');
     if (!toAccount) throw new Error('Destination bank account not found');
     if (!fromAccount.isActive || !toAccount.isActive) throw new Error('One or both accounts are inactive');
-
-    const fromBalance = Number(fromAccount.currentBalance) - args.amount;
-    if (fromBalance < 0) throw new Error('Insufficient balance in source account');
-    const toBalance = Number(toAccount.currentBalance) + args.amount;
+    if (Number(fromAccount.currentBalance) < args.amount) {
+      throw new Error('Insufficient balance in source account');
+    }
 
     // Generate a shared pair ID for linking
     const transferPairId = crypto.randomUUID();
+
+    // Atomic two-sided balance update — DB applies both deltas, preventing
+    // lost updates if another posting touches either account concurrently.
+    const [updatedFrom, updatedTo] = await Promise.all([
+      tx.bankAccount.update({
+        where: { id: args.fromAccountId },
+        data: { currentBalance: { decrement: args.amount } },
+        select: { currentBalance: true },
+      }),
+      tx.bankAccount.update({
+        where: { id: args.toAccountId },
+        data: { currentBalance: { increment: args.amount } },
+        select: { currentBalance: true },
+      }),
+    ]);
 
     const [fromTxn, toTxn] = await Promise.all([
       tx.bankTransaction.create({
@@ -335,7 +350,7 @@ export async function transferBankToBank(args: TransferBankArgs) {
           bankAccountId: args.fromAccountId,
           type: BankTxnType.TRANSFER_OUT,
           amount: args.amount,
-          balanceAfter: fromBalance,
+          balanceAfter: Number(updatedFrom.currentBalance),
           date: args.date,
           description: args.description,
           referenceType: AccountTxnRefType.TRANSFER,
@@ -349,7 +364,7 @@ export async function transferBankToBank(args: TransferBankArgs) {
           bankAccountId: args.toAccountId,
           type: BankTxnType.TRANSFER_IN,
           amount: args.amount,
-          balanceAfter: toBalance,
+          balanceAfter: Number(updatedTo.currentBalance),
           date: args.date,
           description: args.description,
           referenceType: AccountTxnRefType.TRANSFER,
@@ -357,17 +372,6 @@ export async function transferBankToBank(args: TransferBankArgs) {
           status: 'POSTED',
           createdBy: args.userId,
         },
-      }),
-    ]);
-
-    await Promise.all([
-      tx.bankAccount.update({
-        where: { id: args.fromAccountId },
-        data: { currentBalance: fromBalance },
-      }),
-      tx.bankAccount.update({
-        where: { id: args.toAccountId },
-        data: { currentBalance: toBalance },
       }),
     ]);
 
