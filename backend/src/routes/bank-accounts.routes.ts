@@ -85,7 +85,7 @@ router.get(
       const [data, total] = await Promise.all([
         prisma.bankTransaction.findMany({
           where,
-          orderBy: { date: 'desc', createdAt: 'desc' },
+          orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
           skip: (Number(page) - 1) * Number(pageSize),
           take: Number(pageSize),
         }),

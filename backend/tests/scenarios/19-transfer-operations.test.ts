@@ -163,7 +163,7 @@ describe('Transfer Operations', () => {
   });
 
   it('GET cash account statement shows transactions', async () => {
-    const res = await request.get(`/api/cash-accounts/${cash1Id}/statement`).set(authAs(ctx.userPhId));
+    const res = await request.get(`/api/cash-accounts/${cash1Id}/statement?page=1&pageSize=50`).set(authAs(ctx.userPhId));
     expect(res.status).toBe(200);
     expect(res.body).toHaveProperty('account');
     expect(res.body).toHaveProperty('data');

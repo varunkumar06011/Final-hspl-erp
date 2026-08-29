@@ -42,7 +42,7 @@ describe('Rejection Paths', () => {
     record('vendor.create', true, `vendor=${vendorId}`);
   });
 
-  it('rejects a quotation (PROJECT_HEAD)', async () => {
+  it('rejects a quotation (2 rejections: PH + HOC)', async () => {
     const qRes = await request
       .post('/api/quotations')
       .set(authAs(ctx.userPhId))
@@ -55,15 +55,20 @@ describe('Rejection Paths', () => {
     expect(qRes.status).toBe(201);
     const quotationId = qRes.body.id;
 
-    const rejRes = await request
+    // minApprovers=2, so need 2 rejections to fully reject
+    await request
       .post(`/api/quotations/${quotationId}/reject`)
       .set(authAs(ctx.userPhId))
+      .send({ reason: 'Price too high', acknowledged: true });
+    const rejRes = await request
+      .post(`/api/quotations/${quotationId}/reject`)
+      .set(authAs(ctx.userHocId))
       .send({ reason: 'Price too high', acknowledged: true });
     expect(rejRes.status).toBe(200);
     expect(rejRes.body.status).toBe('REJECTED');
     const db = await prisma.quotation.findUnique({ where: { id: quotationId } });
     expect(db!.status).toBe('REJECTED');
-    record('quotation.reject', true, `status=REJECTED`);
+    record('quotation.reject', true, `status=REJECTED (2 rejections)`);
   });
 
   // ── PO rejection ──
@@ -105,7 +110,7 @@ describe('Rejection Paths', () => {
   });
 
   // ── Invoice rejection (requires full P2P chain) ──
-  it('rejects an invoice (PROJECT_HEAD)', async () => {
+  it('rejects an invoice (2 rejections: PH + HOC)', { timeout: 60000 }, async () => {
     // Create + approve quotation
     const qRes = await request
       .post('/api/quotations')
@@ -188,20 +193,24 @@ describe('Rejection Paths', () => {
     expect(invRes.status).toBe(201);
     const invoiceId = invRes.body.id;
 
-    // Reject the invoice
-    const rejRes = await request
+    // Reject the invoice (minApprovers=2, need 2 rejections)
+    await request
       .post(`/api/invoices/${invoiceId}/reject`)
       .set(authAs(ctx.userPhId))
+      .send({ reason: 'Incorrect pricing', acknowledged: true });
+    const rejRes = await request
+      .post(`/api/invoices/${invoiceId}/reject`)
+      .set(authAs(ctx.userHocId))
       .send({ reason: 'Incorrect pricing', acknowledged: true });
     expect(rejRes.status).toBe(200);
     expect(rejRes.body.verificationStatus).toBe('REJECTED');
     const db = await prisma.vendorInvoice.findUnique({ where: { id: invoiceId } });
     expect(db!.verificationStatus).toBe('REJECTED');
-    record('invoice.reject', true, `status=REJECTED`);
+    record('invoice.reject', true, `status=REJECTED (2 rejections)`);
   });
 
   // ── Payment request rejection ──
-  it('rejects a payment request (expense)', async () => {
+  it('rejects a payment request (2 rejections: PH + HOC)', async () => {
     const expRes = await request
       .post('/api/payments/expense')
       .set(authAs(ctx.userPhId))
@@ -214,14 +223,19 @@ describe('Rejection Paths', () => {
     expect(expRes.status).toBe(201);
     const prId = expRes.body.id;
 
-    const rejRes = await request
+    // minApprovers=2 for amount <= 100000, need 2 rejections
+    await request
       .post(`/api/payments/${prId}/reject`)
       .set(authAs(ctx.userPhId))
+      .send({ reason: 'Not approved', acknowledged: true });
+    const rejRes = await request
+      .post(`/api/payments/${prId}/reject`)
+      .set(authAs(ctx.userHocId))
       .send({ reason: 'Not approved', acknowledged: true });
     expect(rejRes.status).toBe(200);
     expect(rejRes.body.status).toBe('REJECTED');
     const db = await prisma.paymentRequest.findUnique({ where: { id: prId } });
     expect(db!.status).toBe('REJECTED');
-    record('payment.reject', true, `status=REJECTED`);
+    record('payment.reject', true, `status=REJECTED (2 rejections)`);
   });
 });

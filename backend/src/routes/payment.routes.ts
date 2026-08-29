@@ -938,6 +938,21 @@ router.post(
         const bankAccountId = (req.body.bankAccountId as string) ?? null;
         const cashAccountId = (req.body.cashAccountId as string) ?? null;
 
+        // ── C20: Guard against overpaying beyond the current outstanding ──
+        // Check the invoice outstanding BEFORE marking this request as PAID.
+        // If we mark it first, getInvoicePaymentSummary would count this very
+        // request as an already-paid installment, making outstanding=0 and
+        // falsely rejecting the payment as "already fully paid".
+        if (pr.invoiceId) {
+          const { outstanding } = await getInvoicePaymentSummary(pr.invoiceId, tx);
+          if (outstanding <= 0.01) {
+            throw new Error('Invoice is already fully paid; cannot record this payment');
+          }
+          if (paymentAmount > outstanding + 0.01) {
+            throw new Error(`Payment amount ${paymentAmount} exceeds current outstanding ${outstanding.toFixed(2)}`);
+          }
+        }
+
         // ── A15: Atomically claim the payment request to prevent double payment ──
         // Two concurrent /pay calls can both pass the pre-transaction check
         // (pr.payments.length === 0). This atomic updateMany ensures only one
@@ -949,21 +964,6 @@ router.post(
         });
         if (claimed.count !== 1) {
           throw new Error('Payment has already been recorded by another request');
-        }
-
-        // ── C20: Guard against overpaying beyond the current outstanding ──
-        // The pre-transaction check only blocks when fully paid. Inside the
-        // transaction we also verify the payment amount does not exceed the
-        // current outstanding (which may have shrunk since the request was
-        // approved due to other payments or advance claims).
-        if (pr.invoiceId) {
-          const { outstanding } = await getInvoicePaymentSummary(pr.invoiceId, tx);
-          if (outstanding <= 0.01) {
-            throw new Error('Invoice is already fully paid; cannot record this payment');
-          }
-          if (paymentAmount > outstanding + 0.01) {
-            throw new Error(`Payment amount ${paymentAmount} exceeds current outstanding ${outstanding.toFixed(2)}`);
-          }
         }
 
         // ── Enforce exactly one funding account ──
