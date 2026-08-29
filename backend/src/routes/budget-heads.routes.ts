@@ -127,19 +127,23 @@ router.post(
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const projectId = requireProjectId(req);
-      const heads = await prisma.budgetHead.findMany({
-        where: { projectId, deletedAt: null },
-        select: { id: true, particulars: true, allocatedAmount: true, committedAmount: true, actualAmount: true, paidAmount: true },
-      });
+      // ── C24: Wrap the entire recompute in a transaction ──
+      // If any update fails, all changes roll back, preventing a partially
+      // recomputed cache that is inconsistent with the source data.
+      const { results, driftedCount } = await prisma.$transaction(async (tx) => {
+        const heads = await tx.budgetHead.findMany({
+          where: { projectId, deletedAt: null },
+          select: { id: true, particulars: true, allocatedAmount: true, committedAmount: true, actualAmount: true, paidAmount: true },
+        });
 
-      const results: Array<{ id: string; particulars: string; before: { committed: number; actual: number; paid: number }; after: { committed: number; actual: number; paid: number }; drifted: boolean }> = [];
+        const results: Array<{ id: string; particulars: string; before: { committed: number; actual: number; paid: number }; after: { committed: number; actual: number; paid: number }; drifted: boolean }> = [];
 
-      for (const head of heads) {
+        for (const head of heads) {
         // ── Recompute committed ──
         // For each non-rejected PO with this budget head:
         //   committed contribution = grandTotal - deliveredValue
         // (delivered value has been converted from committed to actual via GRN)
-        const pos = await prisma.purchaseOrder.findMany({
+        const pos = await tx.purchaseOrder.findMany({
           where: { projectId, budgetHeadId: head.id, deletedAt: null, status: { not: 'REJECTED' } },
           select: {
             id: true,
@@ -154,7 +158,7 @@ router.post(
         let committed = 0;
         for (const po of pos) {
           // Compute delivered value for this PO from posted GRNs
-          const receipts = await prisma.goodsReceipt.findMany({
+          const receipts = await tx.goodsReceipt.findMany({
             where: { poId: po.id, deletedAt: null, status: GoodsReceiptStatus.POSTED },
             select: { items: { select: { materialName: true, acceptedQty: true } } },
           });
@@ -182,7 +186,7 @@ router.post(
         let actual = 0;
 
         // GRN values (committed → actual conversion)
-        const grns = await prisma.goodsReceipt.findMany({
+        const grns = await tx.goodsReceipt.findMany({
           where: {
             projectId,
             deletedAt: null,
@@ -211,7 +215,7 @@ router.post(
         }
 
         // EXPENSE payments (payment IS the actual expense event)
-        const expensePayments = await prisma.payment.aggregate({
+        const expensePayments = await tx.payment.aggregate({
           where: {
             budgetHeadId: head.id,
             paymentRequest: { type: 'EXPENSE', deletedAt: null },
@@ -247,7 +251,7 @@ router.post(
         let paid = 0;
 
         // All payments (regardless of type — INVOICE, EXPENSE, ADVANCE)
-        const allPayments = await prisma.payment.aggregate({
+        const allPayments = await tx.payment.aggregate({
           where: {
             budgetHeadId: head.id,
             paymentRequest: { deletedAt: null },
@@ -257,7 +261,7 @@ router.post(
         paid += Number(allPayments._sum.amount) || 0;
 
         // JV entries where cash moved: debits increase paid, credits decrease paid
-        const jvEntriesAll = await prisma.journalEntry.findMany({
+        const jvEntriesAll = await tx.journalEntry.findMany({
           where: {
             budgetHeadId: head.id,
             OR: [{ debit: { gt: 0 } }, { credit: { gt: 0 } }],
@@ -303,7 +307,11 @@ router.post(
               0,
             );
             const share = totalBhCredit > 0 ? Number(entry.credit) * Math.min(1, cashInflow / totalBhCredit) : 0;
-            paid -= share;
+            // ── C23: Floor paid at 0 to prevent negative paidAmount ──
+            // Credit JVs reduce paid (cash returned), but without a floor the
+            // recompute can drive paid below zero when cash inflow is
+            // mis-attributed or when payments were deleted after the JV posted.
+            paid = Math.max(0, paid - share);
           }
         }
 
@@ -319,7 +327,8 @@ router.post(
           Math.abs(before.paid - after.paid) > 0.01;
 
         if (drifted) {
-          await prisma.budgetHead.update({
+          // ── C24: Use tx instead of prisma so all updates are atomic ──
+          await tx.budgetHead.update({
             where: { id: head.id },
             data: { committedAmount: committed, actualAmount: actual, paidAmount: paid },
           });
@@ -328,7 +337,9 @@ router.post(
         results.push({ id: head.id, particulars: head.particulars, before, after, drifted });
       }
 
-      const driftedCount = results.filter((r) => r.drifted).length;
+        const driftedCount = results.filter((r) => r.drifted).length;
+        return { results, driftedCount };
+      });
 
       await logAudit({
         userId: req.user!.id,

@@ -45,7 +45,7 @@ import {
   Autorenew as AutoRenewIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { POStatus, UserRole, POPaymentType } from '@hospital-erp/shared';
+import { POStatus, UserRole, POPaymentType, GST_RATES } from '@hospital-erp/shared';
 import { formatCurrency, formatDate, formatIndianNumber, STATUS_COLORS } from '../utils/enumOptions';
 import api, { extractErrorMessage } from '../config/api';
 import { useAuthStore } from '../stores/authStore';
@@ -1126,7 +1126,7 @@ function EditPODialog({ row, onClose, onSuccess }: { row: PORow | null; onClose:
                       }}
                       sx={{ width: 80 }}
                     >
-                      {[0, 5, 12, 18, 28].map((r) => <MenuItem key={r} value={r}>{r}%</MenuItem>)}
+                      {GST_RATES.map((r) => <MenuItem key={r} value={r}>{r}%</MenuItem>)}
                     </TextField>
                   </TableCell>
                 </TableRow>

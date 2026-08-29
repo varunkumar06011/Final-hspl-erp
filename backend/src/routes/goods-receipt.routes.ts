@@ -11,6 +11,7 @@ import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middl
 import { rbacMiddleware } from '../middleware/rbac';
 import { validateMiddleware } from '../middleware/validate';
 import { logAudit } from '../services/audit.service';
+import { generateSequenceNumber } from '../services/sequence.service';
 import { notifyAllHeads } from '../services/push.service';
 import { generateAssetId } from './asset.routes';
 
@@ -40,6 +41,7 @@ const CATEGORY_SKU_PREFIXES: Record<string, string> = {
   HARDWARE: 'HRD',
   PAINT: 'PNT',
   SAFETY: 'SAF',
+  ASSET: 'AST',
 };
 
 function categoryPrefix(category: string | null | undefined): string {
@@ -63,15 +65,7 @@ async function generateInventorySku(tx: Prisma.TransactionClient, projectId: str
 }
 
 async function generateReceiptNumber(projectId: string): Promise<string> {
-  const receipts = await prisma.goodsReceipt.findMany({
-    where: { projectId },
-    select: { receiptNumber: true },
-  });
-  const maxNumber = receipts.reduce((max, receipt) => {
-    const match = receipt.receiptNumber.match(/^VGH-GRN(\d+)$/);
-    return match ? Math.max(max, Number(match[1])) : max;
-  }, 0);
-  return `VGH-GRN${String(maxNumber + 1).padStart(3, '0')}`;
+  return generateSequenceNumber('goodsReceipt', 'receiptNumber', 'VGH-GRN', 3, { projectId });
 }
 
 router.get(
@@ -407,12 +401,17 @@ router.post(
             throw new Error(`Item "${line.materialName}" already exists in inventory as ${inventoryItem.itemType.toLowerCase()}, but this receipt marks it as ${lineItemType.toLowerCase()}. Change the item type on this receipt to match, or rename the material.`);
           }
           if (!inventoryItem) {
+            // ── B23: Use item-type-appropriate category, not hard-coded MATERIAL ──
+            // Assets should get ASSET category (AST- prefix), consumables get
+            // CONSUMABLE (CNS-), etc. This prevents all auto-created items from
+            // getting MAT- SKUs regardless of their actual type.
+            const autoCategory = lineItemType === InventoryItemType.ASSET ? 'ASSET' : 'CONSUMABLE';
             inventoryItem = await tx.inventoryItem.create({
               data: {
                 projectId,
                 name: line.materialName,
-                sku: await generateInventorySku(tx, projectId, 'MATERIAL'),
-                category: 'MATERIAL',
+                sku: await generateInventorySku(tx, projectId, autoCategory),
+                category: autoCategory,
                 unit: line.unit || 'nos',
                 itemType: lineItemType,
                 currentStock: 0,
@@ -547,6 +546,40 @@ router.post(
           }
         }
 
+        // ── A24: Update PO status inside the same transaction ──
+        // Previously this was done after the transaction committed, so a
+        // failure left the GRN POSTED but the PO in the wrong state.
+        const allReceipts = await tx.goodsReceipt.findMany({
+          where: { poId: receipt.poId, deletedAt: null, status: GoodsReceiptStatus.POSTED },
+          select: { items: { select: { poItemId: true, materialName: true, acceptedQty: true } } },
+        });
+        const poItems = await tx.pOItem.findMany({
+          where: { poId: receipt.poId },
+          select: { id: true, materialName: true, quantity: true },
+        });
+        const acceptedByPoItemId = new Map<string, number>();
+        const acceptedByName = new Map<string, number>();
+        for (const r of allReceipts) {
+          for (const item of r.items) {
+            const qty = Number(item.acceptedQty);
+            if (item.poItemId) {
+              acceptedByPoItemId.set(item.poItemId, (acceptedByPoItemId.get(item.poItemId) ?? 0) + qty);
+            }
+            const name = item.materialName.toLowerCase();
+            acceptedByName.set(name, (acceptedByName.get(name) ?? 0) + qty);
+          }
+        }
+        const fullyReceived = poItems.every(
+          (item) =>
+            (item.id && acceptedByPoItemId.has(item.id)
+              ? acceptedByPoItemId.get(item.id)!
+              : acceptedByName.get(item.materialName.toLowerCase()) ?? 0) >= Number(item.quantity),
+        );
+        await tx.purchaseOrder.update({
+          where: { id: receipt.poId },
+          data: { status: fullyReceived ? 'DELIVERED' : 'PARTIALLY_DELIVERED' },
+        });
+
         return tx.goodsReceipt.findUnique({ where: { id: receipt.id }, include: receiptInclude });
       });
 
@@ -557,38 +590,6 @@ router.post(
         entityId: receipt.id,
         projectId,
         newValue: { status: GoodsReceiptStatus.POSTED, postedBy: req.user!.id },
-      });
-
-      // Update PO status based on accepted quantities from all posted receipts
-      const allReceipts = await prisma.goodsReceipt.findMany({
-        where: { poId: receipt.poId, deletedAt: null, status: GoodsReceiptStatus.POSTED },
-        select: { items: { select: { poItemId: true, materialName: true, acceptedQty: true } } },
-      });
-      const poItems = await prisma.pOItem.findMany({
-        where: { poId: receipt.poId },
-        select: { id: true, materialName: true, quantity: true },
-      });
-      const acceptedByPoItemId = new Map<string, number>();
-      const acceptedByName = new Map<string, number>();
-      for (const r of allReceipts) {
-        for (const item of r.items) {
-          const qty = Number(item.acceptedQty);
-          if (item.poItemId) {
-            acceptedByPoItemId.set(item.poItemId, (acceptedByPoItemId.get(item.poItemId) ?? 0) + qty);
-          }
-          const name = item.materialName.toLowerCase();
-          acceptedByName.set(name, (acceptedByName.get(name) ?? 0) + qty);
-        }
-      }
-      const fullyReceived = poItems.every(
-        (item) =>
-          (item.id && acceptedByPoItemId.has(item.id)
-            ? acceptedByPoItemId.get(item.id)!
-            : acceptedByName.get(item.materialName.toLowerCase()) ?? 0) >= Number(item.quantity),
-      );
-      await prisma.purchaseOrder.update({
-        where: { id: receipt.poId },
-        data: { status: fullyReceived ? 'DELIVERED' : 'PARTIALLY_DELIVERED' },
       });
 
       res.json(posted);

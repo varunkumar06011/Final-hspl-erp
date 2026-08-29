@@ -1,5 +1,5 @@
 import { Router, Response, NextFunction } from 'express';
-import { Permission, AuditAction, BankTxnType, AccountTxnRefType } from '@hospital-erp/shared';
+import { Permission, AuditAction, BankTxnType, AccountTxnRefType, JVType, JournalAccountType } from '@hospital-erp/shared';
 import {
   createOwnerAccountSchema,
   updateOwnerAccountSchema,
@@ -12,6 +12,7 @@ import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middl
 import { rbacMiddleware } from '../middleware/rbac';
 import { validateMiddleware } from '../middleware/validate';
 import { logAudit } from '../services/audit.service';
+import { generateSequenceNumber } from '../services/sequence.service';
 
 // ── Base CRUD via factory ──
 const crudRouter = createCrudRouter({
@@ -96,7 +97,47 @@ router.post(
           data: { currentBalance: newOwnerBalance },
         });
 
-        return { bankTxn, newOwnerBalance };
+        // ── C28: Create a POSTED JournalVoucher so the contribution appears ──
+        // in the owner statement. Without this, the statement (which only
+        // reads JournalEntry rows) never shows the contribution, and the
+        // final balanceAfter diverges from currentBalance.
+        const jvNumber = await generateSequenceNumber('journalVoucher', 'jvNumber', 'VGH-JV', 3);
+        const contributionDate = date ? new Date(date) : new Date();
+        const jv = await tx.journalVoucher.create({
+          data: {
+            projectId,
+            jvNumber,
+            type: JVType.INTER_ACCOUNT,
+            date: contributionDate,
+            description: (description as string) ?? `Owner contribution by ${ownerAccount.ownerName}`,
+            totalDebit: Number(amount),
+            totalCredit: Number(amount),
+            status: 'POSTED',
+            createdBy: req.user!.id,
+            postedBy: req.user!.id,
+            postedAt: new Date(),
+            entries: {
+              create: [
+                {
+                  accountType: JournalAccountType.BANK,
+                  accountId: bankAccountId as string,
+                  debit: Number(amount),
+                  credit: 0,
+                  description: 'Bank deposit for owner contribution',
+                },
+                {
+                  accountType: JournalAccountType.OWNER,
+                  ownerAccountId: ownerAccount.id,
+                  debit: 0,
+                  credit: Number(amount),
+                  description: `Owner contribution by ${ownerAccount.ownerName}`,
+                },
+              ],
+            },
+          },
+        });
+
+        return { bankTxn, newOwnerBalance, jvNumber: jv.jvNumber };
       });
 
       await logAudit({

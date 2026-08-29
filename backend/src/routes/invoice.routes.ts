@@ -6,6 +6,7 @@ import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middl
 import { rbacMiddleware } from '../middleware/rbac';
 import { validateMiddleware } from '../middleware/validate';
 import { logAudit } from '../services/audit.service';
+import { generateSequenceNumber } from '../services/sequence.service';
 import * as approvalService from '../services/approval.service';
 import { notifyApprovers } from '../services/push.service';
 import { getStorageService, serveFile } from '../services/storage.service';
@@ -20,15 +21,7 @@ router.use(authMiddleware);
 const HEAD_ROLES = [UserRole.PROJECT_HEAD, UserRole.HEAD_OF_CONSTRUCTION, UserRole.ADMIN, UserRole.ADMIN_2];
 
 async function generateInvoiceCode(): Promise<string> {
-  const invoices = await prisma.vendorInvoice.findMany({
-    where: { invoiceCode: { startsWith: 'VGH-IN' } },
-    select: { invoiceCode: true },
-  });
-  const maxNum = invoices.reduce((max, inv) => {
-    const match = inv.invoiceCode?.match(/^VGH-IN(\d+)$/);
-    return match ? Math.max(max, parseInt(match[1], 10)) : max;
-  }, 0);
-  return `VGH-IN${String(maxNum + 1).padStart(3, '0')}`;
+  return generateSequenceNumber('vendorInvoice', 'invoiceCode', 'VGH-IN', 3);
 }
 
 /**

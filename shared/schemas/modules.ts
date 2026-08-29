@@ -271,7 +271,13 @@ export const recordPaymentSchema = z.object({
     bankAccountId: uuid.optional(),
     cashAccountId: uuid.optional(),
   }),
-});
+  // ── E11: Require at least one ledger account (bank or cash) ──
+  // Without this, a payment can be recorded without touching any account,
+  // breaking the "every payment posts to a real account" rule.
+}).refine(
+  (data) => !!data.body.bankAccountId || !!data.body.cashAccountId,
+  { message: 'Either bankAccountId or cashAccountId is required to record a payment', path: ['body'] },
+);
 export const approvalActionSchema = z.object({
   params: z.object({ id: uuid, stepId: uuid.optional() }),
   body: z.object({

@@ -3,6 +3,7 @@ import { createVendorSchema, updateVendorSchema, listVendorsSchema } from '@hosp
 import { prisma } from '../config/prisma';
 import { createCrudRouter } from '../utils/crudFactory';
 import { notifyAllHeads } from '../services/push.service';
+import { generateSequenceNumber } from '../services/sequence.service';
 
 interface MaterialInput {
   id?: string;
@@ -33,15 +34,7 @@ async function validateVendorDeletion(vendorId: string): Promise<void> {
 }
 
 async function generateVendorCode(): Promise<string> {
-  const vendors = await prisma.vendor.findMany({
-    where: { vendorCode: { startsWith: 'VGH-' } },
-    select: { vendorCode: true },
-  });
-  const maxNum = vendors.reduce((max, v) => {
-    const match = v.vendorCode?.match(/^VGH-(\d+)$/);
-    return match ? Math.max(max, parseInt(match[1], 10)) : max;
-  }, 0);
-  return `VGH-${String(maxNum + 1).padStart(3, '0')}`;
+  return generateSequenceNumber('vendor', 'vendorCode', 'VGH-', 3);
 }
 
 export default createCrudRouter({

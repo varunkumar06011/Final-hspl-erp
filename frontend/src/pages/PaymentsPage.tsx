@@ -31,6 +31,7 @@ import {
 } from '@mui/material';
 import ResponsiveDialog from '../components/ResponsiveDialog';
 import ApprovalStepsDisplay from '../components/ApprovalStepsDisplay';
+import AcknowledgementCheckbox from '../components/AcknowledgementCheckbox';
 import {
   Add as AddIcon,
   Refresh as RefreshIcon,
@@ -166,6 +167,7 @@ export default function PaymentsPage() {
   const [advancePayForm, setAdvancePayForm] = useState<Record<string, unknown>>({});
   const [advanceFile, setAdvanceFile] = useState<File | null>(null);
   const advanceFileRef = useRef<HTMLInputElement>(null);
+  const [advanceAcknowledged, setAdvanceAcknowledged] = useState(false);
   const [approvalAction, setApprovalAction] = useState<{ row: PaymentRequestRow; action: 'approve' | 'reject' } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
@@ -257,7 +259,8 @@ export default function PaymentsPage() {
       if (advancePayForm.paymentMode) formData.append('paymentMode', String(advancePayForm.paymentMode));
       if (advancePayForm.notes) formData.append('notes', String(advancePayForm.notes));
       if (advancePayForm.budgetHeadId) formData.append('budgetHeadId', String(advancePayForm.budgetHeadId));
-      formData.append('acknowledged', 'true');
+      // ── E07: Only append acknowledged when the user actually checks the box ──
+      if (advanceAcknowledged) formData.append('acknowledged', 'true');
       if (advanceFile) formData.append('file', advanceFile);
       const response = await api.post('/payments/po-advance', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
@@ -270,6 +273,7 @@ export default function PaymentsPage() {
       setAdvancePayOpen(null);
       setAdvancePayForm({});
       setAdvanceFile(null);
+      setAdvanceAcknowledged(false);
       if (advanceFileRef.current) advanceFileRef.current.value = '';
       setSuccessMsg('Advance payment request created and sent for approval.');
       setTimeout(() => setSuccessMsg(''), 3000);
@@ -877,7 +881,7 @@ export default function PaymentsPage() {
       </ResponsiveDialog>
 
       {/* Create Advance Payment Dialog */}
-      <ResponsiveDialog open={!!advancePayOpen} onClose={() => { setAdvancePayOpen(null); setAdvanceFile(null); if (advanceFileRef.current) advanceFileRef.current.value = ''; }} maxWidth="sm" fullWidth>
+      <ResponsiveDialog open={!!advancePayOpen} onClose={() => { setAdvancePayOpen(null); setAdvanceFile(null); setAdvanceAcknowledged(false); if (advanceFileRef.current) advanceFileRef.current.value = ''; }} maxWidth="sm" fullWidth>
         <DialogTitle>Create Advance Payment for {advancePayOpen?.poNumber}</DialogTitle>
         <DialogContent>
           {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
@@ -972,17 +976,22 @@ export default function PaymentsPage() {
                 </Typography>
               )}
             </Box>
+            <AcknowledgementCheckbox
+              checked={advanceAcknowledged}
+              onChange={setAdvanceAcknowledged}
+              entityLabel="advance payment request"
+            />
           </Box>
         </DialogContent>
         <DialogActions sx={{ flexWrap: "wrap", gap: 1 }}>
-          <Button onClick={() => { setAdvancePayOpen(null); setAdvanceFile(null); if (advanceFileRef.current) advanceFileRef.current.value = ''; }}>Cancel</Button>
+          <Button onClick={() => { setAdvancePayOpen(null); setAdvanceFile(null); setAdvanceAcknowledged(false); if (advanceFileRef.current) advanceFileRef.current.value = ''; }}>Cancel</Button>
           <Button
             variant="contained"
             onClick={() => {
               setError('');
               createAdvancePaymentMutation.mutate();
             }}
-            disabled={createAdvancePaymentMutation.isPending || !advancePayForm.amount || Number(advancePayForm.amount) <= 0}
+            disabled={createAdvancePaymentMutation.isPending || !advancePayForm.amount || Number(advancePayForm.amount) <= 0 || !advanceAcknowledged}
           >
             {createAdvancePaymentMutation.isPending ? <CircularProgress size={20} /> : 'Create Advance Payment Request'}
           </Button>

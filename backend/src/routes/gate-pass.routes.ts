@@ -10,6 +10,7 @@ import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middl
 import { rbacMiddleware } from '../middleware/rbac';
 import { validateMiddleware } from '../middleware/validate';
 import { logAudit } from '../services/audit.service';
+import { generateSequenceNumber } from '../services/sequence.service';
 import { verifyFirebaseToken } from '../config/firebase';
 import { notifyAllHeads } from '../services/push.service';
 import { streamGatePassPdf } from '../services/gate-pass-pdf.service';
@@ -37,17 +38,7 @@ function getPassDatePrefix(): string {
 
 async function generateUniquePassNumber(): Promise<string> {
   const prefix = getPassDatePrefix();
-  // Find all gate passes with this date prefix (across all projects, to keep global sequence)
-  const existing = await prisma.gatePass.findMany({
-    where: { passNumber: { startsWith: `${prefix}-` } },
-    select: { passNumber: true },
-  });
-  const maxSeq = existing.reduce((max, gp) => {
-    const match = gp.passNumber?.match(/^VGH-\d{2}-\d{2}-(\d+)$/);
-    return match ? Math.max(max, parseInt(match[1], 10)) : max;
-  }, 0);
-  const seq = String(maxSeq + 1).padStart(3, '0');
-  return `${prefix}-${seq}`;
+  return generateSequenceNumber('gatePass', 'passNumber', `${prefix}-`, 3);
 }
 
 const gatePassInclude = {

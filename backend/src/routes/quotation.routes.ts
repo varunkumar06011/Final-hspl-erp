@@ -6,6 +6,7 @@ import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middl
 import { rbacMiddleware } from '../middleware/rbac';
 import { validateMiddleware } from '../middleware/validate';
 import { logAudit } from '../services/audit.service';
+import { generateSequenceNumber } from '../services/sequence.service';
 import * as approvalService from '../services/approval.service';
 import { notifyApprovers } from '../services/push.service';
 import { getStorageService, serveFile } from '../services/storage.service';
@@ -26,15 +27,7 @@ interface QuotationLineItem {
 }
 
 async function generateQuotationNumber(projectId: string): Promise<string> {
-  const quotations = await prisma.quotation.findMany({
-    where: { projectId, quotationNumber: { startsWith: 'VGH-Q' } },
-    select: { quotationNumber: true },
-  });
-  const maxNum = quotations.reduce((max, q) => {
-    const match = q.quotationNumber?.match(/^VGH-Q(\d+)$/);
-    return match ? Math.max(max, parseInt(match[1], 10)) : max;
-  }, 0);
-  return `VGH-Q${String(maxNum + 1).padStart(3, '0')}`;
+  return generateSequenceNumber('quotation', 'quotationNumber', 'VGH-Q', 3, { projectId });
 }
 
 const quotationInclude = {

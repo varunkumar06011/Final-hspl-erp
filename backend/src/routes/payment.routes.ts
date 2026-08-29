@@ -15,6 +15,7 @@ import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middl
 import { rbacMiddleware } from '../middleware/rbac';
 import { validateMiddleware } from '../middleware/validate';
 import { logAudit } from '../services/audit.service';
+import { generateSequenceNumber } from '../services/sequence.service';
 import * as approvalService from '../services/approval.service';
 import { notifyApprovers } from '../services/push.service';
 import { getStorageService, serveFile } from '../services/storage.service';
@@ -137,15 +138,7 @@ async function recalcInvoicePaymentStatus(invoiceId: string, tx?: Prisma.Transac
 }
 
 async function generatePaymentCode(): Promise<string> {
-  const reqs = await prisma.paymentRequest.findMany({
-    where: { paymentCode: { startsWith: 'VGH-PAY' } },
-    select: { paymentCode: true },
-  });
-  const maxNum = reqs.reduce((max, r) => {
-    const match = r.paymentCode?.match(/^VGH-PAY(\d+)$/);
-    return match ? Math.max(max, parseInt(match[1], 10)) : max;
-  }, 0);
-  return `VGH-PAY${String(maxNum + 1).padStart(3, '0')}`;
+  return generateSequenceNumber('paymentRequest', 'paymentCode', 'VGH-PAY', 3);
 }
 
 const prInclude = {

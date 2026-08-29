@@ -7,6 +7,7 @@ import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middl
 import { rbacMiddleware } from '../middleware/rbac';
 import { validateMiddleware } from '../middleware/validate';
 import { logAudit } from '../services/audit.service';
+import { generateSequenceNumber } from '../services/sequence.service';
 import * as approvalService from '../services/approval.service';
 import { notifyApprovers } from '../services/push.service';
 import PDFDocument from 'pdfkit';
@@ -100,15 +101,7 @@ const HEAD_ROLES = [UserRole.PROJECT_HEAD, UserRole.HEAD_OF_CONSTRUCTION, UserRo
 const PO_APPROVER_ROLES = [UserRole.ADMIN, UserRole.ADMIN_2];
 
 async function generatePONumber(projectId: string): Promise<string> {
-  const pos = await prisma.purchaseOrder.findMany({
-    where: { projectId, poNumber: { startsWith: 'VGH-PO' } },
-    select: { poNumber: true },
-  });
-  const maxNum = pos.reduce((max, p) => {
-    const match = p.poNumber?.match(/^VGH-PO(\d+)$/);
-    return match ? Math.max(max, parseInt(match[1], 10)) : max;
-  }, 0);
-  return `VGH-PO${String(maxNum + 1).padStart(3, '0')}`;
+  return generateSequenceNumber('purchaseOrder', 'poNumber', 'VGH-PO', 3, { projectId });
 }
 
 /**
