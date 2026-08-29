@@ -37,8 +37,7 @@ interface WorkTask {
   status: string;
   priority: string;
   scheduledDate: string;
-  startTime: string | null;
-  endTime: string | null;
+  deadlineDate: string | null;
   assignedTo: string | null;
   linkedQuotationId: string | null;
   linkedPoId: string | null;
@@ -102,12 +101,6 @@ function toISODate(d: Date): string {
 function todayKey(): string {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
-
-function formatTimeRange(start: string | null, end: string | null): string {
-  if (!start && !end) return '';
-  if (start && end) return `${start}–${end}`;
-  return start ?? end ?? '';
 }
 
 export default function WorkCalendarPage() {
@@ -248,8 +241,7 @@ export default function WorkCalendarPage() {
       priority: task.priority,
       status: task.status,
       scheduledDate: toISODate(new Date(task.scheduledDate)),
-      startTime: task.startTime ?? '',
-      endTime: task.endTime ?? '',
+      deadlineDate: task.deadlineDate ? toISODate(new Date(task.deadlineDate)) : '',
       assignedTo: task.assignedTo ?? '',
       linkedQuotationId: task.linkedQuotationId ?? '',
       linkedPoId: task.linkedPoId ?? '',
@@ -271,8 +263,7 @@ export default function WorkCalendarPage() {
       priority: form.priority,
       status: form.status,
       scheduledDate: `${form.scheduledDate}T00:00:00.000Z`,
-      startTime: (form.startTime as string) || undefined,
-      endTime: (form.endTime as string) || undefined,
+      deadlineDate: (form.deadlineDate as string) ? `${form.deadlineDate}T00:00:00.000Z` : undefined,
       assignedTo: (form.assignedTo as string) || undefined,
       linkedQuotationId: (form.linkedQuotationId as string) || undefined,
       linkedPoId: (form.linkedPoId as string) || undefined,
@@ -397,10 +388,12 @@ export default function WorkCalendarPage() {
                           textOverflow: 'ellipsis',
                         }}
                       >
-                        {task.startTime && (
-                          <Box component="span" sx={{ color: 'text.secondary', flexShrink: 0 }}>{task.startTime}</Box>
+                        {task.status === WorkTaskStatus.DONE && (
+                          <Box component="span" sx={{ textDecoration: 'line-through', opacity: 0.7 }}>{task.title}</Box>
                         )}
-                        <Box component="span" sx={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{task.title}</Box>
+                        {task.status !== WorkTaskStatus.DONE && (
+                          <Box component="span" sx={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{task.title}</Box>
+                        )}
                       </Box>
                     ))}
                     {overflow > 0 && (
@@ -445,11 +438,6 @@ export default function WorkCalendarPage() {
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 1 }}>
                     <Box sx={{ minWidth: 0 }}>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
-                        {task.startTime && (
-                          <Typography variant="caption" color="text.secondary">
-                            {formatTimeRange(task.startTime, task.endTime)}
-                          </Typography>
-                        )}
                         <Typography variant="subtitle2" noWrap>{task.title}</Typography>
                       </Box>
                       <Box sx={{ display: 'flex', gap: 0.5, mt: 0.5, flexWrap: 'wrap' }}>
@@ -478,6 +466,9 @@ export default function WorkCalendarPage() {
                   )}
 
                   <Box sx={{ display: 'flex', gap: 2, mt: 0.75, flexWrap: 'wrap', fontSize: 12, color: 'text.secondary' }}>
+                    {task.deadlineDate && (
+                      <span>Deadline: <strong>{new Date(task.deadlineDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' })}</strong></span>
+                    )}
                     {task.assignedToUser && (
                       <span>Assigned: <strong>{task.assignedToUser.name}</strong></span>
                     )}
@@ -544,21 +535,12 @@ export default function WorkCalendarPage() {
                 InputLabelProps={{ shrink: true }}
               />
               <TextField
-                label="Start time"
-                type="time"
-                value={String(form.startTime ?? '')}
-                onChange={(e) => setForm({ ...form, startTime: e.target.value })}
+                label="Deadline (optional)"
+                type="date"
+                value={String(form.deadlineDate ?? '')}
+                onChange={(e) => setForm({ ...form, deadlineDate: e.target.value })}
                 size="small"
-                sx={{ width: 140 }}
-                InputLabelProps={{ shrink: true }}
-              />
-              <TextField
-                label="End time"
-                type="time"
-                value={String(form.endTime ?? '')}
-                onChange={(e) => setForm({ ...form, endTime: e.target.value })}
-                size="small"
-                sx={{ width: 140 }}
+                sx={{ width: { xs: '100%', sm: 200 } }}
                 InputLabelProps={{ shrink: true }}
               />
             </Box>

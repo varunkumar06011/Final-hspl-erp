@@ -12,7 +12,6 @@ import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middl
 import { validateMiddleware } from '../middleware/validate';
 
 const router = Router();
-router.use(authMiddleware);
 
 const WORK_TASK_INCLUDE = {
   createdByUser: { select: { id: true, name: true } },
@@ -28,6 +27,7 @@ const WORK_TASK_INCLUDE = {
 // GET /calendar — all tasks in [startDate, endDate] for the month grid (no pagination)
 router.get(
   '/calendar',
+  authMiddleware,
   validateMiddleware(calendarWorkTasksSchema),
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
@@ -40,7 +40,7 @@ router.get(
           scheduledDate: { gte: new Date(startDate), lte: new Date(endDate) },
         },
         include: WORK_TASK_INCLUDE,
-        orderBy: [{ scheduledDate: 'asc' }, { startTime: 'asc' }, { createdAt: 'asc' }],
+        orderBy: [{ scheduledDate: 'asc' }, { priority: 'desc' }, { createdAt: 'asc' }],
       });
       res.json({ data: tasks });
     } catch (error) {
@@ -52,6 +52,7 @@ router.get(
 // GET /assignable-users — active users for the assign-to dropdown (viewing is open)
 router.get(
   '/assignable-users',
+  authMiddleware,
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const projectId = requireProjectId(req);
@@ -70,6 +71,7 @@ router.get(
 // GET /linkable-quotations — minimal list for the quotation link dropdown
 router.get(
   '/linkable-quotations',
+  authMiddleware,
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const projectId = requireProjectId(req);
@@ -94,6 +96,7 @@ router.get(
 // GET /linkable-pos — minimal list for the PO link dropdown
 router.get(
   '/linkable-pos',
+  authMiddleware,
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const projectId = requireProjectId(req);

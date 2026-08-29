@@ -670,7 +670,6 @@ export const closeIssueSchema = z.object({
 });
 
 // ═══ Work Tasks (calendar) ═══
-const timeStr = z.string().regex(/^\d{2}:\d{2}$/, 'Use HH:mm 24-hour format');
 const workTaskBody = z.object({
   title: nonEmptyText(200),
   description: z.string().trim().max(2000).optional(),
@@ -678,18 +677,13 @@ const workTaskBody = z.object({
   priority: z.nativeEnum(WorkTaskPriority).default(WorkTaskPriority.MEDIUM),
   status: z.nativeEnum(WorkTaskStatus).default(WorkTaskStatus.PLANNED),
   scheduledDate: dateStr,
-  startTime: timeStr.optional(),
-  endTime: timeStr.optional(),
+  deadlineDate: dateStr.optional(),
   assignedTo: uuid.optional(),
   linkedQuotationId: uuid.optional(),
   linkedPoId: uuid.optional(),
 });
 export const createWorkTaskSchema = z.object({
-  body: workTaskBody.superRefine((data, ctx) => {
-    if (data.startTime && data.endTime && data.endTime < data.startTime) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['body', 'endTime'], message: 'End time cannot be before start time' });
-    }
-  }),
+  body: workTaskBody,
 });
 export const updateWorkTaskSchema = z.object({
   params: z.object({ id: uuid }),

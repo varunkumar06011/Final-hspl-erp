@@ -844,8 +844,7 @@ model WorkTask {
   status            String    @default("PLANNED") // WorkTaskStatus enum
   priority          String    @default("MEDIUM") // WorkTaskPriority enum
   scheduledDate     DateTime  // calendar day (date portion used; stored at UTC midnight)
-  startTime         String?   // "HH:mm" 24-hour, optional
-  endTime           String?   // "HH:mm" 24-hour, optional
+  deadlineDate      DateTime? // optional deadline
   assignedTo        String?   @db.Uuid
   linkedQuotationId String?   @db.Uuid
   linkedPoId        String?   @db.Uuid
