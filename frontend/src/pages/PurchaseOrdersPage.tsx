@@ -618,7 +618,7 @@ export default function PurchaseOrdersPage() {
               onChange={(e) => setPaymentTerms(e.target.value)}
               fullWidth
               size="small"
-              helperText="E.g. Net 30 Days (After Delivery & Inspection)"
+              helperText="E.g. After Delivery & Inspection"
             />
 
             <TextField

@@ -108,7 +108,7 @@ export async function streamPurchaseOrderPdf(res: NodeJS.WritableStream, po: any
     return yy + Math.max(18, valueH + 6);
   };
 
-  const paymentTerms = po.paymentTerms || (po.paymentType === POPaymentType.AFTER_DELIVERY ? 'Net 30 Days (After Delivery & Inspection)' : '—');
+  const paymentTerms = po.paymentTerms || (po.paymentType === POPaymentType.AFTER_DELIVERY ? 'After Delivery & Inspection' : '—');
   const projectHeadApproved = approvedByRole['PROJECT_HEAD'];
 
   y = drawLabel('Date', new Date(po.createdAt).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' }), leftCol, y, leftW);
