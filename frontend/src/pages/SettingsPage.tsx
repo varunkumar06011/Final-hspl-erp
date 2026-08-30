@@ -22,6 +22,7 @@ import NotificationPermissionPrompt from '../components/NotificationPermissionPr
 const ROLE_LABELS: Record<string, string> = {
   PROJECT_HEAD: 'Project Head',
   HEAD_OF_CONSTRUCTION: 'Head of Construction',
+  ACCOUNTS_HEAD: 'Accounts Head',
   ADMIN: 'Admin',
   ADMIN_2: 'Admin 2',
   SUPERVISOR: 'Supervisor',
@@ -35,6 +36,8 @@ export default function SettingsPage() {
   const [totalBudget, setTotalBudget] = useState('');
   const [hospitalName, setHospitalName] = useState('');
   const [gstNumber, setGstNumber] = useState('');
+  const [panNumber, setPanNumber] = useState('');
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [profileName, setProfileName] = useState('');
   const [profilePhone, setProfilePhone] = useState('');
   const [oldPin, setOldPin] = useState('');
@@ -66,6 +69,8 @@ export default function SettingsPage() {
       setOfficeAddress(data.officeAddress ?? '');
       setHospitalAddress(data.hospitalAddress ?? '');
       setGstNumber(data.gstNumber ?? '');
+      setPanNumber(data.panNumber ?? '');
+      setLogoUrl(data.logoUrl ?? null);
       setTotalBudget(data.totalBudget ? String(data.totalBudget) : '');
     }
   }, [data]);
@@ -78,7 +83,7 @@ export default function SettingsPage() {
   }, [profile]);
 
   const updateMutation = useMutation({
-    mutationFn: async (payload: { name?: string; officeAddress?: string; hospitalAddress?: string; gstNumber?: string; totalBudget?: number }) => {
+    mutationFn: async (payload: { name?: string; officeAddress?: string; hospitalAddress?: string; gstNumber?: string; panNumber?: string; logoUrl?: string | null; totalBudget?: number }) => {
       const response = await api.patch('/settings', payload);
       return response.data;
     },
@@ -87,6 +92,20 @@ export default function SettingsPage() {
       setSuccess('Settings saved successfully');
       setError('');
       setTimeout(() => setSuccess(''), 3000);
+    },
+    onError: (err: unknown) => setError(extractErrorMessage(err)),
+  });
+
+  const uploadLogoMutation = useMutation({
+    mutationFn: async (file: File) => {
+      const formData = new FormData();
+      formData.append('logo', file);
+      const response = await api.post('/settings/logo', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
+      return response.data;
+    },
+    onSuccess: (data) => {
+      setLogoUrl(data.logoUrl);
+      queryClient.invalidateQueries({ queryKey: ['/settings'] });
     },
     onError: (err: unknown) => setError(extractErrorMessage(err)),
   });
@@ -270,6 +289,25 @@ export default function SettingsPage() {
               helperText="GSTIN shown on PO PDFs (e.g. 36ABCDE1234F1Z5)"
             />
             <TextField
+              label="PAN Number"
+              value={panNumber}
+              onChange={(e) => setPanNumber(e.target.value)}
+              fullWidth
+              size="small"
+              helperText="Company PAN shown on PO PDFs"
+            />
+            <TextField
+              type="file"
+              inputProps={{ accept: 'image/*' }}
+              onChange={(e) => {
+                const f = (e.target as HTMLInputElement).files?.[0];
+                if (f) uploadLogoMutation.mutate(f);
+              }}
+              fullWidth
+              size="small"
+              helperText={logoUrl ? `Logo uploaded: ${logoUrl}` : 'Upload company logo for PO PDFs (optional)'}
+            />
+            <TextField
               label="Total Budget"
               type="text"
               value={formatIndianNumber(totalBudget)}
@@ -298,7 +336,7 @@ export default function SettingsPage() {
             />
             <Button
               variant="contained"
-              onClick={() => updateMutation.mutate({ name: hospitalName, officeAddress, hospitalAddress, gstNumber, totalBudget: totalBudget ? Number(totalBudget) : undefined })}
+              onClick={() => updateMutation.mutate({ name: hospitalName, officeAddress, hospitalAddress, gstNumber, panNumber, totalBudget: totalBudget ? Number(totalBudget) : undefined })}
               disabled={updateMutation.isPending}
               sx={{ alignSelf: 'flex-start' }}
             >

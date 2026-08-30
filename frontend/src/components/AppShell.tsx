@@ -76,6 +76,7 @@ const ROLE_COLORS: Record<UserRole, string> = {
   [UserRole.SITE_SUPERVISOR]: '#6D4C41',
   [UserRole.PROJECT_HEAD]: '#1565C0',
   [UserRole.HEAD_OF_CONSTRUCTION]: '#2E7D32',
+  [UserRole.ACCOUNTS_HEAD]: '#00695C',
   [UserRole.ADMIN]: '#ED6C02',
   [UserRole.ADMIN_2]: '#9C27B0',
 };
@@ -86,6 +87,7 @@ const ROLE_LABELS: Record<UserRole, string> = {
   [UserRole.SITE_SUPERVISOR]: 'Site Supervisor',
   [UserRole.PROJECT_HEAD]: 'Project Head',
   [UserRole.HEAD_OF_CONSTRUCTION]: 'Head of Construction',
+  [UserRole.ACCOUNTS_HEAD]: 'Accounts Head',
   [UserRole.ADMIN]: 'Admin 1',
   [UserRole.ADMIN_2]: 'Admin 2',
 };

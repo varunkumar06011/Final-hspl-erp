@@ -1,5 +1,5 @@
 import { Router, Response, NextFunction } from 'express';
-import { Permission, POStatus, AuditAction, UserRole, GoodsReceiptStatus, POPaymentType } from '@hospital-erp/shared';
+import { Permission, POStatus, AuditAction, UserRole, GoodsReceiptStatus } from '@hospital-erp/shared';
 import { createPOSchema, listPOsSchema, approvalActionSchema, editPOSchema, regeneratePOSchema } from '@hospital-erp/shared';
 import { prisma } from '../config/prisma';
 import { Prisma } from '@prisma/client';
@@ -10,7 +10,7 @@ import { logAudit } from '../services/audit.service';
 import { generateSequenceNumber } from '../services/sequence.service';
 import * as approvalService from '../services/approval.service';
 import { notifyApprovers } from '../services/push.service';
-import PDFDocument from 'pdfkit';
+import { streamPurchaseOrderPdf } from '../services/purchase-order-pdf.service';
 
 const router = Router();
 router.use(authMiddleware);
@@ -97,8 +97,8 @@ async function getDeliveredValueForPo(
   return deliveredValue;
 }
 
-const HEAD_ROLES = [UserRole.PROJECT_HEAD, UserRole.HEAD_OF_CONSTRUCTION, UserRole.ADMIN, UserRole.ADMIN_2];
-const PO_APPROVER_ROLES = [UserRole.ADMIN, UserRole.ADMIN_2];
+const HEAD_ROLES = [UserRole.PROJECT_HEAD, UserRole.HEAD_OF_CONSTRUCTION, UserRole.ACCOUNTS_HEAD, UserRole.ADMIN, UserRole.ADMIN_2];
+const PO_APPROVER_ROLES = [UserRole.PROJECT_HEAD, UserRole.ACCOUNTS_HEAD, UserRole.ADMIN, UserRole.ADMIN_2];
 
 async function generatePONumber(projectId: string): Promise<string> {
   return generateSequenceNumber('purchaseOrder', 'poNumber', 'VGH-PO', 3, { projectId });
@@ -344,7 +344,7 @@ router.post(
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const projectId = requireProjectId(req);
-      const { vendorId, quotationId, paymentType } = req.body;
+      const { vendorId, quotationId, paymentType, paymentTerms, deliveryDate, budgetHeadId } = req.body;
 
       // Validate quotation exists, belongs to project, is approved, and matches vendor
       const quotation = await prisma.quotation.findFirst({
@@ -381,10 +381,12 @@ router.post(
             poNumber,
             status: POStatus.PENDING_APPROVAL,
             paymentType,
+            paymentTerms: paymentTerms ?? null,
+            deliveryDate: deliveryDate ? new Date(deliveryDate) : null,
             totalAmount,
             gstAmount: gst,
             grandTotal,
-            budgetHeadId: req.body.budgetHeadId ?? null,
+            budgetHeadId: budgetHeadId ?? null,
             createdBy: req.user!.id,
             items: {
               create: quotation.items.map((item) => ({
@@ -400,7 +402,7 @@ router.post(
           include: poInclude,
         });
 
-        // Initiate approval workflow — one approval from Kaushal Sir or Vinod Sir
+        // Initiate approval workflow — one approval from any head/MD.
         const workflow = await tx.approvalWorkflow.create({
           data: {
             entityType: 'PURCHASE_ORDER',
@@ -409,9 +411,9 @@ router.post(
             status: 'VERIFICATION',
             currentStep: 0,
             minApprovers: 1,
-            approvalPolicy: 'PO_SINGLE_APPROVER',
+            approvalPolicy: 'PO_HEAD_APPROVERS',
             steps: {
-              create: [UserRole.ADMIN, UserRole.ADMIN_2].map((role, idx) => ({
+              create: [UserRole.PROJECT_HEAD, UserRole.ACCOUNTS_HEAD, UserRole.ADMIN_2].map((role, idx) => ({
                 stepNumber: idx + 1,
                 approverRole: role,
                 status: 'PENDING',
@@ -554,7 +556,7 @@ router.post(
 
       // Check user is one of the PO approver roles (Admin or Admin 2)
       if (!PO_APPROVER_ROLES.includes(req.user!.role as UserRole)) {
-        res.status(403).json({ error: 'Only Admin or Admin 2 can approve purchase orders' });
+        res.status(403).json({ error: 'Only Project Head, Accounts Head or Admin 2 can approve purchase orders' });
         return;
       }
 
@@ -671,7 +673,7 @@ router.post(
       }
 
       if (!PO_APPROVER_ROLES.includes(req.user!.role as UserRole)) {
-        res.status(403).json({ error: 'Only Admin or Admin 2 can reject purchase orders' });
+        res.status(403).json({ error: 'Only Project Head, Accounts Head or Admin 2 can reject purchase orders' });
         return;
       }
 
@@ -757,7 +759,7 @@ router.get(
               },
             },
           },
-          project: { select: { name: true, officeAddress: true, hospitalAddress: true, gstNumber: true } },
+          project: { select: { name: true, officeAddress: true, hospitalAddress: true, gstNumber: true, panNumber: true, logoUrl: true } },
         },
       });
       if (!po) {
@@ -765,213 +767,9 @@ router.get(
         return;
       }
 
-      const doc = new PDFDocument({ margin: 50, size: 'A4' });
       res.setHeader('Content-Type', 'application/pdf');
       res.setHeader('Content-Disposition', `attachment; filename="${po.poNumber}.pdf"`);
-      doc.pipe(res);
-
-      // Colors
-      const PRIMARY = '#1a5276';
-      const PRIMARY_LIGHT = '#d4e6f1';
-      const LIGHT_BG = '#f8f9fa';
-      const BORDER = '#bdc3c7';
-      const TEXT_DARK = '#2c3e50';
-      const TEXT_MUTED = '#7f8c8d';
-      const WHITE = '#ffffff';
-      const GREEN = '#27ae60';
-
-      const pageWidth = 595;
-      const pageHeight = 842;
-      const margin = 50;
-      const contentWidth = pageWidth - margin * 2; // 495
-
-      // ── Header band ──
-      doc.rect(0, 0, pageWidth, 70).fill(PRIMARY);
-      doc.fillColor(WHITE).fontSize(22).font('Helvetica-Bold').text(po.project?.name ?? 'Vgrand Hospital', margin, 14);
-      doc.fontSize(10).font('Helvetica').fillColor(PRIMARY_LIGHT).text('PURCHASE ORDER', margin, 40);
-      if (po.project?.gstNumber) {
-        doc.fontSize(8).font('Helvetica').fillColor(PRIMARY_LIGHT).text(`GSTIN: ${po.project.gstNumber}`, margin, 55);
-      }
-      // PO number badge on the right
-      const badgeW = 120;
-      const badgeX = pageWidth - margin - badgeW;
-      doc.roundedRect(badgeX, 15, badgeW, 40, 5).fill(WHITE);
-      doc.fillColor(TEXT_MUTED).fontSize(7).font('Helvetica').text('PO NUMBER', badgeX + 8, 20, { width: badgeW - 16 });
-      doc.fillColor(PRIMARY).fontSize(13).font('Helvetica-Bold').text(po.poNumber, badgeX + 8, 32, { width: badgeW - 16 });
-
-      // ── PO info row ──
-      let y = 85;
-      doc.fontSize(8).font('Helvetica').fillColor(TEXT_MUTED);
-      doc.text('Date:', margin, y, { width: 35 });
-      doc.fillColor(TEXT_DARK).font('Helvetica-Bold').text(
-        new Date(po.createdAt).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' }),
-        margin + 35,
-        y,
-        { width: 80 }
-      );
-      doc.fillColor(TEXT_MUTED).font('Helvetica').text('Created By:', margin + 140, y, { width: 60 });
-      doc.fillColor(TEXT_DARK).font('Helvetica-Bold').text(po.createdByUser?.name ?? '—', margin + 200, y, { width: 120 });
-      if (po.quotation) {
-        doc.fillColor(TEXT_MUTED).font('Helvetica').text('Quotation:', margin + 340, y, { width: 55 });
-        doc.fillColor(TEXT_DARK).font('Helvetica-Bold').text(po.quotation.quotationNumber, margin + 395, y, { width: 100 });
-      }
-      y += 15;
-
-      // Payment type line
-      const paymentTypeLabel = po.paymentType === POPaymentType.ADVANCE
-        ? 'Against Advance'
-        : po.paymentType === POPaymentType.FULL_PAYMENT
-          ? 'Against Full Payment'
-          : 'After Delivery';
-      doc.fillColor(TEXT_MUTED).font('Helvetica').text('Payment Type:', margin, y, { width: 70 });
-      doc.fillColor(PRIMARY).font('Helvetica-Bold').text(paymentTypeLabel, margin + 70, y, { width: 200 });
-      y += 15;
-
-      // ── Info cards: 2 columns (Vendor on left, Addresses on right) ──
-      y += 5;
-      const cardGap = 10;
-      const leftCardW = 240;
-      const rightCardW = contentWidth - leftCardW - cardGap; // 245
-      const cardH = 100;
-
-      // Vendor card (left)
-      doc.roundedRect(margin, y, leftCardW, cardH, 5).fillAndStroke(LIGHT_BG, BORDER);
-      doc.rect(margin, y, leftCardW, 20).fill(PRIMARY);
-      doc.fillColor(WHITE).fontSize(8).font('Helvetica-Bold').text('VENDOR', margin + 8, y + 6, { width: leftCardW - 16 });
-      let vy = y + 28;
-      doc.fillColor(TEXT_MUTED).fontSize(7).font('Helvetica').text('Name', margin + 8, vy, { width: leftCardW - 16 });
-      doc.fillColor(TEXT_DARK).fontSize(9).font('Helvetica-Bold').text(po.vendor?.name ?? '—', margin + 8, vy + 9, { width: leftCardW - 16 });
-      vy += 26;
-      doc.fillColor(TEXT_MUTED).fontSize(7).font('Helvetica').text('Contact', margin + 8, vy, { width: leftCardW - 16 });
-      doc.fillColor(TEXT_DARK).fontSize(9).font('Helvetica-Bold').text(po.vendor?.phone ?? po.vendor?.contactPersonPhone ?? '—', margin + 8, vy + 9, { width: leftCardW - 16 });
-      vy += 26;
-      doc.fillColor(TEXT_MUTED).fontSize(7).font('Helvetica').text('Address', margin + 8, vy, { width: leftCardW - 16 });
-      doc.fillColor(TEXT_DARK).fontSize(8).font('Helvetica').text(po.vendor?.address ?? '—', margin + 8, vy + 9, { width: leftCardW - 16, height: 12 });
-
-      // Bill To + Delivery (right, stacked)
-      const rightX = margin + leftCardW + cardGap;
-      const subCardH = (cardH - 10) / 2; // 45 each
-
-      // Bill To
-      doc.roundedRect(rightX, y, rightCardW, subCardH, 5).fillAndStroke(LIGHT_BG, BORDER);
-      doc.rect(rightX, y, rightCardW, 18).fill(PRIMARY);
-      doc.fillColor(WHITE).fontSize(7).font('Helvetica-Bold').text('BILL TO (Office Address)', rightX + 8, y + 5, { width: rightCardW - 16 });
-      doc.fillColor(TEXT_DARK).fontSize(8).font('Helvetica').text(po.project?.officeAddress ?? '—', rightX + 8, y + 22, { width: rightCardW - 16, height: 20 });
-
-      // Delivery Address
-      const dy2 = y + subCardH + 10;
-      doc.roundedRect(rightX, dy2, rightCardW, subCardH, 5).fillAndStroke(LIGHT_BG, BORDER);
-      doc.rect(rightX, dy2, rightCardW, 18).fill(PRIMARY);
-      doc.fillColor(WHITE).fontSize(7).font('Helvetica-Bold').text('DELIVERY ADDRESS (Hospital)', rightX + 8, dy2 + 5, { width: rightCardW - 16 });
-      doc.fillColor(TEXT_DARK).fontSize(8).font('Helvetica').text(po.project?.hospitalAddress ?? '—', rightX + 8, dy2 + 22, { width: rightCardW - 16, height: 20 });
-
-      y += cardH + 15;
-
-      // ── Items table ──
-      doc.fillColor(PRIMARY).fontSize(11).font('Helvetica-Bold').text('Items', margin, y);
-      y += 16;
-
-      // Column layout — all within contentWidth (495)
-      // S.no: 30, Description: 200, Qty: 50, Unit: 40, Unit Price: 80, Total: 95 = 495
-      const cols = [
-        { key: 'sno', label: 'S.no', x: margin, w: 30, align: 'center' },
-        { key: 'desc', label: 'Description', x: margin + 30, w: 200, align: 'left' },
-        { key: 'qty', label: 'Qty', x: margin + 230, w: 50, align: 'center' },
-        { key: 'unit', label: 'Unit', x: margin + 280, w: 40, align: 'center' },
-        { key: 'price', label: 'Unit Price', x: margin + 320, w: 80, align: 'right' },
-        { key: 'total', label: 'Total Amount', x: margin + 400, w: 95, align: 'right' },
-      ];
-      const tableW = contentWidth;
-      const headerH = 22;
-      const rowH = 20;
-
-      // Table header
-      doc.rect(margin, y, tableW, headerH).fill(PRIMARY);
-      doc.fillColor(WHITE).fontSize(8).font('Helvetica-Bold');
-      for (const c of cols) {
-        doc.text(c.label, c.x + 4, y + 7, { width: c.w - 8, align: c.align as 'center' | 'left' | 'right' });
-      }
-      y += headerH;
-
-      // Table rows
-      doc.fontSize(8).font('Helvetica');
-      po.items.forEach((item, idx) => {
-        // Alternating row background
-        doc.rect(margin, y, tableW, rowH).fill(idx % 2 === 0 ? WHITE : PRIMARY_LIGHT);
-        doc.fillColor(TEXT_DARK);
-        doc.text(String(idx + 1), cols[0].x + 4, y + 6, { width: cols[0].w - 8, align: 'center' });
-        doc.text(item.materialName, cols[1].x + 4, y + 6, { width: cols[1].w - 8 });
-        doc.text(String(item.quantity), cols[2].x + 4, y + 6, { width: cols[2].w - 8, align: 'center' });
-        doc.text(item.unit ?? '', cols[3].x + 4, y + 6, { width: cols[3].w - 8, align: 'center' });
-        doc.text(`Rs. ${Number(item.unitPrice).toFixed(2)}`, cols[4].x + 4, y + 6, { width: cols[4].w - 8, align: 'right' });
-        doc.text(`Rs. ${Number(item.amount).toFixed(2)}`, cols[5].x + 4, y + 6, { width: cols[5].w - 8, align: 'right' });
-        y += rowH;
-      });
-      // Table outer border
-      doc.rect(margin, y - po.items.length * rowH - headerH, tableW, po.items.length * rowH + headerH).stroke(PRIMARY);
-
-      // ── Totals section (full width, below table) ──
-      y += 10;
-      const totalsH = 28;
-      const hasGst = Number(po.gstAmount) > 0;
-
-      // Subtotal row
-      doc.rect(margin, y, tableW, totalsH).fill(LIGHT_BG).stroke(BORDER);
-      doc.fillColor(TEXT_DARK).fontSize(9).font('Helvetica').text('Subtotal', margin + 12, y + 9, { width: 300 });
-      doc.fillColor(TEXT_DARK).fontSize(9).font('Helvetica-Bold').text(`Rs. ${Number(po.totalAmount).toFixed(2)}`, margin + 350, y + 9, { width: tableW - 360, align: 'right' });
-      y += totalsH;
-
-      if (hasGst) {
-        doc.rect(margin, y, tableW, totalsH).fill(LIGHT_BG).stroke(BORDER);
-        doc.fillColor(TEXT_DARK).fontSize(9).font('Helvetica').text('GST', margin + 12, y + 9, { width: 300 });
-        doc.fillColor(TEXT_DARK).fontSize(9).font('Helvetica-Bold').text(`Rs. ${Number(po.gstAmount).toFixed(2)}`, margin + 350, y + 9, { width: tableW - 360, align: 'right' });
-        y += totalsH;
-      }
-
-      // Grand total row (highlighted)
-      doc.rect(margin, y, tableW, totalsH + 4).fill(PRIMARY);
-      doc.fillColor(WHITE).fontSize(11).font('Helvetica-Bold').text('GRAND TOTAL', margin + 12, y + 10, { width: 300 });
-      doc.fillColor(WHITE).fontSize(12).font('Helvetica-Bold').text(`Rs. ${Number(po.grandTotal).toFixed(2)}`, margin + 350, y + 9, { width: tableW - 360, align: 'right' });
-      y += totalsH + 4 + 15;
-
-      // ── Approval signatures ──
-      // Check if we need a new page
-      if (y > pageHeight - 120) {
-        doc.addPage({ margin: 50, size: 'A4' });
-        y = 60;
-      }
-
-      doc.fillColor(PRIMARY).fontSize(10).font('Helvetica-Bold').text('Approval & Authorization', margin, y);
-      y += 16;
-
-      const approvedSteps = po.approvalWorkflow?.steps.filter((s) => s.status === 'APPROVED') ?? [];
-      const sigW = (contentWidth - 20) / 3;
-      const sigH = 55;
-
-      for (let i = 0; i < 3; i++) {
-        const sx = margin + i * (sigW + 10);
-        doc.roundedRect(sx, y, sigW, sigH, 4).stroke(BORDER);
-        const step = approvedSteps[i];
-        doc.fillColor(TEXT_MUTED).fontSize(7).font('Helvetica').text(`Approver ${i + 1}`, sx + 6, y + 5, { width: sigW - 12 });
-        if (step) {
-          doc.fillColor(TEXT_DARK).fontSize(8).font('Helvetica-Bold').text(step.approverUser?.name ?? '—', sx + 6, y + 18, { width: sigW - 12 });
-          doc.fillColor(TEXT_MUTED).fontSize(6).font('Helvetica').text((step.approverUser?.role ?? '').replace(/_/g, ' '), sx + 6, y + 30, { width: sigW - 12 });
-          doc.fillColor(GREEN).fontSize(7).font('Helvetica-Bold').text('APPROVED', sx + 6, y + 42, { width: sigW - 12 });
-        } else {
-          doc.fillColor(TEXT_MUTED).fontSize(7).font('Helvetica-Oblique').text('Pending', sx + 6, y + 28, { width: sigW - 12 });
-        }
-      }
-
-      // ── Footer ──
-      y += sigH + 20;
-      doc.moveTo(margin, y).lineTo(pageWidth - margin, y).stroke(PRIMARY);
-      y += 6;
-      doc.fillColor(TEXT_MUTED).fontSize(7).font('Helvetica').text(
-        `Generated on ${new Date(po.createdAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}  |  Created by ${po.createdByUser?.name ?? '—'}`,
-        margin, y, { width: contentWidth, align: 'center' }
-      );
-
-      doc.end();
+      await streamPurchaseOrderPdf(res as unknown as NodeJS.WritableStream, po);
     } catch (error) {
       next(error);
     }
@@ -1289,9 +1087,9 @@ router.post(
             status: 'VERIFICATION',
             currentStep: 0,
             minApprovers: 1,
-            approvalPolicy: 'PO_SINGLE_APPROVER',
+            approvalPolicy: 'PO_HEAD_APPROVERS',
             steps: {
-              create: [UserRole.ADMIN, UserRole.ADMIN_2].map((role, idx) => ({
+              create: [UserRole.PROJECT_HEAD, UserRole.ACCOUNTS_HEAD, UserRole.ADMIN_2].map((role, idx) => ({
                 stepNumber: idx + 1,
                 approverRole: role,
                 status: 'PENDING',

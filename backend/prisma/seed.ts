@@ -112,6 +112,16 @@ async function main() {
         isActive: true,
       },
     }),
+    prisma.user.create({
+      data: {
+        firebaseUid: 'pending-+919999999005',
+        phone: '+919999999005',
+        name: 'Srinivas Sir',
+        role: UserRole.ACCOUNTS_HEAD,
+        projectId: project.id,
+        isActive: true,
+      },
+    }),
   ]);
   console.log(`  ✓ ${users.length} users created (one per role)`);
 
@@ -152,6 +162,7 @@ async function main() {
   console.log('\n📋 Seed Users (replace with real phone numbers before first login):');
   console.log('  PROJECT_HEAD:          Nagarjuna Sir — +91 7386861234');
   console.log('  HEAD_OF_CONSTRUCTION:  Ashok Sir     — +91 9247817812');
+  console.log('  ACCOUNTS_HEAD:         Srinivas Sir  — +91 9999999005');
   console.log('  ADMIN:                 Kaushal Sir   — +91 9030845925');
   console.log('  ADMIN_2:               Vinod Sir     — +91 9550237788');
 }

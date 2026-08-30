@@ -119,7 +119,7 @@ interface PORow {
   } | null;
 }
 
-const HEAD_ROLES = [UserRole.PROJECT_HEAD, UserRole.HEAD_OF_CONSTRUCTION, UserRole.ADMIN, UserRole.ADMIN_2];
+const HEAD_ROLES = [UserRole.PROJECT_HEAD, UserRole.HEAD_OF_CONSTRUCTION, UserRole.ACCOUNTS_HEAD, UserRole.ADMIN, UserRole.ADMIN_2];
 
 export default function PurchaseOrdersPage() {
   const [page, setPage] = useState(0);
@@ -131,6 +131,8 @@ export default function PurchaseOrdersPage() {
   const [selectedVendorId, setSelectedVendorId] = useState('');
   const [selectedQuotationId, setSelectedQuotationId] = useState('');
   const [paymentType, setPaymentType] = useState<string>(POPaymentType.AFTER_DELIVERY);
+  const [paymentTerms, setPaymentTerms] = useState('');
+  const [deliveryDate, setDeliveryDate] = useState('');
   const [selectedBudgetHeadId, setSelectedBudgetHeadId] = useState('');
   const [acknowledged, setAcknowledged] = useState(false);
   const [approvalAction, setApprovalAction] = useState<{ row: PORow; action: 'approve' | 'reject' } | null>(null);
@@ -234,6 +236,8 @@ export default function PurchaseOrdersPage() {
         vendorId: selectedVendorId,
         quotationId: selectedQuotationId,
         paymentType,
+        paymentTerms,
+        deliveryDate,
         acknowledged,
         budgetHeadId: selectedBudgetHeadId || undefined,
       });
@@ -314,6 +318,8 @@ export default function PurchaseOrdersPage() {
     setSelectedVendorId('');
     setSelectedQuotationId('');
     setPaymentType(POPaymentType.AFTER_DELIVERY);
+    setPaymentTerms('');
+    setDeliveryDate('');
     setSelectedBudgetHeadId('');
     setAcknowledged(false);
     setError('');
@@ -605,6 +611,25 @@ export default function PurchaseOrdersPage() {
               <MenuItem value={POPaymentType.AFTER_DELIVERY}>After Delivery — pay after goods arrive + invoice</MenuItem>
               <MenuItem value={POPaymentType.FULL_PAYMENT}>Against Full Payment — full payment done, goods follow</MenuItem>
             </TextField>
+
+            <TextField
+              label="Payment Terms"
+              value={paymentTerms}
+              onChange={(e) => setPaymentTerms(e.target.value)}
+              fullWidth
+              size="small"
+              helperText="E.g. Net 30 Days (After Delivery & Inspection)"
+            />
+
+            <TextField
+              label="Delivery Due Date"
+              type="date"
+              value={deliveryDate}
+              onChange={(e) => setDeliveryDate(e.target.value)}
+              fullWidth
+              size="small"
+              InputLabelProps={{ shrink: true }}
+            />
 
             {/* Budget Head Selection */}
             <TextField

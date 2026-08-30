@@ -82,6 +82,8 @@ model Project {
   officeAddress   String?
   hospitalAddress String?
   gstNumber       String?
+  panNumber       String?
+  logoUrl         String?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
   deletedAt       DateTime?
@@ -237,6 +239,7 @@ model PurchaseOrder {
   date               DateTime  @default(now())
   status             String    @default("PENDING") // POStatus enum
   paymentType        String    @default("AFTER_DELIVERY") // POPaymentType enum: ADVANCE | AFTER_DELIVERY | FULL_PAYMENT
+  paymentTerms       String?
   deliveryDate       DateTime?
   totalAmount        Decimal   @default(0) @db.Decimal(15, 2)
   gstAmount          Decimal   @default(0) @db.Decimal(15, 2)

@@ -1,13 +1,16 @@
 import { Router, Response, NextFunction } from 'express';
 import { z } from 'zod';
+import multer from 'multer';
 import { prisma } from '../config/prisma';
 import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middleware/auth';
 import { validateMiddleware } from '../middleware/validate';
 import { logAudit } from '../services/audit.service';
 import { AuditAction } from '@hospital-erp/shared';
+import { getStorageService } from '../services/storage.service';
 
 const router = Router();
 router.use(authMiddleware);
+const logoUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
 
 const updateProfileSchema = z.object({
   body: z.object({
@@ -24,6 +27,8 @@ const updateProjectSettingsSchema = z.object({
     officeAddress: z.string().max(2000).optional(),
     hospitalAddress: z.string().max(2000).optional(),
     gstNumber: z.string().max(50).optional(),
+    panNumber: z.string().max(50).optional(),
+    logoUrl: z.string().max(1000).optional(),
   }),
 });
 
@@ -44,6 +49,8 @@ router.get(
           officeAddress: true,
           hospitalAddress: true,
           gstNumber: true,
+          panNumber: true,
+          logoUrl: true,
         },
       });
       if (!project) {
@@ -64,7 +71,7 @@ router.patch(
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const projectId = requireProjectId(req);
-      const { name, description, totalBudget, officeAddress, hospitalAddress, gstNumber } = req.body;
+      const { name, description, totalBudget, officeAddress, hospitalAddress, gstNumber, panNumber, logoUrl } = req.body;
 
       const updateData: Record<string, unknown> = {};
       if (name !== undefined) updateData.name = name;
@@ -73,6 +80,8 @@ router.patch(
       if (officeAddress !== undefined) updateData.officeAddress = officeAddress;
       if (hospitalAddress !== undefined) updateData.hospitalAddress = hospitalAddress;
       if (gstNumber !== undefined) updateData.gstNumber = gstNumber;
+      if (panNumber !== undefined) updateData.panNumber = panNumber;
+      if (logoUrl !== undefined) updateData.logoUrl = logoUrl;
 
       const updated = await prisma.project.update({
         where: { id: projectId },
@@ -86,7 +95,41 @@ router.patch(
           officeAddress: true,
           hospitalAddress: true,
           gstNumber: true,
+          panNumber: true,
+          logoUrl: true,
         },
+      });
+
+      res.json(updated);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// POST /logo — upload project logo
+router.post(
+  '/logo',
+  logoUpload.single('logo'),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      if (!req.file) {
+        res.status(400).json({ error: 'No logo uploaded' });
+        return;
+      }
+      if (!req.file.mimetype.startsWith('image/')) {
+        res.status(400).json({ error: 'Logo must be an image' });
+        return;
+      }
+
+      const storage = getStorageService();
+      const result = await storage.upload(req.file.buffer, req.file.originalname, req.file.mimetype, 'logos');
+
+      const updated = await prisma.project.update({
+        where: { id: projectId },
+        data: { logoUrl: result.filePath },
+        select: { id: true, logoUrl: true },
       });
 
       res.json(updated);

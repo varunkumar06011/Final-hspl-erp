@@ -123,6 +123,8 @@ export const createPOSchema = z.object({
     vendorId: uuid,
     quotationId: uuid,
     paymentType: z.nativeEnum(POPaymentType),
+    paymentTerms: z.string().max(500).optional(),
+    deliveryDate: z.coerce.date().optional().or(z.literal('').transform(() => undefined)),
     acknowledged: acknowledgement,
     budgetHeadId: uuid.optional(),
   }),

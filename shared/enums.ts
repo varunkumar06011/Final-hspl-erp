@@ -9,6 +9,7 @@ export enum UserRole {
   SITE_SUPERVISOR = 'SITE_SUPERVISOR',
   PROJECT_HEAD = 'PROJECT_HEAD',
   HEAD_OF_CONSTRUCTION = 'HEAD_OF_CONSTRUCTION',
+  ACCOUNTS_HEAD = 'ACCOUNTS_HEAD',
   ADMIN = 'ADMIN',
   ADMIN_2 = 'ADMIN_2',
 }
@@ -16,6 +17,7 @@ export enum UserRole {
 export const APPROVER_ROLES = [
   UserRole.PROJECT_HEAD,
   UserRole.HEAD_OF_CONSTRUCTION,
+  UserRole.ACCOUNTS_HEAD,
   UserRole.ADMIN,
   UserRole.ADMIN_2,
 ] as const;
@@ -502,6 +504,13 @@ export const PERMISSION_MATRIX: Record<UserRole, Permission[]> = {
     Permission.MANAGE_INSPECTIONS,
     Permission.MANAGE_DOCUMENTS,
     Permission.MANAGE_LABOUR,
+  ],
+  [UserRole.ACCOUNTS_HEAD]: [
+    Permission.CREATE_PO,
+    Permission.VERIFY_INVOICE,
+    Permission.VIEW_FINANCIALS,
+    Permission.MANAGE_FINANCE,
+    Permission.MANAGE_USERS,
   ],
   [UserRole.ADMIN]: [
     Permission.CREATE_VENDOR,
