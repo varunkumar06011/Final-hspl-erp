@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   Box,
   Typography,
@@ -38,6 +38,7 @@ export default function SettingsPage() {
   const [gstNumber, setGstNumber] = useState('');
   const [panNumber, setPanNumber] = useState('');
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [profileName, setProfileName] = useState('');
   const [profilePhone, setProfilePhone] = useState('');
   const [oldPin, setOldPin] = useState('');
@@ -100,8 +101,17 @@ export default function SettingsPage() {
     mutationFn: async (file: File) => {
       const formData = new FormData();
       formData.append('logo', file);
-      const response = await api.post('/settings/logo', formData);
-      return response.data;
+      const token = localStorage.getItem('firebaseToken');
+      const response = await fetch(`${api.defaults.baseURL}/settings/logo`, {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: formData,
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error ?? `Upload failed: ${response.status}`);
+      }
+      return response.json();
     },
     onSuccess: (data) => {
       setLogoUrl(data.logoUrl);
@@ -296,17 +306,31 @@ export default function SettingsPage() {
               size="small"
               helperText="Company PAN shown on PO PDFs"
             />
-            <TextField
-              type="file"
-              inputProps={{ accept: 'image/*' }}
-              onChange={(e) => {
-                const f = (e.target as HTMLInputElement).files?.[0];
-                if (f) uploadLogoMutation.mutate(f);
-              }}
-              fullWidth
-              size="small"
-              helperText={logoUrl ? `Logo uploaded: ${logoUrl}` : 'Upload company logo for PO PDFs (optional)'}
-            />
+            <Box>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                style={{ display: 'none' }}
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) uploadLogoMutation.mutate(f);
+                  if (e.target) e.target.value = '';
+                }}
+              />
+              <Button
+                variant="outlined"
+                size="small"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploadLogoMutation.isPending}
+                sx={{ mr: 1 }}
+              >
+                {uploadLogoMutation.isPending ? <CircularProgress size={18} /> : 'Choose Logo'}
+              </Button>
+              <Typography variant="body2" color="text.secondary" component="span">
+                {logoUrl ? `Logo uploaded: ${logoUrl}` : 'Upload company logo for PO PDFs (optional)'}
+              </Typography>
+            </Box>
             <TextField
               label="Total Budget"
               type="text"
