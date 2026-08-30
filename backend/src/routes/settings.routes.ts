@@ -21,6 +21,9 @@ const updateProjectSettingsSchema = z.object({
     name: z.string().min(1).max(200).optional(),
     description: z.string().max(2000).optional(),
     totalBudget: z.coerce.number().min(0).optional(),
+    officeAddress: z.string().max(2000).optional(),
+    hospitalAddress: z.string().max(2000).optional(),
+    gstNumber: z.string().max(50).optional(),
   }),
 });
 
@@ -38,6 +41,9 @@ router.get(
           description: true,
           totalBudget: true,
           status: true,
+          officeAddress: true,
+          hospitalAddress: true,
+          gstNumber: true,
         },
       });
       if (!project) {
@@ -58,12 +64,15 @@ router.patch(
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const projectId = requireProjectId(req);
-      const { name, description, totalBudget } = req.body;
+      const { name, description, totalBudget, officeAddress, hospitalAddress, gstNumber } = req.body;
 
       const updateData: Record<string, unknown> = {};
       if (name !== undefined) updateData.name = name;
       if (description !== undefined) updateData.description = description;
       if (totalBudget !== undefined) updateData.totalBudget = totalBudget;
+      if (officeAddress !== undefined) updateData.officeAddress = officeAddress;
+      if (hospitalAddress !== undefined) updateData.hospitalAddress = hospitalAddress;
+      if (gstNumber !== undefined) updateData.gstNumber = gstNumber;
 
       const updated = await prisma.project.update({
         where: { id: projectId },
@@ -74,6 +83,9 @@ router.patch(
           description: true,
           totalBudget: true,
           status: true,
+          officeAddress: true,
+          hospitalAddress: true,
+          gstNumber: true,
         },
       });
 
