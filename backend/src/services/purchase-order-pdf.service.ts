@@ -57,7 +57,14 @@ export async function streamPurchaseOrderPdf(res: NodeJS.WritableStream, po: any
   // ── Top header box ──
   const headerTop = 28;
   const headerH = 100;
+  const poBoxW = 130;
+  const poBoxX = right - poBoxW - 16;
+
   doc.roundedRect(left, headerTop, width, headerH, 6).fill('#ffffff').stroke(border);
+
+  // Vertical separator between company info and PO number
+  const sepX = poBoxX - 8;
+  doc.moveTo(sepX, headerTop + 15).lineTo(sepX, headerTop + headerH - 15).stroke(border);
 
   // Logo on the left
   const logoW = 80;
@@ -89,11 +96,9 @@ export async function streamPurchaseOrderPdf(res: NodeJS.WritableStream, po: any
   doc.font('Helvetica').fontSize(9).fillColor(muted).text(text(po.project?.officeAddress ?? 'V Grand Health Care Pvt. Ltd.'), titleX, addrY, { width: titleWidth });
 
   // PO number box on the right
-  const poBoxW = 130;
-  const poBoxX = right - poBoxW - 10;
   doc.roundedRect(poBoxX, headerTop + 14, poBoxW, 70, 4).fill('#ffffff').stroke(border);
-  doc.fillColor(primary).font('Helvetica-Bold').fontSize(10).text('PO NUMBER', poBoxX + 10, headerTop + 30);
-  doc.fillColor(dark).font('Helvetica-Bold').fontSize(15).text(po.poNumber, poBoxX + 10, headerTop + 52, { width: poBoxW - 20 });
+  doc.fillColor(primary).font('Helvetica-Bold').fontSize(10).text('PO NUMBER', poBoxX, headerTop + 30, { width: poBoxW, align: 'center' });
+  doc.fillColor(dark).font('Helvetica-Bold').fontSize(15).text(po.poNumber, poBoxX, headerTop + 52, { width: poBoxW, align: 'center' });
 
   let y = 145;
 
