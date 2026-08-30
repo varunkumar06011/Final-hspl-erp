@@ -101,17 +101,10 @@ export default function SettingsPage() {
     mutationFn: async (file: File) => {
       const formData = new FormData();
       formData.append('logo', file);
-      const token = localStorage.getItem('firebaseToken');
-      const response = await fetch(`${api.defaults.baseURL}/settings/logo`, {
-        method: 'POST',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-        body: formData,
+      const response = await api.post('/settings/logo', formData, {
+        headers: { 'Content-Type': undefined } as any,
       });
-      if (!response.ok) {
-        const data = await response.json().catch(() => ({}));
-        throw new Error(data.error ?? `Upload failed: ${response.status}`);
-      }
-      return response.json();
+      return response.data;
     },
     onSuccess: (data) => {
       setLogoUrl(data.logoUrl);
