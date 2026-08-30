@@ -444,6 +444,14 @@ export const PERMISSION_MATRIX: Record<UserRole, Permission[]> = {
     Permission.VIEW_GATE_PASSES,
     Permission.VIEW_FINANCIALS,
     Permission.MANAGE_FINANCE,
+    // Site Operations — full CRUD; approvals are not applicable to these modules
+    Permission.MANAGE_INVENTORY,
+    Permission.MANAGE_LABOUR,
+    Permission.UPLOAD_PHOTOS,
+    Permission.MANAGE_ISSUES,
+    Permission.MANAGE_INSPECTIONS,
+    Permission.MANAGE_DOCUMENTS,
+    Permission.MANAGE_CONTRACTS,
   ],
   [UserRole.SITE_SUPERVISOR]: [
     Permission.CREATE_GATE_PASS,
