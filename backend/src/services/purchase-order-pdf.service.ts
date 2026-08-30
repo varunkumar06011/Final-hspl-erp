@@ -11,10 +11,10 @@ export async function streamPurchaseOrderPdf(res: NodeJS.WritableStream, po: any
   const pageW = 595;
   const pageH = 842;
   const left = 42;
-  const right = pageW - 42;
-  const width = pageW - 84;
+  const right = pageW - left;
+  const width = right - left;
 
-  // Dark corporate teal — closer to the requested mock-up
+  // Dark corporate teal
   const primary = '#0F4C4C';
   const primaryLight = '#E3F2F2';
   const dark = '#1c2b36';
@@ -59,7 +59,7 @@ export async function streamPurchaseOrderPdf(res: NodeJS.WritableStream, po: any
   // ── Top header bar ──
   doc.rect(0, 0, pageW, 115).fill(primary);
 
-  // Logo on the left (fit within 80x70 box)
+  // Logo on the left
   if (logoBuffer) {
     try {
       doc.image(logoBuffer, left, 22, { fit: [80, 70] });
@@ -87,10 +87,11 @@ export async function streamPurchaseOrderPdf(res: NodeJS.WritableStream, po: any
   y += 32;
 
   // ── Left info column ──
+  const leftW = 235;
+  const gap = 10;
+  const rightW = width - leftW - gap;
   const leftCol = left;
-  const leftW = width * 0.48;
-  const rightCol = left + leftW + 24;
-  const rightW = width * 0.52;
+  const rightCol = left + leftW + gap;
 
   const drawLabel = (labelText: string, value: string, xx: number, yy: number, ww: number) => {
     doc.fillColor(muted).font('Helvetica').fontSize(8).text(`${labelText}:`, xx, yy, { width: 88 });
@@ -112,7 +113,7 @@ export async function streamPurchaseOrderPdf(res: NodeJS.WritableStream, po: any
 
   // ── Vendor Details box on the right ──
   const vBoxTop = 158;
-  const vBoxH = 100;
+  const vBoxH = 110;
   doc.roundedRect(rightCol, vBoxTop, rightW, vBoxH, 4).stroke(border);
   doc.rect(rightCol, vBoxTop, rightW, 24).fill(primary);
   doc.fillColor('#fff').font('Helvetica-Bold').fontSize(11).text('VENDOR DETAILS:', rightCol + 10, vBoxTop + 6);
@@ -138,48 +139,56 @@ export async function streamPurchaseOrderPdf(res: NodeJS.WritableStream, po: any
   y = Math.max(y, vBoxTop + vBoxH + 20);
 
   // ── Bill To & Delivery address boxes ──
-  const half = width / 2;
-  const boxH = 78;
+  const midGap = 10;
+  const boxW = (width - midGap) / 2;
+
+  // Measure address heights so boxes are tall enough and do not overlap text
+  doc.font('Helvetica').fontSize(8.5);
+  const billAddrH = doc.heightOfString(text(po.project?.officeAddress), { width: boxW - 28 });
+  const delAddrH = doc.heightOfString(text(po.project?.hospitalAddress), { width: boxW - 38 });
+  const boxH = Math.max(100, 30 + 18 + Math.max(billAddrH, delAddrH) + 24);
 
   // Bill To
-  doc.roundedRect(left, y, half - 10, boxH, 4).stroke(border);
-  doc.rect(left, y, half - 10, 24).fill(primary);
-  doc.fillColor('#fff').font('Helvetica-Bold').fontSize(11).text('BILL TO:', left + 10, y + 6);
-  doc.fillColor(dark).font('Helvetica-Bold').fontSize(9.5).text(text(po.project?.name), left + 10, y + 34);
-  doc.fillColor(dark).font('Helvetica').fontSize(8.5).text(text(po.project?.officeAddress), left + 10, y + 49, { width: half - 30 });
-  doc.fillColor(muted).font('Helvetica').fontSize(7.5).text(`GSTIN: ${text(po.project?.gstNumber)}  |  PAN: ${text(po.project?.panNumber)}`, left + 10, y + boxH - 13, { width: half - 26 });
+  const billBoxX = left;
+  doc.roundedRect(billBoxX, y, boxW, boxH, 4).stroke(border);
+  doc.rect(billBoxX, y, boxW, 24).fill(primary);
+  doc.fillColor('#fff').font('Helvetica-Bold').fontSize(11).text('BILL TO:', billBoxX + 10, y + 6);
+  doc.fillColor(dark).font('Helvetica-Bold').fontSize(9.5).text(text(po.project?.name), billBoxX + 10, y + 32);
+  doc.fillColor(dark).font('Helvetica').fontSize(8.5).text(text(po.project?.officeAddress), billBoxX + 10, y + 50, { width: boxW - 28 });
+  doc.fillColor(muted).font('Helvetica').fontSize(7.5).text(`GSTIN: ${text(po.project?.gstNumber)}  |  PAN: ${text(po.project?.panNumber)}`, billBoxX + 10, y + boxH - 15, { width: boxW - 26 });
 
   // Delivery
-  doc.roundedRect(left + half + 10, y, half - 10, boxH, 4).stroke(border);
-  doc.rect(left + half + 10, y, half - 10, 24).fill(primary);
-  doc.fillColor('#fff').font('Helvetica-Bold').fontSize(11).text('DELIVERY ADDRESS (Hospital Site):', left + half + 20, y + 6);
-  doc.fillColor(dark).font('Helvetica').fontSize(8.5).text(text(po.project?.hospitalAddress), left + half + 20, y + 34, { width: half - 40 });
+  const delBoxX = left + boxW + midGap;
+  doc.roundedRect(delBoxX, y, boxW, boxH, 4).stroke(border);
+  doc.rect(delBoxX, y, boxW, 24).fill(primary);
+  doc.fillColor('#fff').font('Helvetica-Bold').fontSize(11).text('DELIVERY ADDRESS (Hospital Site):', delBoxX + 10, y + 6);
+  doc.fillColor(dark).font('Helvetica').fontSize(8.5).text(text(po.project?.hospitalAddress), delBoxX + 10, y + 34, { width: boxW - 38 });
 
   y += boxH + 22;
 
   // ── Items table ──
-  const colSno = left;
-  const colDesc = left + 30;
-  const colQty = left + 250;
-  const colUnit = left + 295;
-  const colPrice = left + 345;
-  const colTotal = left + 445;
-
-  const wSno = 30;
-  const wDesc = 220;
-  const wQty = 45;
-  const wUnit = 50;
+  const wSno = 25;
+  const wDesc = 180;
+  const wQty = 42;
+  const wUnit = 52;
   const wPrice = 95;
-  const wTotal = 105;
+  const wTotal = 112;
+
+  const colSno = left;
+  const colDesc = left + wSno;
+  const colQty = colDesc + wDesc;
+  const colUnit = colQty + wQty;
+  const colPrice = colUnit + wUnit;
+  const colTotal = colPrice + wPrice;
 
   doc.rect(left, y, width, 26).fill(primary);
   doc.fillColor('#fff').font('Helvetica-Bold').fontSize(9);
-  doc.text('S.No', colSno + 4, y + 7, { width: wSno, align: 'center' });
-  doc.text('Item Description', colDesc + 4, y + 7, { width: wDesc });
-  doc.text('Qty', colQty + 4, y + 7, { width: wQty, align: 'center' });
-  doc.text('Unit', colUnit + 4, y + 7, { width: wUnit, align: 'center' });
-  doc.text('Unit Price', colPrice + 4, y + 7, { width: wPrice, align: 'right' });
-  doc.text('Total Amount', colTotal + 4, y + 7, { width: wTotal, align: 'right' });
+  doc.text('S.No', colSno, y + 7, { width: wSno, align: 'center' });
+  doc.text('Item Description', colDesc, y + 7, { width: wDesc });
+  doc.text('Qty', colQty, y + 7, { width: wQty, align: 'center' });
+  doc.text('Unit', colUnit, y + 7, { width: wUnit, align: 'center' });
+  doc.text('Unit Price', colPrice, y + 7, { width: wPrice, align: 'right' });
+  doc.text('Total', colTotal, y + 7, { width: wTotal, align: 'right' });
   y += 26;
 
   const rowH = 24;
@@ -190,13 +199,13 @@ export async function streamPurchaseOrderPdf(res: NodeJS.WritableStream, po: any
 
     if (item) {
       doc.fillColor(dark).font('Helvetica').fontSize(8.5);
-      doc.text(String(i + 1), colSno + 4, y + 6, { width: wSno, align: 'center' });
-      doc.text(item.materialName, colDesc + 4, y + 6, { width: wDesc });
-      doc.text(String(item.quantity), colQty + 4, y + 6, { width: wQty, align: 'center' });
-      doc.text(item.unit ?? '', colUnit + 4, y + 6, { width: wUnit, align: 'center' });
+      doc.text(String(i + 1), colSno, y + 6, { width: wSno, align: 'center' });
+      doc.text(item.materialName, colDesc, y + 6, { width: wDesc });
+      doc.text(String(item.quantity), colQty, y + 6, { width: wQty, align: 'center' });
+      doc.text(item.unit ?? '', colUnit, y + 6, { width: wUnit, align: 'center' });
       doc.fillColor(dark).font('Helvetica-Bold').fontSize(8.5);
-      doc.text(fmtMoney(Number(item.unitPrice)), colPrice + 4, y + 6, { width: wPrice, align: 'right' });
-      doc.text(fmtMoney(Number(item.amount)), colTotal + 4, y + 6, { width: wTotal, align: 'right' });
+      doc.text(fmtMoney(Number(item.unitPrice)), colPrice, y + 6, { width: wPrice, align: 'right' });
+      doc.text(fmtMoney(Number(item.amount)), colTotal, y + 6, { width: wTotal, align: 'right' });
     }
     y += rowH;
   }
@@ -217,7 +226,8 @@ export async function streamPurchaseOrderPdf(res: NodeJS.WritableStream, po: any
 
   y += 12;
   y = drawTotal('Subtotal:', fmtMoney(Number(po.totalAmount)), y);
-  const gstLabel = Number(po.gstAmount) > 0 ? `GST (${Number(po.items[0]?.gstRate ?? 0)}%):` : 'GST: Rs. 0 (No Gst Applicable)';
+  const gstRate = po.items.length > 0 ? Number(po.items[0]?.gstRate ?? 0) : 0;
+  const gstLabel = Number(po.gstAmount) > 0 ? `GST (${gstRate}%):` : 'GST (No Gst Applicable):';
   y = drawTotal(gstLabel, Number(po.gstAmount) > 0 ? fmtMoney(Number(po.gstAmount)) : 'Rs. 0.00', y);
   y = drawTotal('GRAND TOTAL (Inclusive of all taxes):', fmtMoney(Number(po.grandTotal)), y, true);
   y += 36;
