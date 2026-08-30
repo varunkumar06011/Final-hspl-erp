@@ -1,4 +1,5 @@
 import PDFDocument from 'pdfkit';
+import sharp from 'sharp';
 import { getStorageService } from './storage.service';
 import { POPaymentType } from '@hospital-erp/shared';
 import { prisma } from '../config/prisma';
@@ -9,30 +10,36 @@ export async function streamPurchaseOrderPdf(res: NodeJS.WritableStream, po: any
 
   const pageW = 595;
   const pageH = 842;
-  const left = 40;
-  const right = pageW - 40;
-  const width = pageW - 80;
+  const left = 42;
+  const right = pageW - 42;
+  const width = pageW - 84;
 
-  const teal = '#00695c';
-  const tealLight = '#e0f2f1';
-  const dark = '#263238';
-  const muted = '#546e7a';
-  const border = '#b0bec5';
+  // Dark corporate teal — closer to the requested mock-up
+  const primary = '#0F4C4C';
+  const primaryLight = '#E3F2F2';
+  const dark = '#1c2b36';
+  const muted = '#5f6f7b';
+  const border = '#90a4ae';
 
   const fmtMoney = (n: number) => `Rs. ${Number(n).toFixed(2)}`;
   const text = (v: unknown) => (v === null || v === undefined || v === '' ? '—' : String(v));
 
-  // Load logo if present
+  // ── Load logo if present ──
   let logoBuffer: Buffer | null = null;
   if (po.project?.logoUrl) {
     try {
-      logoBuffer = await getStorageService().getFile(po.project.logoUrl);
-    } catch {
-      logoBuffer = null;
+      const raw = await getStorageService().getFile(po.project.logoUrl);
+      logoBuffer = await sharp(raw)
+        .flatten({ background: { r: 15, g: 76, b: 76 } })
+        .jpeg({ quality: 90 })
+        .resize({ width: 200, height: 90, fit: 'inside', withoutEnlargement: true })
+        .toBuffer();
+    } catch (err: any) {
+      console.error('[PO PDF] Failed to load/process logo:', err?.message ?? err);
     }
   }
 
-  // Find project users in named approver roles for the signature boxes
+  // ── Find project users in named approver roles ──
   const approvers = await prisma.user.findMany({
     where: { projectId: po.projectId, isActive: true, role: { in: ['PROJECT_HEAD', 'ACCOUNTS_HEAD', 'ADMIN_2'] } },
     select: { name: true, role: true },
@@ -50,59 +57,65 @@ export async function streamPurchaseOrderPdf(res: NodeJS.WritableStream, po: any
   }
 
   // ── Top header bar ──
-  doc.rect(0, 0, pageW, 110).fill(teal);
+  doc.rect(0, 0, pageW, 115).fill(primary);
 
-  // Logo on the left
+  // Logo on the left (fit within 80x70 box)
   if (logoBuffer) {
     try {
-      doc.image(logoBuffer, left, 20, { height: 70 });
-    } catch {}
+      doc.image(logoBuffer, left, 22, { fit: [80, 70] });
+    } catch (err: any) {
+      console.error('[PO PDF] Failed to render logo image:', err?.message ?? err);
+    }
   }
 
+  const titleX = left + (logoBuffer ? 92 : 0);
+
   // Title block
-  doc.fillColor('#fff').font('Helvetica-Bold').fontSize(22).text(text(po.project?.name ?? 'Hospital Construction ERP'), left + (logoBuffer ? 90 : 0), 25);
-  doc.font('Helvetica').fontSize(9).fillColor(tealLight).text(text(po.project?.officeAddress ?? 'V Grand Health Care Pvt. Ltd.'), left + (logoBuffer ? 90 : 0), 52, { width: 280 });
+  doc.fillColor('#fff').font('Helvetica-Bold').fontSize(22).text(text(po.project?.name ?? 'Hospital Construction ERP'), titleX, 24, { width: 245 });
+  doc.font('Helvetica').fontSize(9).fillColor(primaryLight).text(text(po.project?.officeAddress ?? 'V Grand Health Care Pvt. Ltd.'), titleX, 56, { width: 245 });
 
   // PO number box on the right
-  doc.roundedRect(pageW - 200, 20, 160, 70, 4).fill('#fff');
-  doc.fillColor(teal).font('Helvetica-Bold').fontSize(11).text('PO NUMBER', pageW - 190, 32);
-  doc.fillColor(dark).font('Helvetica-Bold').fontSize(14).text(po.poNumber, pageW - 190, 52);
+  const poBoxX = pageW - 178;
+  doc.roundedRect(poBoxX, 20, 136, 75, 4).fill('#fff');
+  doc.fillColor(primary).font('Helvetica-Bold').fontSize(10).text('PO NUMBER', poBoxX + 10, 32);
+  doc.fillColor(dark).font('Helvetica-Bold').fontSize(15).text(po.poNumber, poBoxX + 10, 55, { width: 116 });
 
-  let y = 130;
+  let y = 135;
 
   // ── Subtitle header ──
-  doc.fillColor(teal).font('Helvetica-Bold').fontSize(16).text('PURCHASE ORDER', left, y);
-  y += 28;
+  doc.fillColor(primary).font('Helvetica-Bold').fontSize(18).text('PURCHASE ORDER', left, y);
+  y += 32;
 
-  // ── Two column info area ──
+  // ── Left info column ──
   const leftCol = left;
   const leftW = width * 0.48;
   const rightCol = left + leftW + 24;
   const rightW = width * 0.52;
 
-  const label = (l: string, v: string, x: number, yy: number, ww: number) => {
-    doc.fillColor(muted).font('Helvetica').fontSize(8).text(`${l}:`, x, yy, { width: 80 });
-    doc.fillColor(dark).font('Helvetica-Bold').fontSize(9).text(v, x + 80, yy, { width: ww - 80 });
+  const drawLabel = (labelText: string, value: string, xx: number, yy: number, ww: number) => {
+    doc.fillColor(muted).font('Helvetica').fontSize(8).text(`${labelText}:`, xx, yy, { width: 88 });
+    const valueW = ww - 96;
+    doc.font('Helvetica-Bold').fontSize(9);
+    const valueH = doc.heightOfString(value, { width: valueW });
+    doc.fillColor(dark).font('Helvetica-Bold').fontSize(9).text(value, xx + 92, yy, { width: valueW });
+    return yy + Math.max(18, valueH + 6);
   };
 
   const paymentTerms = po.paymentTerms || (po.paymentType === POPaymentType.AFTER_DELIVERY ? 'Net 30 Days (After Delivery & Inspection)' : '—');
   const projectHeadApproved = approvedByRole['PROJECT_HEAD'];
 
-  label('Date', new Date(po.createdAt).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' }), leftCol, y, leftW);
-  y += 16;
-  label('Created By', text(po.createdByUser?.name), leftCol, y, leftW);
-  y += 16;
-  label('Delivery Due Date', po.deliveryDate ? new Date(po.deliveryDate).toLocaleDateString('en-IN') : '—', leftCol, y, leftW);
-  y += 16;
-  label('Payment Terms', text(paymentTerms), leftCol, y, leftW);
-  y += 16;
-  label('Project Head', projectHeadApproved ? `${head?.name ?? '—'} (Approved)` : `${head?.name ?? '—'} (Pending)`, leftCol, y, leftW);
+  y = drawLabel('Date', new Date(po.createdAt).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' }), leftCol, y, leftW);
+  y = drawLabel('Created By', text(po.createdByUser?.name), leftCol, y, leftW);
+  y = drawLabel('Delivery Due Date', po.deliveryDate ? new Date(po.deliveryDate).toLocaleDateString('en-IN') : '—', leftCol, y, leftW);
+  y = drawLabel('Payment Terms', text(paymentTerms), leftCol, y, leftW);
+  y = drawLabel('Project Head', projectHeadApproved ? `${head?.name ?? '—'} (Approved)` : `${head?.name ?? '—'} (Pending)`, leftCol, y, leftW);
 
   // ── Vendor Details box on the right ──
-  const vh = 95;
-  doc.roundedRect(rightCol, 150, rightW, vh, 4).stroke(border);
-  doc.rect(rightCol, 150, rightW, 22).fill(teal);
-  doc.fillColor('#fff').font('Helvetica-Bold').fontSize(10).text('VENDOR DETAILS:', rightCol + 8, 156);
+  const vBoxTop = 158;
+  const vBoxH = 100;
+  doc.roundedRect(rightCol, vBoxTop, rightW, vBoxH, 4).stroke(border);
+  doc.rect(rightCol, vBoxTop, rightW, 24).fill(primary);
+  doc.fillColor('#fff').font('Helvetica-Bold').fontSize(11).text('VENDOR DETAILS:', rightCol + 10, vBoxTop + 6);
 
   const vData = [
     ['Name', text(po.vendor?.name)],
@@ -111,102 +124,115 @@ export async function streamPurchaseOrderPdf(res: NodeJS.WritableStream, po: any
     ['PAN', text(po.vendor?.panNumber)],
   ];
 
-  let vy = 178;
+  let vy = vBoxTop + 34;
   for (const [k, v] of vData) {
-    doc.fillColor(muted).font('Helvetica').fontSize(8).text(`${k}:`, rightCol + 8, vy, { width: 60 });
-    doc.fillColor(dark).font('Helvetica-Bold').fontSize(9).text(v, rightCol + 70, vy, { width: rightW - 80 });
-    vy += 16;
+    const vLabelW = 60;
+    const vValueW = rightW - vLabelW - 22;
+    doc.font('Helvetica-Bold').fontSize(8.5);
+    const vh = doc.heightOfString(v, { width: vValueW });
+    doc.fillColor(muted).font('Helvetica').fontSize(8.5).text(`${k}:`, rightCol + 10, vy, { width: vLabelW });
+    doc.fillColor(dark).font('Helvetica-Bold').fontSize(8.5).text(v, rightCol + 10 + vLabelW, vy, { width: vValueW });
+    vy += Math.max(15, vh + 4);
   }
 
-  y = Math.max(y + 20, 150 + vh + 20);
+  y = Math.max(y, vBoxTop + vBoxH + 20);
 
   // ── Bill To & Delivery address boxes ──
   const half = width / 2;
-  const boxH = 75;
+  const boxH = 78;
 
   // Bill To
   doc.roundedRect(left, y, half - 10, boxH, 4).stroke(border);
-  doc.rect(left, y, half - 10, 22).fill(teal);
-  doc.fillColor('#fff').font('Helvetica-Bold').fontSize(10).text('BILL TO:', left + 8, y + 6);
-  doc.fillColor(dark).font('Helvetica-Bold').fontSize(9).text(text(po.project?.name), left + 8, y + 30);
-  doc.fillColor(dark).font('Helvetica').fontSize(8).text(text(po.project?.officeAddress), left + 8, y + 44, { width: half - 26 });
-  doc.fillColor(muted).font('Helvetica').fontSize(7).text(`GSTIN: ${text(po.project?.gstNumber)} | PAN: ${text(po.project?.panNumber)}`, left + 8, y + boxH - 12, { width: half - 26 });
+  doc.rect(left, y, half - 10, 24).fill(primary);
+  doc.fillColor('#fff').font('Helvetica-Bold').fontSize(11).text('BILL TO:', left + 10, y + 6);
+  doc.fillColor(dark).font('Helvetica-Bold').fontSize(9.5).text(text(po.project?.name), left + 10, y + 34);
+  doc.fillColor(dark).font('Helvetica').fontSize(8.5).text(text(po.project?.officeAddress), left + 10, y + 49, { width: half - 30 });
+  doc.fillColor(muted).font('Helvetica').fontSize(7.5).text(`GSTIN: ${text(po.project?.gstNumber)}  |  PAN: ${text(po.project?.panNumber)}`, left + 10, y + boxH - 13, { width: half - 26 });
 
   // Delivery
   doc.roundedRect(left + half + 10, y, half - 10, boxH, 4).stroke(border);
-  doc.rect(left + half + 10, y, half - 10, 22).fill(teal);
-  doc.fillColor('#fff').font('Helvetica-Bold').fontSize(10).text('DELIVERY ADDRESS (Hospital Site):', left + half + 18, y + 6);
-  doc.fillColor(dark).font('Helvetica').fontSize(8).text(text(po.project?.hospitalAddress), left + half + 18, y + 30, { width: half - 36 });
+  doc.rect(left + half + 10, y, half - 10, 24).fill(primary);
+  doc.fillColor('#fff').font('Helvetica-Bold').fontSize(11).text('DELIVERY ADDRESS (Hospital Site):', left + half + 20, y + 6);
+  doc.fillColor(dark).font('Helvetica').fontSize(8.5).text(text(po.project?.hospitalAddress), left + half + 20, y + 34, { width: half - 40 });
 
-  y += boxH + 20;
+  y += boxH + 22;
 
   // ── Items table ──
   const colSno = left;
-  const colDesc = left + 40;
-  const colQty = left + 290;
-  const colUnit = left + 340;
-  const colPrice = left + 390;
-  const colTotal = left + 470;
+  const colDesc = left + 30;
+  const colQty = left + 250;
+  const colUnit = left + 295;
+  const colPrice = left + 345;
+  const colTotal = left + 445;
 
-  doc.rect(left, y, width, 24).fill(teal);
+  const wSno = 30;
+  const wDesc = 220;
+  const wQty = 45;
+  const wUnit = 50;
+  const wPrice = 95;
+  const wTotal = 105;
+
+  doc.rect(left, y, width, 26).fill(primary);
   doc.fillColor('#fff').font('Helvetica-Bold').fontSize(9);
-  doc.text('S.No', colSno + 6, y + 7, { width: 30 });
-  doc.text('Item Description', colDesc + 6, y + 7, { width: 200 });
-  doc.text('Qty', colQty + 6, y + 7, { width: 40, align: 'center' });
-  doc.text('Unit', colUnit + 6, y + 7, { width: 40, align: 'center' });
-  doc.text('Unit Price', colPrice + 6, y + 7, { width: 70, align: 'right' });
-  doc.text('Total Amount', colTotal + 6, y + 7, { width: 80, align: 'right' });
-  y += 24;
+  doc.text('S.No', colSno + 4, y + 7, { width: wSno, align: 'center' });
+  doc.text('Item Description', colDesc + 4, y + 7, { width: wDesc });
+  doc.text('Qty', colQty + 4, y + 7, { width: wQty, align: 'center' });
+  doc.text('Unit', colUnit + 4, y + 7, { width: wUnit, align: 'center' });
+  doc.text('Unit Price', colPrice + 4, y + 7, { width: wPrice, align: 'right' });
+  doc.text('Total Amount', colTotal + 4, y + 7, { width: wTotal, align: 'right' });
+  y += 26;
 
-  const rowH = 22;
+  const rowH = 24;
   for (let i = 0; i < Math.max(po.items.length, 5); i++) {
     const item = po.items[i];
-    if (i % 2 === 0) doc.rect(left, y, width, rowH).fill(tealLight);
-    if (item) {
-      doc.fillColor(dark).font('Helvetica').fontSize(9);
-      doc.text(String(i + 1), colSno + 6, y + 5, { width: 30, align: 'center' });
-      doc.text(item.materialName, colDesc + 6, y + 5, { width: 240 });
-      doc.text(String(item.quantity), colQty + 6, y + 5, { width: 40, align: 'center' });
-      doc.text(item.unit ?? '', colUnit + 6, y + 5, { width: 40, align: 'center' });
-      doc.text(fmtMoney(Number(item.unitPrice)), colPrice + 6, y + 5, { width: 70, align: 'right' });
-      doc.text(fmtMoney(Number(item.amount)), colTotal + 6, y + 5, { width: 80, align: 'right' });
-    }
-    // row border
+    if (i % 2 === 0) doc.rect(left, y, width, rowH).fill(primaryLight);
     doc.rect(left, y, width, rowH).stroke(border);
+
+    if (item) {
+      doc.fillColor(dark).font('Helvetica').fontSize(8.5);
+      doc.text(String(i + 1), colSno + 4, y + 6, { width: wSno, align: 'center' });
+      doc.text(item.materialName, colDesc + 4, y + 6, { width: wDesc });
+      doc.text(String(item.quantity), colQty + 4, y + 6, { width: wQty, align: 'center' });
+      doc.text(item.unit ?? '', colUnit + 4, y + 6, { width: wUnit, align: 'center' });
+      doc.fillColor(dark).font('Helvetica-Bold').fontSize(8.5);
+      doc.text(fmtMoney(Number(item.unitPrice)), colPrice + 4, y + 6, { width: wPrice, align: 'right' });
+      doc.text(fmtMoney(Number(item.amount)), colTotal + 4, y + 6, { width: wTotal, align: 'right' });
+    }
     y += rowH;
   }
 
   // ── Totals ──
-  const totalsW = 220;
+  const totalsW = 240;
   const totalsX = right - totalsW;
 
-  const line = (label: string, value: string, yy: number, bg = false) => {
-    if (bg) doc.rect(totalsX, yy, totalsW, 22).fill(teal);
-    else doc.rect(totalsX, yy, totalsW, 22).fill(tealLight).stroke(border);
-    doc.fillColor(bg ? '#fff' : muted).font('Helvetica').fontSize(9).text(label, totalsX + 8, yy + 5, { width: 110 });
-    doc.fillColor(bg ? '#fff' : dark).font('Helvetica-Bold').fontSize(9).text(value, totalsX + 120, yy + 5, { width: 90, align: 'right' });
+  const drawTotal = (lbl: string, val: string, yy: number, bg = false) => {
+    if (bg) doc.rect(totalsX, yy, totalsW, 26).fill(primary);
+    else doc.rect(totalsX, yy, totalsW, 24).fill(primaryLight).stroke(border);
+    const labelW = 145;
+    const valueW = 85;
+    doc.fillColor(bg ? '#fff' : muted).font('Helvetica').fontSize(9).text(lbl, totalsX + 8, yy + 6, { width: labelW });
+    doc.fillColor(bg ? '#fff' : dark).font('Helvetica-Bold').fontSize(9).text(val, totalsX + 8 + labelW, yy + 6, { width: valueW, align: 'right' });
+    return yy + (bg ? 26 : 24);
   };
 
-  y += 10;
-  line('Subtotal:', fmtMoney(Number(po.totalAmount)), y);
-  y += 22;
+  y += 12;
+  y = drawTotal('Subtotal:', fmtMoney(Number(po.totalAmount)), y);
   const gstLabel = Number(po.gstAmount) > 0 ? `GST (${Number(po.items[0]?.gstRate ?? 0)}%):` : 'GST: Rs. 0 (No Gst Applicable)';
-  line(gstLabel, Number(po.gstAmount) > 0 ? fmtMoney(Number(po.gstAmount)) : 'Rs. 0.00', y);
-  y += 22;
-  line('GRAND TOTAL (Inclusive of all taxes):', fmtMoney(Number(po.grandTotal)), y, true);
-  y += 38;
+  y = drawTotal(gstLabel, Number(po.gstAmount) > 0 ? fmtMoney(Number(po.gstAmount)) : 'Rs. 0.00', y);
+  y = drawTotal('GRAND TOTAL (Inclusive of all taxes):', fmtMoney(Number(po.grandTotal)), y, true);
+  y += 36;
 
   // ── Approval & Authorization boxes ──
-  if (y > pageH - 140) {
+  if (y > pageH - 150) {
     doc.addPage();
     y = 40;
   }
 
-  doc.fillColor(teal).font('Helvetica-Bold').fontSize(11).text('APPROVAL & AUTHORIZATION:', left, y);
-  y += 22;
+  doc.fillColor(primary).font('Helvetica-Bold').fontSize(12).text('APPROVAL & AUTHORIZATION:', left, y);
+  y += 26;
 
-  const sigW = (width - 20) / 3;
-  const sigH = 75;
+  const sigW = (width - 24) / 3;
+  const sigH = 80;
   const roles = [
     { label: 'Approver 1', role: 'PROJECT_HEAD', title: 'Construction Project Head', user: head },
     { label: 'Approver 2', role: 'ACCOUNTS_HEAD', title: 'Accounts Head', user: accountsHead },
@@ -214,22 +240,22 @@ export async function streamPurchaseOrderPdf(res: NodeJS.WritableStream, po: any
   ];
 
   for (let i = 0; i < roles.length; i++) {
-    const sx = left + i * (sigW + 10);
+    const sx = left + i * (sigW + 12);
     const { label, role, title, user: u } = roles[i];
     const approved = approvedByRole[role];
 
     doc.roundedRect(sx, y, sigW, sigH, 4).stroke(border);
-    doc.fillColor(approved ? '#2e7d32' : muted).font('Helvetica-Bold').fontSize(10).text(`[ ${approved ? 'APPROVED' : 'PENDING'} ]`, sx + 8, y + 8, { width: sigW - 16, align: 'center' });
-    doc.fillColor(dark).font('Helvetica-Bold').fontSize(9).text(`${label}: ${u?.name ?? approved?.name ?? '—'}`, sx + 8, y + 28, { width: sigW - 16, align: 'center' });
-    doc.fillColor(muted).font('Helvetica').fontSize(8).text(`(${title})`, sx + 8, y + 44, { width: sigW - 16, align: 'center' });
+    doc.fillColor(approved ? '#2e7d32' : muted).font('Helvetica-Bold').fontSize(11).text(`[ ${approved ? 'APPROVED' : 'PENDING'} ]`, sx + 8, y + 10, { width: sigW - 16, align: 'center' });
+    doc.fillColor(dark).font('Helvetica-Bold').fontSize(9).text(`${label}: ${u?.name ?? approved?.name ?? '—'}`, sx + 8, y + 32, { width: sigW - 16, align: 'center' });
+    doc.fillColor(muted).font('Helvetica').fontSize(8).text(`(${title})`, sx + 8, y + 48, { width: sigW - 16, align: 'center' });
     if (approved?.at) {
-      doc.fillColor(muted).font('Helvetica').fontSize(7).text(new Date(approved.at).toLocaleDateString('en-IN'), sx + 8, y + 60, { width: sigW - 16, align: 'center' });
+      doc.fillColor(muted).font('Helvetica').fontSize(7).text(new Date(approved.at).toLocaleDateString('en-IN'), sx + 8, y + 65, { width: sigW - 16, align: 'center' });
     }
   }
 
   // ── Footer ──
-  y += sigH + 20;
-  doc.moveTo(left, y).lineTo(right, y).stroke(teal);
+  y += sigH + 24;
+  doc.moveTo(left, y).lineTo(right, y).stroke(primary);
   doc.fillColor(muted).font('Helvetica').fontSize(7).text(`Generated from Hospital Construction ERP — ${new Date().toLocaleDateString('en-IN')}`, left, y + 8, { width, align: 'center' });
 
   doc.end();
