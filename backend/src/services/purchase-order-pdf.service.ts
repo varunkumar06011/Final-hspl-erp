@@ -108,13 +108,12 @@ export async function streamPurchaseOrderPdf(res: NodeJS.WritableStream, po: any
   };
 
   const paymentTerms = po.paymentTerms || '—';
-  const projectHeadApproved = approvedByRole['PROJECT_HEAD'];
 
   y = drawLabel('Date', new Date(po.createdAt).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' }), leftCol, y, leftW);
   y = drawLabel('Created By', text(po.createdByUser?.name), leftCol, y, leftW);
   y = drawLabel('Delivery Due Date', po.deliveryDate ? new Date(po.deliveryDate).toLocaleDateString('en-IN') : '—', leftCol, y, leftW);
   y = drawLabel('Payment Terms', text(paymentTerms), leftCol, y, leftW);
-  y = drawLabel('Project Head', projectHeadApproved ? `${head?.name ?? '—'} (Approved)` : `${head?.name ?? '—'} (Pending)`, leftCol, y, leftW);
+  y = drawLabel('Project Head', text(head?.name), leftCol, y, leftW);
 
   // ── Vendor Details box on the right ──
   const vBoxTop = 158;
@@ -246,7 +245,7 @@ export async function streamPurchaseOrderPdf(res: NodeJS.WritableStream, po: any
   y += 26;
 
   const sigW = (width - 24) / 3;
-  const sigH = 80;
+  const sigH = 65;
   const roles = [
     { label: 'Approver 1', role: 'PROJECT_HEAD', title: 'Construction Project Head', user: head },
     { label: 'Approver 2', role: 'ACCOUNTS_HEAD', title: 'Accounts Head', user: accountsHead },
@@ -259,12 +258,8 @@ export async function streamPurchaseOrderPdf(res: NodeJS.WritableStream, po: any
     const approved = approvedByRole[role];
 
     doc.roundedRect(sx, y, sigW, sigH, 4).stroke(border);
-    doc.fillColor(approved ? '#2e7d32' : muted).font('Helvetica-Bold').fontSize(11).text(`[ ${approved ? 'APPROVED' : 'PENDING'} ]`, sx + 8, y + 10, { width: sigW - 16, align: 'center' });
-    doc.fillColor(dark).font('Helvetica-Bold').fontSize(9).text(`${label}: ${u?.name ?? approved?.name ?? '—'}`, sx + 8, y + 32, { width: sigW - 16, align: 'center' });
-    doc.fillColor(muted).font('Helvetica').fontSize(8).text(`(${title})`, sx + 8, y + 48, { width: sigW - 16, align: 'center' });
-    if (approved?.at) {
-      doc.fillColor(muted).font('Helvetica').fontSize(7).text(new Date(approved.at).toLocaleDateString('en-IN'), sx + 8, y + 65, { width: sigW - 16, align: 'center' });
-    }
+    doc.fillColor(dark).font('Helvetica-Bold').fontSize(9).text(`${label}: ${u?.name ?? approved?.name ?? '—'}`, sx + 8, y + 18, { width: sigW - 16, align: 'center' });
+    doc.fillColor(muted).font('Helvetica').fontSize(8).text(`(${title})`, sx + 8, y + 38, { width: sigW - 16, align: 'center' });
   }
 
   // ── Footer ──
