@@ -33,6 +33,7 @@ import {
 import { useAuthStore } from '../stores/authStore';
 import { hasPermission, Permission, UserRole } from '@hospital-erp/shared';
 import { onForegroundMessage, enableNotifications, isPushSupported, getPermissionState } from '../config/notifications';
+import api from '../config/api';
 
 const NAV_ITEMS = [
   { label: 'Dashboard', icon: <DashboardIcon />, path: '/', section: '' },
@@ -149,6 +150,38 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     autoEnable();
     return () => { cancelled = true; };
   }, [user]);
+
+  // Update favicon to the project logo when it changes
+  useEffect(() => {
+    let objectUrl: string | null = null;
+    async function updateFavicon() {
+      try {
+        const { data: settings } = await api.get('/settings');
+        if (!settings.logoUrl) return;
+        const response = await api.get('/settings/logo', { responseType: 'blob' });
+        const rawMime = response.headers['content-type'];
+        const mime = typeof rawMime === 'string' ? rawMime : 'image/png';
+        objectUrl = URL.createObjectURL(new Blob([response.data], { type: mime }));
+
+        const icon = document.querySelector("link[rel~='icon']") as HTMLLinkElement | null;
+        const appleIcon = document.querySelector("link[rel='apple-touch-icon']") as HTMLLinkElement | null;
+
+        if (icon) {
+          icon.href = objectUrl;
+          icon.type = mime;
+        }
+        if (appleIcon) {
+          appleIcon.href = objectUrl;
+        }
+      } catch {
+        // Favicon update is best-effort; keep the default on failure
+      }
+    }
+    updateFavicon();
+    return () => {
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, []);
 
   const handleFgNotificationClick = useCallback(() => {
     if (fgNotification.url) {

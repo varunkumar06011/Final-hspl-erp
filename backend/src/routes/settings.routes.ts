@@ -6,11 +6,24 @@ import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middl
 import { validateMiddleware } from '../middleware/validate';
 import { logAudit } from '../services/audit.service';
 import { AuditAction } from '@hospital-erp/shared';
-import { getStorageService } from '../services/storage.service';
+import { getStorageService, serveFile } from '../services/storage.service';
 
 const router = Router();
 router.use(authMiddleware);
-const logoUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
+const logoUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
+
+const guessMimeType = (filePath: string): string | null => {
+  const ext = filePath.split('.').pop()?.toLowerCase();
+  switch (ext) {
+    case 'png': return 'image/png';
+    case 'jpg':
+    case 'jpeg': return 'image/jpeg';
+    case 'svg': return 'image/svg+xml';
+    case 'gif': return 'image/gif';
+    case 'webp': return 'image/webp';
+    default: return null;
+  }
+};
 
 const updateProfileSchema = z.object({
   body: z.object({
@@ -133,6 +146,29 @@ router.post(
       });
 
       res.json(updated);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// GET /logo — serve the project logo
+router.get(
+  '/logo',
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      const project = await prisma.project.findUnique({
+        where: { id: projectId },
+        select: { logoUrl: true },
+      });
+
+      if (!project?.logoUrl) {
+        res.status(404).json({ error: 'No logo uploaded' });
+        return;
+      }
+
+      await serveFile(res, project.logoUrl, guessMimeType(project.logoUrl));
     } catch (error) {
       next(error);
     }

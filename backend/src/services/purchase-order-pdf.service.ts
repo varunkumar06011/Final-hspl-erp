@@ -30,8 +30,8 @@ export async function streamPurchaseOrderPdf(res: NodeJS.WritableStream, po: any
       const raw = await getStorageService().getFile(po.project.logoUrl);
       logoBuffer = await sharp(raw)
         .flatten({ background: { r: 15, g: 76, b: 76 } })
-        .jpeg({ quality: 90 })
-        .resize({ width: 200, height: 90, fit: 'inside', withoutEnlargement: true })
+        .png({ compressionLevel: 9 })
+        .resize({ width: 800, height: 400, fit: 'inside', withoutEnlargement: true })
         .toBuffer();
     } catch (err: any) {
       console.error('[PO PDF] Failed to load/process logo:', err?.message ?? err);
@@ -63,7 +63,13 @@ export async function streamPurchaseOrderPdf(res: NodeJS.WritableStream, po: any
     try {
       doc.image(logoBuffer, left, 22, { fit: [80, 70] });
     } catch (err: any) {
-      console.error('[PO PDF] Failed to render logo image:', err?.message ?? err);
+      console.error('[PO PDF] PNG logo failed to render, falling back to JPEG:', err?.message ?? err);
+      try {
+        const jpegBuffer = await sharp(logoBuffer).jpeg({ quality: 95 }).toBuffer();
+        doc.image(jpegBuffer, left, 22, { fit: [80, 70] });
+      } catch (err2: any) {
+        console.error('[PO PDF] JPEG logo fallback also failed:', err2?.message ?? err2);
+      }
     }
   }
 
