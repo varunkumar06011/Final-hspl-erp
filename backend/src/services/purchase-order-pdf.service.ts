@@ -59,21 +59,23 @@ export async function streamPurchaseOrderPdf(res: NodeJS.WritableStream, po: any
   doc.rect(0, 0, pageW, 115).fill(primary);
 
   // Logo on the left (to the left of the company name)
+  const logoW = 100;
+  const logoH = 90;
   if (logoBuffer) {
     try {
-      doc.image(logoBuffer, left, 22, { fit: [80, 70] });
+      doc.image(logoBuffer, left, 22, { fit: [logoW, logoH] });
     } catch (err: any) {
       console.error('[PO PDF] PNG logo failed to render, falling back to JPEG:', err?.message ?? err);
       try {
         const jpegBuffer = await sharp(logoBuffer).jpeg({ quality: 95 }).toBuffer();
-        doc.image(jpegBuffer, left, 22, { fit: [80, 70] });
+        doc.image(jpegBuffer, left, 22, { fit: [logoW, logoH] });
       } catch (err2: any) {
         console.error('[PO PDF] JPEG logo fallback also failed:', err2?.message ?? err2);
       }
     }
   }
 
-  const titleX = left + (logoBuffer ? 92 : 0);
+  const titleX = left + (logoBuffer ? logoW + 12 : 0);
   const titleWidth = 245;
   const title = text(po.project?.name ?? 'Hospital Construction ERP');
 
