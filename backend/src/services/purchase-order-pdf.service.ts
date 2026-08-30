@@ -1,7 +1,6 @@
 import PDFDocument from 'pdfkit';
 import sharp from 'sharp';
 import { getStorageService } from './storage.service';
-import { POPaymentType } from '@hospital-erp/shared';
 import { prisma } from '../config/prisma';
 
 export async function streamPurchaseOrderPdf(res: NodeJS.WritableStream, po: any) {
@@ -108,7 +107,7 @@ export async function streamPurchaseOrderPdf(res: NodeJS.WritableStream, po: any
     return yy + Math.max(18, valueH + 6);
   };
 
-  const paymentTerms = po.paymentTerms || (po.paymentType === POPaymentType.AFTER_DELIVERY ? 'After Delivery & Inspection' : '—');
+  const paymentTerms = po.paymentTerms || '—';
   const projectHeadApproved = approvedByRole['PROJECT_HEAD'];
 
   y = drawLabel('Date', new Date(po.createdAt).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' }), leftCol, y, leftW);
