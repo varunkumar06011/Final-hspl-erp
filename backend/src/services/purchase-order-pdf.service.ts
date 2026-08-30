@@ -115,7 +115,7 @@ export async function streamPurchaseOrderPdf(res: NodeJS.WritableStream, po: any
     return yy + Math.max(18, valueH + 6);
   };
 
-  const paymentTerms = po.paymentTerms || '—';
+  const paymentTerms = po.paymentTerms || 'After Delivery & Inspection';
 
   y = drawLabel('Date', new Date(po.createdAt).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' }), leftCol, y, leftW);
   y = drawLabel('Created By', text(po.createdByUser?.name), leftCol, y, leftW);
