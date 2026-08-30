@@ -109,6 +109,16 @@ class SupabaseStorageService implements StorageService {
     const supabase = this.getSupabase();
     const uniqueName = `${Date.now()}-${fileName}`;
 
+    // Create the bucket if it does not exist (e.g. the first logo upload)
+    const { data: buckets } = await supabase.storage.listBuckets();
+    const bucketExists = buckets?.some((b) => b.name === bucket);
+    if (!bucketExists) {
+      const { error: createErr } = await supabase.storage.createBucket(bucket, { public: false });
+      if (createErr && !createErr.message.includes('already exists')) {
+        throw new Error(`Supabase create bucket failed: ${createErr.message}`);
+      }
+    }
+
     const { error } = await supabase.storage
       .from(bucket)
       .upload(uniqueName, file, { contentType: mimeType });
