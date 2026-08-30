@@ -59,7 +59,7 @@ export async function streamPurchaseOrderPdf(res: NodeJS.WritableStream, po: any
   // ── Top header bar ──
   doc.rect(0, 0, pageW, 115).fill(primary);
 
-  // Logo on the left
+  // Logo on the left (to the left of the company name)
   if (logoBuffer) {
     try {
       doc.image(logoBuffer, left, 22, { fit: [80, 70] });
@@ -69,10 +69,16 @@ export async function streamPurchaseOrderPdf(res: NodeJS.WritableStream, po: any
   }
 
   const titleX = left + (logoBuffer ? 92 : 0);
+  const titleWidth = 245;
+  const title = text(po.project?.name ?? 'Hospital Construction ERP');
 
   // Title block
-  doc.fillColor('#fff').font('Helvetica-Bold').fontSize(22).text(text(po.project?.name ?? 'Hospital Construction ERP'), titleX, 24, { width: 245 });
-  doc.font('Helvetica').fontSize(9).fillColor(primaryLight).text(text(po.project?.officeAddress ?? 'V Grand Health Care Pvt. Ltd.'), titleX, 56, { width: 245 });
+  doc.fillColor('#fff').font('Helvetica-Bold').fontSize(22);
+  const titleH = doc.heightOfString(title, { width: titleWidth });
+  doc.text(title, titleX, 24, { width: titleWidth });
+
+  const addrY = 24 + titleH + 8;
+  doc.font('Helvetica').fontSize(9).fillColor(primaryLight).text(text(po.project?.officeAddress ?? 'V Grand Health Care Pvt. Ltd.'), titleX, addrY, { width: titleWidth });
 
   // PO number box on the right
   const poBoxX = pageW - 178;
@@ -167,46 +173,45 @@ export async function streamPurchaseOrderPdf(res: NodeJS.WritableStream, po: any
   y += boxH + 22;
 
   // ── Items table ──
-  const wSno = 25;
-  const wDesc = 180;
+  const colGap = 4;
+  const wSno = 27;
+  const wDesc = 170;
   const wQty = 42;
   const wUnit = 52;
   const wPrice = 95;
-  const wTotal = 112;
+  const wTotal = 105;
 
   const colSno = left;
-  const colDesc = left + wSno;
-  const colQty = colDesc + wDesc;
-  const colUnit = colQty + wQty;
-  const colPrice = colUnit + wUnit;
-  const colTotal = colPrice + wPrice;
+  const colDesc = left + wSno + colGap;
+  const colQty = colDesc + wDesc + colGap;
+  const colUnit = colQty + wQty + colGap;
+  const colPrice = colUnit + wUnit + colGap;
+  const colTotal = colPrice + wPrice + colGap;
 
   doc.rect(left, y, width, 26).fill(primary);
   doc.fillColor('#fff').font('Helvetica-Bold').fontSize(9);
   doc.text('S.No', colSno, y + 7, { width: wSno, align: 'center' });
-  doc.text('Item Description', colDesc, y + 7, { width: wDesc });
+  doc.text('Item Description', colDesc + 4, y + 7, { width: wDesc - 8 });
   doc.text('Qty', colQty, y + 7, { width: wQty, align: 'center' });
   doc.text('Unit', colUnit, y + 7, { width: wUnit, align: 'center' });
-  doc.text('Unit Price', colPrice, y + 7, { width: wPrice, align: 'right' });
-  doc.text('Total', colTotal, y + 7, { width: wTotal, align: 'right' });
+  doc.text('Unit Price', colPrice + 4, y + 7, { width: wPrice - 8, align: 'right' });
+  doc.text('Total', colTotal + 4, y + 7, { width: wTotal - 8, align: 'right' });
   y += 26;
 
   const rowH = 24;
-  for (let i = 0; i < Math.max(po.items.length, 5); i++) {
+  for (let i = 0; i < po.items.length; i++) {
     const item = po.items[i];
     if (i % 2 === 0) doc.rect(left, y, width, rowH).fill(primaryLight);
     doc.rect(left, y, width, rowH).stroke(border);
 
-    if (item) {
-      doc.fillColor(dark).font('Helvetica').fontSize(8.5);
-      doc.text(String(i + 1), colSno, y + 6, { width: wSno, align: 'center' });
-      doc.text(item.materialName, colDesc, y + 6, { width: wDesc });
-      doc.text(String(item.quantity), colQty, y + 6, { width: wQty, align: 'center' });
-      doc.text(item.unit ?? '', colUnit, y + 6, { width: wUnit, align: 'center' });
-      doc.fillColor(dark).font('Helvetica-Bold').fontSize(8.5);
-      doc.text(fmtMoney(Number(item.unitPrice)), colPrice, y + 6, { width: wPrice, align: 'right' });
-      doc.text(fmtMoney(Number(item.amount)), colTotal, y + 6, { width: wTotal, align: 'right' });
-    }
+    doc.fillColor(dark).font('Helvetica').fontSize(8.5);
+    doc.text(String(i + 1), colSno, y + 6, { width: wSno, align: 'center' });
+    doc.text(item.materialName, colDesc + 4, y + 6, { width: wDesc - 8 });
+    doc.text(String(item.quantity), colQty, y + 6, { width: wQty, align: 'center' });
+    doc.text(item.unit ?? '', colUnit, y + 6, { width: wUnit, align: 'center' });
+    doc.fillColor(dark).font('Helvetica-Bold').fontSize(8.5);
+    doc.text(fmtMoney(Number(item.unitPrice)), colPrice + 4, y + 6, { width: wPrice - 8, align: 'right' });
+    doc.text(fmtMoney(Number(item.amount)), colTotal + 4, y + 6, { width: wTotal - 8, align: 'right' });
     y += rowH;
   }
 
