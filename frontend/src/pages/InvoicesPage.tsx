@@ -37,6 +37,7 @@ import {
   ExpandMore as ExpandMoreIcon,
   Delete as DeleteIcon,
   Publish as PostToBooksIcon,
+  AccountTree as CrossLinkIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { InvoiceVerificationStatus, UserRole, STORAGE } from '@hospital-erp/shared';
@@ -466,6 +467,7 @@ export default function InvoicesPage() {
   });
 
   const [deleteRow, setDeleteRow] = useState<InvoiceRow | null>(null);
+  const [crossLinkRow, setCrossLinkRow] = useState<InvoiceRow | null>(null);
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
       await api.delete(`/invoices/${id}`);
@@ -491,6 +493,16 @@ export default function InvoicesPage() {
       setSuccessMsg(`Invoice posted to books as ${data.jvNumber}`);
     },
     onError: (err: unknown) => setError(extractErrorMessage(err)),
+  });
+
+  // Cross-module link data for an invoice (PO → quotation → payments → ledger → settlements)
+  const { data: crossLinkData, isLoading: crossLinkLoading } = useQuery({
+    queryKey: ['/invoices', crossLinkRow?.id, 'cross-link'],
+    queryFn: async () => {
+      const response = await api.get(`/invoices/${crossLinkRow!.id}/cross-link`);
+      return response.data;
+    },
+    enabled: !!crossLinkRow,
   });
 
   const rows: InvoiceRow[] = data?.data ?? [];
@@ -679,6 +691,7 @@ export default function InvoicesPage() {
                         {row.verificationStatus !== InvoiceVerificationStatus.VERIFIED && (
                           <IconButton size="small" color="error" onClick={() => setDeleteRow(row)} title="Delete"><DeleteIcon fontSize="small" /></IconButton>
                         )}
+                        <IconButton size="small" onClick={() => setCrossLinkRow(row)} title="Cross-Module Link"><CrossLinkIcon fontSize="small" /></IconButton>
                       </Box>
                     </TableCell>
                   </TableRow>
@@ -1014,6 +1027,196 @@ export default function InvoicesPage() {
           <Button color="error" variant="contained" disabled={deleteMutation.isPending} onClick={() => deleteRow && deleteMutation.mutate(deleteRow.id)}>
             {deleteMutation.isPending ? <CircularProgress size={20} /> : 'Delete'}
           </Button>
+        </DialogActions>
+      </ResponsiveDialog>
+
+      {/* Cross-module link dialog — shows PO → quotation → payments → ledger → settlements */}
+      <ResponsiveDialog open={crossLinkRow !== null} onClose={() => setCrossLinkRow(null)} maxWidth="md" fullWidth>
+        <DialogTitle>
+          Cross-Module Link — {crossLinkRow?.invoiceCode}
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+            Full chain: PO → Quotation → Payments → Ledger Postings → Bill Settlements
+          </Typography>
+        </DialogTitle>
+        <DialogContent>
+          {crossLinkLoading ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}><CircularProgress /></Box>
+          ) : crossLinkData ? (
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              {/* Summary */}
+              <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                <Chip label={`Total: ₹${formatIndianNumber(crossLinkData.summary.totalAmount)}`} color="default" />
+                <Chip label={`Paid: ₹${formatIndianNumber(crossLinkData.summary.totalPaid)}`} color="success" />
+                <Chip label={`Settled: ₹${formatIndianNumber(crossLinkData.summary.totalSettled)}`} color="primary" />
+                <Chip label={`Outstanding: ₹${formatIndianNumber(crossLinkData.summary.outstanding)}`} color="error" />
+                <Chip label={crossLinkData.summary.isPostedToBooks ? 'Posted to Books' : 'Not Posted'} color={crossLinkData.summary.isPostedToBooks ? 'success' : 'warning'} variant="outlined" />
+              </Box>
+
+              {/* Vendor */}
+              {crossLinkData.vendor && (
+                <Accordion>
+                  <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                    <Typography variant="subtitle2">Vendor — {crossLinkData.vendor.name} ({crossLinkData.vendor.vendorCode})</Typography>
+                  </AccordionSummary>
+                  <AccordionDetails>
+                    {crossLinkData.vendorLedger ? (
+                      <Typography variant="body2">
+                        Ledger: <strong>{crossLinkData.vendorLedger.name}</strong> — Current Balance: ₹{formatIndianNumber(crossLinkData.vendorLedger.currentBalance)}
+                      </Typography>
+                    ) : (
+                      <Typography variant="body2" color="text.secondary">No vendor ledger found. Run "Sync Ledgers" first.</Typography>
+                    )}
+                  </AccordionDetails>
+                </Accordion>
+              )}
+
+              {/* Purchase Order + Quotation */}
+              {crossLinkData.purchaseOrder && (
+                <Accordion>
+                  <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                    <Typography variant="subtitle2">Purchase Order — {crossLinkData.purchaseOrder.poNumber}</Typography>
+                  </AccordionSummary>
+                  <AccordionDetails>
+                    <Typography variant="body2">Date: {formatDate(crossLinkData.purchaseOrder.date)}</Typography>
+                    <Typography variant="body2">Total: ₹{formatIndianNumber(crossLinkData.purchaseOrder.grandTotal)}</Typography>
+                    <Typography variant="body2">Status: {crossLinkData.purchaseOrder.status}</Typography>
+                    <Typography variant="body2">Payment Type: {crossLinkData.purchaseOrder.paymentType}</Typography>
+                    {crossLinkData.budgetHead && (
+                      <Typography variant="body2">Budget Head: <Chip label={crossLinkData.budgetHead.particulars} size="small" color="primary" /></Typography>
+                    )}
+                    {crossLinkData.quotation && (
+                      <Box sx={{ mt: 1, p: 1, bgcolor: 'background.paper', border: '1px dashed #ccc' }}>
+                        <Typography variant="caption" color="text.secondary">Source Quotation</Typography>
+                        <Typography variant="body2">{crossLinkData.quotation.quotationNumber} — ₹{formatIndianNumber(crossLinkData.quotation.totalAmount)} ({formatDate(crossLinkData.quotation.date)})</Typography>
+                      </Box>
+                    )}
+                  </AccordionDetails>
+                </Accordion>
+              )}
+
+              {/* Payment Requests */}
+              {crossLinkData.paymentRequests?.length > 0 && (
+                <Accordion>
+                  <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                    <Typography variant="subtitle2">Payment Requests ({crossLinkData.paymentRequests.length})</Typography>
+                  </AccordionSummary>
+                  <AccordionDetails>
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow>
+                          <TableCell>Code</TableCell>
+                          <TableCell>Type</TableCell>
+                          <TableCell align="right">Amount</TableCell>
+                          <TableCell>Status</TableCell>
+                          <TableCell>Payments</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {crossLinkData.paymentRequests.map((pr: any) => (
+                          <TableRow key={pr.id}>
+                            <TableCell>{pr.paymentCode}</TableCell>
+                            <TableCell>{pr.type}</TableCell>
+                            <TableCell align="right">₹{formatIndianNumber(pr.amount)}</TableCell>
+                            <TableCell><Chip label={pr.status} size="small" color={pr.status === 'PAID' ? 'success' : 'default'} /></TableCell>
+                            <TableCell>
+                              {pr.payments?.map((p: any) => (
+                                <Typography key={p.id} variant="caption" display="block">
+                                  ₹{formatIndianNumber(p.amount)} via {p.mode} {p.reference ? `(${p.reference})` : ''} — {formatDate(p.date)}
+                                </Typography>
+                              ))}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </AccordionDetails>
+                </Accordion>
+              )}
+
+              {/* Purchase Voucher (ledger postings) */}
+              {crossLinkData.purchaseVoucher && (
+                <Accordion>
+                  <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                    <Typography variant="subtitle2">Ledger Posting — {crossLinkData.purchaseVoucher.jvNumber}</Typography>
+                  </AccordionSummary>
+                  <AccordionDetails>
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow>
+                          <TableCell>Ledger</TableCell>
+                          <TableCell>Group</TableCell>
+                          <TableCell align="right">Debit</TableCell>
+                          <TableCell align="right">Credit</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {crossLinkData.purchaseVoucher.entries.map((e: any, i: number) => (
+                          <TableRow key={i}>
+                            <TableCell>{e.ledgerName}</TableCell>
+                            <TableCell>{e.ledgerGroup.replace(/_/g, ' ')}</TableCell>
+                            <TableCell align="right" sx={{ color: 'error.main' }}>{e.debit > 0 ? formatCurrency(e.debit) : '—'}</TableCell>
+                            <TableCell align="right" sx={{ color: 'success.main' }}>{e.credit > 0 ? formatCurrency(e.credit) : '—'}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </AccordionDetails>
+                </Accordion>
+              )}
+
+              {/* Bill Settlements */}
+              {crossLinkData.billSettlements?.length > 0 && (
+                <Accordion>
+                  <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                    <Typography variant="subtitle2">Bill Settlements ({crossLinkData.billSettlements.length})</Typography>
+                  </AccordionSummary>
+                  <AccordionDetails>
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow>
+                          <TableCell>Voucher</TableCell>
+                          <TableCell>Type</TableCell>
+                          <TableCell>Date</TableCell>
+                          <TableCell align="right">Amount</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {crossLinkData.billSettlements.map((bs: any) => (
+                          <TableRow key={bs.id}>
+                            <TableCell>{bs.voucher.jvNumber}</TableCell>
+                            <TableCell>{bs.voucher.voucherType}</TableCell>
+                            <TableCell>{formatDate(bs.voucher.date)}</TableCell>
+                            <TableCell align="right">₹{formatIndianNumber(bs.amount)}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </AccordionDetails>
+                </Accordion>
+              )}
+
+              {/* Gate Passes */}
+              {crossLinkData.gatePasses?.length > 0 && (
+                <Accordion>
+                  <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                    <Typography variant="subtitle2">Gate Passes ({crossLinkData.gatePasses.length})</Typography>
+                  </AccordionSummary>
+                  <AccordionDetails>
+                    {crossLinkData.gatePasses.map((gp: any) => (
+                      <Typography key={gp.id} variant="body2">
+                        {gp.passNumber} — {formatDate(gp.date)} — <Chip label={gp.status} size="small" />
+                      </Typography>
+                    ))}
+                  </AccordionDetails>
+                </Accordion>
+              )}
+            </Box>
+          ) : (
+            <Typography color="text.secondary">No data available</Typography>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setCrossLinkRow(null)}>Close</Button>
         </DialogActions>
       </ResponsiveDialog>
     </Box>

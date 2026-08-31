@@ -12,6 +12,7 @@ import {
   trialBalanceSchema,
   profitLossSchema,
   balanceSheetSchema,
+  costCenterReportSchema,
 } from '@hospital-erp/shared';
 import { prisma } from '../config/prisma';
 import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middleware/auth';
@@ -477,6 +478,96 @@ router.get(
           totalLiabilities,
           totalCapitalAndLiabilities,
           difference: totalAssets - totalCapitalAndLiabilities,
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+// ═══════════════════════════════════════════════════════════
+// Cost Center Report — expenses grouped by Budget Head
+// Shows how much each project phase / cost center consumed
+// ═══════════════════════════════════════════════════════════
+router.get(
+  '/cost-center',
+  rbacMiddleware(Permission.VIEW_FINANCIALS),
+  validateMiddleware(costCenterReportSchema),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      const { budgetHeadId, startDate, endDate } = req.query as Record<string, unknown>;
+
+      const dateFilter: { gte?: Date; lte?: Date } = {};
+      if (startDate) dateFilter.gte = new Date(String(startDate));
+      if (endDate) dateFilter.lte = new Date(String(endDate));
+
+      // Fetch all budget heads for the project
+      const budgetHeads = await prisma.budgetHead.findMany({
+        where: { projectId, deletedAt: null, status: 'ACTIVE' },
+        orderBy: { slNo: 'asc' },
+      });
+
+      // For each budget head, sum the ledger entries tagged to it
+      const report = await Promise.all(
+        budgetHeads.map(async (bh) => {
+          const where: any = {
+            budgetHeadId: bh.id,
+            ...(Object.keys(dateFilter).length > 0 ? { voucherDate: dateFilter } : {}),
+          };
+          const entries = await prisma.ledgerEntry.aggregate({
+            where,
+            _sum: { debit: true, credit: true },
+          });
+          // Also get the individual entries for detail view
+          const detailEntries = await prisma.ledgerEntry.findMany({
+            where: { ...where, ...(budgetHeadId ? { budgetHeadId: String(budgetHeadId) } : {}) },
+            include: {
+              ledger: { select: { name: true, group: true } },
+            },
+            orderBy: { voucherDate: 'desc' },
+            take: 50,
+          });
+          return {
+            id: bh.id,
+            particulars: bh.particulars,
+            allocatedAmount: Number(bh.allocatedAmount),
+            committedAmount: Number(bh.committedAmount),
+            actualAmount: Number(bh.actualAmount),
+            paidAmount: Number(bh.paidAmount),
+            // From ledger entries (accounting layer)
+            totalDebit: Number(entries._sum.debit ?? 0),
+            totalCredit: Number(entries._sum.credit ?? 0),
+            netAmount: Number(entries._sum.debit ?? 0) - Number(entries._sum.credit ?? 0),
+            entries: detailEntries.map((e) => ({
+              id: e.id,
+              voucherNumber: e.voucherNumber,
+              voucherType: e.voucherType,
+              voucherDate: e.voucherDate.toISOString(),
+              ledgerName: e.ledger.name,
+              ledgerGroup: e.ledger.group,
+              debit: Number(e.debit),
+              credit: Number(e.credit),
+              description: e.description,
+            })),
+          };
+        }),
+      );
+
+      const totalAllocated = report.reduce((s, r) => s + r.allocatedAmount, 0);
+      const totalSpent = report.reduce((s, r) => s + r.netAmount, 0);
+
+      res.json({
+        dateRange: {
+          startDate: startDate ? String(startDate) : null,
+          endDate: endDate ? String(endDate) : null,
+        },
+        costCenters: report,
+        totals: {
+          totalAllocated,
+          totalSpent,
+          totalRemaining: totalAllocated - totalSpent,
         },
       });
     } catch (error) {

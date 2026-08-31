@@ -148,6 +148,62 @@ router.post(
   },
 );
 
+// ── Quick-create ledger from within a voucher (Tally-style Alt+C) ──
+// Minimal payload: name + group. Returns the created ledger in list format.
+router.post(
+  '/quick-create',
+  rbacMiddleware(Permission.MANAGE_FINANCE),
+  validateMiddleware(createLedgerSchema),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      const { name, group, openingBalance } = req.body;
+
+      const signedOpening = isDebitNatureGroup(group as LedgerGroup)
+        ? Number(openingBalance)
+        : -Number(openingBalance);
+
+      const ledger = await prisma.ledger.create({
+        data: {
+          projectId,
+          name: String(name),
+          group: String(group),
+          linkedEntityType: LedgerLinkType.NONE,
+          openingBalance: Number(openingBalance),
+          currentBalance: signedOpening,
+          isActive: true,
+        },
+      });
+
+      await logAudit({
+        userId: req.user!.id,
+        action: AuditAction.CREATE,
+        entityType: 'LEDGER',
+        entityId: ledger.id,
+        projectId,
+        newValue: { name, group, openingBalance, quickCreate: true },
+      });
+
+      res.status(201).json({
+        id: ledger.id,
+        name: ledger.name,
+        group: ledger.group,
+        openingBalance: Number(ledger.openingBalance),
+        currentBalance: Number(ledger.currentBalance),
+        isActive: ledger.isActive,
+        linkedEntityType: ledger.linkedEntityType,
+        linkedEntityId: ledger.linkedEntityId,
+      });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        res.status(409).json({ error: 'A ledger with this name already exists in this project' });
+        return;
+      }
+      next(error);
+    }
+  },
+);
+
 // ── Update ledger (name, group, isActive only — never balance) ──
 router.patch(
   '/:id',

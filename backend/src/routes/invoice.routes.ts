@@ -917,4 +917,135 @@ router.post(
   },
 );
 
+// ── GET /:id/cross-link — full cross-module visibility for an invoice ──
+// Returns the complete chain: PO → quotation → payments → ledger postings → bill settlements
+// so the UI can show everything connected to this invoice in one view.
+router.get(
+  '/:id/cross-link',
+  rbacMiddleware(Permission.VIEW_FINANCIALS),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      const invoice = await prisma.vendorInvoice.findFirst({
+        where: { id: req.params.id, projectId, deletedAt: null },
+        include: {
+          vendor: { select: { id: true, name: true, vendorCode: true } },
+          purchaseOrder: {
+            select: {
+              id: true, poNumber: true, date: true, grandTotal: true, status: true, paymentType: true,
+              quotation: { select: { id: true, quotationNumber: true, date: true, totalAmount: true } },
+              budgetHead: { select: { id: true, particulars: true } },
+            },
+          },
+          paymentRequests: {
+            include: {
+              payments: { include: { bankAccount: { select: { accountName: true } }, cashAccount: { select: { name: true } } } },
+              approvalWorkflow: { select: { status: true, steps: { select: { stepNumber: true, approverRole: true, status: true, comments: true } } } },
+            },
+            orderBy: { createdAt: 'desc' },
+          },
+          billSettlements: {
+            include: {
+              journalVoucher: { select: { id: true, jvNumber: true, voucherType: true, date: true, status: true } },
+            },
+            orderBy: { createdAt: 'desc' },
+          },
+          gatePasses: { select: { id: true, passNumber: true, date: true, status: true } },
+        },
+      });
+      if (!invoice) {
+        res.status(404).json({ error: 'Invoice not found' });
+        return;
+      }
+
+      // Find the PURCHASE voucher that posted this invoice to books (if any)
+      const purchaseVoucher = await prisma.journalVoucher.findFirst({
+        where: { sourceInvoiceId: invoice.id, projectId, status: 'POSTED', deletedAt: null },
+        include: {
+          ledgerEntries: {
+            include: { ledger: { select: { name: true, group: true } } },
+          },
+        },
+      });
+
+      // Find the vendor ledger for this vendor
+      const vendorLedger = await prisma.ledger.findFirst({
+        where: { linkedEntityType: 'VENDOR', linkedEntityId: invoice.vendorId, projectId, deletedAt: null },
+        select: { id: true, name: true, currentBalance: true },
+      });
+
+      // Compute settlement totals
+      const totalSettled = invoice.billSettlements.reduce((s, bs) => s + Number(bs.amount), 0);
+      const totalPaid = invoice.paymentRequests
+        .filter((pr) => pr.status === 'PAID')
+        .reduce((s, pr) => s + pr.payments.reduce((ps, p) => ps + Number(p.amount), 0), 0);
+
+      res.json({
+        invoice: {
+          id: invoice.id,
+          invoiceCode: invoice.invoiceCode,
+          invoiceNumber: invoice.invoiceNumber,
+          date: invoice.date.toISOString(),
+          amount: Number(invoice.amount),
+          taxAmount: Number(invoice.taxAmount),
+          totalAmount: Number(invoice.totalAmount),
+          verificationStatus: invoice.verificationStatus,
+          paymentStatus: invoice.paymentStatus,
+        },
+        vendor: invoice.vendor,
+        purchaseOrder: invoice.purchaseOrder,
+        quotation: invoice.purchaseOrder?.quotation ?? null,
+        budgetHead: invoice.purchaseOrder?.budgetHead ?? null,
+        paymentRequests: invoice.paymentRequests.map((pr) => ({
+          id: pr.id,
+          paymentCode: pr.paymentCode,
+          type: pr.type,
+          amount: Number(pr.amount),
+          status: pr.status,
+          createdAt: pr.createdAt.toISOString(),
+          payments: pr.payments.map((p) => ({
+            id: p.id,
+            amount: Number(p.amount),
+            date: p.date.toISOString(),
+            mode: p.mode,
+            reference: p.reference,
+            bankAccount: p.bankAccount?.accountName ?? null,
+            cashAccount: p.cashAccount?.name ?? null,
+          })),
+        })),
+        billSettlements: invoice.billSettlements.map((bs) => ({
+          id: bs.id,
+          amount: Number(bs.amount),
+          voucher: bs.journalVoucher,
+        })),
+        purchaseVoucher: purchaseVoucher ? {
+          id: purchaseVoucher.id,
+          jvNumber: purchaseVoucher.jvNumber,
+          date: purchaseVoucher.date.toISOString(),
+          entries: purchaseVoucher.ledgerEntries.map((le) => ({
+            ledgerName: le.ledger.name,
+            ledgerGroup: le.ledger.group,
+            debit: Number(le.debit),
+            credit: Number(le.credit),
+          })),
+        } : null,
+        vendorLedger: vendorLedger ? {
+          ...vendorLedger,
+          currentBalance: Number(vendorLedger.currentBalance),
+        } : null,
+        gatePasses: invoice.gatePasses,
+        summary: {
+          totalAmount: Number(invoice.totalAmount),
+          totalPaid,
+          totalSettled,
+          outstanding: Math.max(0, Number(invoice.totalAmount) - totalPaid),
+          isPostedToBooks: !!purchaseVoucher,
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
 export default router;

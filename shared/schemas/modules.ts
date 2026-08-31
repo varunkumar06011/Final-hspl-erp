@@ -1217,11 +1217,19 @@ export const listLedgersSchema = z.object({
 
 // ── Tally voucher entry (Receipt / Payment / Contra / Journal / Purchase / Credit Note / Debit Note) ──
 // Each entry references a ledger by ID. Debit must equal credit.
+// Optional budgetHeadId tags the entry to a cost center (Tally-style).
 const ledgerEntryInput = z.object({
   ledgerId: uuid,
   debit: money.default(0),
   credit: money.default(0),
   description: z.string().max(500).optional(),
+  budgetHeadId: uuid.optional(), // cost center allocation
+});
+
+// Bill-wise settlement: for PAYMENT vouchers paying a vendor, link to specific invoices
+const billSettlementInput = z.object({
+  invoiceId: uuid,
+  amount: positiveMoney,
 });
 
 export const createVoucherSchema = z
@@ -1233,10 +1241,12 @@ export const createVoucherSchema = z
       entries: z.array(ledgerEntryInput).min(2, 'At least 2 entries required (one debit, one credit)'),
       // For PURCHASE vouchers created from an invoice
       sourceInvoiceId: uuid.optional(),
+      // For PAYMENT vouchers: which invoices are being settled (bill-wise accounting)
+      billSettlements: z.array(billSettlementInput).optional(),
     }),
   })
   .superRefine((data, ctx) => {
-    const { entries } = data.body;
+    const { entries, billSettlements } = data.body;
     const totalDebit = entries.reduce((sum, e) => sum + Number(e.debit), 0);
     const totalCredit = entries.reduce((sum, e) => sum + Number(e.credit), 0);
 
@@ -1264,6 +1274,21 @@ export const createVoucherSchema = z
           code: z.ZodIssueCode.custom,
           path: ['body', 'entries', i],
           message: 'An entry cannot have both debit and credit',
+        });
+      }
+    }
+
+    // If bill settlements are provided, their total must equal the vendor credit total
+    if (billSettlements && billSettlements.length > 0) {
+      const settlementTotal = billSettlements.reduce((sum, s) => sum + Number(s.amount), 0);
+      // Find the vendor ledger credit entries (SUNDRY_CREDITORS group) — but we can't
+      // know the group here without a DB lookup. Instead, validate that settlement total
+      // doesn't exceed total credit. The backend does the precise validation.
+      if (settlementTotal > totalCredit + 0.01) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['body', 'billSettlements'],
+          message: `Settlement total (${settlementTotal}) cannot exceed voucher total credit (${totalCredit})`,
         });
       }
     }
@@ -1334,4 +1359,28 @@ export const balanceSheetSchema = z.object({
   query: z.object({
     asOfDate: dateStr.optional(),
   }),
+});
+
+// ── Cost center report (expenses by Budget Head) ──
+export const costCenterReportSchema = z
+  .object({
+    query: z.object({
+      budgetHeadId: uuid.optional(),
+      startDate: dateStr.optional(),
+      endDate: dateStr.optional(),
+    }),
+  })
+  .superRefine((data, ctx) => {
+    if (data.query.startDate && data.query.endDate && data.query.endDate < data.query.startDate) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['query', 'endDate'],
+        message: 'End date cannot be before start date',
+      });
+    }
+  });
+
+// ── Invoice cross-link (full chain: PO → quotation → payments → ledger postings → settlements) ──
+export const invoiceCrossLinkSchema = z.object({
+  params: z.object({ id: uuid }),
 });

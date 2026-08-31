@@ -3,6 +3,7 @@ import {
   Box,
   Typography,
   Card,
+  CardContent,
   Table,
   TableBody,
   TableCell,
@@ -28,7 +29,7 @@ import api from '../config/api';
 import RefreshButton from '../components/RefreshButton';
 import { formatCurrency, formatDate } from '../utils/enumOptions';
 
-type TabValue = 'ledger' | 'daybook' | 'trial' | 'pl' | 'bs';
+type TabValue = 'ledger' | 'daybook' | 'trial' | 'pl' | 'bs' | 'costcenter';
 
 const GROUP_LABELS: Record<string, string> = {
   FIXED_ASSET: 'Fixed Assets',
@@ -74,6 +75,10 @@ export default function AccountingReportsPage() {
   // P&L state
   const [plStartDate, setPlStartDate] = useState(new Date(new Date().getFullYear(), 0, 1).toISOString().split('T')[0]);
   const [plEndDate, setPlEndDate] = useState(new Date().toISOString().split('T')[0]);
+
+  // Cost center report state
+  const [ccStartDate, setCcStartDate] = useState(new Date(new Date().getFullYear(), 0, 1).toISOString().split('T')[0]);
+  const [ccEndDate, setCcEndDate] = useState(new Date().toISOString().split('T')[0]);
 
   // Fetch all ledgers for autocomplete
   const { data: ledgersData } = useQuery({
@@ -139,6 +144,16 @@ export default function AccountingReportsPage() {
     enabled: tab === 'bs',
   });
 
+  // Cost center report
+  const { data: ccData, isLoading: ccLoading } = useQuery({
+    queryKey: ['/accounting-reports/cost-center', ccStartDate, ccEndDate],
+    queryFn: async () => {
+      const response = await api.get('/accounting-reports/cost-center', { params: { startDate: ccStartDate, endDate: ccEndDate } });
+      return response.data;
+    },
+    enabled: tab === 'costcenter',
+  });
+
   const formatBal = (balance: number, isDebitNature?: boolean) => {
     const abs = Math.abs(balance);
     if (balance === 0) return formatCurrency(0);
@@ -163,6 +178,7 @@ export default function AccountingReportsPage() {
         <Tab label="Trial Balance" value="trial" />
         <Tab label="Profit & Loss" value="pl" />
         <Tab label="Balance Sheet" value="bs" />
+        <Tab label="Cost Center" value="costcenter" />
       </Tabs>
 
       {/* ── Ledger Statement Tab ── */}
@@ -600,6 +616,86 @@ export default function AccountingReportsPage() {
               </Grid>
             </Grid>
           ) : null}
+        </Box>
+      )}
+
+      {/* ── Cost Center Report ── */}
+      {tab === 'costcenter' && (
+        <Box>
+          <Box sx={{ display: 'flex', gap: 2, mb: 2, flexWrap: 'wrap' }}>
+            <TextField size="small" type="date" label="From" value={ccStartDate} onChange={(e) => setCcStartDate(e.target.value)} InputLabelProps={{ shrink: true }} />
+            <TextField size="small" type="date" label="To" value={ccEndDate} onChange={(e) => setCcEndDate(e.target.value)} InputLabelProps={{ shrink: true }} />
+          </Box>
+          {ccLoading ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}><CircularProgress /></Box>
+          ) : ccData ? (
+            <Box>
+              {/* Summary cards */}
+              <Grid container spacing={2} sx={{ mb: 2 }}>
+                <Grid item xs={12} sm={4}>
+                  <Card><CardContent>
+                    <Typography variant="caption" color="text.secondary">Total Allocated</Typography>
+                    <Typography variant="h6">{formatCurrency(ccData.totals.totalAllocated)}</Typography>
+                  </CardContent></Card>
+                </Grid>
+                <Grid item xs={12} sm={4}>
+                  <Card><CardContent>
+                    <Typography variant="caption" color="text.secondary">Total Spent (from ledger)</Typography>
+                    <Typography variant="h6" color="error.main">{formatCurrency(ccData.totals.totalSpent)}</Typography>
+                  </CardContent></Card>
+                </Grid>
+                <Grid item xs={12} sm={4}>
+                  <Card><CardContent>
+                    <Typography variant="caption" color="text.secondary">Remaining</Typography>
+                    <Typography variant="h6" color={ccData.totals.totalRemaining >= 0 ? 'success.main' : 'error.main'}>{formatCurrency(ccData.totals.totalRemaining)}</Typography>
+                  </CardContent></Card>
+                </Grid>
+              </Grid>
+
+              <TableContainer component={Card}>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Budget Head</TableCell>
+                      <TableCell align="right">Allocated</TableCell>
+                      <TableCell align="right">Committed (PO)</TableCell>
+                      <TableCell align="right">Actual (GRN)</TableCell>
+                      <TableCell align="right">Paid</TableCell>
+                      <TableCell align="right">Ledger Dr</TableCell>
+                      <TableCell align="right">Ledger Cr</TableCell>
+                      <TableCell align="right">Net</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {ccData.costCenters.map((cc: any) => (
+                      <TableRow key={cc.id} sx={{ '&:hover': { bgcolor: 'action.hover' } }}>
+                        <TableCell sx={{ fontWeight: 500 }}>{cc.particulars}</TableCell>
+                        <TableCell align="right">{formatCurrency(cc.allocatedAmount)}</TableCell>
+                        <TableCell align="right">{formatCurrency(cc.committedAmount)}</TableCell>
+                        <TableCell align="right">{formatCurrency(cc.actualAmount)}</TableCell>
+                        <TableCell align="right">{formatCurrency(cc.paidAmount)}</TableCell>
+                        <TableCell align="right" sx={{ color: 'error.main' }}>{formatCurrency(cc.totalDebit)}</TableCell>
+                        <TableCell align="right" sx={{ color: 'success.main' }}>{formatCurrency(cc.totalCredit)}</TableCell>
+                        <TableCell align="right" sx={{ fontWeight: 600, color: cc.netAmount > 0 ? 'error.main' : 'success.main' }}>{formatCurrency(cc.netAmount)}</TableCell>
+                      </TableRow>
+                    ))}
+                    <TableRow sx={{ borderTop: 2 }}>
+                      <TableCell sx={{ fontWeight: 700 }}>Total</TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 700 }}>{formatCurrency(ccData.totals.totalAllocated)}</TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 700 }}>{formatCurrency(ccData.costCenters.reduce((s: number, c: any) => s + c.committedAmount, 0))}</TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 700 }}>{formatCurrency(ccData.costCenters.reduce((s: number, c: any) => s + c.actualAmount, 0))}</TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 700 }}>{formatCurrency(ccData.costCenters.reduce((s: number, c: any) => s + c.paidAmount, 0))}</TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 700, color: 'error.main' }}>{formatCurrency(ccData.costCenters.reduce((s: number, c: any) => s + c.totalDebit, 0))}</TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 700, color: 'success.main' }}>{formatCurrency(ccData.costCenters.reduce((s: number, c: any) => s + c.totalCredit, 0))}</TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 700 }}>{formatCurrency(ccData.totals.totalSpent)}</TableCell>
+                    </TableRow>
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </Box>
+          ) : (
+            <Typography color="text.secondary">No data available</Typography>
+          )}
         </Box>
       )}
     </Box>

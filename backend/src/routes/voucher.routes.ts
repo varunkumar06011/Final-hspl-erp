@@ -29,8 +29,14 @@ const voucherInclude = {
   ledgerEntries: {
     include: {
       ledger: { select: { id: true, name: true, group: true } },
+      budgetHead: { select: { id: true, particulars: true } },
     },
     orderBy: { createdAt: 'asc' as const },
+  },
+  billSettlements: {
+    include: {
+      invoice: { select: { id: true, invoiceNumber: true, invoiceCode: true, totalAmount: true } },
+    },
   },
   createdByUser: { select: { id: true, name: true } },
   postedByUser: { select: { id: true, name: true } },
@@ -143,7 +149,7 @@ router.post(
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const projectId = requireProjectId(req);
-      const { voucherType, date, description, entries, sourceInvoiceId } = req.body;
+      const { voucherType, date, description, entries, sourceInvoiceId, billSettlements } = req.body;
 
       const totalDebit = (entries as Array<{ debit: number }>).reduce((s, e) => s + Number(e.debit), 0);
       const totalCredit = (entries as Array<{ credit: number }>).reduce((s, e) => s + Number(e.credit), 0);
@@ -160,6 +166,26 @@ router.post(
         return;
       }
       const ledgerMap = new Map(ledgers.map((l) => [l.id, l]));
+
+      // Validate budget head IDs (cost centers) if any entry has them
+      const budgetHeadIds = (entries as Array<{ budgetHeadId?: string }>)
+        .map((e) => e.budgetHeadId)
+        .filter((id): id is string => !!id);
+      let budgetHeadMap = new Map<string, string>();
+      if (budgetHeadIds.length > 0) {
+        const uniqueIds = [...new Set(budgetHeadIds)];
+        const budgetHeads = await prisma.budgetHead.findMany({
+          where: { id: { in: uniqueIds }, projectId, deletedAt: null, status: 'ACTIVE' },
+          select: { id: true, particulars: true },
+        });
+        if (budgetHeads.length !== uniqueIds.length) {
+          const found = new Set(budgetHeads.map((b) => b.id));
+          const missing = uniqueIds.filter((id) => !found.has(id));
+          res.status(400).json({ error: `One or more cost centers not found: ${missing.join(', ')}` });
+          return;
+        }
+        budgetHeadMap = new Map(budgetHeads.map((b) => [b.id, b.particulars]));
+      }
 
       // For PURCHASE vouchers with sourceInvoiceId, verify the invoice
       if (voucherType === VoucherType.PURCHASE && sourceInvoiceId) {
@@ -180,6 +206,26 @@ router.post(
         }
       }
 
+      // Validate bill settlements (if provided) — invoices must belong to the project + vendor
+      let validatedSettlements: Array<{ invoiceId: string; vendorId: string; amount: number }> = [];
+      if (billSettlements && billSettlements.length > 0) {
+        const invoiceIds = (billSettlements as Array<{ invoiceId: string }>).map((s) => s.invoiceId);
+        const invoices = await prisma.vendorInvoice.findMany({
+          where: { id: { in: invoiceIds }, projectId, deletedAt: null },
+          select: { id: true, vendorId: true, totalAmount: true },
+        });
+        if (invoices.length !== invoiceIds.length) {
+          res.status(400).json({ error: 'One or more invoices in bill settlements not found' });
+          return;
+        }
+        const invoiceMap = new Map(invoices.map((i) => [i.id, i]));
+        validatedSettlements = (billSettlements as Array<{ invoiceId: string; amount: number }>).map((s) => ({
+          invoiceId: s.invoiceId,
+          vendorId: invoiceMap.get(s.invoiceId)!.vendorId,
+          amount: Number(s.amount),
+        }));
+      }
+
       const jvNumber = await generateVoucherNumber(String(voucherType));
       const voucherDate = date ? new Date(String(date)) : new Date();
 
@@ -192,9 +238,11 @@ router.post(
         description: description ?? null,
         totalDebit,
         totalCredit,
-        entries: entries as Array<{ ledgerId: string; debit: number; credit: number; description?: string }>,
+        entries: entries as Array<{ ledgerId: string; debit: number; credit: number; description?: string; budgetHeadId?: string }>,
         ledgerMap,
+        budgetHeadMap,
         sourceInvoiceId: sourceInvoiceId ?? null,
+        billSettlements: validatedSettlements,
         userId: req.user!.id,
       });
 
@@ -290,9 +338,11 @@ interface PostVoucherArgs {
   description: string | null;
   totalDebit: number;
   totalCredit: number;
-  entries: Array<{ ledgerId: string; debit: number; credit: number; description?: string }>;
+  entries: Array<{ ledgerId: string; debit: number; credit: number; description?: string; budgetHeadId?: string }>;
   ledgerMap: Map<string, { id: string; name: string; group: string; linkedEntityType: string | null; linkedEntityId: string | null }>;
+  budgetHeadMap: Map<string, string>;
   sourceInvoiceId: string | null;
+  billSettlements: Array<{ invoiceId: string; vendorId: string; amount: number }>;
   userId: string;
 }
 
@@ -338,7 +388,7 @@ async function postVoucher(args: PostVoucherArgs) {
         select: { currentBalance: true },
       });
 
-      // Create the ledger entry record
+      // Create the ledger entry record (with optional cost center allocation)
       await tx.ledgerEntry.create({
         data: {
           ledgerId: entry.ledgerId,
@@ -346,6 +396,7 @@ async function postVoucher(args: PostVoucherArgs) {
           debit,
           credit,
           description: entry.description ?? args.description ?? args.jvNumber,
+          budgetHeadId: entry.budgetHeadId ?? null,
           voucherType: args.voucherType,
           voucherNumber: args.jvNumber,
           voucherDate: args.voucherDate,
@@ -417,9 +468,26 @@ async function postVoucher(args: PostVoucherArgs) {
 
     await Promise.all(bankTxnPromises);
 
+    // 4. Create bill settlement records (bill-wise accounting)
+    // Links this payment voucher to specific vendor invoices being settled.
+    if (args.billSettlements.length > 0) {
+      for (const settlement of args.billSettlements) {
+        await tx.billSettlement.create({
+          data: {
+            projectId: args.projectId,
+            journalVoucherId: jv.id,
+            invoiceId: settlement.invoiceId,
+            vendorId: settlement.vendorId,
+            amount: settlement.amount,
+          },
+        });
+      }
+    }
+
     return {
       voucherId: jv.id,
       transactions: ledgerEntryResults,
+      billSettlements: args.billSettlements.length,
     };
   });
 }
@@ -540,7 +608,9 @@ export async function postInvoiceToBooks(invoiceId: string, projectId: string, u
     totalCredit,
     entries,
     ledgerMap,
+    budgetHeadMap: new Map(), // no cost center for auto-generated purchase vouchers
     sourceInvoiceId: invoiceId,
+    billSettlements: [], // purchase vouchers create payable, don't settle
     userId,
   });
 
