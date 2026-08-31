@@ -54,6 +54,7 @@ interface Ledger {
   name: string;
   group: string;
   currentBalance: number;
+  isActive: boolean;
   linkedEntityType: string | null;
   linkedEntityId: string | null;
 }
@@ -174,11 +175,11 @@ export default function VouchersPage() {
     },
   });
 
-  // Fetch all ledgers for entry selection
+  // Fetch all ledgers for entry selection (include inactive — Tally shows all)
   const { data: ledgersData } = useQuery({
-    queryKey: ['/ledgers', 'all-active'],
+    queryKey: ['/ledgers', 'all-for-voucher'],
     queryFn: async () => {
-      const response = await api.get('/ledgers', { params: { page: 1, pageSize: 500, isActive: true } });
+      const response = await api.get('/ledgers', { params: { page: 1, pageSize: 500 } });
       return response.data;
     },
   });

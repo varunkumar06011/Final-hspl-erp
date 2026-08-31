@@ -23,6 +23,7 @@ export interface LedgerOption {
   name: string;
   group: string;
   currentBalance: number;
+  isActive?: boolean;
   linkedEntityType: string | null;
 }
 
@@ -194,7 +195,12 @@ export default function LedgerAutocomplete({
                 </Box>
               ) : (
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
-                  <span>{option.name}</span>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                    <span style={{ opacity: option.isActive === false ? 0.5 : 1 }}>{option.name}</span>
+                    {option.isActive === false && (
+                      <Chip label="Inactive" size="small" sx={{ fontSize: '0.6rem', height: 16, color: 'text.secondary' }} />
+                    )}
+                  </Box>
                   <Chip
                     label={GROUP_LABELS[option.group] ?? option.group}
                     size="small"

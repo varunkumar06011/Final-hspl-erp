@@ -362,7 +362,7 @@ export async function ensureVendorLedger(vendorId: string, projectId: string): P
       linkedEntityId: vendorId,
       openingBalance: 0,
       currentBalance: 0,
-      isActive: vendor.status === 'ACTIVE',
+      isActive: true,
     },
   });
   return ledger.id;
