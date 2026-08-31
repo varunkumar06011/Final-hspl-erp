@@ -159,6 +159,19 @@ export default function VouchersPage() {
   // Bill settlement popup state (Tally-style: popup when paying a vendor)
   const [billPopupOpen, setBillPopupOpen] = useState(false);
 
+  // Simple voucher form state (Payment/Receipt/Contra — no table, just a form)
+  // For Receipt: partyLedger = who gave money (Cr), cashBankLedger = where deposited (Dr)
+  // For Payment: partyLedger = who receives money (Dr), cashBankLedger = where paid from (Cr)
+  // For Contra:  fromLedger = source (Cr), toLedger = destination (Dr)
+  const [simplePartyLedger, setSimplePartyLedger] = useState('');
+  const [simplePartyLedgerGroup, setSimplePartyLedgerGroup] = useState('');
+  const [simpleCashBankLedger, setSimpleCashBankLedger] = useState('');
+  const [simpleAmount, setSimpleAmount] = useState('');
+  const [simpleCostCenter, setSimpleCostCenter] = useState('');
+  // For Contra — two bank/cash ledgers
+  const [simpleFromLedger, setSimpleFromLedger] = useState('');
+  const [simpleToLedger, setSimpleToLedger] = useState('');
+
   // Detail dialog
   const [detailVoucher, setDetailVoucher] = useState<Voucher | null>(null);
 
@@ -247,6 +260,14 @@ export default function VouchersPage() {
     setBillSettlements([]);
     setCostCenterPopup(null);
     setBillPopupOpen(false);
+    // Reset simple form
+    setSimplePartyLedger('');
+    setSimplePartyLedgerGroup('');
+    setSimpleCashBankLedger('');
+    setSimpleAmount('');
+    setSimpleCostCenter('');
+    setSimpleFromLedger('');
+    setSimpleToLedger('');
     setError('');
   };
 
@@ -261,20 +282,48 @@ export default function VouchersPage() {
     setSelectedVoucherType(voucher.voucherType as VoucherType);
     setVoucherDate(new Date().toISOString().split('T')[0]); // today, not the original date
     setVoucherDescription(voucher.description ?? '');
-    setEntries(
-      voucher.entries.map((e) => ({
-        ledgerId: '', // can't reuse ledger IDs from detail — user must re-select
-        ledgerName: e.ledgerName,
-        ledgerGroup: e.ledgerGroup,
-        debit: String(e.debit),
-        credit: String(e.credit),
-        description: e.description ?? '',
-        budgetHeadId: '',
-      })),
-    );
     setBillSettlements([]);
     setError('');
     setDetailVoucher(null);
+
+    // For simple vouchers, fill the simple form
+    const vType = voucher.voucherType as VoucherType;
+    if (vType === VoucherType.PAYMENT || vType === VoucherType.RECEIPT || vType === VoucherType.CONTRA) {
+      // Find the party entry (non-bank/cash) and the bank/cash entry
+      const partyEntry = voucher.entries.find((e) =>
+        e.ledgerGroup !== LedgerGroup.BANK && e.ledgerGroup !== LedgerGroup.CASH
+      );
+      const cashBankEntry = voucher.entries.find((e) =>
+        e.ledgerGroup === LedgerGroup.BANK || e.ledgerGroup === LedgerGroup.CASH
+      );
+      if (vType === VoucherType.CONTRA) {
+        // For contra: Dr = to, Cr = from
+        const drEntry = voucher.entries.find((e) => e.debit > 0);
+        const crEntry = voucher.entries.find((e) => e.credit > 0);
+        setSimpleFromLedger(crEntry?.ledgerName ? (ledgers.find((l) => l.name === crEntry.ledgerName)?.id ?? '') : '');
+        setSimpleToLedger(drEntry?.ledgerName ? (ledgers.find((l) => l.name === drEntry.ledgerName)?.id ?? '') : '');
+      } else {
+        // Can't reuse ledger IDs — user must re-select by typing
+        setSimplePartyLedger('');
+        setSimplePartyLedgerGroup(partyEntry?.ledgerGroup ?? '');
+        setSimpleCashBankLedger(cashBankEntry?.ledgerName ? (ledgers.find((l) => l.name === cashBankEntry.ledgerName)?.id ?? '') : '');
+        setSimpleAmount(String(partyEntry?.debit || partyEntry?.credit || ''));
+        setSimpleCostCenter('');
+      }
+    } else {
+      // For journal/multi-line, fill the entries table
+      setEntries(
+        voucher.entries.map((e) => ({
+          ledgerId: '',
+          ledgerName: e.ledgerName,
+          ledgerGroup: e.ledgerGroup,
+          debit: String(e.debit),
+          credit: String(e.credit),
+          description: e.description ?? '',
+          budgetHeadId: '',
+        })),
+      );
+    }
     setCreateOpen(true);
   };
 
@@ -321,9 +370,7 @@ export default function VouchersPage() {
   // Which side is auto-filled? (row 1)
   const autoSide: 'debit' | 'credit' = userEntrySide === 'debit' ? 'credit' : 'debit';
 
-  // For Contra, both sides are Bank/Cash
-  const contraGroups = [LedgerGroup.BANK, LedgerGroup.CASH];
-  // For Payment/Receipt, the auto side is Bank/Cash
+  // For Payment/Receipt/Contra, the bank/cash side is restricted to these groups
   const cashBankGroups = [LedgerGroup.BANK, LedgerGroup.CASH];
 
   // Auto-balance: when user enters amount on row 0, auto-fill row 1
@@ -362,6 +409,74 @@ export default function VouchersPage() {
   const balanceDiff = totalDebit - totalCredit;
 
   const handleCreate = () => {
+    setError('');
+
+    // ── For simple vouchers (Payment/Receipt/Contra), build entries from the form ──
+    if (isSimpleVoucher) {
+      const amount = Number(simpleAmount.replace(/,/g, '')) || 0;
+      if (amount <= 0) {
+        setError('Enter a valid amount');
+        return;
+      }
+
+      if (selectedVoucherType === VoucherType.CONTRA) {
+        // Contra: Dr toLedger, Cr fromLedger
+        if (!simpleFromLedger) { setError('Select the account to transfer FROM'); return; }
+        if (!simpleToLedger) { setError('Select the account to transfer TO'); return; }
+        if (simpleFromLedger === simpleToLedger) { setError('FROM and TO accounts cannot be the same'); return; }
+        const payload = {
+          voucherType: selectedVoucherType,
+          date: voucherDate || undefined,
+          description: voucherDescription || undefined,
+          entries: [
+            { ledgerId: simpleToLedger, debit: amount, credit: 0 },
+            { ledgerId: simpleFromLedger, debit: 0, credit: amount },
+          ],
+        };
+        createMutation.mutate(payload);
+        return;
+      }
+
+      // Payment: Dr party, Cr cashBank
+      // Receipt: Dr cashBank, Cr party
+      if (!simplePartyLedger) { setError('Select a ledger (type the name)'); return; }
+      if (!simpleCashBankLedger) { setError('Select the Cash/Bank account'); return; }
+
+      const isPayment = selectedVoucherType === VoucherType.PAYMENT;
+      const partyEntry = {
+        ledgerId: simplePartyLedger,
+        debit: isPayment ? amount : 0,
+        credit: isPayment ? 0 : amount,
+        budgetHeadId: simpleCostCenter || undefined,
+      };
+      const cashBankEntry = {
+        ledgerId: simpleCashBankLedger,
+        debit: isPayment ? 0 : amount,
+        credit: isPayment ? amount : 0,
+      };
+
+      // Validate bill settlements
+      const validSettlements = billSettlements.filter((s) => s.invoiceId && Number(s.amount) > 0);
+      const settlementTotal = validSettlements.reduce((s, b) => s + (Number(b.amount) || 0), 0);
+      if (settlementTotal > amount + 0.01) {
+        setError(`Bill settlement total (${formatIndianNumber(settlementTotal)}) cannot exceed payment amount (${formatIndianNumber(amount)})`);
+        return;
+      }
+
+      const payload = {
+        voucherType: selectedVoucherType,
+        date: voucherDate || undefined,
+        description: voucherDescription || undefined,
+        entries: [partyEntry, cashBankEntry],
+        billSettlements: validSettlements.length > 0
+          ? validSettlements.map((s) => ({ invoiceId: s.invoiceId, amount: Number(s.amount) }))
+          : undefined,
+      };
+      createMutation.mutate(payload);
+      return;
+    }
+
+    // ── For Journal / Credit Note / Debit Note — use the table-based entries ──
     if (!isBalanced) {
       setError(`Total debit (${formatIndianNumber(totalDebit)}) must equal total credit (${formatIndianNumber(totalCredit)}) and be > 0`);
       return;
@@ -372,14 +487,12 @@ export default function VouchersPage() {
         return;
       }
     }
-    // Validate bill settlements
     const validSettlements = billSettlements.filter((s) => s.invoiceId && Number(s.amount) > 0);
     const settlementTotal = validSettlements.reduce((s, b) => s + (Number(b.amount) || 0), 0);
     if (settlementTotal > totalCredit + 0.01) {
       setError(`Bill settlement total (${formatIndianNumber(settlementTotal)}) cannot exceed total credit (${formatIndianNumber(totalCredit)})`);
       return;
     }
-    setError('');
     const payload = {
       voucherType: selectedVoucherType,
       date: voucherDate || undefined,
@@ -591,82 +704,243 @@ export default function VouchersPage() {
             />
           </Box>
 
-          {/* ── Entry table — Tally-style ── */}
-          <TableContainer component={Card} variant="outlined">
-            <Table size="small">
-              <TableHead>
-                <TableRow sx={{ bgcolor: 'grey.50' }}>
-                  <TableCell sx={{ fontWeight: 600, width: '40%' }}>Particulars</TableCell>
-                  <TableCell align="right" sx={{ fontWeight: 600, width: '15%' }}>Debit (Dr)</TableCell>
-                  <TableCell align="right" sx={{ fontWeight: 600, width: '15%' }}>Credit (Cr)</TableCell>
-                  <TableCell sx={{ fontWeight: 600, width: '20%' }}>Cost Center</TableCell>
-                  <TableCell sx={{ width: '10%' }} />
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {entries.map((entry, index) => {
-                  // For simple vouchers (Payment/Receipt/Contra), determine if this is the "auto" row
-                  const isAutoRow = isSimpleVoucher && index === 1;
-                  // For Contra, both rows restricted to Bank/Cash
-                  const allowedGroups = selectedVoucherType === VoucherType.CONTRA ? contraGroups : undefined;
-                  // For the auto row in Payment/Receipt, restrict to Bank/Cash
-                  const autoRowGroups = isAutoRow ? cashBankGroups : undefined;
-                  // For the user row in Payment, show party/expense ledgers first
-                  const preferredGroups = selectedVoucherType === VoucherType.PAYMENT
-                    ? [LedgerGroup.SUNDRY_CREDITORS, LedgerGroup.DIRECT_EXPENSE, LedgerGroup.INDIRECT_EXPENSE]
-                    : selectedVoucherType === VoucherType.RECEIPT
-                    ? [LedgerGroup.SUNDRY_DEBTORS, LedgerGroup.INDIRECT_INCOME, LedgerGroup.DIRECT_INCOME, LedgerGroup.SALES]
-                    : undefined;
-
-                  return (
-                    <TableRow key={index} sx={{ '&:hover': { bgcolor: 'action.hover' } }}>
-                      <TableCell>
-                        <LedgerAutocomplete
-                          value={entry.ledgerId}
-                          onChange={(ledgerId, ledger) => selectLedger(index, ledgerId, ledger)}
-                          ledgers={ledgers as LedgerOption[]}
-                          allowedGroups={autoRowGroups ?? allowedGroups}
-                          preferredGroups={preferredGroups}
-                          autoFocus={index === 0}
-                          placeholder={isAutoRow ? 'Cash / Bank account...' : 'Type ledger name...'}
-                          onError={(msg) => setError(msg)}
-                        />
-                        {/* Show ledger group as a small chip below the autocomplete */}
-                        {entry.ledgerGroup && (
+          {/* ═══════════════════════════════════════════════════════════════
+              SIMPLE VOUCHERS (Payment / Receipt / Contra) — Form-based, no table
+              Like Tally: type party name, enter amount, pick bank, save.
+              ═══════════════════════════════════════════════════════════════ */}
+          {isSimpleVoucher ? (
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
+              {selectedVoucherType === VoucherType.CONTRA ? (
+                /* ── Contra: Transfer from one bank/cash to another ── */
+                <>
+                  <Box>
+                    <Typography variant="subtitle2" sx={{ mb: 1 }}>Transfer FROM</Typography>
+                    <LedgerAutocomplete
+                      value={simpleFromLedger}
+                      onChange={(id) => setSimpleFromLedger(id)}
+                      ledgers={ledgers as LedgerOption[]}
+                      allowedGroups={cashBankGroups}
+                      autoFocus
+                      placeholder="Select Cash / Bank account to transfer from..."
+                      onError={(msg) => setError(msg)}
+                    />
+                  </Box>
+                  <Box>
+                    <Typography variant="subtitle2" sx={{ mb: 1 }}>Amount</Typography>
+                    <TextField
+                      fullWidth
+                      size="small"
+                      value={formatIndianNumber(simpleAmount)}
+                      onChange={(e) => setSimpleAmount(e.target.value.replace(/,/g, ''))}
+                      inputProps={{ style: { textAlign: 'right' }, inputMode: 'decimal' }}
+                      placeholder="0.00"
+                    />
+                    {Number(simpleAmount.replace(/,/g, '')) > 0 && (
+                      <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, fontStyle: 'italic' }}>
+                        {amountToWords(simpleAmount)}
+                      </Typography>
+                    )}
+                  </Box>
+                  <Box>
+                    <Typography variant="subtitle2" sx={{ mb: 1 }}>Transfer TO</Typography>
+                    <LedgerAutocomplete
+                      value={simpleToLedger}
+                      onChange={(id) => setSimpleToLedger(id)}
+                      ledgers={ledgers as LedgerOption[]}
+                      allowedGroups={cashBankGroups}
+                      placeholder="Select Cash / Bank account to transfer to..."
+                      onError={(msg) => setError(msg)}
+                    />
+                  </Box>
+                </>
+              ) : (
+                /* ── Payment / Receipt — the main Tally flow ── */
+                <>
+                  <Box>
+                    <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                      {selectedVoucherType === VoucherType.PAYMENT ? 'Paid To' : 'Received From'}
+                    </Typography>
+                    <LedgerAutocomplete
+                      value={simplePartyLedger}
+                      onChange={(id, ledger) => {
+                        setSimplePartyLedger(id);
+                        setSimplePartyLedgerGroup(ledger?.group ?? '');
+                      }}
+                      ledgers={ledgers as LedgerOption[]}
+                      preferredGroups={selectedVoucherType === VoucherType.PAYMENT
+                        ? [LedgerGroup.SUNDRY_CREDITORS, LedgerGroup.DIRECT_EXPENSE, LedgerGroup.INDIRECT_EXPENSE]
+                        : [LedgerGroup.SUNDRY_DEBTORS, LedgerGroup.INDIRECT_INCOME, LedgerGroup.DIRECT_INCOME, LedgerGroup.SALES]
+                      }
+                      autoFocus
+                      placeholder={selectedVoucherType === VoucherType.PAYMENT
+                        ? 'Type party / expense name...'
+                        : 'Type party / income name...'}
+                      onError={(msg) => setError(msg)}
+                    />
+                    {/* Show ledger group chip */}
+                    {simplePartyLedgerGroup && (
+                      <Chip
+                        label={simplePartyLedgerGroup.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}
+                        size="small"
+                        variant="outlined"
+                        sx={{ mt: 0.5, fontSize: '0.65rem', height: 18 }}
+                      />
+                    )}
+                    {/* Cost center button — only for expense ledgers */}
+                    {ledgerIsExpense(simplePartyLedgerGroup) && budgetHeads.length > 0 && (
+                      <Box sx={{ mt: 1 }}>
+                        {simpleCostCenter ? (
                           <Chip
-                            label={entry.ledgerGroup.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}
+                            label={budgetHeads.find((b) => b.id === simpleCostCenter)?.particulars ?? 'CC'}
                             size="small"
+                            color="primary"
                             variant="outlined"
-                            sx={{ mt: 0.5, fontSize: '0.65rem', height: 18 }}
+                            onDelete={() => setSimpleCostCenter('')}
                           />
+                        ) : (
+                          <Button
+                            size="small"
+                            onClick={() => setCostCenterPopup({ entryIndex: -1 })}
+                            sx={{ textTransform: 'none', fontSize: '0.75rem' }}
+                          >
+                            Set Cost Center
+                          </Button>
                         )}
-                      </TableCell>
-                      <TableCell align="right">
-                        <TextField
+                      </Box>
+                    )}
+                  </Box>
+
+                  <Box>
+                    <Typography variant="subtitle2" sx={{ mb: 1 }}>Amount</Typography>
+                    <TextField
+                      fullWidth
+                      size="small"
+                      value={formatIndianNumber(simpleAmount)}
+                      onChange={(e) => setSimpleAmount(e.target.value.replace(/,/g, ''))}
+                      inputProps={{ style: { textAlign: 'right' }, inputMode: 'decimal' }}
+                      placeholder="0.00"
+                    />
+                    {Number(simpleAmount.replace(/,/g, '')) > 0 && (
+                      <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, fontStyle: 'italic' }}>
+                        {amountToWords(simpleAmount)}
+                      </Typography>
+                    )}
+                  </Box>
+
+                  <Box>
+                    <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                      {selectedVoucherType === VoucherType.PAYMENT ? 'Pay From (Cash / Bank)' : 'Deposit To (Cash / Bank)'}
+                    </Typography>
+                    <LedgerAutocomplete
+                      value={simpleCashBankLedger}
+                      onChange={(id) => setSimpleCashBankLedger(id)}
+                      ledgers={ledgers as LedgerOption[]}
+                      allowedGroups={cashBankGroups}
+                      placeholder="Select Cash / Bank account..."
+                      onError={(msg) => setError(msg)}
+                    />
+                  </Box>
+
+                  {/* Bill-wise settlement — only for Payment */}
+                  {selectedVoucherType === VoucherType.PAYMENT && pendingInvoices.length > 0 && (
+                    <Box>
+                      {billSettlements.length > 0 ? (
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                          <Typography variant="body2" fontWeight={500}>Bill-wise Settlements:</Typography>
+                          {billSettlements.map((bs, idx) => {
+                            const inv = pendingInvoices.find((i) => i.id === bs.invoiceId);
+                            return inv ? (
+                              <Chip
+                                key={idx}
+                                label={`${inv.invoiceCode}: ₹${formatIndianNumber(Number(bs.amount) || 0)}`}
+                                size="small"
+                                onDelete={() => setBillSettlements(billSettlements.filter((_, i) => i !== idx))}
+                              />
+                            ) : null;
+                          })}
+                          <Button size="small" onClick={() => setBillPopupOpen(true)}>Edit</Button>
+                        </Box>
+                      ) : (
+                        <Button
                           size="small"
-                          value={formatIndianNumber(entry.debit)}
-                          onChange={(e) => handleAmountChange(index, 'debit', e.target.value)}
-                          sx={{ width: 130 }}
-                          inputProps={{ style: { textAlign: 'right' }, inputMode: 'decimal' }}
-                          placeholder={isAutoRow && selectedVoucherType === VoucherType.RECEIPT ? 'auto' : ''}
-                          disabled={isAutoRow && selectedVoucherType === VoucherType.PAYMENT}
-                        />
-                      </TableCell>
-                      <TableCell align="right">
-                        <TextField
-                          size="small"
-                          value={formatIndianNumber(entry.credit)}
-                          onChange={(e) => handleAmountChange(index, 'credit', e.target.value)}
-                          sx={{ width: 130 }}
-                          inputProps={{ style: { textAlign: 'right' }, inputMode: 'decimal' }}
-                          placeholder={isAutoRow && selectedVoucherType === VoucherType.PAYMENT ? 'auto' : ''}
-                          disabled={isAutoRow && selectedVoucherType === VoucherType.RECEIPT}
-                        />
-                      </TableCell>
-                      <TableCell>
-                        {/* Cost center: show as chip if set, or a small "Set" button for expense ledgers */}
-                        {entry.budgetHeadId ? (
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                          variant="outlined"
+                          onClick={() => setBillPopupOpen(true)}
+                        >
+                          Link to Vendor Invoices (Bill-wise)
+                        </Button>
+                      )}
+                    </Box>
+                  )}
+                </>
+              )}
+
+              {/* Narration — single field at bottom */}
+              <TextField
+                fullWidth
+                size="small"
+                label="Narration"
+                value={voucherDescription}
+                onChange={(e) => setVoucherDescription(e.target.value)}
+                placeholder="Enter narration for this voucher..."
+              />
+            </Box>
+          ) : (
+            /* ═══════════════════════════════════════════════════════════════
+                JOURNAL / CREDIT NOTE / DEBIT NOTE — Table-based multi-line entry
+                ═══════════════════════════════════════════════════════════════ */
+            <>
+              <TableContainer component={Card} variant="outlined">
+                <Table size="small">
+                  <TableHead>
+                    <TableRow sx={{ bgcolor: 'grey.50' }}>
+                      <TableCell sx={{ fontWeight: 600, width: '40%' }}>Particulars</TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 600, width: '15%' }}>Debit (Dr)</TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 600, width: '15%' }}>Credit (Cr)</TableCell>
+                      <TableCell sx={{ fontWeight: 600, width: '20%' }}>Cost Center</TableCell>
+                      <TableCell sx={{ width: '10%' }} />
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {entries.map((entry, index) => (
+                      <TableRow key={index} sx={{ '&:hover': { bgcolor: 'action.hover' } }}>
+                        <TableCell>
+                          <LedgerAutocomplete
+                            value={entry.ledgerId}
+                            onChange={(ledgerId, ledger) => selectLedger(index, ledgerId, ledger)}
+                            ledgers={ledgers as LedgerOption[]}
+                            autoFocus={index === 0}
+                            placeholder="Type ledger name..."
+                            onError={(msg) => setError(msg)}
+                          />
+                          {entry.ledgerGroup && (
+                            <Chip
+                              label={entry.ledgerGroup.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}
+                              size="small"
+                              variant="outlined"
+                              sx={{ mt: 0.5, fontSize: '0.65rem', height: 18 }}
+                            />
+                          )}
+                        </TableCell>
+                        <TableCell align="right">
+                          <TextField
+                            size="small"
+                            value={formatIndianNumber(entry.debit)}
+                            onChange={(e) => handleAmountChange(index, 'debit', e.target.value)}
+                            sx={{ width: 130 }}
+                            inputProps={{ style: { textAlign: 'right' }, inputMode: 'decimal' }}
+                          />
+                        </TableCell>
+                        <TableCell align="right">
+                          <TextField
+                            size="small"
+                            value={formatIndianNumber(entry.credit)}
+                            onChange={(e) => handleAmountChange(index, 'credit', e.target.value)}
+                            sx={{ width: 130 }}
+                            inputProps={{ style: { textAlign: 'right' }, inputMode: 'decimal' }}
+                          />
+                        </TableCell>
+                        <TableCell>
+                          {entry.budgetHeadId ? (
                             <Chip
                               label={budgetHeads.find((b) => b.id === entry.budgetHeadId)?.particulars ?? 'CC'}
                               size="small"
@@ -674,109 +948,76 @@ export default function VouchersPage() {
                               variant="outlined"
                               onDelete={() => updateEntry(index, 'budgetHeadId', '')}
                             />
-                          </Box>
-                        ) : ledgerIsExpense(entry.ledgerGroup) && budgetHeads.length > 0 ? (
-                          <Button
-                            size="small"
-                            onClick={() => setCostCenterPopup({ entryIndex: index })}
-                            sx={{ textTransform: 'none', fontSize: '0.75rem' }}
-                          >
-                            Set Cost Center
-                          </Button>
-                        ) : (
-                          <Typography variant="caption" color="text.disabled">—</Typography>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {entries.length > 2 && (
-                          <IconButton size="small" onClick={() => removeEntry(index)}><CancelIcon fontSize="small" /></IconButton>
-                        )}
-                      </TableCell>
+                          ) : ledgerIsExpense(entry.ledgerGroup) && budgetHeads.length > 0 ? (
+                            <Button
+                              size="small"
+                              onClick={() => setCostCenterPopup({ entryIndex: index })}
+                              sx={{ textTransform: 'none', fontSize: '0.75rem' }}
+                            >
+                              Set Cost Center
+                            </Button>
+                          ) : (
+                            <Typography variant="caption" color="text.disabled">—</Typography>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {entries.length > 2 && (
+                            <IconButton size="small" onClick={() => removeEntry(index)}><CancelIcon fontSize="small" /></IconButton>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                  <TableHead>
+                    <TableRow sx={{ borderTop: 2, borderColor: 'divider' }}>
+                      <TableCell sx={{ fontWeight: 700 }}>Total</TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 700, color: isBalanced ? 'success.main' : 'error.main' }}>{formatCurrency(totalDebit)}</TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 700, color: isBalanced ? 'success.main' : 'error.main' }}>{formatCurrency(totalCredit)}</TableCell>
+                      <TableCell />
+                      <TableCell />
                     </TableRow>
-                  );
-                })}
-              </TableBody>
-              {/* Footer with totals — Tally-style */}
-              <TableHead>
-                <TableRow sx={{ borderTop: 2, borderColor: 'divider' }}>
-                  <TableCell sx={{ fontWeight: 700 }}>Total</TableCell>
-                  <TableCell align="right" sx={{ fontWeight: 700, color: isBalanced ? 'success.main' : 'error.main' }}>{formatCurrency(totalDebit)}</TableCell>
-                  <TableCell align="right" sx={{ fontWeight: 700, color: isBalanced ? 'success.main' : 'error.main' }}>{formatCurrency(totalCredit)}</TableCell>
-                  <TableCell />
-                  <TableCell />
-                </TableRow>
-                {balanceDiff !== 0 && (
-                  <TableRow>
-                    <TableCell colSpan={2} align="right" sx={{ color: 'error.main', fontSize: '0.8rem' }}>
-                      {balanceDiff > 0 ? 'Excess Debit:' : 'Excess Credit:'}
-                    </TableCell>
-                    <TableCell align="right" sx={{ color: 'error.main', fontWeight: 600, fontSize: '0.8rem' }}>
-                      {formatCurrency(Math.abs(balanceDiff))}
-                    </TableCell>
-                    <TableCell colSpan={2} />
-                  </TableRow>
-                )}
-              </TableHead>
-            </Table>
-          </TableContainer>
+                    {balanceDiff !== 0 && (
+                      <TableRow>
+                        <TableCell colSpan={2} align="right" sx={{ color: 'error.main', fontSize: '0.8rem' }}>
+                          {balanceDiff > 0 ? 'Excess Debit:' : 'Excess Credit:'}
+                        </TableCell>
+                        <TableCell align="right" sx={{ color: 'error.main', fontWeight: 600, fontSize: '0.8rem' }}>
+                          {formatCurrency(Math.abs(balanceDiff))}
+                        </TableCell>
+                        <TableCell colSpan={2} />
+                      </TableRow>
+                    )}
+                  </TableHead>
+                </Table>
+              </TableContainer>
 
-          {/* Amount in words — Tally-style */}
-          {totalDebit > 0 && (
-            <Typography variant="body2" color="text.secondary" sx={{ mt: 1, fontStyle: 'italic' }}>
-              {amountToWords(totalDebit)}
-            </Typography>
-          )}
-
-          {/* Add row — only for Journal / multi-line vouchers */}
-          {(!isSimpleVoucher || entries.length > 2) && (
-            <Button startIcon={<AddIcon />} onClick={addEntry} sx={{ mt: 1 }}>Add Row</Button>
-          )}
-
-          {/* Narration — single field at bottom (Tally-style) */}
-          <TextField
-            fullWidth
-            size="small"
-            label="Narration"
-            value={voucherDescription}
-            onChange={(e) => setVoucherDescription(e.target.value)}
-            sx={{ mt: 2 }}
-            placeholder="Enter narration for this voucher..."
-          />
-
-          {/* Bill-wise settlement button — only for Payment vouchers with vendor on Dr side */}
-          {selectedVoucherType === VoucherType.PAYMENT && pendingInvoices.length > 0 && (
-            <Box sx={{ mt: 2 }}>
-              {billSettlements.length > 0 ? (
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-                  <Typography variant="body2" fontWeight={500}>Bill-wise Settlements:</Typography>
-                  {billSettlements.map((bs, idx) => {
-                    const inv = pendingInvoices.find((i) => i.id === bs.invoiceId);
-                    return inv ? (
-                      <Chip
-                        key={idx}
-                        label={`${inv.invoiceCode}: ₹${formatIndianNumber(Number(bs.amount) || 0)}`}
-                        size="small"
-                        onDelete={() => setBillSettlements(billSettlements.filter((_, i) => i !== idx))}
-                      />
-                    ) : null;
-                  })}
-                  <Button size="small" onClick={() => setBillPopupOpen(true)}>Edit</Button>
-                </Box>
-              ) : (
-                <Button
-                  size="small"
-                  variant="outlined"
-                  onClick={() => setBillPopupOpen(true)}
-                >
-                  Link to Vendor Invoices (Bill-wise)
-                </Button>
+              {totalDebit > 0 && (
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 1, fontStyle: 'italic' }}>
+                  {amountToWords(totalDebit)}
+                </Typography>
               )}
-            </Box>
+
+              <Button startIcon={<AddIcon />} onClick={addEntry} sx={{ mt: 1 }}>Add Row</Button>
+
+              <TextField
+                fullWidth
+                size="small"
+                label="Narration"
+                value={voucherDescription}
+                onChange={(e) => setVoucherDescription(e.target.value)}
+                sx={{ mt: 2 }}
+                placeholder="Enter narration for this voucher..."
+              />
+            </>
           )}
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setCreateOpen(false)}>Cancel</Button>
-          <Button variant="contained" onClick={handleCreate} disabled={createMutation.isPending || !isBalanced}>
+          <Button
+            variant="contained"
+            onClick={handleCreate}
+            disabled={createMutation.isPending || (isSimpleVoucher ? !(Number(simpleAmount.replace(/,/g, '')) > 0) : !isBalanced)}
+          >
             {createMutation.isPending ? <CircularProgress size={20} /> : 'Save'}
           </Button>
         </DialogActions>
@@ -796,10 +1037,18 @@ export default function VouchersPage() {
           </Typography>
           <Select
             fullWidth
-            value={costCenterPopup ? entries[costCenterPopup.entryIndex]?.budgetHeadId ?? '' : ''}
+            value={costCenterPopup
+              ? (costCenterPopup.entryIndex === -1
+                ? simpleCostCenter
+                : entries[costCenterPopup.entryIndex]?.budgetHeadId ?? '')
+              : ''}
             onChange={(e) => {
               if (costCenterPopup) {
-                updateEntry(costCenterPopup.entryIndex, 'budgetHeadId', e.target.value);
+                if (costCenterPopup.entryIndex === -1) {
+                  setSimpleCostCenter(e.target.value);
+                } else {
+                  updateEntry(costCenterPopup.entryIndex, 'budgetHeadId', e.target.value);
+                }
               }
             }}
             displayEmpty
