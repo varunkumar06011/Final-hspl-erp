@@ -36,6 +36,7 @@ import {
   Download as DownloadIcon,
   ExpandMore as ExpandMoreIcon,
   Delete as DeleteIcon,
+  Publish as PostToBooksIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { InvoiceVerificationStatus, UserRole, STORAGE } from '@hospital-erp/shared';
@@ -477,6 +478,21 @@ export default function InvoicesPage() {
     onError: (err: unknown) => setError(extractErrorMessage(err)),
   });
 
+  // Post a verified invoice to the accounting ledgers (creates a PURCHASE voucher)
+  const postToBooksMutation = useMutation({
+    mutationFn: async (invId: string) => {
+      const response = await api.post(`/invoices/${invId}/post-to-books`);
+      return response.data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['/invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['/vouchers'] });
+      queryClient.invalidateQueries({ queryKey: ['/ledgers'] });
+      setSuccessMsg(`Invoice posted to books as ${data.jvNumber}`);
+    },
+    onError: (err: unknown) => setError(extractErrorMessage(err)),
+  });
+
   const rows: InvoiceRow[] = data?.data ?? [];
   const pagination = data?.pagination ?? { page: 1, pageSize: 20, total: 0, totalPages: 0 };
   const vendors: { id: string; name: string; vendorCode: string }[] = vendorsData?.data ?? [];
@@ -644,6 +660,21 @@ export default function InvoicesPage() {
                             <IconButton size="small" color="success" onClick={() => setApprovalAction({ row, action: 'approve' })} title="Approve"><CheckIcon fontSize="small" /></IconButton>
                             <IconButton size="small" color="error" onClick={() => setApprovalAction({ row, action: 'reject' })} title="Reject"><CloseIcon fontSize="small" /></IconButton>
                           </>
+                        )}
+                        {row.verificationStatus === InvoiceVerificationStatus.VERIFIED && (
+                          <IconButton
+                            size="small"
+                            color="primary"
+                            onClick={() => {
+                              if (confirm(`Post invoice ${row.invoiceCode} to accounting books? This creates a PURCHASE voucher (Dr Purchase + Input GST, Cr ${row.vendor?.name}).`)) {
+                                postToBooksMutation.mutate(row.id);
+                              }
+                            }}
+                            title="Post to Books"
+                            disabled={postToBooksMutation.isPending}
+                          >
+                            <PostToBooksIcon fontSize="small" />
+                          </IconButton>
                         )}
                         {row.verificationStatus !== InvoiceVerificationStatus.VERIFIED && (
                           <IconButton size="small" color="error" onClick={() => setDeleteRow(row)} title="Delete"><DeleteIcon fontSize="small" /></IconButton>

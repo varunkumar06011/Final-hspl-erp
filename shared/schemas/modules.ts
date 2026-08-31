@@ -22,6 +22,8 @@ import {
   CashTxnType,
   JVType,
   JournalAccountType,
+  LedgerGroup,
+  VoucherType,
 } from '../enums.js';
 
 const uuid = z.string().uuid();
@@ -683,6 +685,7 @@ const workTaskBody = z.object({
   deadlineDate: dateStr.optional(),
   assignedTo: uuid.optional(),
   assignedVendorId: uuid.optional(),
+  followUpBy: z.string().trim().max(200).optional(),
   linkedQuotationId: uuid.optional(),
   linkedPoId: uuid.optional(),
 });
@@ -1179,5 +1182,156 @@ export const jvApprovalActionSchema = z.object({
   body: z.object({
     comments: z.string().max(1000).optional(),
     reason: z.string().max(1000).optional(),
+  }),
+});
+
+// ═══════════════════════════════════════════════════════════
+// Finance Module — Chart of Accounts (Ledgers) & Tally Vouchers
+// ═══════════════════════════════════════════════════════════
+
+// ── Ledger CRUD ──
+export const createLedgerSchema = z.object({
+  body: z.object({
+    name: nonEmptyText(200),
+    group: z.nativeEnum(LedgerGroup),
+    openingBalance: money.default(0),
+    isActive: z.boolean().default(true),
+  }),
+});
+export const updateLedgerSchema = z.object({
+  params: z.object({ id: uuid }),
+  body: z.object({
+    name: nonEmptyText(200).optional(),
+    group: z.nativeEnum(LedgerGroup).optional(),
+    isActive: z.boolean().optional(),
+  }),
+});
+export const listLedgersSchema = z.object({
+  query: pagination.extend({
+    search: z.string().optional(),
+    group: z.nativeEnum(LedgerGroup).optional(),
+    linkedEntityType: z.string().optional(),
+    isActive: z.coerce.boolean().optional(),
+  }),
+});
+
+// ── Tally voucher entry (Receipt / Payment / Contra / Journal / Purchase / Credit Note / Debit Note) ──
+// Each entry references a ledger by ID. Debit must equal credit.
+const ledgerEntryInput = z.object({
+  ledgerId: uuid,
+  debit: money.default(0),
+  credit: money.default(0),
+  description: z.string().max(500).optional(),
+});
+
+export const createVoucherSchema = z
+  .object({
+    body: z.object({
+      voucherType: z.nativeEnum(VoucherType),
+      date: dateStr.optional(),
+      description: z.string().max(1000).optional(),
+      entries: z.array(ledgerEntryInput).min(2, 'At least 2 entries required (one debit, one credit)'),
+      // For PURCHASE vouchers created from an invoice
+      sourceInvoiceId: uuid.optional(),
+    }),
+  })
+  .superRefine((data, ctx) => {
+    const { entries } = data.body;
+    const totalDebit = entries.reduce((sum, e) => sum + Number(e.debit), 0);
+    const totalCredit = entries.reduce((sum, e) => sum + Number(e.credit), 0);
+
+    if (Math.abs(totalDebit - totalCredit) > 0.01) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['body', 'entries'],
+        message: `Total debit (${totalDebit}) must equal total credit (${totalCredit})`,
+      });
+    }
+
+    if (totalDebit <= 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['body', 'entries'],
+        message: 'Total debit/credit must be greater than 0',
+      });
+    }
+
+    // Each entry should have either debit or credit, not both
+    for (let i = 0; i < entries.length; i++) {
+      const entry = entries[i];
+      if (Number(entry.debit) > 0 && Number(entry.credit) > 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['body', 'entries', i],
+          message: 'An entry cannot have both debit and credit',
+        });
+      }
+    }
+  });
+
+export const listVouchersSchema = z.object({
+  query: pagination.extend({
+    search: z.string().optional(),
+    voucherType: z.nativeEnum(VoucherType).optional(),
+    status: z.string().optional(),
+    startDate: dateStr.optional(),
+    endDate: dateStr.optional(),
+  }),
+});
+
+// ── Ledger statement query ──
+export const ledgerStatementSchema = z
+  .object({
+    params: z.object({ id: uuid }),
+    query: pagination.extend({
+      startDate: dateStr.optional(),
+      endDate: dateStr.optional(),
+    }),
+  })
+  .superRefine((data, ctx) => {
+    if (data.query.startDate && data.query.endDate && data.query.endDate < data.query.startDate) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['query', 'endDate'],
+        message: 'End date cannot be before start date',
+      });
+    }
+  });
+
+// ── Day book query ──
+export const dayBookSchema = z.object({
+  query: pagination.extend({
+    date: dateStr.optional(),
+    startDate: dateStr.optional(),
+    endDate: dateStr.optional(),
+    voucherType: z.nativeEnum(VoucherType).optional(),
+  }),
+});
+
+// ── Trial balance / P&L / Balance Sheet query ──
+export const trialBalanceSchema = z.object({
+  query: z.object({
+    asOfDate: dateStr.optional(),
+  }),
+});
+export const profitLossSchema = z
+  .object({
+    query: z.object({
+      startDate: dateStr.optional(),
+      endDate: dateStr.optional(),
+    }),
+  })
+  .superRefine((data, ctx) => {
+    if (data.query.startDate && data.query.endDate && data.query.endDate < data.query.startDate) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['query', 'endDate'],
+        message: 'End date cannot be before start date',
+      });
+    }
+  });
+export const balanceSheetSchema = z.object({
+  query: z.object({
+    asOfDate: dateStr.optional(),
   }),
 });

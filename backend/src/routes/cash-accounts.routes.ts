@@ -17,6 +17,7 @@ import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middl
 import { rbacMiddleware } from '../middleware/rbac';
 import { validateMiddleware } from '../middleware/validate';
 import { logAudit } from '../services/audit.service';
+import { ensureCashLedger } from './ledger.routes';
 
 // ── Base CRUD via factory ──
 const crudRouter = createCrudRouter({
@@ -41,6 +42,20 @@ const crudRouter = createCrudRouter({
       if (body[key] !== undefined) data[key] = body[key];
     }
     return data;
+  },
+  afterCreate: async (record, _userId, projectId) => {
+    // Auto-create a Cash ledger for this account. Fire-and-forget.
+    await ensureCashLedger(record.id as string, projectId).catch((err) =>
+      console.error(`[CashAccount] auto-ledger creation failed for ${record.id}:`, err),
+    );
+  },
+  afterUpdate: async (record, _userId, _projectId) => {
+    if (record.name) {
+      await prisma.ledger.updateMany({
+        where: { linkedEntityType: 'CASH_ACCOUNT', linkedEntityId: record.id as string, deletedAt: null },
+        data: { name: record.name as string },
+      }).catch((err) => console.error(`[CashAccount] ledger name sync failed for ${record.id}:`, err));
+    }
   },
 });
 

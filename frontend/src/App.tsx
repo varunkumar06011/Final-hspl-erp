@@ -26,6 +26,9 @@ import OwnerAccountPage from './pages/OwnerAccountPage';
 import JournalVouchersPage from './pages/JournalVouchersPage';
 import FinanceDashboardPage from './pages/FinanceDashboardPage';
 import FinanceReportsPage from './pages/FinanceReportsPage';
+import LedgersPage from './pages/LedgersPage';
+import VouchersPage from './pages/VouchersPage';
+import AccountingReportsPage from './pages/AccountingReportsPage';
 import InventoryPage from './pages/InventoryPage';
 import AssetsPage from './pages/AssetsPage';
 import AssetDetailPage from './pages/AssetDetailPage';
@@ -68,6 +71,9 @@ const ROUTES = [
   { path: '/journal-vouchers', element: <JournalVouchersPage /> },
   { path: '/finance-dashboard', element: <FinanceDashboardPage /> },
   { path: '/finance-reports', element: <FinanceReportsPage /> },
+  { path: '/ledgers', element: <LedgersPage /> },
+  { path: '/vouchers', element: <VouchersPage /> },
+  { path: '/accounting-reports', element: <AccountingReportsPage /> },
   { path: '/inventory', element: <InventoryPage /> },
   { path: '/assets', element: <AssetsPage /> },
   { path: '/assets/:itemId', element: <AssetDetailPage /> },

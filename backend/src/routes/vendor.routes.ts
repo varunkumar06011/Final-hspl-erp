@@ -7,6 +7,7 @@ import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middl
 import { rbacMiddleware } from '../middleware/rbac';
 import { notifyAllHeads } from '../services/push.service';
 import { generateSequenceNumber } from '../services/sequence.service';
+import { ensureVendorLedger } from './ledger.routes';
 
 interface MaterialInput {
   id?: string;
@@ -58,7 +59,7 @@ const router = createCrudRouter({
     const vendorIds = records.map((vendor) => String(vendor.id));
     if (vendorIds.length === 0) return records;
 
-    const [invoices, paidRequests, paidAdvances] = await Promise.all([
+    const [invoices, paidRequests, paidAdvances, vendorLedgers] = await Promise.all([
       prisma.vendorInvoice.findMany({
         where: { projectId, vendorId: { in: vendorIds }, deletedAt: null },
         select: { vendorId: true, totalAmount: true, advancePaid: true },
@@ -86,6 +87,18 @@ const router = createCrudRouter({
         },
         select: { amount: true, vendorId: true },
       }),
+      // Fetch vendor ledgers for the accounting (Tally-style) payable balance.
+      // Ledger currentBalance for SUNDRY_CREDITORS: negative = we owe them (credit balance),
+      // positive = they owe us (debit balance, rare — advance paid exceeds bills).
+      prisma.ledger.findMany({
+        where: {
+          projectId,
+          linkedEntityType: 'VENDOR',
+          linkedEntityId: { in: vendorIds },
+          deletedAt: null,
+        },
+        select: { linkedEntityId: true, currentBalance: true, id: true },
+      }),
     ]);
 
     const totals = new Map(vendorIds.map((vendorId) => [vendorId, { billed: 0, paid: 0 }]));
@@ -109,13 +122,28 @@ const router = createCrudRouter({
       if (total) total.paid += Number(advance.amount);
     }
 
+    // Map vendorId → ledger balance
+    const ledgerMap = new Map(
+      vendorLedgers.map((l) => [String(l.linkedEntityId), { id: l.id, balance: Number(l.currentBalance) }]),
+    );
+
     return records.map((vendor) => {
       const total = totals.get(String(vendor.id)) ?? { billed: 0, paid: 0 };
+      const ledger = ledgerMap.get(String(vendor.id));
+      // For SUNDRY_CREDITORS (credit nature): negative balance = we owe them (payable)
+      // positive balance = they owe us (advance/debit)
+      const ledgerBalance = ledger?.balance ?? 0;
       return {
         ...vendor,
         totalBilled: total.billed,
         totalPaid: total.paid,
         outstanding: Math.max(0, total.billed - total.paid),
+        // Accounting ledger balance (from posted vouchers). null = no ledger yet.
+        ledgerId: ledger?.id ?? null,
+        ledgerBalance,
+        // weOwe = positive payable (credit balance). theyOwe = positive receivable (debit balance).
+        weOwe: ledgerBalance < 0 ? Math.abs(ledgerBalance) : 0,
+        theyOwe: ledgerBalance > 0 ? ledgerBalance : 0,
       };
     });
   },
@@ -175,6 +203,12 @@ const router = createCrudRouter({
     return data;
   },
   afterCreate: async (record, _userId, projectId) => {
+    // Auto-create a Sundry Creditors ledger for this vendor so it's immediately
+    // available for Tally-style voucher entry and payable tracking. Fire-and-forget:
+    // if this fails, the vendor is still created and "Sync Ledgers" can catch up.
+    await ensureVendorLedger(record.id as string, projectId).catch((err) =>
+      console.error(`[Vendor] auto-ledger creation failed for ${record.id}:`, err),
+    );
     await notifyAllHeads(projectId, {
       entityType: 'VENDOR',
       entityId: record.id as string,
@@ -182,6 +216,15 @@ const router = createCrudRouter({
       body: `Vendor ${record.name} (${record.vendorCode}) added`,
       url: '/vendors',
     });
+  },
+  afterUpdate: async (record, _userId, _projectId) => {
+    // Keep the linked ledger name in sync when the vendor is renamed.
+    if (record.name) {
+      await prisma.ledger.updateMany({
+        where: { linkedEntityType: 'VENDOR', linkedEntityId: record.id as string, deletedAt: null },
+        data: { name: record.name as string },
+      }).catch((err) => console.error(`[Vendor] ledger name sync failed for ${record.id}:`, err));
+    }
   },
   beforeDelete: validateVendorDeletion,
 });

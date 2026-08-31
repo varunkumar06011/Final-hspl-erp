@@ -25,6 +25,7 @@ interface CrudConfig {
   transformList?: (records: Record<string, unknown>[], projectId: string) => Record<string, unknown>[] | Promise<Record<string, unknown>[]>;
   beforeDelete?: (id: string) => Promise<void>;
   afterCreate?: (record: Record<string, unknown>, userId: string, projectId: string) => void | Promise<void>;
+  afterUpdate?: (record: Record<string, unknown>, userId: string, projectId: string) => void | Promise<void>;
 }
 
 export function createCrudRouter(config: CrudConfig): Router {
@@ -197,6 +198,12 @@ export function createCrudRouter(config: CrudConfig): Router {
           oldValue: sanitizeForAudit(existing),
           newValue: sanitizeForAudit(updated),
         });
+
+        if (config.afterUpdate) {
+          Promise.resolve(config.afterUpdate(updated, req.user!.id, req.user!.projectId!)).catch((err: unknown) =>
+            console.error(`[CrudFactory] afterUpdate error for ${config.entityType}:`, err)
+          );
+        }
 
         res.json(updated);
       } catch (error) {

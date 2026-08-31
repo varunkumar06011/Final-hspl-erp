@@ -10,6 +10,7 @@ import { generateSequenceNumber } from '../services/sequence.service';
 import * as approvalService from '../services/approval.service';
 import { notifyApprovers } from '../services/push.service';
 import { getStorageService, serveFile } from '../services/storage.service';
+import { postInvoiceToBooks } from './voucher.routes';
 import multer from 'multer';
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 100 * 1024 * 1024 } });
@@ -893,6 +894,27 @@ router.get(
       next(error);
     }
   }
+);
+
+// ── POST /:id/post-to-books — post a verified invoice to the accounting ledgers ──
+// Creates a PURCHASE voucher: Dr Purchase + Dr Input GST, Cr Sundry Creditor (vendor).
+// Bridges procurement to accounting without changing the PO/invoice UI.
+router.post(
+  '/:id/post-to-books',
+  rbacMiddleware(Permission.MANAGE_FINANCE),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      const result = await postInvoiceToBooks(req.params.id, projectId, req.user!.id);
+      res.status(201).json(result);
+    } catch (error) {
+      if (error instanceof Error) {
+        res.status(400).json({ error: error.message });
+        return;
+      }
+      next(error);
+    }
+  },
 );
 
 export default router;

@@ -116,6 +116,7 @@ model Project {
   cashAccounts      CashAccount[]
   ownerAccounts     OwnerAccount[]
   journalVouchers   JournalVoucher[]
+  ledgers           Ledger[]
 
   @@map("projects")
 }
@@ -874,6 +875,7 @@ model WorkTask {
   deadlineDate      DateTime? // optional deadline
   assignedTo        String?   @db.Uuid
   assignedVendorId  String?   @db.Uuid
+  followUpBy        String?
   linkedQuotationId String?   @db.Uuid
   linkedPoId        String?   @db.Uuid
   createdBy         String    @db.Uuid
@@ -1320,9 +1322,16 @@ model JournalVoucher {
   date             DateTime  @default(now())
   description      String?
   type             String // JVType enum: OWNER_EXPENSE | OWNER_REPAYMENT | INTER_ACCOUNT | ADJUSTMENT
+  // Tally-style voucher type. Legacy JVs (created before this field) default to JOURNAL.
+  // New vouchers: RECEIPT | PAYMENT | CONTRA | JOURNAL | PURCHASE | CREDIT_NOTE | DEBIT_NOTE
+  voucherType      String    @default("JOURNAL") // VoucherType enum
+  // For PURCHASE vouchers created from a verified invoice — links back without changing invoice UI
+  sourceInvoiceId  String?   @db.Uuid
   status           String    @default("DRAFT")
     // DRAFT → PENDING_APPROVAL → APPROVED → POSTED
     //         → REJECTED | CANCELLED
+    // For new voucher types (RECEIPT/PAYMENT/CONTRA/PURCHASE), status goes DRAFT → POSTED directly
+    // (no approval, per business decision). Legacy JVType vouchers keep the approval flow.
   totalDebit       Decimal   @default(0) @db.Decimal(15, 2)
   totalCredit      Decimal   @default(0) @db.Decimal(15, 2)
   postedAt         DateTime?
@@ -1338,8 +1347,10 @@ model JournalVoucher {
   createdByUser    User              @relation("JVCreatedBy", fields: [createdBy], references: [id])
   postedByUser     User?             @relation("JVPostedBy", fields: [postedBy], references: [id])
   entries          JournalEntry[]
+  ledgerEntries    LedgerEntry[]
 
   @@index([projectId])
+  @@index([voucherType])
   @@map("journal_vouchers")
 }
 
@@ -1360,4 +1371,64 @@ model JournalEntry {
 
   @@index([journalVoucherId])
   @@map("journal_entries")
+}
+
+// ═══════════════════════════════════════════════════════════
+// Finance Module — Chart of Accounts (Ledger Masters) & Ledger Entries
+// Tally-style double-entry accounting layer. Sits alongside the existing
+// BANK/CASH/OWNER/BUDGET_HEAD posting engine (backward compatible) and
+// provides the unified ledger statement / trial balance / P&L / BS reports.
+// ═══════════════════════════════════════════════════════════
+
+model Ledger {
+  id              String   @id @default(uuid()) @db.Uuid
+  projectId       String   @db.Uuid
+  name            String   // Ledger name (e.g. "Owner A", "ABC Suppliers", "Rent Expense")
+  group           String   // LedgerGroup enum — Tally group for P&L / BS classification
+  // Optional link to an existing entity. When set, this ledger mirrors that
+  // entity's transactions. Auto-created for vendors (SUNDRY_CREDITORS),
+  // bank accounts (BANK), cash accounts (CASH), owner accounts (CAPITAL_ACCOUNT).
+  linkedEntityType String? // LEDGER_LINK_TYPE enum: VENDOR | BANK_ACCOUNT | CASH_ACCOUNT | OWNER_ACCOUNT | NONE
+  linkedEntityId   String?  @db.Uuid
+  openingBalance  Decimal  @default(0) @db.Decimal(15, 2)
+  currentBalance  Decimal  @default(0) @db.Decimal(15, 2) // cache — NEVER user-edited. Updated only by posting ops.
+    // For asset/expense groups: debit balance = positive.
+    // For liability/income/capital groups: credit balance = positive (stored as negative).
+    // This convention matches Tally: debit-nature accounts have positive balances,
+    // credit-nature accounts have negative balances. Trial Balance shows absolute values.
+  isActive        Boolean  @default(true)
+  isSystem        Boolean  @default(false) // true for auto-seeded GST ledgers (Input CGST etc.) — not deletable
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  deletedAt       DateTime?
+
+  project       Project        @relation(fields: [projectId], references: [id])
+  ledgerEntries LedgerEntry[]
+
+  @@unique([projectId, name])
+  @@index([projectId, group])
+  @@index([linkedEntityType, linkedEntityId])
+  @@map("ledgers")
+}
+
+model LedgerEntry {
+  id               String   @id @default(uuid()) @db.Uuid
+  ledgerId         String   @db.Uuid
+  journalVoucherId String   @db.Uuid
+  debit            Decimal  @default(0) @db.Decimal(15, 2)
+  credit           Decimal  @default(0) @db.Decimal(15, 2)
+  description      String?
+  // Snapshot of voucher metadata at posting time — denormalized for fast
+  // ledger statement queries without joining back to JournalVoucher.
+  voucherType      String   // VoucherType enum
+  voucherNumber    String   // JV number
+  voucherDate      DateTime // JV date
+  createdAt        DateTime @default(now())
+
+  ledger         Ledger         @relation(fields: [ledgerId], references: [id], onDelete: Cascade)
+  journalVoucher JournalVoucher @relation(fields: [journalVoucherId], references: [id], onDelete: Cascade)
+
+  @@index([ledgerId, voucherDate])
+  @@index([journalVoucherId])
+  @@map("ledger_entries")
 }

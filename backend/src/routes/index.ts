@@ -33,6 +33,9 @@ import ownerAccountRoutes from './owner-account.routes';
 import journalVoucherRoutes from './journal-vouchers.routes';
 import financeReportRoutes from './finance-reports.routes';
 import budgetRevisionRoutes from './budget-revisions.routes';
+import ledgerRoutes from './ledger.routes';
+import voucherRoutes from './voucher.routes';
+import accountingReportRoutes from './accounting-reports.routes';
 
 const router = Router();
 
@@ -70,5 +73,8 @@ router.use('/owner-accounts', ownerAccountRoutes);
 router.use('/journal-vouchers', journalVoucherRoutes);
 router.use('/finance-reports', financeReportRoutes);
 router.use('/budget-revisions', budgetRevisionRoutes);
+router.use('/ledgers', ledgerRoutes);
+router.use('/vouchers', voucherRoutes);
+router.use('/accounting-reports', accountingReportRoutes);
 
 export default router;

@@ -209,6 +209,8 @@ export default function VendorsPage() {
           { key: 'totalBilled', label: 'Total Bill', render: (r) => `₹${Number(r.totalBilled ?? 0).toLocaleString('en-IN')}` },
           { key: 'totalPaid', label: 'Paid', render: (r) => `₹${Number(r.totalPaid ?? 0).toLocaleString('en-IN')}` },
           { key: 'outstanding', label: 'Outstanding', render: (r) => `₹${Number(r.outstanding ?? 0).toLocaleString('en-IN')}` },
+          { key: 'weOwe', label: 'We Owe (Ledger)', render: (r) => r.ledgerId ? `₹${Number(r.weOwe ?? 0).toLocaleString('en-IN')}` : '—' },
+          { key: 'theyOwe', label: 'They Owe (Ledger)', render: (r) => r.ledgerId ? `₹${Number(r.theyOwe ?? 0).toLocaleString('en-IN')}` : '—' },
           { key: 'status', label: 'Status' },
         ]}
         statusKey="status"

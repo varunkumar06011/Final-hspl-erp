@@ -70,6 +70,7 @@ interface WorkTask {
   deadlineDate: string | null;
   assignedTo: string | null;
   assignedVendorId: string | null;
+  followUpBy: string | null;
   linkedQuotationId: string | null;
   linkedPoId: string | null;
   createdBy: string;
@@ -113,7 +114,7 @@ const EMPTY_FORM: Record<string, unknown> = {
   scheduledDate: todayISO(),
   deadlineDate: '',
   assignedTo: '',
-  assignedVendorId: '',
+  followUpBy: '',
 };
 
 export default function WorkListPage() {
@@ -155,14 +156,6 @@ export default function WorkListPage() {
     queryFn: async () => (await api.get('/work-tasks/assignable-users')).data?.data ?? [],
   });
 
-  const { data: vendorsData } = useQuery({
-    queryKey: ['/vendors', 'for-work'],
-    queryFn: async () => {
-      const response = await api.get('/vendors', { params: { pageSize: 100 } });
-      return response.data;
-    },
-  });
-
   const invalidateAll = () => {
     queryClient.invalidateQueries({ queryKey: ['/work-tasks'] });
     queryClient.invalidateQueries({ queryKey: ['/quotations'] });
@@ -200,7 +193,6 @@ export default function WorkListPage() {
 
   const rows: WorkTask[] = data?.data ?? [];
   const pagination = data?.pagination ?? { page: 1, pageSize: 20, total: 0, totalPages: 0 };
-  const vendors: { id: string; name: string; vendorCode: string }[] = vendorsData?.data ?? [];
 
   // ── Work item form helpers ──
   function openCreate() {
@@ -221,7 +213,7 @@ export default function WorkListPage() {
       scheduledDate: toISODate(new Date(task.scheduledDate)),
       deadlineDate: task.deadlineDate ? toISODate(new Date(task.deadlineDate)) : '',
       assignedTo: task.assignedTo ?? '',
-      assignedVendorId: task.assignedVendorId ?? '',
+      followUpBy: task.followUpBy ?? '',
     });
     setError('');
     setFormOpen(true);
@@ -247,7 +239,7 @@ export default function WorkListPage() {
       scheduledDate: form.scheduledDate,
       deadlineDate: form.deadlineDate ? form.deadlineDate : undefined,
       assignedTo: form.assignedTo || undefined,
-      assignedVendorId: form.assignedVendorId || undefined,
+      followUpBy: String(form.followUpBy ?? '').trim() || undefined,
     };
     saveMutation.mutate(payload);
   }
@@ -312,7 +304,6 @@ export default function WorkListPage() {
                   <TableCell>Priority</TableCell>
                   <TableCell>Status</TableCell>
                   <TableCell>Assigned</TableCell>
-                  <TableCell>Vendor</TableCell>
                   <TableCell>Scheduled</TableCell>
                   <TableCell>Quotations</TableCell>
                   <TableCell>PO</TableCell>
@@ -321,9 +312,9 @@ export default function WorkListPage() {
               </TableHead>
               <TableBody>
                 {isLoading ? (
-                  <TableRow><TableCell colSpan={10} sx={{ textAlign: 'center', py: 4 }}><CircularProgress size={24} /></TableCell></TableRow>
+                  <TableRow><TableCell colSpan={9} sx={{ textAlign: 'center', py: 4 }}><CircularProgress size={24} /></TableCell></TableRow>
                 ) : rows.length === 0 ? (
-                  <TableRow><TableCell colSpan={10} sx={{ textAlign: 'center', py: 4, color: 'text.secondary' }}>No work items yet.</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={9} sx={{ textAlign: 'center', py: 4, color: 'text.secondary' }}>No work items yet.</TableCell></TableRow>
                 ) : rows.map((task) => (
                   <TableRow key={task.id} hover>
                     <TableCell data-label="Title">
@@ -343,7 +334,6 @@ export default function WorkListPage() {
                       <Chip size="small" label={task.status.replace(/_/g, ' ')} color={STATUS_COLORS[task.status] ?? 'default'} />
                     </TableCell>
                     <TableCell data-label="Assigned">{task.assignedToUser?.name ?? '—'}</TableCell>
-                    <TableCell data-label="Vendor">{task.assignedVendor?.name ?? '—'}</TableCell>
                     <TableCell data-label="Scheduled">{formatDate(task.scheduledDate)}</TableCell>
                     <TableCell data-label="Quotations">
                       <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
@@ -427,10 +417,7 @@ export default function WorkListPage() {
               <MenuItem value="">Unassigned</MenuItem>
               {(assignableUsers as AssignableUser[] | undefined)?.map((u) => <MenuItem key={u.id} value={u.id}>{u.name} ({u.role.replace(/_/g, ' ').toLowerCase()})</MenuItem>)}
             </TextField>
-            <TextField select label="Assign Vendor" value={String(form.assignedVendorId ?? '')} onChange={(e) => setForm({ ...form, assignedVendorId: e.target.value })} fullWidth>
-              <MenuItem value="">No vendor assigned</MenuItem>
-              {vendors.map((v) => <MenuItem key={v.id} value={v.id}>{v.vendorCode} - {v.name}</MenuItem>)}
-            </TextField>
+            <TextField label="Follow up by" value={String(form.followUpBy ?? '')} onChange={(e) => setForm({ ...form, followUpBy: e.target.value })} fullWidth />
           </Stack>
         </DialogContent>
         <DialogActions>

@@ -29,6 +29,9 @@ import {
   ReceiptLong as JVIcon,
   Dashboard as FinanceDashboardIcon,
   Assessment as ReportsIcon,
+  AccountTree as LedgersIcon,
+  ArrowDownward as VouchersIcon,
+  BarChart as AccountingReportsIcon,
 } from '@mui/icons-material';
 import { useAuthStore } from '../stores/authStore';
 import { hasPermission, Permission, UserRole } from '@hospital-erp/shared';
@@ -56,6 +59,10 @@ const NAV_ITEMS = [
   { label: 'Cash Accounts', icon: <CashIcon />, path: '/cash-accounts', permission: Permission.VIEW_FINANCIALS, section: 'Finance' },
   { label: 'Owner Account', icon: <OwnerIcon />, path: '/owner-accounts', permission: Permission.VIEW_FINANCIALS, section: 'Finance' },
   { label: 'Journal Vouchers', icon: <JVIcon />, path: '/journal-vouchers', permission: Permission.VIEW_FINANCIALS, section: 'Finance' },
+  // ── Accounting (Tally-style) ──
+  { label: 'Chart of Accounts', icon: <LedgersIcon />, path: '/ledgers', permission: Permission.VIEW_FINANCIALS, section: 'Accounting' },
+  { label: 'Vouchers', icon: <VouchersIcon />, path: '/vouchers', permission: Permission.VIEW_FINANCIALS, section: 'Accounting' },
+  { label: 'Accounting Reports', icon: <AccountingReportsIcon />, path: '/accounting-reports', permission: Permission.VIEW_FINANCIALS, section: 'Accounting' },
   // ── Site Operations ──
   { label: 'Inventory', icon: <InventoryIcon />, path: '/inventory', permission: Permission.MANAGE_INVENTORY, section: 'Site Operations' },
   { label: 'Assets', icon: <AssetsIcon />, path: '/assets', permission: Permission.MANAGE_INVENTORY, section: 'Site Operations' },

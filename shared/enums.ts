@@ -373,6 +373,117 @@ export enum JournalAccountType {
 }
 
 // ═══════════════════════════════════════════════════════════
+// Finance Module — Chart of Accounts (Tally-style)
+// ═══════════════════════════════════════════════════════════
+
+// Tally-style ledger groups. Determines P&L vs Balance Sheet classification
+// and the debit/credit nature of the account.
+export enum LedgerGroup {
+  // Balance Sheet — Assets (debit nature, positive balance = debit)
+  FIXED_ASSET = 'FIXED_ASSET',
+  CURRENT_ASSET = 'CURRENT_ASSET',
+  BANK = 'BANK',
+  CASH = 'CASH',
+  // Balance Sheet — Liabilities (credit nature, positive balance = credit)
+  CURRENT_LIABILITY = 'CURRENT_LIABILITY',
+  LOAN = 'LOAN',
+  DUTIES_TAXES = 'DUTIES_TAXES', // GST payable, TDS payable
+  // Balance Sheet — Capital (credit nature)
+  CAPITAL_ACCOUNT = 'CAPITAL_ACCOUNT',
+  // Sundry parties (credit nature; vendor = payable, debtor = receivable)
+  SUNDRY_CREDITORS = 'SUNDRY_CREDITORS',
+  SUNDRY_DEBTORS = 'SUNDRY_DEBTORS',
+  // Profit & Loss — Expenses (debit nature)
+  DIRECT_EXPENSE = 'DIRECT_EXPENSE',
+  INDIRECT_EXPENSE = 'INDIRECT_EXPENSE',
+  PURCHASE = 'PURCHASE',
+  // Profit & Loss — Income (credit nature)
+  DIRECT_INCOME = 'DIRECT_INCOME',
+  INDIRECT_INCOME = 'INDIRECT_INCOME',
+  SALES = 'SALES',
+}
+
+// Whether a group is debit-nature or credit-nature.
+// Debit-nature: assets, expenses. Positive balance = debit.
+// Credit-nature: liabilities, capital, income. Positive balance = credit (stored as negative).
+export const DEBIT_NATURE_GROUPS: LedgerGroup[] = [
+  LedgerGroup.FIXED_ASSET,
+  LedgerGroup.CURRENT_ASSET,
+  LedgerGroup.BANK,
+  LedgerGroup.CASH,
+  LedgerGroup.SUNDRY_DEBTORS,
+  LedgerGroup.DIRECT_EXPENSE,
+  LedgerGroup.INDIRECT_EXPENSE,
+  LedgerGroup.PURCHASE,
+];
+
+export function isDebitNatureGroup(group: LedgerGroup): boolean {
+  return DEBIT_NATURE_GROUPS.includes(group);
+}
+
+// Balance sheet groups (assets + liabilities + capital). Everything else is P&L.
+export const BALANCE_SHEET_GROUPS: LedgerGroup[] = [
+  LedgerGroup.FIXED_ASSET,
+  LedgerGroup.CURRENT_ASSET,
+  LedgerGroup.BANK,
+  LedgerGroup.CASH,
+  LedgerGroup.CURRENT_LIABILITY,
+  LedgerGroup.LOAN,
+  LedgerGroup.DUTIES_TAXES,
+  LedgerGroup.CAPITAL_ACCOUNT,
+  LedgerGroup.SUNDRY_CREDITORS,
+  LedgerGroup.SUNDRY_DEBTORS,
+];
+
+export function isBalanceSheetGroup(group: LedgerGroup): boolean {
+  return BALANCE_SHEET_GROUPS.includes(group);
+}
+
+// Tally-style voucher types.
+export enum VoucherType {
+  RECEIPT = 'RECEIPT',         // F6 — money received (debit bank/cash, credit party/income)
+  PAYMENT = 'PAYMENT',         // F5 — money paid (debit expense/party, credit bank/cash)
+  CONTRA = 'CONTRA',           // F4 — bank↔cash / bank↔bank (no P&L impact)
+  JOURNAL = 'JOURNAL',         // F7 — generic adjustment
+  PURCHASE = 'PURCHASE',       // F8 — debit purchase + input GST, credit sundry creditor
+  CREDIT_NOTE = 'CREDIT_NOTE', // Ctrl+F8 — sales return / vendor refund entry
+  DEBIT_NOTE = 'DEBIT_NOTE',   // Ctrl+F9 — purchase return / expense debit
+}
+
+// What entity a ledger is linked to (for auto-created ledgers).
+export enum LedgerLinkType {
+  VENDOR = 'VENDOR',
+  BANK_ACCOUNT = 'BANK_ACCOUNT',
+  CASH_ACCOUNT = 'CASH_ACCOUNT',
+  OWNER_ACCOUNT = 'OWNER_ACCOUNT',
+  NONE = 'NONE',
+}
+
+// GST ledger names auto-seeded per project (Tally-standard).
+export const GST_LEDGER_NAMES = {
+  INPUT_CGST: 'Input CGST',
+  INPUT_SGST: 'Input SGST',
+  INPUT_IGST: 'Input IGST',
+  OUTPUT_CGST: 'Output CGST',
+  OUTPUT_SGST: 'Output SGST',
+  OUTPUT_IGST: 'Output IGST',
+} as const;
+
+// Standard expense ledgers auto-seeded per project (common daily expenses).
+export const DEFAULT_EXPENSE_LEDGERS = [
+  { name: 'Rent Expense', group: LedgerGroup.INDIRECT_EXPENSE },
+  { name: 'Salary Expense', group: LedgerGroup.DIRECT_EXPENSE },
+  { name: 'Electricity Expense', group: LedgerGroup.INDIRECT_EXPENSE },
+  { name: 'Telephone & Internet', group: LedgerGroup.INDIRECT_EXPENSE },
+  { name: 'Stationery & Printing', group: LedgerGroup.INDIRECT_EXPENSE },
+  { name: 'Bank Charges', group: LedgerGroup.INDIRECT_EXPENSE },
+  { name: 'Conveyance & Travel', group: LedgerGroup.INDIRECT_EXPENSE },
+  { name: 'Staff Welfare', group: LedgerGroup.INDIRECT_EXPENSE },
+  { name: 'Repairs & Maintenance', group: LedgerGroup.INDIRECT_EXPENSE },
+  { name: 'Miscellaneous Expense', group: LedgerGroup.INDIRECT_EXPENSE },
+] as const;
+
+// ═══════════════════════════════════════════════════════════
 // Permission Matrix
 // ═══════════════════════════════════════════════════════════
 

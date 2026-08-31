@@ -16,6 +16,7 @@ import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middl
 import { rbacMiddleware } from '../middleware/rbac';
 import { validateMiddleware } from '../middleware/validate';
 import { logAudit } from '../services/audit.service';
+import { ensureBankLedger } from './ledger.routes';
 
 // ── Base CRUD via factory ──
 const crudRouter = createCrudRouter({
@@ -45,6 +46,21 @@ const crudRouter = createCrudRouter({
     }
     // currentBalance is NEVER user-edited
     return data;
+  },
+  afterCreate: async (record, _userId, projectId) => {
+    // Auto-create a Bank ledger for this account so it's immediately available
+    // for Tally-style voucher entry. Fire-and-forget.
+    await ensureBankLedger(record.id as string, projectId).catch((err) =>
+      console.error(`[BankAccount] auto-ledger creation failed for ${record.id}:`, err),
+    );
+  },
+  afterUpdate: async (record, _userId, _projectId) => {
+    if (record.accountName) {
+      await prisma.ledger.updateMany({
+        where: { linkedEntityType: 'BANK_ACCOUNT', linkedEntityId: record.id as string, deletedAt: null },
+        data: { name: record.accountName as string },
+      }).catch((err) => console.error(`[BankAccount] ledger name sync failed for ${record.id}:`, err));
+    }
   },
 });
 
