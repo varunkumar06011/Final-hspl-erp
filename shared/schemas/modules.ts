@@ -970,6 +970,7 @@ export const listBankAccountsSchema = z.object({
 export const bankDepositSchema = z.object({
   body: z.object({
     amount: positiveMoney,
+    contraLedgerId: uuid,
     date: dateStr.optional(),
     description: z.string().max(500).optional(),
   }),

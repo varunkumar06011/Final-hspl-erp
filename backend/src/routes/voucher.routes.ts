@@ -53,7 +53,7 @@ const VOUCHER_PREFIXES: Record<string, string> = {
   [VoucherType.DEBIT_NOTE]: 'VGH-DN',
 };
 
-async function generateVoucherNumber(voucherType: string): Promise<string> {
+export async function generateVoucherNumber(voucherType: string): Promise<string> {
   const prefix = VOUCHER_PREFIXES[voucherType] ?? 'VGH-JV';
   const vouchers = await prisma.journalVoucher.findMany({
     where: { jvNumber: { startsWith: prefix } },
@@ -330,7 +330,7 @@ router.post(
 // Voucher Posting Engine — core double-entry logic
 // ═══════════════════════════════════════════════════════════
 
-interface PostVoucherArgs {
+export interface PostVoucherArgs {
   projectId: string;
   jvNumber: string;
   voucherType: string;
@@ -346,7 +346,7 @@ interface PostVoucherArgs {
   userId: string;
 }
 
-async function postVoucher(args: PostVoucherArgs) {
+export async function postVoucher(args: PostVoucherArgs) {
   return prisma.$transaction(async (tx) => {
     // 1. Create the JournalVoucher record (status = POSTED directly)
     const jv = await tx.journalVoucher.create({

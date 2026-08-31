@@ -17,6 +17,8 @@ import { rbacMiddleware } from '../middleware/rbac';
 import { validateMiddleware } from '../middleware/validate';
 import { logAudit } from '../services/audit.service';
 import { ensureBankLedger } from './ledger.routes';
+import { postVoucher, generateVoucherNumber } from './voucher.routes';
+import { VoucherType } from '@hospital-erp/shared';
 
 // ── Base CRUD via factory ──
 const crudRouter = createCrudRouter({
@@ -130,7 +132,8 @@ router.get(
   },
 );
 
-// ── Manual deposit (money into bank account) ──
+// ── Manual deposit (money into bank account) — creates a RECEIPT voucher ──
+// Tally-style: Dr Bank, Cr [contra ledger selected by user]
 router.post(
   '/:id/deposit',
   rbacMiddleware(Permission.MANAGE_FINANCE),
@@ -138,16 +141,52 @@ router.post(
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const projectId = requireProjectId(req);
-      const { amount, date, description } = req.body;
+      const { amount, contraLedgerId, date, description } = req.body;
 
-      const result = await postBankTransaction({
-        bankAccountId: req.params.id,
+      // Find the bank ledger for this bank account
+      const bankLedger = await prisma.ledger.findFirst({
+        where: { linkedEntityType: 'BANK_ACCOUNT', linkedEntityId: req.params.id, projectId, deletedAt: null },
+      });
+      if (!bankLedger) {
+        res.status(400).json({ error: 'Bank ledger not found. Run ledger sync first.' });
+        return;
+      }
+
+      // Validate the contra ledger
+      const contraLedger = await prisma.ledger.findFirst({
+        where: { id: contraLedgerId, projectId, deletedAt: null },
+      });
+      if (!contraLedger) {
+        res.status(400).json({ error: 'Selected ledger not found' });
+        return;
+      }
+
+      const amt = Number(amount);
+      const ledgerMap = new Map([
+        [bankLedger.id, bankLedger],
+        [contraLedger.id, contraLedger],
+      ]);
+
+      const jvNumber = await generateVoucherNumber(VoucherType.RECEIPT);
+      const voucherDate = date ? new Date(String(date)) : new Date();
+
+      // Receipt: Dr Bank (money in), Cr Contra ledger (source of money)
+      const result = await postVoucher({
         projectId,
-        type: BankTxnType.DEPOSIT,
-        amount: Number(amount),
-        date: date ? new Date(date) : new Date(),
-        description: description ?? null,
-        referenceType: AccountTxnRefType.MANUAL_DEPOSIT,
+        jvNumber,
+        voucherType: VoucherType.RECEIPT,
+        voucherDate,
+        description: description ?? `Deposit to ${bankLedger.name}`,
+        totalDebit: amt,
+        totalCredit: amt,
+        entries: [
+          { ledgerId: bankLedger.id, debit: amt, credit: 0 },
+          { ledgerId: contraLedger.id, debit: 0, credit: amt },
+        ],
+        ledgerMap,
+        budgetHeadMap: new Map(),
+        sourceInvoiceId: null,
+        billSettlements: [],
         userId: req.user!.id,
       });
 
@@ -155,19 +194,20 @@ router.post(
         userId: req.user!.id,
         action: AuditAction.CREATE,
         entityType: 'BANK_TRANSACTION',
-        entityId: result.transaction.id,
+        entityId: result.voucherId,
         projectId,
-        newValue: { type: BankTxnType.DEPOSIT, amount, bankAccountId: req.params.id },
+        newValue: { type: 'DEPOSIT', amount, bankAccountId: req.params.id, contraLedgerId, jvNumber },
       });
 
-      res.status(201).json(result);
+      res.status(201).json({ jvNumber, ...result });
     } catch (error) {
       next(error);
     }
   },
 );
 
-// ── Manual withdrawal (money out of bank account) ──
+// ── Manual withdrawal (money out of bank account) — creates a PAYMENT voucher ──
+// Tally-style: Dr [contra ledger selected by user], Cr Bank
 router.post(
   '/:id/withdraw',
   rbacMiddleware(Permission.MANAGE_FINANCE),
@@ -175,16 +215,52 @@ router.post(
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const projectId = requireProjectId(req);
-      const { amount, date, description } = req.body;
+      const { amount, contraLedgerId, date, description } = req.body;
 
-      const result = await postBankTransaction({
-        bankAccountId: req.params.id,
+      // Find the bank ledger for this bank account
+      const bankLedger = await prisma.ledger.findFirst({
+        where: { linkedEntityType: 'BANK_ACCOUNT', linkedEntityId: req.params.id, projectId, deletedAt: null },
+      });
+      if (!bankLedger) {
+        res.status(400).json({ error: 'Bank ledger not found. Run ledger sync first.' });
+        return;
+      }
+
+      // Validate the contra ledger
+      const contraLedger = await prisma.ledger.findFirst({
+        where: { id: contraLedgerId, projectId, deletedAt: null },
+      });
+      if (!contraLedger) {
+        res.status(400).json({ error: 'Selected ledger not found' });
+        return;
+      }
+
+      const amt = Number(amount);
+      const ledgerMap = new Map([
+        [bankLedger.id, bankLedger],
+        [contraLedger.id, contraLedger],
+      ]);
+
+      const jvNumber = await generateVoucherNumber(VoucherType.PAYMENT);
+      const voucherDate = date ? new Date(String(date)) : new Date();
+
+      // Payment: Dr Contra ledger (where money goes), Cr Bank (money out)
+      const result = await postVoucher({
         projectId,
-        type: BankTxnType.WITHDRAWAL,
-        amount: Number(amount),
-        date: date ? new Date(date) : new Date(),
-        description: description ?? null,
-        referenceType: AccountTxnRefType.MANUAL_WITHDRAWAL,
+        jvNumber,
+        voucherType: VoucherType.PAYMENT,
+        voucherDate,
+        description: description ?? `Withdrawal from ${bankLedger.name}`,
+        totalDebit: amt,
+        totalCredit: amt,
+        entries: [
+          { ledgerId: contraLedger.id, debit: amt, credit: 0 },
+          { ledgerId: bankLedger.id, debit: 0, credit: amt },
+        ],
+        ledgerMap,
+        budgetHeadMap: new Map(),
+        sourceInvoiceId: null,
+        billSettlements: [],
         userId: req.user!.id,
       });
 
@@ -192,12 +268,12 @@ router.post(
         userId: req.user!.id,
         action: AuditAction.CREATE,
         entityType: 'BANK_TRANSACTION',
-        entityId: result.transaction.id,
+        entityId: result.voucherId,
         projectId,
-        newValue: { type: BankTxnType.WITHDRAWAL, amount, bankAccountId: req.params.id },
+        newValue: { type: 'WITHDRAWAL', amount, bankAccountId: req.params.id, contraLedgerId, jvNumber },
       });
 
-      res.status(201).json(result);
+      res.status(201).json({ jvNumber, ...result });
     } catch (error) {
       next(error);
     }
