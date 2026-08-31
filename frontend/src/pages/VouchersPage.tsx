@@ -192,7 +192,7 @@ export default function VouchersPage() {
   const { data: ledgersData } = useQuery({
     queryKey: ['/ledgers', 'all-for-voucher'],
     queryFn: async () => {
-      const response = await api.get('/ledgers', { params: { page: 1, pageSize: 500 } });
+      const response = await api.get('/ledgers', { params: { page: 1, pageSize: 100 } });
       return response.data;
     },
   });

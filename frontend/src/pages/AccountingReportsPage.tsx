@@ -84,7 +84,7 @@ export default function AccountingReportsPage() {
   const { data: ledgersData } = useQuery({
     queryKey: ['/ledgers', 'all-for-reports'],
     queryFn: async () => {
-      const response = await api.get('/ledgers', { params: { page: 1, pageSize: 500, isActive: true } });
+      const response = await api.get('/ledgers', { params: { page: 1, pageSize: 100, isActive: true } });
       return response.data;
     },
   });
@@ -95,7 +95,7 @@ export default function AccountingReportsPage() {
     queryKey: ['/accounting-reports/ledger-statement', selectedLedger?.id, stmtStartDate, stmtEndDate],
     queryFn: async () => {
       if (!selectedLedger) return null;
-      const params: Record<string, unknown> = { page: 1, pageSize: 500 };
+      const params: Record<string, unknown> = { page: 1, pageSize: 100 };
       if (stmtStartDate) params.startDate = stmtStartDate;
       if (stmtEndDate) params.endDate = stmtEndDate;
       const response = await api.get(`/accounting-reports/ledger-statement/${selectedLedger.id}`, { params });
