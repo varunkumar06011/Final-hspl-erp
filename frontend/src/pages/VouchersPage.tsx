@@ -39,12 +39,13 @@ import {
   ReceiptLong as JournalIcon,
   Undo as CreditNoteIcon,
   Description as DebitNoteIcon,
+  ContentCopy as DuplicateIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { extractErrorMessage } from '../config/api';
 import ResponsiveDialog from '../components/ResponsiveDialog';
 import RefreshButton from '../components/RefreshButton';
-import { formatCurrency, formatIndianNumber, formatDate } from '../utils/enumOptions';
+import { formatCurrency, formatIndianNumber, formatDate, amountToWords } from '../utils/enumOptions';
 import { VoucherType, LedgerGroup } from '@hospital-erp/shared';
 import LedgerAutocomplete, { type LedgerOption } from '../components/LedgerAutocomplete';
 
@@ -254,6 +255,28 @@ export default function VouchersPage() {
     setCreateOpen(true);
   };
 
+  // Duplicate a voucher — opens create dialog pre-filled with the voucher's data
+  const duplicateVoucher = (voucher: Voucher) => {
+    setSelectedVoucherType(voucher.voucherType as VoucherType);
+    setVoucherDate(new Date().toISOString().split('T')[0]); // today, not the original date
+    setVoucherDescription(voucher.description ?? '');
+    setEntries(
+      voucher.entries.map((e) => ({
+        ledgerId: '', // can't reuse ledger IDs from detail — user must re-select
+        ledgerName: e.ledgerName,
+        ledgerGroup: e.ledgerGroup,
+        debit: String(e.debit),
+        credit: String(e.credit),
+        description: e.description ?? '',
+        budgetHeadId: '',
+      })),
+    );
+    setBillSettlements([]);
+    setError('');
+    setDetailVoucher(null);
+    setCreateOpen(true);
+  };
+
   const addEntry = () => {
     setEntries([...entries, { ledgerId: '', ledgerName: '', ledgerGroup: '', debit: '', credit: '', description: '', budgetHeadId: '' }]);
   };
@@ -374,7 +397,33 @@ export default function VouchersPage() {
     createMutation.mutate(payload);
   };
 
-  const rows: Voucher[] = data?.data ?? [];
+  // Map backend response (ledgerEntries with nested ledger) to frontend Voucher format (entries with flat fields)
+  const mapVoucher = (v: any): Voucher => ({
+    id: v.id,
+    jvNumber: v.jvNumber,
+    voucherType: v.voucherType,
+    date: v.date,
+    description: v.description,
+    totalDebit: Number(v.totalDebit),
+    totalCredit: Number(v.totalCredit),
+    status: v.status,
+    createdBy: v.createdByUser?.name ?? v.createdBy ?? '—',
+    entries: (v.ledgerEntries ?? []).map((le: any) => ({
+      ledgerName: le.ledger?.name ?? '',
+      ledgerGroup: le.ledger?.group ?? '',
+      debit: Number(le.debit),
+      credit: Number(le.credit),
+      description: le.description,
+      budgetHead: le.budgetHead ? { id: le.budgetHead.id, particulars: le.budgetHead.particulars } : null,
+    })),
+    billSettlements: (v.billSettlements ?? []).map((bs: any) => ({
+      id: bs.id,
+      amount: Number(bs.amount),
+      voucher: bs.journalVoucher ?? { id: '', jvNumber: '', voucherType: '', date: '', status: '' },
+    })),
+  });
+
+  const rows: Voucher[] = (data?.data ?? []).map(mapVoucher);
   const pagination = data?.pagination ?? { page: 1, pageSize: 20, total: 0, totalPages: 0 };
   const ledgers: Ledger[] = ledgersData?.data ?? [];
   const budgetHeads: BudgetHead[] = budgetHeadsData?.data ?? [];
@@ -486,6 +535,7 @@ export default function VouchersPage() {
                     <TableCell align="right">
                       <Stack direction="row" spacing={0.5} justifyContent="flex-end">
                         <Tooltip title="View Details"><IconButton size="small" onClick={() => setDetailVoucher(v)}><ViewIcon fontSize="small" /></IconButton></Tooltip>
+                        <Tooltip title="Duplicate"><IconButton size="small" onClick={() => duplicateVoucher(v)}><DuplicateIcon fontSize="small" /></IconButton></Tooltip>
                         {v.status === 'POSTED' && (
                           <Tooltip title="Cancel & Reverse">
                             <IconButton size="small" onClick={() => {
@@ -668,6 +718,13 @@ export default function VouchersPage() {
               </TableHead>
             </Table>
           </TableContainer>
+
+          {/* Amount in words — Tally-style */}
+          {totalDebit > 0 && (
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 1, fontStyle: 'italic' }}>
+              {amountToWords(totalDebit)}
+            </Typography>
+          )}
 
           {/* Add row — only for Journal / multi-line vouchers */}
           {(!isSimpleVoucher || entries.length > 2) && (
@@ -864,6 +921,11 @@ export default function VouchersPage() {
                 </Table>
               </TableContainer>
 
+              {/* Amount in words — Tally-style */}
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 1, fontStyle: 'italic' }}>
+                {amountToWords(detailVoucher.totalDebit)}
+              </Typography>
+
               {/* Bill settlements section */}
               {detailVoucher.billSettlements && detailVoucher.billSettlements.length > 0 && (
                 <Box sx={{ mt: 3 }}>
@@ -903,6 +965,9 @@ export default function VouchersPage() {
                   Cancel & Reverse
                 </Button>
               )}
+              <Button startIcon={<DuplicateIcon />} onClick={() => duplicateVoucher(detailVoucher)}>
+                Duplicate
+              </Button>
               <Button onClick={() => setDetailVoucher(null)}>Close</Button>
             </DialogActions>
           </>

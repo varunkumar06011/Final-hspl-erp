@@ -3,14 +3,14 @@ import { useNavigate } from 'react-router-dom';
 import {
   Box, Button, Chip, CircularProgress, DialogActions, DialogTitle, DialogContent,
   Tab, Tabs, Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
-  Typography,
+  Typography, TextField, Stack,
 } from '@mui/material';
-import { Link as LinkIcon } from '@mui/icons-material';
+import { Link as LinkIcon, ReceiptLong as StatementIcon } from '@mui/icons-material';
 import { useQuery } from '@tanstack/react-query';
 import EntityPage from '../components/EntityPage';
 import ResponsiveDialog from '../components/ResponsiveDialog';
 import api from '../config/api';
-import { formatDate, STATUS_COLORS } from '../utils/enumOptions';
+import { formatDate, formatCurrency, formatIndianNumber, STATUS_COLORS } from '../utils/enumOptions';
 
 interface VendorTrace {
   id: string;
@@ -34,6 +34,121 @@ interface VendorTrace {
 }
 
 const statusLabel = (s: string) => s.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+
+// ── Vendor Statement Dialog — Tally-style statement with running balance ──
+function VendorStatementDialog({ vendorId, open, onClose }: { vendorId: string | null; open: boolean; onClose: () => void }) {
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['/vendors', vendorId, 'statement', startDate, endDate],
+    queryFn: async () => {
+      const params: Record<string, string> = {};
+      if (startDate) params.startDate = startDate;
+      if (endDate) params.endDate = endDate;
+      const res = await api.get(`/vendors/${vendorId}/statement`, { params });
+      return res.data;
+    },
+    enabled: !!vendorId && open,
+  });
+
+  return (
+    <ResponsiveDialog open={open} onClose={onClose} maxWidth="lg" fullWidth>
+      <DialogTitle>
+        {isLoading || !data ? 'Vendor Statement' : `Statement — ${data.vendor.name} (${data.vendor.vendorCode})`}
+      </DialogTitle>
+      <DialogContent>
+        {/* Date filters */}
+        <Box sx={{ display: 'flex', gap: 2, mb: 2, mt: 1 }}>
+          <TextField size="small" type="date" label="From" value={startDate} onChange={(e) => setStartDate(e.target.value)} InputLabelProps={{ shrink: true }} sx={{ width: 180 }} />
+          <TextField size="small" type="date" label="To" value={endDate} onChange={(e) => setEndDate(e.target.value)} InputLabelProps={{ shrink: true }} sx={{ width: 180 }} />
+        </Box>
+
+        {isLoading ? (
+          <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress /></Box>
+        ) : !data ? (
+          <Typography color="text.secondary">No data available.</Typography>
+        ) : (
+          <>
+            {/* Summary */}
+            <Stack direction="row" spacing={1} sx={{ mb: 2, flexWrap: 'wrap', gap: 1 }}>
+              <Chip label={`Opening: ${formatCurrency(data.summary.openingBalance)}`} variant="outlined" />
+              <Chip label={`Total Invoices: ${formatCurrency(data.summary.totalDebit)}`} color="error" variant="outlined" />
+              <Chip label={`Total Paid: ${formatCurrency(data.summary.totalCredit)}`} color="success" variant="outlined" />
+              <Chip label={`Closing: ${formatCurrency(data.summary.closingBalance)}`} color="primary" />
+            </Stack>
+
+            {/* Statement table */}
+            <TableContainer component={Box} sx={{ overflowX: 'auto' }}>
+              <Table size="small">
+                <TableHead>
+                  <TableRow sx={{ bgcolor: 'grey.50' }}>
+                    <TableCell sx={{ fontWeight: 600 }}>Date</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>Type</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>Reference</TableCell>
+                    <TableCell align="right" sx={{ fontWeight: 600 }}>Debit (Invoice)</TableCell>
+                    <TableCell align="right" sx={{ fontWeight: 600 }}>Credit (Paid)</TableCell>
+                    <TableCell align="right" sx={{ fontWeight: 600 }}>Balance</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {data.rows.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={6} align="center" sx={{ py: 3 }}>
+                        <Typography color="text.secondary">No transactions in this period</Typography>
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    data.rows.map((row: any, i: number) => (
+                      <TableRow key={i} sx={{
+                        '&:hover': { bgcolor: 'action.hover' },
+                        // Highlight invoice and payment rows
+                        bgcolor: row.type === 'Invoice' ? 'error.lightest' : row.type === 'Payment' ? 'success.lightest' : 'inherit',
+                      }}>
+                        <TableCell>{row.date ? formatDate(row.date) : '—'}</TableCell>
+                        <TableCell>
+                          <Typography variant="body2" fontWeight={500}>{row.type}</Typography>
+                          {row.status && <Chip label={row.status} size="small" sx={{ ml: 0.5, fontSize: '0.65rem', height: 16 }} />}
+                        </TableCell>
+                        <TableCell>{row.reference}</TableCell>
+                        <TableCell align="right" sx={{ color: row.debit > 0 ? 'error.main' : 'text.disabled' }}>
+                          {row.debit > 0 ? formatIndianNumber(row.debit) : '—'}
+                        </TableCell>
+                        <TableCell align="right" sx={{ color: row.credit > 0 ? 'success.main' : 'text.disabled' }}>
+                          {row.credit > 0 ? formatIndianNumber(row.credit) : '—'}
+                        </TableCell>
+                        <TableCell align="right" sx={{ fontWeight: 600 }}>
+                          {formatIndianNumber(row.runningBalance)}
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                  {/* Totals row */}
+                  <TableRow sx={{ borderTop: 2, borderColor: 'divider' }}>
+                    <TableCell colSpan={3} sx={{ fontWeight: 700 }}>Total</TableCell>
+                    <TableCell align="right" sx={{ fontWeight: 700, color: 'error.main' }}>{formatCurrency(data.summary.totalDebit)}</TableCell>
+                    <TableCell align="right" sx={{ fontWeight: 700, color: 'success.main' }}>{formatCurrency(data.summary.totalCredit)}</TableCell>
+                    <TableCell align="right" sx={{ fontWeight: 700 }}>{formatCurrency(data.summary.closingBalance)}</TableCell>
+                  </TableRow>
+                </TableBody>
+              </Table>
+            </TableContainer>
+
+            {/* Ledger info */}
+            {data.ledger && (
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+                Ledger: {data.ledger.name} · Current Ledger Balance: {formatCurrency(data.ledger.currentBalance)}
+              </Typography>
+            )}
+          </>
+        )}
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose}>Close</Button>
+      </DialogActions>
+    </ResponsiveDialog>
+  );
+}
 
 function VendorLinkedDialog({ vendorId, open, onClose }: { vendorId: string | null; open: boolean; onClose: () => void }) {
   const navigate = useNavigate();
@@ -190,6 +305,7 @@ function RecordTable({
 
 export default function VendorsPage() {
   const [linkedId, setLinkedId] = useState<string | null>(null);
+  const [statementId, setStatementId] = useState<string | null>(null);
 
   return (
     <>
@@ -246,16 +362,26 @@ export default function VendorsPage() {
           { name: 'email', label: 'Email', type: 'text' },
         ]}
         rowActions={(row) => (
-          <Button
-            size="small"
-            startIcon={<LinkIcon />}
-            onClick={(e) => { e.stopPropagation(); setLinkedId(String(row.id)); }}
-          >
-            Linked
-          </Button>
+          <Stack direction="row" spacing={0.5}>
+            <Button
+              size="small"
+              startIcon={<LinkIcon />}
+              onClick={(e) => { e.stopPropagation(); setLinkedId(String(row.id)); }}
+            >
+              Linked
+            </Button>
+            <Button
+              size="small"
+              startIcon={<StatementIcon />}
+              onClick={(e) => { e.stopPropagation(); setStatementId(String(row.id)); }}
+            >
+              Statement
+            </Button>
+          </Stack>
         )}
       />
       <VendorLinkedDialog vendorId={linkedId} open={!!linkedId} onClose={() => setLinkedId(null)} />
+      <VendorStatementDialog vendorId={statementId} open={!!statementId} onClose={() => setStatementId(null)} />
     </>
   );
 }

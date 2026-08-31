@@ -38,6 +38,61 @@ export function formatDate(date: unknown): string {
   });
 }
 
+// ── Amount to words (Indian system) ──
+// e.g. 5250 → "Rupees Five Thousand Two Hundred Fifty Only"
+//      10500.50 → "Rupees Ten Thousand Five Hundred and Fifty Paise Only"
+const ONES = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine',
+  'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
+const TENS = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+
+function twoDigitsToWords(n: number): string {
+  if (n < 20) return ONES[n];
+  return TENS[Math.floor(n / 10)] + (n % 10 !== 0 ? ' ' + ONES[n % 10] : '');
+}
+
+function threeDigitsToWords(n: number): string {
+  const hundreds = Math.floor(n / 100);
+  const rest = n % 100;
+  let words = '';
+  if (hundreds > 0) words += ONES[hundreds] + ' Hundred';
+  if (rest > 0) words += (hundreds > 0 ? ' ' : '') + twoDigitsToWords(rest);
+  return words;
+}
+
+export function amountToWords(amount: unknown): string {
+  const num = Number(amount ?? 0);
+  if (num === 0) return 'Rupees Zero Only';
+
+  const isNegative = num < 0;
+  const absNum = Math.abs(num);
+  const integerPart = Math.floor(absNum);
+  const decimalPart = Math.round((absNum - integerPart) * 100);
+
+  // Indian numbering: ones, thousands, lakhs, crores
+  const crores = Math.floor(integerPart / 10000000);
+  const lakhs = Math.floor((integerPart % 10000000) / 100000);
+  const thousands = Math.floor((integerPart % 100000) / 1000);
+  const hundreds = integerPart % 1000;
+
+  let words = '';
+  if (crores > 0) words += threeDigitsToWords(crores) + ' Crore ';
+  if (lakhs > 0) words += twoDigitsToWords(lakhs) + ' Lakh ';
+  if (thousands > 0) words += twoDigitsToWords(thousands) + ' Thousand ';
+  if (hundreds > 0) words += threeDigitsToWords(hundreds);
+
+  words = words.trim();
+  if (!words) words = 'Zero';
+
+  let result = 'Rupees ' + words;
+  if (decimalPart > 0) {
+    result += ' and ' + twoDigitsToWords(decimalPart) + ' Paise';
+  }
+  result += ' Only';
+
+  if (isNegative) result = 'Minus ' + result;
+  return result;
+}
+
 export const STATUS_COLORS: Record<string, 'default' | 'primary' | 'secondary' | 'error' | 'info' | 'success' | 'warning'> = {
   ACTIVE: 'success',
   INACTIVE: 'default',
