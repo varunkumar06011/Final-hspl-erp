@@ -344,10 +344,11 @@ export interface PostVoucherArgs {
   sourceInvoiceId: string | null;
   billSettlements: Array<{ invoiceId: string; vendorId: string; amount: number }>;
   userId: string;
+  tx?: Prisma.TransactionClient; // optional: run inside an existing transaction
 }
 
 export async function postVoucher(args: PostVoucherArgs) {
-  return prisma.$transaction(async (tx) => {
+  const run = async (tx: Prisma.TransactionClient) => {
     // 1. Create the JournalVoucher record (status = POSTED directly)
     const jv = await tx.journalVoucher.create({
       data: {
@@ -489,7 +490,11 @@ export async function postVoucher(args: PostVoucherArgs) {
       transactions: ledgerEntryResults,
       billSettlements: args.billSettlements.length,
     };
-  });
+  };
+
+  // Use the provided transaction client, or start a new one
+  if (args.tx) return run(args.tx);
+  return prisma.$transaction(run);
 }
 
 // ═══════════════════════════════════════════════════════════

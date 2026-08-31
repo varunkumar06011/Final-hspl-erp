@@ -1,5 +1,5 @@
 import { Router, Response, NextFunction } from 'express';
-import { Permission, AuditAction, CashTxnType, BankTxnType, AccountTxnRefType } from '@hospital-erp/shared';
+import { Permission, AuditAction, CashTxnType, BankTxnType, AccountTxnRefType, VoucherType } from '@hospital-erp/shared';
 import {
   createCashAccountSchema,
   updateCashAccountSchema,
@@ -18,6 +18,7 @@ import { rbacMiddleware } from '../middleware/rbac';
 import { validateMiddleware } from '../middleware/validate';
 import { logAudit } from '../services/audit.service';
 import { ensureCashLedger } from './ledger.routes';
+import { postVoucher, generateVoucherNumber } from './voucher.routes';
 
 // ── Base CRUD via factory ──
 const crudRouter = createCrudRouter({
@@ -123,7 +124,8 @@ router.get(
   },
 );
 
-// ── Cash IN (money into cash account) ──
+// ── Cash IN (money into cash account) — creates a RECEIPT voucher ──
+// Tally-style: Dr Cash, Cr [contra ledger selected by user]
 router.post(
   '/:id/in',
   rbacMiddleware(Permission.MANAGE_FINANCE),
@@ -131,16 +133,52 @@ router.post(
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const projectId = requireProjectId(req);
-      const { amount, date, description } = req.body;
+      const { amount, contraLedgerId, date, description } = req.body;
 
-      const result = await postCashTransaction({
-        cashAccountId: req.params.id,
+      // Find the cash ledger for this cash account
+      const cashLedger = await prisma.ledger.findFirst({
+        where: { linkedEntityType: 'CASH_ACCOUNT', linkedEntityId: req.params.id, projectId, deletedAt: null },
+      });
+      if (!cashLedger) {
+        res.status(400).json({ error: 'Cash ledger not found. Run ledger sync first.' });
+        return;
+      }
+
+      // Validate the contra ledger
+      const contraLedger = await prisma.ledger.findFirst({
+        where: { id: contraLedgerId, projectId, deletedAt: null },
+      });
+      if (!contraLedger) {
+        res.status(400).json({ error: 'Selected ledger not found' });
+        return;
+      }
+
+      const amt = Number(amount);
+      const ledgerMap = new Map([
+        [cashLedger.id, { id: cashLedger.id, name: cashLedger.name, group: cashLedger.group, linkedEntityType: cashLedger.linkedEntityType, linkedEntityId: cashLedger.linkedEntityId }],
+        [contraLedger.id, { id: contraLedger.id, name: contraLedger.name, group: contraLedger.group, linkedEntityType: contraLedger.linkedEntityType, linkedEntityId: contraLedger.linkedEntityId }],
+      ]);
+
+      const jvNumber = await generateVoucherNumber(VoucherType.RECEIPT);
+      const voucherDate = date ? new Date(String(date)) : new Date();
+
+      // Receipt: Dr Cash (money in), Cr Contra ledger (source of money)
+      const result = await postVoucher({
         projectId,
-        type: CashTxnType.IN,
-        amount: Number(amount),
-        date: date ? new Date(date) : new Date(),
-        description: description ?? null,
-        referenceType: AccountTxnRefType.MANUAL_DEPOSIT,
+        jvNumber,
+        voucherType: VoucherType.RECEIPT,
+        voucherDate,
+        description: description ?? `Cash In to ${cashLedger.name}`,
+        totalDebit: amt,
+        totalCredit: amt,
+        entries: [
+          { ledgerId: cashLedger.id, debit: amt, credit: 0 },
+          { ledgerId: contraLedger.id, debit: 0, credit: amt },
+        ],
+        ledgerMap,
+        budgetHeadMap: new Map(),
+        sourceInvoiceId: null,
+        billSettlements: [],
         userId: req.user!.id,
       });
 
@@ -148,19 +186,20 @@ router.post(
         userId: req.user!.id,
         action: AuditAction.CREATE,
         entityType: 'CASH_TRANSACTION',
-        entityId: result.transaction.id,
+        entityId: result.voucherId,
         projectId,
-        newValue: { type: CashTxnType.IN, amount, cashAccountId: req.params.id },
+        newValue: { type: CashTxnType.IN, amount, cashAccountId: req.params.id, contraLedgerId, jvNumber },
       });
 
-      res.status(201).json(result);
+      res.status(201).json({ jvNumber, ...result });
     } catch (error) {
       next(error);
     }
   },
 );
 
-// ── Cash OUT (money out of cash account) ──
+// ── Cash OUT (money out of cash account) — creates a PAYMENT voucher ──
+// Tally-style: Dr [contra ledger selected by user], Cr Cash
 router.post(
   '/:id/out',
   rbacMiddleware(Permission.MANAGE_FINANCE),
@@ -168,16 +207,52 @@ router.post(
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const projectId = requireProjectId(req);
-      const { amount, date, description } = req.body;
+      const { amount, contraLedgerId, date, description } = req.body;
 
-      const result = await postCashTransaction({
-        cashAccountId: req.params.id,
+      // Find the cash ledger for this cash account
+      const cashLedger = await prisma.ledger.findFirst({
+        where: { linkedEntityType: 'CASH_ACCOUNT', linkedEntityId: req.params.id, projectId, deletedAt: null },
+      });
+      if (!cashLedger) {
+        res.status(400).json({ error: 'Cash ledger not found. Run ledger sync first.' });
+        return;
+      }
+
+      // Validate the contra ledger
+      const contraLedger = await prisma.ledger.findFirst({
+        where: { id: contraLedgerId, projectId, deletedAt: null },
+      });
+      if (!contraLedger) {
+        res.status(400).json({ error: 'Selected ledger not found' });
+        return;
+      }
+
+      const amt = Number(amount);
+      const ledgerMap = new Map([
+        [cashLedger.id, { id: cashLedger.id, name: cashLedger.name, group: cashLedger.group, linkedEntityType: cashLedger.linkedEntityType, linkedEntityId: cashLedger.linkedEntityId }],
+        [contraLedger.id, { id: contraLedger.id, name: contraLedger.name, group: contraLedger.group, linkedEntityType: contraLedger.linkedEntityType, linkedEntityId: contraLedger.linkedEntityId }],
+      ]);
+
+      const jvNumber = await generateVoucherNumber(VoucherType.PAYMENT);
+      const voucherDate = date ? new Date(String(date)) : new Date();
+
+      // Payment: Dr Contra ledger (where money goes), Cr Cash (money out)
+      const result = await postVoucher({
         projectId,
-        type: CashTxnType.OUT,
-        amount: Number(amount),
-        date: date ? new Date(date) : new Date(),
-        description: description ?? null,
-        referenceType: AccountTxnRefType.MANUAL_WITHDRAWAL,
+        jvNumber,
+        voucherType: VoucherType.PAYMENT,
+        voucherDate,
+        description: description ?? `Cash Out from ${cashLedger.name}`,
+        totalDebit: amt,
+        totalCredit: amt,
+        entries: [
+          { ledgerId: contraLedger.id, debit: amt, credit: 0 },
+          { ledgerId: cashLedger.id, debit: 0, credit: amt },
+        ],
+        ledgerMap,
+        budgetHeadMap: new Map(),
+        sourceInvoiceId: null,
+        billSettlements: [],
         userId: req.user!.id,
       });
 
@@ -185,12 +260,12 @@ router.post(
         userId: req.user!.id,
         action: AuditAction.CREATE,
         entityType: 'CASH_TRANSACTION',
-        entityId: result.transaction.id,
+        entityId: result.voucherId,
         projectId,
-        newValue: { type: CashTxnType.OUT, amount, cashAccountId: req.params.id },
+        newValue: { type: CashTxnType.OUT, amount, cashAccountId: req.params.id, contraLedgerId, jvNumber },
       });
 
-      res.status(201).json(result);
+      res.status(201).json({ jvNumber, ...result });
     } catch (error) {
       next(error);
     }

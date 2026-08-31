@@ -397,14 +397,16 @@ model Payment {
   bankAccountId    String?  @db.Uuid
   cashAccountId    String?  @db.Uuid
   budgetHeadId     String?  @db.Uuid
+  journalVoucherId String?  @db.Uuid // Tally-style double-entry voucher created for this payment
   postedAt         DateTime?
   reversalOfId     String?  @db.Uuid
   createdAt        DateTime @default(now())
 
-  paymentRequest PaymentRequest @relation(fields: [paymentRequestId], references: [id])
-  bankAccount    BankAccount?   @relation(fields: [bankAccountId], references: [id])
-  cashAccount    CashAccount?   @relation(fields: [cashAccountId], references: [id])
-  budgetHead     BudgetHead?    @relation(fields: [budgetHeadId], references: [id])
+  paymentRequest  PaymentRequest  @relation(fields: [paymentRequestId], references: [id])
+  bankAccount     BankAccount?    @relation(fields: [bankAccountId], references: [id])
+  cashAccount     CashAccount?    @relation(fields: [cashAccountId], references: [id])
+  budgetHead      BudgetHead?     @relation(fields: [budgetHeadId], references: [id])
+  journalVoucher  JournalVoucher? @relation(fields: [journalVoucherId], references: [id])
 
   @@map("payments")
 }
@@ -1362,6 +1364,7 @@ model JournalVoucher {
   entries          JournalEntry[]
   ledgerEntries    LedgerEntry[]
   billSettlements  BillSettlement[]
+  payments         Payment[]
 
   @@index([projectId])
   @@index([voucherType])

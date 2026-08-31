@@ -52,11 +52,15 @@ router.get(
     try {
       const projectId = requireProjectId(req);
       const { startDate, endDate } = req.query as { startDate: string; endDate: string };
+      const range = { gte: new Date(startDate), lte: new Date(endDate) };
       const tasks = await prisma.workTask.findMany({
         where: {
           projectId,
           deletedAt: null,
-          scheduledDate: { gte: new Date(startDate), lte: new Date(endDate) },
+          OR: [
+            { scheduledDate: range },
+            { deadlineDate: range },
+          ],
         },
         include: WORK_TASK_INCLUDE,
         orderBy: [{ scheduledDate: 'asc' }, { priority: 'desc' }, { createdAt: 'asc' }],

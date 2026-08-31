@@ -1,5 +1,5 @@
 import { Router, Response, NextFunction } from 'express';
-import { Permission, AuditAction, PaymentStatus, UserRole, InvoiceVerificationStatus, getRequiredApproverCount, BankTxnType, CashTxnType, AccountTxnRefType } from '@hospital-erp/shared';
+import { Permission, AuditAction, PaymentStatus, UserRole, InvoiceVerificationStatus, getRequiredApproverCount, VoucherType } from '@hospital-erp/shared';
 import {
   createPaymentRequestSchema,
   listPaymentRequestsSchema,
@@ -19,6 +19,8 @@ import { generateSequenceNumber } from '../services/sequence.service';
 import * as approvalService from '../services/approval.service';
 import { notifyApprovers } from '../services/push.service';
 import { getStorageService, serveFile } from '../services/storage.service';
+import { postVoucher, generateVoucherNumber } from './voucher.routes';
+import { ensureVendorLedger, ensureBankLedger, ensureCashLedger, findLedgerByName } from './ledger.routes';
 import multer from 'multer';
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
@@ -990,71 +992,85 @@ router.post(
           throw err;
         }
 
-        // ── A16: Atomic bank/cash balance updates ──
-        // Use Prisma's atomic `decrement` operator instead of read→modify→write
-        // in JS. This prevents lost updates under concurrent payments: two
-        // transactions that both read the same balance would overwrite each
-        // other with the same computed value, losing one deduction. The
-        // `decrement` operation is applied at the DB level and is serialized.
-        // We read the account first only for the insufficient-balance check and
-        // to record the resulting balanceAfter in the transaction log.
+        // ── Tally-style double-entry: post a PAYMENT voucher ──
+        // Dr Vendor ledger (reduces payable) or Dr Expense ledger (for EXPENSE type)
+        // Cr Bank or Cash ledger (reduces asset)
+        // postVoucher also handles bank/cash balance update + bank/cash transaction record.
+
+        // 1. Determine the debit ledger (vendor for INVOICE/ADVANCE, expense for EXPENSE)
+        let debitLedgerId: string;
+        if (pr.vendorId) {
+          debitLedgerId = await ensureVendorLedger(pr.vendorId, projectId);
+        } else {
+          // EXPENSE with no vendor: find an expense ledger by category, fall back to Miscellaneous Expense
+          const expenseName = pr.category || pr.description || 'Miscellaneous Expense';
+          debitLedgerId = (await findLedgerByName(expenseName, projectId))
+            ?? (await findLedgerByName('Miscellaneous Expense', projectId))!;
+          if (!debitLedgerId) {
+            throw new Error('No expense ledger found. Run ledger sync to seed default expense ledgers.');
+          }
+        }
+
+        // 2. Determine the credit ledger (bank or cash)
+        let creditLedgerId: string;
         if (bankAccountId) {
-          const bankAccount = await tx.bankAccount.findFirst({
-            where: { id: bankAccountId, projectId, deletedAt: null },
-          });
+          creditLedgerId = await ensureBankLedger(bankAccountId, projectId);
+        } else if (cashAccountId) {
+          creditLedgerId = await ensureCashLedger(cashAccountId!, projectId);
+        } else {
+          throw new Error('A funding account (bankAccountId or cashAccountId) is required');
+        }
+
+        // 3. Fetch both ledgers for the ledgerMap
+        const debitLedger = await tx.ledger.findUnique({ where: { id: debitLedgerId } });
+        const creditLedger = await tx.ledger.findUnique({ where: { id: creditLedgerId } });
+        if (!debitLedger || !creditLedger) {
+          throw new Error('Failed to load debit or credit ledger');
+        }
+
+        const ledgerMap = new Map([
+          [debitLedger.id, { id: debitLedger.id, name: debitLedger.name, group: debitLedger.group, linkedEntityType: debitLedger.linkedEntityType, linkedEntityId: debitLedger.linkedEntityId }],
+          [creditLedger.id, { id: creditLedger.id, name: creditLedger.name, group: creditLedger.group, linkedEntityType: creditLedger.linkedEntityType, linkedEntityId: creditLedger.linkedEntityId }],
+        ]);
+
+        // 4. Pre-check insufficient balance (postVoucher also checks, but we want a clear error before claiming)
+        if (bankAccountId) {
+          const bankAccount = await tx.bankAccount.findFirst({ where: { id: bankAccountId, projectId, deletedAt: null } });
           if (!bankAccount) throw new Error('Bank account not found in this project');
           if (!bankAccount.isActive) throw new Error('Bank account is inactive');
           if (Number(bankAccount.currentBalance) < paymentAmount) {
             throw new Error(`Insufficient balance in bank account ${bankAccount.accountName}`);
           }
-          const updatedBank = await tx.bankAccount.update({
-            where: { id: bankAccountId },
-            data: { currentBalance: { decrement: paymentAmount } },
-            select: { currentBalance: true },
-          });
-          await tx.bankTransaction.create({
-            data: {
-              bankAccountId,
-              type: BankTxnType.WITHDRAWAL,
-              amount: paymentAmount,
-              balanceAfter: updatedBank.currentBalance,
-              date: new Date(),
-              description: `Payment: ${pr.paymentCode} (${pr.type})`,
-              referenceType: AccountTxnRefType.PAYMENT,
-              referenceId: pr.id,
-              status: 'POSTED',
-              createdBy: req.user!.id,
-            },
-          });
         } else if (cashAccountId) {
-          const cashAccount = await tx.cashAccount.findFirst({
-            where: { id: cashAccountId, projectId, deletedAt: null },
-          });
+          const cashAccount = await tx.cashAccount.findFirst({ where: { id: cashAccountId, projectId, deletedAt: null } });
           if (!cashAccount) throw new Error('Cash account not found in this project');
           if (!cashAccount.isActive) throw new Error('Cash account is inactive');
           if (Number(cashAccount.currentBalance) < paymentAmount) {
             throw new Error(`Insufficient balance in cash account ${cashAccount.name}`);
           }
-          const updatedCash = await tx.cashAccount.update({
-            where: { id: cashAccountId },
-            data: { currentBalance: { decrement: paymentAmount } },
-            select: { currentBalance: true },
-          });
-          await tx.cashTransaction.create({
-            data: {
-              cashAccountId,
-              type: CashTxnType.OUT,
-              amount: paymentAmount,
-              balanceAfter: updatedCash.currentBalance,
-              date: new Date(),
-              description: `Payment: ${pr.paymentCode} (${pr.type})`,
-              referenceType: AccountTxnRefType.PAYMENT,
-              referenceId: pr.id,
-              status: 'POSTED',
-              createdBy: req.user!.id,
-            },
-          });
         }
+
+        // 5. Generate voucher number and post
+        const jvNumber = await generateVoucherNumber(VoucherType.PAYMENT);
+        const voucherResult = await postVoucher({
+          projectId,
+          jvNumber,
+          voucherType: VoucherType.PAYMENT,
+          voucherDate: new Date(),
+          description: `Payment: ${pr.paymentCode} (${pr.type})`,
+          totalDebit: paymentAmount,
+          totalCredit: paymentAmount,
+          entries: [
+            { ledgerId: debitLedgerId, debit: paymentAmount, credit: 0, description: `Payment: ${pr.paymentCode}` },
+            { ledgerId: creditLedgerId, debit: 0, credit: paymentAmount, description: `Payment: ${pr.paymentCode}` },
+          ],
+          ledgerMap,
+          budgetHeadMap: new Map(),
+          sourceInvoiceId: null,
+          billSettlements: [],
+          userId: req.user!.id,
+          tx,
+        });
 
         // ── Create Payment record with finance links ──
         const created = await tx.payment.create({
@@ -1066,6 +1082,7 @@ router.post(
             bankAccountId,
             cashAccountId,
             budgetHeadId: pr.budgetHeadId ?? null,
+            journalVoucherId: voucherResult.voucherId,
             postedAt: new Date(),
           },
         });

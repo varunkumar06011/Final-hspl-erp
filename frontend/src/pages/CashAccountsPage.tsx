@@ -40,7 +40,9 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { extractErrorMessage } from '../config/api';
 import ResponsiveDialog from '../components/ResponsiveDialog';
 import RefreshButton from '../components/RefreshButton';
-import { formatCurrency, formatIndianNumber, formatDate } from '../utils/enumOptions';
+import LedgerAutocomplete, { type LedgerOption } from '../components/LedgerAutocomplete';
+import { formatCurrency, formatIndianNumber, formatDate, amountToWords } from '../utils/enumOptions';
+import { LedgerGroup } from '@hospital-erp/shared';
 
 interface CashAccount {
   id: string;
@@ -136,6 +138,22 @@ export default function CashAccountsPage() {
       return response.data;
     },
   });
+
+  // Fetch ledgers for the contra ledger picker (cash in/out)
+  const { data: ledgersData } = useQuery({
+    queryKey: ['/ledgers', 'all-for-cash'],
+    queryFn: async () => {
+      const response = await api.get('/ledgers', { params: { page: 1, pageSize: 100 } });
+      return response.data;
+    },
+  });
+  const ledgers: LedgerOption[] = (ledgersData?.data ?? []).map((l: any) => ({
+    id: l.id,
+    name: l.name,
+    group: l.group,
+    currentBalance: Number(l.currentBalance),
+    isActive: l.isActive,
+  }));
 
   const { data: statementData, isLoading: stmtLoading } = useQuery({
     queryKey: ['/cash-accounts', statementAccountId, 'statement', stmtPage, stmtPageSize],
@@ -270,7 +288,7 @@ export default function CashAccountsPage() {
   const openTxnDialog = (accountId: string, type: 'IN' | 'OUT') => {
     setTxnAccountId(accountId);
     setTxnType(type);
-    setTxnForm({ amount: '', date: '', description: '' });
+    setTxnForm({ amount: '', contraLedgerId: '', date: '', description: '' });
     setError('');
     setTxnDialogOpen(true);
   };
@@ -280,9 +298,14 @@ export default function CashAccountsPage() {
       setError('Amount must be greater than 0');
       return;
     }
+    if (!txnForm.contraLedgerId) {
+      setError(txnType === 'IN' ? 'Select the ledger the money is coming from' : 'Select the ledger the money is going to');
+      return;
+    }
     setError('');
     const payload: Record<string, unknown> = {
       amount: Number(txnForm.amount),
+      contraLedgerId: txnForm.contraLedgerId,
       description: txnForm.description || undefined,
     };
     if (txnForm.date) payload.date = txnForm.date;
@@ -472,20 +495,49 @@ export default function CashAccountsPage() {
       </ResponsiveDialog>
 
       {/* Cash IN/OUT dialog */}
-      <ResponsiveDialog open={txnDialogOpen} onClose={() => setTxnDialogOpen(false)} maxWidth="xs" fullWidth>
-        <DialogTitle>{txnType === 'IN' ? 'Cash In' : 'Cash Out'}</DialogTitle>
+      <ResponsiveDialog open={txnDialogOpen} onClose={() => setTxnDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>{txnType === 'IN' ? 'Cash In (Receipt)' : 'Cash Out (Payment)'}</DialogTitle>
         <DialogContent>
           {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
-            <TextField
-              label="Amount"
-              type="text"
-              value={formatIndianNumber(txnForm.amount ?? '')}
-              onChange={(e) => setTxnForm({ ...txnForm, amount: e.target.value.replace(/,/g, '') })}
-              required
-              size="small"
-              InputProps={{ startAdornment: <InputAdornment position="start">₹</InputAdornment> }}
-            />
+            {/* Contra ledger — the other side of the double entry */}
+            <Box>
+              <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                {txnType === 'IN' ? 'Received From (Ledger)' : 'Paid To (Ledger)'}
+              </Typography>
+              <LedgerAutocomplete
+                value={String(txnForm.contraLedgerId ?? '')}
+                onChange={(id) => setTxnForm({ ...txnForm, contraLedgerId: id })}
+                ledgers={ledgers}
+                preferredGroups={txnType === 'IN'
+                  ? [LedgerGroup.SUNDRY_DEBTORS, LedgerGroup.INDIRECT_INCOME, LedgerGroup.DIRECT_INCOME, LedgerGroup.SALES, LedgerGroup.CAPITAL_ACCOUNT, LedgerGroup.BANK]
+                  : [LedgerGroup.SUNDRY_CREDITORS, LedgerGroup.DIRECT_EXPENSE, LedgerGroup.INDIRECT_EXPENSE, LedgerGroup.PURCHASE, LedgerGroup.BANK]
+                }
+                placeholder={txnType === 'IN' ? 'Type ledger name (source of money)...' : 'Type ledger name (where money goes)...'}
+                onError={(msg) => setError(msg)}
+              />
+            </Box>
+
+            <Box>
+              <Typography variant="subtitle2" sx={{ mb: 1 }}>Amount</Typography>
+              <TextField
+                fullWidth
+                type="text"
+                value={formatIndianNumber(txnForm.amount ?? '')}
+                onChange={(e) => setTxnForm({ ...txnForm, amount: e.target.value.replace(/,/g, '') })}
+                required
+                size="small"
+                inputProps={{ style: { textAlign: 'right' }, inputMode: 'decimal' }}
+                InputProps={{ startAdornment: <InputAdornment position="start">₹</InputAdornment> }}
+                placeholder="0.00"
+              />
+              {Number(txnForm.amount) > 0 && (
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, fontStyle: 'italic' }}>
+                  {amountToWords(txnForm.amount)}
+                </Typography>
+              )}
+            </Box>
+
             <TextField label="Date" type="date" value={txnForm.date ?? ''} onChange={(e) => setTxnForm({ ...txnForm, date: e.target.value })} size="small" InputLabelProps={{ shrink: true }} />
             <TextField label="Description" value={txnForm.description ?? ''} onChange={(e) => setTxnForm({ ...txnForm, description: e.target.value })} size="small" multiline rows={2} />
           </Box>

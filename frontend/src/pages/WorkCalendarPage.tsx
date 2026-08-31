@@ -23,6 +23,7 @@ import {
   ChevronRight as NextIcon,
   Edit as EditIcon,
   Delete as DeleteIcon,
+  Alarm as DeadlineIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { WorkTaskType, WorkTaskStatus, WorkTaskPriority } from '@hospital-erp/shared';
@@ -157,6 +158,17 @@ export default function WorkCalendarPage() {
     return map;
   }, [calendarData]);
 
+  // Group tasks by deadline date so deadlines render on the grid.
+  const deadlinesByDate = useMemo(() => {
+    const map: Record<string, WorkTask[]> = {};
+    for (const task of (calendarData?.data ?? []) as WorkTask[]) {
+      if (!task.deadlineDate) continue;
+      const key = toISODate(new Date(task.deadlineDate));
+      (map[key] ??= []).push(task);
+    }
+    return map;
+  }, [calendarData]);
+
   const { data: assignableUsers } = useQuery({
     queryKey: ['/work-tasks/assignable-users'],
     queryFn: async () => (await api.get('/work-tasks/assignable-users')).data?.data ?? [],
@@ -272,6 +284,90 @@ export default function WorkCalendarPage() {
   }
 
   const selectedTasks: WorkTask[] = selectedDate ? (tasksByDate[selectedDate] ?? []) : [];
+  // Tasks whose deadline falls on the selected date (may differ from scheduled date).
+  const selectedDeadlines: WorkTask[] = selectedDate ? (deadlinesByDate[selectedDate] ?? []) : [];
+  // Avoid showing a task twice if its scheduled date AND deadline are both this day.
+  const selectedDeadlineOnly = selectedDeadlines.filter(
+    (d) => !selectedTasks.some((t) => t.id === d.id),
+  );
+
+  function renderTaskCard(task: WorkTask, isDeadlineRow: boolean) {
+    return (
+      <Box
+        key={task.id}
+        sx={{
+          p: 1.25,
+          border: '1px solid',
+          borderColor: isDeadlineRow ? 'error.main' : 'divider',
+          borderRadius: 1,
+        }}
+      >
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 1 }}>
+          <Box sx={{ minWidth: 0 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
+              <Typography variant="subtitle2" noWrap>{task.title}</Typography>
+            </Box>
+            <Box sx={{ display: 'flex', gap: 0.5, mt: 0.5, flexWrap: 'wrap' }}>
+              <Chip label={task.type.replace(/_/g, ' ')} size="small" color={TYPE_COLORS[task.type] ?? 'default'} />
+              <Chip label={task.status.replace(/_/g, ' ')} size="small" color={STATUS_COLORS[task.status] ?? 'default'} />
+              <Chip
+                label={task.priority}
+                size="small"
+                variant="outlined"
+                sx={{ borderColor: PRIORITY_DOT[task.priority], color: PRIORITY_DOT[task.priority] }}
+              />
+            </Box>
+          </Box>
+          <Box sx={{ display: 'flex', flexShrink: 0 }}>
+            <IconButton size="small" onClick={() => openEdit(task)}><EditIcon fontSize="small" /></IconButton>
+            <IconButton size="small" color="error" onClick={() => {
+              if (confirm('Delete this work task?')) deleteMutation.mutate(task.id);
+            }}><DeleteIcon fontSize="small" /></IconButton>
+          </Box>
+        </Box>
+
+        {task.description && (
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75 }}>
+            {task.description}
+          </Typography>
+        )}
+
+        <Box sx={{ display: 'flex', gap: 2, mt: 0.75, flexWrap: 'wrap', fontSize: 12, color: 'text.secondary' }}>
+          {isDeadlineRow ? (
+            <span>Scheduled: <strong>{new Date(task.scheduledDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' })}</strong></span>
+          ) : (
+            task.deadlineDate && (
+              <span>Deadline: <strong>{new Date(task.deadlineDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' })}</strong></span>
+            )
+          )}
+          {task.assignedToUser && (
+            <span>Assigned: <strong>{task.assignedToUser.name}</strong></span>
+          )}
+          {task.linkedQuotation && (
+            <span>Quotation: <strong>{task.linkedQuotation.quotationNumber}</strong> ({task.linkedQuotation.vendor.name})</span>
+          )}
+          {task.linkedPo && (
+            <span>PO: <strong>{task.linkedPo.poNumber}</strong> ({task.linkedPo.vendor.name})</span>
+          )}
+        </Box>
+
+        {/* Quick status change */}
+        <Box sx={{ mt: 0.75 }}>
+          <TextField
+            select
+            size="small"
+            value={task.status}
+            onChange={(e) => statusMutation.mutate({ id: task.id, status: e.target.value })}
+            sx={{ minWidth: 150 }}
+          >
+            {Object.values(WorkTaskStatus).map((s) => (
+              <MenuItem key={s} value={s}>{s.replace(/_/g, ' ')}</MenuItem>
+            ))}
+          </TextField>
+        </Box>
+      </Box>
+    );
+  }
 
   return (
     <Box>
@@ -337,8 +433,11 @@ export default function WorkCalendarPage() {
                 const inMonth = day.getMonth() === cursorMonth;
                 const isToday = key === tKey;
                 const tasks = tasksByDate[key] ?? [];
-                const visible = tasks.slice(0, 3);
+                const deadlines = deadlinesByDate[key] ?? [];
+                const visible = tasks.slice(0, 2);
                 const overflow = tasks.length - visible.length;
+                const firstDeadline = deadlines[0];
+                const deadlineOverflow = deadlines.length - 1;
                 return (
                   <Box
                     key={key}
@@ -396,9 +495,34 @@ export default function WorkCalendarPage() {
                         )}
                       </Box>
                     ))}
-                    {overflow > 0 && (
+                    {firstDeadline && (
+                      <Box
+                        sx={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 0.25,
+                          fontSize: 11,
+                          color: 'error.dark',
+                          border: '1px dashed',
+                          borderColor: 'error.main',
+                          borderRadius: 0.5,
+                          px: 0.5,
+                          py: '1px',
+                          mb: 0.25,
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                        }}
+                      >
+                        <DeadlineIcon sx={{ fontSize: 11, flexShrink: 0 }} />
+                        <Box component="span" sx={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{firstDeadline.title}</Box>
+                      </Box>
+                    )}
+                    {(overflow > 0 || deadlineOverflow > 0) && (
                       <Typography variant="caption" color="text.secondary" sx={{ fontSize: 10 }}>
-                        +{overflow} more
+                        {overflow > 0 && `+${overflow} task${overflow > 1 ? 's' : ''}`}
+                        {overflow > 0 && deadlineOverflow > 0 && ' · '}
+                        {deadlineOverflow > 0 && `+${deadlineOverflow} deadline${deadlineOverflow > 1 ? 's' : ''}`}
                       </Typography>
                     )}
                   </Box>
@@ -427,75 +551,30 @@ export default function WorkCalendarPage() {
           </Button>
         </DialogTitle>
         <DialogContent dividers>
-          {selectedTasks.length === 0 ? (
+          {selectedTasks.length === 0 && selectedDeadlineOnly.length === 0 ? (
             <Typography color="text.secondary" sx={{ py: 2, textAlign: 'center' }}>
-              No work scheduled. Click “Add” to create a task for this day.
+              No work scheduled or due. Click “Add” to create a task for this day.
             </Typography>
           ) : (
-            <Stack spacing={1.5}>
-              {selectedTasks.map((task) => (
-                <Box key={task.id} sx={{ p: 1.25, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 1 }}>
-                    <Box sx={{ minWidth: 0 }}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
-                        <Typography variant="subtitle2" noWrap>{task.title}</Typography>
-                      </Box>
-                      <Box sx={{ display: 'flex', gap: 0.5, mt: 0.5, flexWrap: 'wrap' }}>
-                        <Chip label={task.type.replace(/_/g, ' ')} size="small" color={TYPE_COLORS[task.type] ?? 'default'} />
-                        <Chip label={task.status.replace(/_/g, ' ')} size="small" color={STATUS_COLORS[task.status] ?? 'default'} />
-                        <Chip
-                          label={task.priority}
-                          size="small"
-                          variant="outlined"
-                          sx={{ borderColor: PRIORITY_DOT[task.priority], color: PRIORITY_DOT[task.priority] }}
-                        />
-                      </Box>
-                    </Box>
-                    <Box sx={{ display: 'flex', flexShrink: 0 }}>
-                      <IconButton size="small" onClick={() => openEdit(task)}><EditIcon fontSize="small" /></IconButton>
-                      <IconButton size="small" color="error" onClick={() => {
-                        if (confirm('Delete this work task?')) deleteMutation.mutate(task.id);
-                      }}><DeleteIcon fontSize="small" /></IconButton>
-                    </Box>
-                  </Box>
-
-                  {task.description && (
-                    <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75 }}>
-                      {task.description}
-                    </Typography>
-                  )}
-
-                  <Box sx={{ display: 'flex', gap: 2, mt: 0.75, flexWrap: 'wrap', fontSize: 12, color: 'text.secondary' }}>
-                    {task.deadlineDate && (
-                      <span>Deadline: <strong>{new Date(task.deadlineDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' })}</strong></span>
-                    )}
-                    {task.assignedToUser && (
-                      <span>Assigned: <strong>{task.assignedToUser.name}</strong></span>
-                    )}
-                    {task.linkedQuotation && (
-                      <span>Quotation: <strong>{task.linkedQuotation.quotationNumber}</strong> ({task.linkedQuotation.vendor.name})</span>
-                    )}
-                    {task.linkedPo && (
-                      <span>PO: <strong>{task.linkedPo.poNumber}</strong> ({task.linkedPo.vendor.name})</span>
-                    )}
-                  </Box>
-
-                  {/* Quick status change */}
-                  <Box sx={{ mt: 0.75 }}>
-                    <TextField
-                      select
-                      size="small"
-                      value={task.status}
-                      onChange={(e) => statusMutation.mutate({ id: task.id, status: e.target.value })}
-                      sx={{ minWidth: 150 }}
-                    >
-                      {Object.values(WorkTaskStatus).map((s) => (
-                        <MenuItem key={s} value={s}>{s.replace(/_/g, ' ')}</MenuItem>
-                      ))}
-                    </TextField>
-                  </Box>
+            <Stack spacing={2}>
+              {selectedTasks.length > 0 && (
+                <Box>
+                  <Typography variant="overline" color="text.secondary">Scheduled</Typography>
+                  <Stack spacing={1.5} sx={{ mt: 0.5 }}>
+                    {selectedTasks.map((task) => renderTaskCard(task, false))}
+                  </Stack>
                 </Box>
-              ))}
+              )}
+              {selectedDeadlineOnly.length > 0 && (
+                <Box>
+                  <Typography variant="overline" color="error.main" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                    <DeadlineIcon sx={{ fontSize: 14 }} /> Deadlines due
+                  </Typography>
+                  <Stack spacing={1.5} sx={{ mt: 0.5 }}>
+                    {selectedDeadlineOnly.map((task) => renderTaskCard(task, true))}
+                  </Stack>
+                </Box>
+              )}
             </Stack>
           )}
         </DialogContent>
