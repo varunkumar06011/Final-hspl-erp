@@ -483,6 +483,18 @@ export const DEFAULT_EXPENSE_LEDGERS = [
   { name: 'Miscellaneous Expense', group: LedgerGroup.INDIRECT_EXPENSE },
 ] as const;
 
+// Standard income ledgers auto-seeded per project.
+export const DEFAULT_INCOME_LEDGERS = [
+  { name: 'Sales', group: LedgerGroup.SALES },
+  { name: 'Service Income', group: LedgerGroup.INDIRECT_INCOME },
+  { name: 'Interest Received', group: LedgerGroup.INDIRECT_INCOME },
+  { name: 'Discount Received', group: LedgerGroup.INDIRECT_INCOME },
+  { name: 'Other Income', group: LedgerGroup.INDIRECT_INCOME },
+] as const;
+
+// Default Cash ledger name — always seeded so the user can do cash transactions.
+export const DEFAULT_CASH_LEDGER_NAME = 'Cash in Hand';
+
 // ═══════════════════════════════════════════════════════════
 // Permission Matrix
 // ═══════════════════════════════════════════════════════════

@@ -6,6 +6,8 @@ import {
   LedgerLinkType,
   GST_LEDGER_NAMES,
   DEFAULT_EXPENSE_LEDGERS,
+  DEFAULT_INCOME_LEDGERS,
+  DEFAULT_CASH_LEDGER_NAME,
   isDebitNatureGroup,
 } from '@hospital-erp/shared';
 import {
@@ -385,7 +387,7 @@ export async function ensureBankLedger(bankAccountId: string, projectId: string)
   const ledger = await prisma.ledger.create({
     data: {
       projectId,
-      name: account.accountName,
+      name: `${account.bankName} - A/c ${account.accountNumber}`,
       group: LedgerGroup.BANK,
       linkedEntityType: LedgerLinkType.BANK_ACCOUNT,
       linkedEntityId: bankAccountId,
@@ -579,6 +581,52 @@ async function syncProjectLedgers(projectId: string, userId: string) {
     skipped.push('Purchase');
   }
 
+  // 8. Seed default income/sales ledgers
+  for (const inc of DEFAULT_INCOME_LEDGERS) {
+    const existing = await prisma.ledger.findFirst({
+      where: { name: inc.name, projectId, deletedAt: null },
+    });
+    if (!existing) {
+      await prisma.ledger.create({
+        data: {
+          projectId,
+          name: inc.name,
+          group: inc.group as LedgerGroup,
+          linkedEntityType: LedgerLinkType.NONE,
+          openingBalance: 0,
+          currentBalance: 0,
+          isActive: true,
+          isSystem: false,
+        },
+      });
+      created.push(inc.name);
+    } else {
+      skipped.push(inc.name);
+    }
+  }
+
+  // 9. Seed a default "Cash in Hand" ledger if no cash ledger exists
+  const cashLedger = await prisma.ledger.findFirst({
+    where: { group: LedgerGroup.CASH, projectId, deletedAt: null },
+  });
+  if (!cashLedger) {
+    await prisma.ledger.create({
+      data: {
+        projectId,
+        name: DEFAULT_CASH_LEDGER_NAME,
+        group: LedgerGroup.CASH,
+        linkedEntityType: LedgerLinkType.NONE,
+        openingBalance: 0,
+        currentBalance: 0,
+        isActive: true,
+        isSystem: true,
+      },
+    });
+    created.push(DEFAULT_CASH_LEDGER_NAME);
+  } else {
+    skipped.push(DEFAULT_CASH_LEDGER_NAME);
+  }
+
   await logAudit({
     userId,
     action: AuditAction.UPDATE,
@@ -629,7 +677,9 @@ async function getSyncStatus(projectId: string) {
     GST_LEDGER_NAMES.OUTPUT_SGST,
     GST_LEDGER_NAMES.OUTPUT_IGST,
     'Purchase',
+    DEFAULT_CASH_LEDGER_NAME,
     ...DEFAULT_EXPENSE_LEDGERS.map((e) => e.name),
+    ...DEFAULT_INCOME_LEDGERS.map((e) => e.name),
   ];
   const missingSystem = requiredSystemNames.filter((n) => !ledgerNames.has(n));
 
