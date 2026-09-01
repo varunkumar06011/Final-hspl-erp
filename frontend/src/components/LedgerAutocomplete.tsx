@@ -160,7 +160,11 @@ export default function LedgerAutocomplete({
       return response.data;
     },
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['/ledgers/groups'] });
+      // Add the new group to the cache immediately so the dropdown shows it
+      queryClient.setQueryData(['/ledgers/groups'], (old: any) => ({
+        ...old,
+        data: [...(old?.data ?? []), data],
+      }));
       setNewLedgerGroup(data.name);
       setShowCreateGroup(false);
       setNewGroupName('');
