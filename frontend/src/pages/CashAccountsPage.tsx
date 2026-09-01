@@ -79,6 +79,15 @@ const TXN_TYPE_LABELS: Record<string, string> = {
   REVERSAL_OUT: 'Reversal Out',
 };
 
+const REF_TYPE_LABELS: Record<string, string> = {
+  PAYMENT: 'Payment',
+  JOURNAL_VOUCHER: 'Journal Voucher',
+  MANUAL_DEPOSIT: 'Receipt',
+  MANUAL_WITHDRAWAL: 'Payment',
+  TRANSFER: 'Transfer',
+  REVERSAL: 'Reversal',
+};
+
 const TXN_TYPE_COLORS: Record<string, 'success' | 'error' | 'info' | 'warning' | 'default'> = {
   IN: 'success',
   OUT: 'error',
@@ -656,7 +665,7 @@ export default function CashAccountsPage() {
                       </TableCell>
                       <TableCell align="right">{formatCurrency(txn.balanceAfter)}</TableCell>
                       <TableCell>{txn.description || '—'}</TableCell>
-                      <TableCell><Chip label={txn.referenceType} size="small" variant="outlined" /></TableCell>
+                      <TableCell><Chip label={REF_TYPE_LABELS[txn.referenceType] ?? txn.referenceType} size="small" variant="outlined" /></TableCell>
                     </TableRow>
                   ))
                 )}

@@ -1212,7 +1212,7 @@ export const jvApprovalActionSchema = z.object({
 export const createLedgerSchema = z.object({
   body: z.object({
     name: nonEmptyText(200),
-    group: z.nativeEnum(LedgerGroup),
+    group: z.string().min(1, 'Group is required').max(100),
     openingBalance: money.default(0),
     isActive: z.boolean().default(true),
   }),
@@ -1221,7 +1221,7 @@ export const updateLedgerSchema = z.object({
   params: z.object({ id: uuid }),
   body: z.object({
     name: nonEmptyText(200).optional(),
-    group: z.nativeEnum(LedgerGroup).optional(),
+    group: z.string().min(1).max(100).optional(),
     isActive: z.boolean().optional(),
   }),
 });

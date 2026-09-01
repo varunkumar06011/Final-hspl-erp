@@ -54,6 +54,17 @@ const VOUCHER_PREFIXES: Record<string, string> = {
   [VoucherType.DEBIT_NOTE]: 'VGH-DN',
 };
 
+// Map voucher type to the correct account transaction ref type
+const VOUCHER_TO_REF_TYPE: Record<string, AccountTxnRefType> = {
+  [VoucherType.RECEIPT]: AccountTxnRefType.MANUAL_DEPOSIT,
+  [VoucherType.PAYMENT]: AccountTxnRefType.MANUAL_WITHDRAWAL,
+  [VoucherType.CONTRA]: AccountTxnRefType.TRANSFER,
+  [VoucherType.JOURNAL]: AccountTxnRefType.JOURNAL_VOUCHER,
+  [VoucherType.PURCHASE]: AccountTxnRefType.JOURNAL_VOUCHER,
+  [VoucherType.CREDIT_NOTE]: AccountTxnRefType.JOURNAL_VOUCHER,
+  [VoucherType.DEBIT_NOTE]: AccountTxnRefType.JOURNAL_VOUCHER,
+};
+
 export async function generateVoucherNumber(voucherType: string): Promise<string> {
   const prefix = VOUCHER_PREFIXES[voucherType] ?? 'VGH-JV';
   const vouchers = await prisma.journalVoucher.findMany({
@@ -514,7 +525,7 @@ export async function postVoucher(args: PostVoucherArgs) {
               balanceAfter: Number(updatedBank.currentBalance),
               date: args.voucherDate,
               description: entry.description ?? args.description ?? `${args.voucherType} ${args.jvNumber}`,
-              referenceType: AccountTxnRefType.JOURNAL_VOUCHER,
+              referenceType: VOUCHER_TO_REF_TYPE[args.voucherType] ?? AccountTxnRefType.JOURNAL_VOUCHER,
               referenceId: jv.id,
               status: 'POSTED',
               createdBy: args.userId,
@@ -542,7 +553,7 @@ export async function postVoucher(args: PostVoucherArgs) {
               balanceAfter: Number(updatedCash.currentBalance),
               date: args.voucherDate,
               description: entry.description ?? args.description ?? `${args.voucherType} ${args.jvNumber}`,
-              referenceType: AccountTxnRefType.JOURNAL_VOUCHER,
+              referenceType: VOUCHER_TO_REF_TYPE[args.voucherType] ?? AccountTxnRefType.JOURNAL_VOUCHER,
               referenceId: jv.id,
               status: 'POSTED',
               createdBy: args.userId,

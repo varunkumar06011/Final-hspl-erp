@@ -117,6 +117,7 @@ model Project {
   ownerAccounts     OwnerAccount[]
   journalVouchers   JournalVoucher[]
   ledgers           Ledger[]
+  ledgerCustomGroups LedgerCustomGroup[]
   billSettlements   BillSettlement[]
 
   @@map("projects")
@@ -1401,7 +1402,7 @@ model Ledger {
   id              String   @id @default(uuid()) @db.Uuid
   projectId       String   @db.Uuid
   name            String   // Ledger name (e.g. "Owner A", "ABC Suppliers", "Rent Expense")
-  group           String   // LedgerGroup enum — Tally group for P&L / BS classification
+  group           String   // LedgerGroup enum or custom group name — Tally group for P&L / BS classification
   // Optional link to an existing entity. When set, this ledger mirrors that
   // entity's transactions. Auto-created for vendors (SUNDRY_CREDITORS),
   // bank accounts (BANK), cash accounts (CASH), owner accounts (CAPITAL_ACCOUNT).
@@ -1426,6 +1427,23 @@ model Ledger {
   @@index([projectId, group])
   @@index([linkedEntityType, linkedEntityId])
   @@map("ledgers")
+}
+
+// Custom sub-groups created by users (Tally-style). Each maps to a parent
+// LedgerGroup enum value for P&L / Balance Sheet classification.
+// Example: name="Travel Expenses", parentGroup="INDIRECT_EXPENSE"
+model LedgerCustomGroup {
+  id          String   @id @default(uuid()) @db.Uuid
+  projectId   String   @db.Uuid
+  name        String   // Custom group name (e.g. "Travel Expenses")
+  parentGroup String   // Parent LedgerGroup enum value (e.g. "INDIRECT_EXPENSE")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id])
+
+  @@unique([projectId, name])
+  @@map("ledger_custom_groups")
 }
 
 model LedgerEntry {

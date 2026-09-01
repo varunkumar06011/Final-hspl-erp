@@ -161,7 +161,18 @@ router.post(
       const projectId = requireProjectId(req);
       const { name, group, openingBalance } = req.body;
 
-      const signedOpening = isDebitNatureGroup(group as LedgerGroup)
+      // Resolve custom group to parent for debit/credit nature determination
+      let effectiveGroup = group;
+      if (!Object.values(LedgerGroup).includes(group as LedgerGroup)) {
+        const customGroup = await prisma.ledgerCustomGroup.findFirst({
+          where: { projectId, name: String(group) },
+        });
+        if (customGroup) {
+          effectiveGroup = customGroup.parentGroup;
+        }
+      }
+
+      const signedOpening = isDebitNatureGroup(effectiveGroup as LedgerGroup)
         ? Number(openingBalance)
         : -Number(openingBalance);
 
@@ -696,5 +707,71 @@ async function getSyncStatus(projectId: string) {
     existingLedgerCount: ledgers.length,
   };
 }
+
+// ── Custom ledger groups (Tally-style sub-groups under primary groups) ──
+
+// GET /ledgers/groups — list all custom groups for the project
+router.get(
+  '/groups',
+  rbacMiddleware(Permission.VIEW_FINANCIALS),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      const groups = await prisma.ledgerCustomGroup.findMany({
+        where: { projectId },
+        orderBy: { name: 'asc' },
+      });
+      res.json({ data: groups });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+// POST /ledgers/groups — create a custom group
+router.post(
+  '/groups',
+  rbacMiddleware(Permission.MANAGE_FINANCE),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      const { name, parentGroup } = req.body;
+
+      if (!name || typeof name !== 'string' || !name.trim()) {
+        res.status(400).json({ error: 'Group name is required' });
+        return;
+      }
+      if (!parentGroup || !Object.values(LedgerGroup).includes(parentGroup as LedgerGroup)) {
+        res.status(400).json({ error: 'Valid parent group is required' });
+        return;
+      }
+
+      const group = await prisma.ledgerCustomGroup.create({
+        data: {
+          projectId,
+          name: name.trim(),
+          parentGroup: String(parentGroup),
+        },
+      });
+
+      await logAudit({
+        userId: req.user!.id,
+        action: AuditAction.CREATE,
+        entityType: 'LEDGER',
+        entityId: group.id,
+        projectId,
+        newValue: { name: group.name, parentGroup: group.parentGroup, customGroup: true },
+      });
+
+      res.status(201).json(group);
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        res.status(409).json({ error: 'A group with this name already exists' });
+        return;
+      }
+      next(error);
+    }
+  },
+);
 
 export default router;

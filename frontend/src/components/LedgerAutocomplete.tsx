@@ -12,9 +12,10 @@ import {
   Chip,
   CircularProgress,
   Typography,
+  Collapse,
 } from '@mui/material';
 import { Add as AddIcon } from '@mui/icons-material';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import api, { extractErrorMessage } from '../config/api';
 import { LedgerGroup } from '@hospital-erp/shared';
 
@@ -81,6 +82,20 @@ export default function LedgerAutocomplete({
   const [newLedgerName, setNewLedgerName] = useState('');
   const [newLedgerGroup, setNewLedgerGroup] = useState<string>(LedgerGroup.INDIRECT_EXPENSE);
   const [createError, setCreateError] = useState('');
+  const [showCreateGroup, setShowCreateGroup] = useState(false);
+  const [newGroupName, setNewGroupName] = useState('');
+  const [newGroupParent, setNewGroupParent] = useState<string>(LedgerGroup.INDIRECT_EXPENSE);
+  const [groupError, setGroupError] = useState('');
+
+  // Fetch custom groups
+  const { data: customGroupsData } = useQuery({
+    queryKey: ['/ledgers/groups'],
+    queryFn: async () => {
+      const response = await api.get('/ledgers/groups');
+      return response.data;
+    },
+  });
+  const customGroups: { id: string; name: string; parentGroup: string }[] = customGroupsData?.data ?? [];
 
   // Filter ledgers by allowed groups if specified
   const filteredLedgers = useMemo(() => {
@@ -137,6 +152,31 @@ export default function LedgerAutocomplete({
       return;
     }
     createLedgerMutation.mutate({ name: newLedgerName.trim(), group: newLedgerGroup });
+  };
+
+  const createGroupMutation = useMutation({
+    mutationFn: async (payload: { name: string; parentGroup: string }) => {
+      const response = await api.post('/ledgers/groups', payload);
+      return response.data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['/ledgers/groups'] });
+      setNewLedgerGroup(data.name);
+      setShowCreateGroup(false);
+      setNewGroupName('');
+      setGroupError('');
+    },
+    onError: (err: unknown) => {
+      setGroupError(extractErrorMessage(err));
+    },
+  });
+
+  const handleCreateGroup = () => {
+    if (!newGroupName.trim()) {
+      setGroupError('Enter a group name');
+      return;
+    }
+    createGroupMutation.mutate({ name: newGroupName.trim(), parentGroup: newGroupParent });
   };
 
   return (
@@ -256,12 +296,78 @@ export default function LedgerAutocomplete({
             fullWidth
             label="Group"
             value={newLedgerGroup}
-            onChange={(e) => setNewLedgerGroup(e.target.value)}
+            onChange={(e) => {
+              const val = e.target.value;
+              if (val === '__create_new__') {
+                setShowCreateGroup(true);
+              } else {
+                setNewLedgerGroup(val);
+              }
+            }}
           >
             {ALL_GROUPS.map((g) => (
               <MenuItem key={g} value={g}>{GROUP_LABELS[g] ?? g}</MenuItem>
             ))}
+            {customGroups.length > 0 && (
+              <Box sx={{ borderTop: '1px solid', borderColor: 'divider', my: 0.5 }} />
+            )}
+            {customGroups.map((g) => (
+              <MenuItem key={g.id} value={g.name}>
+                {g.name} <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>({GROUP_LABELS[g.parentGroup] ?? g.parentGroup})</Typography>
+              </MenuItem>
+            ))}
+            <Box sx={{ borderTop: '1px solid', borderColor: 'divider', my: 0.5 }} />
+            <MenuItem value="__create_new__" sx={{ color: 'primary.main', fontWeight: 600 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <AddIcon fontSize="small" /> Create New Group
+              </Box>
+            </MenuItem>
           </TextField>
+
+          {/* Inline create-group form (Tally Alt+C in group field) */}
+          <Collapse in={showCreateGroup}>
+            <Box sx={{ mt: 2, p: 2, border: '1px solid', borderColor: 'divider', borderRadius: 1, bgcolor: 'action.hover' }}>
+              <Typography variant="subtitle2" sx={{ mb: 1 }}>Create New Group</Typography>
+              {groupError && <Typography color="error" variant="body2" sx={{ mb: 1 }}>{groupError}</Typography>}
+              <TextField
+                autoFocus
+                fullWidth
+                size="small"
+                label="Group Name"
+                value={newGroupName}
+                onChange={(e) => setNewGroupName(e.target.value)}
+                sx={{ mb: 1.5 }}
+              />
+              <TextField
+                select
+                fullWidth
+                size="small"
+                label="Under (Parent Group)"
+                value={newGroupParent}
+                onChange={(e) => setNewGroupParent(e.target.value)}
+                sx={{ mb: 1.5 }}
+              >
+                {ALL_GROUPS.map((g) => (
+                  <MenuItem key={g} value={g}>{GROUP_LABELS[g] ?? g}</MenuItem>
+                ))}
+              </TextField>
+              <Box sx={{ display: 'flex', gap: 1 }}>
+                <Button
+                  size="small"
+                  variant="contained"
+                  onClick={handleCreateGroup}
+                  disabled={createGroupMutation.isPending}
+                  startIcon={createGroupMutation.isPending ? <CircularProgress size={14} /> : undefined}
+                >
+                  Create Group
+                </Button>
+                <Button size="small" onClick={() => { setShowCreateGroup(false); setNewGroupName(''); setGroupError(''); }}>
+                  Cancel
+                </Button>
+              </Box>
+            </Box>
+          </Collapse>
+
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
             Opening balance defaults to 0. You can adjust it later from Chart of Accounts.
           </Typography>

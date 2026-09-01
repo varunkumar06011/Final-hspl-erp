@@ -22,6 +22,21 @@ import { validateMiddleware } from '../middleware/validate';
 const router = Router();
 router.use(authMiddleware);
 
+// ── Helper: build a map of custom group name → parent LedgerGroup ──
+// Used to classify ledgers whose group is a custom sub-group name.
+async function buildCustomGroupMap(projectId: string): Promise<Map<string, string>> {
+  const customGroups = await prisma.ledgerCustomGroup.findMany({ where: { projectId } });
+  return new Map(customGroups.map((g) => [g.name, g.parentGroup]));
+}
+
+// Resolve a ledger's group to its parent LedgerGroup enum value.
+// If the group is a standard enum value, return it as-is.
+// If it's a custom group name, look up the parent from the map.
+function resolveGroup(group: string, customGroupMap: Map<string, string>): string {
+  if (customGroupMap.has(group)) return customGroupMap.get(group)!;
+  return group;
+}
+
 // ═══════════════════════════════════════════════════════════
 // Ledger Statement — running balance for a single ledger
 // Tally's most-used report: Display → Account Books → Ledger
@@ -228,6 +243,8 @@ router.get(
         orderBy: [{ group: 'asc' }, { name: 'asc' }],
       });
 
+      const customGroupMap = await buildCustomGroupMap(projectId);
+
       // For each ledger, compute balance as of asOfDate
       const rows = await Promise.all(
         ledgers.map(async (l) => {
@@ -242,7 +259,8 @@ router.get(
           // For debit-nature: positive = debit balance; negative = credit balance
           // For credit-nature: negative = credit balance; positive = debit balance
           const balance = Number(l.openingBalance) + (Number(entries._sum.debit) - Number(entries._sum.credit));
-          const isDebit = isDebitNatureGroup(l.group as LedgerGroup);
+          const resolvedGroup = resolveGroup(l.group, customGroupMap);
+          const isDebit = isDebitNatureGroup(resolvedGroup as LedgerGroup);
           // Trial balance shows: debit-nature positive → debit column; negative → credit column
           // credit-nature negative → credit column; positive → debit column
           const isDebitBalance = isDebit ? balance >= 0 : balance > 0;
@@ -304,6 +322,8 @@ router.get(
         orderBy: [{ group: 'asc' }, { name: 'asc' }],
       });
 
+      const customGroupMap = await buildCustomGroupMap(projectId);
+
       const expenseGroups = [LedgerGroup.DIRECT_EXPENSE, LedgerGroup.INDIRECT_EXPENSE, LedgerGroup.PURCHASE];
       const incomeGroups = [LedgerGroup.DIRECT_INCOME, LedgerGroup.INDIRECT_INCOME, LedgerGroup.SALES];
 
@@ -317,28 +337,30 @@ router.get(
             _sum: { debit: true, credit: true },
           });
           const balance = Number(l.openingBalance) + (Number(entries._sum.debit) - Number(entries._sum.credit));
+          const resolvedGroup = resolveGroup(l.group, customGroupMap);
           return {
             id: l.id,
             name: l.name,
             group: l.group,
+            resolvedGroup,
             balance,
             // Expenses: debit balance = expense amount
             // Income: credit balance = income amount (stored as negative)
-            amount: expenseGroups.includes(l.group as LedgerGroup)
+            amount: expenseGroups.includes(resolvedGroup as LedgerGroup)
               ? Math.abs(balance)
-              : incomeGroups.includes(l.group as LedgerGroup)
+              : incomeGroups.includes(resolvedGroup as LedgerGroup)
                 ? Math.abs(balance)
                 : 0,
           };
         }),
       );
 
-      const directExpenses = rows.filter((r) => r.group === LedgerGroup.DIRECT_EXPENSE);
-      const indirectExpenses = rows.filter((r) => r.group === LedgerGroup.INDIRECT_EXPENSE);
-      const purchases = rows.filter((r) => r.group === LedgerGroup.PURCHASE);
-      const directIncome = rows.filter((r) => r.group === LedgerGroup.DIRECT_INCOME);
-      const indirectIncome = rows.filter((r) => r.group === LedgerGroup.INDIRECT_INCOME);
-      const sales = rows.filter((r) => r.group === LedgerGroup.SALES);
+      const directExpenses = rows.filter((r) => r.resolvedGroup === LedgerGroup.DIRECT_EXPENSE);
+      const indirectExpenses = rows.filter((r) => r.resolvedGroup === LedgerGroup.INDIRECT_EXPENSE);
+      const purchases = rows.filter((r) => r.resolvedGroup === LedgerGroup.PURCHASE);
+      const directIncome = rows.filter((r) => r.resolvedGroup === LedgerGroup.DIRECT_INCOME);
+      const indirectIncome = rows.filter((r) => r.resolvedGroup === LedgerGroup.INDIRECT_INCOME);
+      const sales = rows.filter((r) => r.resolvedGroup === LedgerGroup.SALES);
 
       const totalDirectExpense = directExpenses.reduce((s, r) => s + r.amount, 0);
       const totalIndirectExpense = indirectExpenses.reduce((s, r) => s + r.amount, 0);
@@ -391,8 +413,10 @@ router.get(
         orderBy: [{ group: 'asc' }, { name: 'asc' }],
       });
 
-      // Only balance-sheet groups
-      const bsLedgers = ledgers.filter((l) => isBalanceSheetGroup(l.group as LedgerGroup));
+      const customGroupMap = await buildCustomGroupMap(projectId);
+
+      // Only balance-sheet groups (resolve custom groups to parent for classification)
+      const bsLedgers = ledgers.filter((l) => isBalanceSheetGroup(resolveGroup(l.group, customGroupMap) as LedgerGroup));
 
       const rows = await Promise.all(
         bsLedgers.map(async (l) => {
@@ -404,7 +428,8 @@ router.get(
             _sum: { debit: true, credit: true },
           });
           const balance = Number(l.openingBalance) + (Number(entries._sum.debit) - Number(entries._sum.credit));
-          const isDebit = isDebitNatureGroup(l.group as LedgerGroup);
+          const resolvedGroup = resolveGroup(l.group, customGroupMap);
+          const isDebit = isDebitNatureGroup(resolvedGroup as LedgerGroup);
           // Assets: debit balance = asset value
           // Liabilities/Capital: credit balance = liability value (stored as negative)
           const amount = isDebit ? balance : -balance;
@@ -412,6 +437,7 @@ router.get(
             id: l.id,
             name: l.name,
             group: l.group,
+            resolvedGroup,
             balance,
             amount: Math.max(0, amount),
           };
@@ -422,11 +448,11 @@ router.get(
       const assetGroups = [LedgerGroup.FIXED_ASSET, LedgerGroup.CURRENT_ASSET, LedgerGroup.BANK, LedgerGroup.CASH, LedgerGroup.SUNDRY_DEBTORS];
       const liabilityGroups = [LedgerGroup.CURRENT_LIABILITY, LedgerGroup.LOAN, LedgerGroup.DUTIES_TAXES, LedgerGroup.SUNDRY_CREDITORS, LedgerGroup.CAPITAL_ACCOUNT];
 
-      const assets = rows.filter((r) => assetGroups.includes(r.group as LedgerGroup));
-      const liabilities = rows.filter((r) => liabilityGroups.includes(r.group as LedgerGroup));
+      const assets = rows.filter((r) => assetGroups.includes(r.resolvedGroup as LedgerGroup));
+      const liabilities = rows.filter((r) => liabilityGroups.includes(r.resolvedGroup as LedgerGroup));
 
       // Compute P&L net profit to add to capital (closing balance)
-      const plLedgers = ledgers.filter((l) => !isBalanceSheetGroup(l.group as LedgerGroup));
+      const plLedgers = ledgers.filter((l) => !isBalanceSheetGroup(resolveGroup(l.group, customGroupMap) as LedgerGroup));
       let netProfit = 0;
       for (const l of plLedgers) {
         const entries = await prisma.ledgerEntry.aggregate({
@@ -434,12 +460,13 @@ router.get(
           _sum: { debit: true, credit: true },
         });
         const balance = Number(l.openingBalance) + (Number(entries._sum.debit) - Number(entries._sum.credit));
+        const resolvedGroup = resolveGroup(l.group, customGroupMap);
         // Expense groups: debit balance = expense; Income groups: credit balance = income
         const expenseGroups = [LedgerGroup.DIRECT_EXPENSE, LedgerGroup.INDIRECT_EXPENSE, LedgerGroup.PURCHASE];
         const incomeGroups = [LedgerGroup.DIRECT_INCOME, LedgerGroup.INDIRECT_INCOME, LedgerGroup.SALES];
-        if (expenseGroups.includes(l.group as LedgerGroup)) {
+        if (expenseGroups.includes(resolvedGroup as LedgerGroup)) {
           netProfit -= balance; // expense reduces profit
-        } else if (incomeGroups.includes(l.group as LedgerGroup)) {
+        } else if (incomeGroups.includes(resolvedGroup as LedgerGroup)) {
           netProfit += -balance; // income (credit balance, stored negative) increases profit
         }
       }
