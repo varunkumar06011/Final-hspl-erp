@@ -23,7 +23,6 @@ import BudgetHeadsPage from './pages/BudgetHeadsPage';
 import BankAccountsPage from './pages/BankAccountsPage';
 import CashAccountsPage from './pages/CashAccountsPage';
 import OwnerAccountPage from './pages/OwnerAccountPage';
-import JournalVouchersPage from './pages/JournalVouchersPage';
 import FinanceDashboardPage from './pages/FinanceDashboardPage';
 import FinanceReportsPage from './pages/FinanceReportsPage';
 import LedgersPage from './pages/LedgersPage';
@@ -68,7 +67,6 @@ const ROUTES = [
   { path: '/bank-accounts', element: <BankAccountsPage /> },
   { path: '/cash-accounts', element: <CashAccountsPage /> },
   { path: '/owner-accounts', element: <OwnerAccountPage /> },
-  { path: '/journal-vouchers', element: <JournalVouchersPage /> },
   { path: '/finance-dashboard', element: <FinanceDashboardPage /> },
   { path: '/finance-reports', element: <FinanceReportsPage /> },
   { path: '/ledgers', element: <LedgersPage /> },

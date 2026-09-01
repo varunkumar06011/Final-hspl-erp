@@ -26,7 +26,6 @@ import {
   Savings as BankIcon,
   Payments as CashIcon,
   Person as OwnerIcon,
-  ReceiptLong as JVIcon,
   Dashboard as FinanceDashboardIcon,
   Assessment as ReportsIcon,
   AccountTree as LedgersIcon,
@@ -58,7 +57,6 @@ const NAV_ITEMS = [
   { label: 'Bank Accounts', icon: <BankIcon />, path: '/bank-accounts', permission: Permission.VIEW_FINANCIALS, section: 'Finance' },
   { label: 'Cash Accounts', icon: <CashIcon />, path: '/cash-accounts', permission: Permission.VIEW_FINANCIALS, section: 'Finance' },
   { label: 'Owner Account', icon: <OwnerIcon />, path: '/owner-accounts', permission: Permission.VIEW_FINANCIALS, section: 'Finance' },
-  { label: 'Journal Vouchers', icon: <JVIcon />, path: '/journal-vouchers', permission: Permission.VIEW_FINANCIALS, section: 'Finance' },
   // ── Accounting (Tally-style) ──
   { label: 'Chart of Accounts', icon: <LedgersIcon />, path: '/ledgers', permission: Permission.VIEW_FINANCIALS, section: 'Accounting' },
   { label: 'Vouchers', icon: <VouchersIcon />, path: '/vouchers', permission: Permission.VIEW_FINANCIALS, section: 'Accounting' },
