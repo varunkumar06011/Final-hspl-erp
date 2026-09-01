@@ -86,7 +86,7 @@ router.get(
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const projectId = requireProjectId(req);
-      const { page = 1, pageSize = 20, search, voucherType, status, startDate, endDate } = req.query as Record<string, unknown>;
+      const { page = 1, pageSize = 20, search, voucherType, status, startDate, endDate, ids } = req.query as Record<string, unknown>;
 
       const where: Prisma.JournalVoucherWhereInput = {
         projectId,
@@ -104,6 +104,8 @@ router.get(
             ...(endDate ? { lte: new Date(String(endDate)) } : {}),
           },
         } : {}),
+        // Filter by specific voucher IDs (used by bank/cash statements to fetch voucher numbers)
+        ...(ids ? { id: { in: String(ids).split(',') } } : {}),
       };
 
       const [data, total] = await Promise.all([
@@ -256,6 +258,8 @@ router.post(
         sourceInvoiceId: sourceInvoiceId ?? null,
         billSettlements: validatedSettlements,
         userId: req.user!.id,
+        chequeNumber: req.body.chequeNumber ?? null,
+        chequeDate: req.body.chequeDate ? new Date(String(req.body.chequeDate)) : null,
       });
 
       await logAudit({
@@ -440,6 +444,8 @@ export interface PostVoucherArgs {
   sourceInvoiceId: string | null;
   billSettlements: Array<{ invoiceId: string; vendorId: string; amount: number }>;
   userId: string;
+  chequeNumber?: string | null;
+  chequeDate?: Date | null;
   tx?: Prisma.TransactionClient; // optional: run inside an existing transaction
 }
 
@@ -455,6 +461,8 @@ export async function postVoucher(args: PostVoucherArgs) {
         type: 'ADJUSTMENT', // Legacy type field — new vouchers use voucherType
         voucherType: args.voucherType,
         sourceInvoiceId: args.sourceInvoiceId,
+        chequeNumber: args.chequeNumber ?? null,
+        chequeDate: args.chequeDate ?? null,
         status: 'POSTED',
         totalDebit: args.totalDebit,
         totalCredit: args.totalCredit,

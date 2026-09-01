@@ -774,4 +774,46 @@ router.post(
   },
 );
 
+// DELETE /ledgers/groups/:id — delete a custom group (if no ledgers use it)
+router.delete(
+  '/groups/:id',
+  rbacMiddleware(Permission.MANAGE_FINANCE),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      const group = await prisma.ledgerCustomGroup.findFirst({
+        where: { id: req.params.id, projectId },
+      });
+      if (!group) {
+        res.status(404).json({ error: 'Group not found' });
+        return;
+      }
+
+      // Check if any ledgers use this group name
+      const ledgersUsingGroup = await prisma.ledger.count({
+        where: { group: group.name, projectId, deletedAt: null },
+      });
+      if (ledgersUsingGroup > 0) {
+        res.status(400).json({ error: `Cannot delete: ${ledgersUsingGroup} ledger(s) are using this group. Reclassify them first.` });
+        return;
+      }
+
+      await prisma.ledgerCustomGroup.delete({ where: { id: req.params.id } });
+
+      await logAudit({
+        userId: req.user!.id,
+        action: AuditAction.DELETE,
+        entityType: 'LEDGER',
+        entityId: group.id,
+        projectId,
+        oldValue: { name: group.name, parentGroup: group.parentGroup },
+      });
+
+      res.json({ success: true });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
 export default router;

@@ -44,22 +44,22 @@ interface LedgerAutocompleteProps {
 }
 
 const GROUP_LABELS: Record<string, string> = {
-  FIXED_ASSET: 'Fixed Asset',
-  CURRENT_ASSET: 'Current Asset',
-  BANK: 'Bank',
-  CASH: 'Cash',
-  CURRENT_LIABILITY: 'Current Liability',
-  LOAN: 'Loan / Borrowing',
+  FIXED_ASSET: 'Fixed Assets',
+  CURRENT_ASSET: 'Current Assets',
+  BANK: 'Bank Accounts',
+  CASH: 'Cash-in-Hand',
+  CURRENT_LIABILITY: 'Current Liabilities',
+  LOAN: 'Loans (Liability)',
   DUTIES_TAXES: 'Duties & Taxes',
   CAPITAL_ACCOUNT: 'Capital Account',
-  SUNDRY_CREDITORS: 'Sundry Creditors (Vendors)',
-  SUNDRY_DEBTORS: 'Sundry Debtors (Customers)',
-  DIRECT_EXPENSE: 'Direct Expense',
-  INDIRECT_EXPENSE: 'Indirect Expense',
-  PURCHASE: 'Purchase',
-  DIRECT_INCOME: 'Direct Income',
-  INDIRECT_INCOME: 'Indirect Income',
-  SALES: 'Sales',
+  SUNDRY_CREDITORS: 'Sundry Creditors',
+  SUNDRY_DEBTORS: 'Sundry Debtors',
+  DIRECT_EXPENSE: 'Direct Expenses',
+  INDIRECT_EXPENSE: 'Indirect Expenses',
+  PURCHASE: 'Purchase Accounts',
+  DIRECT_INCOME: 'Direct Incomes',
+  INDIRECT_INCOME: 'Indirect Incomes',
+  SALES: 'Sales Accounts',
 };
 
 const ALL_GROUPS = Object.values(LedgerGroup);

@@ -67,6 +67,7 @@ interface BankTransaction {
   date: string;
   description: string | null;
   referenceType: string;
+  referenceId: string | null;
   status: string;
 }
 
@@ -170,6 +171,21 @@ export default function BankAccountsPage() {
     },
     enabled: !!statementAccountId,
   });
+
+  // Fetch voucher numbers for the transactions in the current statement page
+  const stmtVoucherIds = (statementData?.data ?? []).map((t: BankTransaction) => t.referenceId).filter(Boolean);
+  const { data: stmtVouchersData } = useQuery({
+    queryKey: ['/vouchers', 'by-ids', stmtVoucherIds.join(',')],
+    queryFn: async () => {
+      if (stmtVoucherIds.length === 0) return { data: [] };
+      const response = await api.get('/vouchers', { params: { page: 1, pageSize: 100, ids: stmtVoucherIds.join(',') } });
+      return response.data;
+    },
+    enabled: stmtVoucherIds.length > 0,
+  });
+  const voucherNumberMap = new Map<string, string>(
+    (stmtVouchersData?.data ?? []).map((v: any) => [v.id, v.jvNumber])
+  );
 
   const createMutation = useMutation({
     mutationFn: async (payload: Record<string, unknown>) => {
@@ -841,15 +857,16 @@ export default function BankAccountsPage() {
                   <TableCell sx={{ fontWeight: 600 }} align="right">Amount</TableCell>
                   <TableCell sx={{ fontWeight: 600 }} align="right">Balance After</TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>Description</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Voucher No.</TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>Ref</TableCell>
                   <TableCell sx={{ fontWeight: 600 }}></TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
                 {stmtLoading ? (
-                  <TableRow><TableCell colSpan={7} align="center"><CircularProgress size={24} /></TableCell></TableRow>
+                  <TableRow><TableCell colSpan={8} align="center"><CircularProgress size={24} /></TableCell></TableRow>
                 ) : stmtRows.length === 0 ? (
-                  <TableRow><TableCell colSpan={7} align="center"><Typography color="text.secondary">No transactions</Typography></TableCell></TableRow>
+                  <TableRow><TableCell colSpan={8} align="center"><Typography color="text.secondary">No transactions</Typography></TableCell></TableRow>
                 ) : (
                   stmtRows.map((txn) => (
                     <TableRow key={txn.id} hover>
@@ -875,6 +892,9 @@ export default function BankAccountsPage() {
                             <Button size="small" onClick={() => setEditingTxnId(null)}>Cancel</Button>
                           </Stack>
                         ) : (txn.description || '—')}
+                      </TableCell>
+                      <TableCell sx={{ fontWeight: 600, fontSize: '0.8rem' }}>
+                        {txn.referenceId ? (voucherNumberMap.get(txn.referenceId) ?? '—') : '—'}
                       </TableCell>
                       <TableCell><Chip label={REF_TYPE_LABELS[txn.referenceType] ?? txn.referenceType} size="small" variant="outlined" /></TableCell>
                       <TableCell>

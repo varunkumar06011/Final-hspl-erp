@@ -26,6 +26,8 @@ import {
   Accordion,
   AccordionSummary,
   AccordionDetails,
+  Tabs,
+  Tab,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -36,6 +38,7 @@ import {
   ExpandMore as ExpandMoreIcon,
   AccountBalance as LedgerIcon,
   Receipt as StatementIcon,
+  AccountTree as GroupsIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { extractErrorMessage } from '../config/api';
@@ -72,19 +75,19 @@ const GROUP_LABELS: Record<string, string> = {
   FIXED_ASSET: 'Fixed Assets',
   CURRENT_ASSET: 'Current Assets',
   BANK: 'Bank Accounts',
-  CASH: 'Cash in Hand',
+  CASH: 'Cash-in-Hand',
   CURRENT_LIABILITY: 'Current Liabilities',
-  LOAN: 'Loans (Liabilities)',
+  LOAN: 'Loans (Liability)',
   DUTIES_TAXES: 'Duties & Taxes',
   CAPITAL_ACCOUNT: 'Capital Account',
   SUNDRY_CREDITORS: 'Sundry Creditors',
   SUNDRY_DEBTORS: 'Sundry Debtors',
   DIRECT_EXPENSE: 'Direct Expenses',
   INDIRECT_EXPENSE: 'Indirect Expenses',
-  PURCHASE: 'Purchase',
-  DIRECT_INCOME: 'Direct Income',
-  INDIRECT_INCOME: 'Indirect Income',
-  SALES: 'Sales',
+  PURCHASE: 'Purchase Accounts',
+  DIRECT_INCOME: 'Direct Incomes',
+  INDIRECT_INCOME: 'Indirect Incomes',
+  SALES: 'Sales Accounts',
 };
 
 const GROUP_ORDER = [
@@ -120,6 +123,12 @@ export default function LedgersPage() {
   const [groupFilter, setGroupFilter] = useState('');
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+  const [tab, setTab] = useState<'ledgers' | 'groups'>('ledgers');
+
+  // Group management state
+  const [groupDialogOpen, setGroupDialogOpen] = useState(false);
+  const [groupForm, setGroupForm] = useState<{ name: string; parentGroup: string }>({ name: '', parentGroup: LedgerGroup.INDIRECT_EXPENSE });
+  const [groupError, setGroupError] = useState('');
 
   // Create/Edit dialog
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -210,6 +219,44 @@ export default function LedgersPage() {
     onError: (err: unknown) => setError(extractErrorMessage(err)),
   });
 
+  // Fetch custom groups
+  const { data: customGroupsData } = useQuery({
+    queryKey: ['/ledgers/groups'],
+    queryFn: async () => {
+      const response = await api.get('/ledgers/groups');
+      return response.data;
+    },
+  });
+  const customGroups: { id: string; name: string; parentGroup: string }[] = customGroupsData?.data ?? [];
+
+  const createGroupMutation = useMutation({
+    mutationFn: async (payload: { name: string; parentGroup: string }) => {
+      const response = await api.post('/ledgers/groups', payload);
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/ledgers/groups'] });
+      setGroupDialogOpen(false);
+      setGroupForm({ name: '', parentGroup: LedgerGroup.INDIRECT_EXPENSE });
+      setGroupError('');
+      setSuccessMsg('Group created');
+      setTimeout(() => setSuccessMsg(''), 3000);
+    },
+    onError: (err: unknown) => setGroupError(extractErrorMessage(err)),
+  });
+
+  const deleteGroupMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await api.delete(`/ledgers/groups/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/ledgers/groups'] });
+      setSuccessMsg('Group deleted');
+      setTimeout(() => setSuccessMsg(''), 3000);
+    },
+    onError: (err: unknown) => setError(extractErrorMessage(err)),
+  });
+
   const openCreate = () => {
     setEditing(null);
     setForm({ name: '', group: LedgerGroup.INDIRECT_EXPENSE, openingBalance: 0, isActive: true });
@@ -279,8 +326,13 @@ export default function LedgersPage() {
       {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
       {successMsg && <Alert severity="success" sx={{ mb: 2 }} onClose={() => setSuccessMsg('')}>{successMsg}</Alert>}
 
+      <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 2, borderBottom: 1, borderColor: 'divider' }}>
+        <Tab label="Ledgers" value="ledgers" />
+        <Tab label="Groups" value="groups" />
+      </Tabs>
+
       {/* Sync status banner */}
-      {syncStatus && !syncStatus.isSynced && (
+      {tab === 'ledgers' && syncStatus && !syncStatus.isSynced && (
         <Alert severity="info" sx={{ mb: 2 }} icon={<SyncIcon />}>
           <Typography variant="body2">
             {syncStatus.totalMissing} ledgers need to be created. Click "Sync Ledgers" to auto-create ledgers for:
@@ -296,25 +348,145 @@ export default function LedgersPage() {
         </Alert>
       )}
 
-      <Card sx={{ overflow: 'hidden', mb: 2 }}>
-        <Box sx={{ p: 2, display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-          <TextField
-            size="small"
-            placeholder="Search ledger name..."
-            value={search}
-            onChange={(e) => { setSearch(e.target.value); setPage(0); }}
-            InputProps={{ startAdornment: (<InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment>) }}
-            sx={{ width: { xs: '100%', sm: 250 } }}
-          />
-          <TextField select size="small" label="Group" value={groupFilter} onChange={(e) => { setGroupFilter(e.target.value); setPage(0); }} sx={{ width: 200 }}>
-            <MenuItem value="">All Groups</MenuItem>
-            {GROUP_ORDER.map((g) => <MenuItem key={g} value={g}>{GROUP_LABELS[g]}</MenuItem>)}
-          </TextField>
+      {tab === 'ledgers' && (
+        <Card sx={{ overflow: 'hidden', mb: 2 }}>
+          <Box sx={{ p: 2, display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+            <TextField
+              size="small"
+              placeholder="Search ledger name..."
+              value={search}
+              onChange={(e) => { setSearch(e.target.value); setPage(0); }}
+              InputProps={{ startAdornment: (<InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment>) }}
+              sx={{ width: { xs: '100%', sm: 250 } }}
+            />
+            <TextField select size="small" label="Group" value={groupFilter} onChange={(e) => { setGroupFilter(e.target.value); setPage(0); }} sx={{ width: 200 }}>
+              <MenuItem value="">All Groups</MenuItem>
+              {GROUP_ORDER.map((g) => <MenuItem key={g} value={g}>{GROUP_LABELS[g]}</MenuItem>)}
+            </TextField>
+          </Box>
+        </Card>
+      )}
+
+      {/* ── Groups management tab ── */}
+      {tab === 'groups' && (
+        <Box>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+            <Typography variant="body2" color="text.secondary">
+              Predefined groups are Tally's 15 primary groups. Custom groups are sub-groups you create under a primary group for finer classification.
+            </Typography>
+            <Button variant="contained" startIcon={<AddIcon />} onClick={() => { setGroupForm({ name: '', parentGroup: LedgerGroup.INDIRECT_EXPENSE }); setGroupError(''); setGroupDialogOpen(true); }}>
+              New Group
+            </Button>
+          </Box>
+
+          <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 1 }}>Predefined Groups (15 Primary)</Typography>
+          <Card sx={{ overflow: 'hidden', mb: 3 }}>
+            <TableContainer>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell sx={{ fontWeight: 600 }}>Group Name</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>Nature</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>Appears In</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {GROUP_ORDER.map((g) => {
+                    const isDebit = isDebitNatureGroup(g as LedgerGroup);
+                    const isBS = ['FIXED_ASSET', 'CURRENT_ASSET', 'BANK', 'CASH', 'SUNDRY_DEBTORS', 'CURRENT_LIABILITY', 'LOAN', 'DUTIES_TAXES', 'CAPITAL_ACCOUNT', 'SUNDRY_CREDITORS'].includes(g);
+                    return (
+                      <TableRow key={g} hover>
+                        <TableCell sx={{ fontWeight: 500 }}>{GROUP_LABELS[g]}</TableCell>
+                        <TableCell><Chip label={isDebit ? 'Debit' : 'Credit'} size="small" color={isDebit ? 'info' : 'warning'} variant="outlined" /></TableCell>
+                        <TableCell><Chip label={isBS ? 'Balance Sheet' : 'Profit & Loss'} size="small" variant="outlined" /></TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          </Card>
+
+          <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 1 }}>Custom Groups (Sub-groups)</Typography>
+          {customGroups.length === 0 ? (
+            <Card sx={{ p: 4, textAlign: 'center' }}>
+              <GroupsIcon sx={{ fontSize: 48, color: 'text.secondary', mb: 1 }} />
+              <Typography color="text.secondary" sx={{ mb: 2 }}>
+                No custom groups yet. Create a sub-group (e.g. "Travel Expenses" under "Indirect Expenses") for finer classification in reports.
+              </Typography>
+              <Button variant="contained" startIcon={<AddIcon />} onClick={() => { setGroupForm({ name: '', parentGroup: LedgerGroup.INDIRECT_EXPENSE }); setGroupError(''); setGroupDialogOpen(true); }}>
+                Create First Group
+              </Button>
+            </Card>
+          ) : (
+            <Card sx={{ overflow: 'hidden' }}>
+              <TableContainer>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell sx={{ fontWeight: 600 }}>Group Name</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>Under (Parent Group)</TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 600 }}>Actions</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {customGroups.map((g) => (
+                      <TableRow key={g.id} hover>
+                        <TableCell sx={{ fontWeight: 500 }}>{g.name}</TableCell>
+                        <TableCell><Chip label={GROUP_LABELS[g.parentGroup] ?? g.parentGroup} size="small" variant="outlined" /></TableCell>
+                        <TableCell align="right">
+                          <IconButton size="small" color="error" onClick={() => { if (confirm(`Delete group "${g.name}"? Ledgers using it will need to be reclassified.`)) deleteGroupMutation.mutate(g.id); }}>
+                            <DeleteIcon fontSize="small" />
+                          </IconButton>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </Card>
+          )}
         </Box>
-      </Card>
+      )}
+
+      {/* Group create dialog */}
+      <ResponsiveDialog open={groupDialogOpen} onClose={() => setGroupDialogOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>New Group</DialogTitle>
+        <DialogContent>
+          {groupError && <Alert severity="error" sx={{ mb: 2 }}>{groupError}</Alert>}
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
+            <TextField
+              size="small"
+              label="Group Name"
+              value={groupForm.name}
+              onChange={(e) => setGroupForm({ ...groupForm, name: e.target.value })}
+              fullWidth
+              helperText="e.g. Travel Expenses, Office Expenses, Bank Charges"
+              autoFocus
+            />
+            <TextField
+              select
+              size="small"
+              label="Under (Parent Group)"
+              value={groupForm.parentGroup}
+              onChange={(e) => setGroupForm({ ...groupForm, parentGroup: e.target.value })}
+              fullWidth
+              helperText="The parent group determines P&L vs Balance Sheet classification"
+            >
+              {GROUP_ORDER.map((g) => <MenuItem key={g} value={g}>{GROUP_LABELS[g]}</MenuItem>)}
+            </TextField>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setGroupDialogOpen(false)}>Cancel</Button>
+          <Button variant="contained" onClick={() => { if (!groupForm.name.trim()) { setGroupError('Enter a group name'); return; } createGroupMutation.mutate(groupForm); }} disabled={createGroupMutation.isPending}>
+            {createGroupMutation.isPending ? <CircularProgress size={20} /> : 'Create Group'}
+          </Button>
+        </DialogActions>
+      </ResponsiveDialog>
 
       {/* Grouped accordion view */}
-      {isLoading ? (
+      {tab === 'ledgers' && (isLoading ? (
         <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress /></Box>
       ) : isError ? (
         <Alert severity="error" sx={{ mb: 2 }}>Failed to load ledgers. <Button size="small" onClick={() => refetch()}>Retry</Button></Alert>
@@ -433,7 +605,7 @@ export default function LedgersPage() {
             rowsPerPageOptions={[50, 100, 200]}
           />
         </>
-      )}
+      ))}
 
       {/* Create/Edit dialog */}
       <ResponsiveDialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="sm" fullWidth>

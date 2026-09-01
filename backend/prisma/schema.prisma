@@ -1343,6 +1343,9 @@ model JournalVoucher {
   voucherType      String    @default("JOURNAL") // VoucherType enum
   // For PURCHASE vouchers created from a verified invoice — links back without changing invoice UI
   sourceInvoiceId  String?   @db.Uuid
+  // Tally-style: cheque details for bank payments/receipts
+  chequeNumber     String?
+  chequeDate       DateTime?
   status           String    @default("DRAFT")
     // DRAFT → PENDING_APPROVAL → APPROVED → POSTED
     //         → REJECTED | CANCELLED

@@ -171,6 +171,9 @@ export default function VouchersPage() {
   // For Contra — two bank/cash ledgers
   const [simpleFromLedger, setSimpleFromLedger] = useState('');
   const [simpleToLedger, setSimpleToLedger] = useState('');
+  // Tally-style: cheque details for bank payments/receipts
+  const [chequeNumber, setChequeNumber] = useState('');
+  const [chequeDate, setChequeDate] = useState('');
 
   // Detail dialog
   const [detailVoucher, setDetailVoucher] = useState<Voucher | null>(null);
@@ -268,6 +271,8 @@ export default function VouchersPage() {
     setSimpleCostCenter('');
     setSimpleFromLedger('');
     setSimpleToLedger('');
+    setChequeNumber('');
+    setChequeDate('');
     setError('');
   };
 
@@ -475,6 +480,8 @@ export default function VouchersPage() {
         date: voucherDate || undefined,
         description: voucherDescription || undefined,
         entries: [partyEntry, cashBankEntry],
+        chequeNumber: chequeNumber || undefined,
+        chequeDate: chequeDate || undefined,
         billSettlements: validSettlements.length > 0
           ? validSettlements.map((s) => ({ invoiceId: s.invoiceId, amount: Number(s.amount) }))
           : undefined,
@@ -881,6 +888,27 @@ export default function VouchersPage() {
                 </>
               )}
 
+              {/* Cheque details (Tally-style: shown when bank ledger is involved) */}
+              <Stack direction="row" spacing={2}>
+                <TextField
+                  size="small"
+                  label="Cheque Number"
+                  value={chequeNumber}
+                  onChange={(e) => setChequeNumber(e.target.value)}
+                  placeholder="Optional — e.g. 000045"
+                  sx={{ flex: 1 }}
+                />
+                <TextField
+                  size="small"
+                  type="date"
+                  label="Cheque Date"
+                  value={chequeDate}
+                  onChange={(e) => setChequeDate(e.target.value)}
+                  InputLabelProps={{ shrink: true }}
+                  sx={{ flex: 1 }}
+                />
+              </Stack>
+
               {/* Narration — single field at bottom */}
               <TextField
                 fullWidth
@@ -1141,6 +1169,12 @@ export default function VouchersPage() {
               <Box sx={{ mb: 2 }}>
                 <Typography variant="body2"><strong>Date:</strong> {formatDate(detailVoucher.date)}</Typography>
                 <Typography variant="body2"><strong>Description:</strong> {detailVoucher.description ?? '—'}</Typography>
+                {(detailVoucher as any).chequeNumber && (
+                  <Typography variant="body2"><strong>Cheque Number:</strong> {(detailVoucher as any).chequeNumber}</Typography>
+                )}
+                {(detailVoucher as any).chequeDate && (
+                  <Typography variant="body2"><strong>Cheque Date:</strong> {formatDate((detailVoucher as any).chequeDate)}</Typography>
+                )}
                 <Typography variant="body2"><strong>Created By:</strong> {detailVoucher.createdBy}</Typography>
                 <Typography variant="body2"><strong>Status:</strong> <Chip label={detailVoucher.status} size="small" color={detailVoucher.status === 'POSTED' ? 'success' : 'error'} /></Typography>
               </Box>

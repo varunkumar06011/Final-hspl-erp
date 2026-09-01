@@ -19,6 +19,7 @@ import {
   Tab,
   Grid,
   Autocomplete,
+  MenuItem,
 } from '@mui/material';
 import {
   AccountBalance as LedgerIcon,
@@ -28,26 +29,34 @@ import { useQuery } from '@tanstack/react-query';
 import api from '../config/api';
 import RefreshButton from '../components/RefreshButton';
 import { formatCurrency, formatDate } from '../utils/enumOptions';
+import { LedgerGroup, isDebitNatureGroup } from '@hospital-erp/shared';
 
-type TabValue = 'ledger' | 'daybook' | 'trial' | 'pl' | 'bs' | 'costcenter';
+const GROUP_ORDER = [
+  'FIXED_ASSET', 'CURRENT_ASSET', 'BANK', 'CASH', 'SUNDRY_DEBTORS',
+  'CURRENT_LIABILITY', 'LOAN', 'DUTIES_TAXES', 'CAPITAL_ACCOUNT', 'SUNDRY_CREDITORS',
+  'PURCHASE', 'DIRECT_EXPENSE', 'INDIRECT_EXPENSE',
+  'SALES', 'DIRECT_INCOME', 'INDIRECT_INCOME',
+];
+
+type TabValue = 'ledger' | 'daybook' | 'trial' | 'pl' | 'bs' | 'costcenter' | 'groupsummary';
 
 const GROUP_LABELS: Record<string, string> = {
   FIXED_ASSET: 'Fixed Assets',
   CURRENT_ASSET: 'Current Assets',
   BANK: 'Bank Accounts',
-  CASH: 'Cash in Hand',
+  CASH: 'Cash-in-Hand',
   CURRENT_LIABILITY: 'Current Liabilities',
-  LOAN: 'Loans (Liabilities)',
+  LOAN: 'Loans (Liability)',
   DUTIES_TAXES: 'Duties & Taxes',
   CAPITAL_ACCOUNT: 'Capital Account',
   SUNDRY_CREDITORS: 'Sundry Creditors',
   SUNDRY_DEBTORS: 'Sundry Debtors',
   DIRECT_EXPENSE: 'Direct Expenses',
   INDIRECT_EXPENSE: 'Indirect Expenses',
-  PURCHASE: 'Purchase',
-  DIRECT_INCOME: 'Direct Income',
-  INDIRECT_INCOME: 'Indirect Income',
-  SALES: 'Sales',
+  PURCHASE: 'Purchase Accounts',
+  DIRECT_INCOME: 'Direct Incomes',
+  INDIRECT_INCOME: 'Indirect Incomes',
+  SALES: 'Sales Accounts',
 };
 
 interface Ledger {
@@ -55,6 +64,8 @@ interface Ledger {
   name: string;
   group: string;
   currentBalance: number;
+  openingBalance?: number;
+  linkedEntityType?: string | null;
 }
 
 export default function AccountingReportsPage() {
@@ -65,6 +76,9 @@ export default function AccountingReportsPage() {
   const [selectedLedger, setSelectedLedger] = useState<Ledger | null>(null);
   const [stmtStartDate, setStmtStartDate] = useState('');
   const [stmtEndDate, setStmtEndDate] = useState('');
+
+  // Group summary state
+  const [selectedGroup, setSelectedGroup] = useState('');
 
   // Day book state
   const [dayBookDate, setDayBookDate] = useState(new Date().toISOString().split('T')[0]);
@@ -174,6 +188,7 @@ export default function AccountingReportsPage() {
 
       <Tabs value={tab} onChange={(_, v: TabValue) => setTab(v)} sx={{ mb: 2, borderBottom: 1, borderColor: 'divider' }}>
         <Tab label="Ledger Statement" value="ledger" />
+        <Tab label="Group Summary" value="groupsummary" />
         <Tab label="Day Book" value="daybook" />
         <Tab label="Trial Balance" value="trial" />
         <Tab label="Profit & Loss" value="pl" />
@@ -274,6 +289,86 @@ export default function AccountingReportsPage() {
               </Card>
             </>
           ) : null}
+        </Box>
+      )}
+
+      {/* ── Group Summary Tab ── */}
+      {tab === 'groupsummary' && (
+        <Box>
+          <Card sx={{ p: 2, mb: 2 }}>
+            <Stack direction="row" spacing={2} sx={{ flexWrap: 'wrap', gap: 1 }}>
+              <TextField
+                select
+                size="small"
+                label="Select Group"
+                value={selectedGroup}
+                onChange={(e) => setSelectedGroup(e.target.value)}
+                sx={{ minWidth: 250 }}
+              >
+                <MenuItem value="">— Select a Group —</MenuItem>
+                {GROUP_ORDER.map((g) => <MenuItem key={g} value={g}>{GROUP_LABELS[g] ?? g}</MenuItem>)}
+              </TextField>
+              <TextField size="small" type="date" label="As Of" value={asOfDate} onChange={(e) => setAsOfDate(e.target.value)} InputLabelProps={{ shrink: true }} />
+            </Stack>
+          </Card>
+
+          {!selectedGroup ? (
+            <Card sx={{ p: 4, textAlign: 'center' }}>
+              <Typography color="text.secondary">Select a group above to view all ledgers under it with their closing balances.</Typography>
+            </Card>
+          ) : (
+            <Card sx={{ overflow: 'hidden' }}>
+              <TableContainer>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow sx={{ bgcolor: 'grey.50' }}>
+                      <TableCell sx={{ fontWeight: 600 }}>Ledger Name</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>Type</TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 600 }}>Opening Balance</TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 600 }}>Current Balance</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {allLedgers.filter((l) => l.group === selectedGroup).length === 0 ? (
+                      <TableRow><TableCell colSpan={4} align="center"><Typography color="text.secondary" sx={{ py: 2 }}>No ledgers in this group</Typography></TableCell></TableRow>
+                    ) : (
+                      <>
+                        {allLedgers.filter((l) => l.group === selectedGroup).map((l) => {
+                          const isDebit = isDebitNatureGroup(l.group as LedgerGroup);
+                          const absBal = Math.abs(l.currentBalance);
+                          const suffix = l.currentBalance === 0 ? '' : (isDebit ? (l.currentBalance >= 0 ? ' Dr' : ' Cr') : (l.currentBalance >= 0 ? ' Dr' : ' Cr'));
+                          return (
+                            <TableRow key={l.id} hover sx={{ cursor: 'pointer' }} onClick={() => { setSelectedLedger(l); setTab('ledger'); }}>
+                              <TableCell sx={{ fontWeight: 500 }}>{l.name}</TableCell>
+                              <TableCell>
+                                <Typography variant="caption" color="text.secondary">
+                                  {l.linkedEntityType === 'VENDOR' ? 'Vendor' : l.linkedEntityType === 'BANK_ACCOUNT' ? 'Bank' : l.linkedEntityType === 'CASH_ACCOUNT' ? 'Cash' : l.linkedEntityType === 'OWNER_ACCOUNT' ? 'Owner' : 'Manual'}
+                                </Typography>
+                              </TableCell>
+                              <TableCell align="right">{formatCurrency(l.openingBalance)}</TableCell>
+                              <TableCell align="right" sx={{ fontWeight: 600 }}>{formatCurrency(absBal)}{suffix}</TableCell>
+                            </TableRow>
+                          );
+                        })}
+                        <TableRow sx={{ bgcolor: 'grey.100' }}>
+                          <TableCell colSpan={2} sx={{ fontWeight: 700 }}>Total ({GROUP_LABELS[selectedGroup] ?? selectedGroup})</TableCell>
+                          <TableCell align="right" sx={{ fontWeight: 700 }}>
+                            {formatCurrency(allLedgers.filter((l) => l.group === selectedGroup).reduce((s, l) => s + Math.abs(l.openingBalance ?? 0), 0))}
+                          </TableCell>
+                          <TableCell align="right" sx={{ fontWeight: 700 }}>
+                            {formatCurrency(allLedgers.filter((l) => l.group === selectedGroup).reduce((s, l) => s + Math.abs(l.currentBalance), 0))}
+                          </TableCell>
+                        </TableRow>
+                      </>
+                    )}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+              <Typography variant="caption" color="text.secondary" sx={{ p: 1, display: 'block' }}>
+                Tip: Click any ledger row to view its detailed statement.
+              </Typography>
+            </Card>
+          )}
         </Box>
       )}
 
