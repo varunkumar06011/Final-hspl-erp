@@ -78,7 +78,7 @@ router.get(
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const projectId = requireProjectId(req);
-      const { page = 1, pageSize = 50, startDate, endDate, type } = req.query as Record<string, unknown>;
+      const { page = 1, pageSize = 50, startDate, endDate, type, ledgerId } = req.query as Record<string, unknown>;
 
       // Verify account belongs to project
       const account = await prisma.bankAccount.findFirst({
@@ -99,6 +99,32 @@ router.get(
         if (endDate) where.date.lte = new Date(String(endDate));
       }
       if (type) where.type = String(type);
+
+      // Filter by ledger: find voucher IDs that have an entry for this ledger,
+      // then filter bank transactions linked to those vouchers
+      if (ledgerId) {
+        const ledgerEntries = await prisma.ledgerEntry.findMany({
+          where: { ledgerId: String(ledgerId) },
+          select: { journalVoucherId: true },
+        });
+        const voucherIds = [...new Set(ledgerEntries.map((e) => e.journalVoucherId).filter(Boolean))];
+        if (voucherIds.length === 0) {
+          // No vouchers for this ledger — return empty
+          res.json({
+            account: {
+              id: account.id,
+              accountName: account.accountName,
+              bankName: account.bankName,
+              openingBalance: Number(account.openingBalance),
+              currentBalance: Number(account.currentBalance),
+            },
+            data: [],
+            pagination: { page: Number(page), pageSize: Number(pageSize), total: 0, totalPages: 0 },
+          });
+          return;
+        }
+        where.referenceId = { in: voucherIds };
+      }
 
       const [data, total] = await Promise.all([
         prisma.bankTransaction.findMany({
@@ -126,6 +152,64 @@ router.get(
           totalPages: Math.ceil(total / Number(pageSize)),
         },
       });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+// ── Edit bank transaction description/date ──
+router.patch(
+  '/:id/transactions/:txnId',
+  rbacMiddleware(Permission.MANAGE_FINANCE),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      const account = await prisma.bankAccount.findFirst({
+        where: { id: req.params.id, projectId, deletedAt: null },
+      });
+      if (!account) {
+        res.status(404).json({ error: 'Bank account not found' });
+        return;
+      }
+
+      const txn = await prisma.bankTransaction.findFirst({
+        where: { id: req.params.txnId, bankAccountId: req.params.id },
+      });
+      if (!txn) {
+        res.status(404).json({ error: 'Transaction not found' });
+        return;
+      }
+
+      const { description, date } = req.body;
+      const data: Record<string, unknown> = {};
+      if (description !== undefined) data.description = String(description);
+      if (date) data.date = new Date(String(date));
+
+      const updated = await prisma.bankTransaction.update({
+        where: { id: req.params.txnId },
+        data,
+      });
+
+      // Also update the linked voucher's description if this txn came from a voucher
+      if (txn.referenceId && description !== undefined) {
+        await prisma.ledgerEntry.updateMany({
+          where: { journalVoucherId: txn.referenceId },
+          data: { description: String(description) },
+        }).catch(() => {});
+      }
+
+      await logAudit({
+        userId: req.user!.id,
+        action: AuditAction.UPDATE,
+        entityType: 'BANK_TRANSACTION',
+        entityId: txn.id,
+        projectId,
+        oldValue: { description: txn.description, date: txn.date },
+        newValue: data,
+      });
+
+      res.json(updated);
     } catch (error) {
       next(error);
     }

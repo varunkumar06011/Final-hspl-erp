@@ -1009,6 +1009,7 @@ export const listBankTransactionsSchema = z
       startDate: dateStr.optional(),
       endDate: dateStr.optional(),
       type: z.nativeEnum(BankTxnType).optional(),
+      ledgerId: uuid.optional(),
     }),
   })
   .superRefine((data, ctx) => {

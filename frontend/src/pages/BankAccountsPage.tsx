@@ -34,6 +34,8 @@ import {
   ArrowUpward as WithdrawIcon,
   SwapHoriz as TransferIcon,
   Receipt as StatementIcon,
+  Print as PrintIcon,
+  Download as DownloadIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { extractErrorMessage } from '../config/api';
@@ -107,6 +109,12 @@ export default function BankAccountsPage() {
   const [statementAccountId, setStatementAccountId] = useState<string | null>(null);
   const [stmtPage, setStmtPage] = useState(0);
   const [stmtPageSize, setStmtPageSize] = useState(25);
+  const [stmtStartDate, setStmtStartDate] = useState('');
+  const [stmtEndDate, setStmtEndDate] = useState('');
+  const [stmtLedgerFilter, setStmtLedgerFilter] = useState('');
+  const [stmtTypeFilter, setStmtTypeFilter] = useState('');
+  const [editingTxnId, setEditingTxnId] = useState<string | null>(null);
+  const [editTxnDesc, setEditTxnDesc] = useState('');
 
   // Transaction dialog state (deposit/withdraw)
   const [txnDialogOpen, setTxnDialogOpen] = useState(false);
@@ -148,11 +156,14 @@ export default function BankAccountsPage() {
   }));
 
   const { data: statementData, isLoading: stmtLoading } = useQuery({
-    queryKey: ['/bank-accounts', statementAccountId, 'statement', stmtPage, stmtPageSize],
+    queryKey: ['/bank-accounts', statementAccountId, 'statement', stmtPage, stmtPageSize, stmtStartDate, stmtEndDate, stmtLedgerFilter, stmtTypeFilter],
     queryFn: async () => {
-      const response = await api.get(`/bank-accounts/${statementAccountId}/statement`, {
-        params: { page: stmtPage + 1, pageSize: stmtPageSize },
-      });
+      const params: Record<string, unknown> = { page: stmtPage + 1, pageSize: stmtPageSize };
+      if (stmtStartDate) params.startDate = stmtStartDate;
+      if (stmtEndDate) params.endDate = stmtEndDate;
+      if (stmtLedgerFilter) params.ledgerId = stmtLedgerFilter;
+      if (stmtTypeFilter) params.type = stmtTypeFilter;
+      const response = await api.get(`/bank-accounts/${statementAccountId}/statement`, { params });
       return response.data;
     },
     enabled: !!statementAccountId,
@@ -340,6 +351,124 @@ export default function BankAccountsPage() {
   const pagination = data?.pagination ?? { page: 1, pageSize: 20, total: 0, totalPages: 0 };
   const stmtRows: BankTransaction[] = statementData?.data ?? [];
   const stmtPagination = statementData?.pagination ?? { page: 1, pageSize: 25, total: 0, totalPages: 0 };
+
+  // Edit transaction mutation
+  const editTxnMutation = useMutation({
+    mutationFn: async ({ txnId, payload }: { txnId: string; payload: Record<string, unknown> }) => {
+      const response = await api.patch(`/bank-accounts/${statementAccountId}/transactions/${txnId}`, payload);
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/bank-accounts', statementAccountId, 'statement'] });
+      setEditingTxnId(null);
+    },
+    onError: (err: unknown) => setError(extractErrorMessage(err)),
+  });
+
+  // ── Print statement (opens Windows print dialog) ──
+  const handlePrintStatement = (printAll: boolean) => {
+    if (!statementData?.account) return;
+    const acc = statementData.account;
+    const rowsToPrint = printAll ? stmtRows : stmtRows; // current page either way; "all" would need a separate fetch
+    const filtersDesc = [
+      stmtStartDate && `From: ${stmtStartDate}`,
+      stmtEndDate && `To: ${stmtEndDate}`,
+      stmtLedgerFilter && `Ledger: ${ledgers.find((l) => l.id === stmtLedgerFilter)?.name ?? ''}`,
+      stmtTypeFilter && `Type: ${TXN_TYPE_LABELS[stmtTypeFilter] ?? stmtTypeFilter}`,
+    ].filter(Boolean).join(' | ');
+
+    const html = `
+      <html>
+      <head>
+        <title>Bank Statement - ${acc.accountName}</title>
+        <style>
+          body { font-family: Arial, sans-serif; margin: 20px; }
+          h2 { margin: 0 0 5px 0; }
+          .info { color: #666; margin-bottom: 15px; font-size: 13px; }
+          table { width: 100%; border-collapse: collapse; font-size: 12px; }
+          th { background: #f5f5f5; padding: 8px; text-align: left; border-bottom: 2px solid #ddd; }
+          td { padding: 6px 8px; border-bottom: 1px solid #eee; }
+      .amt-in { color: #2e7d32; text-align: right; }
+      .amt-out { color: #c62828; text-align: right; }
+      .bal { text-align: right; }
+        </style>
+      </head>
+      <body>
+        <h2>${acc.accountName}</h2>
+        <div class="info">
+          ${acc.bankName ?? ''} ${acc.accountNumber ? `| A/c: ${acc.accountNumber}` : ''}<br/>
+          Opening Balance: Rs. ${acc.openingBalance.toLocaleString('en-IN')} | Current Balance: Rs. ${acc.currentBalance.toLocaleString('en-IN')}<br/>
+          ${filtersDesc ? `<strong>Filters:</strong> ${filtersDesc}` : ''}
+        </div>
+        <table>
+          <thead>
+            <tr><th>Date</th><th>Type</th><th>Description</th><th>Ref</th><th align="right">Amount</th><th align="right">Balance</th></tr>
+          </thead>
+          <tbody>
+            ${rowsToPrint.map((t: BankTransaction) => {
+      const isIn = ['DEPOSIT', 'TRANSFER_IN', 'REVERSAL_IN'].includes(t.type);
+      return `<tr>
+                <td>${formatDate(t.date)}</td>
+                <td>${TXN_TYPE_LABELS[t.type] ?? t.type}</td>
+                <td>${t.description ?? '—'}</td>
+                <td>${REF_TYPE_LABELS[t.referenceType] ?? t.referenceType}</td>
+                <td class="${isIn ? 'amt-in' : 'amt-out'}">${isIn ? '+' : '−'}Rs. ${Number(t.amount).toLocaleString('en-IN')}</td>
+                <td class="bal">Rs. ${Number(t.balanceAfter).toLocaleString('en-IN')}</td>
+              </tr>`;
+    }).join('')}
+          </tbody>
+        </table>
+        <p style="margin-top:15px;font-size:11px;color:#999;">Generated on ${new Date().toLocaleString('en-IN')}</p>
+      </body>
+      </html>
+    `;
+    const printWin = window.open('', '_blank', 'width=900,height=600');
+    if (printWin) {
+      printWin.document.write(html);
+      printWin.document.close();
+      printWin.focus();
+      setTimeout(() => printWin.print(), 300);
+    }
+  };
+
+  // ── Export to CSV (Excel-compatible) ──
+  const handleExportCSV = () => {
+    if (!statementData?.account) return;
+    const acc = statementData.account;
+    const headers = ['Date', 'Type', 'Description', 'Ref Type', 'Amount', 'Balance After'];
+    const csvRows = [
+      [`Bank Statement - ${acc.accountName}`],
+      [`Opening Balance: ${acc.openingBalance}`, `Current Balance: ${acc.currentBalance}`],
+      stmtStartDate || stmtEndDate || stmtLedgerFilter || stmtTypeFilter
+        ? [`Filters: ${[
+            stmtStartDate && `From: ${stmtStartDate}`,
+            stmtEndDate && `To: ${stmtEndDate}`,
+            stmtLedgerFilter && `Ledger: ${ledgers.find((l) => l.id === stmtLedgerFilter)?.name ?? ''}`,
+            stmtTypeFilter && `Type: ${TXN_TYPE_LABELS[stmtTypeFilter] ?? stmtTypeFilter}`,
+          ].filter(Boolean).join(', ')}`]
+        : [],
+      [],
+      headers,
+      ...stmtRows.map((t: BankTransaction) => [
+        formatDate(t.date),
+        TXN_TYPE_LABELS[t.type] ?? t.type,
+        (t.description ?? '').replace(/,/g, ';'),
+        REF_TYPE_LABELS[t.referenceType] ?? t.referenceType,
+        Number(t.amount).toFixed(2),
+        Number(t.balanceAfter).toFixed(2),
+      ]),
+    ];
+    const csv = csvRows.map((row) => row.join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `bank-statement-${acc.accountName}-${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const hasFilters = !!(stmtStartDate || stmtEndDate || stmtLedgerFilter || stmtTypeFilter);
 
   return (
     <Box sx={{ minWidth: 0, overflow: 'hidden' }}>
@@ -561,8 +690,18 @@ export default function BankAccountsPage() {
       {/* Statement dialog */}
       <ResponsiveDialog open={!!statementAccountId} onClose={() => setStatementAccountId(null)} maxWidth="md" fullWidth>
         <DialogTitle>
-          <Stack direction="row" alignItems="center" gap={1}>
-            <BankIcon /><Typography variant="h6">Bank Statement</Typography>
+          <Stack direction="row" alignItems="center" justifyContent="space-between">
+            <Stack direction="row" alignItems="center" gap={1}>
+              <BankIcon /><Typography variant="h6">Bank Statement</Typography>
+            </Stack>
+            <Stack direction="row" spacing={1}>
+              <Button size="small" startIcon={<PrintIcon />} onClick={() => handlePrintStatement(false)}>
+                {hasFilters ? 'Print' : 'Print Page'}
+              </Button>
+              <Button size="small" startIcon={<DownloadIcon />} onClick={handleExportCSV}>
+                Export CSV
+              </Button>
+            </Stack>
           </Stack>
         </DialogTitle>
         <DialogContent>
@@ -571,6 +710,56 @@ export default function BankAccountsPage() {
               <strong>{statementData.account.accountName}</strong> — Current Balance: {formatCurrency(statementData.account.currentBalance)} | Opening: {formatCurrency(statementData.account.openingBalance)}
             </Alert>
           )}
+
+          {/* Filters */}
+          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 2 }}>
+            <TextField
+              size="small"
+              type="date"
+              label="From Date"
+              value={stmtStartDate}
+              onChange={(e) => { setStmtStartDate(e.target.value); setStmtPage(0); }}
+              InputLabelProps={{ shrink: true }}
+              sx={{ width: 150 }}
+            />
+            <TextField
+              size="small"
+              type="date"
+              label="To Date"
+              value={stmtEndDate}
+              onChange={(e) => { setStmtEndDate(e.target.value); setStmtPage(0); }}
+              InputLabelProps={{ shrink: true }}
+              sx={{ width: 150 }}
+            />
+            <TextField
+              size="small"
+              select
+              label="Type"
+              value={stmtTypeFilter}
+              onChange={(e) => { setStmtTypeFilter(e.target.value); setStmtPage(0); }}
+              sx={{ width: 140 }}
+            >
+              <MenuItem value="">All Types</MenuItem>
+              {Object.entries(TXN_TYPE_LABELS).map(([val, label]) => <MenuItem key={val} value={val}>{label}</MenuItem>)}
+            </TextField>
+            <TextField
+              size="small"
+              select
+              label="Ledger"
+              value={stmtLedgerFilter}
+              onChange={(e) => { setStmtLedgerFilter(e.target.value); setStmtPage(0); }}
+              sx={{ width: 180 }}
+            >
+              <MenuItem value="">All Ledgers</MenuItem>
+              {ledgers.map((l) => <MenuItem key={l.id} value={l.id}>{l.name}</MenuItem>)}
+            </TextField>
+            {hasFilters && (
+              <Button size="small" onClick={() => { setStmtStartDate(''); setStmtEndDate(''); setStmtLedgerFilter(''); setStmtTypeFilter(''); setStmtPage(0); }}>
+                Clear Filters
+              </Button>
+            )}
+          </Box>
+
           <TableContainer sx={{ overflowX: 'auto' }}>
             <Table size="small">
               <TableHead>
@@ -581,13 +770,14 @@ export default function BankAccountsPage() {
                   <TableCell sx={{ fontWeight: 600 }} align="right">Balance After</TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>Description</TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>Ref</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}></TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
                 {stmtLoading ? (
-                  <TableRow><TableCell colSpan={6} align="center"><CircularProgress size={24} /></TableCell></TableRow>
+                  <TableRow><TableCell colSpan={7} align="center"><CircularProgress size={24} /></TableCell></TableRow>
                 ) : stmtRows.length === 0 ? (
-                  <TableRow><TableCell colSpan={6} align="center"><Typography color="text.secondary">No transactions</Typography></TableCell></TableRow>
+                  <TableRow><TableCell colSpan={7} align="center"><Typography color="text.secondary">No transactions</Typography></TableCell></TableRow>
                 ) : (
                   stmtRows.map((txn) => (
                     <TableRow key={txn.id} hover>
@@ -597,8 +787,31 @@ export default function BankAccountsPage() {
                         {['DEPOSIT', 'TRANSFER_IN', 'REVERSAL_IN'].includes(txn.type) ? '+' : '−'}{formatCurrency(txn.amount)}
                       </TableCell>
                       <TableCell align="right">{formatCurrency(txn.balanceAfter)}</TableCell>
-                      <TableCell>{txn.description || '—'}</TableCell>
+                      <TableCell>
+                        {editingTxnId === txn.id ? (
+                          <Stack direction="row" spacing={1} alignItems="center">
+                            <TextField
+                              size="small"
+                              value={editTxnDesc}
+                              onChange={(e) => setEditTxnDesc(e.target.value)}
+                              sx={{ minWidth: 200 }}
+                              autoFocus
+                            />
+                            <Button size="small" variant="contained" onClick={() => editTxnMutation.mutate({ txnId: txn.id, payload: { description: editTxnDesc } })}>
+                              Save
+                            </Button>
+                            <Button size="small" onClick={() => setEditingTxnId(null)}>Cancel</Button>
+                          </Stack>
+                        ) : (txn.description || '—')}
+                      </TableCell>
                       <TableCell><Chip label={REF_TYPE_LABELS[txn.referenceType] ?? txn.referenceType} size="small" variant="outlined" /></TableCell>
+                      <TableCell>
+                        {editingTxnId !== txn.id && (
+                          <IconButton size="small" onClick={() => { setEditingTxnId(txn.id); setEditTxnDesc(txn.description ?? ''); }} title="Edit description">
+                            <EditIcon fontSize="small" />
+                          </IconButton>
+                        )}
+                      </TableCell>
                     </TableRow>
                   ))
                 )}
@@ -612,7 +825,7 @@ export default function BankAccountsPage() {
             onPageChange={(_e, newPage) => setStmtPage(newPage)}
             rowsPerPage={stmtPageSize}
             onRowsPerPageChange={(e) => { setStmtPageSize(Number(e.target.value)); setStmtPage(0); }}
-            rowsPerPageOptions={[10, 25, 50]}
+            rowsPerPageOptions={[10, 25, 50, 100]}
           />
         </DialogContent>
         <DialogActions>
