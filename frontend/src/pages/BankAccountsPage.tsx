@@ -38,6 +38,8 @@ import {
   Download as DownloadIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import api, { extractErrorMessage } from '../config/api';
 import ResponsiveDialog from '../components/ResponsiveDialog';
 import RefreshButton from '../components/RefreshButton';
@@ -470,6 +472,73 @@ export default function BankAccountsPage() {
 
   const hasFilters = !!(stmtStartDate || stmtEndDate || stmtLedgerFilter || stmtTypeFilter);
 
+  // ── Export to PDF ──
+  const handleExportPDF = () => {
+    if (!statementData?.account) return;
+    const acc = statementData.account;
+    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+
+    // Header
+    doc.setFontSize(16);
+    doc.setFont('helvetica', 'bold');
+    doc.text(`Bank Statement - ${acc.accountName}`, 14, 15);
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`${acc.bankName ?? ''} ${acc.accountNumber ? `| A/c: ${acc.accountNumber}` : ''}`, 14, 22);
+    doc.text(`Opening Balance: Rs. ${Number(acc.openingBalance).toLocaleString('en-IN')}  |  Current Balance: Rs. ${Number(acc.currentBalance).toLocaleString('en-IN')}`, 14, 28);
+
+    // Filters line
+    const filtersDesc = [
+      stmtStartDate && `From: ${stmtStartDate}`,
+      stmtEndDate && `To: ${stmtEndDate}`,
+      stmtLedgerFilter && `Ledger: ${ledgers.find((l) => l.id === stmtLedgerFilter)?.name ?? ''}`,
+      stmtTypeFilter && `Type: ${TXN_TYPE_LABELS[stmtTypeFilter] ?? stmtTypeFilter}`,
+    ].filter(Boolean).join(' | ');
+    if (filtersDesc) {
+      doc.setFont('helvetica', 'italic');
+      doc.text(`Filters: ${filtersDesc}`, 14, 34);
+      doc.setFont('helvetica', 'normal');
+    }
+
+    // Table
+    const tableData = stmtRows.map((t: BankTransaction) => {
+      const isIn = ['DEPOSIT', 'TRANSFER_IN', 'REVERSAL_IN'].includes(t.type);
+      return [
+        formatDate(t.date),
+        TXN_TYPE_LABELS[t.type] ?? t.type,
+        t.description ?? '—',
+        REF_TYPE_LABELS[t.referenceType] ?? t.referenceType,
+        `${isIn ? '+' : '-'}Rs. ${Number(t.amount).toLocaleString('en-IN')}`,
+        `Rs. ${Number(t.balanceAfter).toLocaleString('en-IN')}`,
+      ];
+    });
+
+    autoTable(doc, {
+      head: [['Date', 'Type', 'Description', 'Ref', 'Amount', 'Balance After']],
+      body: tableData,
+      startY: filtersDesc ? 38 : 32,
+      theme: 'striped',
+      headStyles: { fillColor: [66, 66, 66], fontSize: 9 },
+      bodyStyles: { fontSize: 8 },
+      columnStyles: {
+        0: { cellWidth: 25 },
+        1: { cellWidth: 25 },
+        2: { cellWidth: 60 },
+        3: { cellWidth: 25 },
+        4: { cellWidth: 30, halign: 'right' },
+        5: { cellWidth: 30, halign: 'right' },
+      },
+    });
+
+    // Footer
+    const finalY = (doc as any).lastAutoTable?.finalY ?? 50;
+    doc.setFontSize(8);
+    doc.setTextColor(150);
+    doc.text(`Generated on ${new Date().toLocaleString('en-IN')}`, 14, finalY + 8);
+
+    doc.save(`bank-statement-${acc.accountName}-${new Date().toISOString().split('T')[0]}.pdf`);
+  };
+
   return (
     <Box sx={{ minWidth: 0, overflow: 'hidden' }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: { xs: 'flex-start', sm: 'center' }, mb: 2, flexWrap: 'wrap', gap: 1 }}>
@@ -698,8 +767,11 @@ export default function BankAccountsPage() {
               <Button size="small" startIcon={<PrintIcon />} onClick={() => handlePrintStatement(false)}>
                 {hasFilters ? 'Print' : 'Print Page'}
               </Button>
+              <Button size="small" startIcon={<DownloadIcon />} onClick={handleExportPDF}>
+                PDF
+              </Button>
               <Button size="small" startIcon={<DownloadIcon />} onClick={handleExportCSV}>
-                Export CSV
+                CSV
               </Button>
             </Stack>
           </Stack>
