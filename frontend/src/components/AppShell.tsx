@@ -40,6 +40,14 @@ import api from '../config/api';
 const NAV_ITEMS = [
   { label: 'Dashboard', icon: <DashboardIcon />, path: '/', section: '' },
   { label: 'Work Calendar', icon: <WorkIcon />, path: '/work-calendar', permission: Permission.MANAGE_WORK_TASKS, section: '' },
+  // ── Procurement ──
+  { label: 'Work', icon: <WorkIcon />, path: '/work', permission: Permission.MANAGE_WORK_TASKS, section: 'Procurement' },
+  { label: 'Vendors', icon: <VendorIcon />, path: '/vendors', permission: Permission.VIEW_FINANCIALS, section: 'Procurement' },
+  { label: 'Quotations', icon: <ReceiptIcon />, path: '/quotations', permission: Permission.VIEW_FINANCIALS, section: 'Procurement' },
+  { label: 'Purchase Orders', icon: <ReceiptIcon />, path: '/pos', permission: Permission.VIEW_FINANCIALS, section: 'Procurement' },
+  { label: 'Gate Passes', icon: <GatePassIcon />, path: '/gate-passes', permission: Permission.VIEW_GATE_PASSES, section: 'Procurement' },
+  { label: 'Goods Receipts', icon: <ReceiptIcon />, path: '/goods-receipts', permission: Permission.MANAGE_INVENTORY, section: 'Procurement' },
+  { label: 'GST Records', icon: <ReceiptIcon />, path: '/gst-records', permission: Permission.VIEW_FINANCIALS, section: 'Procurement' },
   // ── Masters (Tally: Accounts Info) ──
   { label: 'Chart of Accounts', icon: <LedgersIcon />, path: '/ledgers', permission: Permission.VIEW_FINANCIALS, section: 'Masters' },
   { label: 'Bank Ledgers', icon: <BankIcon />, path: '/bank-accounts', permission: Permission.VIEW_FINANCIALS, section: 'Masters' },
@@ -50,14 +58,6 @@ const NAV_ITEMS = [
   { label: 'Accounting Vouchers', icon: <VouchersIcon />, path: '/vouchers', permission: Permission.VIEW_FINANCIALS, section: 'Voucher Entry' },
   { label: 'Payments', icon: <PaymentIcon />, path: '/payments', permission: Permission.VIEW_FINANCIALS, section: 'Voucher Entry' },
   { label: 'Sales (Invoices)', icon: <ReceiptIcon />, path: '/invoices', permission: Permission.VIEW_FINANCIALS, section: 'Voucher Entry' },
-  // ── Procurement ──
-  { label: 'Work', icon: <WorkIcon />, path: '/work', permission: Permission.MANAGE_WORK_TASKS, section: 'Procurement' },
-  { label: 'Vendors', icon: <VendorIcon />, path: '/vendors', permission: Permission.VIEW_FINANCIALS, section: 'Procurement' },
-  { label: 'Quotations', icon: <ReceiptIcon />, path: '/quotations', permission: Permission.VIEW_FINANCIALS, section: 'Procurement' },
-  { label: 'Purchase Orders', icon: <ReceiptIcon />, path: '/pos', permission: Permission.VIEW_FINANCIALS, section: 'Procurement' },
-  { label: 'Gate Passes', icon: <GatePassIcon />, path: '/gate-passes', permission: Permission.VIEW_GATE_PASSES, section: 'Procurement' },
-  { label: 'Goods Receipts', icon: <ReceiptIcon />, path: '/goods-receipts', permission: Permission.MANAGE_INVENTORY, section: 'Procurement' },
-  { label: 'GST Records', icon: <ReceiptIcon />, path: '/gst-records', permission: Permission.VIEW_FINANCIALS, section: 'Procurement' },
   // ── Reports (Tally: Display) ──
   { label: 'Finance Dashboard', icon: <FinanceDashboardIcon />, path: '/finance-dashboard', permission: Permission.VIEW_FINANCIALS, section: 'Reports' },
   { label: 'Accounting Reports', icon: <AccountingReportsIcon />, path: '/accounting-reports', permission: Permission.VIEW_FINANCIALS, section: 'Reports' },
