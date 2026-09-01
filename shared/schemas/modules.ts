@@ -128,7 +128,7 @@ export const createPOSchema = z.object({
     paymentTerms: z.string().max(500).optional(),
     deliveryDate: z.coerce.date().optional().or(z.literal('').transform(() => undefined)),
     acknowledged: acknowledgement,
-    budgetHeadId: uuid.optional(),
+    budgetHeadId: uuid,
   }),
 });
 export const updatePOSchema = z.object({
@@ -146,6 +146,24 @@ export const editPOSchema = z.object({
       gstRate: z.coerce.number().min(0).max(100),
     })).min(1, 'At least one item is required'),
     editReason: z.string().min(1, 'Edit reason is required').max(500),
+  }),
+});
+
+// Edit an un-approved PO (PENDING_APPROVAL or REJECTED) — all fields editable
+export const editUnapprovedPOSchema = z.object({
+  params: z.object({ id: uuid }),
+  body: z.object({
+    paymentType: z.nativeEnum(POPaymentType),
+    paymentTerms: z.string().max(500).optional(),
+    deliveryDate: z.coerce.date().optional().or(z.literal('').transform(() => undefined)),
+    budgetHeadId: uuid,
+    items: z.array(z.object({
+      materialName: z.string().min(1).max(200),
+      quantity: qty,
+      unit: z.string().min(1).max(20),
+      unitPrice: money,
+      gstRate: z.coerce.number().min(0).max(100),
+    })).min(1, 'At least one item is required'),
   }),
 });
 export const regeneratePOSchema = z.object({

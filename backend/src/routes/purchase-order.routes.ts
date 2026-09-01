@@ -1,6 +1,6 @@
 import { Router, Response, NextFunction } from 'express';
 import { Permission, POStatus, AuditAction, UserRole, GoodsReceiptStatus } from '@hospital-erp/shared';
-import { createPOSchema, listPOsSchema, approvalActionSchema, editPOSchema, regeneratePOSchema } from '@hospital-erp/shared';
+import { createPOSchema, listPOsSchema, approvalActionSchema, editPOSchema, editUnapprovedPOSchema, regeneratePOSchema } from '@hospital-erp/shared';
 import { prisma } from '../config/prisma';
 import { Prisma } from '@prisma/client';
 import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middleware/auth';
@@ -799,6 +799,168 @@ router.get(
       next(error);
     }
   }
+);
+
+// POST /:id/edit-unapproved — edit a PENDING_APPROVAL or REJECTED PO (all fields editable)
+router.post(
+  '/:id/edit-unapproved',
+  rbacMiddleware(Permission.CREATE_PO),
+  validateMiddleware(editUnapprovedPOSchema),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      const po = await prisma.purchaseOrder.findFirst({
+        where: { id: req.params.id, projectId, deletedAt: null },
+        include: { items: true },
+      });
+      if (!po) {
+        res.status(404).json({ error: 'Purchase order not found' });
+        return;
+      }
+      if (po.status !== POStatus.PENDING_APPROVAL && po.status !== POStatus.REJECTED) {
+        res.status(400).json({ error: 'Only pending or rejected POs can be edited' });
+        return;
+      }
+
+      const { paymentType, paymentTerms, deliveryDate, budgetHeadId, items: newItems } = req.body;
+
+      // Validate budget head exists and belongs to project
+      const budgetHead = await prisma.budgetHead.findFirst({
+        where: { id: budgetHeadId, projectId, deletedAt: null },
+      });
+      if (!budgetHead) {
+        res.status(400).json({ error: 'Budget head not found' });
+        return;
+      }
+
+      // Recalculate amounts from new items
+      const totalAmount = newItems.reduce((sum: number, i: { quantity: number; unitPrice: number }) => sum + i.quantity * i.unitPrice, 0);
+      const gstAmount = newItems.reduce((sum: number, i: { quantity: number; unitPrice: number; gstRate: number }) => sum + (i.quantity * i.unitPrice) * i.gstRate / 100, 0);
+      const grandTotal = totalAmount + gstAmount;
+
+      // Snapshot old values for audit
+      const oldValue = {
+        paymentType: po.paymentType,
+        paymentTerms: po.paymentTerms,
+        deliveryDate: po.deliveryDate,
+        budgetHeadId: po.budgetHeadId,
+        items: po.items.map((i) => ({ materialName: i.materialName, quantity: Number(i.quantity), unitPrice: Number(i.unitPrice), gstRate: Number(i.gstRate ?? 0) })),
+        totalAmount: Number(po.totalAmount),
+        gstAmount: Number(po.gstAmount),
+        grandTotal: Number(po.grandTotal),
+      };
+
+      const result = await prisma.$transaction(async (tx) => {
+        // Adjust budget head commitment if budget head or total changed
+        if (po.budgetHeadId && po.budgetHeadId !== budgetHeadId) {
+          // Old budget head: remove commitment
+          await tx.budgetHead.update({
+            where: { id: po.budgetHeadId },
+            data: { committedAmount: { decrement: Number(po.grandTotal) } },
+          });
+          // New budget head: add commitment
+          await tx.budgetHead.update({
+            where: { id: budgetHeadId },
+            data: { committedAmount: { increment: grandTotal } },
+          });
+        } else if (po.budgetHeadId === budgetHeadId) {
+          // Same budget head — adjust by delta
+          const delta = grandTotal - Number(po.grandTotal);
+          if (delta !== 0) {
+            await tx.budgetHead.update({
+              where: { id: budgetHeadId },
+              data: { committedAmount: { increment: delta } },
+            });
+          }
+        } else if (!po.budgetHeadId) {
+          // No previous budget head — add commitment to new one
+          await tx.budgetHead.update({
+            where: { id: budgetHeadId },
+            data: { committedAmount: { increment: grandTotal } },
+          });
+        }
+
+        // Delete existing items
+        await tx.pOItem.deleteMany({ where: { poId: po.id } });
+
+        // Create new items
+        await tx.pOItem.createMany({
+          data: newItems.map((i: { materialName: string; quantity: number; unit: string; unitPrice: number; gstRate: number }) => ({
+            poId: po.id,
+            materialName: i.materialName,
+            quantity: i.quantity,
+            unit: i.unit,
+            unitPrice: i.unitPrice,
+            amount: i.quantity * i.unitPrice,
+            gstRate: i.gstRate,
+          })),
+        });
+
+        // Update PO fields
+        const updated = await tx.purchaseOrder.update({
+          where: { id: po.id },
+          data: {
+            paymentType,
+            paymentTerms: paymentTerms ?? null,
+            deliveryDate: deliveryDate ? new Date(deliveryDate) : null,
+            budgetHeadId,
+            totalAmount,
+            gstAmount,
+            grandTotal,
+            editedAt: new Date(),
+            editedBy: req.user!.id,
+            status: POStatus.PENDING_APPROVAL,
+          },
+          include: poInclude,
+        });
+
+        // Reset approval workflow if it exists
+        if (po.approvalWorkflowId) {
+          await tx.approvalStep.deleteMany({ where: { workflowId: po.approvalWorkflowId } });
+          await tx.approvalWorkflow.update({
+            where: { id: po.approvalWorkflowId },
+            data: {
+              status: 'VERIFICATION',
+              currentStep: 0,
+              steps: {
+                create: [UserRole.ADMIN, UserRole.ADMIN_2].map((role, idx) => ({
+                  stepNumber: idx + 1,
+                  approverRole: role,
+                  status: 'PENDING',
+                })),
+              },
+            },
+          });
+        }
+
+        return updated;
+      });
+
+      await logAudit({
+        userId: req.user!.id,
+        action: AuditAction.UPDATE,
+        entityType: 'PURCHASE_ORDER',
+        entityId: po.id,
+        projectId,
+        oldValue,
+        newValue: { paymentType, paymentTerms, deliveryDate, budgetHeadId, items: newItems, totalAmount, gstAmount, grandTotal },
+      });
+
+      // Notify approvers
+      notifyApprovers(projectId, PO_APPROVER_ROLES as UserRole[], {
+        approvalId: po.approvalWorkflowId ?? '',
+        entityType: 'PURCHASE_ORDER',
+        entityId: po.id,
+        title: 'PO Edited — Re-approval Required',
+        body: `${po.poNumber} was edited and needs re-approval`,
+        url: `/pos?approval=${po.approvalWorkflowId ?? ''}`,
+      }).catch((err) => console.error('[Push] PO edit notification error:', err));
+
+      res.json(result);
+    } catch (error) {
+      next(error);
+    }
+  },
 );
 
 // POST /:id/edit — edit a PARTIALLY_DELIVERED PO (reduce quantities to match delivered, re-approve)

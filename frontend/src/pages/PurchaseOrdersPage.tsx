@@ -95,6 +95,8 @@ interface PORow {
   createdAt: string;
   status: string;
   paymentType: string;
+  paymentTerms?: string | null;
+  deliveryDate?: string | null;
   totalAmount: number;
   gstAmount: number;
   grandTotal: number;
@@ -139,6 +141,7 @@ export default function PurchaseOrdersPage() {
   const [approvalPopup, setApprovalPopup] = useState<PORow | null>(null);
   const [trailRow, setTrailRow] = useState<PORow | null>(null);
   const [editRow, setEditRow] = useState<PORow | null>(null);
+  const [editUnapprovedRow, setEditUnapprovedRow] = useState<PORow | null>(null);
   const [regenRow, setRegenRow] = useState<PORow | null>(null);
   const queryClient = useQueryClient();
   const { user } = useAuthStore();
@@ -239,7 +242,7 @@ export default function PurchaseOrdersPage() {
         paymentTerms,
         deliveryDate,
         acknowledged,
-        budgetHeadId: selectedBudgetHeadId || undefined,
+        budgetHeadId: selectedBudgetHeadId,
       });
       return response.data;
     },
@@ -342,6 +345,10 @@ export default function PurchaseOrdersPage() {
 
   function handleCreatePO() {
     if (createSubmissionLocked.current || createMutation.isPending) return;
+    if (!selectedBudgetHeadId) {
+      setError('Budget head is required');
+      return;
+    }
     createSubmissionLocked.current = true;
     setError('');
     createMutation.mutate();
@@ -509,6 +516,9 @@ export default function PurchaseOrdersPage() {
                         {row.status === POStatus.PARTIALLY_DELIVERED && !row.parentPoId && (
                           <IconButton size="small" color="warning" onClick={() => setEditRow(row)} title="Edit PO to Match Delivered"><EditIcon fontSize="small" /></IconButton>
                         )}
+                        {(row.status === POStatus.PENDING_APPROVAL || row.status === POStatus.REJECTED) && (
+                          <IconButton size="small" color="primary" onClick={() => setEditUnapprovedRow(row)} title="Edit PO"><EditIcon fontSize="small" /></IconButton>
+                        )}
                         {row.status === POStatus.DELIVERED && !row.parentPoId && Array.isArray(row.regenerationData) && (row.regenerationData as unknown[]).length > 0 && (!row.childPos || row.childPos.length === 0) ? (
                           <IconButton size="small" color="secondary" onClick={() => setRegenRow(row)} title="Generate Regenerated PO"><AutoRenewIcon fontSize="small" /></IconButton>
                         ) : null}
@@ -634,14 +644,15 @@ export default function PurchaseOrdersPage() {
             {/* Budget Head Selection */}
             <TextField
               select
-              label="Budget Head (optional)"
+              label="Budget Head *"
               value={selectedBudgetHeadId}
               onChange={(e) => setSelectedBudgetHeadId(e.target.value)}
               fullWidth
               size="small"
+              required
               helperText="Tag this PO to a budget head for commitment tracking"
             >
-              <MenuItem value="">— None —</MenuItem>
+              <MenuItem value="">— Select Budget Head —</MenuItem>
               {budgetHeads.map((h) => <MenuItem key={h.id} value={h.id}>{h.particulars}</MenuItem>)}
             </TextField>
 
@@ -728,7 +739,7 @@ export default function PurchaseOrdersPage() {
           <Button
             variant="contained"
             onClick={handleCreatePO}
-            disabled={(!selectedVendorId || !selectedQuotationId || !acknowledged) || createMutation.isPending || createSubmissionLocked.current}
+            disabled={(!selectedVendorId || !selectedQuotationId || !selectedBudgetHeadId || !acknowledged) || createMutation.isPending || createSubmissionLocked.current}
           >
             {createMutation.isPending ? <CircularProgress size={20} /> : 'Create PO'}
           </Button>
@@ -778,6 +789,9 @@ export default function PurchaseOrdersPage() {
 
       {/* Edit PO Dialog */}
       <EditPODialog row={editRow} onClose={() => setEditRow(null)} onSuccess={() => { refetch(); setEditRow(null); }} />
+
+      {/* Edit Unapproved PO Dialog */}
+      <EditUnapprovedPODialog row={editUnapprovedRow} onClose={() => setEditUnapprovedRow(null)} onSuccess={() => { refetch(); setEditUnapprovedRow(null); }} />
 
       {/* Regenerate PO Dialog */}
       <RegeneratePODialog row={regenRow} onClose={() => setRegenRow(null)} onSuccess={() => { refetch(); setRegenRow(null); }} />
@@ -1240,6 +1254,237 @@ function EditPODialog({ row, onClose, onSuccess }: { row: PORow | null; onClose:
           disabled={mutation.isPending}
         >
           {mutation.isPending ? <CircularProgress size={20} /> : 'Edit & Send for Re-approval'}
+        </Button>
+      </DialogActions>
+    </ResponsiveDialog>
+  );
+}
+
+// ─── Edit Unapproved PO Dialog ────────────────────────────
+function EditUnapprovedPODialog({ row, onClose, onSuccess }: { row: PORow | null; onClose: () => void; onSuccess: () => void }) {
+  const queryClient = useQueryClient();
+  const [items, setItems] = useState<EditItem[]>([]);
+  const [paymentType, setPaymentType] = useState<string>(POPaymentType.AFTER_DELIVERY);
+  const [paymentTerms, setPaymentTerms] = useState('');
+  const [deliveryDate, setDeliveryDate] = useState('');
+  const [budgetHeadId, setBudgetHeadId] = useState('');
+  const [error, setError] = useState('');
+
+  const { data: budgetHeadsData } = useQuery({
+    queryKey: ['/budget-heads', 'all'],
+    queryFn: async () => {
+      const response = await api.get('/budget-heads', { params: { page: 1, pageSize: 100 } });
+      return response.data;
+    },
+  });
+  const budgetHeads: { id: string; particulars: string }[] = budgetHeadsData?.data ?? [];
+
+  useEffect(() => {
+    if (!row) return;
+    setItems(row.items.map((item) => ({
+      materialName: item.materialName,
+      quantity: String(item.quantity),
+      unit: item.unit ?? 'nos',
+      unitPrice: String(item.unitPrice),
+      gstRate: String(item.gstRate ?? 0),
+      accepted: 0,
+      selected: true,
+    })));
+    setPaymentType(row.paymentType);
+    setPaymentTerms(row.paymentTerms ?? '');
+    setDeliveryDate(row.deliveryDate ? new Date(row.deliveryDate).toISOString().split('T')[0] : '');
+    setBudgetHeadId(row.budgetHeadId ?? '');
+    setError('');
+  }, [row]);
+
+  const mutation = useMutation({
+    mutationFn: async () => {
+      await api.post(`/purchase-orders/${row!.id}/edit-unapproved`, {
+        paymentType,
+        paymentTerms: paymentTerms || undefined,
+        deliveryDate: deliveryDate || undefined,
+        budgetHeadId,
+        items: items.map((i) => ({
+          materialName: i.materialName,
+          quantity: Number(i.quantity),
+          unit: i.unit,
+          unitPrice: Number(i.unitPrice),
+          gstRate: Number(i.gstRate),
+        })),
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/pos'] });
+      onSuccess();
+    },
+    onError: (err: unknown) => setError(extractErrorMessage(err)),
+  });
+
+  const totalAmount = items.reduce((sum, i) => sum + (Number(i.quantity) || 0) * (Number(i.unitPrice) || 0), 0);
+  const gstAmount = items.reduce((sum, i) => sum + (Number(i.quantity) || 0) * (Number(i.unitPrice) || 0) * (Number(i.gstRate) || 0) / 100, 0);
+  const grandTotal = totalAmount + gstAmount;
+
+  return (
+    <ResponsiveDialog open={!!row} onClose={onClose} maxWidth="md" fullWidth>
+      <DialogTitle>Edit PO — {row?.poNumber}</DialogTitle>
+      <DialogContent>
+        {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
+        <Alert severity="info" sx={{ mb: 2 }}>
+          This PO has not been approved yet. You can edit all fields — items, payment type, delivery date, and budget head.
+          The PO will remain pending approval after saving.
+        </Alert>
+
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mb: 2 }}>
+          <TextField
+            select
+            label="Payment Type *"
+            value={paymentType}
+            onChange={(e) => setPaymentType(e.target.value)}
+            fullWidth
+            size="small"
+          >
+            {Object.values(POPaymentType).map((t) => <MenuItem key={t} value={t}>{t.replace(/_/g, ' ')}</MenuItem>)}
+          </TextField>
+
+          <TextField
+            label="Payment Terms"
+            value={paymentTerms}
+            onChange={(e) => setPaymentTerms(e.target.value)}
+            fullWidth
+            size="small"
+            multiline
+            rows={2}
+          />
+
+          <TextField
+            label="Delivery Date"
+            type="date"
+            value={deliveryDate}
+            onChange={(e) => setDeliveryDate(e.target.value)}
+            fullWidth
+            size="small"
+            InputLabelProps={{ shrink: true }}
+          />
+
+          <TextField
+            select
+            label="Budget Head *"
+            value={budgetHeadId}
+            onChange={(e) => setBudgetHeadId(e.target.value)}
+            fullWidth
+            size="small"
+            required
+          >
+            <MenuItem value="">— Select Budget Head —</MenuItem>
+            {budgetHeads.map((h) => <MenuItem key={h.id} value={h.id}>{h.particulars}</MenuItem>)}
+          </TextField>
+        </Box>
+
+        <Typography variant="subtitle2" sx={{ mb: 1 }}>Items</Typography>
+        <TableContainer component={Card} variant="outlined" sx={{ overflowX: 'auto', mb: 2 }}>
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell>Material</TableCell>
+                <TableCell align="right">Qty</TableCell>
+                <TableCell>Unit</TableCell>
+                <TableCell align="right">Unit Price</TableCell>
+                <TableCell align="right">GST %</TableCell>
+                <TableCell align="right">Amount</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {items.map((item, index) => (
+                <TableRow key={index}>
+                  <TableCell>
+                    <TextField
+                      size="small"
+                      value={item.materialName}
+                      onChange={(e) => {
+                        const updated = [...items];
+                        updated[index] = { ...updated[index], materialName: e.target.value };
+                        setItems(updated);
+                      }}
+                      sx={{ minWidth: 150 }}
+                    />
+                  </TableCell>
+                  <TableCell align="right">
+                    <TextField
+                      size="small"
+                      value={item.quantity}
+                      onChange={(e) => {
+                        const updated = [...items];
+                        updated[index] = { ...updated[index], quantity: e.target.value };
+                        setItems(updated);
+                      }}
+                      sx={{ width: 90 }}
+                      inputProps={{ style: { textAlign: 'right' }, inputMode: 'decimal' }}
+                    />
+                  </TableCell>
+                  <TableCell>
+                    <TextField
+                      size="small"
+                      value={item.unit}
+                      onChange={(e) => {
+                        const updated = [...items];
+                        updated[index] = { ...updated[index], unit: e.target.value };
+                        setItems(updated);
+                      }}
+                      sx={{ width: 80 }}
+                    />
+                  </TableCell>
+                  <TableCell align="right">
+                    <TextField
+                      size="small"
+                      value={item.unitPrice}
+                      onChange={(e) => {
+                        const updated = [...items];
+                        updated[index] = { ...updated[index], unitPrice: e.target.value };
+                        setItems(updated);
+                      }}
+                      sx={{ width: 110 }}
+                      InputProps={{ startAdornment: <InputAdornment position="start">₹</InputAdornment> }}
+                      inputProps={{ style: { textAlign: 'right' }, inputMode: 'decimal' }}
+                    />
+                  </TableCell>
+                  <TableCell align="right">
+                    <TextField
+                      select
+                      size="small"
+                      value={item.gstRate}
+                      onChange={(e) => {
+                        const updated = [...items];
+                        updated[index] = { ...updated[index], gstRate: e.target.value };
+                        setItems(updated);
+                      }}
+                      sx={{ width: 90 }}
+                    >
+                      {GST_RATES.map((r) => <MenuItem key={r} value={r}>{r}%</MenuItem>)}
+                    </TextField>
+                  </TableCell>
+                  <TableCell align="right">
+                    {formatCurrency((Number(item.quantity) || 0) * (Number(item.unitPrice) || 0))}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableContainer>
+
+        <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 3 }}>
+          <Typography variant="body2">Total: <strong>{formatCurrency(totalAmount)}</strong></Typography>
+          <Typography variant="body2">GST: <strong>{formatCurrency(gstAmount)}</strong></Typography>
+          <Typography variant="body2">Grand Total: <strong>{formatCurrency(grandTotal)}</strong></Typography>
+        </Box>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose}>Cancel</Button>
+        <Button
+          variant="contained"
+          onClick={() => mutation.mutate()}
+          disabled={mutation.isPending || !budgetHeadId || items.length === 0}
+        >
+          {mutation.isPending ? <CircularProgress size={20} /> : 'Save Changes'}
         </Button>
       </DialogActions>
     </ResponsiveDialog>
