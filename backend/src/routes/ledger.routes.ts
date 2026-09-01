@@ -73,6 +73,26 @@ router.get(
   },
 );
 
+// ── Custom ledger groups (Tally-style sub-groups under primary groups) ──
+
+// GET /ledgers/groups — list all custom groups for the project
+router.get(
+  '/groups',
+  rbacMiddleware(Permission.VIEW_FINANCIALS),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      const groups = await prisma.ledgerCustomGroup.findMany({
+        where: { projectId },
+        orderBy: { name: 'asc' },
+      });
+      res.json({ data: groups });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
 // ── Get single ledger ──
 router.get(
   '/:id',
@@ -707,26 +727,6 @@ async function getSyncStatus(projectId: string) {
     existingLedgerCount: ledgers.length,
   };
 }
-
-// ── Custom ledger groups (Tally-style sub-groups under primary groups) ──
-
-// GET /ledgers/groups — list all custom groups for the project
-router.get(
-  '/groups',
-  rbacMiddleware(Permission.VIEW_FINANCIALS),
-  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
-    try {
-      const projectId = requireProjectId(req);
-      const groups = await prisma.ledgerCustomGroup.findMany({
-        where: { projectId },
-        orderBy: { name: 'asc' },
-      });
-      res.json({ data: groups });
-    } catch (error) {
-      next(error);
-    }
-  },
-);
 
 // POST /ledgers/groups — create a custom group
 router.post(

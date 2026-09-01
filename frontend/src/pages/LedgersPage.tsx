@@ -228,6 +228,10 @@ export default function LedgersPage() {
     },
   });
   const customGroups: { id: string; name: string; parentGroup: string }[] = customGroupsData?.data ?? [];
+  const ledgerGroupOptions = [
+    ...GROUP_ORDER.map((value) => ({ value, label: GROUP_LABELS[value] })),
+    ...customGroups.map((group) => ({ value: group.name, label: `${group.name} (under ${GROUP_LABELS[group.parentGroup] ?? group.parentGroup})` })),
+  ];
 
   const createGroupMutation = useMutation({
     mutationFn: async (payload: { name: string; parentGroup: string }) => {
@@ -361,7 +365,7 @@ export default function LedgersPage() {
             />
             <TextField select size="small" label="Group" value={groupFilter} onChange={(e) => { setGroupFilter(e.target.value); setPage(0); }} sx={{ width: 200 }}>
               <MenuItem value="">All Groups</MenuItem>
-              {GROUP_ORDER.map((g) => <MenuItem key={g} value={g}>{GROUP_LABELS[g]}</MenuItem>)}
+              {ledgerGroupOptions.map((group) => <MenuItem key={group.value} value={group.value}>{group.label}</MenuItem>)}
             </TextField>
           </Box>
         </Card>
@@ -375,7 +379,7 @@ export default function LedgersPage() {
               Predefined groups are Tally's 15 primary groups. Custom groups are sub-groups you create under a primary group for finer classification.
             </Typography>
             <Button variant="contained" startIcon={<AddIcon />} onClick={() => { setGroupForm({ name: '', parentGroup: LedgerGroup.INDIRECT_EXPENSE }); setGroupError(''); setGroupDialogOpen(true); }}>
-              New Group
+              New Subgroup
             </Button>
           </Box>
 
@@ -415,7 +419,7 @@ export default function LedgersPage() {
                 No custom groups yet. Create a sub-group (e.g. "Travel Expenses" under "Indirect Expenses") for finer classification in reports.
               </Typography>
               <Button variant="contained" startIcon={<AddIcon />} onClick={() => { setGroupForm({ name: '', parentGroup: LedgerGroup.INDIRECT_EXPENSE }); setGroupError(''); setGroupDialogOpen(true); }}>
-                Create First Group
+                Create First Subgroup
               </Button>
             </Card>
           ) : (
@@ -451,13 +455,13 @@ export default function LedgersPage() {
 
       {/* Group create dialog */}
       <ResponsiveDialog open={groupDialogOpen} onClose={() => setGroupDialogOpen(false)} maxWidth="xs" fullWidth>
-        <DialogTitle>New Group</DialogTitle>
+        <DialogTitle>New Subgroup</DialogTitle>
         <DialogContent>
           {groupError && <Alert severity="error" sx={{ mb: 2 }}>{groupError}</Alert>}
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
             <TextField
               size="small"
-              label="Group Name"
+              label="Subgroup Name"
               value={groupForm.name}
               onChange={(e) => setGroupForm({ ...groupForm, name: e.target.value })}
               fullWidth
@@ -630,7 +634,7 @@ export default function LedgersPage() {
               fullWidth
               helperText="Determines P&L vs Balance Sheet classification"
             >
-              {GROUP_ORDER.map((g) => <MenuItem key={g} value={g}>{GROUP_LABELS[g]}</MenuItem>)}
+              {ledgerGroupOptions.map((group) => <MenuItem key={group.value} value={group.value}>{group.label}</MenuItem>)}
             </TextField>
             {!editing && (
               <TextField
