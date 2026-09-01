@@ -296,7 +296,13 @@ export default function LedgersPage() {
     if (!grouped[ledger.group]) grouped[ledger.group] = [];
     grouped[ledger.group].push(ledger);
   }
-  const customGroupsByParent = customGroups.reduce<Record<string, typeof customGroups>>((groups, group) => {
+  const selectedCustomGroup = groupFilter && !GROUP_ORDER.includes(groupFilter)
+    ? groupFilter
+    : null;
+  const visibleCustomGroups = selectedCustomGroup
+    ? customGroups.filter((group) => group.name === selectedCustomGroup)
+    : customGroups;
+  const customGroupsByParent = visibleCustomGroups.reduce<Record<string, typeof customGroups>>((groups, group) => {
     if (!groups[group.parentGroup]) groups[group.parentGroup] = [];
     groups[group.parentGroup].push(group);
     return groups;

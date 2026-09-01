@@ -34,11 +34,19 @@ router.get(
     try {
       const projectId = requireProjectId(req);
       const { page = 1, pageSize = 100, search, group, linkedEntityType, isActive } = req.query as Record<string, unknown>;
+      const requestedGroup = group ? String(group) : null;
+      const childGroupNames = requestedGroup
+        ? (await prisma.ledgerCustomGroup.findMany({
+            where: { projectId, parentGroup: requestedGroup },
+            select: { name: true },
+          })).map((customGroup) => customGroup.name)
+        : [];
+      const selectedGroupNames = requestedGroup ? [requestedGroup, ...childGroupNames] : [];
 
       const where: Prisma.LedgerWhereInput = {
         projectId,
         deletedAt: null,
-        ...(group ? { group: String(group) } : {}),
+        ...(requestedGroup ? { group: { in: selectedGroupNames } } : {}),
         ...(linkedEntityType ? { linkedEntityType: String(linkedEntityType) } : {}),
         ...(isActive !== undefined ? { isActive: isActive === 'true' || isActive === true } : {}),
         ...(search ? { name: { contains: String(search), mode: 'insensitive' } } : {}),
