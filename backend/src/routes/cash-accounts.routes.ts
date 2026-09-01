@@ -1,5 +1,5 @@
 import { Router, Response, NextFunction } from 'express';
-import { Permission, AuditAction, CashTxnType, BankTxnType, AccountTxnRefType, VoucherType } from '@hospital-erp/shared';
+import { Permission, AuditAction, CashTxnType, VoucherType } from '@hospital-erp/shared';
 import {
   createCashAccountSchema,
   updateCashAccountSchema,
@@ -17,7 +17,7 @@ import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middl
 import { rbacMiddleware } from '../middleware/rbac';
 import { validateMiddleware } from '../middleware/validate';
 import { logAudit } from '../services/audit.service';
-import { ensureCashLedger } from './ledger.routes';
+import { ensureCashLedger, ensureBankLedger } from './ledger.routes';
 import { postVoucher, generateVoucherNumber } from './voucher.routes';
 
 // ── Base CRUD via factory ──
@@ -301,9 +301,9 @@ router.post(
         userId: req.user!.id,
         action: AuditAction.CREATE,
         entityType: 'CASH_TRANSACTION',
-        entityId: result.fromTxn.id,
+        entityId: result.voucherId,
         projectId,
-        newValue: { type: 'TRANSFER', amount, fromAccountId, toAccountId },
+        newValue: { type: 'CONTRA_TRANSFER', amount, fromAccountId, toAccountId, jvNumber: result.jvNumber },
       });
 
       res.status(201).json(result);
@@ -337,9 +337,9 @@ router.post(
         userId: req.user!.id,
         action: AuditAction.CREATE,
         entityType: 'BANK_TRANSACTION',
-        entityId: result.bankTxn.id,
+        entityId: result.voucherId,
         projectId,
-        newValue: { type: 'BANK_TO_CASH', amount, bankAccountId, cashAccountId },
+        newValue: { type: 'CONTRA_BANK_TO_CASH', amount, bankAccountId, cashAccountId, jvNumber: result.jvNumber },
       });
 
       res.status(201).json(result);
@@ -373,9 +373,9 @@ router.post(
         userId: req.user!.id,
         action: AuditAction.CREATE,
         entityType: 'CASH_TRANSACTION',
-        entityId: result.cashTxn.id,
+        entityId: result.voucherId,
         projectId,
-        newValue: { type: 'CASH_TO_BANK', amount, bankAccountId, cashAccountId },
+        newValue: { type: 'CONTRA_CASH_TO_BANK', amount, bankAccountId, cashAccountId, jvNumber: result.jvNumber },
       });
 
       res.status(201).json(result);
@@ -461,74 +461,55 @@ interface TransferCashArgs {
 }
 
 export async function transferCashToCash(args: TransferCashArgs) {
-  return prisma.$transaction(async (tx) => {
-    const [fromAccount, toAccount] = await Promise.all([
-      tx.cashAccount.findFirst({
-        where: { id: args.fromAccountId, projectId: args.projectId, deletedAt: null },
-      }),
-      tx.cashAccount.findFirst({
-        where: { id: args.toAccountId, projectId: args.projectId, deletedAt: null },
-      }),
-    ]);
-    if (!fromAccount) throw new Error('Source cash account not found');
-    if (!toAccount) throw new Error('Destination cash account not found');
-    if (!fromAccount.isActive || !toAccount.isActive) throw new Error('One or both accounts are inactive');
-    if (Number(fromAccount.currentBalance) < args.amount) {
-      throw new Error('Insufficient balance in source account');
-    }
+  const fromLedgerId = await ensureCashLedger(args.fromAccountId, args.projectId);
+  const toLedgerId = await ensureCashLedger(args.toAccountId, args.projectId);
 
-    const transferPairId = crypto.randomUUID();
-
-    // Atomic two-sided balance update.
-    const [updatedFrom, updatedTo] = await Promise.all([
-      tx.cashAccount.update({
-        where: { id: args.fromAccountId },
-        data: { currentBalance: { decrement: args.amount } },
-        select: { currentBalance: true },
-      }),
-      tx.cashAccount.update({
-        where: { id: args.toAccountId },
-        data: { currentBalance: { increment: args.amount } },
-        select: { currentBalance: true },
-      }),
-    ]);
-
-    const [fromTxn, toTxn] = await Promise.all([
-      tx.cashTransaction.create({
-        data: {
-          cashAccountId: args.fromAccountId,
-          type: CashTxnType.TRANSFER_OUT,
-          amount: args.amount,
-          balanceAfter: Number(updatedFrom.currentBalance),
-          date: args.date,
-          description: args.description,
-          referenceType: AccountTxnRefType.TRANSFER,
-          transferPairId,
-          status: 'POSTED',
-          createdBy: args.userId,
-        },
-      }),
-      tx.cashTransaction.create({
-        data: {
-          cashAccountId: args.toAccountId,
-          type: CashTxnType.TRANSFER_IN,
-          amount: args.amount,
-          balanceAfter: Number(updatedTo.currentBalance),
-          date: args.date,
-          description: args.description,
-          referenceType: AccountTxnRefType.TRANSFER,
-          transferPairId,
-          status: 'POSTED',
-          createdBy: args.userId,
-        },
-      }),
-    ]);
-
-    return { fromTxn, toTxn, transferPairId };
+  const fromAccount = await prisma.cashAccount.findFirst({
+    where: { id: args.fromAccountId, projectId: args.projectId, deletedAt: null },
   });
+  if (!fromAccount) throw new Error('Source cash account not found');
+  if (!fromAccount.isActive) throw new Error('Source cash account is inactive');
+  if (Number(fromAccount.currentBalance) < args.amount) {
+    throw new Error('Insufficient balance in source account');
+  }
+
+  const [fromLedger, toLedger] = await Promise.all([
+    prisma.ledger.findUnique({ where: { id: fromLedgerId } }),
+    prisma.ledger.findUnique({ where: { id: toLedgerId } }),
+  ]);
+  if (!fromLedger || !toLedger) throw new Error('Failed to load cash ledgers');
+
+  const ledgerMap = new Map([
+    [fromLedger.id, { id: fromLedger.id, name: fromLedger.name, group: fromLedger.group, linkedEntityType: fromLedger.linkedEntityType, linkedEntityId: fromLedger.linkedEntityId }],
+    [toLedger.id, { id: toLedger.id, name: toLedger.name, group: toLedger.group, linkedEntityType: toLedger.linkedEntityType, linkedEntityId: toLedger.linkedEntityId }],
+  ]);
+
+  const jvNumber = await generateVoucherNumber(VoucherType.CONTRA);
+
+  // Contra: Dr destination cash (money in), Cr source cash (money out)
+  const result = await postVoucher({
+    projectId: args.projectId,
+    jvNumber,
+    voucherType: VoucherType.CONTRA,
+    voucherDate: args.date,
+    description: args.description ?? `Transfer: ${fromLedger.name} → ${toLedger.name}`,
+    totalDebit: args.amount,
+    totalCredit: args.amount,
+    entries: [
+      { ledgerId: toLedgerId, debit: args.amount, credit: 0 },
+      { ledgerId: fromLedgerId, debit: 0, credit: args.amount },
+    ],
+    ledgerMap,
+    budgetHeadMap: new Map(),
+    sourceInvoiceId: null,
+    billSettlements: [],
+    userId: args.userId,
+  });
+
+  return { jvNumber, ...result };
 }
 
-// ── Bank → Cash cross-account transfer (atomic) ──
+// ── Bank → Cash cross-account transfer (CONTRA voucher) ──
 interface BankCashTransferArgs {
   bankAccountId: string;
   cashAccountId: string;
@@ -540,140 +521,102 @@ interface BankCashTransferArgs {
 }
 
 export async function transferBankToCash(args: BankCashTransferArgs) {
-  return prisma.$transaction(async (tx) => {
-    const [bankAcct, cashAcct] = await Promise.all([
-      tx.bankAccount.findFirst({
-        where: { id: args.bankAccountId, projectId: args.projectId, deletedAt: null },
-      }),
-      tx.cashAccount.findFirst({
-        where: { id: args.cashAccountId, projectId: args.projectId, deletedAt: null },
-      }),
-    ]);
-    if (!bankAcct) throw new Error('Bank account not found');
-    if (!cashAcct) throw new Error('Cash account not found');
-    if (!bankAcct.isActive || !cashAcct.isActive) throw new Error('One or both accounts are inactive');
-    if (Number(bankAcct.currentBalance) < args.amount) {
-      throw new Error('Insufficient balance in bank account');
-    }
+  const bankLedgerId = await ensureBankLedger(args.bankAccountId, args.projectId);
+  const cashLedgerId = await ensureCashLedger(args.cashAccountId, args.projectId);
 
-    const transferPairId = crypto.randomUUID();
-
-    // Atomic two-sided balance update.
-    const [updatedBank, updatedCash] = await Promise.all([
-      tx.bankAccount.update({
-        where: { id: args.bankAccountId },
-        data: { currentBalance: { decrement: args.amount } },
-        select: { currentBalance: true },
-      }),
-      tx.cashAccount.update({
-        where: { id: args.cashAccountId },
-        data: { currentBalance: { increment: args.amount } },
-        select: { currentBalance: true },
-      }),
-    ]);
-
-    const [bankTxn, cashTxn] = await Promise.all([
-      tx.bankTransaction.create({
-        data: {
-          bankAccountId: args.bankAccountId,
-          type: BankTxnType.TRANSFER_OUT,
-          amount: args.amount,
-          balanceAfter: Number(updatedBank.currentBalance),
-          date: args.date,
-          description: args.description,
-          referenceType: AccountTxnRefType.TRANSFER,
-          transferPairId,
-          status: 'POSTED',
-          createdBy: args.userId,
-        },
-      }),
-      tx.cashTransaction.create({
-        data: {
-          cashAccountId: args.cashAccountId,
-          type: CashTxnType.TRANSFER_IN,
-          amount: args.amount,
-          balanceAfter: Number(updatedCash.currentBalance),
-          date: args.date,
-          description: args.description,
-          referenceType: AccountTxnRefType.TRANSFER,
-          transferPairId,
-          status: 'POSTED',
-          createdBy: args.userId,
-        },
-      }),
-    ]);
-
-    return { bankTxn, cashTxn, transferPairId };
+  const bankAcct = await prisma.bankAccount.findFirst({
+    where: { id: args.bankAccountId, projectId: args.projectId, deletedAt: null },
   });
+  if (!bankAcct) throw new Error('Bank account not found');
+  if (!bankAcct.isActive) throw new Error('Bank account is inactive');
+  if (Number(bankAcct.currentBalance) < args.amount) {
+    throw new Error('Insufficient balance in bank account');
+  }
+
+  const [bankLedger, cashLedger] = await Promise.all([
+    prisma.ledger.findUnique({ where: { id: bankLedgerId } }),
+    prisma.ledger.findUnique({ where: { id: cashLedgerId } }),
+  ]);
+  if (!bankLedger || !cashLedger) throw new Error('Failed to load ledgers');
+
+  const ledgerMap = new Map([
+    [bankLedger.id, { id: bankLedger.id, name: bankLedger.name, group: bankLedger.group, linkedEntityType: bankLedger.linkedEntityType, linkedEntityId: bankLedger.linkedEntityId }],
+    [cashLedger.id, { id: cashLedger.id, name: cashLedger.name, group: cashLedger.group, linkedEntityType: cashLedger.linkedEntityType, linkedEntityId: cashLedger.linkedEntityId }],
+  ]);
+
+  const jvNumber = await generateVoucherNumber(VoucherType.CONTRA);
+
+  // Contra: Dr Cash (money in), Cr Bank (money out)
+  const result = await postVoucher({
+    projectId: args.projectId,
+    jvNumber,
+    voucherType: VoucherType.CONTRA,
+    voucherDate: args.date,
+    description: args.description ?? `Transfer: ${bankLedger.name} → ${cashLedger.name}`,
+    totalDebit: args.amount,
+    totalCredit: args.amount,
+    entries: [
+      { ledgerId: cashLedgerId, debit: args.amount, credit: 0 },
+      { ledgerId: bankLedgerId, debit: 0, credit: args.amount },
+    ],
+    ledgerMap,
+    budgetHeadMap: new Map(),
+    sourceInvoiceId: null,
+    billSettlements: [],
+    userId: args.userId,
+  });
+
+  return { jvNumber, ...result };
 }
 
-// ── Cash → Bank cross-account transfer (atomic) ──
+// ── Cash → Bank cross-account transfer (CONTRA voucher) ──
 export async function transferCashToBank(args: BankCashTransferArgs) {
-  return prisma.$transaction(async (tx) => {
-    const [bankAcct, cashAcct] = await Promise.all([
-      tx.bankAccount.findFirst({
-        where: { id: args.bankAccountId, projectId: args.projectId, deletedAt: null },
-      }),
-      tx.cashAccount.findFirst({
-        where: { id: args.cashAccountId, projectId: args.projectId, deletedAt: null },
-      }),
-    ]);
-    if (!bankAcct) throw new Error('Bank account not found');
-    if (!cashAcct) throw new Error('Cash account not found');
-    if (!bankAcct.isActive || !cashAcct.isActive) throw new Error('One or both accounts are inactive');
-    if (Number(cashAcct.currentBalance) < args.amount) {
-      throw new Error('Insufficient balance in cash account');
-    }
+  const bankLedgerId = await ensureBankLedger(args.bankAccountId, args.projectId);
+  const cashLedgerId = await ensureCashLedger(args.cashAccountId, args.projectId);
 
-    const transferPairId = crypto.randomUUID();
-
-    // Atomic two-sided balance update.
-    const [updatedCash, updatedBank] = await Promise.all([
-      tx.cashAccount.update({
-        where: { id: args.cashAccountId },
-        data: { currentBalance: { decrement: args.amount } },
-        select: { currentBalance: true },
-      }),
-      tx.bankAccount.update({
-        where: { id: args.bankAccountId },
-        data: { currentBalance: { increment: args.amount } },
-        select: { currentBalance: true },
-      }),
-    ]);
-
-    const [cashTxn, bankTxn] = await Promise.all([
-      tx.cashTransaction.create({
-        data: {
-          cashAccountId: args.cashAccountId,
-          type: CashTxnType.TRANSFER_OUT,
-          amount: args.amount,
-          balanceAfter: Number(updatedCash.currentBalance),
-          date: args.date,
-          description: args.description,
-          referenceType: AccountTxnRefType.TRANSFER,
-          transferPairId,
-          status: 'POSTED',
-          createdBy: args.userId,
-        },
-      }),
-      tx.bankTransaction.create({
-        data: {
-          bankAccountId: args.bankAccountId,
-          type: BankTxnType.TRANSFER_IN,
-          amount: args.amount,
-          balanceAfter: Number(updatedBank.currentBalance),
-          date: args.date,
-          description: args.description,
-          referenceType: AccountTxnRefType.TRANSFER,
-          transferPairId,
-          status: 'POSTED',
-          createdBy: args.userId,
-        },
-      }),
-    ]);
-
-    return { cashTxn, bankTxn, transferPairId };
+  const cashAcct = await prisma.cashAccount.findFirst({
+    where: { id: args.cashAccountId, projectId: args.projectId, deletedAt: null },
   });
+  if (!cashAcct) throw new Error('Cash account not found');
+  if (!cashAcct.isActive) throw new Error('Cash account is inactive');
+  if (Number(cashAcct.currentBalance) < args.amount) {
+    throw new Error('Insufficient balance in cash account');
+  }
+
+  const [bankLedger, cashLedger] = await Promise.all([
+    prisma.ledger.findUnique({ where: { id: bankLedgerId } }),
+    prisma.ledger.findUnique({ where: { id: cashLedgerId } }),
+  ]);
+  if (!bankLedger || !cashLedger) throw new Error('Failed to load ledgers');
+
+  const ledgerMap = new Map([
+    [bankLedger.id, { id: bankLedger.id, name: bankLedger.name, group: bankLedger.group, linkedEntityType: bankLedger.linkedEntityType, linkedEntityId: bankLedger.linkedEntityId }],
+    [cashLedger.id, { id: cashLedger.id, name: cashLedger.name, group: cashLedger.group, linkedEntityType: cashLedger.linkedEntityType, linkedEntityId: cashLedger.linkedEntityId }],
+  ]);
+
+  const jvNumber = await generateVoucherNumber(VoucherType.CONTRA);
+
+  // Contra: Dr Bank (money in), Cr Cash (money out)
+  const result = await postVoucher({
+    projectId: args.projectId,
+    jvNumber,
+    voucherType: VoucherType.CONTRA,
+    voucherDate: args.date,
+    description: args.description ?? `Transfer: ${cashLedger.name} → ${bankLedger.name}`,
+    totalDebit: args.amount,
+    totalCredit: args.amount,
+    entries: [
+      { ledgerId: bankLedgerId, debit: args.amount, credit: 0 },
+      { ledgerId: cashLedgerId, debit: 0, credit: args.amount },
+    ],
+    ledgerMap,
+    budgetHeadMap: new Map(),
+    sourceInvoiceId: null,
+    billSettlements: [],
+    userId: args.userId,
+  });
+
+  return { jvNumber, ...result };
 }
 
 export default router;

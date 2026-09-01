@@ -8,6 +8,8 @@ import {
   CashTxnType,
   AccountTxnRefType,
   ApprovalStepStatus,
+  LedgerGroup,
+  LedgerLinkType,
 } from '@hospital-erp/shared';
 import {
   createJournalVoucherSchema,
@@ -22,6 +24,7 @@ import { validateMiddleware } from '../middleware/validate';
 import { logAudit } from '../services/audit.service';
 import * as approvalService from '../services/approval.service';
 import { notifyAllHeads } from '../services/push.service';
+import { ensureBankLedger, ensureCashLedger, ensureOwnerLedger } from './ledger.routes';
 
 const router = Router();
 router.use(authMiddleware);
@@ -736,6 +739,84 @@ async function postJournalVoucher(
         default:
           throw new Error(`Unknown account type: ${entry.accountType}`);
       }
+    }
+
+    // ── Create LedgerEntry rows for every journal entry so the new Tally-style ──
+    // reports (trial balance, P&L, balance sheet) can see this JV. The legacy
+    // posting logic above updates BankAccount/CashAccount/BudgetHead/OwnerAccount
+    // balances directly; this section mirrors those movements into the ledger
+    // system by creating LedgerEntry rows and updating Ledger.currentBalance.
+    for (const entry of entries) {
+      const debit = Number(entry.debit);
+      const credit = Number(entry.credit);
+      let ledgerId: string | null = null;
+
+      switch (entry.accountType as JournalAccountType) {
+        case JournalAccountType.BANK: {
+          if (!entry.accountId) break;
+          ledgerId = await ensureBankLedger(entry.accountId, projectId);
+          break;
+        }
+        case JournalAccountType.CASH: {
+          if (!entry.accountId) break;
+          ledgerId = await ensureCashLedger(entry.accountId, projectId);
+          break;
+        }
+        case JournalAccountType.OWNER: {
+          if (!entry.ownerAccountId) break;
+          ledgerId = await ensureOwnerLedger(entry.ownerAccountId, projectId);
+          break;
+        }
+        case JournalAccountType.BUDGET_HEAD: {
+          if (!entry.budgetHeadId) break;
+          // Find or create an expense ledger for this budget head
+          const head = await tx.budgetHead.findFirst({ where: { id: entry.budgetHeadId, projectId, deletedAt: null } });
+          if (!head) break;
+          const existing = await prisma.ledger.findFirst({
+            where: { linkedEntityType: LedgerLinkType.NONE, name: head.particulars, projectId, deletedAt: null },
+          });
+          if (existing) {
+            ledgerId = existing.id;
+          } else {
+            const created = await prisma.ledger.create({
+              data: {
+                projectId,
+                name: head.particulars,
+                group: LedgerGroup.DIRECT_EXPENSE,
+                linkedEntityType: LedgerLinkType.NONE,
+                openingBalance: 0,
+                currentBalance: 0,
+                isActive: true,
+              },
+            });
+            ledgerId = created.id;
+          }
+          break;
+        }
+      }
+
+      if (!ledgerId) continue;
+
+      // Update ledger balance: debit increases, credit decreases (debit-nature convention)
+      const balanceDelta = debit - credit;
+      await tx.ledger.update({
+        where: { id: ledgerId },
+        data: { currentBalance: { increment: balanceDelta } },
+      });
+
+      // Create the LedgerEntry row
+      await tx.ledgerEntry.create({
+        data: {
+          ledgerId,
+          journalVoucherId: jv.id,
+          debit,
+          credit,
+          description: entry.description ?? jv.description ?? jv.jvNumber,
+          voucherType: jv.type,
+          voucherNumber: jv.jvNumber,
+          voucherDate: jv.date,
+        },
+      });
     }
 
     return { transactions: txnResults };

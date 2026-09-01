@@ -1,5 +1,5 @@
 import { Router, Response, NextFunction } from 'express';
-import { Permission, AuditAction, BankTxnType, AccountTxnRefType, JVType, JournalAccountType } from '@hospital-erp/shared';
+import { Permission, AuditAction, VoucherType } from '@hospital-erp/shared';
 import {
   createOwnerAccountSchema,
   updateOwnerAccountSchema,
@@ -12,8 +12,8 @@ import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middl
 import { rbacMiddleware } from '../middleware/rbac';
 import { validateMiddleware } from '../middleware/validate';
 import { logAudit } from '../services/audit.service';
-import { generateSequenceNumber } from '../services/sequence.service';
-import { ensureOwnerLedger } from './ledger.routes';
+import { ensureOwnerLedger, ensureBankLedger } from './ledger.routes';
+import { postVoucher, generateVoucherNumber } from './voucher.routes';
 
 // ── Base CRUD via factory ──
 const crudRouter = createCrudRouter({
@@ -60,7 +60,8 @@ router.use(authMiddleware);
 router.use(crudRouter);
 
 // ── Owner contribution: money into company bank → owner balance increases ──
-// This creates a bank deposit AND increases owner's currentBalance atomically.
+// Creates a RECEIPT voucher (Dr Bank, Cr Capital Account) via postVoucher,
+// which also updates the bank balance and creates a bank transaction.
 router.post(
   '/:id/contribution',
   rbacMiddleware(Permission.MANAGE_FINANCE),
@@ -69,92 +70,65 @@ router.post(
     try {
       const projectId = requireProjectId(req);
       const { bankAccountId, amount, date, description } = req.body;
+      const amt = Number(amount);
+      const contributionDate = date ? new Date(date) : new Date();
 
-      const result = await prisma.$transaction(async (tx) => {
-        // Verify owner account belongs to project
-        const ownerAccount = await tx.ownerAccount.findFirst({
-          where: { id: req.params.id, projectId, deletedAt: null },
-        });
-        if (!ownerAccount) throw new Error('Owner account not found');
+      // Verify owner account belongs to project
+      const ownerAccount = await prisma.ownerAccount.findFirst({
+        where: { id: req.params.id, projectId, deletedAt: null },
+      });
+      if (!ownerAccount) throw new Error('Owner account not found');
 
-        // Verify bank account belongs to project
-        const bankAccount = await tx.bankAccount.findFirst({
-          where: { id: bankAccountId, projectId, deletedAt: null },
-        });
-        if (!bankAccount) throw new Error('Bank account not found');
-        if (!bankAccount.isActive) throw new Error('Bank account is inactive');
+      // Verify bank account belongs to project
+      const bankAccount = await prisma.bankAccount.findFirst({
+        where: { id: bankAccountId, projectId, deletedAt: null },
+      });
+      if (!bankAccount) throw new Error('Bank account not found');
+      if (!bankAccount.isActive) throw new Error('Bank account is inactive');
 
-        // 1. Atomic bank balance increase (DB applies the delta).
-        const updatedBank = await tx.bankAccount.update({
-          where: { id: bankAccountId as string },
-          data: { currentBalance: { increment: Number(amount) } },
-          select: { currentBalance: true },
-        });
-        const bankBalance = Number(updatedBank.currentBalance);
-        const bankTxn = await tx.bankTransaction.create({
-          data: {
-            bankAccountId: bankAccountId as string,
-            type: BankTxnType.DEPOSIT,
-            amount: Number(amount),
-            balanceAfter: bankBalance,
-            date: date ? new Date(date) : new Date(),
-            description: (description as string) ?? `Owner contribution by ${ownerAccount.ownerName}`,
-            referenceType: AccountTxnRefType.MANUAL_DEPOSIT,
-            referenceId: ownerAccount.id,
-            status: 'POSTED',
-            createdBy: req.user!.id,
-          },
-        });
+      // Ensure ledgers exist
+      const bankLedgerId = await ensureBankLedger(bankAccountId as string, projectId);
+      const ownerLedgerId = await ensureOwnerLedger(req.params.id, projectId);
 
-        // 2. Atomic owner balance increase (company owes owner more).
-        const updatedOwner = await tx.ownerAccount.update({
-          where: { id: req.params.id },
-          data: { currentBalance: { increment: Number(amount) } },
-          select: { currentBalance: true },
-        });
-        const newOwnerBalance = Number(updatedOwner.currentBalance);
+      // Fetch ledgers for the ledgerMap
+      const [bankLedger, ownerLedger] = await Promise.all([
+        prisma.ledger.findUnique({ where: { id: bankLedgerId } }),
+        prisma.ledger.findUnique({ where: { id: ownerLedgerId } }),
+      ]);
+      if (!bankLedger || !ownerLedger) throw new Error('Failed to load ledgers');
 
-        // ── C28: Create a POSTED JournalVoucher so the contribution appears ──
-        // in the owner statement. Without this, the statement (which only
-        // reads JournalEntry rows) never shows the contribution, and the
-        // final balanceAfter diverges from currentBalance.
-        const jvNumber = await generateSequenceNumber('journalVoucher', 'jvNumber', 'VGH-JV', 3);
-        const contributionDate = date ? new Date(date) : new Date();
-        const jv = await tx.journalVoucher.create({
-          data: {
-            projectId,
-            jvNumber,
-            type: JVType.INTER_ACCOUNT,
-            date: contributionDate,
-            description: (description as string) ?? `Owner contribution by ${ownerAccount.ownerName}`,
-            totalDebit: Number(amount),
-            totalCredit: Number(amount),
-            status: 'POSTED',
-            createdBy: req.user!.id,
-            postedBy: req.user!.id,
-            postedAt: new Date(),
-            entries: {
-              create: [
-                {
-                  accountType: JournalAccountType.BANK,
-                  accountId: bankAccountId as string,
-                  debit: Number(amount),
-                  credit: 0,
-                  description: 'Bank deposit for owner contribution',
-                },
-                {
-                  accountType: JournalAccountType.OWNER,
-                  ownerAccountId: ownerAccount.id,
-                  debit: 0,
-                  credit: Number(amount),
-                  description: `Owner contribution by ${ownerAccount.ownerName}`,
-                },
-              ],
-            },
-          },
-        });
+      const ledgerMap = new Map([
+        [bankLedger.id, { id: bankLedger.id, name: bankLedger.name, group: bankLedger.group, linkedEntityType: bankLedger.linkedEntityType, linkedEntityId: bankLedger.linkedEntityId }],
+        [ownerLedger.id, { id: ownerLedger.id, name: ownerLedger.name, group: ownerLedger.group, linkedEntityType: ownerLedger.linkedEntityType, linkedEntityId: ownerLedger.linkedEntityId }],
+      ]);
 
-        return { bankTxn, newOwnerBalance, jvNumber: jv.jvNumber };
+      const jvNumber = await generateVoucherNumber(VoucherType.RECEIPT);
+
+      // RECEIPT: Dr Bank (money in), Cr Capital Account (owner's equity increases)
+      const voucherResult = await postVoucher({
+        projectId,
+        jvNumber,
+        voucherType: VoucherType.RECEIPT,
+        voucherDate: contributionDate,
+        description: (description as string) ?? `Owner contribution by ${ownerAccount.ownerName}`,
+        totalDebit: amt,
+        totalCredit: amt,
+        entries: [
+          { ledgerId: bankLedgerId, debit: amt, credit: 0 },
+          { ledgerId: ownerLedgerId, debit: 0, credit: amt },
+        ],
+        ledgerMap,
+        budgetHeadMap: new Map(),
+        sourceInvoiceId: null,
+        billSettlements: [],
+        userId: req.user!.id,
+      });
+
+      // Update owner's currentBalance (company owes owner more)
+      const updatedOwner = await prisma.ownerAccount.update({
+        where: { id: req.params.id },
+        data: { currentBalance: { increment: amt } },
+        select: { currentBalance: true },
       });
 
       await logAudit({
@@ -163,17 +137,114 @@ router.post(
         entityType: 'OWNER_ACCOUNT',
         entityId: req.params.id,
         projectId,
-        newValue: { type: 'CONTRIBUTION', amount, bankAccountId, bankTxnId: result.bankTxn.id },
+        newValue: { type: 'CONTRIBUTION', amount, bankAccountId, jvNumber, voucherId: voucherResult.voucherId },
       });
 
-      res.status(201).json(result);
+      res.status(201).json({
+        jvNumber,
+        voucherId: voucherResult.voucherId,
+        newOwnerBalance: Number(updatedOwner.currentBalance),
+      });
     } catch (error) {
       next(error);
     }
   },
 );
 
-// ── Owner account statement: list all JV entries affecting this owner ──
+// ── Owner withdrawal: money out of company bank → owner balance decreases ──
+// Creates a PAYMENT voucher (Dr Capital Account, Cr Bank) via postVoucher.
+router.post(
+  '/:id/withdrawal',
+  rbacMiddleware(Permission.MANAGE_FINANCE),
+  validateMiddleware(ownerContributionSchema),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      const { bankAccountId, amount, date, description } = req.body;
+      const amt = Number(amount);
+      const withdrawalDate = date ? new Date(date) : new Date();
+
+      const ownerAccount = await prisma.ownerAccount.findFirst({
+        where: { id: req.params.id, projectId, deletedAt: null },
+      });
+      if (!ownerAccount) throw new Error('Owner account not found');
+
+      const bankAccount = await prisma.bankAccount.findFirst({
+        where: { id: bankAccountId, projectId, deletedAt: null },
+      });
+      if (!bankAccount) throw new Error('Bank account not found');
+      if (!bankAccount.isActive) throw new Error('Bank account is inactive');
+      if (Number(bankAccount.currentBalance) < amt) {
+        throw new Error('Insufficient balance in bank account');
+      }
+      if (Number(ownerAccount.currentBalance) < amt) {
+        throw new Error('Insufficient owner balance for withdrawal');
+      }
+
+      const bankLedgerId = await ensureBankLedger(bankAccountId as string, projectId);
+      const ownerLedgerId = await ensureOwnerLedger(req.params.id, projectId);
+
+      const [bankLedger, ownerLedger] = await Promise.all([
+        prisma.ledger.findUnique({ where: { id: bankLedgerId } }),
+        prisma.ledger.findUnique({ where: { id: ownerLedgerId } }),
+      ]);
+      if (!bankLedger || !ownerLedger) throw new Error('Failed to load ledgers');
+
+      const ledgerMap = new Map([
+        [bankLedger.id, { id: bankLedger.id, name: bankLedger.name, group: bankLedger.group, linkedEntityType: bankLedger.linkedEntityType, linkedEntityId: bankLedger.linkedEntityId }],
+        [ownerLedger.id, { id: ownerLedger.id, name: ownerLedger.name, group: ownerLedger.group, linkedEntityType: ownerLedger.linkedEntityType, linkedEntityId: ownerLedger.linkedEntityId }],
+      ]);
+
+      const jvNumber = await generateVoucherNumber(VoucherType.PAYMENT);
+
+      // PAYMENT: Dr Capital Account (owner's equity decreases), Cr Bank (money out)
+      const voucherResult = await postVoucher({
+        projectId,
+        jvNumber,
+        voucherType: VoucherType.PAYMENT,
+        voucherDate: withdrawalDate,
+        description: (description as string) ?? `Owner withdrawal by ${ownerAccount.ownerName}`,
+        totalDebit: amt,
+        totalCredit: amt,
+        entries: [
+          { ledgerId: ownerLedgerId, debit: amt, credit: 0 },
+          { ledgerId: bankLedgerId, debit: 0, credit: amt },
+        ],
+        ledgerMap,
+        budgetHeadMap: new Map(),
+        sourceInvoiceId: null,
+        billSettlements: [],
+        userId: req.user!.id,
+      });
+
+      // Update owner's currentBalance (company owes owner less)
+      const updatedOwner = await prisma.ownerAccount.update({
+        where: { id: req.params.id },
+        data: { currentBalance: { decrement: amt } },
+        select: { currentBalance: true },
+      });
+
+      await logAudit({
+        userId: req.user!.id,
+        action: AuditAction.CREATE,
+        entityType: 'OWNER_ACCOUNT',
+        entityId: req.params.id,
+        projectId,
+        newValue: { type: 'WITHDRAWAL', amount, bankAccountId, jvNumber, voucherId: voucherResult.voucherId },
+      });
+
+      res.status(201).json({
+        jvNumber,
+        voucherId: voucherResult.voucherId,
+        newOwnerBalance: Number(updatedOwner.currentBalance),
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+// ── Owner account statement: list all ledger entries affecting this owner ──
 router.get(
   '/:id/statement',
   rbacMiddleware(Permission.VIEW_FINANCIALS),
@@ -188,16 +259,33 @@ router.get(
         return;
       }
 
-      // Get all journal entries for this owner account (only from POSTED JVs),
+      // Find the ledger linked to this owner account
+      const ownerLedger = await prisma.ledger.findFirst({
+        where: { linkedEntityType: 'OWNER_ACCOUNT', linkedEntityId: req.params.id, deletedAt: null },
+      });
+      if (!ownerLedger) {
+        res.json({
+          account: {
+            id: ownerAccount.id,
+            ownerName: ownerAccount.ownerName,
+            openingBalance: Number(ownerAccount.openingBalance),
+            currentBalance: Number(ownerAccount.currentBalance),
+          },
+          statement: [],
+        });
+        return;
+      }
+
+      // Get all ledger entries for this owner's ledger (only from POSTED JVs),
       // ordered oldest-first so the running balance accumulates correctly.
-      const entries = await prisma.journalEntry.findMany({
+      const entries = await prisma.ledgerEntry.findMany({
         where: {
-          ownerAccountId: req.params.id,
+          ledgerId: ownerLedger.id,
           journalVoucher: { status: 'POSTED', deletedAt: null },
         },
         include: {
           journalVoucher: {
-            select: { id: true, jvNumber: true, date: true, type: true, description: true },
+            select: { id: true, jvNumber: true, date: true, voucherType: true, description: true },
           },
         },
         orderBy: { journalVoucher: { date: 'asc' } },
@@ -205,10 +293,9 @@ router.get(
 
       // Build running balance statement forward (oldest → newest) so each
       // balanceAfter reflects the cumulative balance at that point in time.
+      // For a Capital Account (credit-nature), credit increases balance, debit decreases.
       let runningBalance = Number(ownerAccount.openingBalance);
       const statement = entries.map((entry) => {
-        // Credit to owner = company owes owner more (balance increases)
-        // Debit to owner = company owes owner less (balance decreases)
         const debit = Number(entry.debit);
         const credit = Number(entry.credit);
         runningBalance += credit - debit;
@@ -218,7 +305,7 @@ router.get(
           jvNumber: entry.journalVoucher.jvNumber,
           jvId: entry.journalVoucher.id,
           date: entry.journalVoucher.date,
-          type: entry.journalVoucher.type,
+          type: entry.journalVoucher.voucherType,
           description: entry.journalVoucher.description ?? entry.description ?? '—',
           debit,
           credit,

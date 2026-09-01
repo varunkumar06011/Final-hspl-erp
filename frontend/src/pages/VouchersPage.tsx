@@ -381,11 +381,12 @@ export default function VouchersPage() {
     const otherSide = field === 'debit' ? 'credit' : 'debit';
     updated[index][otherSide] = '';
 
+    const numValue = Number(value.replace(/,/g, '')) || 0;
+
     // For simple vouchers (Payment/Receipt/Contra) with exactly 2 rows:
     // auto-fill the opposite side on the other row
     if (isSimpleVoucher && entries.length === 2) {
       const otherIndex = index === 0 ? 1 : 0;
-      const numValue = Number(value.replace(/,/g, '')) || 0;
       if (field === userEntrySide) {
         // User entered amount on their side → auto-fill the auto side on the other row
         updated[otherIndex][userEntrySide] = '';
@@ -395,6 +396,12 @@ export default function VouchersPage() {
         updated[0][userEntrySide] = String(numValue);
         updated[0][autoSide] = '';
       }
+    } else if (entries.length === 2) {
+      // For Journal/Credit Note/Debit Note with exactly 2 rows:
+      // auto-fill the opposite side on the other row
+      const otherIndex = index === 0 ? 1 : 0;
+      updated[otherIndex][field] = '';
+      updated[otherIndex][otherSide] = String(numValue);
     }
     setEntries(updated);
   };

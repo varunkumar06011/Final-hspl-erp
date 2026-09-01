@@ -1,5 +1,5 @@
 import { Router, Response, NextFunction } from 'express';
-import { Permission, AuditAction, BankTxnType, AccountTxnRefType } from '@hospital-erp/shared';
+import { Permission, AuditAction, BankTxnType } from '@hospital-erp/shared';
 import {
   createBankAccountSchema,
   updateBankAccountSchema,
@@ -309,9 +309,9 @@ router.post(
         userId: req.user!.id,
         action: AuditAction.CREATE,
         entityType: 'BANK_TRANSACTION',
-        entityId: result.fromTxn.id,
+        entityId: result.voucherId,
         projectId,
-        newValue: { type: 'TRANSFER', amount, fromAccountId, toAccountId },
+        newValue: { type: 'CONTRA_TRANSFER', amount, fromAccountId, toAccountId, jvNumber: result.jvNumber },
       });
 
       res.status(201).json(result);
@@ -402,73 +402,61 @@ interface TransferBankArgs {
 }
 
 export async function transferBankToBank(args: TransferBankArgs) {
-  return prisma.$transaction(async (tx) => {
-    const [fromAccount, toAccount] = await Promise.all([
-      tx.bankAccount.findFirst({
-        where: { id: args.fromAccountId, projectId: args.projectId, deletedAt: null },
-      }),
-      tx.bankAccount.findFirst({
-        where: { id: args.toAccountId, projectId: args.projectId, deletedAt: null },
-      }),
-    ]);
-    if (!fromAccount) throw new Error('Source bank account not found');
-    if (!toAccount) throw new Error('Destination bank account not found');
-    if (!fromAccount.isActive || !toAccount.isActive) throw new Error('One or both accounts are inactive');
-    if (Number(fromAccount.currentBalance) < args.amount) {
-      throw new Error('Insufficient balance in source account');
-    }
+  // Ensure ledgers exist for both bank accounts
+  const fromLedgerId = await ensureBankLedger(args.fromAccountId, args.projectId);
+  const toLedgerId = await ensureBankLedger(args.toAccountId, args.projectId);
 
-    // Generate a shared pair ID for linking
-    const transferPairId = crypto.randomUUID();
-
-    // Atomic two-sided balance update — DB applies both deltas, preventing
-    // lost updates if another posting touches either account concurrently.
-    const [updatedFrom, updatedTo] = await Promise.all([
-      tx.bankAccount.update({
-        where: { id: args.fromAccountId },
-        data: { currentBalance: { decrement: args.amount } },
-        select: { currentBalance: true },
-      }),
-      tx.bankAccount.update({
-        where: { id: args.toAccountId },
-        data: { currentBalance: { increment: args.amount } },
-        select: { currentBalance: true },
-      }),
-    ]);
-
-    const [fromTxn, toTxn] = await Promise.all([
-      tx.bankTransaction.create({
-        data: {
-          bankAccountId: args.fromAccountId,
-          type: BankTxnType.TRANSFER_OUT,
-          amount: args.amount,
-          balanceAfter: Number(updatedFrom.currentBalance),
-          date: args.date,
-          description: args.description,
-          referenceType: AccountTxnRefType.TRANSFER,
-          transferPairId,
-          status: 'POSTED',
-          createdBy: args.userId,
-        },
-      }),
-      tx.bankTransaction.create({
-        data: {
-          bankAccountId: args.toAccountId,
-          type: BankTxnType.TRANSFER_IN,
-          amount: args.amount,
-          balanceAfter: Number(updatedTo.currentBalance),
-          date: args.date,
-          description: args.description,
-          referenceType: AccountTxnRefType.TRANSFER,
-          transferPairId,
-          status: 'POSTED',
-          createdBy: args.userId,
-        },
-      }),
-    ]);
-
-    return { fromTxn, toTxn, transferPairId };
+  // Pre-check balance before entering the transaction
+  const fromAccount = await prisma.bankAccount.findFirst({
+    where: { id: args.fromAccountId, projectId: args.projectId, deletedAt: null },
   });
+  if (!fromAccount) throw new Error('Source bank account not found');
+  if (!fromAccount.isActive) throw new Error('Source bank account is inactive');
+  if (Number(fromAccount.currentBalance) < args.amount) {
+    throw new Error('Insufficient balance in source account');
+  }
+
+  const toAccount = await prisma.bankAccount.findFirst({
+    where: { id: args.toAccountId, projectId: args.projectId, deletedAt: null },
+  });
+  if (!toAccount) throw new Error('Destination bank account not found');
+  if (!toAccount.isActive) throw new Error('Destination bank account is inactive');
+
+  // Fetch both ledgers for the ledgerMap
+  const [fromLedger, toLedger] = await Promise.all([
+    prisma.ledger.findUnique({ where: { id: fromLedgerId } }),
+    prisma.ledger.findUnique({ where: { id: toLedgerId } }),
+  ]);
+  if (!fromLedger || !toLedger) throw new Error('Failed to load bank ledgers');
+
+  const ledgerMap = new Map([
+    [fromLedger.id, { id: fromLedger.id, name: fromLedger.name, group: fromLedger.group, linkedEntityType: fromLedger.linkedEntityType, linkedEntityId: fromLedger.linkedEntityId }],
+    [toLedger.id, { id: toLedger.id, name: toLedger.name, group: toLedger.group, linkedEntityType: toLedger.linkedEntityType, linkedEntityId: toLedger.linkedEntityId }],
+  ]);
+
+  const jvNumber = await generateVoucherNumber(VoucherType.CONTRA);
+
+  // Contra: Dr destination bank (money in), Cr source bank (money out)
+  const result = await postVoucher({
+    projectId: args.projectId,
+    jvNumber,
+    voucherType: VoucherType.CONTRA,
+    voucherDate: args.date,
+    description: args.description ?? `Transfer: ${fromLedger.name} → ${toLedger.name}`,
+    totalDebit: args.amount,
+    totalCredit: args.amount,
+    entries: [
+      { ledgerId: toLedgerId, debit: args.amount, credit: 0 },
+      { ledgerId: fromLedgerId, debit: 0, credit: args.amount },
+    ],
+    ledgerMap,
+    budgetHeadMap: new Map(),
+    sourceInvoiceId: null,
+    billSettlements: [],
+    userId: args.userId,
+  });
+
+  return { jvNumber, ...result };
 }
 
 export default router;

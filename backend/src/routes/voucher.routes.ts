@@ -12,6 +12,7 @@ import {
 import {
   createVoucherSchema,
   listVouchersSchema,
+  creditDebitNoteSchema,
 } from '@hospital-erp/shared';
 import { prisma } from '../config/prisma';
 import { Prisma } from '@prisma/client';
@@ -286,7 +287,8 @@ router.post(
         return;
       }
 
-      // Reverse: swap debit/credit on each ledger entry, update balances
+      // Reverse: swap debit/credit on each ledger entry, update balances,
+      // create reversing LedgerEntry rows, and reverse bank/cash transactions.
       await prisma.$transaction(async (tx) => {
         // Atomically claim the voucher (prevent double-cancel)
         const claimed = await tx.journalVoucher.updateMany({
@@ -301,12 +303,95 @@ router.post(
           const ledger = await tx.ledger.findUnique({ where: { id: entry.ledgerId } });
           if (!ledger) continue;
 
+          const debit = Number(entry.debit);
+          const credit = Number(entry.credit);
+
           // Reverse the balance effect: debit becomes credit and vice versa
-          const reverseDelta = Number(entry.credit) - Number(entry.debit);
+          const reverseDelta = credit - debit;
           await tx.ledger.update({
             where: { id: entry.ledgerId },
             data: { currentBalance: { increment: reverseDelta } },
           });
+
+          // Create a reversing LedgerEntry row so reports that read from
+          // LedgerEntry (trial balance, P&L, balance sheet) see the reversal.
+          await tx.ledgerEntry.create({
+            data: {
+              ledgerId: entry.ledgerId,
+              journalVoucherId: voucher.id,
+              debit: credit, // swapped
+              credit: debit, // swapped
+              description: `REVERSAL: ${entry.description ?? voucher.jvNumber}`,
+              budgetHeadId: entry.budgetHeadId,
+              voucherType: voucher.voucherType ?? voucher.type,
+              voucherNumber: voucher.jvNumber,
+              voucherDate: voucher.date,
+            },
+          });
+
+          // Reverse bank account balance + create reversal bank transaction
+          if (ledger.linkedEntityType === 'BANK_ACCOUNT' && ledger.linkedEntityId) {
+            const bankAccount = await tx.bankAccount.findUnique({ where: { id: ledger.linkedEntityId } });
+            if (bankAccount) {
+              const wasDeposit = debit > 0; // original debit to bank = money in
+              const reverseAmount = wasDeposit ? debit : credit;
+              const updatedBank = await tx.bankAccount.update({
+                where: { id: bankAccount.id },
+                data: {
+                  currentBalance: wasDeposit
+                    ? { decrement: reverseAmount }
+                    : { increment: reverseAmount },
+                },
+                select: { currentBalance: true },
+              });
+              await tx.bankTransaction.create({
+                data: {
+                  bankAccountId: bankAccount.id,
+                  type: wasDeposit ? BankTxnType.REVERSAL_OUT : BankTxnType.REVERSAL_IN,
+                  amount: reverseAmount,
+                  balanceAfter: Number(updatedBank.currentBalance),
+                  date: new Date(),
+                  description: `REVERSAL: ${voucher.jvNumber}`,
+                  referenceType: AccountTxnRefType.JOURNAL_VOUCHER,
+                  referenceId: voucher.id,
+                  status: 'POSTED',
+                  createdBy: req.user!.id,
+                },
+              });
+            }
+          }
+
+          // Reverse cash account balance + create reversal cash transaction
+          if (ledger.linkedEntityType === 'CASH_ACCOUNT' && ledger.linkedEntityId) {
+            const cashAccount = await tx.cashAccount.findUnique({ where: { id: ledger.linkedEntityId } });
+            if (cashAccount) {
+              const wasIn = debit > 0; // original debit to cash = money in
+              const reverseAmount = wasIn ? debit : credit;
+              const updatedCash = await tx.cashAccount.update({
+                where: { id: cashAccount.id },
+                data: {
+                  currentBalance: wasIn
+                    ? { decrement: reverseAmount }
+                    : { increment: reverseAmount },
+                },
+                select: { currentBalance: true },
+              });
+              await tx.cashTransaction.create({
+                data: {
+                  cashAccountId: cashAccount.id,
+                  type: wasIn ? CashTxnType.REVERSAL_OUT : CashTxnType.REVERSAL_IN,
+                  amount: reverseAmount,
+                  balanceAfter: Number(updatedCash.currentBalance),
+                  date: new Date(),
+                  description: `REVERSAL: ${voucher.jvNumber}`,
+                  referenceType: AccountTxnRefType.JOURNAL_VOUCHER,
+                  referenceId: voucher.id,
+                  status: 'POSTED',
+                  createdBy: req.user!.id,
+                },
+              });
+            }
+          }
         }
       });
 
@@ -634,5 +719,165 @@ export async function postInvoiceToBooks(invoiceId: string, projectId: string, u
     voucherId: result.voucherId,
   };
 }
+
+// ═══════════════════════════════════════════════════════════
+// Credit Note — vendor issues a credit (price reduction, discount, or goods returned)
+// Creates a CREDIT_NOTE voucher: Dr Sundry Creditor (vendor), Cr Purchase + Cr Input GST
+// ═══════════════════════════════════════════════════════════
+
+async function postCreditOrDebitNote(
+  voucherType: VoucherType,
+  projectId: string,
+  userId: string,
+  body: {
+    vendorId: string;
+    amount: number;
+    cgstAmount: number;
+    sgstAmount: number;
+    igstAmount: number;
+    date?: string;
+    description?: string;
+    invoiceId?: string;
+  },
+) {
+  const vendor = await prisma.vendor.findFirst({
+    where: { id: body.vendorId, projectId, deletedAt: null },
+  });
+  if (!vendor) throw new Error('Vendor not found');
+
+  const vendorLedgerId = await ensureVendorLedger(vendor.id, projectId);
+
+  // Find or create Purchase ledger
+  let purchaseLedgerId = await findLedgerByName('Purchase', projectId);
+  if (!purchaseLedgerId) {
+    const ledger = await prisma.ledger.create({
+      data: {
+        projectId,
+        name: 'Purchase',
+        group: LedgerGroup.PURCHASE,
+        linkedEntityType: 'NONE',
+        openingBalance: 0,
+        currentBalance: 0,
+        isActive: true,
+      },
+    });
+    purchaseLedgerId = ledger.id;
+  }
+
+  const entries: Array<{ ledgerId: string; debit: number; credit: number; description?: string }> = [];
+  const taxableAmount = Number(body.amount);
+  const cgst = Number(body.cgstAmount);
+  const sgst = Number(body.sgstAmount);
+  const igst = Number(body.igstAmount);
+  const totalGst = cgst + sgst + igst;
+  const totalPayable = taxableAmount + totalGst;
+
+  // Dr Vendor (reduces what we owe)
+  entries.push({
+    ledgerId: vendorLedgerId,
+    debit: totalPayable,
+    credit: 0,
+    description: body.description ?? `${voucherType === VoucherType.CREDIT_NOTE ? 'Credit Note' : 'Debit Note'} - ${vendor.name}`,
+  });
+
+  // Cr Purchase (reduces the purchase expense)
+  entries.push({
+    ledgerId: purchaseLedgerId,
+    debit: 0,
+    credit: taxableAmount,
+    description: `Purchase reversal - ${vendor.name}`,
+  });
+
+  // Cr Input GST (reverses the input GST claimed)
+  if (cgst > 0) {
+    const cgstLedgerId = await findLedgerByName(GST_LEDGER_NAMES.INPUT_CGST, projectId);
+    if (cgstLedgerId) entries.push({ ledgerId: cgstLedgerId, debit: 0, credit: cgst, description: 'Input CGST reversal' });
+  }
+  if (sgst > 0) {
+    const sgstLedgerId = await findLedgerByName(GST_LEDGER_NAMES.INPUT_SGST, projectId);
+    if (sgstLedgerId) entries.push({ ledgerId: sgstLedgerId, debit: 0, credit: sgst, description: 'Input SGST reversal' });
+  }
+  if (igst > 0) {
+    const igstLedgerId = await findLedgerByName(GST_LEDGER_NAMES.INPUT_IGST, projectId);
+    if (igstLedgerId) entries.push({ ledgerId: igstLedgerId, debit: 0, credit: igst, description: 'Input IGST reversal' });
+  }
+
+  // Validate totals balance
+  const totalDebit = entries.reduce((s, e) => s + e.debit, 0);
+  const totalCredit = entries.reduce((s, e) => s + e.credit, 0);
+  if (Math.abs(totalDebit - totalCredit) > 0.01) {
+    entries[0].debit = totalCredit; // adjust vendor debit to match credits
+  }
+
+  // Fetch all ledgers for the ledgerMap
+  const ledgerIds = entries.map((e) => e.ledgerId);
+  const ledgers = await prisma.ledger.findMany({ where: { id: { in: ledgerIds }, projectId, deletedAt: null, isActive: true } });
+  if (ledgers.length !== ledgerIds.length) {
+    throw new Error('One or more required ledgers not found. Run ledger sync first.');
+  }
+  const ledgerMap = new Map(ledgers.map((l) => [l.id, { id: l.id, name: l.name, group: l.group, linkedEntityType: l.linkedEntityType, linkedEntityId: l.linkedEntityId }]));
+
+  const jvNumber = await generateVoucherNumber(voucherType);
+  const voucherDate = body.date ? new Date(body.date) : new Date();
+
+  const result = await postVoucher({
+    projectId,
+    jvNumber,
+    voucherType,
+    voucherDate,
+    description: body.description ?? `${voucherType === VoucherType.CREDIT_NOTE ? 'Credit Note' : 'Debit Note'} - ${vendor.name}`,
+    totalDebit,
+    totalCredit,
+    entries,
+    ledgerMap,
+    budgetHeadMap: new Map(),
+    sourceInvoiceId: body.invoiceId ?? null,
+    billSettlements: [],
+    userId,
+  });
+
+  await logAudit({
+    userId,
+    action: AuditAction.CREATE,
+    entityType: 'VOUCHER',
+    entityId: result.voucherId,
+    projectId,
+    newValue: { jvNumber, voucherType, vendorId: vendor.id, amount: taxableAmount, gst: totalGst },
+  });
+
+  return { jvNumber, voucherId: result.voucherId, message: `${voucherType === VoucherType.CREDIT_NOTE ? 'Credit note' : 'Debit note'} posted` };
+}
+
+// ── Credit Note endpoint ──
+router.post(
+  '/credit-note',
+  rbacMiddleware(Permission.MANAGE_FINANCE),
+  validateMiddleware(creditDebitNoteSchema),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      const result = await postCreditOrDebitNote(VoucherType.CREDIT_NOTE, projectId, req.user!.id, req.body);
+      res.status(201).json(result);
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+// ── Debit Note endpoint ──
+router.post(
+  '/debit-note',
+  rbacMiddleware(Permission.MANAGE_FINANCE),
+  validateMiddleware(creditDebitNoteSchema),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      const result = await postCreditOrDebitNote(VoucherType.DEBIT_NOTE, projectId, req.user!.id, req.body);
+      res.status(201).json(result);
+    } catch (error) {
+      next(error);
+    }
+  },
+);
 
 export default router;

@@ -1,5 +1,5 @@
 import { Router, Response, NextFunction } from 'express';
-import { GoodsReceiptStatus, Permission, AuditAction, InspectionStatus, InventoryItemType, AssetStatus, AssetMovementType, GatePassStatus } from '@hospital-erp/shared';
+import { GoodsReceiptStatus, Permission, AuditAction, InspectionStatus, InventoryItemType, AssetStatus, AssetMovementType, GatePassStatus, VoucherType, LedgerGroup, GST_LEDGER_NAMES } from '@hospital-erp/shared';
 import {
   createGoodsReceiptSchema,
   inspectGoodsReceiptSchema,
@@ -14,6 +14,8 @@ import { logAudit } from '../services/audit.service';
 import { generateSequenceNumber } from '../services/sequence.service';
 import { notifyAllHeads } from '../services/push.service';
 import { generateAssetId } from './asset.routes';
+import { ensureVendorLedger, findLedgerByName } from './ledger.routes';
+import { postVoucher, generateVoucherNumber } from './voucher.routes';
 
 const router = Router();
 router.use(authMiddleware);
@@ -662,6 +664,136 @@ router.post(
           where: { id: receipt.poId },
           data: { status: fullyReceived ? 'DELIVERED' : 'PARTIALLY_DELIVERED' },
         });
+
+        // ── Accounting: create a PURCHASE voucher for the goods received ──
+        // Dr Purchase (consumables) / Dr Fixed Assets (asset items) + Dr Input GST, Cr Sundry Creditor
+        // This posts the GRN to the general ledger so the books reflect the
+        // inventory increase and the corresponding liability to the vendor.
+        const vendor = receipt.purchaseOrder?.vendor;
+        if (vendor) {
+          const vendorLedgerId = await ensureVendorLedger(vendor.id, projectId);
+
+          // Find or create Purchase ledger
+          let purchaseLedgerId = await findLedgerByName('Purchase', projectId);
+          if (!purchaseLedgerId) {
+            const ledger = await prisma.ledger.create({
+              data: {
+                projectId,
+                name: 'Purchase',
+                group: LedgerGroup.PURCHASE,
+                linkedEntityType: 'NONE',
+                openingBalance: 0,
+                currentBalance: 0,
+                isActive: true,
+              },
+            });
+            purchaseLedgerId = ledger.id;
+          }
+
+          // Find or create Fixed Assets ledger
+          let fixedAssetLedgerId = await findLedgerByName('Fixed Assets', projectId);
+          if (!fixedAssetLedgerId) {
+            const ledger = await prisma.ledger.create({
+              data: {
+                projectId,
+                name: 'Fixed Assets',
+                group: LedgerGroup.FIXED_ASSET,
+                linkedEntityType: 'NONE',
+                openingBalance: 0,
+                currentBalance: 0,
+                isActive: true,
+              },
+            });
+            fixedAssetLedgerId = ledger.id;
+          }
+
+          // Find GST ledgers (use IGST as fallback for all GST at GRN time)
+          const igstLedgerId = await findLedgerByName(GST_LEDGER_NAMES.INPUT_IGST, projectId);
+          const cgstLedgerId = await findLedgerByName(GST_LEDGER_NAMES.INPUT_CGST, projectId);
+          const sgstLedgerId = await findLedgerByName(GST_LEDGER_NAMES.INPUT_SGST, projectId);
+
+          // Build entries from GRN line items
+          const voucherEntries: Array<{ ledgerId: string; debit: number; credit: number; description?: string }> = [];
+          let totalTaxable = 0;
+          let totalGst = 0;
+
+          for (const line of receipt.items) {
+            if (Number(line.acceptedQty) <= 0) continue;
+            const poItem = line.poItem;
+            if (!poItem) continue;
+
+            const lineAmount = Number(poItem.unitPrice) * Number(line.acceptedQty);
+            const lineGst = lineAmount * Number(poItem.gstRate) / 100;
+            totalTaxable += lineAmount;
+            totalGst += lineGst;
+
+            const lineItemType = (line.itemType as InventoryItemType) || InventoryItemType.CONSUMABLE;
+            const debitLedgerId = lineItemType === InventoryItemType.ASSET ? fixedAssetLedgerId : purchaseLedgerId;
+
+            voucherEntries.push({
+              ledgerId: debitLedgerId,
+              debit: lineAmount,
+              credit: 0,
+              description: `${lineItemType === InventoryItemType.ASSET ? 'Fixed Asset' : 'Purchase'} - ${line.materialName}`,
+            });
+          }
+
+          // Add GST entries — use CGST+SGST if both ledgers exist, otherwise IGST
+          if (totalGst > 0) {
+            if (cgstLedgerId && sgstLedgerId) {
+              const halfGst = Math.round(totalGst / 2 * 100) / 100;
+              const otherHalf = Math.round((totalGst - halfGst) * 100) / 100;
+              voucherEntries.push({ ledgerId: cgstLedgerId, debit: halfGst, credit: 0, description: 'Input CGST' });
+              voucherEntries.push({ ledgerId: sgstLedgerId, debit: otherHalf, credit: 0, description: 'Input SGST' });
+            } else if (igstLedgerId) {
+              voucherEntries.push({ ledgerId: igstLedgerId, debit: totalGst, credit: 0, description: 'Input IGST' });
+            }
+          }
+
+          // Credit Vendor (total payable)
+          const totalPayable = totalTaxable + totalGst;
+          if (totalPayable > 0) {
+            voucherEntries.push({
+              ledgerId: vendorLedgerId,
+              debit: 0,
+              credit: totalPayable,
+              description: `Payable to ${vendor.name} - GRN ${receipt.receiptNumber}`,
+            });
+
+            // Validate totals balance
+            const totalDebit = voucherEntries.reduce((s, e) => s + e.debit, 0);
+            const totalCredit = voucherEntries.reduce((s, e) => s + e.credit, 0);
+            if (Math.abs(totalDebit - totalCredit) > 0.01) {
+              // Adjust vendor credit to match debits (rounding safety)
+              voucherEntries[voucherEntries.length - 1].credit = totalDebit;
+            }
+
+            // Fetch all ledgers for the ledgerMap
+            const ledgerIds = voucherEntries.map((e) => e.ledgerId);
+            const ledgers = await prisma.ledger.findMany({ where: { id: { in: ledgerIds }, projectId, deletedAt: null, isActive: true } });
+            if (ledgers.length === ledgerIds.length) {
+              const ledgerMap = new Map(ledgers.map((l) => [l.id, { id: l.id, name: l.name, group: l.group, linkedEntityType: l.linkedEntityType, linkedEntityId: l.linkedEntityId }]));
+
+              const jvNumber = await generateVoucherNumber(VoucherType.PURCHASE);
+              await postVoucher({
+                projectId,
+                jvNumber,
+                voucherType: VoucherType.PURCHASE,
+                voucherDate: new Date(),
+                description: `GRN ${receipt.receiptNumber} - ${vendor.name}`,
+                totalDebit,
+                totalCredit,
+                entries: voucherEntries,
+                ledgerMap,
+                budgetHeadMap: new Map(),
+                sourceInvoiceId: receipt.gatePass.invoiceId ?? null,
+                billSettlements: [],
+                userId: req.user!.id,
+                tx,
+              });
+            }
+          }
+        }
 
         return tx.goodsReceipt.findUnique({ where: { id: receipt.id }, include: receiptInclude });
       });

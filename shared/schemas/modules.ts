@@ -1305,6 +1305,21 @@ export const listVouchersSchema = z.object({
   }),
 });
 
+// ── Credit Note / Debit Note (vendor credit or purchase return) ──
+// Both use the same input shape: vendor, taxable amount, GST split, date, description.
+export const creditDebitNoteSchema = z.object({
+  body: z.object({
+    vendorId: uuid,
+    amount: positiveMoney,           // taxable amount being reversed
+    cgstAmount: money.default(0),    // CGST portion to reverse
+    sgstAmount: money.default(0),    // SGST portion to reverse
+    igstAmount: money.default(0),    // IGST portion to reverse
+    date: dateStr.optional(),
+    description: z.string().max(1000).optional(),
+    invoiceId: uuid.optional(),      // optional: link to a specific invoice
+  }),
+});
+
 // ── Ledger statement query ──
 export const ledgerStatementSchema = z
   .object({

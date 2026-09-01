@@ -289,6 +289,15 @@ export default function JournalVouchersPage() {
     // If debit is set, clear credit and vice versa
     if (field === 'debit' && value) updated[index].credit = '';
     if (field === 'credit' && value) updated[index].debit = '';
+
+    // Auto-balance: for 2-line entries, auto-fill the opposite side on the other row
+    if ((field === 'debit' || field === 'credit') && entries.length === 2) {
+      const otherIndex = index === 0 ? 1 : 0;
+      const otherSide = field === 'debit' ? 'credit' : 'debit';
+      const numValue = Number(value.replace(/,/g, '')) || 0;
+      updated[otherIndex][field] = '';
+      updated[otherIndex][otherSide] = String(numValue);
+    }
     setEntries(updated);
   };
 
