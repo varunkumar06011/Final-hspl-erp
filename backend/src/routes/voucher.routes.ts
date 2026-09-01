@@ -285,7 +285,7 @@ router.post(
 // ── Cancel a posted voucher (creates reversal entries) ──
 router.post(
   '/:id/cancel',
-  rbacMiddleware(Permission.MANAGE_FINANCE),
+  rbacMiddleware(Permission.REVERSE_VOUCHER),
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const projectId = requireProjectId(req);

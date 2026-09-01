@@ -46,8 +46,9 @@ import api, { extractErrorMessage } from '../config/api';
 import ResponsiveDialog from '../components/ResponsiveDialog';
 import RefreshButton from '../components/RefreshButton';
 import { formatCurrency, formatIndianNumber, formatDate, amountToWords } from '../utils/enumOptions';
-import { VoucherType, LedgerGroup } from '@hospital-erp/shared';
+import { VoucherType, LedgerGroup, Permission, UserRole, hasPermission } from '@hospital-erp/shared';
 import LedgerAutocomplete, { type LedgerOption } from '../components/LedgerAutocomplete';
+import { useAuthStore } from '../stores/authStore';
 
 interface Ledger {
   id: string;
@@ -139,6 +140,8 @@ const VOUCHER_TYPE_COLORS: Record<string, 'success' | 'error' | 'info' | 'warnin
 };
 
 export default function VouchersPage() {
+  const user = useAuthStore((s) => s.user);
+  const canReverseVoucher = !!user && hasPermission(user.role as UserRole, Permission.REVERSE_VOUCHER);
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(20);
   const [search, setSearch] = useState('');
@@ -664,7 +667,7 @@ export default function VouchersPage() {
                       <Stack direction="row" spacing={0.5} justifyContent="flex-end">
                         <Tooltip title="View Details"><IconButton size="small" onClick={() => setDetailVoucher(v)}><ViewIcon fontSize="small" /></IconButton></Tooltip>
                         <Tooltip title="Duplicate"><IconButton size="small" onClick={() => duplicateVoucher(v)}><DuplicateIcon fontSize="small" /></IconButton></Tooltip>
-                        {v.status === 'POSTED' && (
+                        {v.status === 'POSTED' && canReverseVoucher && (
                           <Tooltip title="Cancel & Reverse">
                             <IconButton size="small" onClick={() => {
                               if (confirm(`Cancel voucher ${v.jvNumber}? This will reverse all ledger entries.`)) {
@@ -1243,7 +1246,7 @@ export default function VouchersPage() {
               )}
             </DialogContent>
             <DialogActions>
-              {detailVoucher.status === 'POSTED' && (
+              {detailVoucher.status === 'POSTED' && canReverseVoucher && (
                 <Button
                   color="error"
                   startIcon={<CancelIcon />}

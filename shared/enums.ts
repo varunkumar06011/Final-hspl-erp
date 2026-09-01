@@ -511,6 +511,7 @@ export enum Permission {
   EDIT_BUDGET = 'EDIT_BUDGET',
   // Finance module — budget heads, bank/cash accounts, journal vouchers
   MANAGE_FINANCE = 'MANAGE_FINANCE',
+  REVERSE_VOUCHER = 'REVERSE_VOUCHER',
   // User management
   MANAGE_USERS = 'MANAGE_USERS',
   // Approvals config
@@ -569,6 +570,7 @@ export const PERMISSION_MATRIX: Record<UserRole, Permission[]> = {
     Permission.VIEW_GATE_PASSES,
     Permission.VIEW_FINANCIALS,
     Permission.MANAGE_FINANCE,
+    Permission.REVERSE_VOUCHER,
     // Site Operations — full CRUD; approvals are not applicable to these modules
     Permission.MANAGE_INVENTORY,
     Permission.MANAGE_LABOUR,
@@ -633,6 +635,7 @@ export const PERMISSION_MATRIX: Record<UserRole, Permission[]> = {
     Permission.VERIFY_INVOICE,
     Permission.VIEW_FINANCIALS,
     Permission.MANAGE_FINANCE,
+    Permission.REVERSE_VOUCHER,
     Permission.MANAGE_USERS,
   ],
   [UserRole.ADMIN]: [
@@ -644,6 +647,7 @@ export const PERMISSION_MATRIX: Record<UserRole, Permission[]> = {
     Permission.APPROVE_PAYMENT_STEP_1,
     Permission.VIEW_FINANCIALS,
     Permission.MANAGE_FINANCE,
+    Permission.REVERSE_VOUCHER,
     Permission.MANAGE_USERS,
     Permission.CREATE_GATE_PASS,
     Permission.VIEW_GATE_PASSES,
@@ -665,6 +669,7 @@ export const PERMISSION_MATRIX: Record<UserRole, Permission[]> = {
     Permission.APPROVE_PAYMENT_STEP_2,
     Permission.VIEW_FINANCIALS,
     Permission.MANAGE_FINANCE,
+    Permission.REVERSE_VOUCHER,
     Permission.MANAGE_USERS,
     Permission.CREATE_GATE_PASS,
     Permission.VIEW_GATE_PASSES,
