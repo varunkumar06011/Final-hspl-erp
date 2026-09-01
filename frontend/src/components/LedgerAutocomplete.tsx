@@ -149,7 +149,17 @@ export default function LedgerAutocomplete({
         onInputChange={(_, newInputValue) => setInputValue(newInputValue)}
         onChange={(_, newValue) => {
           if (newValue && typeof newValue === 'object' && 'id' in newValue) {
-            onChange((newValue as LedgerOption).id, newValue as LedgerOption);
+            const option = newValue as LedgerOption;
+            if (option.id.startsWith('__create__')) {
+              // "Create <name>" option was clicked — open create dialog with the real name
+              const realName = option.name.replace(/^Create\s+"/, '').replace(/"$/, '');
+              setNewLedgerName(realName);
+              setCreateOpen(true);
+              // Clear the input so the placeholder text doesn't show "Create ..."
+              setInputValue('');
+            } else {
+              onChange(option.id, option);
+            }
           } else if (typeof newValue === 'string') {
             // freeSolo text — open create dialog
             setNewLedgerName(newValue);
