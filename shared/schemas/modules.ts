@@ -22,7 +22,6 @@ import {
   CashTxnType,
   JVType,
   JournalAccountType,
-  LedgerGroup,
   VoucherType,
 } from '../enums.js';
 
@@ -1229,7 +1228,7 @@ export const updateLedgerSchema = z.object({
 export const listLedgersSchema = z.object({
   query: pagination.extend({
     search: z.string().optional(),
-    group: z.nativeEnum(LedgerGroup).optional(),
+    group: z.string().min(1).max(100).optional(),
     linkedEntityType: z.string().optional(),
     isActive: z.coerce.boolean().optional(),
   }),
