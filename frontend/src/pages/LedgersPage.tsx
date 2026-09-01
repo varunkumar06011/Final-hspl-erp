@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import {
   Box,
   Typography,
@@ -290,13 +290,18 @@ export default function LedgersPage() {
   const rows: Ledger[] = data?.data ?? [];
   const pagination = data?.pagination ?? { page: 1, pageSize: 100, total: 0, totalPages: 0 };
 
-  // Group ledgers by group for accordion view
+  // Group ledgers by group and render custom subgroups beneath their primary parent.
   const grouped: Record<string, Ledger[]> = {};
-  for (const l of rows) {
-    if (!grouped[l.group]) grouped[l.group] = [];
-    grouped[l.group].push(l);
+  for (const ledger of rows) {
+    if (!grouped[ledger.group]) grouped[ledger.group] = [];
+    grouped[ledger.group].push(ledger);
   }
-  const sortedGroups = Object.keys(grouped).sort((a, b) => GROUP_ORDER.indexOf(a) - GROUP_ORDER.indexOf(b));
+  const customGroupsByParent = customGroups.reduce<Record<string, typeof customGroups>>((groups, group) => {
+    if (!groups[group.parentGroup]) groups[group.parentGroup] = [];
+    groups[group.parentGroup].push(group);
+    return groups;
+  }, {});
+  const sortedGroups = GROUP_ORDER.filter((group) => grouped[group] || customGroupsByParent[group]);
 
   const formatBalance = (balance: number, group: string) => {
     const isDebit = isDebitNatureGroup(group as LedgerGroup);
@@ -304,6 +309,55 @@ export default function LedgersPage() {
     const suffix = balance === 0 ? '' : isDebit ? (balance >= 0 ? ' Dr' : ' Cr') : (balance >= 0 ? ' Dr' : ' Cr');
     return `${formatCurrency(abs)}${suffix}`;
   };
+
+  const renderLedgerRow = (ledger: Ledger) => (
+    <TableRow key={ledger.id} hover>
+      <TableCell sx={{ fontWeight: 500 }}>
+        {ledger.name}
+        {ledger.isSystem && <Chip label="System" size="small" variant="outlined" sx={{ ml: 1 }} />}
+      </TableCell>
+      <TableCell>
+        <Typography variant="caption" color="text.secondary">
+          {ledger.linkedEntityType === 'VENDOR' ? 'Vendor' :
+           ledger.linkedEntityType === 'BANK_ACCOUNT' ? 'Bank' :
+           ledger.linkedEntityType === 'CASH_ACCOUNT' ? 'Cash' :
+           ledger.linkedEntityType === 'OWNER_ACCOUNT' ? 'Owner' : 'Manual'}
+        </Typography>
+      </TableCell>
+      <TableCell align="right">{formatCurrency(ledger.openingBalance)}</TableCell>
+      <TableCell align="right" sx={{ fontWeight: 600 }}>
+        {formatBalance(ledger.currentBalance, ledger.group)}
+      </TableCell>
+      <TableCell>
+        <Chip label={ledger.isActive ? 'Active' : 'Inactive'} size="small" color={ledger.isActive ? 'success' : 'default'} />
+      </TableCell>
+      <TableCell align="right">
+        <Stack direction="row" spacing={0.5} justifyContent="flex-end">
+          <Tooltip title="View Ledger Statement">
+            <IconButton size="small" onClick={() => { setStatementLedger(ledger); setStmtStartDate(''); setStmtEndDate(''); }}>
+              <StatementIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+          {!ledger.isSystem && (
+            <>
+              <Tooltip title="Edit">
+                <IconButton size="small" onClick={() => openEdit(ledger)}>
+                  <EditIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+              <Tooltip title="Delete">
+                <IconButton size="small" onClick={() => {
+                  if (confirm(`Delete ledger "${ledger.name}"? This cannot be undone.`)) deleteMutation.mutate(ledger.id);
+                }}>
+                  <DeleteIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+            </>
+          )}
+        </Stack>
+      </TableCell>
+    </TableRow>
+  );
 
   return (
     <Box sx={{ minWidth: 0, overflow: 'hidden' }}>
@@ -494,7 +548,7 @@ export default function LedgersPage() {
         <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress /></Box>
       ) : isError ? (
         <Alert severity="error" sx={{ mb: 2 }}>Failed to load ledgers. <Button size="small" onClick={() => refetch()}>Retry</Button></Alert>
-      ) : rows.length === 0 ? (
+      ) : rows.length === 0 && customGroups.length === 0 ? (
         <Card sx={{ p: 4, textAlign: 'center' }}>
           <LedgerIcon sx={{ fontSize: 48, color: 'text.secondary', mb: 1 }} />
           <Typography color="text.secondary" sx={{ mb: 2 }}>
@@ -508,15 +562,18 @@ export default function LedgersPage() {
       ) : (
         <>
           {sortedGroups.map((group) => {
-            const groupLedgers = grouped[group];
-            const groupTotal = groupLedgers.reduce((s, l) => s + Math.abs(l.currentBalance), 0);
+            const groupLedgers = grouped[group] ?? [];
+            const childGroups = customGroupsByParent[group] ?? [];
+            const childLedgers = childGroups.flatMap((childGroup) => grouped[childGroup.name] ?? []);
+            const groupTotal = [...groupLedgers, ...childLedgers].reduce((s, l) => s + Math.abs(l.currentBalance), 0);
             return (
               <Accordion key={group} defaultExpanded>
                 <AccordionSummary expandIcon={<ExpandMoreIcon />}>
                   <Stack direction="row" spacing={1.5} alignItems="center" sx={{ flex: 1 }}>
                     <Chip label={GROUP_LABELS[group] ?? group} size="small" color={GROUP_COLORS[group] ?? 'default'} />
                     <Typography variant="caption" color="text.secondary">
-                      {groupLedgers.length} ledger{groupLedgers.length !== 1 ? 's' : ''}
+                      {groupLedgers.length + childLedgers.length} ledger{groupLedgers.length + childLedgers.length !== 1 ? 's' : ''}
+                      {childGroups.length > 0 && ` · ${childGroups.length} subgroup${childGroups.length !== 1 ? 's' : ''}`}
                     </Typography>
                     <Box sx={{ flex: 1 }} />
                     <Typography variant="body2" fontWeight={600}>
@@ -538,60 +595,32 @@ export default function LedgersPage() {
                         </TableRow>
                       </TableHead>
                       <TableBody>
-                        {groupLedgers.map((ledger) => (
-                          <TableRow key={ledger.id} hover>
-                            <TableCell sx={{ fontWeight: 500 }}>
-                              {ledger.name}
-                              {ledger.isSystem && <Chip label="System" size="small" variant="outlined" sx={{ ml: 1 }} />}
-                            </TableCell>
-                            <TableCell>
-                              <Typography variant="caption" color="text.secondary">
-                                {ledger.linkedEntityType === 'VENDOR' ? 'Vendor' :
-                                 ledger.linkedEntityType === 'BANK_ACCOUNT' ? 'Bank' :
-                                 ledger.linkedEntityType === 'CASH_ACCOUNT' ? 'Cash' :
-                                 ledger.linkedEntityType === 'OWNER_ACCOUNT' ? 'Owner' : 'Manual'}
-                              </Typography>
-                            </TableCell>
-                            <TableCell align="right">{formatCurrency(ledger.openingBalance)}</TableCell>
-                            <TableCell align="right" sx={{ fontWeight: 600 }}>
-                              {formatBalance(ledger.currentBalance, ledger.group)}
-                            </TableCell>
-                            <TableCell>
-                              <Chip
-                                label={ledger.isActive ? 'Active' : 'Inactive'}
-                                size="small"
-                                color={ledger.isActive ? 'success' : 'default'}
-                              />
-                            </TableCell>
-                            <TableCell align="right">
-                              <Stack direction="row" spacing={0.5} justifyContent="flex-end">
-                                <Tooltip title="View Ledger Statement">
-                                  <IconButton size="small" onClick={() => { setStatementLedger(ledger); setStmtStartDate(''); setStmtEndDate(''); }}>
-                                    <StatementIcon fontSize="small" />
-                                  </IconButton>
-                                </Tooltip>
-                                {!ledger.isSystem && (
-                                  <>
-                                    <Tooltip title="Edit">
-                                      <IconButton size="small" onClick={() => openEdit(ledger)}>
-                                        <EditIcon fontSize="small" />
-                                      </IconButton>
-                                    </Tooltip>
-                                    <Tooltip title="Delete">
-                                      <IconButton size="small" onClick={() => {
-                                        if (confirm(`Delete ledger "${ledger.name}"? This cannot be undone.`)) {
-                                          deleteMutation.mutate(ledger.id);
-                                        }
-                                      }}>
-                                        <DeleteIcon fontSize="small" />
-                                      </IconButton>
-                                    </Tooltip>
-                                  </>
-                                )}
-                              </Stack>
-                            </TableCell>
-                          </TableRow>
-                        ))}
+                        {groupLedgers.map(renderLedgerRow)}
+                        {childGroups.map((childGroup) => {
+                          const childGroupLedgers = grouped[childGroup.name] ?? [];
+                          return (
+                            <Fragment key={childGroup.id}>
+                              <TableRow sx={{ bgcolor: 'action.hover' }}>
+                                <TableCell colSpan={6} sx={{ pl: 3, fontWeight: 600 }}>
+                                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                    <ExpandMoreIcon fontSize="small" color="action" />
+                                    <span>{childGroup.name}</span>
+                                    <Typography variant="caption" color="text.secondary">
+                                      ({childGroupLedgers.length} ledger{childGroupLedgers.length !== 1 ? 's' : ''})
+                                    </Typography>
+                                  </Box>
+                                </TableCell>
+                              </TableRow>
+                              {childGroupLedgers.length > 0 ? childGroupLedgers.map(renderLedgerRow) : (
+                                <TableRow>
+                                  <TableCell colSpan={6} sx={{ pl: 7, color: 'text.secondary', fontStyle: 'italic' }}>
+                                    No ledgers in this subgroup yet
+                                  </TableCell>
+                                </TableRow>
+                              )}
+                            </Fragment>
+                          );
+                        })}
                       </TableBody>
                     </Table>
                   </TableContainer>
