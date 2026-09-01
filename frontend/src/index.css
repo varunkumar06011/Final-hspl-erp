@@ -9,3 +9,18 @@ html, body {
   min-width: 0;
   max-width: 100%;
 }
+
+/* Prevent amount/balance numbers from wrapping to a second line.
+   All currency cells use align="right" which MUI maps to .MuiTableCell-alignRight. */
+.MuiTableCell-alignRight {
+  white-space: nowrap;
+}
+
+/* Truncate long text in description cells with ellipsis; full text shows on hover via title attr */
+.MuiTableCell-root > .amount-cell {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 180px;
+  display: inline-block;
+}
