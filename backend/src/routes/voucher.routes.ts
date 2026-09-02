@@ -426,6 +426,306 @@ router.post(
   },
 );
 
+// ── Edit a posted voucher (reverse old entries, apply new entries, same voucher number) ──
+router.patch(
+  '/:id',
+  rbacMiddleware(Permission.REVERSE_VOUCHER),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      const voucher = await prisma.journalVoucher.findFirst({
+        where: { id: req.params.id, projectId, deletedAt: null },
+        include: { ledgerEntries: true, billSettlements: true },
+      });
+      if (!voucher) {
+        res.status(404).json({ error: 'Voucher not found' });
+        return;
+      }
+      if (voucher.status !== 'POSTED') {
+        res.status(400).json({ error: `Cannot edit a ${voucher.status} voucher` });
+        return;
+      }
+      // Block editing purchase vouchers linked to invoices — those must be cancelled and re-posted from the invoice
+      if (voucher.voucherType === VoucherType.PURCHASE && voucher.sourceInvoiceId) {
+        res.status(400).json({ error: 'Purchase vouchers linked to invoices cannot be edited directly. Cancel and re-post from the invoice.' });
+        return;
+      }
+
+      const { date, description, entries, billSettlements } = req.body;
+
+      // Validate new entries
+      const newEntries = entries as Array<{ ledgerId: string; debit: number; credit: number; description?: string; budgetHeadId?: string }>;
+      if (!newEntries || newEntries.length < 2) {
+        res.status(400).json({ error: 'At least 2 ledger entries are required' });
+        return;
+      }
+      const totalDebit = newEntries.reduce((s, e) => s + Number(e.debit), 0);
+      const totalCredit = newEntries.reduce((s, e) => s + Number(e.credit), 0);
+      if (Math.abs(totalDebit - totalCredit) > 0.01) {
+        res.status(400).json({ error: `Debit (${totalDebit}) does not equal Credit (${totalCredit})` });
+        return;
+      }
+
+      // Validate all ledgers exist and belong to project
+      const ledgerIds = newEntries.map((e) => e.ledgerId);
+      const ledgers = await prisma.ledger.findMany({
+        where: { id: { in: ledgerIds }, projectId, deletedAt: null, isActive: true },
+      });
+      if (ledgers.length !== ledgerIds.length) {
+        const found = new Set(ledgers.map((l) => l.id));
+        const missing = ledgerIds.filter((id) => !found.has(id));
+        res.status(400).json({ error: `One or more ledgers not found or inactive: ${missing.join(', ')}` });
+        return;
+      }
+      const ledgerMap = new Map(ledgers.map((l) => [l.id, l]));
+
+      // Validate budget heads
+      const budgetHeadIds = newEntries.map((e) => e.budgetHeadId).filter((id): id is string => !!id);
+      if (budgetHeadIds.length > 0) {
+        const uniqueIds = [...new Set(budgetHeadIds)];
+        const budgetHeads = await prisma.budgetHead.findMany({
+          where: { id: { in: uniqueIds }, projectId, deletedAt: null, status: 'ACTIVE' },
+          select: { id: true },
+        });
+        if (budgetHeads.length !== uniqueIds.length) {
+          const found = new Set(budgetHeads.map((b) => b.id));
+          const missing = uniqueIds.filter((id) => !found.has(id));
+          res.status(400).json({ error: `One or more cost centers not found: ${missing.join(', ')}` });
+          return;
+        }
+      }
+
+      // Validate bill settlements
+      let validatedSettlements: Array<{ invoiceId: string; vendorId: string; amount: number }> = [];
+      if (billSettlements && billSettlements.length > 0) {
+        const invoiceIds = (billSettlements as Array<{ invoiceId: string }>).map((s) => s.invoiceId);
+        const invoices = await prisma.vendorInvoice.findMany({
+          where: { id: { in: invoiceIds }, projectId, deletedAt: null },
+          select: { id: true, vendorId: true, totalAmount: true },
+        });
+        if (invoices.length !== invoiceIds.length) {
+          res.status(400).json({ error: 'One or more invoices in bill settlements not found' });
+          return;
+        }
+        const invoiceMap = new Map(invoices.map((i) => [i.id, i]));
+        validatedSettlements = (billSettlements as Array<{ invoiceId: string; amount: number }>).map((s) => ({
+          invoiceId: s.invoiceId,
+          vendorId: invoiceMap.get(s.invoiceId)!.vendorId,
+          amount: Number(s.amount),
+        }));
+      }
+
+      const voucherDate = date ? new Date(String(date)) : voucher.date;
+      const chequeNumber = req.body.chequeNumber !== undefined ? (req.body.chequeNumber || null) : voucher.chequeNumber;
+      const chequeDate = req.body.chequeDate !== undefined ? (req.body.chequeDate ? new Date(String(req.body.chequeDate)) : null) : voucher.chequeDate;
+
+      // Execute the edit atomically: reverse old, apply new
+      await prisma.$transaction(async (tx) => {
+        // 1. Reverse old ledger entry effects
+        for (const entry of voucher.ledgerEntries) {
+          const ledger = await tx.ledger.findUnique({ where: { id: entry.ledgerId } });
+          if (!ledger) continue;
+
+          const debit = Number(entry.debit);
+          const credit = Number(entry.credit);
+          const reverseDelta = credit - debit;
+          await tx.ledger.update({
+            where: { id: entry.ledgerId },
+            data: { currentBalance: { increment: reverseDelta } },
+          });
+
+          // Reverse bank balance
+          if (ledger.linkedEntityType === 'BANK_ACCOUNT' && ledger.linkedEntityId) {
+            const bankAccount = await tx.bankAccount.findUnique({ where: { id: ledger.linkedEntityId } });
+            if (bankAccount) {
+              const wasDeposit = debit > 0;
+              const reverseAmount = wasDeposit ? debit : credit;
+              const updatedBank = await tx.bankAccount.update({
+                where: { id: bankAccount.id },
+                data: { currentBalance: wasDeposit ? { decrement: reverseAmount } : { increment: reverseAmount } },
+                select: { currentBalance: true },
+              });
+              await tx.bankTransaction.create({
+                data: {
+                  bankAccountId: bankAccount.id,
+                  type: wasDeposit ? BankTxnType.REVERSAL_OUT : BankTxnType.REVERSAL_IN,
+                  amount: reverseAmount,
+                  balanceAfter: Number(updatedBank.currentBalance),
+                  date: new Date(),
+                  description: `EDIT REVERSAL: ${voucher.jvNumber}`,
+                  referenceType: AccountTxnRefType.JOURNAL_VOUCHER,
+                  referenceId: voucher.id,
+                  status: 'POSTED',
+                  createdBy: req.user!.id,
+                },
+              });
+            }
+          }
+
+          // Reverse cash balance
+          if (ledger.linkedEntityType === 'CASH_ACCOUNT' && ledger.linkedEntityId) {
+            const cashAccount = await tx.cashAccount.findUnique({ where: { id: ledger.linkedEntityId } });
+            if (cashAccount) {
+              const wasIn = debit > 0;
+              const reverseAmount = wasIn ? debit : credit;
+              const updatedCash = await tx.cashAccount.update({
+                where: { id: cashAccount.id },
+                data: { currentBalance: wasIn ? { decrement: reverseAmount } : { increment: reverseAmount } },
+                select: { currentBalance: true },
+              });
+              await tx.cashTransaction.create({
+                data: {
+                  cashAccountId: cashAccount.id,
+                  type: wasIn ? CashTxnType.REVERSAL_OUT : CashTxnType.REVERSAL_IN,
+                  amount: reverseAmount,
+                  balanceAfter: Number(updatedCash.currentBalance),
+                  date: new Date(),
+                  description: `EDIT REVERSAL: ${voucher.jvNumber}`,
+                  referenceType: AccountTxnRefType.JOURNAL_VOUCHER,
+                  referenceId: voucher.id,
+                  status: 'POSTED',
+                  createdBy: req.user!.id,
+                },
+              });
+            }
+          }
+        }
+
+        // 2. Delete old ledger entries and bill settlements
+        await tx.ledgerEntry.deleteMany({ where: { journalVoucherId: voucher.id } });
+        await tx.billSettlement.deleteMany({ where: { journalVoucherId: voucher.id } });
+
+        // 3. Update voucher header
+        await tx.journalVoucher.update({
+          where: { id: voucher.id },
+          data: {
+            date: voucherDate,
+            description: description ?? null,
+            totalDebit,
+            totalCredit,
+            chequeNumber,
+            chequeDate,
+          },
+        });
+
+        // 4. Create new ledger entries + apply balance effects
+        for (const entry of newEntries) {
+          const ledger = ledgerMap.get(entry.ledgerId);
+          if (!ledger) throw new Error(`Ledger ${entry.ledgerId} not found`);
+
+          const debit = Number(entry.debit);
+          const credit = Number(entry.credit);
+          const balanceDelta = debit - credit;
+          await tx.ledger.update({
+            where: { id: entry.ledgerId },
+            data: { currentBalance: { increment: balanceDelta } },
+          });
+
+          await tx.ledgerEntry.create({
+            data: {
+              ledgerId: entry.ledgerId,
+              journalVoucherId: voucher.id,
+              debit,
+              credit,
+              description: entry.description ?? description ?? voucher.jvNumber,
+              budgetHeadId: entry.budgetHeadId ?? null,
+              voucherType: voucher.voucherType ?? voucher.type,
+              voucherNumber: voucher.jvNumber,
+              voucherDate,
+            },
+          });
+
+          // Post bank/cash transactions for new entries
+          if (ledger.linkedEntityType === 'BANK_ACCOUNT' && ledger.linkedEntityId) {
+            const isDeposit = debit > 0;
+            const amount = isDeposit ? debit : credit;
+            const bankAccount = await tx.bankAccount.findUnique({ where: { id: ledger.linkedEntityId } });
+            if (bankAccount) {
+              if (!isDeposit && Number(bankAccount.currentBalance) < amount) {
+                throw new Error(`Insufficient balance in bank account ${bankAccount.accountName}`);
+              }
+              const updatedBank = await tx.bankAccount.update({
+                where: { id: bankAccount.id },
+                data: { currentBalance: isDeposit ? { increment: amount } : { decrement: amount } },
+                select: { currentBalance: true },
+              });
+              await tx.bankTransaction.create({
+                data: {
+                  bankAccountId: bankAccount.id,
+                  type: isDeposit ? BankTxnType.DEPOSIT : BankTxnType.WITHDRAWAL,
+                  amount,
+                  balanceAfter: Number(updatedBank.currentBalance),
+                  date: voucherDate,
+                  description: entry.description ?? description ?? `${voucher.voucherType} ${voucher.jvNumber}`,
+                  referenceType: VOUCHER_TO_REF_TYPE[voucher.voucherType ?? ''] ?? AccountTxnRefType.JOURNAL_VOUCHER,
+                  referenceId: voucher.id,
+                  status: 'POSTED',
+                  createdBy: req.user!.id,
+                },
+              });
+            }
+          } else if (ledger.linkedEntityType === 'CASH_ACCOUNT' && ledger.linkedEntityId) {
+            const isIn = debit > 0;
+            const amount = isIn ? debit : credit;
+            const cashAccount = await tx.cashAccount.findUnique({ where: { id: ledger.linkedEntityId } });
+            if (cashAccount) {
+              if (!isIn && Number(cashAccount.currentBalance) < amount) {
+                throw new Error(`Insufficient balance in cash account ${cashAccount.name}`);
+              }
+              const updatedCash = await tx.cashAccount.update({
+                where: { id: cashAccount.id },
+                data: { currentBalance: isIn ? { increment: amount } : { decrement: amount } },
+                select: { currentBalance: true },
+              });
+              await tx.cashTransaction.create({
+                data: {
+                  cashAccountId: cashAccount.id,
+                  type: isIn ? CashTxnType.IN : CashTxnType.OUT,
+                  amount,
+                  balanceAfter: Number(updatedCash.currentBalance),
+                  date: voucherDate,
+                  description: entry.description ?? description ?? `${voucher.voucherType} ${voucher.jvNumber}`,
+                  referenceType: VOUCHER_TO_REF_TYPE[voucher.voucherType ?? ''] ?? AccountTxnRefType.JOURNAL_VOUCHER,
+                  referenceId: voucher.id,
+                  status: 'POSTED',
+                  createdBy: req.user!.id,
+                },
+              });
+            }
+          }
+        }
+
+        // 5. Create new bill settlements
+        for (const settlement of validatedSettlements) {
+          await tx.billSettlement.create({
+            data: {
+              projectId,
+              journalVoucherId: voucher.id,
+              invoiceId: settlement.invoiceId,
+              vendorId: settlement.vendorId,
+              amount: settlement.amount,
+            },
+          });
+        }
+      });
+
+      await logAudit({
+        userId: req.user!.id,
+        action: AuditAction.UPDATE,
+        entityType: 'VOUCHER',
+        entityId: voucher.id,
+        projectId,
+        oldValue: { date: voucher.date, description: voucher.description, totalDebit: voucher.totalDebit, totalCredit: voucher.totalCredit },
+        newValue: { date: voucherDate, description, totalDebit, totalCredit, edited: true },
+      });
+
+      res.json({ message: 'Voucher updated successfully', jvNumber: voucher.jvNumber });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
 // ═══════════════════════════════════════════════════════════
 // Voucher Posting Engine — core double-entry logic
 // ═══════════════════════════════════════════════════════════

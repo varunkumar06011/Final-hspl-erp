@@ -32,6 +32,7 @@ import {
   Search as SearchIcon,
   Refresh as RefreshIcon,
   Visibility as ViewIcon,
+  Edit as EditIcon,
   Cancel as CancelIcon,
   ArrowDownward as ReceiptIcon,
   ArrowUpward as PaymentIcon,
@@ -61,6 +62,7 @@ interface Ledger {
 }
 
 interface VoucherEntry {
+  ledgerId: string;
   ledgerName: string;
   ledgerGroup: string;
   debit: number;
@@ -85,6 +87,8 @@ interface Voucher {
   totalCredit: number;
   status: string;
   createdBy: string;
+  chequeNumber: string | null;
+  chequeDate: string | null;
   entries: VoucherEntry[];
   billSettlements?: BillSettlement[];
 }
@@ -180,6 +184,8 @@ export default function VouchersPage() {
 
   // Detail dialog
   const [detailVoucher, setDetailVoucher] = useState<Voucher | null>(null);
+  // Editing state — when set, the create dialog acts as an edit dialog
+  const [editingVoucherId, setEditingVoucherId] = useState<string | null>(null);
 
   const queryClient = useQueryClient();
 
@@ -239,6 +245,25 @@ export default function VouchersPage() {
     onError: (err: unknown) => setError(extractErrorMessage(err)),
   });
 
+  const updateMutation = useMutation({
+    mutationFn: async (payload: { id: string; data: Record<string, unknown> }) => {
+      const response = await api.patch(`/vouchers/${payload.id}`, payload.data);
+      return response.data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['/vouchers'] });
+      queryClient.invalidateQueries({ queryKey: ['/ledgers'] });
+      queryClient.invalidateQueries({ queryKey: ['/bank-accounts'] });
+      queryClient.invalidateQueries({ queryKey: ['/cash-accounts'] });
+      setCreateOpen(false);
+      setEditingVoucherId(null);
+      setDetailVoucher(null);
+      setSuccessMsg(`Voucher ${data.jvNumber} updated successfully`);
+      setTimeout(() => setSuccessMsg(''), 4000);
+    },
+    onError: (err: unknown) => setError(extractErrorMessage(err)),
+  });
+
   const cancelMutation = useMutation({
     mutationFn: async (id: string) => {
       const response = await api.post(`/vouchers/${id}/cancel`);
@@ -281,12 +306,14 @@ export default function VouchersPage() {
 
   const openCreate = (type: VoucherType) => {
     setSelectedVoucherType(type);
+    setEditingVoucherId(null);
     resetForm();
     setCreateOpen(true);
   };
 
   // Duplicate a voucher — opens create dialog pre-filled with the voucher's data
   const duplicateVoucher = (voucher: Voucher) => {
+    setEditingVoucherId(null);
     setSelectedVoucherType(voucher.voucherType as VoucherType);
     setVoucherDate(new Date().toISOString().split('T')[0]); // today, not the original date
     setVoucherDescription(voucher.description ?? '');
@@ -329,6 +356,55 @@ export default function VouchersPage() {
           credit: String(e.credit),
           description: e.description ?? '',
           budgetHeadId: '',
+        })),
+      );
+    }
+    setCreateOpen(true);
+  };
+
+  // Edit a posted voucher — opens create dialog pre-filled with the voucher's data, keeping ledger IDs
+  const editVoucher = (voucher: Voucher) => {
+    setEditingVoucherId(voucher.id);
+    setSelectedVoucherType(voucher.voucherType as VoucherType);
+    setVoucherDate(voucher.date ? new Date(voucher.date).toISOString().split('T')[0] : '');
+    setVoucherDescription(voucher.description ?? '');
+    setBillSettlements([]);
+    setChequeNumber(voucher.chequeNumber ?? '');
+    setChequeDate(voucher.chequeDate ? new Date(voucher.chequeDate).toISOString().split('T')[0] : '');
+    setError('');
+    setDetailVoucher(null);
+
+    const vType = voucher.voucherType as VoucherType;
+    if (vType === VoucherType.PAYMENT || vType === VoucherType.RECEIPT || vType === VoucherType.CONTRA) {
+      const partyEntry = voucher.entries.find((e) =>
+        e.ledgerGroup !== LedgerGroup.BANK && e.ledgerGroup !== LedgerGroup.CASH
+      );
+      const cashBankEntry = voucher.entries.find((e) =>
+        e.ledgerGroup === LedgerGroup.BANK || e.ledgerGroup === LedgerGroup.CASH
+      );
+      if (vType === VoucherType.CONTRA) {
+        const drEntry = voucher.entries.find((e) => e.debit > 0);
+        const crEntry = voucher.entries.find((e) => e.credit > 0);
+        setSimpleFromLedger(crEntry?.ledgerId ?? '');
+        setSimpleToLedger(drEntry?.ledgerId ?? '');
+      } else {
+        setSimplePartyLedger(partyEntry?.ledgerId ?? '');
+        setSimplePartyLedgerGroup(partyEntry?.ledgerGroup ?? '');
+        setSimpleCashBankLedger(cashBankEntry?.ledgerId ?? '');
+        setSimpleAmount(String(partyEntry?.debit || partyEntry?.credit || ''));
+        setSimpleCostCenter(partyEntry?.budgetHead?.id ?? '');
+      }
+    } else {
+      // For journal/multi-line, fill the entries table with actual ledger IDs
+      setEntries(
+        voucher.entries.map((e) => ({
+          ledgerId: e.ledgerId,
+          ledgerName: e.ledgerName,
+          ledgerGroup: e.ledgerGroup,
+          debit: String(e.debit),
+          credit: String(e.credit),
+          description: e.description ?? '',
+          budgetHeadId: e.budgetHead?.id ?? '',
         })),
       );
     }
@@ -423,6 +499,14 @@ export default function VouchersPage() {
   const isBalanced = Math.abs(totalDebit - totalCredit) < 0.01 && totalDebit > 0;
   const balanceDiff = totalDebit - totalCredit;
 
+  const submitVoucher = (payload: Record<string, unknown>) => {
+    if (editingVoucherId) {
+      updateMutation.mutate({ id: editingVoucherId, data: payload });
+    } else {
+      submitVoucher(payload);
+    }
+  };
+
   const handleCreate = () => {
     setError('');
 
@@ -448,7 +532,7 @@ export default function VouchersPage() {
             { ledgerId: simpleFromLedger, debit: 0, credit: amount },
           ],
         };
-        createMutation.mutate(payload);
+        submitVoucher(payload);
         return;
       }
 
@@ -489,7 +573,7 @@ export default function VouchersPage() {
           ? validSettlements.map((s) => ({ invoiceId: s.invoiceId, amount: Number(s.amount) }))
           : undefined,
       };
-      createMutation.mutate(payload);
+      submitVoucher(payload);
       return;
     }
 
@@ -525,7 +609,7 @@ export default function VouchersPage() {
         ? validSettlements.map((s) => ({ invoiceId: s.invoiceId, amount: Number(s.amount) }))
         : undefined,
     };
-    createMutation.mutate(payload);
+    submitVoucher(payload);
   };
 
   // Map backend response (ledgerEntries with nested ledger) to frontend Voucher format (entries with flat fields)
@@ -539,7 +623,10 @@ export default function VouchersPage() {
     totalCredit: Number(v.totalCredit),
     status: v.status,
     createdBy: v.createdByUser?.name ?? v.createdBy ?? '—',
+    chequeNumber: v.chequeNumber ?? null,
+    chequeDate: v.chequeDate ?? null,
     entries: (v.ledgerEntries ?? []).map((le: any) => ({
+      ledgerId: le.ledger?.id ?? le.ledgerId ?? '',
       ledgerName: le.ledger?.name ?? '',
       ledgerGroup: le.ledger?.group ?? '',
       debit: Number(le.debit),
@@ -666,6 +753,13 @@ export default function VouchersPage() {
                     <TableCell align="right">
                       <Stack direction="row" spacing={0.5} justifyContent="flex-end">
                         <Tooltip title="View Details"><IconButton size="small" onClick={() => setDetailVoucher(v)}><ViewIcon fontSize="small" /></IconButton></Tooltip>
+                        {v.status === 'POSTED' && canReverseVoucher && (
+                          <Tooltip title="Edit">
+                            <IconButton size="small" color="primary" onClick={() => editVoucher(v)}>
+                              <EditIcon fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                        )}
                         <Tooltip title="Duplicate"><IconButton size="small" onClick={() => duplicateVoucher(v)}><DuplicateIcon fontSize="small" /></IconButton></Tooltip>
                         {v.status === 'POSTED' && canReverseVoucher && (
                           <Tooltip title="Cancel & Reverse">
@@ -697,10 +791,10 @@ export default function VouchersPage() {
         />
       </Card>
 
-      {/* ── Create voucher dialog — Tally-style ── */}
-      <ResponsiveDialog open={createOpen} onClose={() => setCreateOpen(false)} maxWidth="md" fullWidth>
+      {/* ── Create/Edit voucher dialog — Tally-style ── */}
+      <ResponsiveDialog open={createOpen} onClose={() => { setCreateOpen(false); setEditingVoucherId(null); }} maxWidth="md" fullWidth>
         <DialogTitle>
-          {VOUCHER_TYPES.find((vt) => vt.value === selectedVoucherType)?.label ?? 'Voucher'}
+          {editingVoucherId ? 'Edit' : ''} {VOUCHER_TYPES.find((vt) => vt.value === selectedVoucherType)?.label ?? 'Voucher'}
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
             {VOUCHER_TYPES.find((vt) => vt.value === selectedVoucherType)?.desc}
           </Typography>
@@ -1050,13 +1144,13 @@ export default function VouchersPage() {
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setCreateOpen(false)}>Cancel</Button>
+          <Button onClick={() => { setCreateOpen(false); setEditingVoucherId(null); }}>Cancel</Button>
           <Button
             variant="contained"
             onClick={handleCreate}
-            disabled={createMutation.isPending || (isSimpleVoucher ? !(Number(simpleAmount.replace(/,/g, '')) > 0) : !isBalanced)}
+            disabled={createMutation.isPending || updateMutation.isPending || (isSimpleVoucher ? !(Number(simpleAmount.replace(/,/g, '')) > 0) : !isBalanced)}
           >
-            {createMutation.isPending ? <CircularProgress size={20} /> : 'Save'}
+            {(createMutation.isPending || updateMutation.isPending) ? <CircularProgress size={20} /> : (editingVoucherId ? 'Update' : 'Save')}
           </Button>
         </DialogActions>
       </ResponsiveDialog>
@@ -1257,6 +1351,15 @@ export default function VouchersPage() {
                   }}
                 >
                   Cancel & Reverse
+                </Button>
+              )}
+              {detailVoucher.status === 'POSTED' && canReverseVoucher && (
+                <Button
+                  color="primary"
+                  startIcon={<EditIcon />}
+                  onClick={() => editVoucher(detailVoucher)}
+                >
+                  Edit
                 </Button>
               )}
               <Button startIcon={<DuplicateIcon />} onClick={() => duplicateVoucher(detailVoucher)}>
