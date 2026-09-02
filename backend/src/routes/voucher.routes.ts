@@ -93,8 +93,9 @@ router.get(
         deletedAt: null,
         // Only show new-style vouchers (those with ledger entries). Legacy JVs
         // (type=OWNER_EXPENSE etc.) are shown on the Journal Vouchers page.
-        // We filter by voucherType being one of the new types.
-        voucherType: { not: VoucherType.JOURNAL },
+        // We filter by having ledgerEntries — this includes JOURNAL vouchers
+        // created from the voucher entry page but excludes legacy JVs.
+        ledgerEntries: { some: {} },
         ...(voucherType ? { voucherType: String(voucherType) } : {}),
         ...(status ? { status: String(status) } : {}),
         ...(search ? { jvNumber: { contains: String(search), mode: 'insensitive' } } : {}),
