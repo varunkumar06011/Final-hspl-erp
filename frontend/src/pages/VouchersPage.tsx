@@ -279,6 +279,7 @@ export default function VouchersPage() {
       queryClient.invalidateQueries({ queryKey: ['/ledgers'] });
       queryClient.invalidateQueries({ queryKey: ['/bank-accounts'] });
       queryClient.invalidateQueries({ queryKey: ['/cash-accounts'] });
+      queryClient.invalidateQueries({ queryKey: ['/audit-logs'] });
       setCreateOpen(false);
       setEditingVoucherId(null);
       setDetailVoucher(null);
@@ -298,6 +299,7 @@ export default function VouchersPage() {
       queryClient.invalidateQueries({ queryKey: ['/ledgers'] });
       queryClient.invalidateQueries({ queryKey: ['/bank-accounts'] });
       queryClient.invalidateQueries({ queryKey: ['/cash-accounts'] });
+      queryClient.invalidateQueries({ queryKey: ['/audit-logs'] });
       setDetailVoucher(null);
       setSuccessMsg('Voucher cancelled and reversed');
       setTimeout(() => setSuccessMsg(''), 4000);
@@ -1433,7 +1435,14 @@ export default function VouchersPage() {
                               {log.newValue && Object.keys(log.newValue).length > 0
                                 ? Object.entries(log.newValue)
                                     .filter(([k]) => k !== 'edited')
-                                    .map(([k, v]) => `${k}: ${typeof v === 'object' ? JSON.stringify(v) : String(v)}`)
+                                    .map(([k, v]) => {
+                                      const oldVal = log.oldValue?.[k];
+                                      const newValStr = typeof v === 'object' ? JSON.stringify(v) : String(v);
+                                      if (oldVal !== undefined && String(oldVal) !== newValStr) {
+                                        return `${k}: ${String(oldVal)} → ${newValStr}`;
+                                      }
+                                      return `${k}: ${newValStr}`;
+                                    })
                                     .join(', ')
                                 : '—'}
                             </TableCell>
