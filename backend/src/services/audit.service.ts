@@ -38,6 +38,7 @@ export async function getAuditLogs(
   projectId: string,
   filters: {
     entityType?: string;
+    entityId?: string;
     userId?: string;
     action?: string;
     startDate?: Date;
@@ -46,11 +47,12 @@ export async function getAuditLogs(
     pageSize?: number;
   }
 ) {
-  const { entityType, userId, action, startDate, endDate, page = 1, pageSize = 20 } = filters;
+  const { entityType, entityId, userId, action, startDate, endDate, page = 1, pageSize = 20 } = filters;
 
   const where: Prisma.AuditLogWhereInput = {
     projectId,
     ...(entityType && { entityType }),
+    ...(entityId && { entityId }),
     ...(userId && { userId }),
     ...(action && { action: action as AuditAction }),
     ...(startDate || endDate

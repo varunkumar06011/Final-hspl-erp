@@ -22,6 +22,7 @@ router.get(
 
       const filters = {
         entityType: req.query.entityType as string | undefined,
+        entityId: req.query.entityId as string | undefined,
         userId: req.query.userId as string | undefined,
         action: req.query.action as string | undefined,
         startDate: req.query.startDate ? new Date(req.query.startDate as string) : undefined,

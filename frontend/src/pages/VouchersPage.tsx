@@ -87,10 +87,21 @@ interface Voucher {
   totalCredit: number;
   status: string;
   createdBy: string;
+  updatedBy: string | null;
+  updatedAt: string | null;
   chequeNumber: string | null;
   chequeDate: string | null;
   entries: VoucherEntry[];
   billSettlements?: BillSettlement[];
+}
+
+interface AuditLogEntry {
+  id: string;
+  action: string;
+  timestamp: string;
+  oldValue: Record<string, unknown> | null;
+  newValue: Record<string, unknown> | null;
+  user: { id: string; name: string; role: string } | null;
 }
 
 interface EntryForm {
@@ -226,6 +237,19 @@ export default function VouchersPage() {
       return response.data;
     },
     enabled: selectedVoucherType === VoucherType.PAYMENT && createOpen,
+  });
+
+  // Fetch audit logs for the voucher shown in the detail dialog
+  const { data: voucherAuditLogs } = useQuery({
+    queryKey: ['/audit-logs', 'voucher', detailVoucher?.id],
+    queryFn: async () => {
+      const response = await api.get('/audit-logs', {
+        params: { entityType: 'VOUCHER', entityId: detailVoucher!.id, page: 1, pageSize: 50 },
+      });
+      return response.data;
+    },
+    enabled: !!detailVoucher,
+    retry: false,
   });
 
   const createMutation = useMutation({
@@ -623,6 +647,8 @@ export default function VouchersPage() {
     totalCredit: Number(v.totalCredit),
     status: v.status,
     createdBy: v.createdByUser?.name ?? v.createdBy ?? '—',
+    updatedBy: v.updatedByUser?.name ?? null,
+    updatedAt: v.updatedAt ?? null,
     chequeNumber: v.chequeNumber ?? null,
     chequeDate: v.chequeDate ?? null,
     entries: (v.ledgerEntries ?? []).map((le: any) => ({
@@ -1266,13 +1292,16 @@ export default function VouchersPage() {
               <Box sx={{ mb: 2 }}>
                 <Typography variant="body2"><strong>Date:</strong> {formatDate(detailVoucher.date)}</Typography>
                 <Typography variant="body2"><strong>Description:</strong> {detailVoucher.description ?? '—'}</Typography>
-                {(detailVoucher as any).chequeNumber && (
-                  <Typography variant="body2"><strong>Cheque Number:</strong> {(detailVoucher as any).chequeNumber}</Typography>
+                {detailVoucher.chequeNumber && (
+                  <Typography variant="body2"><strong>Cheque Number:</strong> {detailVoucher.chequeNumber}</Typography>
                 )}
-                {(detailVoucher as any).chequeDate && (
-                  <Typography variant="body2"><strong>Cheque Date:</strong> {formatDate((detailVoucher as any).chequeDate)}</Typography>
+                {detailVoucher.chequeDate && (
+                  <Typography variant="body2"><strong>Cheque Date:</strong> {formatDate(detailVoucher.chequeDate)}</Typography>
                 )}
                 <Typography variant="body2"><strong>Created By:</strong> {detailVoucher.createdBy}</Typography>
+                {detailVoucher.updatedBy && (
+                  <Typography variant="body2"><strong>Last Edited By:</strong> {detailVoucher.updatedBy} on {formatDate(detailVoucher.updatedAt)}</Typography>
+                )}
                 <Typography variant="body2"><strong>Status:</strong> <Chip label={detailVoucher.status} size="small" color={detailVoucher.status === 'POSTED' ? 'success' : 'error'} /></Typography>
               </Box>
               <TableContainer component={Card} variant="outlined">
@@ -1336,6 +1365,49 @@ export default function VouchersPage() {
                       ))}
                     </TableBody>
                   </Table>
+                </Box>
+              )}
+
+              {/* Audit history — who created/edited/cancelled and when */}
+              {voucherAuditLogs && (voucherAuditLogs.data as AuditLogEntry[])?.length > 0 && (
+                <Box sx={{ mt: 3 }}>
+                  <Typography variant="subtitle2" gutterBottom>Audit History</Typography>
+                  <TableContainer component={Card} variant="outlined">
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow>
+                          <TableCell sx={{ fontWeight: 600 }}>Action</TableCell>
+                          <TableCell sx={{ fontWeight: 600 }}>By</TableCell>
+                          <TableCell sx={{ fontWeight: 600 }}>When</TableCell>
+                          <TableCell sx={{ fontWeight: 600 }}>Details</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {(voucherAuditLogs.data as AuditLogEntry[]).map((log) => (
+                          <TableRow key={log.id} hover>
+                            <TableCell>
+                              <Chip
+                                label={log.action}
+                                size="small"
+                                color={log.action === 'CREATE' ? 'success' : log.action === 'DELETE' ? 'error' : 'warning'}
+                                variant="outlined"
+                              />
+                            </TableCell>
+                            <TableCell>{log.user?.name ?? '—'}</TableCell>
+                            <TableCell>{new Date(log.timestamp).toLocaleString()}</TableCell>
+                            <TableCell>
+                              {log.newValue && Object.keys(log.newValue).length > 0
+                                ? Object.entries(log.newValue)
+                                    .filter(([k]) => k !== 'edited')
+                                    .map(([k, v]) => `${k}: ${typeof v === 'object' ? JSON.stringify(v) : String(v)}`)
+                                    .join(', ')
+                                : '—'}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
                 </Box>
               )}
             </DialogContent>

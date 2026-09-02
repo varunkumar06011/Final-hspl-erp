@@ -65,6 +65,7 @@ model User {
   cashTransactions        CashTransaction[]      @relation("CashTxnCreatedBy")
   createdJournalVouchers  JournalVoucher[]       @relation("JVCreatedBy")
   postedJournalVouchers   JournalVoucher[]       @relation("JVPostedBy")
+  updatedJournalVouchers  JournalVoucher[]       @relation("JVUpdatedBy")
   requestedBudgetRevisions BudgetRevision[]      @relation("BudgetRevisionRequestedBy")
   reviewedBudgetRevisions  BudgetRevision[]      @relation("BudgetRevisionReviewedBy")
 
@@ -1359,12 +1360,14 @@ model JournalVoucher {
   createdBy        String    @db.Uuid
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
+  updatedBy        String?   @db.Uuid // who last edited the voucher (null if never edited)
   deletedAt        DateTime?
 
   project          Project           @relation(fields: [projectId], references: [id])
   approvalWorkflow ApprovalWorkflow? @relation(fields: [approvalWorkflowId], references: [id])
   createdByUser    User              @relation("JVCreatedBy", fields: [createdBy], references: [id])
   postedByUser     User?             @relation("JVPostedBy", fields: [postedBy], references: [id])
+  updatedByUser    User?             @relation("JVUpdatedBy", fields: [updatedBy], references: [id])
   entries          JournalEntry[]
   ledgerEntries    LedgerEntry[]
   billSettlements  BillSettlement[]

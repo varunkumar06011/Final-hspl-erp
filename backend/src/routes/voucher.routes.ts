@@ -41,6 +41,7 @@ const voucherInclude = {
   },
   createdByUser: { select: { id: true, name: true } },
   postedByUser: { select: { id: true, name: true } },
+  updatedByUser: { select: { id: true, name: true } },
 };
 
 // ── Generate voucher number per type ──
@@ -309,7 +310,7 @@ router.post(
         // Atomically claim the voucher (prevent double-cancel)
         const claimed = await tx.journalVoucher.updateMany({
           where: { id: voucher.id, status: 'POSTED' },
-          data: { status: 'CANCELLED' },
+          data: { status: 'CANCELLED', updatedBy: req.user!.id },
         });
         if (claimed.count !== 1) {
           throw new Error('Voucher is already being cancelled or is not POSTED');
@@ -606,6 +607,7 @@ router.patch(
             totalCredit,
             chequeNumber,
             chequeDate,
+            updatedBy: req.user!.id,
           },
         });
 
