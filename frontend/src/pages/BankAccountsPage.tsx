@@ -586,8 +586,8 @@ export default function BankAccountsPage() {
           <Table size="small" sx={{ '@media (min-width: 900px)': { minWidth: 'max-content', '& .MuiTableCell-root': { whiteSpace: 'nowrap' } } }}>
             <TableHead>
               <TableRow>
+                <TableCell sx={{ fontWeight: 600 }}>Bank Name</TableCell>
                 <TableCell sx={{ fontWeight: 600 }}>Account Name</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Bank</TableCell>
                 <TableCell sx={{ fontWeight: 600 }}>Account No.</TableCell>
                 <TableCell sx={{ fontWeight: 600 }}>IFSC</TableCell>
                 <TableCell sx={{ fontWeight: 600 }} align="right">Opening</TableCell>
@@ -611,8 +611,8 @@ export default function BankAccountsPage() {
               ) : (
                 rows.map((row) => (
                   <TableRow key={row.id} hover>
-                    <TableCell sx={{ fontWeight: 600 }}>{row.accountName}</TableCell>
-                    <TableCell>{row.bankName || '—'}</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>{row.bankName || row.accountName}</TableCell>
+                    <TableCell>{row.accountName}</TableCell>
                     <TableCell>{row.accountNumber || '—'}</TableCell>
                     <TableCell>{row.ifscCode || '—'}</TableCell>
                     <TableCell align="right">{formatCurrency(row.openingBalance)}</TableCell>
@@ -746,10 +746,10 @@ export default function BankAccountsPage() {
           {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
             <TextField select label="From Account" value={transferForm.fromAccountId ?? ''} onChange={(e) => setTransferForm({ ...transferForm, fromAccountId: e.target.value })} size="small">
-              {rows.map((acc) => <MenuItem key={acc.id} value={acc.id}>{acc.accountName} ({formatCurrency(acc.currentBalance)})</MenuItem>)}
+              {rows.map((acc) => <MenuItem key={acc.id} value={acc.id}>{acc.bankName || acc.accountName} ({formatCurrency(acc.currentBalance)})</MenuItem>)}
             </TextField>
             <TextField select label="To Account" value={transferForm.toAccountId ?? ''} onChange={(e) => setTransferForm({ ...transferForm, toAccountId: e.target.value })} size="small">
-              {rows.map((acc) => <MenuItem key={acc.id} value={acc.id}>{acc.accountName} ({formatCurrency(acc.currentBalance)})</MenuItem>)}
+              {rows.map((acc) => <MenuItem key={acc.id} value={acc.id}>{acc.bankName || acc.accountName} ({formatCurrency(acc.currentBalance)})</MenuItem>)}
             </TextField>
             <TextField
               label="Amount"
