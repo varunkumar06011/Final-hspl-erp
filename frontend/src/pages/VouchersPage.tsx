@@ -552,7 +552,7 @@ export default function VouchersPage() {
     if (editingVoucherId) {
       updateMutation.mutate({ id: editingVoucherId, data: payload });
     } else {
-      submitVoucher(payload);
+      createMutation.mutate(payload);
     }
   };
 
