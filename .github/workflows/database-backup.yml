@@ -21,6 +21,10 @@ concurrency:
 
 env:
   PG_MAJOR: "17"
+  # Drive auth mode. "oauth" = upload as a Google user via GOOGLE_OAUTH_* secrets
+  # (required when the backup folder is in a personal My Drive: service accounts
+  # have no Drive storage quota). Otherwise = OIDC/WIF service account (Shared drive).
+  DRIVE_AUTH_MODE: ${{ secrets.GOOGLE_OAUTH_REFRESH_TOKEN != '' && 'oauth' || 'oidc' }}
 
 jobs:
   backup:
@@ -39,13 +43,23 @@ jobs:
       - name: Check required secrets are configured
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          GOOGLE_DRIVE_FOLDER_ID: ${{ secrets.GOOGLE_DRIVE_FOLDER_ID }}
           WORKLOAD_IDENTITY_PROVIDER: ${{ secrets.WORKLOAD_IDENTITY_PROVIDER }}
           SERVICE_ACCOUNT_EMAIL: ${{ secrets.SERVICE_ACCOUNT_EMAIL }}
-          GOOGLE_DRIVE_FOLDER_ID: ${{ secrets.GOOGLE_DRIVE_FOLDER_ID }}
+          GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
+          GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
+          GOOGLE_OAUTH_REFRESH_TOKEN: ${{ secrets.GOOGLE_OAUTH_REFRESH_TOKEN }}
         run: |
           set -euo pipefail
+          echo "Drive auth mode: ${DRIVE_AUTH_MODE}"
+          required="SUPABASE_DB_URL GOOGLE_DRIVE_FOLDER_ID"
+          if [ "${DRIVE_AUTH_MODE}" = "oauth" ]; then
+            required="$required GOOGLE_OAUTH_CLIENT_ID GOOGLE_OAUTH_CLIENT_SECRET GOOGLE_OAUTH_REFRESH_TOKEN"
+          else
+            required="$required WORKLOAD_IDENTITY_PROVIDER SERVICE_ACCOUNT_EMAIL"
+          fi
           missing=0
-          for v in SUPABASE_DB_URL WORKLOAD_IDENTITY_PROVIDER SERVICE_ACCOUNT_EMAIL GOOGLE_DRIVE_FOLDER_ID; do
+          for v in $required; do
             if [ -z "${!v}" ]; then echo "::error::secret $v is not configured"; missing=1; fi
           done
           exit $missing
@@ -84,6 +98,7 @@ jobs:
         run: bash scripts/backup/backup-database.sh
 
       - name: Authenticate to Google Cloud (OIDC / Workload Identity Federation)
+        if: env.DRIVE_AUTH_MODE == 'oidc'
         uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ secrets.WORKLOAD_IDENTITY_PROVIDER }}
@@ -94,6 +109,9 @@ jobs:
       - name: Upload to Google Drive, verify, apply retention
         env:
           GOOGLE_DRIVE_FOLDER_ID: ${{ secrets.GOOGLE_DRIVE_FOLDER_ID }}
+          GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
+          GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
+          GOOGLE_OAUTH_REFRESH_TOKEN: ${{ secrets.GOOGLE_OAUTH_REFRESH_TOKEN }}
           BACKUP_RETENTION_COUNT: ${{ github.event.inputs.retention_count || '30' }}
         run: python scripts/backup/drive_upload.py "${{ steps.backup.outputs.backup_dir }}"
 

@@ -109,18 +109,39 @@ Configure these as **GitHub Actions repository secrets**
 (Settings → Secrets and variables → Actions → New repository secret).
 Names only — never put the values anywhere in the repository.
 
+Always required:
+
 | Secret | Contents |
 | --- | --- |
 | `SUPABASE_DB_URL` | PostgreSQL connection URI for the production database (see below) |
-| `WORKLOAD_IDENTITY_PROVIDER` | Full resource name of the Workload Identity Federation provider, `projects/<number>/locations/global/workloadIdentityPools/<pool>/providers/<provider>` |
-| `SERVICE_ACCOUNT_EMAIL` | Email of the backup service account that the workflow impersonates |
 | `GOOGLE_DRIVE_FOLDER_ID` | ID of the Drive folder that holds the backups |
 
-Google authentication uses **GitHub Actions OIDC + Workload Identity
-Federation** (`google-github-actions/auth`): each run exchanges a short-lived
-GitHub OIDC token for a short-lived Google access token as the service
-account. There are **no long-lived service-account JSON keys** anywhere, and
-the workflow declares `permissions: id-token: write` for this purpose.
+Plus **one** of the two Google Drive authentication modes. The workflow picks
+the mode automatically: if `GOOGLE_OAUTH_REFRESH_TOKEN` is set it uses
+mode A, otherwise mode B.
+
+**Mode A — OAuth user (personal Gmail / My Drive folder).** Uploads run as
+*you*; files are owned by your account and use your storage quota. This is
+the only option when the folder lives in a personal My Drive, because
+Google service accounts have no Drive storage quota.
+
+| Secret | Contents |
+| --- | --- |
+| `GOOGLE_OAUTH_CLIENT_ID` | OAuth client ID (Desktop app) from Google Cloud |
+| `GOOGLE_OAUTH_CLIENT_SECRET` | Its client secret |
+| `GOOGLE_OAUTH_REFRESH_TOKEN` | Refresh token minted once with `scripts/backup/oauth_consent.py` |
+
+**Mode B — OIDC + Workload Identity Federation (Google Workspace / Shared
+drive folder).** `google-github-actions/auth` exchanges a short-lived GitHub
+OIDC token for a short-lived Google token as the service account; the
+workflow declares `permissions: id-token: write` for this.
+
+| Secret | Contents |
+| --- | --- |
+| `WORKLOAD_IDENTITY_PROVIDER` | `projects/<number>/locations/global/workloadIdentityPools/<pool>/providers/<provider>` |
+| `SERVICE_ACCOUNT_EMAIL` | Email of the backup service account that the workflow impersonates |
+
+Neither mode uses long-lived service-account JSON keys.
 
 ### `SUPABASE_DB_URL` — which connection string to use
 
@@ -139,9 +160,10 @@ Why the *Session* pooler:
 - The *Transaction* pooler (port 6543) does not support the session-level
   features `pg_dump` needs; do not use it.
 
-If your project has the IPv4 add-on, the direct connection
-(`db.<ref>.supabase.co:5432`, i.e. the backend's `DIRECT_URL`) also works.
-If the first run fails in *Create and validate backup* with a network /
+The direct connection (`db.<ref>.supabase.co:5432`, i.e. the backend's
+`DIRECT_URL`) also works when it is reachable over IPv4 (IPv4 add-on, or a
+project whose direct host resolves over IPv4 — this was the case for the
+first successful production run). If a run fails in *Create and validate backup* with a network /
 `could not translate host name` / `Network is unreachable` error, switch the
 secret to the Session pooler URI. URL-encode special characters in the
 password (`@` → `%40`, etc.). Do **not** reuse or change any application
@@ -155,7 +177,28 @@ environment variable — this is a separate secret.
    (e.g. `hspl-erp-backups`), or pick an existing one.
 2. **APIs & Services → Library → Google Drive API → Enable.**
 
-### 2. Service account (no keys)
+### 2a. Mode A — OAuth user credentials (personal Gmail)
+
+1. **APIs & Services → OAuth consent screen**: user type *External*, fill in
+   the app name and your email. Under **Audience** set the publishing status
+   to **In production** — refresh tokens issued while the app is in
+   *Testing* expire after 7 days and the backups would start failing.
+   (Google shows an "unverified app" warning during consent; that is fine
+   for an app only you use — click *Advanced → Go to … (unsafe)*.)
+2. **APIs & Services → Credentials → Create credentials → OAuth client ID**,
+   application type **Desktop app**. Copy the client ID and secret.
+3. On your own computer, logged into the Google account that owns the
+   backup folder, run `python3 scripts/backup/oauth_consent.py`, paste the
+   client ID/secret, approve the consent screen. It prints the three
+   `GOOGLE_OAUTH_*` values to store as GitHub secrets. Nothing is written
+   to disk; do not share the refresh token.
+4. Skip sections 2b/2c; the Drive folder just needs to be owned by (or
+   shared as Editor with) that Google account.
+
+To revoke: <https://myaccount.google.com/permissions> → remove the app, and
+delete the GitHub secrets.
+
+### 2b. Mode B — Service account (no keys)
 
 1. **IAM & Admin → Service Accounts → Create service account.**
    Name it e.g. `db-backup-uploader`. It needs **no** IAM roles on the
@@ -163,7 +206,7 @@ environment variable — this is a separate secret.
 2. Do **not** create a JSON key. Note the service-account email
    (`db-backup-uploader@<project>.iam.gserviceaccount.com`).
 
-### 2b. Workload Identity Federation for GitHub Actions
+### 2c. Mode B — Workload Identity Federation for GitHub Actions
 
 1. **IAM & Admin → Workload Identity Federation → Create pool** (e.g.
    `github-actions`).
@@ -183,20 +226,22 @@ environment variable — this is a separate secret.
 ### 3. Google Drive folder
 
 1. In Google Drive create a folder, e.g. `HSPL ERP DB Backups`.
-   **Strongly recommended:** create it inside a **Shared drive**
-   (Google Workspace) rather than My Drive — see
-   [Limitations](#limitations) about service-account storage quota.
-2. Share that folder (or the shared drive) with the service-account email
-   as **Editor** (Shared drive: *Content manager*).
+   Mode B requires it to be inside a **Shared drive** (Google Workspace) —
+   a service account cannot upload into My Drive (see
+   [Limitations](#limitations)). Mode A works with a plain My Drive folder.
+2. Mode B only: share that folder (or the shared drive) with the
+   service-account email as **Editor** (Shared drive: *Content manager*).
 3. Open the folder; the URL is
    `https://drive.google.com/drive/folders/<FOLDER_ID>`. Copy `<FOLDER_ID>`.
 
 The service account can only see what is explicitly shared with it — it
-has no access to the rest of your Drive.
+has no access to the rest of your Drive. In mode A the OAuth token has the
+full `drive` scope for your account, so keep the refresh token secret.
 
 ### 4. GitHub secrets
 
-Add the four secrets listed above.
+Add `SUPABASE_DB_URL`, `GOOGLE_DRIVE_FOLDER_ID` and the secrets for your
+chosen mode.
 
 ### 5. First run
 
@@ -241,12 +286,13 @@ default (Settings → Notifications → Actions).
 | Failing step | What to check |
 | --- | --- |
 | *Check required secrets* | One of the four secrets is missing or empty |
-| *Authenticate to Google Cloud* | WIF provider name wrong, attribute condition does not match this repo, service account missing `roles/iam.workloadIdentityUser` for the pool principal, or `id-token: write` permission removed |
+| *Authenticate to Google Cloud* (mode B) | WIF provider name wrong, attribute condition does not match this repo, service account missing `roles/iam.workloadIdentityUser` for the pool principal, or `id-token: write` permission removed |
+| *Upload* — `OAuth refresh token rejected` (mode A) | Token expired (OAuth app still in *Testing*), revoked, or password/security change; re-run `oauth_consent.py` and update the secret |
 | *Create and validate backup* — connection error | `SUPABASE_DB_URL` wrong/rotated password, using direct IPv6 host from GitHub, project paused |
 | *Create and validate backup* — `pg_dump ... is older than server` | Supabase upgraded PostgreSQL; bump `PG_MAJOR` in the workflow |
 | *Create and validate backup* — `no TABLE DATA entries` | Dump connected to the wrong database/schema |
 | *Upload* — `cannot access GOOGLE_DRIVE_FOLDER_ID` | Folder not shared with the service account, wrong ID, or Drive API not enabled |
-| *Upload* — `storageQuotaExceeded` | Folder is in My Drive; move it to a Shared drive (see Limitations) |
+| *Upload* — `storageQuotaExceeded` | Mode B with a My Drive folder; switch to mode A or move the folder to a Shared drive (see Limitations) |
 | *Upload* — `verification failed` | Transient Drive issue; re-run manually. If persistent, do not trust that day's backup |
 | *Upload* — `already exists ... not created by this automation` | Someone manually created a folder/file with the same name in the backup folder; rename it |
 
@@ -282,9 +328,10 @@ never delete the root folder (its ID is in the GitHub secret).
   accounts in *My Drive*; if uploads fail with `storageQuotaExceeded`, put
   the backup folder in a **Shared drive** (files there are owned by the
   drive, and the script already passes `supportsAllDrives`). A personal
-  Gmail account cannot create shared drives; in that case the fallback is
-  an OAuth refresh token for a real user, which this implementation does
-  not currently support.
+  Gmail account cannot create shared drives; use mode A (OAuth user
+  credentials) instead. Mode A's refresh token is a long-lived credential
+  for your Google account — store it only as a GitHub secret and revoke it
+  if it may have leaked.
 - **Point-in-time.** Backups are daily snapshots; up to 24 h of data can be
   lost. Supabase's own PITR add-on is the option for tighter windows.
 - **Consistency.** `pg_dump` takes a consistent snapshot of the `public`

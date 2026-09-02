@@ -1,15 +1,23 @@
 #!/usr/bin/env python3
 """Upload a validated backup directory to Google Drive and apply retention.
 
-Authentication: Google Application Default Credentials. In GitHub Actions the
-`google-github-actions/auth` step (OIDC / Workload Identity Federation,
-impersonating the backup service account) writes a credential file and sets
-GOOGLE_APPLICATION_CREDENTIALS; no long-lived keys are used.
+Authentication (first match wins):
+  1. OAuth user credentials, when GOOGLE_OAUTH_REFRESH_TOKEN is set. Files are
+     then owned by that Google user and count against *their* Drive quota.
+     Required for folders in a personal (My Drive) account, because service
+     accounts have no Drive storage quota.
+  2. Google Application Default Credentials, e.g. the credential file written
+     by `google-github-actions/auth` (OIDC / Workload Identity Federation as
+     the backup service account). Works when the root folder is in a Shared
+     drive.
+No long-lived service-account keys are used in either mode.
 
 Required env:
-  GOOGLE_DRIVE_FOLDER_ID       ID of the shared backup root folder
+  GOOGLE_DRIVE_FOLDER_ID       ID of the backup root folder
 Optional env:
   BACKUP_RETENTION_COUNT       newest N backup folders to keep (default 30, 0 disables deletion)
+  GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET, GOOGLE_OAUTH_REFRESH_TOKEN
+                               enable OAuth user mode (all three required together)
 
 Usage: drive_upload.py <local_backup_dir>
 
@@ -29,7 +37,9 @@ import sys
 import time
 
 import google.auth
-from google.auth.exceptions import DefaultCredentialsError
+from google.auth.exceptions import DefaultCredentialsError, RefreshError
+from google.auth.transport.requests import Request as AuthRequest
+from google.oauth2.credentials import Credentials as UserCredentials
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaFileUpload
@@ -68,12 +78,39 @@ def sha256_of(path: str) -> str:
     return h.hexdigest()
 
 
-def build_service():
+def load_credentials():
+    oauth = {k: os.environ.get(f"GOOGLE_OAUTH_{k}", "") for k in ("CLIENT_ID", "CLIENT_SECRET", "REFRESH_TOKEN")}
+    if any(oauth.values()):
+        missing = [f"GOOGLE_OAUTH_{k}" for k, v in oauth.items() if not v]
+        if missing:
+            fail(f"OAuth mode needs all of CLIENT_ID/CLIENT_SECRET/REFRESH_TOKEN; missing {missing}")
+        creds = UserCredentials(
+            token=None,
+            refresh_token=oauth["REFRESH_TOKEN"],
+            client_id=oauth["CLIENT_ID"],
+            client_secret=oauth["CLIENT_SECRET"],
+            token_uri="https://oauth2.googleapis.com/token",
+            scopes=SCOPES,
+        )
+        try:
+            creds.refresh(AuthRequest())
+        except RefreshError as exc:
+            fail(
+                f"OAuth refresh token rejected ({exc}); re-run scripts/backup/oauth_consent.py to mint a new one "
+                "(tokens from an OAuth app still in 'Testing' status expire after 7 days)"
+            )
+        print("    auth: OAuth user credentials")
+        return creds
     try:
         creds, _ = google.auth.default(scopes=SCOPES)
     except DefaultCredentialsError as exc:
-        fail(f"no Google credentials available ({exc}); the OIDC auth step must run before this script")
-    return build("drive", "v3", credentials=creds, cache_discovery=False)
+        fail(f"no Google credentials available ({exc}); set GOOGLE_OAUTH_* or run the OIDC auth step first")
+    print("    auth: Application Default Credentials (service account)")
+    return creds
+
+
+def build_service():
+    return build("drive", "v3", credentials=load_credentials(), cache_discovery=False)
 
 
 def get_root(service, folder_id: str) -> dict:
@@ -82,7 +119,7 @@ def get_root(service, folder_id: str) -> dict:
             service.files().get(fileId=folder_id, fields="id,name,mimeType,driveId", supportsAllDrives=True)
         )
     except HttpError as exc:
-        fail(f"cannot access GOOGLE_DRIVE_FOLDER_ID ({exc.resp.status}); is the folder shared with the service account?")
+        fail(f"cannot access GOOGLE_DRIVE_FOLDER_ID ({exc.resp.status}); is the folder owned by / shared with the uploading account?")
     if root["mimeType"] != FOLDER_MIME:
         fail("GOOGLE_DRIVE_FOLDER_ID does not point to a folder")
     return root
@@ -225,6 +262,7 @@ def main() -> None:
         fail("GOOGLE_DRIVE_FOLDER_ID is not set")
     keep = int(os.environ.get("BACKUP_RETENTION_COUNT", "30"))
 
+    print("==> Authenticating to Google")
     service = build_service()
     print("==> Checking Drive folder access")
     root = get_root(service, folder_id)
