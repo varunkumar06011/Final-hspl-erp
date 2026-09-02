@@ -20,10 +20,17 @@ import { ensureBankLedger } from './ledger.routes';
 import { postVoucher, generateVoucherNumber } from './voucher.routes';
 import { VoucherType } from '@hospital-erp/shared';
 
-// Reject future dates for accounting entries
-function isFutureDate(dateStr: string | undefined): boolean {
-  if (!dateStr) return false;
-  return new Date(dateStr) > new Date();
+// Reject future dates for accounting entries.
+// Compares local calendar dates (not UTC timestamps) so that selecting today's
+// date is never rejected due to timezone offset (e.g. IST is UTC+5:30, so UTC
+// midnight of "today" can appear "in the future" relative to early-morning UTC).
+function isFutureDate(dateInput: Date | string | undefined): boolean {
+  if (!dateInput) return false;
+  const input = new Date(dateInput);
+  const today = new Date();
+  const inputDateOnly = new Date(input.getFullYear(), input.getMonth(), input.getDate());
+  const todayOnly = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  return inputDateOnly > todayOnly;
 }
 
 // ── Base CRUD via factory ──
@@ -62,13 +69,11 @@ const crudRouter = createCrudRouter({
       console.error(`[BankAccount] auto-ledger creation failed for ${record.id}:`, err),
     );
   },
-  afterUpdate: async (record, _userId, _projectId) => {
-    if (record.accountName) {
-      await prisma.ledger.updateMany({
-        where: { linkedEntityType: 'BANK_ACCOUNT', linkedEntityId: record.id as string, deletedAt: null },
-        data: { name: record.accountName as string },
-      }).catch((err) => console.error(`[BankAccount] ledger name sync failed for ${record.id}:`, err));
-    }
+  afterUpdate: async (record, _userId, projectId) => {
+    // Re-sync the bank ledger name (handles null accountNumber, name changes, etc.)
+    await ensureBankLedger(record.id as string, projectId).catch((err) =>
+      console.error(`[BankAccount] ledger name sync failed for ${record.id}:`, err),
+    );
   },
 });
 

@@ -19,10 +19,16 @@ import { validateMiddleware } from '../middleware/validate';
 import { logAudit } from '../services/audit.service';
 import { ensureCashLedger, ensureBankLedger } from './ledger.routes';
 
-// Reject future dates for accounting entries
-function isFutureDate(dateStr: string | undefined): boolean {
-  if (!dateStr) return false;
-  return new Date(dateStr) > new Date();
+// Reject future dates for accounting entries.
+// Compares local calendar dates (not UTC timestamps) so that selecting today's
+// date is never rejected due to timezone offset.
+function isFutureDate(dateInput: Date | string | undefined): boolean {
+  if (!dateInput) return false;
+  const input = new Date(dateInput);
+  const today = new Date();
+  const inputDateOnly = new Date(input.getFullYear(), input.getMonth(), input.getDate());
+  const todayOnly = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  return inputDateOnly > todayOnly;
 }
 import { postVoucher, generateVoucherNumber } from './voucher.routes';
 

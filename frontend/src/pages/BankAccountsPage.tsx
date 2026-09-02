@@ -44,7 +44,7 @@ import api, { extractErrorMessage } from '../config/api';
 import ResponsiveDialog from '../components/ResponsiveDialog';
 import RefreshButton from '../components/RefreshButton';
 import LedgerAutocomplete, { type LedgerOption } from '../components/LedgerAutocomplete';
-import { formatCurrency, formatIndianNumber, formatDate, amountToWords } from '../utils/enumOptions';
+import { formatCurrency, formatIndianNumber, formatDate, amountToWords, todayLocalDate } from '../utils/enumOptions';
 import { LedgerGroup } from '@hospital-erp/shared';
 
 interface BankAccount {
@@ -727,7 +727,7 @@ export default function BankAccountsPage() {
               )}
             </Box>
 
-            <TextField label="Date" type="date" value={txnForm.date ?? ''} onChange={(e) => setTxnForm({ ...txnForm, date: e.target.value })} size="small" InputLabelProps={{ shrink: true }} inputProps={{ max: new Date().toISOString().split('T')[0] }} />
+            <TextField label="Date" type="date" value={txnForm.date ?? ''} onChange={(e) => setTxnForm({ ...txnForm, date: e.target.value })} size="small" InputLabelProps={{ shrink: true }} inputProps={{ max: todayLocalDate() }} />
             <TextField label="Description" value={txnForm.description ?? ''} onChange={(e) => setTxnForm({ ...txnForm, description: e.target.value })} size="small" multiline rows={2} />
           </Box>
         </DialogContent>
@@ -760,7 +760,7 @@ export default function BankAccountsPage() {
               size="small"
               InputProps={{ startAdornment: <InputAdornment position="start">₹</InputAdornment> }}
             />
-            <TextField label="Date" type="date" value={transferForm.date ?? ''} onChange={(e) => setTransferForm({ ...transferForm, date: e.target.value })} size="small" InputLabelProps={{ shrink: true }} inputProps={{ max: new Date().toISOString().split('T')[0] }} />
+            <TextField label="Date" type="date" value={transferForm.date ?? ''} onChange={(e) => setTransferForm({ ...transferForm, date: e.target.value })} size="small" InputLabelProps={{ shrink: true }} inputProps={{ max: todayLocalDate() }} />
             <TextField label="Description" value={transferForm.description ?? ''} onChange={(e) => setTransferForm({ ...transferForm, description: e.target.value })} size="small" multiline rows={2} />
           </Box>
         </DialogContent>

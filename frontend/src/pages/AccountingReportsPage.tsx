@@ -28,7 +28,7 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import api from '../config/api';
 import RefreshButton from '../components/RefreshButton';
-import { formatCurrency, formatDate } from '../utils/enumOptions';
+import { formatCurrency, formatDate, todayLocalDate } from '../utils/enumOptions';
 import { LedgerGroup, isDebitNatureGroup } from '@hospital-erp/shared';
 
 const GROUP_ORDER = [
@@ -81,18 +81,18 @@ export default function AccountingReportsPage() {
   const [selectedGroup, setSelectedGroup] = useState('');
 
   // Day book state
-  const [dayBookDate, setDayBookDate] = useState(new Date().toISOString().split('T')[0]);
+  const [dayBookDate, setDayBookDate] = useState(todayLocalDate());
 
   // Trial balance / BS state
-  const [asOfDate, setAsOfDate] = useState(new Date().toISOString().split('T')[0]);
+  const [asOfDate, setAsOfDate] = useState(todayLocalDate());
 
   // P&L state
   const [plStartDate, setPlStartDate] = useState(new Date(new Date().getFullYear(), 0, 1).toISOString().split('T')[0]);
-  const [plEndDate, setPlEndDate] = useState(new Date().toISOString().split('T')[0]);
+  const [plEndDate, setPlEndDate] = useState(todayLocalDate());
 
   // Cost center report state
   const [ccStartDate, setCcStartDate] = useState(new Date(new Date().getFullYear(), 0, 1).toISOString().split('T')[0]);
-  const [ccEndDate, setCcEndDate] = useState(new Date().toISOString().split('T')[0]);
+  const [ccEndDate, setCcEndDate] = useState(todayLocalDate());
 
   // Fetch all ledgers for autocomplete
   const { data: ledgersData } = useQuery({

@@ -37,7 +37,7 @@ import {
   Cancel as AbsentIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { formatCurrency, formatDate, formatIndianNumber } from '../utils/enumOptions';
+import { formatCurrency, formatDate, formatIndianNumber, todayLocalDate } from '../utils/enumOptions';
 import api, { extractErrorMessage } from '../config/api';
 import ResponsiveTable from '../components/ResponsiveTable';
 import RefreshButton from '../components/RefreshButton';
@@ -88,13 +88,13 @@ export default function AttendancePage() {
   const [successMsg, setSuccessMsg] = useState('');
 
   // Attendance marking state
-  const [attendanceDate, setAttendanceDate] = useState(new Date().toISOString().slice(0, 10));
+  const [attendanceDate, setAttendanceDate] = useState(todayLocalDate());
   const [attendanceType, setAttendanceType] = useState<'COMPANY' | 'LABOUR'>('COMPANY');
   const [attendanceRecords, setAttendanceRecords] = useState<Record<string, { present: boolean; notes: string }>>({});
 
   // Summary state
   const [summaryStart, setSummaryStart] = useState(new Date(new Date().setDate(1)).toISOString().slice(0, 10));
-  const [summaryEnd, setSummaryEnd] = useState(new Date().toISOString().slice(0, 10));
+  const [summaryEnd, setSummaryEnd] = useState(todayLocalDate());
   const [summaryType, setSummaryType] = useState('');
 
   const queryClient = useQueryClient();

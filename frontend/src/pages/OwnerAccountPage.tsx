@@ -37,7 +37,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { extractErrorMessage } from '../config/api';
 import ResponsiveDialog from '../components/ResponsiveDialog';
 import RefreshButton from '../components/RefreshButton';
-import { formatCurrency, formatIndianNumber, formatDate } from '../utils/enumOptions';
+import { formatCurrency, formatIndianNumber, formatDate, todayLocalDate } from '../utils/enumOptions';
 
 interface OwnerAccount {
   id: string;
@@ -385,7 +385,7 @@ export default function OwnerAccountPage() {
               size="small"
               InputProps={{ startAdornment: <InputAdornment position="start">₹</InputAdornment> }}
             />
-            <TextField label="Date" type="date" value={contribForm.date ?? ''} onChange={(e) => setContribForm({ ...contribForm, date: e.target.value })} size="small" InputLabelProps={{ shrink: true }} inputProps={{ max: new Date().toISOString().split('T')[0] }} />
+            <TextField label="Date" type="date" value={contribForm.date ?? ''} onChange={(e) => setContribForm({ ...contribForm, date: e.target.value })} size="small" InputLabelProps={{ shrink: true }} inputProps={{ max: todayLocalDate() }} />
             <TextField label="Description" value={contribForm.description ?? ''} onChange={(e) => setContribForm({ ...contribForm, description: e.target.value })} size="small" multiline rows={2} />
           </Box>
         </DialogContent>

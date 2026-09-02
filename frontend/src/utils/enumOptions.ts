@@ -38,6 +38,19 @@ export function formatDate(date: unknown): string {
   });
 }
 
+/**
+ * Returns today's date in YYYY-MM-DD format using the LOCAL timezone.
+ * Use this for date input `max` attributes instead of `new Date().toISOString().split('T')[0]`,
+ * which uses UTC and can be a day behind in timezones east of UTC (e.g. IST).
+ */
+export function todayLocalDate(): string {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  const d = String(now.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
 // ── Amount to words (Indian system) ──
 // e.g. 5250 → "Rupees Five Thousand Two Hundred Fifty Only"
 //      10500.50 → "Rupees Ten Thousand Five Hundred and Fifty Paise Only"

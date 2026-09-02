@@ -41,7 +41,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { extractErrorMessage } from '../config/api';
 import ResponsiveDialog from '../components/ResponsiveDialog';
 import RefreshButton from '../components/RefreshButton';
-import { formatCurrency, formatIndianNumber, formatDate } from '../utils/enumOptions';
+import { formatCurrency, formatIndianNumber, formatDate, todayLocalDate } from '../utils/enumOptions';
 
 interface JournalEntry {
   id: string;
@@ -492,7 +492,7 @@ export default function JournalVouchersPage() {
             <TextField select size="small" label="JV Type" value={jvType} onChange={(e) => setJvType(e.target.value)} sx={{ minWidth: 200 }}>
               {Object.entries(JV_TYPE_LABELS).map(([value, label]) => <MenuItem key={value} value={value}>{label}</MenuItem>)}
             </TextField>
-            <TextField size="small" type="date" label="Date" value={jvDate} onChange={(e) => setJvDate(e.target.value)} InputLabelProps={{ shrink: true }} inputProps={{ max: new Date().toISOString().split('T')[0] }} />
+            <TextField size="small" type="date" label="Date" value={jvDate} onChange={(e) => setJvDate(e.target.value)} InputLabelProps={{ shrink: true }} inputProps={{ max: todayLocalDate() }} />
             <TextField size="small" label="Description" value={jvDescription} onChange={(e) => setJvDescription(e.target.value)} sx={{ minWidth: 300 }} />
           </Box>
 

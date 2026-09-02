@@ -410,6 +410,18 @@ export async function ensureVendorLedger(vendorId: string, projectId: string): P
 }
 
 /**
+ * Build a display name for a bank ledger, handling null accountNumber gracefully.
+ * Format: "BANK_NAME - A/c 12345" or "BANK_NAME - ACCOUNT_NAME" (when no account number).
+ */
+function bankLedgerName(account: { bankName: string | null; accountNumber: string | null; accountName: string }): string {
+  const bank = account.bankName ?? account.accountName;
+  if (account.accountNumber) {
+    return `${bank} - A/c ${account.accountNumber}`;
+  }
+  return `${bank} - ${account.accountName}`;
+}
+
+/**
  * Ensure a ledger exists for a bank account. Creates if missing.
  */
 export async function ensureBankLedger(bankAccountId: string, projectId: string): Promise<string> {
@@ -421,12 +433,19 @@ export async function ensureBankLedger(bankAccountId: string, projectId: string)
   const existing = await prisma.ledger.findFirst({
     where: { linkedEntityType: LedgerLinkType.BANK_ACCOUNT, linkedEntityId: bankAccountId, projectId, deletedAt: null },
   });
-  if (existing) return existing.id;
+  if (existing) {
+    // Fix legacy ledger names that contain "A/c null" (from before the null-safe fix)
+    const correctName = bankLedgerName(account);
+    if (existing.name !== correctName) {
+      await prisma.ledger.update({ where: { id: existing.id }, data: { name: correctName } });
+    }
+    return existing.id;
+  }
 
   const ledger = await prisma.ledger.create({
     data: {
       projectId,
-      name: `${account.bankName} - A/c ${account.accountNumber}`,
+      name: bankLedgerName(account),
       group: LedgerGroup.BANK,
       linkedEntityType: LedgerLinkType.BANK_ACCOUNT,
       linkedEntityId: bankAccountId,

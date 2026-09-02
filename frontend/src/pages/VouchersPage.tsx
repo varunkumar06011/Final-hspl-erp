@@ -46,7 +46,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { extractErrorMessage } from '../config/api';
 import ResponsiveDialog from '../components/ResponsiveDialog';
 import RefreshButton from '../components/RefreshButton';
-import { formatCurrency, formatIndianNumber, formatDate, amountToWords } from '../utils/enumOptions';
+import { formatCurrency, formatIndianNumber, formatDate, amountToWords, todayLocalDate } from '../utils/enumOptions';
 import { VoucherType, LedgerGroup, Permission, UserRole, hasPermission } from '@hospital-erp/shared';
 import LedgerAutocomplete, { type LedgerOption } from '../components/LedgerAutocomplete';
 import { useAuthStore } from '../stores/authStore';
@@ -364,7 +364,7 @@ export default function VouchersPage() {
   const duplicateVoucher = (voucher: Voucher) => {
     setEditingVoucherId(null);
     setSelectedVoucherType(voucher.voucherType as VoucherType);
-    setVoucherDate(new Date().toISOString().split('T')[0]); // today, not the original date
+    setVoucherDate(todayLocalDate()); // today, not the original date
     setVoucherDescription(voucher.description ?? '');
     setBillSettlements([]);
     setError('');
@@ -561,7 +561,7 @@ export default function VouchersPage() {
 
     // Block future dates
     if (voucherDate) {
-      const today = new Date().toISOString().split('T')[0];
+      const today = todayLocalDate();
       if (voucherDate > today) {
         setError('Voucher date cannot be in the future');
         return;
@@ -871,7 +871,7 @@ export default function VouchersPage() {
               value={voucherDate}
               onChange={(e) => setVoucherDate(e.target.value)}
               InputLabelProps={{ shrink: true }}
-              inputProps={{ max: new Date().toISOString().split('T')[0] }}
+              inputProps={{ max: todayLocalDate() }}
               sx={{ width: 180 }}
             />
           </Box>
@@ -1063,7 +1063,7 @@ export default function VouchersPage() {
                   value={chequeDate}
                   onChange={(e) => setChequeDate(e.target.value)}
                   InputLabelProps={{ shrink: true }}
-                  inputProps={{ max: new Date().toISOString().split('T')[0] }}
+                  inputProps={{ max: todayLocalDate() }}
                   sx={{ flex: 1 }}
                 />
               </Stack>

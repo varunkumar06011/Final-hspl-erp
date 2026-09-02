@@ -46,7 +46,7 @@ import {
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { PaymentStatus, PaymentMode, UserRole, POPaymentType } from '@hospital-erp/shared';
-import { formatCurrency, formatIndianNumber, STATUS_COLORS } from '../utils/enumOptions';
+import { formatCurrency, formatIndianNumber, STATUS_COLORS, todayLocalDate } from '../utils/enumOptions';
 import api, { extractErrorMessage } from '../config/api';
 import { useAuthStore } from '../stores/authStore';
 import { downloadFile } from '../utils/file';
@@ -1044,7 +1044,7 @@ export default function PaymentsPage() {
                 size="small"
                 sx={{ flex: 1, minWidth: 0 }}
                 InputLabelProps={{ shrink: true }}
-                inputProps={{ max: new Date().toISOString().split('T')[0] }}
+                inputProps={{ max: todayLocalDate() }}
               />
               <TextField
                 select
