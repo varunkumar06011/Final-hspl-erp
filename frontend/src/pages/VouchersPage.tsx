@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Box,
   Typography,
@@ -334,6 +334,29 @@ export default function VouchersPage() {
     resetForm();
     setCreateOpen(true);
   };
+
+  // Keyboard shortcuts: F4=Contra, F5=Payment, F6=Receipt, F7=Journal
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      // Don't trigger when a dialog is open or when typing in a field
+      if (createOpen || detailVoucher) return;
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      const map: Record<string, VoucherType> = {
+        F4: VoucherType.CONTRA,
+        F5: VoucherType.PAYMENT,
+        F6: VoucherType.RECEIPT,
+        F7: VoucherType.JOURNAL,
+      };
+      const vt = map[e.key];
+      if (vt) {
+        e.preventDefault();
+        openCreate(vt);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [createOpen, detailVoucher]);
 
   // Duplicate a voucher — opens create dialog pre-filled with the voucher's data
   const duplicateVoucher = (voucher: Voucher) => {
