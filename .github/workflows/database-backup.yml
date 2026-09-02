@@ -1,0 +1,107 @@
+name: Database Backup
+
+on:
+  schedule:
+    # 20:47 UTC daily == 02:17 IST (India). GitHub cron is always UTC.
+    - cron: "47 20 * * *"
+  workflow_dispatch:
+    inputs:
+      retention_count:
+        description: "Number of newest daily backups to keep on Google Drive (0 = never delete)"
+        required: false
+        default: "30"
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: database-backup
+  cancel-in-progress: false
+
+env:
+  PG_MAJOR: "17"
+
+jobs:
+  backup:
+    name: Backup Supabase PostgreSQL to Google Drive
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout backup scripts
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            scripts/backup
+          sparse-checkout-cone-mode: false
+
+      - name: Check required secrets are configured
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          WORKLOAD_IDENTITY_PROVIDER: ${{ secrets.WORKLOAD_IDENTITY_PROVIDER }}
+          SERVICE_ACCOUNT_EMAIL: ${{ secrets.SERVICE_ACCOUNT_EMAIL }}
+          GOOGLE_DRIVE_FOLDER_ID: ${{ secrets.GOOGLE_DRIVE_FOLDER_ID }}
+        run: |
+          set -euo pipefail
+          missing=0
+          for v in SUPABASE_DB_URL WORKLOAD_IDENTITY_PROVIDER SERVICE_ACCOUNT_EMAIL GOOGLE_DRIVE_FOLDER_ID; do
+            if [ -z "${!v}" ]; then echo "::error::secret $v is not configured"; missing=1; fi
+          done
+          exit $missing
+
+      - name: Install PostgreSQL client ${{ env.PG_MAJOR }}
+        run: |
+          set -euo pipefail
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+            https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
+            | sudo tee /etc/apt/sources.list.d/pgdg.list >/dev/null
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends "postgresql-client-${PG_MAJOR}"
+          pg_dump --version
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: scripts/backup/requirements.txt
+
+      - name: Install Google Drive client
+        run: pip install --quiet -r scripts/backup/requirements.txt
+
+      - name: Create and validate backup
+        id: backup
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          BACKUP_DIR: ${{ runner.temp }}/backup
+        run: bash scripts/backup/backup-database.sh
+
+      - name: Authenticate to Google Cloud (OIDC / Workload Identity Federation)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.SERVICE_ACCOUNT_EMAIL }}
+          create_credentials_file: true
+          cleanup_credentials: true
+
+      - name: Upload to Google Drive, verify, apply retention
+        env:
+          GOOGLE_DRIVE_FOLDER_ID: ${{ secrets.GOOGLE_DRIVE_FOLDER_ID }}
+          BACKUP_RETENTION_COUNT: ${{ github.event.inputs.retention_count || '30' }}
+        run: python scripts/backup/drive_upload.py "${{ steps.backup.outputs.backup_dir }}"
+
+      - name: Summary
+        if: success()
+        run: |
+          {
+            echo "### Database backup succeeded"
+            echo "- Backup date: \`${{ steps.backup.outputs.backup_date }}\`"
+            echo "- Uploaded to Google Drive folder \`${{ steps.backup.outputs.backup_date }}/\` (see workflow log for file list)"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Cleanup local backup files
+        if: always()
+        run: rm -rf "${{ runner.temp }}/backup"
