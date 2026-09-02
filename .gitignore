@@ -31,3 +31,7 @@ coverage/
 
 # Storage (dev)
 backend/uploads/
+
+# Python
+__pycache__/
+*.pyc
