@@ -127,6 +127,7 @@ export default function LedgersPage() {
 
   // Group management state
   const [groupDialogOpen, setGroupDialogOpen] = useState(false);
+  const [editingGroup, setEditingGroup] = useState<{ id: string; name: string; parentGroup: string } | null>(null);
   const [groupForm, setGroupForm] = useState<{ name: string; parentGroup: string }>({ name: '', parentGroup: LedgerGroup.INDIRECT_EXPENSE });
   const [groupError, setGroupError] = useState('');
 
@@ -244,6 +245,24 @@ export default function LedgersPage() {
       setGroupForm({ name: '', parentGroup: LedgerGroup.INDIRECT_EXPENSE });
       setGroupError('');
       setSuccessMsg('Group created');
+      setTimeout(() => setSuccessMsg(''), 3000);
+    },
+    onError: (err: unknown) => setGroupError(extractErrorMessage(err)),
+  });
+
+  const updateGroupMutation = useMutation({
+    mutationFn: async (payload: { id: string; name: string; parentGroup: string }) => {
+      const response = await api.patch(`/ledgers/groups/${payload.id}`, { name: payload.name, parentGroup: payload.parentGroup });
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/ledgers/groups'] });
+      queryClient.invalidateQueries({ queryKey: ['/ledgers'] });
+      setGroupDialogOpen(false);
+      setEditingGroup(null);
+      setGroupForm({ name: '', parentGroup: LedgerGroup.INDIRECT_EXPENSE });
+      setGroupError('');
+      setSuccessMsg('Group updated');
       setTimeout(() => setSuccessMsg(''), 3000);
     },
     onError: (err: unknown) => setGroupError(extractErrorMessage(err)),
@@ -498,6 +517,9 @@ export default function LedgersPage() {
                         <TableCell sx={{ fontWeight: 500 }}>{g.name}</TableCell>
                         <TableCell><Chip label={GROUP_LABELS[g.parentGroup] ?? g.parentGroup} size="small" variant="outlined" /></TableCell>
                         <TableCell align="right">
+                          <IconButton size="small" color="primary" onClick={() => { setEditingGroup(g); setGroupForm({ name: g.name, parentGroup: g.parentGroup }); setGroupError(''); setGroupDialogOpen(true); }}>
+                            <EditIcon fontSize="small" />
+                          </IconButton>
                           <IconButton size="small" color="error" onClick={() => { if (confirm(`Delete group "${g.name}"? Ledgers using it will need to be reclassified.`)) deleteGroupMutation.mutate(g.id); }}>
                             <DeleteIcon fontSize="small" />
                           </IconButton>
@@ -512,9 +534,9 @@ export default function LedgersPage() {
         </Box>
       )}
 
-      {/* Group create dialog */}
-      <ResponsiveDialog open={groupDialogOpen} onClose={() => setGroupDialogOpen(false)} maxWidth="xs" fullWidth>
-        <DialogTitle>New Subgroup</DialogTitle>
+      {/* Group create/edit dialog */}
+      <ResponsiveDialog open={groupDialogOpen} onClose={() => { setGroupDialogOpen(false); setEditingGroup(null); }} maxWidth="xs" fullWidth>
+        <DialogTitle>{editingGroup ? 'Edit Subgroup' : 'New Subgroup'}</DialogTitle>
         <DialogContent>
           {groupError && <Alert severity="error" sx={{ mb: 2 }}>{groupError}</Alert>}
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
@@ -541,9 +563,20 @@ export default function LedgersPage() {
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setGroupDialogOpen(false)}>Cancel</Button>
-          <Button variant="contained" onClick={() => { if (!groupForm.name.trim()) { setGroupError('Enter a group name'); return; } createGroupMutation.mutate(groupForm); }} disabled={createGroupMutation.isPending}>
-            {createGroupMutation.isPending ? <CircularProgress size={20} /> : 'Create Group'}
+          <Button onClick={() => { setGroupDialogOpen(false); setEditingGroup(null); }}>Cancel</Button>
+          <Button
+            variant="contained"
+            onClick={() => {
+              if (!groupForm.name.trim()) { setGroupError('Enter a group name'); return; }
+              if (editingGroup) {
+                updateGroupMutation.mutate({ id: editingGroup.id, ...groupForm });
+              } else {
+                createGroupMutation.mutate(groupForm);
+              }
+            }}
+            disabled={createGroupMutation.isPending || updateGroupMutation.isPending}
+          >
+            {(createGroupMutation.isPending || updateGroupMutation.isPending) ? <CircularProgress size={20} /> : editingGroup ? 'Update Group' : 'Create Group'}
           </Button>
         </DialogActions>
       </ResponsiveDialog>

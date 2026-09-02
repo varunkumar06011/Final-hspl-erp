@@ -782,6 +782,76 @@ router.post(
   },
 );
 
+// PATCH /ledgers/groups/:id — edit a custom group (name and/or parentGroup)
+// If the group name changes, all ledgers using the old name are updated to the new name.
+router.patch(
+  '/groups/:id',
+  rbacMiddleware(Permission.MANAGE_FINANCE),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      const group = await prisma.ledgerCustomGroup.findFirst({
+        where: { id: req.params.id, projectId },
+      });
+      if (!group) {
+        res.status(404).json({ error: 'Group not found' });
+        return;
+      }
+
+      const { name, parentGroup } = req.body;
+      const newName = typeof name === 'string' && name.trim() ? name.trim() : null;
+      const newParent = parentGroup && Object.values(LedgerGroup).includes(parentGroup as LedgerGroup)
+        ? String(parentGroup)
+        : null;
+
+      if (!newName && !newParent) {
+        res.status(400).json({ error: 'Provide a new name or parent group to update' });
+        return;
+      }
+
+      const data: { name?: string; parentGroup?: string } = {};
+      if (newName && newName !== group.name) data.name = newName;
+      if (newParent && newParent !== group.parentGroup) data.parentGroup = newParent;
+
+      if (Object.keys(data).length === 0) {
+        res.json(group);
+        return;
+      }
+
+      // If renaming, update all ledgers that reference the old group name
+      if (data.name) {
+        await prisma.ledger.updateMany({
+          where: { group: group.name, projectId, deletedAt: null },
+          data: { group: data.name },
+        });
+      }
+
+      const updated = await prisma.ledgerCustomGroup.update({
+        where: { id: req.params.id },
+        data,
+      });
+
+      await logAudit({
+        userId: req.user!.id,
+        action: AuditAction.UPDATE,
+        entityType: 'LEDGER',
+        entityId: group.id,
+        projectId,
+        oldValue: { name: group.name, parentGroup: group.parentGroup },
+        newValue: data,
+      });
+
+      res.json(updated);
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        res.status(409).json({ error: 'A group with this name already exists' });
+        return;
+      }
+      next(error);
+    }
+  },
+);
+
 // DELETE /ledgers/groups/:id — delete a custom group (if no ledgers use it)
 router.delete(
   '/groups/:id',
