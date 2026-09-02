@@ -1044,6 +1044,7 @@ export default function PaymentsPage() {
                 size="small"
                 sx={{ flex: 1, minWidth: 0 }}
                 InputLabelProps={{ shrink: true }}
+                inputProps={{ max: new Date().toISOString().split('T')[0] }}
               />
               <TextField
                 select

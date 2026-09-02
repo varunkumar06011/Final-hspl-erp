@@ -557,6 +557,15 @@ export default function VouchersPage() {
   const handleCreate = () => {
     setError('');
 
+    // Block future dates
+    if (voucherDate) {
+      const today = new Date().toISOString().split('T')[0];
+      if (voucherDate > today) {
+        setError('Voucher date cannot be in the future');
+        return;
+      }
+    }
+
     // ── For simple vouchers (Payment/Receipt/Contra), build entries from the form ──
     if (isSimpleVoucher) {
       const amount = Number(simpleAmount.replace(/,/g, '')) || 0;
@@ -860,6 +869,7 @@ export default function VouchersPage() {
               value={voucherDate}
               onChange={(e) => setVoucherDate(e.target.value)}
               InputLabelProps={{ shrink: true }}
+              inputProps={{ max: new Date().toISOString().split('T')[0] }}
               sx={{ width: 180 }}
             />
           </Box>
@@ -1051,6 +1061,7 @@ export default function VouchersPage() {
                   value={chequeDate}
                   onChange={(e) => setChequeDate(e.target.value)}
                   InputLabelProps={{ shrink: true }}
+                  inputProps={{ max: new Date().toISOString().split('T')[0] }}
                   sx={{ flex: 1 }}
                 />
               </Stack>

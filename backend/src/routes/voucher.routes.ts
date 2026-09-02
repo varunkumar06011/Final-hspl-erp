@@ -245,6 +245,17 @@ router.post(
       const jvNumber = await generateVoucherNumber(String(voucherType));
       const voucherDate = date ? new Date(String(date)) : new Date();
 
+      // Block future dates
+      if (voucherDate > new Date()) {
+        res.status(400).json({ error: 'Voucher date cannot be in the future' });
+        return;
+      }
+      const chequeDateCreate = req.body.chequeDate ? new Date(String(req.body.chequeDate)) : null;
+      if (chequeDateCreate && chequeDateCreate > new Date()) {
+        res.status(400).json({ error: 'Cheque date cannot be in the future' });
+        return;
+      }
+
       // Post the voucher atomically: create JV + ledger entries + update ledger balances
       const result = await postVoucher({
         projectId,
@@ -261,7 +272,7 @@ router.post(
         billSettlements: validatedSettlements,
         userId: req.user!.id,
         chequeNumber: req.body.chequeNumber ?? null,
-        chequeDate: req.body.chequeDate ? new Date(String(req.body.chequeDate)) : null,
+        chequeDate: chequeDateCreate,
       });
 
       await logAudit({
@@ -520,6 +531,16 @@ router.patch(
       const voucherDate = date ? new Date(String(date)) : voucher.date;
       const chequeNumber = req.body.chequeNumber !== undefined ? (req.body.chequeNumber || null) : voucher.chequeNumber;
       const chequeDate = req.body.chequeDate !== undefined ? (req.body.chequeDate ? new Date(String(req.body.chequeDate)) : null) : voucher.chequeDate;
+
+      // Block future dates
+      if (voucherDate > new Date()) {
+        res.status(400).json({ error: 'Voucher date cannot be in the future' });
+        return;
+      }
+      if (chequeDate && chequeDate > new Date()) {
+        res.status(400).json({ error: 'Cheque date cannot be in the future' });
+        return;
+      }
 
       // Execute the edit atomically: reverse old, apply new
       await prisma.$transaction(async (tx) => {

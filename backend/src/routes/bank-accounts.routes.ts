@@ -20,6 +20,12 @@ import { ensureBankLedger } from './ledger.routes';
 import { postVoucher, generateVoucherNumber } from './voucher.routes';
 import { VoucherType } from '@hospital-erp/shared';
 
+// Reject future dates for accounting entries
+function isFutureDate(dateStr: string | undefined): boolean {
+  if (!dateStr) return false;
+  return new Date(dateStr) > new Date();
+}
+
 // ── Base CRUD via factory ──
 const crudRouter = createCrudRouter({
   entityType: 'BANK_ACCOUNT',
@@ -227,6 +233,11 @@ router.post(
       const projectId = requireProjectId(req);
       const { amount, contraLedgerId, date, description } = req.body;
 
+      if (isFutureDate(date)) {
+        res.status(400).json({ error: 'Date cannot be in the future' });
+        return;
+      }
+
       // Find the bank ledger for this bank account
       const bankLedger = await prisma.ledger.findFirst({
         where: { linkedEntityType: 'BANK_ACCOUNT', linkedEntityId: req.params.id, projectId, deletedAt: null },
@@ -301,6 +312,11 @@ router.post(
       const projectId = requireProjectId(req);
       const { amount, contraLedgerId, date, description } = req.body;
 
+      if (isFutureDate(date)) {
+        res.status(400).json({ error: 'Date cannot be in the future' });
+        return;
+      }
+
       // Find the bank ledger for this bank account
       const bankLedger = await prisma.ledger.findFirst({
         where: { linkedEntityType: 'BANK_ACCOUNT', linkedEntityId: req.params.id, projectId, deletedAt: null },
@@ -373,6 +389,11 @@ router.post(
     try {
       const projectId = requireProjectId(req);
       const { fromAccountId, toAccountId, amount, date, description } = req.body;
+
+      if (isFutureDate(date)) {
+        res.status(400).json({ error: 'Date cannot be in the future' });
+        return;
+      }
 
       if (fromAccountId === toAccountId) {
         res.status(400).json({ error: 'Cannot transfer to the same account' });

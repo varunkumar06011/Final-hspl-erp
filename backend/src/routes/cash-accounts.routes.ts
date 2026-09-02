@@ -18,6 +18,12 @@ import { rbacMiddleware } from '../middleware/rbac';
 import { validateMiddleware } from '../middleware/validate';
 import { logAudit } from '../services/audit.service';
 import { ensureCashLedger, ensureBankLedger } from './ledger.routes';
+
+// Reject future dates for accounting entries
+function isFutureDate(dateStr: string | undefined): boolean {
+  if (!dateStr) return false;
+  return new Date(dateStr) > new Date();
+}
 import { postVoucher, generateVoucherNumber } from './voucher.routes';
 
 // ── Base CRUD via factory ──
@@ -135,6 +141,11 @@ router.post(
       const projectId = requireProjectId(req);
       const { amount, contraLedgerId, date, description } = req.body;
 
+      if (isFutureDate(date)) {
+        res.status(400).json({ error: 'Date cannot be in the future' });
+        return;
+      }
+
       // Find the cash ledger for this cash account
       const cashLedger = await prisma.ledger.findFirst({
         where: { linkedEntityType: 'CASH_ACCOUNT', linkedEntityId: req.params.id, projectId, deletedAt: null },
@@ -209,6 +220,11 @@ router.post(
       const projectId = requireProjectId(req);
       const { amount, contraLedgerId, date, description } = req.body;
 
+      if (isFutureDate(date)) {
+        res.status(400).json({ error: 'Date cannot be in the future' });
+        return;
+      }
+
       // Find the cash ledger for this cash account
       const cashLedger = await prisma.ledger.findFirst({
         where: { linkedEntityType: 'CASH_ACCOUNT', linkedEntityId: req.params.id, projectId, deletedAt: null },
@@ -282,6 +298,11 @@ router.post(
       const projectId = requireProjectId(req);
       const { fromAccountId, toAccountId, amount, date, description } = req.body;
 
+      if (isFutureDate(date)) {
+        res.status(400).json({ error: 'Date cannot be in the future' });
+        return;
+      }
+
       if (fromAccountId === toAccountId) {
         res.status(400).json({ error: 'Cannot transfer to the same account' });
         return;
@@ -323,6 +344,11 @@ router.post(
       const projectId = requireProjectId(req);
       const { bankAccountId, cashAccountId, amount, date, description } = req.body;
 
+      if (isFutureDate(date)) {
+        res.status(400).json({ error: 'Date cannot be in the future' });
+        return;
+      }
+
       const result = await transferBankToCash({
         bankAccountId,
         cashAccountId,
@@ -358,6 +384,11 @@ router.post(
     try {
       const projectId = requireProjectId(req);
       const { bankAccountId, cashAccountId, amount, date, description } = req.body;
+
+      if (isFutureDate(date)) {
+        res.status(400).json({ error: 'Date cannot be in the future' });
+        return;
+      }
 
       const result = await transferCashToBank({
         bankAccountId,

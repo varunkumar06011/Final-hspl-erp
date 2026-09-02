@@ -140,12 +140,19 @@ router.post(
 
       const jvNumber = await generateJvNumber();
 
+      // Block future dates
+      const jvDate = date ? new Date(date) : new Date();
+      if (jvDate > new Date()) {
+        res.status(400).json({ error: 'Journal voucher date cannot be in the future' });
+        return;
+      }
+
       const jv = await prisma.journalVoucher.create({
         data: {
           projectId,
           jvNumber,
           type,
-          date: date ? new Date(date) : new Date(),
+          date: jvDate,
           description: description ?? null,
           status: 'DRAFT',
           totalDebit,

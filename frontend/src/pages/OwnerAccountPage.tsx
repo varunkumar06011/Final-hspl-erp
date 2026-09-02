@@ -385,7 +385,7 @@ export default function OwnerAccountPage() {
               size="small"
               InputProps={{ startAdornment: <InputAdornment position="start">₹</InputAdornment> }}
             />
-            <TextField label="Date" type="date" value={contribForm.date ?? ''} onChange={(e) => setContribForm({ ...contribForm, date: e.target.value })} size="small" InputLabelProps={{ shrink: true }} />
+            <TextField label="Date" type="date" value={contribForm.date ?? ''} onChange={(e) => setContribForm({ ...contribForm, date: e.target.value })} size="small" InputLabelProps={{ shrink: true }} inputProps={{ max: new Date().toISOString().split('T')[0] }} />
             <TextField label="Description" value={contribForm.description ?? ''} onChange={(e) => setContribForm({ ...contribForm, description: e.target.value })} size="small" multiline rows={2} />
           </Box>
         </DialogContent>
