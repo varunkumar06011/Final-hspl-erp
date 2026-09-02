@@ -1,6 +1,6 @@
 -- AlterTable
-ALTER TABLE "journal_vouchers" ADD COLUMN "updated_by" UUID;
+ALTER TABLE "journal_vouchers" ADD COLUMN "updatedBy" UUID;
 
 -- AddForeignKey
-ALTER TABLE "journal_vouchers" ADD CONSTRAINT "journal_vouchers_updated_by_fkey"
-  FOREIGN KEY ("updated_by") REFERENCES "users"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "journal_vouchers" ADD CONSTRAINT "journal_vouchers_updatedBy_fkey"
+  FOREIGN KEY ("updatedBy") REFERENCES "users"("id") ON DELETE SET NULL ON UPDATE CASCADE;
