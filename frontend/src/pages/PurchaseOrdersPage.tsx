@@ -37,6 +37,7 @@ import {
   Close as CloseIcon,
   Download as DownloadIcon,
   PictureAsPdf as PdfIcon,
+  WhatsApp as WhatsAppIcon,
   ExpandMore as ExpandMoreIcon,
   LocalShipping as GatePassIcon,
   Timeline as TimelineIcon,
@@ -54,6 +55,8 @@ import ApprovalActionDialog from '../components/ApprovalActionDialog';
 import ResponsiveTable from '../components/ResponsiveTable';
 import { useApprovalDeepLink } from '../utils/useApprovalDeepLink';
 import { useDeepLinkRow } from '../hooks/useDeepLinkRow';
+import { useUrlFilters } from '../hooks/useUrlFilters';
+import { shareOnWhatsApp, buildPOShareMessage } from '../utils/whatsappShare';
 
 interface POItem {
   id?: string;
@@ -365,6 +368,8 @@ export default function PurchaseOrdersPage() {
   useApprovalDeepLink(rows, (row) => setApprovalAction({ row, action: 'approve' }));
   // Deep-link from global search: ?id=<poId> — filter to that PO and highlight it
   const { highlightId, rowRef } = useDeepLinkRow<PORow>('/purchase-orders', rows, 'poNumber', (v) => { setSearch(v); setPage(0); });
+  // Read NL query filters from URL on mount
+  useUrlFilters({ search: (v) => { setSearch(v); setPage(0); }, status: (v) => { setStatusFilter(v); setPage(0); } });
 
   const quotationTotal = useMemo(() => {
     if (!selectedQuotation?.items) return 0;
@@ -562,6 +567,7 @@ export default function PurchaseOrdersPage() {
                       <Box sx={{ display: 'flex', gap: 0.5 }}>
                         <IconButton size="small" onClick={() => previewPDF(row.id)} title="Preview PDF"><PdfIcon fontSize="small" /></IconButton>
                         <IconButton size="small" onClick={() => downloadPDF(row.id, row.poNumber)} title="Download PDF"><DownloadIcon fontSize="small" /></IconButton>
+                        <IconButton size="small" sx={{ color: '#25D366' }} onClick={() => shareOnWhatsApp(buildPOShareMessage({ poNumber: row.poNumber, vendorName: row.vendor?.name, grandTotal: Number(row.grandTotal), status: row.status, date: row.date }))} title="Share on WhatsApp"><WhatsAppIcon fontSize="small" /></IconButton>
                         {canApprove(row) && (
                           <>
                             <IconButton size="small" color="success" onClick={() => setApprovalAction({ row, action: 'approve' })} title="Approve"><CheckIcon fontSize="small" /></IconButton>

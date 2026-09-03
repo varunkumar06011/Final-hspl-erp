@@ -41,6 +41,7 @@ import { IssueSeverity, IssueCategory, IssueStatus } from '@hospital-erp/shared'
 import { enumToOptions, formatDate, STATUS_COLORS } from '../utils/enumOptions';
 import api, { extractErrorMessage } from '../config/api';
 import { useDeepLinkRow } from '../hooks/useDeepLinkRow';
+import { useUrlFilters } from '../hooks/useUrlFilters';
 import { useAuthStore } from '../stores/authStore';
 import ResponsiveTable from '../components/ResponsiveTable';
 import RefreshButton from '../components/RefreshButton';
@@ -184,6 +185,7 @@ export default function IssuesPage() {
 
   // Deep-link from global search: ?id=<issueId> — filter to that issue and highlight it
   const { highlightId, rowRef } = useDeepLinkRow<IssueRow>('/issues', rows, 'title', (v) => { setSearch(v); setPage(0); });
+  useUrlFilters({ search: (v) => { setSearch(v); setPage(0); }, status: (v) => { setStatusFilter(v); setPage(0); }, severity: (v) => { setSeverityFilter(v); setPage(0); } });
 
   // Build the address-to options: 4 heads + self
   const addressToOptions = [

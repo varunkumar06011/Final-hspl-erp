@@ -39,6 +39,7 @@ import {
   Publish as PostToBooksIcon,
   AccountTree as CrossLinkIcon,
   PictureAsPdf as PdfIcon,
+  WhatsApp as WhatsAppIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { InvoiceVerificationStatus, UserRole, STORAGE } from '@hospital-erp/shared';
@@ -47,6 +48,7 @@ import api, { extractErrorMessage } from '../config/api';
 import { useAuthStore } from '../stores/authStore';
 import { downloadFile } from '../utils/file';
 import { generateInvoicePDF } from '../utils/invoicePdf';
+import { shareOnWhatsApp, buildInvoiceShareMessage } from '../utils/whatsappShare';
 import AcknowledgementCheckbox from '../components/AcknowledgementCheckbox';
 import ApprovalActionDialog from '../components/ApprovalActionDialog';
 import OcrAutoFill, { type OcrInvoiceData } from '../components/OcrAutoFill';
@@ -54,6 +56,7 @@ import ResponsiveTable from '../components/ResponsiveTable';
 import RefreshButton from '../components/RefreshButton';
 import { useApprovalDeepLink } from '../utils/useApprovalDeepLink';
 import { useDeepLinkRow } from '../hooks/useDeepLinkRow';
+import { useUrlFilters } from '../hooks/useUrlFilters';
 
 interface POItem {
   id?: string;
@@ -518,6 +521,7 @@ export default function InvoicesPage() {
   useApprovalDeepLink(rows, (row) => setApprovalAction({ row, action: 'approve' }));
   // Deep-link from global search: ?id=<invoiceId> — filter to that invoice and highlight it
   const { highlightId, rowRef } = useDeepLinkRow<InvoiceRow>('/invoices', rows, 'invoiceCode', (v) => { setSearch(v); setPage(0); });
+  useUrlFilters({ search: (v) => { setSearch(v); setPage(0); }, status: (v) => { setStatusFilter(v); setPage(0); } });
 
   function downloadInvoicePdf(row: InvoiceRow) {
     const items = row.purchaseOrder?.items ?? [];
@@ -734,6 +738,7 @@ export default function InvoicesPage() {
                         )}
                         <IconButton size="small" onClick={() => setCrossLinkRow(row)} title="Cross-Module Link"><CrossLinkIcon fontSize="small" /></IconButton>
                         <IconButton size="small" color="error" onClick={() => downloadInvoicePdf(row)} title="Download PDF"><PdfIcon fontSize="small" /></IconButton>
+                        <IconButton size="small" sx={{ color: '#25D366' }} onClick={() => shareOnWhatsApp(buildInvoiceShareMessage({ invoiceCode: row.invoiceCode, invoiceNumber: row.invoiceNumber, vendorName: row.vendor?.name, totalAmount: Number(row.totalAmount), paymentStatus: row.paymentStatus, verificationStatus: row.verificationStatus, date: row.date }))} title="Share on WhatsApp"><WhatsAppIcon fontSize="small" /></IconButton>
                       </Box>
                     </TableCell>
                   </TableRow>

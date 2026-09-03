@@ -3,6 +3,10 @@ import { Server as HttpServer } from 'http';
 import { verifyFirebaseToken } from './config/firebase';
 import { prisma } from './config/prisma';
 
+// Track which users are viewing which pages
+const presenceMap = new Map<string, Map<string, { userId: string; userName: string; userRole: string; page: string; timestamp: number }>>();
+// presenceMap: projectId -> (socketId -> presence info)
+
 export let io: SocketServer | null = null;
 
 export function initSocketServer(httpServer: HttpServer): SocketServer {
@@ -51,8 +55,41 @@ export function initSocketServer(httpServer: HttpServer): SocketServer {
       socket.join(`project:${user.projectId}`);
     }
 
+    // Presence: user is viewing a page
+    socket.on('presence:join', (data: { page: string; userName: string; userRole: string }) => {
+      if (!user?.projectId || !user?.id) return;
+      const projectId = user.projectId;
+      if (!presenceMap.has(projectId)) presenceMap.set(projectId, new Map());
+      presenceMap.get(projectId)!.set(socket.id, {
+        userId: user.id,
+        userName: data.userName,
+        userRole: data.userRole,
+        page: data.page,
+        timestamp: Date.now(),
+      });
+      // Broadcast presence update to all users in the project
+      const viewers = Array.from(presenceMap.get(projectId)!.values());
+      io?.to(`project:${projectId}`).emit('presence:update', { page: data.page, viewers });
+    });
+
+    // Presence: user left a page
+    socket.on('presence:leave', (data: { page: string }) => {
+      if (!user?.projectId) return;
+      const projectId = user.projectId;
+      presenceMap.get(projectId)?.delete(socket.id);
+      const viewers = Array.from(presenceMap.get(projectId)?.values() ?? []);
+      io?.to(`project:${projectId}`).emit('presence:update', { page: data.page, viewers });
+    });
+
     socket.on('disconnect', () => {
-      // Client disconnected
+      if (!user?.projectId) return;
+      const projectId = user.projectId;
+      const entry = presenceMap.get(projectId)?.get(socket.id);
+      presenceMap.get(projectId)?.delete(socket.id);
+      if (entry) {
+        const viewers = Array.from(presenceMap.get(projectId)?.values() ?? []);
+        io?.to(`project:${projectId}`).emit('presence:update', { page: entry.page, viewers });
+      }
     });
   });
 

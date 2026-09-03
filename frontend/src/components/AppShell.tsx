@@ -35,6 +35,7 @@ import {
   DarkMode as DarkModeIcon,
   LightMode as LightModeIcon,
   NavigateNext as NavigateNextIcon,
+  AutoAwesome as AutoAwesomeIcon,
 } from '@mui/icons-material';
 import { useAuthStore } from '../stores/authStore';
 import { hasPermission, Permission, UserRole } from '@hospital-erp/shared';
@@ -43,6 +44,8 @@ import api from '../config/api';
 import { useIdleTimeout } from '../hooks/useIdleTimeout';
 import { useColorMode } from '../config/ColorModeContext';
 import GlobalSearch from './GlobalSearch';
+import NLQueryBar from './NLQueryBar';
+import PresenceBar from './PresenceBar';
 
 const NAV_ITEMS = [
   { label: 'Dashboard', icon: <DashboardIcon />, path: '/', section: '' },
@@ -112,16 +115,20 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [nlQueryOpen, setNlQueryOpen] = useState(false);
   const { mode, toggle: toggleColorMode } = useColorMode();
   // Auto-logout after 15 min of inactivity (cross-tab aware).
   useIdleTimeout();
 
-  // Cmd+K / Ctrl+K opens global search
+  // Cmd+K / Ctrl+K opens global search, Cmd+J / Ctrl+J opens NL query
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
         setSearchOpen((prev) => !prev);
+      } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'j') {
+        e.preventDefault();
+        setNlQueryOpen((prev) => !prev);
       }
     };
     window.addEventListener('keydown', handler);
@@ -325,6 +332,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           >
             Hospital Construction ERP
           </Typography>
+          <IconButton color="inherit" onClick={() => setNlQueryOpen(true)} title="Ask ERP (Ctrl+J)" size="large">
+            <AutoAwesomeIcon />
+          </IconButton>
           <IconButton color="inherit" onClick={toggleColorMode} title={mode === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'} size="large">
             {mode === 'dark' ? <LightModeIcon /> : <DarkModeIcon />}
           </IconButton>
@@ -446,6 +456,12 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
       {/* Global search — Cmd+K / Ctrl+K */}
       <GlobalSearch open={searchOpen} onClose={() => setSearchOpen(false)} />
+
+      {/* Natural Language Query — Ctrl+J */}
+      <NLQueryBar open={nlQueryOpen} onClose={() => setNlQueryOpen(false)} />
+
+      {/* Real-time presence — shows other users viewing the same page */}
+      <PresenceBar />
     </Box>
   );
 }

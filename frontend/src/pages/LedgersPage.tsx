@@ -47,6 +47,7 @@ import RefreshButton from '../components/RefreshButton';
 import { formatCurrency, formatDate } from '../utils/enumOptions';
 import { LedgerGroup, isDebitNatureGroup } from '@hospital-erp/shared';
 import { useDeepLinkRow } from '../hooks/useDeepLinkRow';
+import { useUrlFilters } from '../hooks/useUrlFilters';
 
 interface Ledger {
   id: string;
@@ -312,6 +313,7 @@ export default function LedgersPage() {
 
   // Deep-link from global search: ?id=<ledgerId> — filter to that ledger and highlight it
   const { highlightId: ledgerHighlightId, rowRef: ledgerRowRef } = useDeepLinkRow<Ledger>('/ledgers', rows, 'name', setSearch);
+  useUrlFilters({ search: (v) => { setSearch(v); setPage(0); }, group: (v) => { setGroupFilter(v); setPage(0); } });
 
   // Group ledgers by group and render custom subgroups beneath their primary parent.
   const grouped: Record<string, Ledger[]> = {};

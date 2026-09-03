@@ -34,6 +34,8 @@ import {
   Delete as DeleteIcon,
   Receipt as QuoteIcon,
   Search as SearchIcon,
+  ViewKanban as KanbanIcon,
+  TableChart as TableIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -47,6 +49,8 @@ import {
 import { enumToOptions, formatDate, STATUS_COLORS } from '../utils/enumOptions';
 import api, { extractErrorMessage } from '../config/api';
 import { useAuthStore } from '../stores/authStore';
+import { useUrlFilters } from '../hooks/useUrlFilters';
+import KanbanBoard from '../components/KanbanBoard';
 
 interface WorkTaskQuotationLink {
   id: string;
@@ -124,6 +128,7 @@ export default function WorkListPage() {
   const [statusFilter, setStatusFilter] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
   const [priorityFilter, setPriorityFilter] = useState('');
+  const [viewMode, setViewMode] = useState<'table' | 'kanban'>('table');
   const [formOpen, setFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<Record<string, unknown>>({});
@@ -137,6 +142,9 @@ export default function WorkListPage() {
 
   const canCreateQuotation = !!user && hasPermission(user.role as UserRole, Permission.CREATE_QUOTATION);
   const canManageWork = !!user && hasPermission(user.role as UserRole, Permission.MANAGE_WORK_TASKS);
+
+  // Read NL query filters from URL on mount
+  useUrlFilters({ search: (v) => { setSearch(v); setPage(0); }, status: (v) => { setStatusFilter(v); setPage(0); }, priority: (v) => { setPriorityFilter(v); setPage(0); }, type: (v) => { setTypeFilter(v); setPage(0); } });
 
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['/work-tasks', 'list', page, pageSize, search, statusFilter, typeFilter, priorityFilter],
@@ -256,7 +264,19 @@ export default function WorkListPage() {
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1, mb: 2 }}>
         <Typography variant="h5">Work</Typography>
-        <Box sx={{ display: 'flex', gap: 1 }}>
+        <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+          <Box sx={{ display: 'flex', border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
+            <Tooltip title="Table view">
+              <IconButton size="small" onClick={() => setViewMode('table')} color={viewMode === 'table' ? 'primary' : 'default'} sx={{ borderRadius: '4px 0 0 4px' }}>
+                <TableIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+            <Tooltip title="Kanban board">
+              <IconButton size="small" onClick={() => setViewMode('kanban')} color={viewMode === 'kanban' ? 'primary' : 'default'} sx={{ borderRadius: '0 4px 4px 0' }}>
+                <KanbanIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          </Box>
           <RefreshButton onClick={() => refetch()} />
           {canManageWork && (
             <Button variant="contained" startIcon={<AddIcon />} onClick={openCreate}>Add Work</Button>
@@ -267,6 +287,14 @@ export default function WorkListPage() {
       {successMsg && <Alert severity="success" sx={{ mb: 2 }} onClose={() => setSuccessMsg('')}>{successMsg}</Alert>}
       {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
 
+      {/* Kanban Board View */}
+      {viewMode === 'kanban' && (
+        <KanbanBoard onEdit={(task) => { setEditingId(task.id); setFormOpen(true); }} />
+      )}
+
+      {/* Table View */}
+      {viewMode === 'table' && (
+        <>
       {/* Filters */}
       <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 2 }}>
         <TextField
@@ -389,6 +417,8 @@ export default function WorkListPage() {
           rowsPerPageOptions={[10, 20, 50]}
         />
       </Card>
+        </>
+      )}
 
       {/* Create / Edit work item dialog */}
       <ResponsiveDialog open={formOpen} onClose={() => { setFormOpen(false); setEditingId(null); setForm({}); }} maxWidth="sm" fullWidth>

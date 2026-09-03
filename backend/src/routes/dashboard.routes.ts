@@ -182,3 +182,105 @@ router.get(
 );
 
 export default router;
+
+// ── Cash Flow Forecast ──────────────────────────────────────────────
+// Projects the next 90 days of cash position based on:
+//   - Current bank balances
+//   - Pending/approved payment requests (outflows)
+//   - Pending invoices that will need payment (expected outflows)
+router.get(
+  '/cash-flow-forecast',
+  rbacMiddleware(Permission.VIEW_FINANCIALS),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+
+      const [bankAccounts, pendingPayments, pendingInvoices] = await Promise.all([
+        prisma.bankAccount.findMany({
+          where: { projectId, deletedAt: null, isActive: true },
+          select: { currentBalance: true },
+        }),
+        prisma.paymentRequest.findMany({
+          where: {
+            projectId,
+            deletedAt: null,
+            status: { in: ['PENDING', 'APPROVED'] },
+          },
+          select: { amount: true, status: true, type: true, createdAt: true },
+        }),
+        prisma.vendorInvoice.findMany({
+          where: {
+            projectId,
+            deletedAt: null,
+            paymentStatus: { in: ['UNPAID', 'PARTIALLY_PAID'] },
+            verificationStatus: 'VERIFIED',
+          },
+          select: { totalAmount: true, advancePaid: true, createdAt: true },
+        }),
+      ]);
+
+      const currentBalance = bankAccounts.reduce(
+        (sum, acc) => sum + Number(acc.currentBalance),
+        0
+      );
+
+      // Build daily projection for 90 days
+      const days: { date: string; balance: number; inflow: number; outflow: number }[] = [];
+      let runningBalance = currentBalance;
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      // Distribute pending payments over next 30 days (assume even distribution)
+      const totalPendingPayments = pendingPayments.reduce(
+        (sum, p) => sum + Number(p.amount),
+        0
+      );
+      const dailyPaymentOutflow = totalPendingPayments / 30;
+
+      // Distribute pending invoice payments over next 45 days
+      const totalPendingInvoices = pendingInvoices.reduce(
+        (sum, inv) => sum + Number(inv.totalAmount) - Number(inv.advancePaid ?? 0),
+        0
+      );
+      const dailyInvoiceOutflow = totalPendingInvoices / 45;
+
+      let minBalance = runningBalance;
+      let minBalanceDate = today.toISOString().split('T')[0];
+
+      for (let i = 0; i < 90; i++) {
+        const date = new Date(today);
+        date.setDate(date.getDate() + i);
+        const dateStr = date.toISOString().split('T')[0];
+
+        const paymentOutflow = i < 30 ? dailyPaymentOutflow : 0;
+        const invoiceOutflow = i < 45 ? dailyInvoiceOutflow : 0;
+        const totalOutflow = paymentOutflow + invoiceOutflow;
+
+        runningBalance -= totalOutflow;
+
+        if (runningBalance < minBalance) {
+          minBalance = runningBalance;
+          minBalanceDate = dateStr;
+        }
+
+        days.push({
+          date: dateStr,
+          balance: Math.round(runningBalance),
+          inflow: 0,
+          outflow: Math.round(totalOutflow),
+        });
+      }
+
+      res.json({
+        currentBalance,
+        totalPendingPayments,
+        totalPendingInvoices,
+        minBalance,
+        minBalanceDate,
+        projection: days,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);

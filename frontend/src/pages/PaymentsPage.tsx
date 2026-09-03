@@ -43,6 +43,7 @@ import {
   Download as DownloadIcon,
   Receipt as ReceiptIcon,
   Delete as DeleteIcon,
+  WhatsApp as WhatsAppIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { PaymentStatus, PaymentMode, UserRole, POPaymentType } from '@hospital-erp/shared';
@@ -54,6 +55,8 @@ import ApprovalActionDialog from '../components/ApprovalActionDialog';
 import ResponsiveTable from '../components/ResponsiveTable';
 import { useApprovalDeepLink } from '../utils/useApprovalDeepLink';
 import { useDeepLinkRow } from '../hooks/useDeepLinkRow';
+import { useUrlFilters } from '../hooks/useUrlFilters';
+import { shareOnWhatsApp, buildPaymentShareMessage } from '../utils/whatsappShare';
 
 interface ApprovalStep {
   id: string;
@@ -434,6 +437,7 @@ export default function PaymentsPage() {
   useApprovalDeepLink(rows, (row) => setApprovalAction({ row, action: 'approve' }));
   // Deep-link from global search: ?id=<prId> — filter to that payment and highlight it
   const { highlightId, rowRef } = useDeepLinkRow<PaymentRequestRow>('/payments', rows, 'paymentCode', (v) => { setSearch(v); setPage(0); });
+  useUrlFilters({ search: (v) => { setSearch(v); setPage(0); }, status: (v) => { setStatusFilter(v); setPage(0); }, type: (v) => { setTypeFilter(v); setPage(0); } });
 
   function canApprove(row: PaymentRequestRow): boolean {
     if (!row.approvalWorkflow) return false;
@@ -741,6 +745,7 @@ export default function PaymentsPage() {
                       </TableCell>
                       <TableCell data-label="Actions">
                         <Box sx={{ display: 'flex', gap: 0.5 }}>
+                          <IconButton size="small" sx={{ color: '#25D366' }} onClick={() => shareOnWhatsApp(buildPaymentShareMessage({ paymentCode: row.paymentCode, requestNumber: row.requestNumber, vendorName: row.vendor?.name, amount: Number(row.amount), status: row.status, type: row.type, description: row.description ?? undefined }))} title="Share on WhatsApp"><WhatsAppIcon fontSize="small" /></IconButton>
                           {canApprove(row) && (
                             <>
                               <IconButton size="small" color="success" onClick={() => setApprovalAction({ row, action: 'approve' })} title="Approve"><CheckIcon fontSize="small" /></IconButton>
