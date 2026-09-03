@@ -24,68 +24,109 @@ export interface ParsedQuery {
 const ENTITY_KEYWORDS: Record<string, { path: string; keywords: string[] }> = {
   po: {
     path: '/pos',
-    keywords: ['po', 'purchase order', 'purchase orders', 'pos'],
+    keywords: ['po', 'pos', 'purchase order', 'purchase orders', 'purchase', 'orders', 'order'],
   },
   invoice: {
     path: '/invoices',
-    keywords: ['invoice', 'invoices', 'bill', 'bills'],
+    keywords: ['invoice', 'invoices', 'bill', 'bills', 'gst', 'tax invoice'],
   },
   payment: {
     path: '/payments',
-    keywords: ['payment', 'payments', 'expense', 'expenses', 'payment request'],
+    keywords: ['payment', 'payments', 'expense', 'expenses', 'payment request', 'payout', 'payouts', 'salary', 'wages', 'labour', 'labor'],
   },
   vendor: {
     path: '/vendors',
-    keywords: ['vendor', 'vendors', 'supplier', 'suppliers'],
+    keywords: ['vendor', 'vendors', 'supplier', 'suppliers', 'contractor', 'contractors', 'agency', 'agencies'],
   },
   issue: {
     path: '/issues',
-    keywords: ['issue', 'issues', 'problem', 'problems', 'complaint'],
+    keywords: ['issue', 'issues', 'problem', 'problems', 'complaint', 'complaints', 'defect', 'defects', 'snag', 'snags'],
   },
   ledger: {
     path: '/ledgers',
-    keywords: ['ledger', 'ledgers', 'account', 'accounts'],
+    keywords: ['ledger', 'ledgers', 'account', 'accounts', 'book', 'books', 'transaction', 'transactions', 'entry', 'entries', 'voucher', 'vouchers'],
   },
   work: {
     path: '/work',
-    keywords: ['work', 'task', 'tasks', 'work task', 'work tasks', 'activity', 'activities'],
+    keywords: ['work', 'task', 'tasks', 'work task', 'work tasks', 'activity', 'activities', 'to-do', 'todo', 'job', 'jobs'],
   },
   quotation: {
     path: '/quotations',
-    keywords: ['quotation', 'quotations', 'quote', 'quotes'],
+    keywords: ['quotation', 'quotations', 'quote', 'quotes', 'estimate', 'estimates', 'rfq', 'tender', 'tenders'],
+  },
+  asset: {
+    path: '/assets',
+    keywords: ['asset', 'assets', 'equipment', 'equipments', 'machine', 'machines', 'tool', 'tools', 'device', 'devices'],
+  },
+  phase: {
+    path: '/phases',
+    keywords: ['phase', 'phases', 'stage', 'stages', 'milestone', 'milestones'],
+  },
+  budget: {
+    path: '/budget',
+    keywords: ['budget', 'budgets', 'head', 'heads', 'allocation', 'allocations'],
+  },
+  user: {
+    path: '/users',
+    keywords: ['user', 'users', 'member', 'members', 'staff', 'employee', 'employees', 'team'],
+  },
+  audit: {
+    path: '/audit',
+    keywords: ['audit', 'audits', 'log', 'logs', 'history', 'changes', 'activity log'],
   },
 };
 
 const STATUS_MAP: Record<string, Record<string, string>> = {
   po: {
     pending: 'PENDING_APPROVAL',
+    'waiting for approval': 'PENDING_APPROVAL',
+    'awaiting approval': 'PENDING_APPROVAL',
+    'not approved': 'PENDING_APPROVAL',
     approved: 'APPROVED',
     delivered: 'DELIVERED',
     'partially delivered': 'PARTIALLY_DELIVERED',
+    rejected: 'REJECTED',
+    cancelled: 'CANCELLED',
+    canceled: 'CANCELLED',
   },
   invoice: {
     pending: 'PENDING',
+    'not verified': 'PENDING',
+    'waiting for verification': 'PENDING',
     verified: 'VERIFIED',
     rejected: 'REJECTED',
     paid: 'PAID',
     unpaid: 'UNPAID',
+    'not paid': 'UNPAID',
+    'partially paid': 'PARTIALLY_PAID',
   },
   payment: {
     pending: 'PENDING',
+    'waiting for approval': 'PENDING',
+    'awaiting approval': 'PENDING',
+    'not approved': 'PENDING',
     approved: 'APPROVED',
     paid: 'PAID',
     rejected: 'REJECTED',
+    completed: 'PAID',
+    done: 'PAID',
   },
   issue: {
     open: 'OPEN',
     closed: 'CLOSED',
+    resolved: 'CLOSED',
     'in progress': 'IN_PROGRESS',
+    'being worked on': 'IN_PROGRESS',
   },
   work: {
     scheduled: 'SCHEDULED',
+    planned: 'PLANNED',
     'in progress': 'IN_PROGRESS',
     completed: 'COMPLETED',
+    done: 'COMPLETED',
     pending: 'PENDING',
+    cancelled: 'CANCELLED',
+    canceled: 'CANCELLED',
   },
   quotation: {
     pending: 'SUBMITTED',
@@ -93,6 +134,7 @@ const STATUS_MAP: Record<string, Record<string, string>> = {
     rejected: 'REJECTED',
     submitted: 'SUBMITTED',
     'under review': 'UNDER_REVIEW',
+    reviewing: 'UNDER_REVIEW',
   },
 };
 
@@ -209,9 +251,10 @@ export function parseNaturalQuery(input: string): ParsedQuery | null {
   }
 
   // 6. Extract amount threshold
-  // "above 1 lakh", "over 50000", "below 2 lakhs", "between 10000 and 50000"
-  const aboveMatch = query.match(/(?:above|over|greater than|more than)\s+([\d,.]+\s*(?:lakhs?|crores?)?)/);
-  const belowMatch = query.match(/(?:below|under|less than|lesser than)\s+([\d,.]+\s*(?:lakhs?|crores?)?)/);
+  // "above 1 lakh", "over 50000", "below 2 lakhs", "between 10000 and 50000",
+  // "more than 1 lakh", "exceeding 5 lakhs", "at least 50000", "max 2 lakhs"
+  const aboveMatch = query.match(/(?:above|over|greater than|more than|exceeding|at least|min(?:imum)?(?:\s+of)?)\s+([\d,.]+\s*(?:lakhs?|crores?)?)/);
+  const belowMatch = query.match(/(?:below|under|less than|lesser than|at most|max(?:imum)?(?:\s+of)?|up to|not exceeding)\s+([\d,.]+\s*(?:lakhs?|crores?)?)/);
   const betweenMatch = query.match(/between\s+([\d,.]+\s*(?:lakhs?|crores?)?)\s+and\s+([\d,.]+\s*(?:lakhs?|crores?)?)/);
 
   if (betweenMatch) {
@@ -235,16 +278,16 @@ export function parseNaturalQuery(input: string): ParsedQuery | null {
   }
 
   // 7. Date keywords
-  if (query.includes('today')) {
+  if (query.includes('today') || query.includes("today's")) {
     params.dateFilter = 'today';
     summaryParts.push('from today');
-  } else if (query.includes('this week')) {
+  } else if (query.includes('this week') || query.includes('current week') || query.includes('thisweek')) {
     params.dateFilter = 'this_week';
     summaryParts.push('from this week');
-  } else if (query.includes('this month')) {
+  } else if (query.includes('this month') || query.includes('current month') || query.includes('thismonth')) {
     params.dateFilter = 'this_month';
     summaryParts.push('from this month');
-  } else if (query.includes('last month')) {
+  } else if (query.includes('last month') || query.includes('previous month') || query.includes('lastmonth')) {
     params.dateFilter = 'last_month';
     summaryParts.push('from last month');
   }
@@ -284,4 +327,10 @@ export const EXAMPLE_QUERIES = [
   'work tasks with high priority this week',
   'vendors matching Sree',
   'paid payments last month',
+  'waiting for approval POs over 2 lakhs',
+  'resolved issues this week',
+  'completed work tasks last month',
+  'rejected invoices from last month',
+  'big payments above 5 lakhs',
+  'overdue tasks',
 ];

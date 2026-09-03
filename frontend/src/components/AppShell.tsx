@@ -46,6 +46,7 @@ import { useColorMode } from '../config/ColorModeContext';
 import GlobalSearch from './GlobalSearch';
 import NLQueryBar from './NLQueryBar';
 import PresenceBar from './PresenceBar';
+import { useTrackPageView } from '../hooks/useTrackPageView';
 
 const NAV_ITEMS = [
   { label: 'Dashboard', icon: <DashboardIcon />, path: '/', section: '' },
@@ -117,6 +118,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const [searchOpen, setSearchOpen] = useState(false);
   const [nlQueryOpen, setNlQueryOpen] = useState(false);
   const { mode, toggle: toggleColorMode } = useColorMode();
+  useTrackPageView();
   // Auto-logout after 15 min of inactivity (cross-tab aware).
   useIdleTimeout();
 

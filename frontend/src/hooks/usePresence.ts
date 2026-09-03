@@ -16,12 +16,14 @@ let socket: Socket | null = null;
 function getSocket(): Socket | null {
   if (socket) return socket;
   const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
-  const token = localStorage.getItem('token');
+  const token = localStorage.getItem('firebaseToken');
   if (!token) return null;
   socket = io(apiUrl, {
     auth: { token },
-    transports: ['websocket'],
+    transports: ['websocket', 'polling'],
     autoConnect: true,
+    reconnection: true,
+    reconnectionAttempts: 5,
   });
   return socket;
 }
@@ -42,18 +44,27 @@ export function usePresence() {
 
     const page = location.pathname;
 
-    // Leave previous page
-    if (currentPageRef.current && currentPageRef.current !== page) {
-      s.emit('presence:leave', { page: currentPageRef.current });
-    }
+    const emitJoin = () => {
+      // Leave previous page
+      if (currentPageRef.current && currentPageRef.current !== page) {
+        s.emit('presence:leave', { page: currentPageRef.current });
+      }
+      // Join new page
+      currentPageRef.current = page;
+      s.emit('presence:join', {
+        page,
+        userName: user.name,
+        userRole: user.role,
+      });
+    };
 
-    // Join new page
-    currentPageRef.current = page;
-    s.emit('presence:join', {
-      page,
-      userName: user.name,
-      userRole: user.role,
-    });
+    // If socket is already connected, emit immediately.
+    // Otherwise wait for the 'connect' event.
+    if (s.connected) {
+      emitJoin();
+    } else {
+      s.once('connect', emitJoin);
+    }
 
     // Listen for presence updates
     const handleUpdate = (data: { page: string; viewers: PresenceUser[] }) => {
@@ -67,6 +78,7 @@ export function usePresence() {
 
     return () => {
       s.off('presence:update', handleUpdate);
+      s.off('connect', emitJoin);
     };
   }, [location.pathname, user]);
 
