@@ -1,0 +1,23 @@
+Fix login page visibility — card now solid white with dark text
+
+The glassmorphism card was too transparent (12% opacity) making all
+text and inputs invisible against the dark gradient background.
+
+Changes:
+- Card background: rgba(255,255,255,0.95) — near-solid white
+- Title: dark blue (#1565C0) instead of white
+- Subtitle: default text.secondary color
+- Logo circle: gradient blue-teal background with white icon
+- All TextFields: default MUI styling (no custom white background needed)
+- All Input (PIN) fields: default styling with dark text
+- All Buttons: default MUI contained/outlined/text variants
+- All Alerts: default MUI colors
+- Removed pulseGlow animation (was on the transparent card)
+- Footer: slightly brighter white (0.7 opacity)
+
+The animated gradient background and floating icons remain — only the
+card content is now readable.
+
+Generated with [Devin](https://devin.ai)
+
+Co-Authored-By: Devin <158243242+devin-ai-integration[bot]@users.noreply.github.com>

@@ -39,11 +39,6 @@ const fadeInUp = keyframes`
   to   { opacity: 1; transform: translateY(0);    }
 `;
 
-const pulseGlow = keyframes`
-  0%, 100% { box-shadow: 0 0 20px rgba(255,255,255,0.1); }
-  50%      { box-shadow: 0 0 40px rgba(255,255,255,0.2); }
-`;
-
 type Step = 'phone' | 'pin' | 'otp' | 'setPin' | 'verifying';
 type AuthMode = 'signin' | 'signup';
 
@@ -291,14 +286,13 @@ export default function LoginPage() {
         sx={{
           maxWidth: 440,
           width: '100%',
-          // Frosted glass effect
-          background: 'rgba(255, 255, 255, 0.12)',
+          // Frosted glass effect — more opaque for readability
+          background: 'rgba(255, 255, 255, 0.95)',
           backdropFilter: 'blur(20px)',
           WebkitBackdropFilter: 'blur(20px)',
-          border: '1px solid rgba(255, 255, 255, 0.18)',
+          border: '1px solid rgba(255, 255, 255, 0.3)',
           borderRadius: 4,
-          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)',
-          animation: `${pulseGlow} 4s ease-in-out infinite`,
+          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)',
           position: 'relative',
           zIndex: 1,
         }}
@@ -314,17 +308,16 @@ export default function LoginPage() {
                 width: 64,
                 height: 64,
                 borderRadius: '50%',
-                background: 'rgba(255,255,255,0.15)',
+                background: 'linear-gradient(135deg, #1565C0, #00695C)',
                 mb: 1.5,
-                border: '1px solid rgba(255,255,255,0.2)',
               }}
             >
               <LocalHospital sx={{ fontSize: 36, color: '#fff' }} />
             </Box>
-            <Typography variant="h5" align="center" gutterBottom fontWeight={700} sx={{ color: '#fff' }}>
+            <Typography variant="h5" align="center" gutterBottom fontWeight={700} sx={{ color: '#1565C0' }}>
               Hospital Construction ERP
             </Typography>
-            <Typography variant="body2" align="center" sx={{ color: 'rgba(255,255,255,0.7)' }}>
+            <Typography variant="body2" align="center" color="text.secondary">
               Sign in to manage your project
             </Typography>
           </Box>
@@ -335,13 +328,6 @@ export default function LoginPage() {
               fullWidth
               variant={mode === 'signin' ? 'contained' : 'outlined'}
               onClick={() => { setMode('signin'); setStep('phone'); setPin(''); setOtp(''); setError(''); }}
-              sx={{
-                ...(mode !== 'signin' && {
-                  borderColor: 'rgba(255,255,255,0.3)',
-                  color: '#fff',
-                  '&:hover': { borderColor: 'rgba(255,255,255,0.5)', background: 'rgba(255,255,255,0.05)' },
-                }),
-              }}
             >
               Sign In
             </Button>
@@ -349,13 +335,6 @@ export default function LoginPage() {
               fullWidth
               variant={mode === 'signup' ? 'contained' : 'outlined'}
               onClick={() => { setMode('signup'); setStep('phone'); setPin(''); setOtp(''); setError(''); }}
-              sx={{
-                ...(mode !== 'signup' && {
-                  borderColor: 'rgba(255,255,255,0.3)',
-                  color: '#fff',
-                  '&:hover': { borderColor: 'rgba(255,255,255,0.5)', background: 'rgba(255,255,255,0.05)' },
-                }),
-              }}
             >
               Sign Up
             </Button>
@@ -379,12 +358,7 @@ export default function LoginPage() {
                   placeholder="Enter your full name"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  sx={{
-                    mb: 2,
-                    '& .MuiOutlinedInput-root': {
-                      background: 'rgba(255,255,255,0.9)',
-                    },
-                  }}
+                  sx={{ mb: 2 }}
                   required
                 />
               )}
@@ -400,12 +374,7 @@ export default function LoginPage() {
                 InputProps={{
                   startAdornment: <InputAdornment position="start">+91</InputAdornment>,
                 }}
-                sx={{
-                  mb: 2,
-                  '& .MuiOutlinedInput-root': {
-                    background: 'rgba(255,255,255,0.9)',
-                  },
-                }}
+                sx={{ mb: 2 }}
               />
               <Button
                 fullWidth
@@ -413,13 +382,6 @@ export default function LoginPage() {
                 size="large"
                 onClick={handleCheckPhone}
                 disabled={loading || phone.length !== 10 || (mode === 'signup' && !name.trim())}
-                sx={{
-                  background: 'rgba(255,255,255,0.25)',
-                  backdropFilter: 'blur(10px)',
-                  border: '1px solid rgba(255,255,255,0.3)',
-                  '&:hover': { background: 'rgba(255,255,255,0.35)' },
-                  '&:disabled': { background: 'rgba(255,255,255,0.1)' },
-                }}
               >
                 {loading ? <CircularProgress size={24} color="inherit" /> : 'Continue'}
               </Button>
@@ -429,10 +391,10 @@ export default function LoginPage() {
           {/* Step: PIN entry (returning user) */}
           {step === 'pin' && (
             <Box sx={{ animation: `${fadeInUp} 0.4s ease-out` }}>
-              <Alert severity="info" sx={{ mb: 2, background: 'rgba(33,150,243,0.15)', color: '#fff', '& .MuiAlert-icon': { color: '#90CAF9' } }}>
+              <Alert severity="info" sx={{ mb: 2 }}>
                 Welcome back! Enter your 4-digit PIN to sign in.
               </Alert>
-              <Typography variant="body2" sx={{ mb: 1, color: 'rgba(255,255,255,0.8)' }}>
+              <Typography variant="body2" sx={{ mb: 1 }}>
                 Phone: <strong>+91 {phone}</strong>
               </Typography>
               <Input
@@ -444,20 +406,11 @@ export default function LoginPage() {
                   setPin(digits);
                 }}
                 placeholder="4-digit PIN"
-                sx={{
-                  mb: 2,
-                  textAlign: 'center',
-                  fontSize: '1.5rem',
-                  letterSpacing: '0.5rem',
-                  color: '#fff',
-                  '&:before': { borderBottomColor: 'rgba(255,255,255,0.3)' },
-                  '&:hover:not(.Mui-disabled):before': { borderBottomColor: 'rgba(255,255,255,0.5)' },
-                  '& input': { color: '#fff', textAlign: 'center' },
-                }}
+                sx={{ mb: 2, textAlign: 'center', fontSize: '1.5rem', letterSpacing: '0.5rem' }}
                 inputProps={{ maxLength: 4, style: { textAlign: 'center' } }}
                 endAdornment={
                   <MuiInputAdornment position="end">
-                    <IconButton onClick={() => setShowPin(!showPin)} edge="end" sx={{ color: 'rgba(255,255,255,0.7)' }}>
+                    <IconButton onClick={() => setShowPin(!showPin)} edge="end">
                       {showPin ? <VisibilityOff /> : <Visibility />}
                     </IconButton>
                   </MuiInputAdornment>
@@ -469,20 +422,13 @@ export default function LoginPage() {
                 size="large"
                 onClick={handlePinLogin}
                 disabled={loading || pin.length !== 4}
-                sx={{
-                  background: 'rgba(255,255,255,0.25)',
-                  backdropFilter: 'blur(10px)',
-                  border: '1px solid rgba(255,255,255,0.3)',
-                  '&:hover': { background: 'rgba(255,255,255,0.35)' },
-                  '&:disabled': { background: 'rgba(255,255,255,0.1)' },
-                }}
               >
                 {loading ? <CircularProgress size={24} color="inherit" /> : 'Sign In'}
               </Button>
               <Button
                 fullWidth
                 variant="text"
-                sx={{ mt: 1, color: 'rgba(255,255,255,0.7)', '&:hover': { background: 'rgba(255,255,255,0.05)' } }}
+                sx={{ mt: 1 }}
                 onClick={() => { setStep('phone'); setPin(''); setError(''); }}
               >
                 Use a different phone number
@@ -490,7 +436,7 @@ export default function LoginPage() {
               <Button
                 fullWidth
                 variant="text"
-                sx={{ mt: 0.5, color: 'rgba(255,255,255,0.7)', '&:hover': { background: 'rgba(255,255,255,0.05)' } }}
+                sx={{ mt: 0.5 }}
                 onClick={() => { setStep('otp'); setError(''); }}
               >
                 Forgot PIN? Verify with OTP
@@ -501,7 +447,7 @@ export default function LoginPage() {
           {/* Step: OTP entry */}
           {step === 'otp' && (
             <Box sx={{ animation: `${fadeInUp} 0.4s ease-out` }}>
-              <Alert severity="info" sx={{ mb: 2, background: 'rgba(33,150,243,0.15)', color: '#fff', '& .MuiAlert-icon': { color: '#90CAF9' } }}>
+              <Alert severity="info" sx={{ mb: 2 }}>
                 OTP sent to +91 {phone}. Enter the 6-digit code to verify your identity.
               </Alert>
               <TextField
@@ -510,12 +456,7 @@ export default function LoginPage() {
                 placeholder="6-digit code"
                 value={otp}
                 onChange={(e) => setOtp(e.target.value)}
-                sx={{
-                  mb: 2,
-                  '& .MuiOutlinedInput-root': {
-                    background: 'rgba(255,255,255,0.9)',
-                  },
-                }}
+                sx={{ mb: 2 }}
                 inputProps={{ maxLength: 6 }}
               />
               <Button
@@ -524,26 +465,19 @@ export default function LoginPage() {
                 size="large"
                 onClick={handleVerifyOtp}
                 disabled={loading || otp.length < 4}
-                sx={{
-                  background: 'rgba(255,255,255,0.25)',
-                  backdropFilter: 'blur(10px)',
-                  border: '1px solid rgba(255,255,255,0.3)',
-                  '&:hover': { background: 'rgba(255,255,255,0.35)' },
-                  '&:disabled': { background: 'rgba(255,255,255,0.1)' },
-                }}
               >
                 {loading ? <CircularProgress size={24} color="inherit" /> : 'Verify OTP'}
               </Button>
               <Button
                 fullWidth
                 variant="text"
-                sx={{ mt: 1, color: 'rgba(255,255,255,0.7)', '&:hover': { background: 'rgba(255,255,255,0.05)' } }}
+                sx={{ mt: 1 }}
                 onClick={() => { setStep('phone'); setOtp(''); setError(''); }}
               >
                 Change phone number
               </Button>
               {isDevMode && (
-                <Alert severity="info" sx={{ mt: 2, background: 'rgba(255,255,255,0.1)', color: '#fff', '& .MuiAlert-icon': { color: '#FFF176' } }}>
+                <Alert severity="info" sx={{ mt: 2 }}>
                   Dev mode: use OTP <strong>1234</strong>
                 </Alert>
               )}
@@ -553,7 +487,7 @@ export default function LoginPage() {
           {/* Step: Set PIN (after OTP verification) */}
           {step === 'setPin' && (
             <Box sx={{ animation: `${fadeInUp} 0.4s ease-out` }}>
-              <Alert severity="success" sx={{ mb: 2, background: 'rgba(76,175,80,0.15)', color: '#fff', '& .MuiAlert-icon': { color: '#A5D6A7' } }}>
+              <Alert severity="success" sx={{ mb: 2 }}>
                 Identity verified! Set a 4-digit PIN for quick login next time.
               </Alert>
               <Input
@@ -565,26 +499,17 @@ export default function LoginPage() {
                   setPin(digits);
                 }}
                 placeholder="Choose a 4-digit PIN"
-                sx={{
-                  mb: 2,
-                  textAlign: 'center',
-                  fontSize: '1.5rem',
-                  letterSpacing: '0.5rem',
-                  color: '#fff',
-                  '&:before': { borderBottomColor: 'rgba(255,255,255,0.3)' },
-                  '&:hover:not(.Mui-disabled):before': { borderBottomColor: 'rgba(255,255,255,0.5)' },
-                  '& input': { color: '#fff', textAlign: 'center' },
-                }}
+                sx={{ mb: 2, textAlign: 'center', fontSize: '1.5rem', letterSpacing: '0.5rem' }}
                 inputProps={{ maxLength: 4, style: { textAlign: 'center' } }}
                 endAdornment={
                   <MuiInputAdornment position="end">
-                    <IconButton onClick={() => setShowPin(!showPin)} edge="end" sx={{ color: 'rgba(255,255,255,0.7)' }}>
+                    <IconButton onClick={() => setShowPin(!showPin)} edge="end">
                       {showPin ? <VisibilityOff /> : <Visibility />}
                     </IconButton>
                   </MuiInputAdornment>
                 }
               />
-              <Typography variant="caption" sx={{ display: 'block', mb: 2, color: 'rgba(255,255,255,0.6)' }}>
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 2 }}>
                 You'll use this PIN with your phone number to sign in — no OTP needed.
               </Typography>
               <Button
@@ -593,13 +518,6 @@ export default function LoginPage() {
                 size="large"
                 onClick={handleSetPin}
                 disabled={loading || pin.length !== 4}
-                sx={{
-                  background: 'rgba(255,255,255,0.25)',
-                  backdropFilter: 'blur(10px)',
-                  border: '1px solid rgba(255,255,255,0.3)',
-                  '&:hover': { background: 'rgba(255,255,255,0.35)' },
-                  '&:disabled': { background: 'rgba(255,255,255,0.1)' },
-                }}
               >
                 {loading ? <CircularProgress size={24} color="inherit" /> : 'Set PIN & Sign In'}
               </Button>
@@ -609,7 +527,7 @@ export default function LoginPage() {
           {/* Step: Verifying (loading state) */}
           {step === 'verifying' && (
             <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-              <CircularProgress sx={{ color: '#fff' }} />
+              <CircularProgress />
             </Box>
           )}
         </CardContent>
@@ -621,7 +539,7 @@ export default function LoginPage() {
         sx={{
           position: 'absolute',
           bottom: 16,
-          color: 'rgba(255,255,255,0.5)',
+          color: 'rgba(255,255,255,0.7)',
         }}
       >
         © {new Date().getFullYear()} Hospital Construction ERP
