@@ -41,6 +41,7 @@ import RefreshButton from './RefreshButton';
 import PinConfirmDialog from './PinConfirmDialog';
 import { exportToCsv, type CsvColumn } from '../utils/csvExport';
 import { useUrlState } from '../hooks/useUrlState';
+import { useIdDeepLink } from '../hooks/useIdDeepLink';
 
 export interface MaterialEntry {
   id?: string;
@@ -231,6 +232,9 @@ export default function EntityPage({
   const rows = data?.data ?? [];
   const pagination = data?.pagination ?? { page: 1, pageSize: 20, total: 0, totalPages: 0 };
   const submitting = createMutation.isPending || updateMutation.isPending;
+
+  // Deep-link from global search: ?id=<rowId> opens the edit dialog for that row
+  useIdDeepLink(rows as { id: string }[], (row) => openEdit(row));
 
   return (
     <Box sx={{ minWidth: 0, overflow: 'hidden' }}>

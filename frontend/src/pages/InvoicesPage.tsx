@@ -51,6 +51,7 @@ import OcrAutoFill, { type OcrInvoiceData } from '../components/OcrAutoFill';
 import ResponsiveTable from '../components/ResponsiveTable';
 import RefreshButton from '../components/RefreshButton';
 import { useApprovalDeepLink } from '../utils/useApprovalDeepLink';
+import { useIdDeepLink } from '../hooks/useIdDeepLink';
 
 interface POItem {
   id?: string;
@@ -513,6 +514,8 @@ export default function InvoicesPage() {
 
   // Auto-open approval dialog when navigated from a push notification
   useApprovalDeepLink(rows, (row) => setApprovalAction({ row, action: 'approve' }));
+  // Deep-link from global search: ?id=<invoiceId> opens the cross-module link dialog
+  useIdDeepLink(rows, (row) => setCrossLinkRow(row));
 
   function resetForm() {
     setSelectedVendorId('');

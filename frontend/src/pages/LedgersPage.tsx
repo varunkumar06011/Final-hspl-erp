@@ -46,6 +46,7 @@ import ResponsiveDialog from '../components/ResponsiveDialog';
 import RefreshButton from '../components/RefreshButton';
 import { formatCurrency, formatDate } from '../utils/enumOptions';
 import { LedgerGroup, isDebitNatureGroup } from '@hospital-erp/shared';
+import { useIdDeepLink } from '../hooks/useIdDeepLink';
 
 interface Ledger {
   id: string;
@@ -308,6 +309,13 @@ export default function LedgersPage() {
 
   const rows: Ledger[] = data?.data ?? [];
   const pagination = data?.pagination ?? { page: 1, pageSize: 100, total: 0, totalPages: 0 };
+
+  // Deep-link from global search: ?id=<ledgerId> opens the statement dialog
+  useIdDeepLink(rows, (ledger) => {
+    setStatementLedger(ledger);
+    setStmtStartDate('');
+    setStmtEndDate('');
+  });
 
   // Group ledgers by group and render custom subgroups beneath their primary parent.
   const grouped: Record<string, Ledger[]> = {};

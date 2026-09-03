@@ -53,6 +53,7 @@ import AcknowledgementCheckbox from '../components/AcknowledgementCheckbox';
 import ApprovalActionDialog from '../components/ApprovalActionDialog';
 import ResponsiveTable from '../components/ResponsiveTable';
 import { useApprovalDeepLink } from '../utils/useApprovalDeepLink';
+import { useIdDeepLink } from '../hooks/useIdDeepLink';
 
 interface POItem {
   id?: string;
@@ -362,6 +363,8 @@ export default function PurchaseOrdersPage() {
 
   // Auto-open approval dialog when navigated from a push notification
   useApprovalDeepLink(rows, (row) => setApprovalAction({ row, action: 'approve' }));
+  // Deep-link from global search: ?id=<poId> opens the delivery trail dialog
+  useIdDeepLink(rows, (row) => setTrailRow(row));
 
   const quotationTotal = useMemo(() => {
     if (!selectedQuotation?.items) return 0;

@@ -40,6 +40,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { IssueSeverity, IssueCategory, IssueStatus } from '@hospital-erp/shared';
 import { enumToOptions, formatDate, STATUS_COLORS } from '../utils/enumOptions';
 import api, { extractErrorMessage } from '../config/api';
+import { useIdDeepLink } from '../hooks/useIdDeepLink';
 import { useAuthStore } from '../stores/authStore';
 import ResponsiveTable from '../components/ResponsiveTable';
 import RefreshButton from '../components/RefreshButton';
@@ -180,6 +181,9 @@ export default function IssuesPage() {
 
   const rows: IssueRow[] = data?.data ?? [];
   const pagination = data?.pagination ?? { page: 1, pageSize: 20, total: 0, totalPages: 0 };
+
+  // Deep-link from global search: ?id=<issueId> opens the edit dialog
+  useIdDeepLink(rows, (issue) => openEdit(issue));
 
   // Build the address-to options: 4 heads + self
   const addressToOptions = [

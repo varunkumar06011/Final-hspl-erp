@@ -53,6 +53,7 @@ import { downloadFile } from '../utils/file';
 import ApprovalActionDialog from '../components/ApprovalActionDialog';
 import ResponsiveTable from '../components/ResponsiveTable';
 import { useApprovalDeepLink } from '../utils/useApprovalDeepLink';
+import { useIdDeepLink } from '../hooks/useIdDeepLink';
 
 interface ApprovalStep {
   id: string;
@@ -431,6 +432,8 @@ export default function PaymentsPage() {
 
   // Auto-open approval dialog when navigated from a push notification
   useApprovalDeepLink(rows, (row) => setApprovalAction({ row, action: 'approve' }));
+  // Deep-link from global search: ?id=<prId> opens the approval dialog
+  useIdDeepLink(rows, (row) => setApprovalAction({ row, action: 'approve' }));
 
   function canApprove(row: PaymentRequestRow): boolean {
     if (!row.approvalWorkflow) return false;
