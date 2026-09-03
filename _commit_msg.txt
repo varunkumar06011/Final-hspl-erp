@@ -1,0 +1,24 @@
+Redesign login page with Apple-style glassmorphism
+
+Apple Sonoma-inspired design:
+- Deep dark base (#1a1a2e) with 4 vibrant animated color blobs
+  (coral red, purple, light salmon, teal) that drift and pulse
+  behind the card, creating colorful tints through the glass
+- Frosted glass card: 55% translucent white with 40px blur +
+  180% saturation boost (backdrop-filter) — true Apple frosted
+  glass effect
+- Subtle top border highlight simulates light hitting glass edge
+- 28px rounded corners, layered soft shadows with inset glow
+- Logo: rounded square (16px) with coral-to-purple gradient
+- Segmented control for Sign In/Sign Up toggle (Apple style)
+- Inputs: 12px rounded, semi-transparent white background,
+  purple focus ring
+- Buttons: coral-to-purple gradient with colored shadow
+- All text: dark (#1a1a2e) on light glass for readability
+- Step transitions: smooth fade-in-up animation
+
+No auth logic changed.
+
+Generated with [Devin](https://devin.ai)
+
+Co-Authored-By: Devin <158243242+devin-ai-integration[bot]@users.noreply.github.com>

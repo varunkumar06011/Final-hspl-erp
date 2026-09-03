@@ -14,7 +14,7 @@ import {
   IconButton,
   InputAdornment as MuiInputAdornment,
 } from '@mui/material';
-import { Visibility, VisibilityOff, LocalHospital, Construction } from '@mui/icons-material';
+import { Visibility, VisibilityOff, LocalHospital } from '@mui/icons-material';
 import { RecaptchaVerifier, signInWithPhoneNumber } from 'firebase/auth';
 import { useNavigate, Navigate } from 'react-router-dom';
 import { auth, isConfigured } from '../config/firebase';
@@ -22,16 +22,21 @@ import api, { extractErrorMessage } from '../config/api';
 import { useAuthStore } from '../stores/authStore';
 
 // ── Animations ──────────────────────────────────────────────
-const gradientShift = keyframes`
-  0%   { background-position:   0% 50%; }
-  50%  { background-position: 100% 50%; }
-  100% { background-position:   0% 50%; }
+const blobMove1 = keyframes`
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33%      { transform: translate(40px, -30px) scale(1.1); }
+  66%      { transform: translate(-20px, 20px) scale(0.95); }
 `;
 
-const floatUp = keyframes`
-  0%   { transform: translateY(0)     rotate(0deg);   opacity: 0.7; }
-  50%  { transform: translateY(-30px) rotate(10deg);  opacity: 0.4; }
-  100% { transform: translateY(0)     rotate(0deg);   opacity: 0.7; }
+const blobMove2 = keyframes`
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33%      { transform: translate(-30px, 40px) scale(1.05); }
+  66%      { transform: translate(25px, -15px) scale(1.1); }
+`;
+
+const blobMove3 = keyframes`
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50%      { transform: translate(20px, 30px) scale(1.15); }
 `;
 
 const fadeInUp = keyframes`
@@ -220,6 +225,68 @@ export default function LoginPage() {
 
   const isDevMode = !isConfigured || !auth;
 
+  const fadeAnim = `${fadeInUp} 0.6s ease-out`;
+  const stepFadeAnim = `${fadeInUp} 0.4s ease-out`;
+  const blob1Anim = `${blobMove1} 12s ease-in-out infinite`;
+  const blob2Anim = `${blobMove2} 14s ease-in-out infinite`;
+  const blob3Anim = `${blobMove3} 10s ease-in-out infinite`;
+  const blob4Anim = `${blobMove1} 16s ease-in-out infinite`;
+
+  // Apple-style shared input/button styles
+  const glassInputSx = {
+    mb: 2,
+    '& .MuiOutlinedInput-root': {
+      borderRadius: '12px',
+      background: 'rgba(255, 255, 255, 0.7)',
+      '& fieldset': { borderColor: 'rgba(255, 255, 255, 0.5)' },
+      '&:hover fieldset': { borderColor: 'rgba(255, 255, 255, 0.8)' },
+      '&.Mui-focused fieldset': { borderColor: 'rgba(123, 104, 238, 0.6)', borderWidth: 2 },
+    },
+    '& .MuiInputLabel-root': { color: 'rgba(26, 26, 46, 0.6)' },
+  } as const;
+
+  const glassButtonSx = {
+    borderRadius: '12px',
+    textTransform: 'none',
+    fontWeight: 600,
+    fontSize: '1rem',
+    py: 1.2,
+    background: 'linear-gradient(135deg, #FF6B6B, #7B68EE)',
+    boxShadow: '0 4px 16px rgba(123, 104, 238, 0.35)',
+    '&:hover': {
+      background: 'linear-gradient(135deg, #FF5757, #6B5EEE)',
+      boxShadow: '0 6px 20px rgba(123, 104, 238, 0.45)',
+    },
+    '&:disabled': {
+      background: 'rgba(0, 0, 0, 0.15)',
+      boxShadow: 'none',
+    },
+  } as const;
+
+  const glassTextButtonSx = {
+    textTransform: 'none',
+    color: 'rgba(26, 26, 46, 0.6)',
+    '&:hover': { background: 'rgba(255, 255, 255, 0.2)' },
+  } as const;
+
+  const glassAlertSx = {
+    mb: 2,
+    borderRadius: '12px',
+    backdropFilter: 'blur(10px)',
+  } as const;
+
+  const glassPinInputSx = {
+    mb: 2,
+    textAlign: 'center',
+    fontSize: '1.5rem',
+    letterSpacing: '0.5rem',
+    color: '#1a1a2e',
+    '&:before': { borderBottomColor: 'rgba(255, 255, 255, 0.4)' },
+    '&:hover:not(.Mui-disabled):before': { borderBottomColor: 'rgba(255, 255, 255, 0.7)' },
+    '&:after': { borderBottomColor: 'rgba(123, 104, 238, 0.6)' },
+    '& input': { color: '#1a1a2e', textAlign: 'center' },
+  } as const;
+
   return (
     <Box
       sx={{
@@ -227,130 +294,181 @@ export default function LoginPage() {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        // Animated gradient — 4 colors slowly shifting
-        background: 'linear-gradient(-45deg, #0D47A1, #1565C0, #00695C, #1B5E20)',
-        backgroundSize: '400% 400%',
-        animation: `${gradientShift} 15s ease infinite`,
+        // Deep base color
+        background: '#1a1a2e',
         p: 2,
         position: 'relative',
         overflow: 'hidden',
       }}
     >
-      {/* Floating decorative icons */}
-      <Construction
+      {/* Vibrant animated color blobs — Apple Sonoma style */}
+      <Box
         sx={{
           position: 'absolute',
-          top: '12%',
-          left: '8%',
-          fontSize: 80,
-          color: 'rgba(255,255,255,0.08)',
-          animation: `${floatUp} 6s ease-in-out infinite`,
+          top: '-10%',
+          left: '-5%',
+          width: 500,
+          height: 500,
+          borderRadius: '50%',
+          background: 'radial-gradient(circle, #FF6B6B 0%, #FF6B6B00 70%)',
+          filter: 'blur(60px)',
+          animation: blob1Anim,
+          opacity: 0.8,
         }}
       />
-      <LocalHospital
+      <Box
         sx={{
           position: 'absolute',
-          bottom: '15%',
-          right: '10%',
-          fontSize: 100,
-          color: 'rgba(255,255,255,0.07)',
-          animation: `${floatUp} 8s ease-in-out infinite`,
-          animationDelay: '1s',
+          top: '30%',
+          right: '-10%',
+          width: 450,
+          height: 450,
+          borderRadius: '50%',
+          background: 'radial-gradient(circle, #7B68EE 0%, #7B68EE00 70%)',
+          filter: 'blur(60px)',
+          animation: blob2Anim,
+          opacity: 0.8,
         }}
       />
-      <Construction
+      <Box
         sx={{
           position: 'absolute',
-          top: '60%',
-          left: '15%',
-          fontSize: 60,
-          color: 'rgba(255,255,255,0.06)',
-          animation: `${floatUp} 7s ease-in-out infinite`,
+          bottom: '-15%',
+          left: '20%',
+          width: 400,
+          height: 400,
+          borderRadius: '50%',
+          background: 'radial-gradient(circle, #FFA07A 0%, #FFA07A00 70%)',
+          filter: 'blur(60px)',
+          animation: blob3Anim,
+          opacity: 0.7,
+        }}
+      />
+      <Box
+        sx={{
+          position: 'absolute',
+          top: '10%',
+          left: '40%',
+          width: 350,
+          height: 350,
+          borderRadius: '50%',
+          background: 'radial-gradient(circle, #00CED1 0%, #00CED100 70%)',
+          filter: 'blur(50px)',
+          animation: blob4Anim,
           animationDelay: '2s',
-        }}
-      />
-      <LocalHospital
-        sx={{
-          position: 'absolute',
-          top: '20%',
-          right: '18%',
-          fontSize: 50,
-          color: 'rgba(255,255,255,0.05)',
-          animation: `${floatUp} 9s ease-in-out infinite`,
-          animationDelay: '0.5s',
+          opacity: 0.6,
         }}
       />
 
-      {/* Glassmorphism login card */}
+      {/* Apple-style glassmorphism login card */}
       <Card
         sx={{
-          maxWidth: 440,
+          maxWidth: 420,
           width: '100%',
-          // Frosted glass effect — more opaque for readability
-          background: 'rgba(255, 255, 255, 0.95)',
-          backdropFilter: 'blur(20px)',
-          WebkitBackdropFilter: 'blur(20px)',
-          border: '1px solid rgba(255, 255, 255, 0.3)',
-          borderRadius: 4,
-          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)',
+          // Frosted glass — translucent with strong blur
+          background: 'rgba(255, 255, 255, 0.55)',
+          backdropFilter: 'blur(40px) saturate(180%)',
+          WebkitBackdropFilter: 'blur(40px) saturate(180%)',
+          // Subtle top highlight — simulates light hitting glass edge
+          borderTop: '1px solid rgba(255, 255, 255, 0.8)',
+          borderLeft: '1px solid rgba(255, 255, 255, 0.4)',
+          borderRight: '1px solid rgba(255, 255, 255, 0.2)',
+          borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
+          borderRadius: '28px',
+          // Layered soft shadows
+          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.25), 0 2px 8px rgba(0, 0, 0, 0.1), inset 0 1px 1px rgba(255, 255, 255, 0.4)',
           position: 'relative',
           zIndex: 1,
         }}
       >
         <CardContent sx={{ p: 4 }}>
           {/* Logo + title */}
-          <Box sx={{ textAlign: 'center', mb: 3, animation: `${fadeInUp} 0.6s ease-out` }}>
+          <Box sx={{ textAlign: 'center', mb: 3, animation: fadeAnim }}>
             <Box
               sx={{
                 display: 'inline-flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                width: 64,
-                height: 64,
-                borderRadius: '50%',
-                background: 'linear-gradient(135deg, #1565C0, #00695C)',
-                mb: 1.5,
+                width: 56,
+                height: 56,
+                borderRadius: '16px',
+                background: 'linear-gradient(135deg, #FF6B6B, #7B68EE)',
+                mb: 2,
+                boxShadow: '0 4px 16px rgba(123, 104, 238, 0.4)',
               }}
             >
-              <LocalHospital sx={{ fontSize: 36, color: '#fff' }} />
+              <LocalHospital sx={{ fontSize: 32, color: '#fff' }} />
             </Box>
-            <Typography variant="h5" align="center" gutterBottom fontWeight={700} sx={{ color: '#1565C0' }}>
+            <Typography variant="h5" align="center" gutterBottom fontWeight={700} sx={{ color: '#1a1a2e', letterSpacing: '-0.5px' }}>
               Hospital Construction ERP
             </Typography>
-            <Typography variant="body2" align="center" color="text.secondary">
+            <Typography variant="body2" align="center" sx={{ color: 'rgba(26, 26, 46, 0.6)' }}>
               Sign in to manage your project
             </Typography>
           </Box>
 
-          {/* Sign In / Sign Up toggle */}
-          <Box sx={{ display: 'flex', gap: 1, mb: 3 }}>
-            <Button
-              fullWidth
-              variant={mode === 'signin' ? 'contained' : 'outlined'}
+          {/* Sign In / Sign Up toggle — Apple segmented control style */}
+          <Box
+            sx={{
+              display: 'flex',
+              p: 0.5,
+              mb: 3,
+              borderRadius: 3,
+              background: 'rgba(0, 0, 0, 0.06)',
+              border: '1px solid rgba(255, 255, 255, 0.3)',
+            }}
+          >
+            <Box
               onClick={() => { setMode('signin'); setStep('phone'); setPin(''); setOtp(''); setError(''); }}
+              sx={{
+                flex: 1,
+                textAlign: 'center',
+                py: 1,
+                borderRadius: 2,
+                cursor: 'pointer',
+                fontWeight: 600,
+                fontSize: '0.9rem',
+                transition: 'all 0.2s',
+                color: mode === 'signin' ? '#fff' : 'rgba(26, 26, 46, 0.6)',
+                background: mode === 'signin' ? 'rgba(255, 255, 255, 0.9)' : 'transparent',
+                boxShadow: mode === 'signin' ? '0 2px 8px rgba(0, 0, 0, 0.12)' : 'none',
+                '&:hover': { color: mode === 'signin' ? '#fff' : 'rgba(26, 26, 46, 0.85)' },
+              }}
             >
               Sign In
-            </Button>
-            <Button
-              fullWidth
-              variant={mode === 'signup' ? 'contained' : 'outlined'}
+            </Box>
+            <Box
               onClick={() => { setMode('signup'); setStep('phone'); setPin(''); setOtp(''); setError(''); }}
+              sx={{
+                flex: 1,
+                textAlign: 'center',
+                py: 1,
+                borderRadius: 2,
+                cursor: 'pointer',
+                fontWeight: 600,
+                fontSize: '0.9rem',
+                transition: 'all 0.2s',
+                color: mode === 'signup' ? '#fff' : 'rgba(26, 26, 46, 0.6)',
+                background: mode === 'signup' ? 'rgba(255, 255, 255, 0.9)' : 'transparent',
+                boxShadow: mode === 'signup' ? '0 2px 8px rgba(0, 0, 0, 0.12)' : 'none',
+                '&:hover': { color: mode === 'signup' ? '#fff' : 'rgba(26, 26, 46, 0.85)' },
+              }}
             >
               Sign Up
-            </Button>
+            </Box>
           </Box>
 
           <div id="recaptcha-container" />
 
           {error && (
-            <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>
+            <Alert severity="error" sx={glassAlertSx} onClose={() => setError('')}>
               {error}
             </Alert>
           )}
 
           {/* Step: Phone entry */}
           {step === 'phone' && (
-            <Box sx={{ animation: `${fadeInUp} 0.4s ease-out` }}>
+            <Box sx={{ animation: stepFadeAnim }}>
               {mode === 'signup' && (
                 <TextField
                   fullWidth
@@ -358,7 +476,7 @@ export default function LoginPage() {
                   placeholder="Enter your full name"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  sx={{ mb: 2 }}
+                  sx={glassInputSx}
                   required
                 />
               )}
@@ -374,7 +492,7 @@ export default function LoginPage() {
                 InputProps={{
                   startAdornment: <InputAdornment position="start">+91</InputAdornment>,
                 }}
-                sx={{ mb: 2 }}
+                sx={glassInputSx}
               />
               <Button
                 fullWidth
@@ -382,6 +500,7 @@ export default function LoginPage() {
                 size="large"
                 onClick={handleCheckPhone}
                 disabled={loading || phone.length !== 10 || (mode === 'signup' && !name.trim())}
+                sx={glassButtonSx}
               >
                 {loading ? <CircularProgress size={24} color="inherit" /> : 'Continue'}
               </Button>
@@ -390,11 +509,11 @@ export default function LoginPage() {
 
           {/* Step: PIN entry (returning user) */}
           {step === 'pin' && (
-            <Box sx={{ animation: `${fadeInUp} 0.4s ease-out` }}>
-              <Alert severity="info" sx={{ mb: 2 }}>
+            <Box sx={{ animation: stepFadeAnim }}>
+              <Alert severity="info" sx={glassAlertSx}>
                 Welcome back! Enter your 4-digit PIN to sign in.
               </Alert>
-              <Typography variant="body2" sx={{ mb: 1 }}>
+              <Typography variant="body2" sx={{ mb: 1, color: 'rgba(26, 26, 46, 0.7)' }}>
                 Phone: <strong>+91 {phone}</strong>
               </Typography>
               <Input
@@ -406,11 +525,11 @@ export default function LoginPage() {
                   setPin(digits);
                 }}
                 placeholder="4-digit PIN"
-                sx={{ mb: 2, textAlign: 'center', fontSize: '1.5rem', letterSpacing: '0.5rem' }}
+                sx={glassPinInputSx}
                 inputProps={{ maxLength: 4, style: { textAlign: 'center' } }}
                 endAdornment={
                   <MuiInputAdornment position="end">
-                    <IconButton onClick={() => setShowPin(!showPin)} edge="end">
+                    <IconButton onClick={() => setShowPin(!showPin)} edge="end" sx={{ color: 'rgba(26, 26, 46, 0.5)' }}>
                       {showPin ? <VisibilityOff /> : <Visibility />}
                     </IconButton>
                   </MuiInputAdornment>
@@ -422,13 +541,14 @@ export default function LoginPage() {
                 size="large"
                 onClick={handlePinLogin}
                 disabled={loading || pin.length !== 4}
+                sx={glassButtonSx}
               >
                 {loading ? <CircularProgress size={24} color="inherit" /> : 'Sign In'}
               </Button>
               <Button
                 fullWidth
                 variant="text"
-                sx={{ mt: 1 }}
+                sx={{ mt: 1, ...glassTextButtonSx }}
                 onClick={() => { setStep('phone'); setPin(''); setError(''); }}
               >
                 Use a different phone number
@@ -436,7 +556,7 @@ export default function LoginPage() {
               <Button
                 fullWidth
                 variant="text"
-                sx={{ mt: 0.5 }}
+                sx={{ mt: 0.5, ...glassTextButtonSx }}
                 onClick={() => { setStep('otp'); setError(''); }}
               >
                 Forgot PIN? Verify with OTP
@@ -446,8 +566,8 @@ export default function LoginPage() {
 
           {/* Step: OTP entry */}
           {step === 'otp' && (
-            <Box sx={{ animation: `${fadeInUp} 0.4s ease-out` }}>
-              <Alert severity="info" sx={{ mb: 2 }}>
+            <Box sx={{ animation: stepFadeAnim }}>
+              <Alert severity="info" sx={glassAlertSx}>
                 OTP sent to +91 {phone}. Enter the 6-digit code to verify your identity.
               </Alert>
               <TextField
@@ -456,7 +576,7 @@ export default function LoginPage() {
                 placeholder="6-digit code"
                 value={otp}
                 onChange={(e) => setOtp(e.target.value)}
-                sx={{ mb: 2 }}
+                sx={glassInputSx}
                 inputProps={{ maxLength: 6 }}
               />
               <Button
@@ -465,19 +585,20 @@ export default function LoginPage() {
                 size="large"
                 onClick={handleVerifyOtp}
                 disabled={loading || otp.length < 4}
+                sx={glassButtonSx}
               >
                 {loading ? <CircularProgress size={24} color="inherit" /> : 'Verify OTP'}
               </Button>
               <Button
                 fullWidth
                 variant="text"
-                sx={{ mt: 1 }}
+                sx={{ mt: 1, ...glassTextButtonSx }}
                 onClick={() => { setStep('phone'); setOtp(''); setError(''); }}
               >
                 Change phone number
               </Button>
               {isDevMode && (
-                <Alert severity="info" sx={{ mt: 2 }}>
+                <Alert severity="info" sx={{ ...glassAlertSx, mb: 0, mt: 2 }}>
                   Dev mode: use OTP <strong>1234</strong>
                 </Alert>
               )}
@@ -486,8 +607,8 @@ export default function LoginPage() {
 
           {/* Step: Set PIN (after OTP verification) */}
           {step === 'setPin' && (
-            <Box sx={{ animation: `${fadeInUp} 0.4s ease-out` }}>
-              <Alert severity="success" sx={{ mb: 2 }}>
+            <Box sx={{ animation: stepFadeAnim }}>
+              <Alert severity="success" sx={glassAlertSx}>
                 Identity verified! Set a 4-digit PIN for quick login next time.
               </Alert>
               <Input
@@ -499,17 +620,17 @@ export default function LoginPage() {
                   setPin(digits);
                 }}
                 placeholder="Choose a 4-digit PIN"
-                sx={{ mb: 2, textAlign: 'center', fontSize: '1.5rem', letterSpacing: '0.5rem' }}
+                sx={glassPinInputSx}
                 inputProps={{ maxLength: 4, style: { textAlign: 'center' } }}
                 endAdornment={
                   <MuiInputAdornment position="end">
-                    <IconButton onClick={() => setShowPin(!showPin)} edge="end">
+                    <IconButton onClick={() => setShowPin(!showPin)} edge="end" sx={{ color: 'rgba(26, 26, 46, 0.5)' }}>
                       {showPin ? <VisibilityOff /> : <Visibility />}
                     </IconButton>
                   </MuiInputAdornment>
                 }
               />
-              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 2 }}>
+              <Typography variant="caption" sx={{ display: 'block', mb: 2, color: 'rgba(26, 26, 46, 0.5)' }}>
                 You'll use this PIN with your phone number to sign in — no OTP needed.
               </Typography>
               <Button
@@ -518,6 +639,7 @@ export default function LoginPage() {
                 size="large"
                 onClick={handleSetPin}
                 disabled={loading || pin.length !== 4}
+                sx={glassButtonSx}
               >
                 {loading ? <CircularProgress size={24} color="inherit" /> : 'Set PIN & Sign In'}
               </Button>
