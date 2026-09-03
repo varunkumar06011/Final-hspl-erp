@@ -113,6 +113,7 @@ export const updateQuotationSchema = z.object({
 });
 export const listQuotationsSchema = z.object({
   query: pagination.extend({
+    search: z.string().optional(),
     vendorId: uuid.optional(),
     status: z.nativeEnum(QuotationStatus).optional(),
   }),
@@ -171,6 +172,7 @@ export const regeneratePOSchema = z.object({
 });
 export const listPOsSchema = z.object({
   query: pagination.extend({
+    search: z.string().optional(),
     vendorId: uuid.optional(),
     status: z.nativeEnum(POStatus).optional(),
   }),
@@ -241,6 +243,7 @@ export const updateInvoiceSchema = z.object({
 });
 export const listInvoicesSchema = z.object({
   query: pagination.extend({
+    search: z.string().optional(),
     vendorId: uuid.optional(),
     verificationStatus: z.nativeEnum(InvoiceVerificationStatus).optional(),
   }),
@@ -282,6 +285,7 @@ export const createAdvancePaymentSchema = z.object({
 });
 export const listPaymentRequestsSchema = z.object({
   query: pagination.extend({
+    search: z.string().optional(),
     vendorId: uuid.optional(),
     status: z.string().optional(),
     type: z.string().optional(),

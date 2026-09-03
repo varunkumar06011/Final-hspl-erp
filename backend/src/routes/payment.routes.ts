@@ -182,7 +182,7 @@ router.get(
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const projectId = requireProjectId(req);
-      const { page, pageSize, status, vendorId, type } = req.query as Record<string, unknown>;
+      const { page, pageSize, status, vendorId, type, search } = req.query as Record<string, unknown>;
       const pageNum = Number(page) || 1;
       const size = Number(pageSize) || 20;
 
@@ -190,6 +190,14 @@ router.get(
       if (status) where.status = status;
       if (vendorId) where.vendorId = vendorId;
       if (type) where.type = type;
+      if (search) {
+        where.OR = [
+          { paymentCode: { contains: String(search), mode: 'insensitive' } },
+          { requestNumber: { contains: String(search), mode: 'insensitive' } },
+          { description: { contains: String(search), mode: 'insensitive' } },
+          { vendor: { name: { contains: String(search), mode: 'insensitive' } } },
+        ];
+      }
 
       const [data, total] = await Promise.all([
         prisma.paymentRequest.findMany({

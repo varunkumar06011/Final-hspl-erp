@@ -116,13 +116,20 @@ router.get(
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const projectId = requireProjectId(req);
-      const { page, pageSize, vendorId, verificationStatus } = req.query as Record<string, unknown>;
+      const { page, pageSize, vendorId, verificationStatus, search } = req.query as Record<string, unknown>;
       const pageNum = Number(page) || 1;
       const size = Number(pageSize) || 20;
 
       const where: Record<string, unknown> = { projectId, deletedAt: null };
       if (vendorId) where.vendorId = vendorId;
       if (verificationStatus) where.verificationStatus = verificationStatus;
+      if (search) {
+        where.OR = [
+          { invoiceNumber: { contains: String(search), mode: 'insensitive' } },
+          { invoiceCode: { contains: String(search), mode: 'insensitive' } },
+          { vendor: { name: { contains: String(search), mode: 'insensitive' } } },
+        ];
+      }
 
       const [data, total] = await Promise.all([
         prisma.vendorInvoice.findMany({

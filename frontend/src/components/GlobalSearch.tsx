@@ -20,6 +20,15 @@ import {
   Engineering as WorkIcon,
   BugReport as IssueIcon,
   Devices as AssetIcon,
+  Receipt as POIcon,
+  RequestQuote as QuotationIcon,
+  Description as InvoiceIcon,
+  Payments as PaymentIcon,
+  AccountBalance as BankIcon,
+  Payments as CashIcon,
+  AccountBalanceWallet as LedgerIcon,
+  Savings as BudgetIcon,
+  Person as OwnerIcon,
 } from '@mui/icons-material';
 import api from '../config/api';
 
@@ -48,6 +57,75 @@ const SOURCES: SearchSource[] = [
     path: (id) => `/vendors?id=${id}`,
     label: (r) => String(r.name ?? ''),
     sublabel: (r) => String(r.vendorCode ?? ''),
+  },
+  {
+    type: 'Purchase Order',
+    endpoint: '/purchase-orders',
+    icon: <POIcon fontSize="small" />,
+    path: (id) => `/pos?id=${id}`,
+    label: (r) => String(r.poNumber ?? ''),
+    sublabel: (r) => String((r.vendor as { name?: string } | null)?.name ?? ''),
+  },
+  {
+    type: 'Quotation',
+    endpoint: '/quotations',
+    icon: <QuotationIcon fontSize="small" />,
+    path: (id) => `/quotations?id=${id}`,
+    label: (r) => String(r.quotationNumber ?? ''),
+    sublabel: (r) => String((r.vendor as { name?: string } | null)?.name ?? ''),
+  },
+  {
+    type: 'Invoice',
+    endpoint: '/invoices',
+    icon: <InvoiceIcon fontSize="small" />,
+    path: (id) => `/invoices?id=${id}`,
+    label: (r) => String(r.invoiceCode ?? r.invoiceNumber ?? ''),
+    sublabel: (r) => String((r.vendor as { name?: string } | null)?.name ?? ''),
+  },
+  {
+    type: 'Payment Request',
+    endpoint: '/payments',
+    icon: <PaymentIcon fontSize="small" />,
+    path: (id) => `/payments?id=${id}`,
+    label: (r) => String(r.paymentCode ?? r.requestNumber ?? ''),
+    sublabel: (r) => String((r.vendor as { name?: string } | null)?.name ?? r.description ?? ''),
+  },
+  {
+    type: 'Ledger',
+    endpoint: '/ledgers',
+    icon: <LedgerIcon fontSize="small" />,
+    path: (id) => `/ledgers?id=${id}`,
+    label: (r) => String(r.name ?? ''),
+    sublabel: (r) => String(r.group ?? ''),
+  },
+  {
+    type: 'Bank Account',
+    endpoint: '/bank-accounts',
+    icon: <BankIcon fontSize="small" />,
+    path: (id) => `/bank-accounts?id=${id}`,
+    label: (r) => String(r.accountName ?? ''),
+    sublabel: (r) => [r.bankName, r.accountNumber].filter(Boolean).map(String).join(' · '),
+  },
+  {
+    type: 'Cash Account',
+    endpoint: '/cash-accounts',
+    icon: <CashIcon fontSize="small" />,
+    path: (id) => `/cash-accounts?id=${id}`,
+    label: (r) => String(r.name ?? ''),
+  },
+  {
+    type: 'Budget Head',
+    endpoint: '/budget-heads',
+    icon: <BudgetIcon fontSize="small" />,
+    path: (id) => `/budget-heads?id=${id}`,
+    label: (r) => String(r.particulars ?? ''),
+  },
+  {
+    type: 'Owner Account',
+    endpoint: '/owner-accounts',
+    icon: <OwnerIcon fontSize="small" />,
+    path: (id) => `/owner-accounts?id=${id}`,
+    label: (r) => String(r.ownerName ?? ''),
   },
   {
     type: 'Work Task',
@@ -161,7 +239,7 @@ export default function GlobalSearch({ open, onClose }: GlobalSearchProps) {
         <TextField
           autoFocus
           fullWidth
-          placeholder="Search vendors, work, issues, assets…"
+          placeholder="Search vendors, POs, invoices, ledgers, payments, banks…"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           InputProps={{
