@@ -1,6 +1,6 @@
-import { Box, AppBar, Toolbar, Typography, IconButton, Avatar, Chip, Menu, MenuItem, Drawer, List, ListItem, ListItemIcon, ListItemText, useTheme, useMediaQuery, Snackbar, Alert } from '@mui/material';
-import { useState, useEffect, useCallback } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { Box, AppBar, Toolbar, Typography, IconButton, Avatar, Chip, Menu, MenuItem, Drawer, List, ListItem, ListItemIcon, ListItemText, useTheme, useMediaQuery, Snackbar, Alert, Breadcrumbs, Link } from '@mui/material';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useNavigate, useLocation, Link as RouterLink } from 'react-router-dom';
 import {
   Menu as MenuIcon,
   Dashboard as DashboardIcon,
@@ -32,12 +32,16 @@ import {
   AccountTree as LedgersIcon,
   ArrowDownward as VouchersIcon,
   BarChart as AccountingReportsIcon,
+  DarkMode as DarkModeIcon,
+  LightMode as LightModeIcon,
+  NavigateNext as NavigateNextIcon,
 } from '@mui/icons-material';
 import { useAuthStore } from '../stores/authStore';
 import { hasPermission, Permission, UserRole } from '@hospital-erp/shared';
 import { onForegroundMessage, enableNotifications, isPushSupported, getPermissionState } from '../config/notifications';
 import api from '../config/api';
 import { useIdleTimeout } from '../hooks/useIdleTimeout';
+import { useColorMode } from '../config/ColorModeContext';
 import GlobalSearch from './GlobalSearch';
 
 const NAV_ITEMS = [
@@ -108,6 +112,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  const { mode, toggle: toggleColorMode } = useColorMode();
   // Auto-logout after 15 min of inactivity (cross-tab aware).
   useIdleTimeout();
 
@@ -130,6 +135,20 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout } = useAuthStore();
+
+  // Build breadcrumb from current path
+  const breadcrumbs = useMemo(() => {
+    const path = location.pathname;
+    if (path === '/') return [{ label: 'Dashboard', path: '/' }];
+    const navItem = NAV_ITEMS.find((item) => item.path === path);
+    if (navItem) return [{ label: 'Dashboard', path: '/' }, { label: navItem.label, path }];
+    const partial = NAV_ITEMS.filter((item) => path.startsWith(item.path + '/') || path === item.path);
+    if (partial.length > 0) {
+      const best = partial[partial.length - 1];
+      return [{ label: 'Dashboard', path: '/' }, { label: best.label, path: best.path }, { label: 'Details', path }];
+    }
+    return [{ label: 'Dashboard', path: '/' }, { label: path.split('/')[1] ?? 'Page', path }];
+  }, [location.pathname]);
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
@@ -306,6 +325,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           >
             Hospital Construction ERP
           </Typography>
+          <IconButton color="inherit" onClick={toggleColorMode} title={mode === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'} size="large">
+            {mode === 'dark' ? <LightModeIcon /> : <DarkModeIcon />}
+          </IconButton>
           <IconButton color="inherit" onClick={() => setSearchOpen(true)} title="Search (Ctrl+K)" size="large">
             <SearchIcon />
           </IconButton>
@@ -374,6 +396,31 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       )}
 
       <Box component="main" sx={{ flexGrow: 1, p: { xs: 1.5, sm: 2, md: 3 }, mt: 8, width: { xs: '100%', md: 'auto' }, minWidth: 0, overflow: 'hidden' }}>
+        {/* Breadcrumbs */}
+        <Breadcrumbs
+          separator={<NavigateNextIcon fontSize="small" />}
+          sx={{ mb: 2, display: { xs: 'none', sm: 'flex' } }}
+        >
+          {breadcrumbs.map((crumb, idx) => {
+            const isLast = idx === breadcrumbs.length - 1;
+            return isLast ? (
+              <Typography key={crumb.path} variant="body2" color="text.primary" fontWeight={500}>
+                {crumb.label}
+              </Typography>
+            ) : (
+              <Link
+                key={crumb.path}
+                component={RouterLink}
+                to={crumb.path}
+                variant="body2"
+                color="inherit"
+                sx={{ textTransform: 'capitalize', textDecoration: 'none', '&:hover': { textDecoration: 'underline' } }}
+              >
+                {crumb.label}
+              </Link>
+            );
+          })}
+        </Breadcrumbs>
         {children}
       </Box>
 

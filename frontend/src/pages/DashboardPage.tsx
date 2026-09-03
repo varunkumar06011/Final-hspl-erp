@@ -1,8 +1,10 @@
 import { Box, Card, CardContent, Typography, Skeleton, Alert, Chip, Table, TableBody, TableCell, TableContainer, TableHead, TableRow } from '@mui/material';
 import type { ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend } from 'recharts';
 import api from '../config/api';
 import { formatCurrency, formatDate } from '../utils/enumOptions';
+import { useColorMode } from '../config/ColorModeContext';
 
 function MobileRecentCard({
   primary,
@@ -54,6 +56,9 @@ export default function DashboardPage() {
       return response.data;
     },
   });
+  const { mode } = useColorMode();
+  const chartTextColor = mode === 'dark' ? '#aaa' : '#666';
+  const chartGridColor = mode === 'dark' ? '#333' : '#e0e0e0';
 
   const { data: auditData } = useQuery({
     queryKey: ['/audit', 'recent'],
@@ -112,6 +117,77 @@ export default function DashboardPage() {
         <Card><CardContent><Typography color="text.secondary" variant="body2" gutterBottom>Pending Quotation Value</Typography>{isLoading ? <Skeleton variant="text" width={120} height={30} /> : <Typography variant="h6" color="warning.main">{formatCurrency(summary?.pendingQuotationValue ?? 0)}</Typography>}</CardContent></Card>
         <Card><CardContent><Typography color="text.secondary" variant="body2" gutterBottom>Pending POs</Typography>{isLoading ? <Skeleton variant="text" width={60} height={30} /> : <Typography variant="h4" color="warning.main">{summary?.pendingPOs ?? 0}</Typography>}</CardContent></Card>
         <Card><CardContent><Typography color="text.secondary" variant="body2" gutterBottom>Pending Invoices</Typography>{isLoading ? <Skeleton variant="text" width={60} height={30} /> : <Typography variant="h4" color="warning.main">{summary?.pendingInvoices ?? 0}</Typography>}</CardContent></Card>
+      </Box>
+
+      {/* Charts row */}
+      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2, mb: 3 }}>
+        {/* Budget breakdown donut */}
+        <Card>
+          <CardContent>
+            <Typography variant="h6" gutterBottom>Budget Breakdown</Typography>
+            {isLoading ? (
+              <Skeleton variant="rectangular" height={240} />
+            ) : (
+              <ResponsiveContainer width="100%" height={240}>
+                <PieChart>
+                  <Pie
+                    data={[
+                      { name: 'Paid', value: Number(summary?.paid ?? 0) },
+                      { name: 'Committed (Unpaid)', value: Math.max(0, Number(summary?.committed ?? 0) - Number(summary?.paid ?? 0)) },
+                      { name: 'Remaining', value: Math.max(0, Number(summary?.remaining ?? 0)) },
+                    ].filter((d) => d.value > 0)}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={50}
+                    outerRadius={85}
+                    paddingAngle={2}
+                    dataKey="value"
+                  >
+                    <Cell fill="#4CAF50" />
+                    <Cell fill="#FF9800" />
+                    <Cell fill="#2196F3" />
+                  </Pie>
+                  <RechartsTooltip
+                    formatter={(value) => formatCurrency(Number(value))}
+                    contentStyle={{ background: mode === 'dark' ? '#1E1E1E' : '#fff', border: '1px solid #ccc', borderRadius: 8, fontSize: 13 }}
+                  />
+                  <Legend wrapperStyle={{ fontSize: 13, color: chartTextColor }} />
+                </PieChart>
+              </ResponsiveContainer>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* PO status bar chart */}
+        <Card>
+          <CardContent>
+            <Typography variant="h6" gutterBottom>Purchase Orders by Status</Typography>
+            {isLoading ? (
+              <Skeleton variant="rectangular" height={240} />
+            ) : (
+              <ResponsiveContainer width="100%" height={240}>
+                <BarChart
+                  data={[
+                    { name: 'Pending', count: summary?.pendingPOs ?? 0 },
+                    { name: 'Pending Inv.', count: summary?.pendingInvoices ?? 0 },
+                    { name: 'Pending Pay', count: summary?.pendingPayments ?? 0 },
+                    { name: 'Open Issues', count: summary?.openIssues ?? 0 },
+                    { name: 'Low Stock', count: summary?.lowStockItems ?? 0 },
+                  ]}
+                  margin={{ top: 10, right: 10, left: -15, bottom: 0 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke={chartGridColor} />
+                  <XAxis dataKey="name" tick={{ fill: chartTextColor, fontSize: 12 }} />
+                  <YAxis tick={{ fill: chartTextColor, fontSize: 12 }} allowDecimals={false} />
+                  <RechartsTooltip
+                    contentStyle={{ background: mode === 'dark' ? '#1E1E1E' : '#fff', border: '1px solid #ccc', borderRadius: 8, fontSize: 13 }}
+                  />
+                  <Bar dataKey="count" fill="#82B1FF" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </CardContent>
+        </Card>
       </Box>
 
       {/* Recent Quotations */}

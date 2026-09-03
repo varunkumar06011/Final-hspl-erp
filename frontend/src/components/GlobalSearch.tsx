@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { getRecentlyViewed, addRecentlyViewed, type RecentItem } from '../hooks/useRecentlyViewed';
 import {
   Dialog,
   DialogContent,
@@ -303,6 +304,15 @@ export default function GlobalSearch({ open, onClose }: GlobalSearchProps) {
   }, [selectedIndex]);
 
   const handleSelect = (result: SearchResult) => {
+    // Track in recently viewed (skip page shortcuts)
+    if (!result.isPageShortcut) {
+      addRecentlyViewed({
+        id: result.id,
+        label: result.label,
+        path: result.path,
+        type: result.type,
+      });
+    }
     navigate(result.path);
     onClose();
   };
@@ -442,26 +452,54 @@ export default function GlobalSearch({ open, onClose }: GlobalSearchProps) {
             </>
           )}
 
-          {/* Empty state with hints */}
-          {!showSearchResults && !hasPageMatches && (
-            <Box sx={{ p: 3, textAlign: 'center' }}>
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                Type to search across all modules
-              </Typography>
-              <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'center', flexWrap: 'wrap' }}>
-                {['vendors', 'POs', 'invoices', 'ledgers', 'payments', 'banks'].map((t) => (
-                  <Chip
-                    key={t}
-                    size="small"
-                    label={t}
-                    variant="outlined"
-                    onClick={() => setQuery(t)}
-                    sx={{ cursor: 'pointer' }}
-                  />
-                ))}
+          {/* Recently viewed (shown when no query) */}
+          {!showSearchResults && !hasPageMatches && (() => {
+            const recent = getRecentlyViewed();
+            return recent.length > 0 ? (
+              <Box>
+                <Typography variant="overline" color="text.secondary" sx={{ px: 2, pt: 1, display: 'block' }}>
+                  Recently Viewed
+                </Typography>
+                <List dense sx={{ pt: 0 }}>
+                  {recent.map((r: RecentItem) => (
+                    <ListItemButton
+                      key={`${r.type}-${r.id}`}
+                      onClick={() => handleSelect({ id: r.id, label: r.label, path: r.path, type: r.type, icon: <SearchIcon fontSize="small" /> })}
+                      sx={{ py: 0.5 }}
+                    >
+                      <ListItemIcon sx={{ minWidth: 36 }}>
+                        {SOURCES.find((s) => s.type === r.type)?.icon ?? <SearchIcon fontSize="small" />}
+                      </ListItemIcon>
+                      <ListItemText
+                        primary={r.label}
+                        secondary={r.type}
+                        primaryTypographyProps={{ variant: 'body2', noWrap: true }}
+                        secondaryTypographyProps={{ variant: 'caption', noWrap: true }}
+                      />
+                    </ListItemButton>
+                  ))}
+                </List>
+                <Box sx={{ p: 2, textAlign: 'center' }}>
+                  <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'center', flexWrap: 'wrap' }}>
+                    {['vendors', 'POs', 'invoices', 'ledgers', 'payments', 'banks'].map((t) => (
+                      <Chip key={t} size="small" label={t} variant="outlined" onClick={() => setQuery(t)} sx={{ cursor: 'pointer' }} />
+                    ))}
+                  </Box>
+                </Box>
               </Box>
-            </Box>
-          )}
+            ) : (
+              <Box sx={{ p: 3, textAlign: 'center' }}>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                  Type to search across all modules
+                </Typography>
+                <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'center', flexWrap: 'wrap' }}>
+                  {['vendors', 'POs', 'invoices', 'ledgers', 'payments', 'banks'].map((t) => (
+                    <Chip key={t} size="small" label={t} variant="outlined" onClick={() => setQuery(t)} sx={{ cursor: 'pointer' }} />
+                  ))}
+                </Box>
+              </Box>
+            );
+          })()}
 
           {/* Footer hint */}
           {allItems.length > 0 && (

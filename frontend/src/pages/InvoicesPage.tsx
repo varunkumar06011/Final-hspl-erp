@@ -38,6 +38,7 @@ import {
   Delete as DeleteIcon,
   Publish as PostToBooksIcon,
   AccountTree as CrossLinkIcon,
+  PictureAsPdf as PdfIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { InvoiceVerificationStatus, UserRole, STORAGE } from '@hospital-erp/shared';
@@ -45,6 +46,7 @@ import { formatCurrency, formatDate, formatIndianNumber, STATUS_COLORS } from '.
 import api, { extractErrorMessage } from '../config/api';
 import { useAuthStore } from '../stores/authStore';
 import { downloadFile } from '../utils/file';
+import { generateInvoicePDF } from '../utils/invoicePdf';
 import AcknowledgementCheckbox from '../components/AcknowledgementCheckbox';
 import ApprovalActionDialog from '../components/ApprovalActionDialog';
 import OcrAutoFill, { type OcrInvoiceData } from '../components/OcrAutoFill';
@@ -517,6 +519,31 @@ export default function InvoicesPage() {
   // Deep-link from global search: ?id=<invoiceId> — filter to that invoice and highlight it
   const { highlightId, rowRef } = useDeepLinkRow<InvoiceRow>('/invoices', rows, 'invoiceCode', (v) => { setSearch(v); setPage(0); });
 
+  function downloadInvoicePdf(row: InvoiceRow) {
+    const items = row.purchaseOrder?.items ?? [];
+    generateInvoicePDF({
+      invoiceCode: row.invoiceCode ?? row.invoiceNumber,
+      invoiceNumber: row.invoiceNumber,
+      invoiceDate: row.date ?? row.createdAt,
+      vendorName: row.vendor?.name ?? '—',
+      vendorCode: row.vendor?.vendorCode,
+      subtotal: Number(row.amount ?? 0),
+      cgst: Number(row.cgstAmount ?? 0),
+      sgst: Number(row.sgstAmount ?? 0),
+      igst: Number(row.igstAmount ?? 0),
+      totalGst: Number(row.taxAmount ?? 0),
+      grandTotal: Number(row.totalAmount ?? 0),
+      items: items.map((it) => ({
+        description: it.materialName,
+        quantity: Number(it.quantity ?? 0),
+        unit: it.unit,
+        rate: Number(it.unitPrice ?? 0),
+        amount: Number(it.amount ?? 0),
+        gstRate: Number(it.gstRate ?? 0),
+      })),
+    });
+  }
+
   function resetForm() {
     setSelectedVendorId('');
     setSelectedPoId('');
@@ -706,6 +733,7 @@ export default function InvoicesPage() {
                           <IconButton size="small" color="error" onClick={() => setDeleteRow(row)} title="Delete"><DeleteIcon fontSize="small" /></IconButton>
                         )}
                         <IconButton size="small" onClick={() => setCrossLinkRow(row)} title="Cross-Module Link"><CrossLinkIcon fontSize="small" /></IconButton>
+                        <IconButton size="small" color="error" onClick={() => downloadInvoicePdf(row)} title="Download PDF"><PdfIcon fontSize="small" /></IconButton>
                       </Box>
                     </TableCell>
                   </TableRow>

@@ -1,7 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { ThemeProvider, CssBaseline } from '@mui/material';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { theme } from './config/theme';
+import { ColorModeProvider } from './config/ColorModeContext';
+import { ToastProvider } from './components/ToastProvider';
 import AppShell from './components/AppShell';
 import ProtectedRoute from './components/ProtectedRoute';
 import ErrorScreen from './components/ErrorScreen';
@@ -95,49 +95,50 @@ export default function App() {
   const online = useOnlineStatus();
 
   return (
-    <ThemeProvider theme={theme}>
-      <CssBaseline />
-      <QueryClientProvider client={queryClient}>
-        <BrowserRouter>
-          <ErrorBoundary>
-            <OfflineBanner />
-            {!online ? (
-              <ErrorScreen variant="offline" />
-            ) : (
-              <Routes>
-                <Route path="/login" element={<LoginPage />} />
-                {/* Public route — asset QR scan, no auth required */}
-                <Route path="/scan/:assetId" element={<AssetScanPage />} />
-                <Route
-                  path="/"
-                  element={
-                    <ProtectedRoute>
-                      <AppShell>
-                        <DashboardPage />
-                      </AppShell>
-                    </ProtectedRoute>
-                  }
-                />
-                {ROUTES.map((route) => (
+    <ColorModeProvider>
+      <ToastProvider>
+        <QueryClientProvider client={queryClient}>
+          <BrowserRouter>
+            <ErrorBoundary>
+              <OfflineBanner />
+              {!online ? (
+                <ErrorScreen variant="offline" />
+              ) : (
+                <Routes>
+                  <Route path="/login" element={<LoginPage />} />
+                  {/* Public route — asset QR scan, no auth required */}
+                  <Route path="/scan/:assetId" element={<AssetScanPage />} />
                   <Route
-                    key={route.path}
-                    path={route.path}
+                    path="/"
                     element={
                       <ProtectedRoute>
                         <AppShell>
-                          {route.element}
+                          <DashboardPage />
                         </AppShell>
                       </ProtectedRoute>
                     }
                   />
-                ))}
-                <Route path="/vendor" element={<ProtectedRoute><AppShell><Navigate to="/vendors" replace /></AppShell></ProtectedRoute>} />
-                <Route path="*" element={<ErrorScreen variant="404" />} />
-              </Routes>
-            )}
-          </ErrorBoundary>
-        </BrowserRouter>
-      </QueryClientProvider>
-    </ThemeProvider>
+                  {ROUTES.map((route) => (
+                    <Route
+                      key={route.path}
+                      path={route.path}
+                      element={
+                        <ProtectedRoute>
+                          <AppShell>
+                            {route.element}
+                          </AppShell>
+                        </ProtectedRoute>
+                      }
+                    />
+                  ))}
+                  <Route path="/vendor" element={<ProtectedRoute><AppShell><Navigate to="/vendors" replace /></AppShell></ProtectedRoute>} />
+                  <Route path="*" element={<ErrorScreen variant="404" />} />
+                </Routes>
+              )}
+            </ErrorBoundary>
+          </BrowserRouter>
+        </QueryClientProvider>
+      </ToastProvider>
+    </ColorModeProvider>
   );
 }
