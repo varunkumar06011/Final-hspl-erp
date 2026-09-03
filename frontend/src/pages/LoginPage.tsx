@@ -237,12 +237,17 @@ export default function LoginPage() {
     mb: 2,
     '& .MuiOutlinedInput-root': {
       borderRadius: '12px',
-      background: 'rgba(255, 255, 255, 0.7)',
-      '& fieldset': { borderColor: 'rgba(255, 255, 255, 0.5)' },
-      '&:hover fieldset': { borderColor: 'rgba(255, 255, 255, 0.8)' },
-      '&.Mui-focused fieldset': { borderColor: 'rgba(123, 104, 238, 0.6)', borderWidth: 2 },
+      background: 'rgba(255, 255, 255, 0.95)',
+      color: '#1a1a2e',
+      '& fieldset': { borderColor: 'rgba(0, 0, 0, 0.15)' },
+      '&:hover fieldset': { borderColor: 'rgba(123, 104, 238, 0.4)' },
+      '&.Mui-focused fieldset': { borderColor: 'rgba(123, 104, 238, 0.7)', borderWidth: 2 },
+      '& input': { color: '#1a1a2e' },
+      '& input::placeholder': { color: 'rgba(26, 26, 46, 0.4)' },
     },
     '& .MuiInputLabel-root': { color: 'rgba(26, 26, 46, 0.6)' },
+    '& .MuiInputLabel-root.Mui-focused': { color: '#7B68EE' },
+    '& .MuiInputAdornment-root': { color: 'rgba(26, 26, 46, 0.5)' },
   } as const;
 
   const glassButtonSx = {
@@ -281,10 +286,14 @@ export default function LoginPage() {
     fontSize: '1.5rem',
     letterSpacing: '0.5rem',
     color: '#1a1a2e',
-    '&:before': { borderBottomColor: 'rgba(255, 255, 255, 0.4)' },
-    '&:hover:not(.Mui-disabled):before': { borderBottomColor: 'rgba(255, 255, 255, 0.7)' },
-    '&:after': { borderBottomColor: 'rgba(123, 104, 238, 0.6)' },
+    background: 'rgba(255, 255, 255, 0.9)',
+    borderRadius: '12px',
+    px: 2,
+    py: 1,
+    '&:before': { display: 'none' },
+    '&:after': { borderBottomColor: 'rgba(123, 104, 238, 0.7)' },
     '& input': { color: '#1a1a2e', textAlign: 'center' },
+    '& input::placeholder': { color: 'rgba(26, 26, 46, 0.35)' },
   } as const;
 
   return (
@@ -365,18 +374,14 @@ export default function LoginPage() {
         sx={{
           maxWidth: 420,
           width: '100%',
-          // Frosted glass — translucent with strong blur
-          background: 'rgba(255, 255, 255, 0.55)',
+          // Frosted glass — more opaque for readability
+          background: 'rgba(255, 255, 255, 0.85)',
           backdropFilter: 'blur(40px) saturate(180%)',
           WebkitBackdropFilter: 'blur(40px) saturate(180%)',
-          // Subtle top highlight — simulates light hitting glass edge
-          borderTop: '1px solid rgba(255, 255, 255, 0.8)',
-          borderLeft: '1px solid rgba(255, 255, 255, 0.4)',
-          borderRight: '1px solid rgba(255, 255, 255, 0.2)',
-          borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
+          borderTop: '1px solid rgba(255, 255, 255, 0.9)',
+          border: '1px solid rgba(255, 255, 255, 0.5)',
           borderRadius: '28px',
-          // Layered soft shadows
-          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.25), 0 2px 8px rgba(0, 0, 0, 0.1), inset 0 1px 1px rgba(255, 255, 255, 0.4)',
+          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3), inset 0 1px 1px rgba(255, 255, 255, 0.6)',
           position: 'relative',
           zIndex: 1,
         }}
@@ -414,8 +419,7 @@ export default function LoginPage() {
               p: 0.5,
               mb: 3,
               borderRadius: 3,
-              background: 'rgba(0, 0, 0, 0.06)',
-              border: '1px solid rgba(255, 255, 255, 0.3)',
+              background: 'rgba(0, 0, 0, 0.08)',
             }}
           >
             <Box
@@ -429,10 +433,9 @@ export default function LoginPage() {
                 fontWeight: 600,
                 fontSize: '0.9rem',
                 transition: 'all 0.2s',
-                color: mode === 'signin' ? '#fff' : 'rgba(26, 26, 46, 0.6)',
-                background: mode === 'signin' ? 'rgba(255, 255, 255, 0.9)' : 'transparent',
-                boxShadow: mode === 'signin' ? '0 2px 8px rgba(0, 0, 0, 0.12)' : 'none',
-                '&:hover': { color: mode === 'signin' ? '#fff' : 'rgba(26, 26, 46, 0.85)' },
+                color: mode === 'signin' ? '#1a1a2e' : 'rgba(26, 26, 46, 0.5)',
+                background: mode === 'signin' ? '#fff' : 'transparent',
+                boxShadow: mode === 'signin' ? '0 2px 8px rgba(0, 0, 0, 0.15)' : 'none',
               }}
             >
               Sign In
@@ -448,10 +451,9 @@ export default function LoginPage() {
                 fontWeight: 600,
                 fontSize: '0.9rem',
                 transition: 'all 0.2s',
-                color: mode === 'signup' ? '#fff' : 'rgba(26, 26, 46, 0.6)',
-                background: mode === 'signup' ? 'rgba(255, 255, 255, 0.9)' : 'transparent',
-                boxShadow: mode === 'signup' ? '0 2px 8px rgba(0, 0, 0, 0.12)' : 'none',
-                '&:hover': { color: mode === 'signup' ? '#fff' : 'rgba(26, 26, 46, 0.85)' },
+                color: mode === 'signup' ? '#1a1a2e' : 'rgba(26, 26, 46, 0.5)',
+                background: mode === 'signup' ? '#fff' : 'transparent',
+                boxShadow: mode === 'signup' ? '0 2px 8px rgba(0, 0, 0, 0.15)' : 'none',
               }}
             >
               Sign Up
@@ -654,18 +656,6 @@ export default function LoginPage() {
           )}
         </CardContent>
       </Card>
-
-      {/* Footer */}
-      <Typography
-        variant="caption"
-        sx={{
-          position: 'absolute',
-          bottom: 16,
-          color: 'rgba(255,255,255,0.7)',
-        }}
-      >
-        © {new Date().getFullYear()} Hospital Construction ERP
-      </Typography>
     </Box>
   );
 }
