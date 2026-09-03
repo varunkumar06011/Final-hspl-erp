@@ -20,6 +20,10 @@ interface CrudConfig {
   defaultSort?: Record<string, 'asc' | 'desc'>;
   searchFields?: string[];
   intSearchFields?: string[];
+  /** Field name used for minAmount/maxAmount range filtering (e.g. 'grandTotal', 'totalAmount', 'amount') */
+  amountField?: string;
+  /** Field name used for date range filtering (defaults to 'createdAt') */
+  dateField?: string;
   transformCreate?: (body: Record<string, unknown>, userId: string, projectId: string) => Record<string, unknown> | Promise<Record<string, unknown>>;
   transformUpdate?: (body: Record<string, unknown>, userId: string, projectId: string, existingId: string) => Record<string, unknown> | Promise<Record<string, unknown>>;
   transformList?: (records: Record<string, unknown>[], projectId: string) => Record<string, unknown>[] | Promise<Record<string, unknown>[]>;
@@ -41,7 +45,7 @@ export function createCrudRouter(config: CrudConfig): Router {
     validateMiddleware(config.listSchema),
     async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
       try {
-        const { page = 1, pageSize = 20, search, ...filters } = req.query as Record<string, unknown>;
+        const { page = 1, pageSize = 20, search, minAmount, maxAmount, dateFilter, ...filters } = req.query as Record<string, unknown>;
         const projectId = requireProjectId(req);
 
         const where: Record<string, unknown> = {
@@ -49,6 +53,48 @@ export function createCrudRouter(config: CrudConfig): Router {
           deletedAt: null,
           ...buildFilterWhere(filters),
         };
+
+        // Amount range filter
+        if (config.amountField && (minAmount || maxAmount)) {
+          const range: Record<string, number> = {};
+          if (minAmount) range.gte = Number(minAmount);
+          if (maxAmount) range.lte = Number(maxAmount);
+          where[config.amountField] = range;
+        }
+
+        // Date range filter (today, this_week, this_month, last_month)
+        if (dateFilter) {
+          const dateField = config.dateField ?? 'createdAt';
+          const now = new Date();
+          let start: Date | null = null;
+          let end: Date | null = null;
+          switch (String(dateFilter)) {
+            case 'today': {
+              start = new Date(now); start.setHours(0, 0, 0, 0);
+              end = new Date(now); end.setHours(23, 59, 59, 999);
+              break;
+            }
+            case 'this_week': {
+              start = new Date(now);
+              start.setDate(now.getDate() - now.getDay()); start.setHours(0, 0, 0, 0);
+              end = new Date(now); end.setHours(23, 59, 59, 999);
+              break;
+            }
+            case 'this_month': {
+              start = new Date(now.getFullYear(), now.getMonth(), 1);
+              end = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+              break;
+            }
+            case 'last_month': {
+              start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+              end = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
+              break;
+            }
+          }
+          if (start && end) {
+            where[dateField] = { gte: start, lte: end };
+          }
+        }
 
         if (search && config.searchFields?.length) {
           const orConditions: Record<string, unknown>[] = config.searchFields.map((field) => ({
@@ -261,8 +307,9 @@ export function createCrudRouter(config: CrudConfig): Router {
 
 function buildFilterWhere(filters: Record<string, unknown>): Record<string, unknown> {
   const where: Record<string, unknown> = {};
+  const skipKeys = ['page', 'pageSize', 'search', 'minAmount', 'maxAmount', 'dateFilter'];
   for (const [key, value] of Object.entries(filters)) {
-    if (value !== undefined && value !== '' && key !== 'page' && key !== 'pageSize' && key !== 'search') {
+    if (value !== undefined && value !== '' && !skipKeys.includes(key)) {
       where[key] = value;
     }
   }

@@ -160,6 +160,9 @@ export default function PaymentsPage() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
+  const [minAmount, setMinAmount] = useState('');
+  const [maxAmount, setMaxAmount] = useState('');
+  const [dateFilter, setDateFilter] = useState('');
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [payOpen, setPayOpen] = useState<string | null>(null);
@@ -182,12 +185,15 @@ export default function PaymentsPage() {
   const [expenseFile, setExpenseFile] = useState<File | null>(null);
 
   const { data, isLoading, refetch } = useQuery({
-    queryKey: ['/payments', page, pageSize, search, statusFilter, typeFilter],
+    queryKey: ['/payments', page, pageSize, search, statusFilter, typeFilter, minAmount, maxAmount, dateFilter],
     queryFn: async () => {
       const params: Record<string, unknown> = { page: page + 1, pageSize };
       if (search) params.search = search;
       if (statusFilter) params.status = statusFilter;
       if (typeFilter) params.type = typeFilter;
+      if (minAmount) params.minAmount = minAmount;
+      if (maxAmount) params.maxAmount = maxAmount;
+      if (dateFilter) params.dateFilter = dateFilter;
       const response = await api.get('/payments', { params });
       return response.data;
     },
@@ -437,7 +443,7 @@ export default function PaymentsPage() {
   useApprovalDeepLink(rows, (row) => setApprovalAction({ row, action: 'approve' }));
   // Deep-link from global search: ?id=<prId> — filter to that payment and highlight it
   const { highlightId, rowRef } = useDeepLinkRow<PaymentRequestRow>('/payments', rows, 'paymentCode', (v) => { setSearch(v); setPage(0); });
-  useUrlFilters({ search: (v) => { setSearch(v); setPage(0); }, status: (v) => { setStatusFilter(v); setPage(0); }, type: (v) => { setTypeFilter(v); setPage(0); } });
+  useUrlFilters({ search: (v) => { setSearch(v); setPage(0); }, status: (v) => { setStatusFilter(v); setPage(0); }, type: (v) => { setTypeFilter(v); setPage(0); }, minAmount: setMinAmount, maxAmount: setMaxAmount, dateFilter: setDateFilter });
 
   function canApprove(row: PaymentRequestRow): boolean {
     if (!row.approvalWorkflow) return false;

@@ -175,6 +175,9 @@ export const listPOsSchema = z.object({
     search: z.string().optional(),
     vendorId: uuid.optional(),
     status: z.nativeEnum(POStatus).optional(),
+    minAmount: z.coerce.number().optional(),
+    maxAmount: z.coerce.number().optional(),
+    dateFilter: z.enum(['today', 'this_week', 'this_month', 'last_month']).optional(),
   }),
 });
 
@@ -246,6 +249,9 @@ export const listInvoicesSchema = z.object({
     search: z.string().optional(),
     vendorId: uuid.optional(),
     verificationStatus: z.nativeEnum(InvoiceVerificationStatus).optional(),
+    minAmount: z.coerce.number().optional(),
+    maxAmount: z.coerce.number().optional(),
+    dateFilter: z.enum(['today', 'this_week', 'this_month', 'last_month']).optional(),
   }),
 });
 
@@ -289,6 +295,9 @@ export const listPaymentRequestsSchema = z.object({
     vendorId: uuid.optional(),
     status: z.string().optional(),
     type: z.string().optional(),
+    minAmount: z.coerce.number().optional(),
+    maxAmount: z.coerce.number().optional(),
+    dateFilter: z.enum(['today', 'this_week', 'this_month', 'last_month']).optional(),
   }),
 });
 export const recordPaymentSchema = z.object({

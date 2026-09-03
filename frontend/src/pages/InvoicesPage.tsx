@@ -243,6 +243,9 @@ export default function InvoicesPage() {
   const [pageSize, setPageSize] = useState(20);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [minAmount, setMinAmount] = useState('');
+  const [maxAmount, setMaxAmount] = useState('');
+  const [dateFilter, setDateFilter] = useState('');
   const [createOpen, setCreateOpen] = useState(false);
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
@@ -272,11 +275,14 @@ export default function InvoicesPage() {
   const { user } = useAuthStore();
 
   const { data, isLoading, refetch } = useQuery({
-    queryKey: ['/invoices', page, pageSize, search, statusFilter],
+    queryKey: ['/invoices', page, pageSize, search, statusFilter, minAmount, maxAmount, dateFilter],
     queryFn: async () => {
       const params: Record<string, unknown> = { page: page + 1, pageSize };
       if (search) params.search = search;
       if (statusFilter) params.verificationStatus = statusFilter;
+      if (minAmount) params.minAmount = minAmount;
+      if (maxAmount) params.maxAmount = maxAmount;
+      if (dateFilter) params.dateFilter = dateFilter;
       const response = await api.get('/invoices', { params });
       return response.data;
     },
@@ -521,7 +527,7 @@ export default function InvoicesPage() {
   useApprovalDeepLink(rows, (row) => setApprovalAction({ row, action: 'approve' }));
   // Deep-link from global search: ?id=<invoiceId> — filter to that invoice and highlight it
   const { highlightId, rowRef } = useDeepLinkRow<InvoiceRow>('/invoices', rows, 'invoiceCode', (v) => { setSearch(v); setPage(0); });
-  useUrlFilters({ search: (v) => { setSearch(v); setPage(0); }, status: (v) => { setStatusFilter(v); setPage(0); } });
+  useUrlFilters({ search: (v) => { setSearch(v); setPage(0); }, status: (v) => { setStatusFilter(v); setPage(0); }, minAmount: setMinAmount, maxAmount: setMaxAmount, dateFilter: setDateFilter });
 
   function downloadInvoicePdf(row: InvoiceRow) {
     const items = row.purchaseOrder?.items ?? [];

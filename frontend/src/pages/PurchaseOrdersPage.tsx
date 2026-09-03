@@ -132,6 +132,9 @@ export default function PurchaseOrdersPage() {
   const [pageSize, setPageSize] = useState(20);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [minAmount, setMinAmount] = useState('');
+  const [maxAmount, setMaxAmount] = useState('');
+  const [dateFilter, setDateFilter] = useState('');
   const [createOpen, setCreateOpen] = useState(false);
   const [error, setError] = useState('');
   const [selectedVendorId, setSelectedVendorId] = useState('');
@@ -153,11 +156,14 @@ export default function PurchaseOrdersPage() {
   const createSubmissionLocked = useRef(false);
 
   const { data, isLoading, refetch } = useQuery({
-    queryKey: ['/pos', page, pageSize, search, statusFilter],
+    queryKey: ['/pos', page, pageSize, search, statusFilter, minAmount, maxAmount, dateFilter],
     queryFn: async () => {
       const params: Record<string, unknown> = { page: page + 1, pageSize };
       if (search) params.search = search;
       if (statusFilter) params.status = statusFilter;
+      if (minAmount) params.minAmount = minAmount;
+      if (maxAmount) params.maxAmount = maxAmount;
+      if (dateFilter) params.dateFilter = dateFilter;
       const response = await api.get('/purchase-orders', { params });
       return response.data;
     },
@@ -369,7 +375,7 @@ export default function PurchaseOrdersPage() {
   // Deep-link from global search: ?id=<poId> — filter to that PO and highlight it
   const { highlightId, rowRef } = useDeepLinkRow<PORow>('/purchase-orders', rows, 'poNumber', (v) => { setSearch(v); setPage(0); });
   // Read NL query filters from URL on mount
-  useUrlFilters({ search: (v) => { setSearch(v); setPage(0); }, status: (v) => { setStatusFilter(v); setPage(0); } });
+  useUrlFilters({ search: (v) => { setSearch(v); setPage(0); }, status: (v) => { setStatusFilter(v); setPage(0); }, minAmount: setMinAmount, maxAmount: setMaxAmount, dateFilter: setDateFilter });
 
   const quotationTotal = useMemo(() => {
     if (!selectedQuotation?.items) return 0;

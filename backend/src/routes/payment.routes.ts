@@ -182,7 +182,7 @@ router.get(
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const projectId = requireProjectId(req);
-      const { page, pageSize, status, vendorId, type, search } = req.query as Record<string, unknown>;
+      const { page, pageSize, status, vendorId, type, search, minAmount, maxAmount, dateFilter } = req.query as Record<string, unknown>;
       const pageNum = Number(page) || 1;
       const size = Number(pageSize) || 20;
 
@@ -197,6 +197,40 @@ router.get(
           { description: { contains: String(search), mode: 'insensitive' } },
           { vendor: { name: { contains: String(search), mode: 'insensitive' } } },
         ];
+      }
+
+      // Amount range filter
+      if (minAmount || maxAmount) {
+        const range: Record<string, number> = {};
+        if (minAmount) range.gte = Number(minAmount);
+        if (maxAmount) range.lte = Number(maxAmount);
+        where.amount = range;
+      }
+
+      // Date range filter
+      if (dateFilter) {
+        const now = new Date();
+        let start: Date | null = null;
+        let end: Date | null = null;
+        switch (String(dateFilter)) {
+          case 'today':
+            start = new Date(now); start.setHours(0, 0, 0, 0);
+            end = new Date(now); end.setHours(23, 59, 59, 999);
+            break;
+          case 'this_week':
+            start = new Date(now); start.setDate(now.getDate() - now.getDay()); start.setHours(0, 0, 0, 0);
+            end = new Date(now); end.setHours(23, 59, 59, 999);
+            break;
+          case 'this_month':
+            start = new Date(now.getFullYear(), now.getMonth(), 1);
+            end = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+            break;
+          case 'last_month':
+            start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+            end = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
+            break;
+        }
+        if (start && end) where.createdAt = { gte: start, lte: end };
       }
 
       const [data, total] = await Promise.all([
