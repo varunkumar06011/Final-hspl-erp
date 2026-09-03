@@ -314,6 +314,7 @@ export default function VendorsPage() {
         endpoint="/vendors"
         entityName="Vendor"
         entityType="VENDOR"
+        deepLinkField="name"
         columns={[
           { key: 'vendorCode', label: 'Vendor ID' },
           { key: 'name', label: 'Vendor Name' },

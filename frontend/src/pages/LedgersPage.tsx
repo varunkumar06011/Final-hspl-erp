@@ -46,7 +46,7 @@ import ResponsiveDialog from '../components/ResponsiveDialog';
 import RefreshButton from '../components/RefreshButton';
 import { formatCurrency, formatDate } from '../utils/enumOptions';
 import { LedgerGroup, isDebitNatureGroup } from '@hospital-erp/shared';
-import { useIdDeepLink } from '../hooks/useIdDeepLink';
+import { useDeepLinkRow } from '../hooks/useDeepLinkRow';
 
 interface Ledger {
   id: string;
@@ -310,12 +310,8 @@ export default function LedgersPage() {
   const rows: Ledger[] = data?.data ?? [];
   const pagination = data?.pagination ?? { page: 1, pageSize: 100, total: 0, totalPages: 0 };
 
-  // Deep-link from global search: ?id=<ledgerId> opens the statement dialog
-  useIdDeepLink(rows, (ledger) => {
-    setStatementLedger(ledger);
-    setStmtStartDate('');
-    setStmtEndDate('');
-  });
+  // Deep-link from global search: ?id=<ledgerId> — filter to that ledger and highlight it
+  const { highlightId: ledgerHighlightId, rowRef: ledgerRowRef } = useDeepLinkRow<Ledger>('/ledgers', rows, 'name', setSearch);
 
   // Group ledgers by group and render custom subgroups beneath their primary parent.
   const grouped: Record<string, Ledger[]> = {};
@@ -347,7 +343,7 @@ export default function LedgersPage() {
   };
 
   const renderLedgerRow = (ledger: Ledger) => (
-    <TableRow key={ledger.id} hover>
+    <TableRow key={ledger.id} hover ref={ledgerRowRef(ledger.id)} sx={{ ...(ledgerHighlightId === ledger.id && { bgcolor: 'warning.light', '&:hover': { bgcolor: 'warning.light' } }) }}>
       <TableCell sx={{ fontWeight: 500 }}>
         {ledger.name}
         {ledger.isSystem && <Chip label="System" size="small" variant="outlined" sx={{ ml: 1 }} />}

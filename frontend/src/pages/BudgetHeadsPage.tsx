@@ -40,6 +40,7 @@ import api, { extractErrorMessage } from '../config/api';
 import ResponsiveDialog from '../components/ResponsiveDialog';
 import RefreshButton from '../components/RefreshButton';
 import { formatCurrency, formatIndianNumber } from '../utils/enumOptions';
+import { useDeepLinkRow } from '../hooks/useDeepLinkRow';
 
 export default function BudgetHeadsPage() {
   const [page, setPage] = useState(0);
@@ -264,6 +265,9 @@ export default function BudgetHeadsPage() {
   const pagination = data?.pagination ?? { page: 1, pageSize: 25, total: 0, totalPages: 0 };
   const submitting = createMutation.isPending || updateMutation.isPending;
 
+  // Deep-link from global search: ?id=<budgetHeadId> — filter and highlight
+  const { highlightId, rowRef } = useDeepLinkRow<{ id: string; particulars: string }>('/budget-heads', rows, 'particulars', (v) => { setSearch(v); setPage(0); });
+
   return (
     <Box sx={{ minWidth: 0, overflow: 'hidden' }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: { xs: 'flex-start', sm: 'center' }, mb: 2, flexWrap: 'wrap', gap: 1 }}>
@@ -365,7 +369,7 @@ export default function BudgetHeadsPage() {
                   const available = allocated - committed - actual;
                   const utilization = allocated > 0 ? (actual / allocated) * 100 : 0;
                   return (
-                    <TableRow key={row.id as string} hover>
+                    <TableRow key={row.id as string} hover ref={rowRef(row.id as string)} sx={{ ...(highlightId === row.id && { bgcolor: 'warning.light', '&:hover': { bgcolor: 'warning.light' } }) }}>
                       <TableCell>{String(row.slNo)}</TableCell>
                       <TableCell>{String(row.particulars ?? '—')}</TableCell>
                       <TableCell align="right">{formatCurrency(row.allocatedAmount)}</TableCell>

@@ -38,6 +38,7 @@ import api, { extractErrorMessage } from '../config/api';
 import ResponsiveDialog from '../components/ResponsiveDialog';
 import RefreshButton from '../components/RefreshButton';
 import { formatCurrency, formatIndianNumber, formatDate, todayLocalDate } from '../utils/enumOptions';
+import { useDeepLinkRow } from '../hooks/useDeepLinkRow';
 
 interface OwnerAccount {
   id: string;
@@ -229,6 +230,9 @@ export default function OwnerAccountPage() {
   const rows: OwnerAccount[] = data?.data ?? [];
   const pagination = data?.pagination ?? { page: 1, pageSize: 20, total: 0, totalPages: 0 };
   const bankAccounts: BankAccount[] = bankAccountsData?.data ?? [];
+
+  // Deep-link from global search: ?id=<ownerAccountId> — filter and highlight
+  const { highlightId, rowRef } = useDeepLinkRow<OwnerAccount>('/owner-accounts', rows, 'ownerName', (v) => { setSearch(v); setPage(0); });
   const statement: StatementEntry[] = statementData?.statement ?? [];
 
   return (
@@ -290,7 +294,7 @@ export default function OwnerAccountPage() {
                 rows.map((row) => {
                   const balance = Number(row.currentBalance);
                   return (
-                    <TableRow key={row.id} hover>
+                    <TableRow key={row.id} hover ref={rowRef(row.id)} sx={{ ...(highlightId === row.id && { bgcolor: 'warning.light', '&:hover': { bgcolor: 'warning.light' } }) }}>
                       <TableCell sx={{ fontWeight: 600 }}>{row.ownerName}</TableCell>
                       <TableCell align="right">{formatCurrency(row.openingBalance)}</TableCell>
                       <TableCell align="right" sx={{ fontWeight: 600, color: balance > 0 ? 'error.main' : balance < 0 ? 'success.main' : 'text.primary' }}>

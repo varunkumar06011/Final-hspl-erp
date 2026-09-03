@@ -53,7 +53,7 @@ import AcknowledgementCheckbox from '../components/AcknowledgementCheckbox';
 import ApprovalActionDialog from '../components/ApprovalActionDialog';
 import ResponsiveTable from '../components/ResponsiveTable';
 import { useApprovalDeepLink } from '../utils/useApprovalDeepLink';
-import { useIdDeepLink } from '../hooks/useIdDeepLink';
+import { useDeepLinkRow } from '../hooks/useDeepLinkRow';
 
 interface POItem {
   id?: string;
@@ -363,8 +363,8 @@ export default function PurchaseOrdersPage() {
 
   // Auto-open approval dialog when navigated from a push notification
   useApprovalDeepLink(rows, (row) => setApprovalAction({ row, action: 'approve' }));
-  // Deep-link from global search: ?id=<poId> opens the delivery trail dialog
-  useIdDeepLink(rows, (row) => setTrailRow(row));
+  // Deep-link from global search: ?id=<poId> — filter to that PO and highlight it
+  const { highlightId, rowRef } = useDeepLinkRow<PORow>('/purchase-orders', rows, 'poNumber', (v) => { setSearch(v); setPage(0); });
 
   const quotationTotal = useMemo(() => {
     if (!selectedQuotation?.items) return 0;
@@ -498,7 +498,7 @@ export default function PurchaseOrdersPage() {
                 <TableRow><TableCell colSpan={12} align="center" sx={{ py: 4 }}><Typography color="text.secondary">No purchase orders found</Typography></TableCell></TableRow>
               ) : (
                 rows.map((row) => (
-                  <TableRow key={row.id} hover>
+                  <TableRow key={row.id} hover ref={rowRef(row.id)} sx={{ ...(highlightId === row.id && { bgcolor: 'warning.light', '&:hover': { bgcolor: 'warning.light' } }) }}>
                     <TableCell data-label="PO No">
                       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.25 }}>
                         <Typography>{row.poNumber}</Typography>

@@ -53,7 +53,7 @@ import { downloadFile } from '../utils/file';
 import ApprovalActionDialog from '../components/ApprovalActionDialog';
 import ResponsiveTable from '../components/ResponsiveTable';
 import { useApprovalDeepLink } from '../utils/useApprovalDeepLink';
-import { useIdDeepLink } from '../hooks/useIdDeepLink';
+import { useDeepLinkRow } from '../hooks/useDeepLinkRow';
 
 interface ApprovalStep {
   id: string;
@@ -432,8 +432,8 @@ export default function PaymentsPage() {
 
   // Auto-open approval dialog when navigated from a push notification
   useApprovalDeepLink(rows, (row) => setApprovalAction({ row, action: 'approve' }));
-  // Deep-link from global search: ?id=<prId> opens the approval dialog
-  useIdDeepLink(rows, (row) => setApprovalAction({ row, action: 'approve' }));
+  // Deep-link from global search: ?id=<prId> — filter to that payment and highlight it
+  const { highlightId, rowRef } = useDeepLinkRow<PaymentRequestRow>('/payments', rows, 'paymentCode', (v) => { setSearch(v); setPage(0); });
 
   function canApprove(row: PaymentRequestRow): boolean {
     if (!row.approvalWorkflow) return false;
@@ -702,7 +702,7 @@ export default function PaymentsPage() {
                   <TableRow><TableCell colSpan={10} align="center" sx={{ py: 4 }}><Typography color="text.secondary">No payment requests found</Typography></TableCell></TableRow>
                 ) : (
                   rows.map((row) => (
-                    <TableRow key={row.id} hover>
+                    <TableRow key={row.id} hover ref={rowRef(row.id)} sx={{ ...(highlightId === row.id && { bgcolor: 'warning.light', '&:hover': { bgcolor: 'warning.light' } }) }}>
                       <TableCell data-label="Code">{row.paymentCode}</TableCell>
                       <TableCell data-label="Type"><Chip label={row.type} size="small" color={row.type === 'EXPENSE' ? 'secondary' : row.type === 'ADVANCE' ? 'warning' : 'primary'} variant="outlined" /></TableCell>
                       <TableCell data-label="Description / Invoice / PO">

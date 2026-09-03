@@ -43,6 +43,7 @@ import RefreshButton from '../components/RefreshButton';
 import LedgerAutocomplete, { type LedgerOption } from '../components/LedgerAutocomplete';
 import { formatCurrency, formatIndianNumber, formatDate, amountToWords, todayLocalDate } from '../utils/enumOptions';
 import { LedgerGroup } from '@hospital-erp/shared';
+import { useDeepLinkRow } from '../hooks/useDeepLinkRow';
 
 interface CashAccount {
   id: string;
@@ -381,6 +382,9 @@ export default function CashAccountsPage() {
   const rows: CashAccount[] = data?.data ?? [];
   const pagination = data?.pagination ?? { page: 1, pageSize: 20, total: 0, totalPages: 0 };
   const stmtRows: CashTransaction[] = statementData?.data ?? [];
+
+  // Deep-link from global search: ?id=<cashAccountId> — filter and highlight
+  const { highlightId, rowRef } = useDeepLinkRow<CashAccount>('/cash-accounts', rows, 'name', (v) => { setSearch(v); setPage(0); });
   const stmtPagination = statementData?.pagination ?? { page: 1, pageSize: 25, total: 0, totalPages: 0 };
   const bankAccounts: BankAccount[] = bankAccountsData?.data ?? [];
 
@@ -438,7 +442,7 @@ export default function CashAccountsPage() {
                 </TableCell></TableRow>
               ) : (
                 rows.map((row) => (
-                  <TableRow key={row.id} hover>
+                  <TableRow key={row.id} hover ref={rowRef(row.id)} sx={{ ...(highlightId === row.id && { bgcolor: 'warning.light', '&:hover': { bgcolor: 'warning.light' } }) }}>
                     <TableCell sx={{ fontWeight: 600 }}>{row.name}</TableCell>
                     <TableCell align="right">{formatCurrency(row.openingBalance)}</TableCell>
                     <TableCell align="right" sx={{ fontWeight: 600, color: 'success.main' }}>{formatCurrency(row.currentBalance)}</TableCell>

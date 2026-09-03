@@ -40,7 +40,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { IssueSeverity, IssueCategory, IssueStatus } from '@hospital-erp/shared';
 import { enumToOptions, formatDate, STATUS_COLORS } from '../utils/enumOptions';
 import api, { extractErrorMessage } from '../config/api';
-import { useIdDeepLink } from '../hooks/useIdDeepLink';
+import { useDeepLinkRow } from '../hooks/useDeepLinkRow';
 import { useAuthStore } from '../stores/authStore';
 import ResponsiveTable from '../components/ResponsiveTable';
 import RefreshButton from '../components/RefreshButton';
@@ -182,8 +182,8 @@ export default function IssuesPage() {
   const rows: IssueRow[] = data?.data ?? [];
   const pagination = data?.pagination ?? { page: 1, pageSize: 20, total: 0, totalPages: 0 };
 
-  // Deep-link from global search: ?id=<issueId> opens the edit dialog
-  useIdDeepLink(rows, (issue) => openEdit(issue));
+  // Deep-link from global search: ?id=<issueId> — filter to that issue and highlight it
+  const { highlightId, rowRef } = useDeepLinkRow<IssueRow>('/issues', rows, 'title', (v) => { setSearch(v); setPage(0); });
 
   // Build the address-to options: 4 heads + self
   const addressToOptions = [
@@ -305,7 +305,7 @@ export default function IssuesPage() {
                 <TableRow><TableCell colSpan={8} align="center" sx={{ py: 4 }}><Typography color="text.secondary">No issues found</Typography></TableCell></TableRow>
               ) : (
                 rows.map((row) => (
-                  <TableRow key={row.id} hover>
+                  <TableRow key={row.id} hover ref={rowRef(row.id)} sx={{ ...(highlightId === row.id && { bgcolor: 'warning.light', '&:hover': { bgcolor: 'warning.light' } }) }}>
                     <TableCell data-label="Title">{row.title}</TableCell>
                     <TableCell data-label="Category">{row.category}</TableCell>
                     <TableCell data-label="Severity"><Chip label={row.severity} size="small" color={STATUS_COLORS[row.severity] ?? 'default'} /></TableCell>

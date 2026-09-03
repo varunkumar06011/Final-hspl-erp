@@ -45,6 +45,7 @@ import { formatCurrency, formatDate, formatIndianNumber, STATUS_COLORS } from '.
 import api, { extractErrorMessage } from '../config/api';
 import { useAuthStore } from '../stores/authStore';
 import { downloadFile } from '../utils/file';
+import { useDeepLinkRow } from '../hooks/useDeepLinkRow';
 import AcknowledgementCheckbox from '../components/AcknowledgementCheckbox';
 import ApprovalActionDialog from '../components/ApprovalActionDialog';
 import OcrAutoFill, { type OcrQuotationData } from '../components/OcrAutoFill';
@@ -287,6 +288,9 @@ export default function QuotationsPage() {
   const rows: QuotationRow[] = data?.data ?? [];
   const pagination = data?.pagination ?? { page: 1, pageSize: 20, total: 0, totalPages: 0 };
   const vendors: { id: string; name: string; vendorCode: string }[] = vendorsData?.data ?? [];
+
+  // Deep-link from global search: ?id=<quotationId> — filter to that quotation and highlight it
+  const { highlightId, rowRef } = useDeepLinkRow<QuotationRow>('/quotations', rows, 'quotationNumber', (v) => { setSearch(v); setPage(0); });
 
   // Auto-open approval dialog when navigated from a push notification
   useApprovalDeepLink(rows, (row) => {
@@ -555,7 +559,7 @@ export default function QuotationsPage() {
                 rows.map((row) => {
                   const pendingStep = canApprove(row);
                   return (
-                    <TableRow key={row.id} hover>
+                    <TableRow key={row.id} hover ref={rowRef(row.id)} sx={{ ...(highlightId === row.id && { bgcolor: 'warning.light', '&:hover': { bgcolor: 'warning.light' } }) }}>
                       <TableCell data-label="Quotation No">{row.quotationNumber}</TableCell>
                       <TableCell data-label="Vendor">{row.vendor?.vendorCode} - {row.vendor?.name ?? '—'}</TableCell>
                       <TableCell data-label="Quotation Date">{formatDate(row.date)}</TableCell>

@@ -51,7 +51,7 @@ import OcrAutoFill, { type OcrInvoiceData } from '../components/OcrAutoFill';
 import ResponsiveTable from '../components/ResponsiveTable';
 import RefreshButton from '../components/RefreshButton';
 import { useApprovalDeepLink } from '../utils/useApprovalDeepLink';
-import { useIdDeepLink } from '../hooks/useIdDeepLink';
+import { useDeepLinkRow } from '../hooks/useDeepLinkRow';
 
 interface POItem {
   id?: string;
@@ -514,8 +514,8 @@ export default function InvoicesPage() {
 
   // Auto-open approval dialog when navigated from a push notification
   useApprovalDeepLink(rows, (row) => setApprovalAction({ row, action: 'approve' }));
-  // Deep-link from global search: ?id=<invoiceId> opens the cross-module link dialog
-  useIdDeepLink(rows, (row) => setCrossLinkRow(row));
+  // Deep-link from global search: ?id=<invoiceId> — filter to that invoice and highlight it
+  const { highlightId, rowRef } = useDeepLinkRow<InvoiceRow>('/invoices', rows, 'invoiceCode', (v) => { setSearch(v); setPage(0); });
 
   function resetForm() {
     setSelectedVendorId('');
@@ -621,7 +621,7 @@ export default function InvoicesPage() {
                 <TableRow><TableCell colSpan={17} align="center" sx={{ py: 4 }}><Typography color="text.secondary">No invoices found</Typography></TableCell></TableRow>
               ) : (
                 rows.map((row) => (
-                  <TableRow key={row.id} hover>
+                  <TableRow key={row.id} hover ref={rowRef(row.id)} sx={{ ...(highlightId === row.id && { bgcolor: 'warning.light', '&:hover': { bgcolor: 'warning.light' } }) }}>
                     <TableCell data-label="Invoice Code">{row.invoiceCode}</TableCell>
                     <TableCell data-label="Invoice No">{row.invoiceNumber}</TableCell>
                     <TableCell data-label="Vendor">{row.vendor?.vendorCode} - {row.vendor?.name ?? '—'}</TableCell>

@@ -41,7 +41,7 @@ import RefreshButton from './RefreshButton';
 import PinConfirmDialog from './PinConfirmDialog';
 import { exportToCsv, type CsvColumn } from '../utils/csvExport';
 import { useUrlState } from '../hooks/useUrlState';
-import { useIdDeepLink } from '../hooks/useIdDeepLink';
+import { useDeepLinkRow } from '../hooks/useDeepLinkRow';
 
 export interface MaterialEntry {
   id?: string;
@@ -86,6 +86,8 @@ interface EntityPageProps {
   /** Optional CSV column definitions. When provided, an Export button is shown. */
   csvColumns?: CsvColumn[];
   csvFilename?: string;
+  /** Field name used to deep-link from global search (e.g. 'name', 'accountName'). */
+  deepLinkField?: string;
 }
 
 export default function EntityPage({
@@ -102,6 +104,7 @@ export default function EntityPage({
   rowActions,
   csvColumns,
   csvFilename,
+  deepLinkField,
 }: EntityPageProps) {
   const [page, setPage] = useUrlState<number>('page', 0, Number);
   const [pageSize, setPageSize] = useUrlState<number>('pageSize', 20, Number);
@@ -233,8 +236,10 @@ export default function EntityPage({
   const pagination = data?.pagination ?? { page: 1, pageSize: 20, total: 0, totalPages: 0 };
   const submitting = createMutation.isPending || updateMutation.isPending;
 
-  // Deep-link from global search: ?id=<rowId> opens the edit dialog for that row
-  useIdDeepLink(rows as { id: string }[], (row) => openEdit(row));
+  // Deep-link from global search: ?id=<rowId> — filter to that row and highlight it
+  const { highlightId, rowRef } = useDeepLinkRow<Record<string, unknown> & { id: string }>(
+    endpoint, rows as (Record<string, unknown> & { id: string })[], deepLinkField ?? 'name', setSearch,
+  );
 
   return (
     <Box sx={{ minWidth: 0, overflow: 'hidden' }}>
@@ -334,7 +339,7 @@ export default function EntityPage({
                 </TableRow>
               ) : (
                 rows.map((row: Record<string, unknown>) => (
-                  <TableRow key={row.id as string} hover>
+                  <TableRow key={row.id as string} hover ref={rowRef(row.id as string)} sx={{ ...(highlightId === row.id && { bgcolor: 'warning.light', '&:hover': { bgcolor: 'warning.light' } }) }}>
                     {columns.map((col) => (
                       <TableCell key={col.key} data-label={col.label}>
                         {col.render

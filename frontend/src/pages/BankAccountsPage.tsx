@@ -46,6 +46,7 @@ import RefreshButton from '../components/RefreshButton';
 import LedgerAutocomplete, { type LedgerOption } from '../components/LedgerAutocomplete';
 import { formatCurrency, formatIndianNumber, formatDate, amountToWords, todayLocalDate } from '../utils/enumOptions';
 import { LedgerGroup } from '@hospital-erp/shared';
+import { useDeepLinkRow } from '../hooks/useDeepLinkRow';
 
 interface BankAccount {
   id: string;
@@ -368,6 +369,9 @@ export default function BankAccountsPage() {
   const rows: BankAccount[] = data?.data ?? [];
   const pagination = data?.pagination ?? { page: 1, pageSize: 20, total: 0, totalPages: 0 };
   const stmtRows: BankTransaction[] = statementData?.data ?? [];
+
+  // Deep-link from global search: ?id=<bankAccountId> — filter and highlight
+  const { highlightId, rowRef } = useDeepLinkRow<BankAccount>('/bank-accounts', rows, 'accountName', (v) => { setSearch(v); setPage(0); });
   const stmtPagination = statementData?.pagination ?? { page: 1, pageSize: 25, total: 0, totalPages: 0 };
 
   // Edit transaction mutation
@@ -610,7 +614,7 @@ export default function BankAccountsPage() {
                 </TableCell></TableRow>
               ) : (
                 rows.map((row) => (
-                  <TableRow key={row.id} hover>
+                  <TableRow key={row.id} hover ref={rowRef(row.id)} sx={{ ...(highlightId === row.id && { bgcolor: 'warning.light', '&:hover': { bgcolor: 'warning.light' } }) }}>
                     <TableCell sx={{ fontWeight: 600 }}>{row.bankName || row.accountName}</TableCell>
                     <TableCell>{row.accountName}</TableCell>
                     <TableCell>{row.accountNumber || '—'}</TableCell>
