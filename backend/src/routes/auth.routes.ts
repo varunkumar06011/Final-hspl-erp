@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import rateLimit from 'express-rate-limit';
 import { authMiddleware } from '../middleware/auth';
 import { rbacMiddleware } from '../middleware/rbac';
 import { validateMiddleware } from '../middleware/validate';
@@ -7,12 +8,27 @@ import { verifyToken, register, createUser, updateUser, listUsers, getMe, devLog
 
 const router = Router();
 
+// Stricter rate limit on authentication endpoints to prevent brute-force
+// OTP/PIN guessing. 10 attempts per 15 minutes per IP.
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many authentication attempts. Please try again later.' },
+});
+
 // POST /api/auth/verify — no auth middleware (this IS the auth endpoint)
-router.post('/verify', validateMiddleware(verifyTokenSchema), verifyToken);
-router.post('/register', validateMiddleware(registerTokenSchema), register);
+router.post('/verify', authLimiter, validateMiddleware(verifyTokenSchema), verifyToken);
+router.post('/register', authLimiter, validateMiddleware(registerTokenSchema), register);
 
 // POST /api/auth/dev-login — dev fallback (OTP 1234), blocked in production
-router.post('/dev-login', devLogin);
+router.post('/dev-login', authLimiter, devLogin);
+
+// PIN-based auth (no OTP needed for returning users) — also rate-limited.
+router.get('/check-pin', authLimiter, validateMiddleware(checkPinSchema), checkPin);
+router.post('/pin-login', authLimiter, validateMiddleware(pinLoginSchema), pinLogin);
+router.post('/set-pin', authLimiter, validateMiddleware(setPinSchema), setPin);
 
 // PIN-based auth (no OTP needed for returning users)
 router.get('/check-pin', validateMiddleware(checkPinSchema), checkPin);

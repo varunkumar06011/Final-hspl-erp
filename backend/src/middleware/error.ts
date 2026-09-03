@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { Prisma } from '@prisma/client';
 import { ZodError } from 'zod';
+import { logger } from '../utils/logger';
 
 /**
  * Detect a ZodError that may come from a different instance of the `zod`
@@ -22,7 +23,7 @@ export function errorMiddleware(
   res: Response,
   _next: NextFunction
 ): void {
-  console.error('Unhandled error:', err.message);
+  logger.error({ event: 'unhandled_error', message: err.message, stack: err.stack });
 
   if (isZodError(err)) {
     const errs = (err as ZodError).errors ?? (err as { issues: unknown[] }).issues ?? [];

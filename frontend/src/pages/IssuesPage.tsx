@@ -144,16 +144,38 @@ export default function IssuesPage() {
       });
       return response.data;
     },
-    onSuccess: () => {
+    onMutate: async ({ id }) => {
+      // Optimistic update — flip the issue status to CLOSED instantly.
+      await queryClient.cancelQueries({ queryKey: ['/issues'] });
+      const prevQueries = queryClient.getQueriesData<{ data: IssueRow[] }>({ queryKey: ['/issues'] });
+      queryClient.setQueriesData<{ data: IssueRow[] }>({ queryKey: ['/issues'] }, (old) => {
+        if (!old?.data) return old;
+        return {
+          ...old,
+          data: old.data.map((issue) =>
+            issue.id === id ? { ...issue, status: 'CLOSED' } : issue,
+          ),
+        };
+      });
+      return { prevQueries };
+    },
+    onError: (err: unknown, _vars, context) => {
+      context?.prevQueries.forEach(([key, data]) => {
+        queryClient.setQueryData(key, data);
+      });
+      setError(extractErrorMessage(err));
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['/issues'] });
       queryClient.invalidateQueries({ queryKey: ['/dashboard/summary'] });
+    },
+    onSuccess: () => {
       setCloseTarget(null);
       setCloseNotes('');
       setCloseFile(null);
       setSuccessMsg('Issue closed.');
       setTimeout(() => setSuccessMsg(''), 3000);
     },
-    onError: (err: unknown) => setError(extractErrorMessage(err)),
   });
 
   const rows: IssueRow[] = data?.data ?? [];

@@ -118,11 +118,31 @@ async function sendPushToTokens(
 }
 
 // ─── Get tokens for a set of users ────────────────────────
+// Filters out users who have muted the given event type in their preferences.
 
-async function getTokensForUsers(userIds: string[]): Promise<string[]> {
+async function getTokensForUsers(userIds: string[], eventType?: string): Promise<string[]> {
   if (userIds.length === 0) return [];
+
+  // When an event type is provided, fetch each user's prefs and skip muted ones.
+  let eligibleUserIds = userIds;
+  if (eventType) {
+    const users = await prisma.user.findMany({
+      where: { id: { in: userIds } },
+      select: { id: true, notificationPrefs: true },
+    });
+    eligibleUserIds = users
+      .filter((u) => {
+        const prefs = u.notificationPrefs as Record<string, boolean> | null;
+        // Missing prefs or missing key = enabled (default on).
+        if (!prefs || !(eventType in prefs)) return true;
+        return prefs[eventType] !== false;
+      })
+      .map((u) => u.id);
+  }
+
+  if (eligibleUserIds.length === 0) return [];
   const subscriptions = await prisma.pushSubscription.findMany({
-    where: { userId: { in: userIds }, isActive: true },
+    where: { userId: { in: eligibleUserIds }, isActive: true },
     select: { token: true },
   });
   return subscriptions.map((s) => s.token);
@@ -146,7 +166,7 @@ export async function notifyAllHeads(
 
   if (heads.length === 0) return;
 
-  const tokens = await getTokensForUsers(heads.map((h) => h.id));
+  const tokens = await getTokensForUsers(heads.map((h) => h.id), 'entity_created');
 
   if (tokens.length === 0) {
     console.log(`[Push] No subscriptions for heads in project ${projectId}`);
@@ -170,7 +190,7 @@ export async function notifyUser(
   userId: string,
   payload: NotificationPayload
 ): Promise<void> {
-  const tokens = await getTokensForUsers([userId]);
+  const tokens = await getTokensForUsers([userId], 'approval_result');
 
   if (tokens.length === 0) return;
 
@@ -208,7 +228,7 @@ export async function notifyApprovers(
   }
 
   const approverIds = approvers.map((a) => a.id);
-  const tokens = await getTokensForUsers(approverIds);
+  const tokens = await getTokensForUsers(approverIds, 'approval_request');
 
   if (tokens.length === 0) {
     console.log(`[Push] No push subscriptions for approvers in project ${projectId}`);

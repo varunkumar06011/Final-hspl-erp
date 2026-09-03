@@ -319,7 +319,11 @@ export default function LedgersPage() {
     ? GROUP_ORDER.includes(groupFilter)
       ? customGroups.filter((group) => group.parentGroup === groupFilter)
       : customGroups.filter((group) => group.name === groupFilter)
-    : customGroups;
+    : search
+      // When searching, only show custom sub-groups that actually have matching ledgers
+      // so empty group headers (Sundry Creditors, Loans, etc.) don't clutter results.
+      ? customGroups.filter((group) => (grouped[group.name] ?? []).length > 0)
+      : customGroups;
   const customGroupsByParent = visibleCustomGroups.reduce<Record<string, typeof customGroups>>((groups, group) => {
     if (!groups[group.parentGroup]) groups[group.parentGroup] = [];
     groups[group.parentGroup].push(group);

@@ -135,8 +135,23 @@ router.get(
         prisma.vendorInvoice.count({ where }),
       ]);
 
+      // Batch-query posted PURCHASE vouchers for these invoices so the list
+      // can show "Posted" status without a per-row API call.
+      const invoiceIds = data.map((inv) => inv.id);
+      const postedVouchers = invoiceIds.length > 0
+        ? await prisma.journalVoucher.findMany({
+            where: { sourceInvoiceId: { in: invoiceIds }, projectId, status: 'POSTED', deletedAt: null },
+            select: { sourceInvoiceId: true, jvNumber: true },
+          })
+        : [];
+      const postedMap = new Map(postedVouchers.map((v) => [v.sourceInvoiceId, v.jvNumber]));
+
       res.json({
-        data,
+        data: data.map((inv) => ({
+          ...inv,
+          isPostedToBooks: postedMap.has(inv.id),
+          postedVoucherNumber: postedMap.get(inv.id) ?? null,
+        })),
         pagination: { page: pageNum, pageSize: size, total, totalPages: Math.ceil(total / size) },
       });
     } catch (error) {

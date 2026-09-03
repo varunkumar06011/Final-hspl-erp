@@ -33,6 +33,7 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import api, { extractErrorMessage } from '../config/api';
 import RefreshButton from '../components/RefreshButton';
+import { usePrefetchDetail } from '../hooks/usePrefetchDetail';
 
 const STATUS_COLORS: Record<string, 'success' | 'warning' | 'info' | 'error' | 'default'> = {
   ACTIVE: 'success',
@@ -60,6 +61,7 @@ interface InventoryItemRow {
 
 export default function AssetsPage() {
   const navigate = useNavigate();
+  const prefetchAsset = usePrefetchDetail('/assets');
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(24);
   const [search, setSearch] = useState('');
@@ -220,6 +222,7 @@ export default function AssetsPage() {
                     variant="outlined"
                     sx={{ cursor: 'pointer', height: '100%', '&:hover': { boxShadow: 3 } }}
                     onClick={() => navigate(`/assets/${item.id}`)}
+                    onMouseEnter={() => prefetchAsset(item.id)}
                   >
                     <CardContent>
                       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1 }}>
@@ -274,7 +277,7 @@ export default function AssetsPage() {
                 {items.map((item) => {
                   const unitCount = Number(item.currentStock);
                   return (
-                    <TableRow key={item.id} hover sx={{ cursor: 'pointer' }} onClick={() => navigate(`/assets/${item.id}`)}>
+                    <TableRow key={item.id} hover sx={{ cursor: 'pointer' }} onClick={() => navigate(`/assets/${item.id}`)} onMouseEnter={() => prefetchAsset(item.id)}>
                       <TableCell data-label="Name"><strong>{item.name}</strong></TableCell>
                       <TableCell data-label="SKU">{item.sku ?? '—'}</TableCell>
                       <TableCell data-label="Category">{item.category ?? '—'}</TableCell>

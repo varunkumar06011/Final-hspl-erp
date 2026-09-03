@@ -159,6 +159,8 @@ const prInclude = {
       cashAccountId: true,
       bankAccount: { select: { id: true, accountName: true } },
       cashAccount: { select: { id: true, name: true } },
+      journalVoucherId: true,
+      journalVoucher: { select: { jvNumber: true } },
     },
   },
   budgetHead: { select: { id: true, particulars: true } },

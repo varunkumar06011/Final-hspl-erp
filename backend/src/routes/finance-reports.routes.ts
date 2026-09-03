@@ -358,17 +358,27 @@ router.get(
         orderBy: { createdAt: 'asc' },
       });
 
+      // Single query for ALL posted transactions across these accounts —
+      // avoids the N+1 of fetching per-account inside the map below.
+      const bankAccountIds = accounts.map((a) => a.id);
+      const allBankTxns = bankAccountIds.length
+        ? await prisma.bankTransaction.findMany({
+            where: { bankAccountId: { in: bankAccountIds }, status: 'POSTED' },
+            select: { bankAccountId: true, type: true, amount: true },
+          })
+        : [];
+
       const report = await Promise.all(
         accounts.map(async (acc) => {
-          // Calculate expected balance: opening + deposits - withdrawals
-          const txns = await prisma.bankTransaction.findMany({
-            where: { bankAccountId: acc.id, status: 'POSTED' },
-            select: { type: true, amount: true },
-          });
-          const deposits = txns
+          // Calculate expected balance: opening + deposits - withdrawals.
+          // Uses the already-loaded recent transactions for the count summary;
+          // the full posted-transaction sums are computed via a single grouped
+          // query below (see allBankTxns) to avoid an N+1 per account.
+          const accTxns = allBankTxns.filter((t) => t.bankAccountId === acc.id);
+          const deposits = accTxns
             .filter((t) => ['DEPOSIT', 'TRANSFER_IN', 'REVERSAL_IN'].includes(t.type))
             .reduce((s, t) => s + Number(t.amount), 0);
-          const withdrawals = txns
+          const withdrawals = accTxns
             .filter((t) => !['DEPOSIT', 'TRANSFER_IN', 'REVERSAL_IN'].includes(t.type))
             .reduce((s, t) => s + Number(t.amount), 0);
           const expectedBalance = Number(acc.openingBalance) + deposits - withdrawals;
@@ -386,7 +396,7 @@ router.get(
             discrepancy,
             isReconciled: Math.abs(discrepancy) < 0.01,
             isActive: acc.isActive,
-            transactionCount: txns.length,
+            transactionCount: accTxns.length,
             recentTransactions: acc.transactions.map((t) => ({
               type: t.type,
               amount: Number(t.amount),
@@ -441,16 +451,23 @@ router.get(
         orderBy: { createdAt: 'asc' },
       });
 
+      // Single query for ALL posted cash transactions across these accounts —
+      // avoids the N+1 of fetching per-account inside the map below.
+      const cashAccountIds = accounts.map((a) => a.id);
+      const allCashTxns = cashAccountIds.length
+        ? await prisma.cashTransaction.findMany({
+            where: { cashAccountId: { in: cashAccountIds }, status: 'POSTED' },
+            select: { cashAccountId: true, type: true, amount: true },
+          })
+        : [];
+
       const report = await Promise.all(
         accounts.map(async (acc) => {
-          const txns = await prisma.cashTransaction.findMany({
-            where: { cashAccountId: acc.id, status: 'POSTED' },
-            select: { type: true, amount: true },
-          });
-          const inflows = txns
+          const accTxns = allCashTxns.filter((t) => t.cashAccountId === acc.id);
+          const inflows = accTxns
             .filter((t) => ['IN', 'TRANSFER_IN', 'REVERSAL_IN'].includes(t.type))
             .reduce((s, t) => s + Number(t.amount), 0);
-          const outflows = txns
+          const outflows = accTxns
             .filter((t) => !['IN', 'TRANSFER_IN', 'REVERSAL_IN'].includes(t.type))
             .reduce((s, t) => s + Number(t.amount), 0);
           const expectedBalance = Number(acc.openingBalance) + inflows - outflows;
@@ -466,7 +483,7 @@ router.get(
             discrepancy,
             isReconciled: Math.abs(discrepancy) < 0.01,
             isActive: acc.isActive,
-            transactionCount: txns.length,
+            transactionCount: accTxns.length,
             recentTransactions: acc.transactions.map((t) => ({
               type: t.type,
               amount: Number(t.amount),

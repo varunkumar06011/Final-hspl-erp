@@ -85,7 +85,7 @@ interface PaymentRequestRow {
   purchaseOrder: { id: string; poNumber: string; grandTotal: number; paymentType: string } | null;
   createdBy: string;
   createdByUser: { id: string; name: string };
-  payments: { id: string; amount: number; mode: string; reference: string | null; date: string; bankAccountId: string | null; cashAccountId: string | null; bankAccount: { id: string; accountName: string } | null; cashAccount: { id: string; name: string } | null }[];
+  payments: { id: string; amount: number; mode: string; reference: string | null; date: string; bankAccountId: string | null; cashAccountId: string | null; bankAccount: { id: string; accountName: string } | null; cashAccount: { id: string; name: string } | null; journalVoucherId: string | null; journalVoucher: { jvNumber: string } | null }[];
   budgetHeadId: string | null;
   budgetHead: { id: string; particulars: string } | null;
   approvalWorkflow: {
@@ -313,13 +313,42 @@ export default function PaymentsPage() {
       const response = await api.post(`/payments/${prId}/approve`, { comments, acknowledged });
       return response.data;
     },
-    onSuccess: () => {
+    onMutate: async ({ prId }) => {
+      // Optimistic update — advance the approval workflow status instantly.
+      await queryClient.cancelQueries({ queryKey: ['/payments'] });
+      const prevQueries = queryClient.getQueriesData<{ data: PaymentRequestRow[] }>({ queryKey: ['/payments'] });
+      queryClient.setQueriesData<{ data: PaymentRequestRow[] }>({ queryKey: ['/payments'] }, (old) => {
+        if (!old?.data) return old;
+        return {
+          ...old,
+          data: old.data.map((pr) =>
+            pr.id === prId
+              ? {
+                  ...pr,
+                  approvalWorkflow: pr.approvalWorkflow
+                    ? { ...pr.approvalWorkflow, status: 'APPROVAL_1' }
+                    : pr.approvalWorkflow,
+                }
+              : pr,
+          ),
+        };
+      });
+      return { prevQueries };
+    },
+    onError: (err: unknown, _vars, context) => {
+      context?.prevQueries.forEach(([key, data]) => {
+        queryClient.setQueryData(key, data);
+      });
+      setError(extractErrorMessage(err));
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['/payments'] });
       queryClient.invalidateQueries({ queryKey: ['/invoices'] });
       queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
+    },
+    onSuccess: () => {
       setApprovalAction(null);
     },
-    onError: (err: unknown) => setError(extractErrorMessage(err)),
   });
 
   const rejectMutation = useMutation({
@@ -327,13 +356,41 @@ export default function PaymentsPage() {
       const response = await api.post(`/payments/${prId}/reject`, { reason, acknowledged });
       return response.data;
     },
-    onSuccess: () => {
+    onMutate: async ({ prId }) => {
+      await queryClient.cancelQueries({ queryKey: ['/payments'] });
+      const prevQueries = queryClient.getQueriesData<{ data: PaymentRequestRow[] }>({ queryKey: ['/payments'] });
+      queryClient.setQueriesData<{ data: PaymentRequestRow[] }>({ queryKey: ['/payments'] }, (old) => {
+        if (!old?.data) return old;
+        return {
+          ...old,
+          data: old.data.map((pr) =>
+            pr.id === prId
+              ? {
+                  ...pr,
+                  approvalWorkflow: pr.approvalWorkflow
+                    ? { ...pr.approvalWorkflow, status: 'REJECTED' }
+                    : pr.approvalWorkflow,
+                }
+              : pr,
+          ),
+        };
+      });
+      return { prevQueries };
+    },
+    onError: (err: unknown, _vars, context) => {
+      context?.prevQueries.forEach(([key, data]) => {
+        queryClient.setQueryData(key, data);
+      });
+      setError(extractErrorMessage(err));
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['/payments'] });
       queryClient.invalidateQueries({ queryKey: ['/invoices'] });
       queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
+    },
+    onSuccess: () => {
       setApprovalAction(null);
     },
-    onError: (err: unknown) => setError(extractErrorMessage(err)),
   });
 
   const [deleteRow, setDeleteRow] = useState<PaymentRequestRow | null>(null);
@@ -694,7 +751,22 @@ export default function PaymentsPage() {
                             </Button>
                           )}
                           {row.payments.length > 0 && (
-                            <Chip label="Paid" size="small" color="success" />
+                            <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center', flexWrap: 'wrap' }}>
+                              <Chip label="Paid" size="small" color="success" />
+                              {row.payments.map((p) =>
+                                p.journalVoucher?.jvNumber ? (
+                                  <Chip
+                                    key={p.id}
+                                    label={p.journalVoucher.jvNumber}
+                                    size="small"
+                                    variant="outlined"
+                                    color="primary"
+                                    sx={{ fontSize: '0.7rem' }}
+                                    title="Posted to ledger"
+                                  />
+                                ) : null,
+                              )}
+                            </Box>
                           )}
                           {row.status !== PaymentStatus.APPROVED && row.status !== PaymentStatus.PAID && (
                             <IconButton size="small" color="error" onClick={() => setDeleteRow(row)} title="Delete"><DeleteIcon fontSize="small" /></IconButton>

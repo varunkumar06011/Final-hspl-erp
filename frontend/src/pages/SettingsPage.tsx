@@ -11,6 +11,8 @@ import {
   Input,
   IconButton,
   InputAdornment,
+  FormControlLabel,
+  Switch,
 } from '@mui/material';
 import { Visibility, VisibilityOff } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -18,6 +20,12 @@ import api, { extractErrorMessage } from '../config/api';
 import { useAuthStore } from '../stores/authStore';
 import { formatCurrency, formatIndianNumber } from '../utils/enumOptions';
 import NotificationPermissionPrompt from '../components/NotificationPermissionPrompt';
+
+const NOTIFICATION_EVENT_LABELS: { key: string; label: string; description: string }[] = [
+  { key: 'entity_created', label: 'New entity created', description: 'PO, quotation, invoice, payment, etc. created by your team' },
+  { key: 'approval_request', label: 'Approval requests', description: 'A document is waiting for your approval' },
+  { key: 'approval_result', label: 'Approval results', description: 'Your document was approved or rejected' },
+];
 
 const ROLE_LABELS: Record<string, string> = {
   PROJECT_HEAD: 'Project Head',
@@ -147,6 +155,28 @@ export default function SettingsPage() {
     onError: (err: unknown) => setError(extractErrorMessage(err)),
   });
 
+  const { data: notifPrefs } = useQuery({
+    queryKey: ['/notifications/preferences'],
+    queryFn: async () => {
+      const response = await api.get('/notifications/preferences');
+      return response.data.prefs as Record<string, boolean>;
+    },
+  });
+
+  const updatePrefsMutation = useMutation({
+    mutationFn: async (prefs: Record<string, boolean>) => {
+      const response = await api.patch('/notifications/preferences', { prefs });
+      return response.data.prefs as Record<string, boolean>;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/notifications/preferences'] });
+      setSuccess('Notification preferences saved');
+      setError('');
+      setTimeout(() => setSuccess(''), 3000);
+    },
+    onError: (err: unknown) => setError(extractErrorMessage(err)),
+  });
+
   if (isLoading) {
     return <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}><CircularProgress /></Box>;
   }
@@ -209,6 +239,40 @@ export default function SettingsPage() {
             Get system-level alerts when an approval is required, even when the website is closed or minimized.
           </Typography>
           <NotificationPermissionPrompt />
+        </CardContent>
+      </Card>
+
+      {/* Notification Preferences */}
+      <Card sx={{ mb: 3 }}>
+        <CardContent>
+          <Typography variant="h6" gutterBottom>Notification Preferences</Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Choose which types of push notifications you want to receive. Muted categories will not trigger a push, even if you are subscribed.
+          </Typography>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+            {NOTIFICATION_EVENT_LABELS.map(({ key, label, description }) => (
+              <FormControlLabel
+                key={key}
+                control={
+                  <Switch
+                    checked={notifPrefs?.[key] ?? true}
+                    onChange={(e) => {
+                      const next = { ...(notifPrefs ?? {}), [key]: e.target.checked };
+                      updatePrefsMutation.mutate(next);
+                    }}
+                    disabled={updatePrefsMutation.isPending}
+                  />
+                }
+                label={
+                  <Box>
+                    <Typography variant="body2" fontWeight={600}>{label}</Typography>
+                    <Typography variant="caption" color="text.secondary">{description}</Typography>
+                  </Box>
+                }
+                sx={{ alignItems: 'flex-start', mr: 0 }}
+              />
+            ))}
+          </Box>
         </CardContent>
       </Card>
 

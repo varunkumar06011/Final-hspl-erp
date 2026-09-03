@@ -264,12 +264,42 @@ export default function PurchaseOrdersPage() {
       const response = await api.post(`/purchase-orders/${poId}/approve`, { comments, acknowledged });
       return response.data;
     },
-    onSuccess: () => {
+    onMutate: async ({ poId }) => {
+      // Optimistic update — flip the approval step to APPROVED instantly.
+      await queryClient.cancelQueries({ queryKey: ['/pos'] });
+      const prevQueries = queryClient.getQueriesData<{ data: PORow[] }>({ queryKey: ['/pos'] });
+      queryClient.setQueriesData<{ data: PORow[] }>({ queryKey: ['/pos'] }, (old) => {
+        if (!old?.data) return old;
+        return {
+          ...old,
+          data: old.data.map((po) =>
+            po.id === poId
+              ? {
+                  ...po,
+                  approvalWorkflow: po.approvalWorkflow
+                    ? { ...po.approvalWorkflow, status: 'APPROVAL_1' }
+                    : po.approvalWorkflow,
+                }
+              : po,
+          ),
+        };
+      });
+      return { prevQueries };
+    },
+    onError: (err: unknown, _vars, context) => {
+      // Roll back on error.
+      context?.prevQueries.forEach(([key, data]) => {
+        queryClient.setQueryData(key, data);
+      });
+      setError(extractErrorMessage(err));
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['/pos'] });
       queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
+    },
+    onSuccess: () => {
       setApprovalAction(null);
     },
-    onError: (err: unknown) => setError(extractErrorMessage(err)),
   });
 
   const rejectMutation = useMutation({
@@ -277,12 +307,40 @@ export default function PurchaseOrdersPage() {
       const response = await api.post(`/purchase-orders/${poId}/reject`, { reason, acknowledged });
       return response.data;
     },
-    onSuccess: () => {
+    onMutate: async ({ poId }) => {
+      await queryClient.cancelQueries({ queryKey: ['/pos'] });
+      const prevQueries = queryClient.getQueriesData<{ data: PORow[] }>({ queryKey: ['/pos'] });
+      queryClient.setQueriesData<{ data: PORow[] }>({ queryKey: ['/pos'] }, (old) => {
+        if (!old?.data) return old;
+        return {
+          ...old,
+          data: old.data.map((po) =>
+            po.id === poId
+              ? {
+                  ...po,
+                  approvalWorkflow: po.approvalWorkflow
+                    ? { ...po.approvalWorkflow, status: 'REJECTED' }
+                    : po.approvalWorkflow,
+                }
+              : po,
+          ),
+        };
+      });
+      return { prevQueries };
+    },
+    onError: (err: unknown, _vars, context) => {
+      context?.prevQueries.forEach(([key, data]) => {
+        queryClient.setQueryData(key, data);
+      });
+      setError(extractErrorMessage(err));
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['/pos'] });
       queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
+    },
+    onSuccess: () => {
       setApprovalAction(null);
     },
-    onError: (err: unknown) => setError(extractErrorMessage(err)),
   });
 
   const [deleteRow, setDeleteRow] = useState<PORow | null>(null);

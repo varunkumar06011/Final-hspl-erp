@@ -22,6 +22,7 @@ import {
   People as PeopleIcon,
   Logout as LogoutIcon,
   Notifications as NotificationsIcon,
+  Search as SearchIcon,
   AccountBalanceWallet as BudgetIcon,
   Savings as BankIcon,
   Payments as CashIcon,
@@ -36,6 +37,8 @@ import { useAuthStore } from '../stores/authStore';
 import { hasPermission, Permission, UserRole } from '@hospital-erp/shared';
 import { onForegroundMessage, enableNotifications, isPushSupported, getPermissionState } from '../config/notifications';
 import api from '../config/api';
+import { useIdleTimeout } from '../hooks/useIdleTimeout';
+import GlobalSearch from './GlobalSearch';
 
 const NAV_ITEMS = [
   { label: 'Dashboard', icon: <DashboardIcon />, path: '/', section: '' },
@@ -104,6 +107,21 @@ const DRAWER_WIDTH = 260;
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  // Auto-logout after 15 min of inactivity (cross-tab aware).
+  useIdleTimeout();
+
+  // Cmd+K / Ctrl+K opens global search
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setSearchOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
   const [fgNotification, setFgNotification] = useState<{ open: boolean; title: string; body: string; url?: string }>({
     open: false,
     title: '',
@@ -288,6 +306,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           >
             Hospital Construction ERP
           </Typography>
+          <IconButton color="inherit" onClick={() => setSearchOpen(true)} title="Search (Ctrl+K)" size="large">
+            <SearchIcon />
+          </IconButton>
           <IconButton color="inherit" size="large" sx={{ display: { xs: 'none', sm: 'inline-flex' } }}>
             <NotificationsIcon />
           </IconButton>
@@ -375,6 +396,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           {fgNotification.url && <Typography variant="caption" color="primary">Tap to view →</Typography>}
         </Alert>
       </Snackbar>
+
+      {/* Global search — Cmd+K / Ctrl+K */}
+      <GlobalSearch open={searchOpen} onClose={() => setSearchOpen(false)} />
     </Box>
   );
 }

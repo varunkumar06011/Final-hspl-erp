@@ -331,6 +331,19 @@ export default function VendorsPage() {
         ]}
         statusKey="status"
         statusColors={STATUS_COLORS}
+        csvFilename="vendors"
+        csvColumns={[
+          { key: 'vendorCode', label: 'Vendor ID' },
+          { key: 'name', label: 'Vendor Name' },
+          { key: 'category', label: 'Category' },
+          { key: 'gstNumber', label: 'GST No' },
+          { key: 'phone', label: 'Phone' },
+          { key: 'referenceBy', label: 'Referred By' },
+          { key: 'totalBilled', label: 'Total Billed', format: (r) => String(Number(r.totalBilled ?? 0)) },
+          { key: 'totalPaid', label: 'Total Paid', format: (r) => String(Number(r.totalPaid ?? 0)) },
+          { key: 'outstanding', label: 'Outstanding', format: (r) => String(Number(r.outstanding ?? 0)) },
+          { key: 'status', label: 'Status' },
+        ]}
         fields={[
           { name: 'name', label: 'Vendor Name', type: 'text', required: true },
           { name: 'phone', label: 'Phone', type: 'text' },

@@ -99,6 +99,8 @@ interface InvoiceRow {
   verificationStatus: string;
   createdBy: string;
   createdByUser: { id: string; name: string };
+  isPostedToBooks?: boolean;
+  postedVoucherNumber?: string | null;
   approvalWorkflow?: {
     id: string;
     status: string;
@@ -673,7 +675,7 @@ export default function InvoicesPage() {
                             <IconButton size="small" color="error" onClick={() => setApprovalAction({ row, action: 'reject' })} title="Reject"><CloseIcon fontSize="small" /></IconButton>
                           </>
                         )}
-                        {row.verificationStatus === InvoiceVerificationStatus.VERIFIED && (
+                        {row.verificationStatus === InvoiceVerificationStatus.VERIFIED && !row.isPostedToBooks && (
                           <IconButton
                             size="small"
                             color="primary"
@@ -687,6 +689,15 @@ export default function InvoicesPage() {
                           >
                             <PostToBooksIcon fontSize="small" />
                           </IconButton>
+                        )}
+                        {row.isPostedToBooks && row.postedVoucherNumber && (
+                          <Chip
+                            label={`Posted: ${row.postedVoucherNumber}`}
+                            size="small"
+                            color="success"
+                            variant="outlined"
+                            sx={{ fontSize: '0.7rem' }}
+                          />
                         )}
                         {row.verificationStatus !== InvoiceVerificationStatus.VERIFIED && (
                           <IconButton size="small" color="error" onClick={() => setDeleteRow(row)} title="Delete"><DeleteIcon fontSize="small" /></IconButton>

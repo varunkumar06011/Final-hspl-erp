@@ -29,6 +29,7 @@ import {
   Search as SearchIcon,
   Refresh as RefreshIcon,
   RemoveCircleOutline as RemoveIcon,
+  Download as DownloadIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { extractErrorMessage } from '../config/api';
@@ -37,6 +38,9 @@ import SelectWithOther from './SelectWithOther';
 import AttachmentUpload from './AttachmentUpload';
 import ResponsiveTable from './ResponsiveTable';
 import RefreshButton from './RefreshButton';
+import PinConfirmDialog from './PinConfirmDialog';
+import { exportToCsv, type CsvColumn } from '../utils/csvExport';
+import { useUrlState } from '../hooks/useUrlState';
 
 export interface MaterialEntry {
   id?: string;
@@ -78,6 +82,9 @@ interface EntityPageProps {
   statusColors?: Record<string, 'default' | 'primary' | 'secondary' | 'error' | 'info' | 'success' | 'warning'>;
   canCreate?: boolean;
   rowActions?: (row: Record<string, unknown>) => ReactNode;
+  /** Optional CSV column definitions. When provided, an Export button is shown. */
+  csvColumns?: CsvColumn[];
+  csvFilename?: string;
 }
 
 export default function EntityPage({
@@ -92,15 +99,18 @@ export default function EntityPage({
   statusColors,
   canCreate = true,
   rowActions,
+  csvColumns,
+  csvFilename,
 }: EntityPageProps) {
-  const [page, setPage] = useState(0);
-  const [pageSize, setPageSize] = useState(20);
-  const [search, setSearch] = useState('');
+  const [page, setPage] = useUrlState<number>('page', 0, Number);
+  const [pageSize, setPageSize] = useUrlState<number>('pageSize', 20, Number);
+  const [search, setSearch] = useUrlState<string>('search', '');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Record<string, unknown> | null>(null);
   const [form, setForm] = useState<Record<string, unknown>>({});
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [error, setError] = useState('');
+  const [exporting, setExporting] = useState(false);
   const queryClient = useQueryClient();
 
   const { data, isLoading, isError, refetch } = useQuery({
@@ -230,6 +240,26 @@ export default function EntityPage({
         </Typography>
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', justifyContent: { xs: 'flex-end', md: 'flex-end' }, alignItems: 'center', width: { xs: '100%', md: 'auto' }, minWidth: { md: 'max-content' } }}>
           <RefreshButton onClick={() => refetch()} />
+          {csvColumns && csvColumns.length > 0 && (
+            <Button
+              variant="outlined"
+              size="small"
+              startIcon={exporting ? <CircularProgress size={16} /> : <DownloadIcon />}
+              onClick={async () => {
+                setExporting(true);
+                try {
+                  await exportToCsv(endpoint, csvColumns, csvFilename ?? entityName, search);
+                } catch (err: unknown) {
+                  setError(extractErrorMessage(err));
+                } finally {
+                  setExporting(false);
+                }
+              }}
+              disabled={exporting}
+            >
+              Export
+            </Button>
+          )}
           {canCreate && (
             <Button variant="contained" startIcon={<AddIcon />} onClick={openCreate}>
               New {entityName}
@@ -493,23 +523,17 @@ export default function EntityPage({
         </DialogActions>
       </ResponsiveDialog>
 
-      <ResponsiveDialog open={!!deleteConfirm} onClose={() => setDeleteConfirm(null)}>
-        <DialogTitle>Delete {entityName}?</DialogTitle>
-        <DialogContent>
-          <Typography>This action cannot be undone. The record will be soft-deleted.</Typography>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setDeleteConfirm(null)}>Cancel</Button>
-          <Button
-            color="error"
-            variant="contained"
-            onClick={() => deleteConfirm && deleteMutation.mutate(deleteConfirm)}
-            disabled={deleteMutation.isPending}
-          >
-            Delete
-          </Button>
-        </DialogActions>
-      </ResponsiveDialog>
+      <PinConfirmDialog
+        open={!!deleteConfirm}
+        title={`Delete ${entityName}?`}
+        message="This action cannot be undone. The record will be soft-deleted. Enter your PIN to confirm."
+        confirmLabel="Delete"
+        onConfirm={() => {
+          if (deleteConfirm) deleteMutation.mutate(deleteConfirm);
+          setDeleteConfirm(null);
+        }}
+        onCancel={() => setDeleteConfirm(null)}
+      />
     </Box>
   );
 }

@@ -269,9 +269,32 @@ export default function GatePassesPage() {
       const response = await api.post(`/gate-passes/${id}/verify-otp`, { idToken });
       return response.data;
     },
-    onSuccess: (data) => {
+    onMutate: async ({ id }) => {
+      // Optimistic update — flip the gate pass status to APPROVED instantly.
+      await queryClient.cancelQueries({ queryKey: ['/gate-passes'] });
+      const prevQueries = queryClient.getQueriesData<{ data: GatePassRow[] }>({ queryKey: ['/gate-passes'] });
+      queryClient.setQueriesData<{ data: GatePassRow[] }>({ queryKey: ['/gate-passes'] }, (old) => {
+        if (!old?.data) return old;
+        return {
+          ...old,
+          data: old.data.map((gp) =>
+            gp.id === id ? { ...gp, status: 'APPROVED' } : gp,
+          ),
+        };
+      });
+      return { prevQueries };
+    },
+    onError: (err: unknown, _vars, context) => {
+      context?.prevQueries.forEach(([key, data]) => {
+        queryClient.setQueryData(key, data);
+      });
+      setError(extractErrorMessage(err));
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['/gate-passes'] });
       queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
+    },
+    onSuccess: (data) => {
       setOtpDialogOpen(null);
       setOtpInput('');
       confirmationResult = null;
@@ -279,7 +302,6 @@ export default function GatePassesPage() {
       setSuccessMsg(data.message || 'Gate pass approved. Inventory has not been updated.');
       setTimeout(() => setSuccessMsg(''), 5000);
     },
-    onError: (err: unknown) => setError(extractErrorMessage(err)),
   });
 
   const deleteMutation = useMutation({
