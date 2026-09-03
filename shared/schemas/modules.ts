@@ -635,7 +635,7 @@ export const updateActivitySchema = z.object({
     assignedVendorId: uuid.optional().nullable(),
   }),
 });
-export const listPhasesSchema = z.object({ query: pagination });
+export const listPhasesSchema = z.object({ query: pagination.extend({ search: z.string().optional() }) });
 export const listActivitiesSchema = z.object({
   query: pagination.extend({
     phaseId: uuid.optional(),
@@ -680,6 +680,7 @@ export const updateIssueSchema = z.object({
 });
 export const listIssuesSchema = z.object({
   query: pagination.extend({
+    search: z.string().optional(),
     severity: z.nativeEnum(IssueSeverity).optional(),
     status: z.string().optional(),
   }),
@@ -715,6 +716,7 @@ export const updateWorkTaskSchema = z.object({
 });
 export const listWorkTasksSchema = z.object({
   query: pagination.extend({
+    search: z.string().optional(),
     status: z.nativeEnum(WorkTaskStatus).optional(),
     type: z.nativeEnum(WorkTaskType).optional(),
     priority: z.nativeEnum(WorkTaskPriority).optional(),
