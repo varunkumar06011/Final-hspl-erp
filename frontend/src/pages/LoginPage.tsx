@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { keyframes } from '@mui/system';
 import {
   Box,
@@ -14,7 +14,7 @@ import {
   IconButton,
   InputAdornment as MuiInputAdornment,
 } from '@mui/material';
-import { Visibility, VisibilityOff, LocalHospital } from '@mui/icons-material';
+import { Visibility, VisibilityOff } from '@mui/icons-material';
 import { RecaptchaVerifier, signInWithPhoneNumber } from 'firebase/auth';
 import { useNavigate, Navigate } from 'react-router-dom';
 import { auth, isConfigured } from '../config/firebase';
@@ -22,22 +22,6 @@ import api, { extractErrorMessage } from '../config/api';
 import { useAuthStore } from '../stores/authStore';
 
 // ── Animations ──────────────────────────────────────────────
-// Slow, calm drift — like water or a calm sky
-const blobMove1 = keyframes`
-  0%, 100% { transform: translate(0, 0) scale(1); }
-  50%      { transform: translate(30px, -20px) scale(1.08); }
-`;
-
-const blobMove2 = keyframes`
-  0%, 100% { transform: translate(0, 0) scale(1); }
-  50%      { transform: translate(-25px, 25px) scale(1.05); }
-`;
-
-const blobMove3 = keyframes`
-  0%, 100% { transform: translate(0, 0) scale(1); }
-  50%      { transform: translate(15px, 20px) scale(1.1); }
-`;
-
 const fadeInUp = keyframes`
   from { opacity: 0; transform: translateY(20px); }
   to   { opacity: 1; transform: translateY(0);    }
@@ -66,8 +50,24 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [showPin, setShowPin] = useState(false);
   const [confirmationResult, setConfirmationResult] = useState<any>(null);
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const { setUser, setToken, isAuthenticated } = useAuthStore();
   const navigate = useNavigate();
+
+  // Fetch project logo (public endpoint, no auth needed)
+  useEffect(() => {
+    api.get('/settings/logo', { responseType: 'blob' })
+      .then((res) => {
+        const rawMime = res.headers['content-type'];
+        const mime = typeof rawMime === 'string' ? rawMime : 'image/png';
+        setLogoUrl(URL.createObjectURL(new Blob([res.data], { type: mime })));
+      })
+      .catch(() => {
+        // No logo uploaded — fallback to favicon
+      });
+    return () => { if (logoUrl) URL.revokeObjectURL(logoUrl); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const setupRecaptcha = useCallback(() => {
     if ((window as any).recaptchaVerifier) {
@@ -226,9 +226,6 @@ export default function LoginPage() {
 
   const fadeAnim = `${fadeInUp} 0.6s ease-out`;
   const stepFadeAnim = `${fadeInUp} 0.4s ease-out`;
-  const blob1Anim = `${blobMove1} 18s ease-in-out infinite`;
-  const blob2Anim = `${blobMove2} 22s ease-in-out infinite`;
-  const blob3Anim = `${blobMove3} 20s ease-in-out infinite`;
 
   // Apple-style shared input/button styles
   const glassInputSx = {
@@ -301,54 +298,38 @@ export default function LoginPage() {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        // Deep navy base
-        background: '#0a1929',
+        // Premium dark gradient — deep navy to blue
+        background: 'linear-gradient(160deg, #0a1929 0%, #0d2847 40%, #0a1929 100%)',
         p: 2,
         position: 'relative',
         overflow: 'hidden',
       }}
     >
-      {/* Calm blue/teal blobs — professional, slow drift */}
+      {/* Subtle radial glow — top center, like a soft spotlight */}
       <Box
         sx={{
           position: 'absolute',
-          top: '-10%',
-          left: '-5%',
+          top: '-20%',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          width: 600,
+          height: 600,
+          borderRadius: '50%',
+          background: 'radial-gradient(circle, rgba(21, 101, 192, 0.15) 0%, rgba(21, 101, 192, 0) 60%)',
+          filter: 'blur(40px)',
+        }}
+      />
+      {/* Subtle teal glow — bottom right */}
+      <Box
+        sx={{
+          position: 'absolute',
+          bottom: '-15%',
+          right: '-10%',
           width: 500,
           height: 500,
           borderRadius: '50%',
-          background: 'radial-gradient(circle, #1565C0 0%, #1565C000 70%)',
-          filter: 'blur(70px)',
-          animation: blob1Anim,
-          opacity: 0.6,
-        }}
-      />
-      <Box
-        sx={{
-          position: 'absolute',
-          bottom: '-10%',
-          right: '-5%',
-          width: 450,
-          height: 450,
-          borderRadius: '50%',
-          background: 'radial-gradient(circle, #00695C 0%, #00695C00 70%)',
-          filter: 'blur(70px)',
-          animation: blob2Anim,
-          opacity: 0.5,
-        }}
-      />
-      <Box
-        sx={{
-          position: 'absolute',
-          top: '30%',
-          left: '35%',
-          width: 380,
-          height: 380,
-          borderRadius: '50%',
-          background: 'radial-gradient(circle, #1E88E5 0%, #1E88E500 70%)',
-          filter: 'blur(60px)',
-          animation: blob3Anim,
-          opacity: 0.4,
+          background: 'radial-gradient(circle, rgba(0, 105, 92, 0.12) 0%, rgba(0, 105, 92, 0) 60%)',
+          filter: 'blur(40px)',
         }}
       />
 
@@ -372,20 +353,17 @@ export default function LoginPage() {
           {/* Logo + title */}
           <Box sx={{ textAlign: 'center', mb: 3, animation: fadeAnim }}>
             <Box
+              component="img"
+              src={logoUrl || '/favicon-192.png'}
+              alt="Logo"
               sx={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                width: 56,
-                height: 56,
-                borderRadius: '16px',
-                background: 'linear-gradient(135deg, #1565C0, #00695C)',
+                width: 64,
+                height: 64,
+                borderRadius: '14px',
                 mb: 2,
-                boxShadow: '0 4px 16px rgba(21, 101, 192, 0.35)',
+                objectFit: 'contain',
               }}
-            >
-              <LocalHospital sx={{ fontSize: 32, color: '#fff' }} />
-            </Box>
+            />
             <Typography variant="h5" align="center" gutterBottom fontWeight={700} sx={{ color: '#0a1929', letterSpacing: '-0.5px' }}>
               Hospital Construction ERP
             </Typography>

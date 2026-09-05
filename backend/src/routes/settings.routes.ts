@@ -9,8 +9,32 @@ import { AuditAction } from '@hospital-erp/shared';
 import { getStorageService, serveFile } from '../services/storage.service';
 
 const router = Router();
-router.use(authMiddleware);
 const logoUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
+
+// GET /logo — serve the project logo (public, no auth required)
+// Used by login page and favicon before the user is authenticated
+router.get(
+  '/logo',
+  async (_req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      // Single-project app — fetch the first project's logo
+      const project = await prisma.project.findFirst({
+        select: { logoUrl: true },
+      });
+
+      if (!project?.logoUrl) {
+        res.status(404).json({ error: 'No logo uploaded' });
+        return;
+      }
+
+      await serveFile(res, project.logoUrl, guessMimeType(project.logoUrl));
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+router.use(authMiddleware);
 
 const guessMimeType = (filePath: string): string | null => {
   const ext = filePath.split('.').pop()?.toLowerCase();
@@ -146,29 +170,6 @@ router.post(
       });
 
       res.json(updated);
-    } catch (error) {
-      next(error);
-    }
-  }
-);
-
-// GET /logo — serve the project logo
-router.get(
-  '/logo',
-  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
-    try {
-      const projectId = requireProjectId(req);
-      const project = await prisma.project.findUnique({
-        where: { id: projectId },
-        select: { logoUrl: true },
-      });
-
-      if (!project?.logoUrl) {
-        res.status(404).json({ error: 'No logo uploaded' });
-        return;
-      }
-
-      await serveFile(res, project.logoUrl, guessMimeType(project.logoUrl));
     } catch (error) {
       next(error);
     }
