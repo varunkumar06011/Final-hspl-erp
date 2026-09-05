@@ -22,21 +22,20 @@ import api, { extractErrorMessage } from '../config/api';
 import { useAuthStore } from '../stores/authStore';
 
 // ── Animations ──────────────────────────────────────────────
+// Slow, calm drift — like water or a calm sky
 const blobMove1 = keyframes`
   0%, 100% { transform: translate(0, 0) scale(1); }
-  33%      { transform: translate(40px, -30px) scale(1.1); }
-  66%      { transform: translate(-20px, 20px) scale(0.95); }
+  50%      { transform: translate(30px, -20px) scale(1.08); }
 `;
 
 const blobMove2 = keyframes`
   0%, 100% { transform: translate(0, 0) scale(1); }
-  33%      { transform: translate(-30px, 40px) scale(1.05); }
-  66%      { transform: translate(25px, -15px) scale(1.1); }
+  50%      { transform: translate(-25px, 25px) scale(1.05); }
 `;
 
 const blobMove3 = keyframes`
   0%, 100% { transform: translate(0, 0) scale(1); }
-  50%      { transform: translate(20px, 30px) scale(1.15); }
+  50%      { transform: translate(15px, 20px) scale(1.1); }
 `;
 
 const fadeInUp = keyframes`
@@ -227,10 +226,9 @@ export default function LoginPage() {
 
   const fadeAnim = `${fadeInUp} 0.6s ease-out`;
   const stepFadeAnim = `${fadeInUp} 0.4s ease-out`;
-  const blob1Anim = `${blobMove1} 12s ease-in-out infinite`;
-  const blob2Anim = `${blobMove2} 14s ease-in-out infinite`;
-  const blob3Anim = `${blobMove3} 10s ease-in-out infinite`;
-  const blob4Anim = `${blobMove1} 16s ease-in-out infinite`;
+  const blob1Anim = `${blobMove1} 18s ease-in-out infinite`;
+  const blob2Anim = `${blobMove2} 22s ease-in-out infinite`;
+  const blob3Anim = `${blobMove3} 20s ease-in-out infinite`;
 
   // Apple-style shared input/button styles
   const glassInputSx = {
@@ -238,16 +236,16 @@ export default function LoginPage() {
     '& .MuiOutlinedInput-root': {
       borderRadius: '12px',
       background: 'rgba(255, 255, 255, 0.95)',
-      color: '#1a1a2e',
+      color: '#0a1929',
       '& fieldset': { borderColor: 'rgba(0, 0, 0, 0.15)' },
-      '&:hover fieldset': { borderColor: 'rgba(123, 104, 238, 0.4)' },
-      '&.Mui-focused fieldset': { borderColor: 'rgba(123, 104, 238, 0.7)', borderWidth: 2 },
-      '& input': { color: '#1a1a2e' },
-      '& input::placeholder': { color: 'rgba(26, 26, 46, 0.4)' },
+      '&:hover fieldset': { borderColor: 'rgba(21, 101, 192, 0.4)' },
+      '&.Mui-focused fieldset': { borderColor: '#1565C0', borderWidth: 2 },
+      '& input': { color: '#0a1929' },
+      '& input::placeholder': { color: 'rgba(10, 25, 41, 0.4)' },
     },
-    '& .MuiInputLabel-root': { color: 'rgba(26, 26, 46, 0.6)' },
-    '& .MuiInputLabel-root.Mui-focused': { color: '#7B68EE' },
-    '& .MuiInputAdornment-root': { color: 'rgba(26, 26, 46, 0.5)' },
+    '& .MuiInputLabel-root': { color: 'rgba(10, 25, 41, 0.6)' },
+    '& .MuiInputLabel-root.Mui-focused': { color: '#1565C0' },
+    '& .MuiInputAdornment-root': { color: 'rgba(10, 25, 41, 0.5)' },
   } as const;
 
   const glassButtonSx = {
@@ -256,11 +254,11 @@ export default function LoginPage() {
     fontWeight: 600,
     fontSize: '1rem',
     py: 1.2,
-    background: 'linear-gradient(135deg, #FF6B6B, #7B68EE)',
-    boxShadow: '0 4px 16px rgba(123, 104, 238, 0.35)',
+    background: '#1565C0',
+    boxShadow: '0 4px 16px rgba(21, 101, 192, 0.3)',
     '&:hover': {
-      background: 'linear-gradient(135deg, #FF5757, #6B5EEE)',
-      boxShadow: '0 6px 20px rgba(123, 104, 238, 0.45)',
+      background: '#0D47A1',
+      boxShadow: '0 6px 20px rgba(21, 101, 192, 0.4)',
     },
     '&:disabled': {
       background: 'rgba(0, 0, 0, 0.15)',
@@ -270,7 +268,7 @@ export default function LoginPage() {
 
   const glassTextButtonSx = {
     textTransform: 'none',
-    color: 'rgba(26, 26, 46, 0.6)',
+    color: 'rgba(10, 25, 41, 0.6)',
     '&:hover': { background: 'rgba(255, 255, 255, 0.2)' },
   } as const;
 
@@ -285,15 +283,15 @@ export default function LoginPage() {
     textAlign: 'center',
     fontSize: '1.5rem',
     letterSpacing: '0.5rem',
-    color: '#1a1a2e',
+    color: '#0a1929',
     background: 'rgba(255, 255, 255, 0.9)',
     borderRadius: '12px',
     px: 2,
     py: 1,
     '&:before': { display: 'none' },
-    '&:after': { borderBottomColor: 'rgba(123, 104, 238, 0.7)' },
-    '& input': { color: '#1a1a2e', textAlign: 'center' },
-    '& input::placeholder': { color: 'rgba(26, 26, 46, 0.35)' },
+    '&:after': { borderBottomColor: '#1565C0' },
+    '& input': { color: '#0a1929', textAlign: 'center' },
+    '& input::placeholder': { color: 'rgba(10, 25, 41, 0.35)' },
   } as const;
 
   return (
@@ -303,14 +301,14 @@ export default function LoginPage() {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        // Deep base color
-        background: '#1a1a2e',
+        // Deep navy base
+        background: '#0a1929',
         p: 2,
         position: 'relative',
         overflow: 'hidden',
       }}
     >
-      {/* Vibrant animated color blobs — Apple Sonoma style */}
+      {/* Calm blue/teal blobs — professional, slow drift */}
       <Box
         sx={{
           position: 'absolute',
@@ -319,69 +317,53 @@ export default function LoginPage() {
           width: 500,
           height: 500,
           borderRadius: '50%',
-          background: 'radial-gradient(circle, #FF6B6B 0%, #FF6B6B00 70%)',
-          filter: 'blur(60px)',
+          background: 'radial-gradient(circle, #1565C0 0%, #1565C000 70%)',
+          filter: 'blur(70px)',
           animation: blob1Anim,
-          opacity: 0.8,
+          opacity: 0.6,
+        }}
+      />
+      <Box
+        sx={{
+          position: 'absolute',
+          bottom: '-10%',
+          right: '-5%',
+          width: 450,
+          height: 450,
+          borderRadius: '50%',
+          background: 'radial-gradient(circle, #00695C 0%, #00695C00 70%)',
+          filter: 'blur(70px)',
+          animation: blob2Anim,
+          opacity: 0.5,
         }}
       />
       <Box
         sx={{
           position: 'absolute',
           top: '30%',
-          right: '-10%',
-          width: 450,
-          height: 450,
+          left: '35%',
+          width: 380,
+          height: 380,
           borderRadius: '50%',
-          background: 'radial-gradient(circle, #7B68EE 0%, #7B68EE00 70%)',
-          filter: 'blur(60px)',
-          animation: blob2Anim,
-          opacity: 0.8,
-        }}
-      />
-      <Box
-        sx={{
-          position: 'absolute',
-          bottom: '-15%',
-          left: '20%',
-          width: 400,
-          height: 400,
-          borderRadius: '50%',
-          background: 'radial-gradient(circle, #FFA07A 0%, #FFA07A00 70%)',
+          background: 'radial-gradient(circle, #1E88E5 0%, #1E88E500 70%)',
           filter: 'blur(60px)',
           animation: blob3Anim,
-          opacity: 0.7,
-        }}
-      />
-      <Box
-        sx={{
-          position: 'absolute',
-          top: '10%',
-          left: '40%',
-          width: 350,
-          height: 350,
-          borderRadius: '50%',
-          background: 'radial-gradient(circle, #00CED1 0%, #00CED100 70%)',
-          filter: 'blur(50px)',
-          animation: blob4Anim,
-          animationDelay: '2s',
-          opacity: 0.6,
+          opacity: 0.4,
         }}
       />
 
-      {/* Apple-style glassmorphism login card */}
+      {/* Frosted glass login card */}
       <Card
         sx={{
           maxWidth: 420,
           width: '100%',
-          // Frosted glass — more opaque for readability
-          background: 'rgba(255, 255, 255, 0.85)',
-          backdropFilter: 'blur(40px) saturate(180%)',
-          WebkitBackdropFilter: 'blur(40px) saturate(180%)',
-          borderTop: '1px solid rgba(255, 255, 255, 0.9)',
+          // Frosted glass — 70% opaque so blobs tint through subtly
+          background: 'rgba(255, 255, 255, 0.7)',
+          backdropFilter: 'blur(30px) saturate(150%)',
+          WebkitBackdropFilter: 'blur(30px) saturate(150%)',
           border: '1px solid rgba(255, 255, 255, 0.5)',
-          borderRadius: '28px',
-          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3), inset 0 1px 1px rgba(255, 255, 255, 0.6)',
+          borderRadius: '24px',
+          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.25), inset 0 1px 1px rgba(255, 255, 255, 0.5)',
           position: 'relative',
           zIndex: 1,
         }}
@@ -397,17 +379,17 @@ export default function LoginPage() {
                 width: 56,
                 height: 56,
                 borderRadius: '16px',
-                background: 'linear-gradient(135deg, #FF6B6B, #7B68EE)',
+                background: 'linear-gradient(135deg, #1565C0, #00695C)',
                 mb: 2,
-                boxShadow: '0 4px 16px rgba(123, 104, 238, 0.4)',
+                boxShadow: '0 4px 16px rgba(21, 101, 192, 0.35)',
               }}
             >
               <LocalHospital sx={{ fontSize: 32, color: '#fff' }} />
             </Box>
-            <Typography variant="h5" align="center" gutterBottom fontWeight={700} sx={{ color: '#1a1a2e', letterSpacing: '-0.5px' }}>
+            <Typography variant="h5" align="center" gutterBottom fontWeight={700} sx={{ color: '#0a1929', letterSpacing: '-0.5px' }}>
               Hospital Construction ERP
             </Typography>
-            <Typography variant="body2" align="center" sx={{ color: 'rgba(26, 26, 46, 0.6)' }}>
+            <Typography variant="body2" align="center" sx={{ color: 'rgba(10, 25, 41, 0.6)' }}>
               Sign in to manage your project
             </Typography>
           </Box>
@@ -419,7 +401,7 @@ export default function LoginPage() {
               p: 0.5,
               mb: 3,
               borderRadius: 3,
-              background: 'rgba(0, 0, 0, 0.08)',
+              background: 'rgba(10, 25, 41, 0.08)',
             }}
           >
             <Box
@@ -433,7 +415,7 @@ export default function LoginPage() {
                 fontWeight: 600,
                 fontSize: '0.9rem',
                 transition: 'all 0.2s',
-                color: mode === 'signin' ? '#1a1a2e' : 'rgba(26, 26, 46, 0.5)',
+                color: mode === 'signin' ? '#0a1929' : 'rgba(10, 25, 41, 0.5)',
                 background: mode === 'signin' ? '#fff' : 'transparent',
                 boxShadow: mode === 'signin' ? '0 2px 8px rgba(0, 0, 0, 0.15)' : 'none',
               }}
@@ -451,7 +433,7 @@ export default function LoginPage() {
                 fontWeight: 600,
                 fontSize: '0.9rem',
                 transition: 'all 0.2s',
-                color: mode === 'signup' ? '#1a1a2e' : 'rgba(26, 26, 46, 0.5)',
+                color: mode === 'signup' ? '#0a1929' : 'rgba(10, 25, 41, 0.5)',
                 background: mode === 'signup' ? '#fff' : 'transparent',
                 boxShadow: mode === 'signup' ? '0 2px 8px rgba(0, 0, 0, 0.15)' : 'none',
               }}
@@ -515,7 +497,7 @@ export default function LoginPage() {
               <Alert severity="info" sx={glassAlertSx}>
                 Welcome back! Enter your 4-digit PIN to sign in.
               </Alert>
-              <Typography variant="body2" sx={{ mb: 1, color: 'rgba(26, 26, 46, 0.7)' }}>
+              <Typography variant="body2" sx={{ mb: 1, color: 'rgba(10, 25, 41, 0.7)' }}>
                 Phone: <strong>+91 {phone}</strong>
               </Typography>
               <Input
@@ -531,7 +513,7 @@ export default function LoginPage() {
                 inputProps={{ maxLength: 4, style: { textAlign: 'center' } }}
                 endAdornment={
                   <MuiInputAdornment position="end">
-                    <IconButton onClick={() => setShowPin(!showPin)} edge="end" sx={{ color: 'rgba(26, 26, 46, 0.5)' }}>
+                    <IconButton onClick={() => setShowPin(!showPin)} edge="end" sx={{ color: 'rgba(10, 25, 41, 0.5)' }}>
                       {showPin ? <VisibilityOff /> : <Visibility />}
                     </IconButton>
                   </MuiInputAdornment>
@@ -626,13 +608,13 @@ export default function LoginPage() {
                 inputProps={{ maxLength: 4, style: { textAlign: 'center' } }}
                 endAdornment={
                   <MuiInputAdornment position="end">
-                    <IconButton onClick={() => setShowPin(!showPin)} edge="end" sx={{ color: 'rgba(26, 26, 46, 0.5)' }}>
+                    <IconButton onClick={() => setShowPin(!showPin)} edge="end" sx={{ color: 'rgba(10, 25, 41, 0.5)' }}>
                       {showPin ? <VisibilityOff /> : <Visibility />}
                     </IconButton>
                   </MuiInputAdornment>
                 }
               />
-              <Typography variant="caption" sx={{ display: 'block', mb: 2, color: 'rgba(26, 26, 46, 0.5)' }}>
+              <Typography variant="caption" sx={{ display: 'block', mb: 2, color: 'rgba(10, 25, 41, 0.5)' }}>
                 You'll use this PIN with your phone number to sign in — no OTP needed.
               </Typography>
               <Button
@@ -659,3 +641,4 @@ export default function LoginPage() {
     </Box>
   );
 }
+
