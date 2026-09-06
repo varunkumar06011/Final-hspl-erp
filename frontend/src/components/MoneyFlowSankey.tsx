@@ -1,4 +1,4 @@
-import { Box, Typography, Card, CardContent, Tooltip } from '@mui/material';
+import { Box, Typography, Card, CardContent, Tooltip, useMediaQuery, useTheme, Stack } from '@mui/material';
 import { useMemo, useState } from 'react';
 import { formatCurrency } from '../utils/enumOptions';
 import { useColorMode } from '../config/ColorModeContext';
@@ -35,6 +35,8 @@ interface MoneyFlowSankeyProps {
 export default function MoneyFlowSankey({ totalBudget, committed, paid }: MoneyFlowSankeyProps) {
   const { mode } = useColorMode();
   const [hovered, setHovered] = useState<string | null>(null);
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
   const isDark = mode === 'dark';
   const textColor = isDark ? '#ddd' : '#333';
@@ -161,6 +163,31 @@ export default function MoneyFlowSankey({ totalBudget, committed, paid }: MoneyF
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
           How your budget flows through commitments to payments
         </Typography>
+
+        {/* ── Mobile: stacked flow representation (below md / 900px) ── */}
+        {/* The SVG Sankey is too wide for mobile and causes clipping/overflow. */}
+        {/* This stacked layout preserves the same data in a readable vertical flow. */}
+        {isMobile && (
+          <Stack spacing={1.5} sx={{ width: '100%' }}>
+            {/* Total Budget */}
+            <FlowBar label="Total Budget" value={totalBudget} color="#2196F3" />
+            <FlowArrow />
+            {/* Committed + Remaining split */}
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+              <FlowBar label="Committed (POs)" value={committed} color="#FF9800" />
+              <FlowBar label="Remaining" value={remaining} color="#4CAF50" />
+            </Box>
+            <FlowArrow />
+            {/* Paid + Outstanding split */}
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+              <FlowBar label="Paid" value={paid} color="#66BB6A" />
+              <FlowBar label="Outstanding" value={unpaid} color="#EF5350" />
+            </Box>
+          </Stack>
+        )}
+
+        {/* ── Desktop/Tablet: SVG Sankey diagram (md and up / ≥900px) ── */}
+        {!isMobile && (
         <Box sx={{ width: '100%', overflowX: 'auto' }}>
           <svg width={width} height={height} style={{ maxWidth: '100%' }}>
             {/* Links */}
@@ -237,7 +264,9 @@ export default function MoneyFlowSankey({ totalBudget, committed, paid }: MoneyF
             })}
           </svg>
         </Box>
-        {/* Legend */}
+        )}
+
+        {/* Legend — shown on all breakpoints, wraps responsively */}
         <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', mt: 1, justifyContent: 'center' }}>
           {nodes.map((node) => (
             <Box key={node.id} sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
@@ -250,5 +279,43 @@ export default function MoneyFlowSankey({ totalBudget, committed, paid }: MoneyF
         </Box>
       </CardContent>
     </Card>
+  );
+}
+
+// ─── Mobile helper components ───────────────────────────────────────────────
+
+/** A horizontal flow bar showing a label, colored indicator, and currency value. */
+function FlowBar({ label, value, color }: { label: string; value: number; color: string }) {
+  return (
+    <Box
+      sx={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: 1,
+        p: 1.25,
+        borderRadius: 1.5,
+        bgcolor: color,
+        color: '#fff',
+        minHeight: 48,
+      }}
+    >
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}>
+        <Box sx={{ width: 10, height: 10, borderRadius: 1, bgcolor: '#fff', opacity: 0.8, flexShrink: 0 }} />
+        <Typography variant="body2" fontWeight={600} sx={{ overflowWrap: 'break-word' }}>{label}</Typography>
+      </Box>
+      <Typography variant="body2" fontWeight={700} sx={{ whiteSpace: 'nowrap', flexShrink: 0 }}>
+        {formatCurrency(value)}
+      </Typography>
+    </Box>
+  );
+}
+
+/** A downward arrow indicating flow direction between stacked sections. */
+function FlowArrow() {
+  return (
+    <Box sx={{ display: 'flex', justifyContent: 'center', color: 'text.secondary' }}>
+      <Typography variant="body2" sx={{ lineHeight: 1 }}>↓</Typography>
+    </Box>
   );
 }

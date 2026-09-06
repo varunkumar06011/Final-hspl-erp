@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Box, Card, CardContent, Typography, Skeleton, Alert, Chip } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import api from '../config/api';
@@ -5,6 +6,10 @@ import { formatCurrency } from '../utils/enumOptions';
 import { AnimatedNumber } from '../components/AnimatedNumber';
 import MoneyFlowSankey from '../components/MoneyFlowSankey';
 import GanttChart from '../components/GanttChart';
+import PendingItemsDialog from '../components/PendingItemsDialog';
+import { useAuthStore } from '../stores/authStore';
+
+type PendingType = 'payments' | 'quotations' | 'pos' | 'invoices';
 
 export default function DashboardPage() {
   const { data: summary, isLoading, isError } = useQuery({
@@ -14,6 +19,9 @@ export default function DashboardPage() {
       return response.data;
     },
   });
+
+  const user = useAuthStore((s) => s.user);
+  const [pendingDialog, setPendingDialog] = useState<PendingType | null>(null);
 
   return (
     <Box>
@@ -58,11 +66,57 @@ export default function DashboardPage() {
       </Box>
 
       <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 2, mb: 3 }}>
-        <Card><CardContent><Typography color="text.secondary" variant="body2" gutterBottom>Pending Payments</Typography>{isLoading ? <Skeleton variant="text" width={60} height={30} /> : <Typography variant="h4" color="warning.main"><AnimatedNumber value={summary?.pendingPayments ?? 0} delay={600} /></Typography>}</CardContent></Card>
-        <Card><CardContent><Typography color="text.secondary" variant="body2" gutterBottom>Pending Quotations</Typography>{isLoading ? <Skeleton variant="text" width={60} height={30} /> : <Typography variant="h4" color="warning.main"><AnimatedNumber value={summary?.pendingQuotations ?? 0} delay={800} /></Typography>}</CardContent></Card>
-        <Card><CardContent><Typography color="text.secondary" variant="body2" gutterBottom>Pending Quotation Value</Typography>{isLoading ? <Skeleton variant="text" width={120} height={30} /> : <Typography variant="h6" color="warning.main"><AnimatedNumber value={summary?.pendingQuotationValue ?? 0} format={(n) => formatCurrency(n)} delay={900} /></Typography>}</CardContent></Card>
-        <Card><CardContent><Typography color="text.secondary" variant="body2" gutterBottom>Pending POs</Typography>{isLoading ? <Skeleton variant="text" width={60} height={30} /> : <Typography variant="h4" color="warning.main"><AnimatedNumber value={summary?.pendingPOs ?? 0} delay={1000} /></Typography>}</CardContent></Card>
-        <Card><CardContent><Typography color="text.secondary" variant="body2" gutterBottom>Pending Invoices</Typography>{isLoading ? <Skeleton variant="text" width={60} height={30} /> : <Typography variant="h4" color="warning.main"><AnimatedNumber value={summary?.pendingInvoices ?? 0} delay={1100} /></Typography>}</CardContent></Card>
+        {/* Pending Payments — clickable to open pending payments dialog */}
+        <Card
+          onClick={() => setPendingDialog('payments')}
+          sx={{ cursor: 'pointer', transition: 'box-shadow 0.2s, border-color 0.2s', '&:hover': { boxShadow: 3, borderColor: 'primary.main' } }}
+        >
+          <CardContent>
+            <Typography color="text.secondary" variant="body2" gutterBottom>Pending Payments</Typography>
+            {isLoading ? <Skeleton variant="text" width={60} height={30} /> : <Typography variant="h4" color="warning.main"><AnimatedNumber value={summary?.pendingPayments ?? 0} delay={600} /></Typography>}
+          </CardContent>
+        </Card>
+
+        {/* Pending Quotations — clickable to open pending quotations dialog */}
+        <Card
+          onClick={() => setPendingDialog('quotations')}
+          sx={{ cursor: 'pointer', transition: 'box-shadow 0.2s, border-color 0.2s', '&:hover': { boxShadow: 3, borderColor: 'primary.main' } }}
+        >
+          <CardContent>
+            <Typography color="text.secondary" variant="body2" gutterBottom>Pending Quotations</Typography>
+            {isLoading ? <Skeleton variant="text" width={60} height={30} /> : <Typography variant="h4" color="warning.main"><AnimatedNumber value={summary?.pendingQuotations ?? 0} delay={800} /></Typography>}
+          </CardContent>
+        </Card>
+
+        {/* Pending Quotation Value — not clickable (it's a value, not a count) */}
+        <Card>
+          <CardContent>
+            <Typography color="text.secondary" variant="body2" gutterBottom>Pending Quotation Value</Typography>
+            {isLoading ? <Skeleton variant="text" width={120} height={30} /> : <Typography variant="h6" color="warning.main"><AnimatedNumber value={summary?.pendingQuotationValue ?? 0} format={(n) => formatCurrency(n)} delay={900} /></Typography>}
+          </CardContent>
+        </Card>
+
+        {/* Pending POs — clickable to open pending POs dialog */}
+        <Card
+          onClick={() => setPendingDialog('pos')}
+          sx={{ cursor: 'pointer', transition: 'box-shadow 0.2s, border-color 0.2s', '&:hover': { boxShadow: 3, borderColor: 'primary.main' } }}
+        >
+          <CardContent>
+            <Typography color="text.secondary" variant="body2" gutterBottom>Pending POs</Typography>
+            {isLoading ? <Skeleton variant="text" width={60} height={30} /> : <Typography variant="h4" color="warning.main"><AnimatedNumber value={summary?.pendingPOs ?? 0} delay={1000} /></Typography>}
+          </CardContent>
+        </Card>
+
+        {/* Pending Invoices — clickable to open pending invoices dialog */}
+        <Card
+          onClick={() => setPendingDialog('invoices')}
+          sx={{ cursor: 'pointer', transition: 'box-shadow 0.2s, border-color 0.2s', '&:hover': { boxShadow: 3, borderColor: 'primary.main' } }}
+        >
+          <CardContent>
+            <Typography color="text.secondary" variant="body2" gutterBottom>Pending Invoices</Typography>
+            {isLoading ? <Skeleton variant="text" width={60} height={30} /> : <Typography variant="h4" color="warning.main"><AnimatedNumber value={summary?.pendingInvoices ?? 0} delay={1100} /></Typography>}
+          </CardContent>
+        </Card>
       </Box>
 
       {/* Money Flow Sankey */}
@@ -85,6 +139,16 @@ export default function DashboardPage() {
         <Alert severity="warning" sx={{ mb: 2 }}>
           Dashboard data will appear once the backend API is connected and seeded.
         </Alert>
+      )}
+
+      {/* Pending items quick-action dialog — opens when a pending card is clicked */}
+      {pendingDialog && (
+        <PendingItemsDialog
+          open={!!pendingDialog}
+          entityType={pendingDialog}
+          user={user}
+          onClose={() => setPendingDialog(null)}
+        />
       )}
     </Box>
   );

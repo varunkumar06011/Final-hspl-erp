@@ -367,7 +367,7 @@ export default function LoginPage() {
           <Box sx={{ textAlign: 'center', mb: 3, animation: fadeAnim }}>
             <Box
               component="img"
-              src={logoUrl || '/favicon-192.png'}
+              src={logoUrl || '/logo.png'}
               alt="Logo"
               sx={{
                 width: { xs: 56, sm: 64 },

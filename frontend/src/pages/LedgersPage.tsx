@@ -39,6 +39,10 @@ import {
   AccountBalance as LedgerIcon,
   Receipt as StatementIcon,
   AccountTree as GroupsIcon,
+  Download as DownloadIcon,
+  Print as PrintIcon,
+  PictureAsPdf as PdfIcon,
+  GridOn as ExcelIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { extractErrorMessage } from '../config/api';
@@ -46,6 +50,13 @@ import ResponsiveDialog from '../components/ResponsiveDialog';
 import ResponsiveTable from '../components/ResponsiveTable';
 import RefreshButton from '../components/RefreshButton';
 import { formatCurrency, formatDate } from '../utils/enumOptions';
+import {
+  exportLedgerStatementPdf,
+  exportLedgerStatementExcel,
+  printLedgerStatement,
+  type LedgerStatementData,
+  type LedgerStatementMeta,
+} from '../utils/ledgerStatementExport';
 import { LedgerGroup, isDebitNatureGroup } from '@hospital-erp/shared';
 import { useDeepLinkRow } from '../hooks/useDeepLinkRow';
 import { useUrlFilters } from '../hooks/useUrlFilters';
@@ -144,6 +155,11 @@ export default function LedgersPage() {
   const [stmtStartDate, setStmtStartDate] = useState('');
   const [stmtEndDate, setStmtEndDate] = useState('');
 
+  // Export format selection dialog
+  const [exportFormatOpen, setExportFormatOpen] = useState(false);
+  const [exportBusy, setExportBusy] = useState(false);
+  const [exportError, setExportError] = useState('');
+
   const queryClient = useQueryClient();
 
   const { data, isLoading, isError, refetch } = useQuery({
@@ -177,6 +193,54 @@ export default function LedgersPage() {
     },
     enabled: !!statementLedger,
   });
+
+  // ── Ledger statement export/print helpers ────────────────────────────────
+  // These consume the CURRENT statementData (already filtered by the selected
+  // date range) — they do NOT re-fetch or change any filtering/calculation.
+  const buildStatementMeta = (): LedgerStatementMeta => ({
+    ledgerName: statementLedger?.name ?? 'Ledger',
+    ledgerGroup: GROUP_LABELS[statementLedger?.group ?? ''] ?? statementLedger?.group ?? '',
+    startDate: stmtStartDate,
+    endDate: stmtEndDate,
+  });
+
+  const handleExportPdf = () => {
+    if (!statementData) return;
+    setExportBusy(true);
+    setExportError('');
+    try {
+      exportLedgerStatementPdf(statementData as LedgerStatementData, buildStatementMeta());
+      setExportFormatOpen(false);
+    } catch (err: unknown) {
+      setExportError(err instanceof Error ? err.message : 'Failed to generate PDF');
+    } finally {
+      setExportBusy(false);
+    }
+  };
+
+  const handleExportExcel = () => {
+    if (!statementData) return;
+    setExportBusy(true);
+    setExportError('');
+    try {
+      exportLedgerStatementExcel(statementData as LedgerStatementData, buildStatementMeta());
+      setExportFormatOpen(false);
+    } catch (err: unknown) {
+      setExportError(err instanceof Error ? err.message : 'Failed to generate Excel file');
+    } finally {
+      setExportBusy(false);
+    }
+  };
+
+  const handlePrint = () => {
+    if (!statementData) return;
+    setExportError('');
+    try {
+      printLedgerStatement(statementData as LedgerStatementData, buildStatementMeta());
+    } catch (err: unknown) {
+      setExportError(err instanceof Error ? err.message : 'Failed to initiate printing');
+    }
+  };
 
   const createMutation = useMutation({
     mutationFn: async (payload: Record<string, unknown>) => {
@@ -838,8 +902,54 @@ export default function LedgersPage() {
             <Typography color="text.secondary">No data</Typography>
           )}
         </DialogContent>
-        <DialogActions>
+        <DialogActions sx={{ flexWrap: 'wrap', gap: 1 }}>
+          {exportError && <Alert severity="error" sx={{ width: '100%', mb: 1 }} onClose={() => setExportError('')}>{exportError}</Alert>}
+          <Button
+            startIcon={<DownloadIcon />}
+            onClick={() => { setExportError(''); setExportFormatOpen(true); }}
+            disabled={!statementData || stmtLoading}
+          >
+            Export
+          </Button>
+          <Button
+            startIcon={<PrintIcon />}
+            onClick={handlePrint}
+            disabled={!statementData || stmtLoading}
+          >
+            Print
+          </Button>
           <Button onClick={() => setStatementLedger(null)}>Close</Button>
+        </DialogActions>
+      </ResponsiveDialog>
+
+      {/* Export format selection dialog */}
+      <ResponsiveDialog open={exportFormatOpen} onClose={exportBusy ? undefined : () => setExportFormatOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Export Ledger Statement</DialogTitle>
+        <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '12px !important' }}>
+          <Typography variant="body2" color="text.secondary">Choose export format</Typography>
+          <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+            <Button
+              variant="outlined"
+              startIcon={exportBusy ? <CircularProgress size={18} /> : <PdfIcon />}
+              onClick={handleExportPdf}
+              disabled={exportBusy}
+              sx={{ flex: '1 1 120px' }}
+            >
+              PDF
+            </Button>
+            <Button
+              variant="outlined"
+              startIcon={exportBusy ? <CircularProgress size={18} /> : <ExcelIcon />}
+              onClick={handleExportExcel}
+              disabled={exportBusy}
+              sx={{ flex: '1 1 120px' }}
+            >
+              Excel
+            </Button>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setExportFormatOpen(false)} disabled={exportBusy}>Cancel</Button>
         </DialogActions>
       </ResponsiveDialog>
     </Box>
