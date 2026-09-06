@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Box,
   Typography,
@@ -9,6 +9,10 @@ import {
   CircularProgress,
   Alert,
   Divider,
+  Button,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -19,11 +23,15 @@ import {
   AttachFile as AttachFileIcon,
   Schedule as ScheduleIcon,
   HourglassEmpty as HourglassEmptyIcon,
+  Download as DownloadIcon,
+  ExpandMore as ExpandMoreIcon,
+  Visibility as VisibilityIcon,
 } from '@mui/icons-material';
 import { useQuery } from '@tanstack/react-query';
 import ResponsiveDialog from './ResponsiveDialog';
 import api, { extractErrorMessage } from '../config/api';
 import { formatCurrency, formatDate, formatDateTime } from '../utils/enumOptions';
+import { fetchFileUrl, downloadFile } from '../utils/file';
 
 interface TimelineEvent {
   timestamp: string;
@@ -83,6 +91,10 @@ export default function QuotationTimelineDialog({
   onClose: () => void;
 }) {
   const [errorMsg, setErrorMsg] = useState('');
+  const [fileUrl, setFileUrl] = useState<string | null>(null);
+  const [fileLoading, setFileLoading] = useState(false);
+  const [fileError, setFileError] = useState('');
+  const [showPreview, setShowPreview] = useState(false);
 
   const { data, isLoading, error } = useQuery<TimelineData>({
     queryKey: ['/quotations', quotationId, 'timeline'],
@@ -93,6 +105,58 @@ export default function QuotationTimelineDialog({
     enabled: !!quotationId && open,
     retry: false,
   });
+
+  // Reset file state when dialog closes or quotation changes
+  useEffect(() => {
+    if (!open) {
+      if (fileUrl) window.URL.revokeObjectURL(fileUrl);
+      setFileUrl(null);
+      setFileLoading(false);
+      setFileError('');
+      setShowPreview(false);
+    }
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Cleanup blob URL on unmount
+  useEffect(() => {
+    return () => {
+      if (fileUrl) window.URL.revokeObjectURL(fileUrl);
+    };
+  }, [fileUrl]);
+
+  const hasFile = !!data?.quotation?.filePath;
+
+  async function handleLoadFile() {
+    if (!quotationId) return;
+    setFileLoading(true);
+    setFileError('');
+    try {
+      const url = await fetchFileUrl('quotations', quotationId);
+      setFileUrl(url);
+      setShowPreview(true);
+    } catch (err) {
+      setFileError(extractErrorMessage(err));
+    } finally {
+      setFileLoading(false);
+    }
+  }
+
+  function handleDownloadFile() {
+    if (!quotationId || !data?.quotation?.fileName) return;
+    downloadFile('quotations', quotationId, data.quotation.fileName).catch(() =>
+      setFileError('Failed to download file')
+    );
+  }
+
+  // Determine file type from fileName
+  function isImageFile(fileName: string | null): boolean {
+    if (!fileName) return false;
+    return /\.(jpg|jpeg|png|gif|webp|bmp|tiff?)$/i.test(fileName);
+  }
+  function isPdfFile(fileName: string | null): boolean {
+    if (!fileName) return false;
+    return /\.pdf$/i.test(fileName);
+  }
 
   const errMsg = errorMsg || (error ? extractErrorMessage(error) : '');
 
@@ -217,6 +281,124 @@ export default function QuotationTimelineDialog({
                 )}
               </Box>
             </Box>
+
+            {/* File Preview Section */}
+            {hasFile && (
+              <Accordion
+                expanded={showPreview}
+                onChange={(_, expanded) => {
+                  setShowPreview(expanded);
+                  if (expanded && !fileUrl && !fileLoading) {
+                    handleLoadFile();
+                  }
+                }}
+                sx={{ mb: 2 }}
+              >
+                <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                    <VisibilityIcon fontSize="small" color="primary" />
+                    <Typography variant="subtitle2" fontWeight={600}>
+                      View Uploaded Quotation
+                    </Typography>
+                    <Chip
+                      label={isPdfFile(data.quotation.fileName) ? 'PDF' : isImageFile(data.quotation.fileName) ? 'Image' : 'File'}
+                      size="small"
+                      variant="outlined"
+                      sx={{ height: 18, fontSize: '0.65rem' }}
+                    />
+                  </Box>
+                </AccordionSummary>
+                <AccordionDetails>
+                  {fileLoading && (
+                    <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}>
+                      <CircularProgress size={28} />
+                    </Box>
+                  )}
+                  {fileError && (
+                    <Alert severity="error" sx={{ mb: 1 }} onClose={() => setFileError('')}>
+                      {fileError}
+                    </Alert>
+                  )}
+                  {fileUrl && !fileLoading && (
+                    <Box>
+                      <Box sx={{ display: 'flex', gap: 1, mb: 1, flexWrap: 'wrap' }}>
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          startIcon={<DownloadIcon fontSize="small" />}
+                          onClick={handleDownloadFile}
+                        >
+                          Download
+                        </Button>
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          startIcon={<VisibilityIcon fontSize="small" />}
+                          onClick={() => window.open(fileUrl, '_blank')}
+                        >
+                          Open in New Tab
+                        </Button>
+                      </Box>
+                      {isImageFile(data.quotation.fileName) && (
+                        <Box
+                          sx={{
+                            border: '1px solid',
+                            borderColor: 'divider',
+                            borderRadius: 1,
+                            overflow: 'auto',
+                            maxHeight: 500,
+                            display: 'flex',
+                            justifyContent: 'center',
+                            bgcolor: 'grey.100',
+                          }}
+                        >
+                          <img
+                            src={fileUrl}
+                            alt={data.quotation.fileName ?? 'Quotation'}
+                            style={{ maxWidth: '100%', height: 'auto' }}
+                          />
+                        </Box>
+                      )}
+                      {isPdfFile(data.quotation.fileName) && (
+                        <Box
+                          sx={{
+                            border: '1px solid',
+                            borderColor: 'divider',
+                            borderRadius: 1,
+                            overflow: 'hidden',
+                          }}
+                        >
+                          <iframe
+                            src={fileUrl}
+                            title="Quotation PDF"
+                            style={{ width: '100%', height: 500, border: 'none' }}
+                          />
+                        </Box>
+                      )}
+                      {!isImageFile(data.quotation.fileName) && !isPdfFile(data.quotation.fileName) && (
+                        <Alert severity="info">
+                          File type not previewable in-browser. Use Download or Open in New Tab.
+                        </Alert>
+                      )}
+                    </Box>
+                  )}
+                  {!fileUrl && !fileLoading && !fileError && (
+                    <Typography variant="body2" color="text.secondary">
+                      Click to load the uploaded quotation file.
+                    </Typography>
+                  )}
+                </AccordionDetails>
+              </Accordion>
+            )}
+
+            {!hasFile && (
+              <Box sx={{ mb: 2, p: 1.5, bgcolor: 'grey.50', borderRadius: 1, textAlign: 'center' }}>
+                <Typography variant="body2" color="text.secondary">
+                  <AttachFileIcon fontSize="small" sx={{ verticalAlign: 'middle', mr: 0.5 }} />
+                  No file uploaded for this quotation
+                </Typography>
+              </Box>
+            )}
 
             <Divider sx={{ mb: 2 }}>
               <Typography variant="overline" color="text.secondary">
