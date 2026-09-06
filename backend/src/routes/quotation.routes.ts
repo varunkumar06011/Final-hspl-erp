@@ -466,4 +466,163 @@ router.post(
   }
 );
 
+// GET /:id/timeline — full chronological lifecycle of a quotation
+// Combines audit logs + approval workflow steps + quotation metadata into a
+// single timeline. Available to any user who can view quotations.
+router.get(
+  '/:id/timeline',
+  rbacMiddleware(Permission.VIEW_FINANCIALS),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      const quotation = await prisma.quotation.findFirst({
+        where: { id: req.params.id, projectId, deletedAt: null },
+        include: {
+          vendor: { select: { id: true, name: true, vendorCode: true } },
+          createdByUser: { select: { id: true, name: true, role: true } },
+          approvalWorkflow: {
+            include: {
+              steps: {
+                orderBy: { stepNumber: 'asc' },
+                include: { approverUser: { select: { id: true, name: true, role: true } } },
+              },
+            },
+          },
+        },
+      });
+      if (!quotation) {
+        res.status(404).json({ error: 'Quotation not found' });
+        return;
+      }
+
+      // Fetch all audit logs for this quotation (bypassing the VIEW_AUDIT_LOG
+      // RBAC check — any user who can see the quotation can see its timeline).
+      const auditLogs = await prisma.auditLog.findMany({
+        where: { entityType: 'QUOTATION', entityId: quotation.id, projectId },
+        include: { user: { select: { id: true, name: true, role: true } } },
+        orderBy: { timestamp: 'asc' },
+      });
+
+      type TimelineEvent = {
+        timestamp: string;
+        action: string;
+        actionLabel: string;
+        userName: string;
+        userRole: string;
+        details: Record<string, unknown>;
+      };
+
+      const timeline: TimelineEvent[] = [];
+
+      // 1. Quotation created — use the quotation record itself
+      timeline.push({
+        timestamp: quotation.createdAt.toISOString(),
+        action: 'CREATED',
+        actionLabel: 'Quotation Created',
+        userName: quotation.createdByUser?.name ?? 'System',
+        userRole: quotation.createdByUser?.role ?? '',
+        details: {
+          quotationNumber: quotation.quotationNumber,
+          vendor: quotation.vendor,
+          status: quotation.status,
+          hasFile: !!quotation.filePath,
+          fileName: quotation.fileName,
+        },
+      });
+
+      // 2. Audit log entries (UPDATE, DELETE, APPROVE, REJECT, and any
+      //    duplicate CREATE entries from the service layer)
+      const actionLabels: Record<string, string> = {
+        CREATE: 'Quotation Created',
+        UPDATE: 'Quotation Updated',
+        DELETE: 'Quotation Deleted',
+        APPROVE: 'Quotation Approved',
+        REJECT: 'Quotation Rejected',
+      };
+
+      // Process audit log entries. APPROVE/REJECT are skipped here because the
+      // approval workflow steps (added below) already capture those events with
+      // richer data (approver user, comments, decidedAt). This avoids duplicate
+      // timeline entries from two data sources.
+      for (const log of auditLogs) {
+        // Skip CREATE — already added from the quotation record above
+        if (log.action === 'CREATE') continue;
+        // Skip APPROVE/REJECT — workflow steps below cover these
+        if (log.action === 'APPROVE' || log.action === 'REJECT') continue;
+
+        const newValue = (log.newValue ?? {}) as Record<string, unknown>;
+        const isFileUpdate =
+          log.action === 'UPDATE' &&
+          ('filePath' in newValue || 'fileName' in newValue || 'fileMimeType' in newValue);
+
+        timeline.push({
+          timestamp: log.timestamp.toISOString(),
+          action: log.action,
+          actionLabel: isFileUpdate
+            ? 'File Attached / Updated'
+            : actionLabels[log.action] ?? log.action,
+          userName: log.user?.name ?? 'System',
+          userRole: log.user?.role ?? '',
+          details: {
+            ...newValue,
+            ...(log.oldValue ? { previousValues: log.oldValue } : {}),
+          },
+        });
+      }
+
+      // 3. Approval workflow steps — each decision is a timeline event
+      if (quotation.approvalWorkflow) {
+        for (const step of quotation.approvalWorkflow.steps) {
+          if (step.status === 'PENDING') {
+            timeline.push({
+              timestamp: quotation.createdAt.toISOString(),
+              action: 'PENDING_APPROVAL',
+              actionLabel: `Pending — ${step.approverRole.replace(/_/g, ' ')}`,
+              userName: '—',
+              userRole: step.approverRole,
+              details: { stepNumber: step.stepNumber, status: step.status },
+            });
+          } else {
+            timeline.push({
+              timestamp: step.decidedAt?.toISOString() ?? quotation.createdAt.toISOString(),
+              action: step.status === 'APPROVED' ? 'STEP_APPROVED' : 'STEP_REJECTED',
+              actionLabel:
+                step.status === 'APPROVED'
+                  ? `Approved by ${step.approverRole.replace(/_/g, ' ')}`
+                  : `Rejected by ${step.approverRole.replace(/_/g, ' ')}`,
+              userName: step.approverUser?.name ?? '—',
+              userRole: step.approverRole,
+              details: {
+                stepNumber: step.stepNumber,
+                status: step.status,
+                comments: step.comments,
+              },
+            });
+          }
+        }
+      }
+
+      // Sort chronologically (oldest first)
+      timeline.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+
+      res.json({
+        quotation: {
+          id: quotation.id,
+          quotationNumber: quotation.quotationNumber,
+          vendor: quotation.vendor,
+          status: quotation.status,
+          grandTotal: quotation.grandTotal,
+          fileName: quotation.fileName,
+          filePath: quotation.filePath,
+          createdAt: quotation.createdAt,
+          createdByUser: quotation.createdByUser,
+        },
+        timeline,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
 export default router;

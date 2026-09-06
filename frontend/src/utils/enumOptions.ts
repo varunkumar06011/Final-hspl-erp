@@ -38,6 +38,18 @@ export function formatDate(date: unknown): string {
   });
 }
 
+export function formatDateTime(date: unknown): string {
+  if (!date) return '—';
+  return new Date(String(date)).toLocaleString('en-IN', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true,
+  });
+}
+
 /**
  * Returns today's date in YYYY-MM-DD format using the LOCAL timezone.
  * Use this for date input `max` attributes instead of `new Date().toISOString().split('T')[0]`,

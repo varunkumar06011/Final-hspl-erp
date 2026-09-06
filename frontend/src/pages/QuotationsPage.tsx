@@ -38,6 +38,7 @@ import {
   ExpandMore as ExpandMoreIcon,
   Download as DownloadIcon,
   Delete as DeleteIcon,
+  Timeline as TimelineIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { APPROVER_ROLES, QuotationStatus, GST_RATES } from '@hospital-erp/shared';
@@ -51,6 +52,7 @@ import ApprovalActionDialog from '../components/ApprovalActionDialog';
 import OcrAutoFill, { type OcrQuotationData } from '../components/OcrAutoFill';
 import ResponsiveTable from '../components/ResponsiveTable';
 import RefreshButton from '../components/RefreshButton';
+import QuotationTimelineDialog from '../components/QuotationTimelineDialog';
 import { useApprovalDeepLink } from '../utils/useApprovalDeepLink';
 
 interface QuotationItem {
@@ -124,6 +126,7 @@ export default function QuotationsPage() {
   const [selectedMaterialNames, setSelectedMaterialNames] = useState<Set<string>>(new Set());
   const [acknowledged, setAcknowledged] = useState(false);
   const [approvalAction, setApprovalAction] = useState<{ row: QuotationRow; step: ApprovalStep; action: 'approve' | 'reject' } | null>(null);
+  const [timelineRow, setTimelineRow] = useState<QuotationRow | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const createSubmissionLocked = useRef(false);
@@ -576,6 +579,7 @@ export default function QuotationsPage() {
                       </TableCell>
                       <TableCell data-label="Actions">
                         <Box sx={{ display: 'flex', gap: 0.5 }}>
+                          <IconButton size="small" onClick={() => setTimelineRow(row)} title="Show Timeline"><TimelineIcon fontSize="small" /></IconButton>
                           {row.status === QuotationStatus.SUBMITTED || row.status === QuotationStatus.UNDER_REVIEW ? (
                             <IconButton size="small" onClick={() => openEdit(row)}><EditIcon /></IconButton>
                           ) : null}
@@ -833,6 +837,12 @@ export default function QuotationsPage() {
           </Button>
         </DialogActions>
       </ResponsiveDialog>
+
+      <QuotationTimelineDialog
+        quotationId={timelineRow?.id ?? null}
+        open={timelineRow !== null}
+        onClose={() => setTimelineRow(null)}
+      />
     </Box>
   );
 }
