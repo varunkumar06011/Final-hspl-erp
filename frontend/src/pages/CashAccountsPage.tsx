@@ -39,6 +39,7 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { extractErrorMessage } from '../config/api';
 import ResponsiveDialog from '../components/ResponsiveDialog';
+import ResponsiveTable from '../components/ResponsiveTable';
 import RefreshButton from '../components/RefreshButton';
 import LedgerAutocomplete, { type LedgerOption } from '../components/LedgerAutocomplete';
 import { formatCurrency, formatIndianNumber, formatDate, amountToWords, todayLocalDate } from '../utils/enumOptions';
@@ -417,6 +418,7 @@ export default function CashAccountsPage() {
           />
         </Box>
 
+        <ResponsiveTable>
         <TableContainer sx={{ overflowX: 'auto' }}>
           <Table size="small" sx={{ '@media (min-width: 900px)': { minWidth: 'max-content', '& .MuiTableCell-root': { whiteSpace: 'nowrap' } } }}>
             <TableHead>
@@ -443,11 +445,11 @@ export default function CashAccountsPage() {
               ) : (
                 rows.map((row) => (
                   <TableRow key={row.id} hover ref={rowRef(row.id)} sx={{ ...(highlightId === row.id && { bgcolor: 'warning.light', '&:hover': { bgcolor: 'warning.light' } }) }}>
-                    <TableCell sx={{ fontWeight: 600 }}>{row.name}</TableCell>
-                    <TableCell align="right">{formatCurrency(row.openingBalance)}</TableCell>
-                    <TableCell align="right" sx={{ fontWeight: 600, color: 'success.main' }}>{formatCurrency(row.currentBalance)}</TableCell>
-                    <TableCell><Chip label={row.isActive ? 'Active' : 'Inactive'} size="small" color={row.isActive ? 'success' : 'default'} /></TableCell>
-                    <TableCell align="right">
+                    <TableCell data-label="Account Name" sx={{ fontWeight: 600 }}>{row.name}</TableCell>
+                    <TableCell data-label="Opening" align="right">{formatCurrency(row.openingBalance)}</TableCell>
+                    <TableCell data-label="Current Balance" align="right" sx={{ fontWeight: 600, color: 'success.main' }}>{formatCurrency(row.currentBalance)}</TableCell>
+                    <TableCell data-label="Status"><Chip label={row.isActive ? 'Active' : 'Inactive'} size="small" color={row.isActive ? 'success' : 'default'} /></TableCell>
+                    <TableCell data-label="Actions" align="right">
                       <Stack direction="row" spacing={0.5} justifyContent="flex-end">
                         <IconButton size="small" title="Statement" onClick={() => { setStatementAccountId(row.id); setStmtPage(0); }}><StatementIcon fontSize="small" /></IconButton>
                         <IconButton size="small" title="Cash In" onClick={() => openTxnDialog(row.id, 'IN')}><InIcon fontSize="small" color="success" /></IconButton>
@@ -462,6 +464,7 @@ export default function CashAccountsPage() {
             </TableBody>
           </Table>
         </TableContainer>
+        </ResponsiveTable>
 
         <TablePagination
           component="div"
@@ -642,6 +645,7 @@ export default function CashAccountsPage() {
               <strong>{statementData.account.name}</strong> — Current Balance: {formatCurrency(statementData.account.currentBalance)} | Opening: {formatCurrency(statementData.account.openingBalance)}
             </Alert>
           )}
+          <ResponsiveTable>
           <TableContainer sx={{ overflowX: 'auto' }}>
             <Table size="small">
               <TableHead>
@@ -662,20 +666,21 @@ export default function CashAccountsPage() {
                 ) : (
                   stmtRows.map((txn) => (
                     <TableRow key={txn.id} hover>
-                      <TableCell>{formatDate(txn.date)}</TableCell>
-                      <TableCell><Chip label={TXN_TYPE_LABELS[txn.type] ?? txn.type} size="small" color={TXN_TYPE_COLORS[txn.type] ?? 'default'} /></TableCell>
-                      <TableCell align="right" sx={{ color: ['IN', 'TRANSFER_IN', 'REVERSAL_IN'].includes(txn.type) ? 'success.main' : 'error.main', fontWeight: 600 }}>
+                      <TableCell data-label="Date">{formatDate(txn.date)}</TableCell>
+                      <TableCell data-label="Type"><Chip label={TXN_TYPE_LABELS[txn.type] ?? txn.type} size="small" color={TXN_TYPE_COLORS[txn.type] ?? 'default'} /></TableCell>
+                      <TableCell data-label="Amount" align="right" sx={{ color: ['IN', 'TRANSFER_IN', 'REVERSAL_IN'].includes(txn.type) ? 'success.main' : 'error.main', fontWeight: 600 }}>
                         {['IN', 'TRANSFER_IN', 'REVERSAL_IN'].includes(txn.type) ? '+' : '−'}{formatCurrency(txn.amount)}
                       </TableCell>
-                      <TableCell align="right">{formatCurrency(txn.balanceAfter)}</TableCell>
-                      <TableCell>{txn.description || '—'}</TableCell>
-                      <TableCell><Chip label={REF_TYPE_LABELS[txn.referenceType] ?? txn.referenceType} size="small" variant="outlined" /></TableCell>
+                      <TableCell data-label="Balance After" align="right">{formatCurrency(txn.balanceAfter)}</TableCell>
+                      <TableCell data-label="Description">{txn.description || '—'}</TableCell>
+                      <TableCell data-label="Ref"><Chip label={REF_TYPE_LABELS[txn.referenceType] ?? txn.referenceType} size="small" variant="outlined" /></TableCell>
                     </TableRow>
                   ))
                 )}
               </TableBody>
             </Table>
           </TableContainer>
+          </ResponsiveTable>
           <TablePagination
             component="div"
             count={stmtPagination.total}

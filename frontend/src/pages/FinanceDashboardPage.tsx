@@ -109,8 +109,8 @@ export default function FinanceDashboardPage() {
 
   return (
     <Box sx={{ minWidth: 0, overflow: 'hidden' }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h5" fontWeight={600}>Finance Dashboard</Typography>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3, flexWrap: 'wrap', gap: 1 }}>
+        <Typography variant="h5" fontWeight={600} sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' } }}>Finance Dashboard</Typography>
         <RefreshButton onClick={() => queryClient.invalidateQueries()} />
       </Box>
 
@@ -202,12 +202,12 @@ export default function FinanceDashboardPage() {
               const widthPct = Math.max(2, (item.value / maxVal) * 100);
               return (
                 <Grid item xs={12} key={item.label}>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                    <Typography variant="body2" sx={{ width: 100, flexShrink: 0 }}>{item.label}</Typography>
-                    <Box sx={{ flex: 1, height: 24, bgcolor: 'grey.100', borderRadius: 1, overflow: 'hidden' }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 1, sm: 2 }, flexWrap: 'wrap' }}>
+                    <Typography variant="body2" sx={{ width: { xs: 80, sm: 100 }, flexShrink: 0 }}>{item.label}</Typography>
+                    <Box sx={{ flex: 1, height: 24, bgcolor: 'grey.100', borderRadius: 1, overflow: 'hidden', minWidth: 60 }}>
                       <Box sx={{ width: `${widthPct}%`, height: '100%', bgcolor: item.color, borderRadius: 1, transition: 'width 0.5s' }} />
                     </Box>
-                    <Typography variant="body2" sx={{ width: 140, textAlign: 'right', fontWeight: 600 }}>
+                    <Typography variant="body2" sx={{ flexShrink: 0, textAlign: 'right', fontWeight: 600, ml: 'auto' }}>
                       {formatCurrency(item.value)}
                     </Typography>
                   </Box>
@@ -295,7 +295,7 @@ function KpiCard({
         <Box sx={{ color, mt: 0.5 }}>{icon}</Box>
         <Box sx={{ flex: 1, minWidth: 0 }}>
           <Typography variant="caption" color="text.secondary">{label}</Typography>
-          <Typography variant="h6" sx={{ color, fontSize: { xs: '1rem', sm: '1.25rem' }, fontWeight: 600, wordBreak: 'break-all' }}>
+          <Typography variant="h6" sx={{ color, fontSize: { xs: '1rem', sm: '1.25rem' }, fontWeight: 600, overflowWrap: 'break-word' }}>
             {value}
           </Typography>
           {sublabel && <Typography variant="caption" color="text.secondary">{sublabel}</Typography>}

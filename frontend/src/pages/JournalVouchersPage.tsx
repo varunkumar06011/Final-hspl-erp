@@ -40,6 +40,7 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { extractErrorMessage } from '../config/api';
 import ResponsiveDialog from '../components/ResponsiveDialog';
+import ResponsiveTable from '../components/ResponsiveTable';
 import RefreshButton from '../components/RefreshButton';
 import { formatCurrency, formatIndianNumber, formatDate, todayLocalDate } from '../utils/enumOptions';
 
@@ -417,6 +418,7 @@ export default function JournalVouchersPage() {
           </TextField>
         </Box>
 
+        <ResponsiveTable>
         <TableContainer sx={{ overflowX: 'auto' }}>
           <Table size="small" sx={{ '@media (min-width: 900px)': { minWidth: 'max-content', '& .MuiTableCell-root': { whiteSpace: 'nowrap' } } }}>
             <TableHead>
@@ -445,13 +447,13 @@ export default function JournalVouchersPage() {
               ) : (
                 rows.map((jv) => (
                   <TableRow key={jv.id} hover>
-                    <TableCell sx={{ fontWeight: 600 }}>{jv.jvNumber}</TableCell>
-                    <TableCell>{formatDate(jv.date)}</TableCell>
-                    <TableCell><Chip label={JV_TYPE_LABELS[jv.type] ?? jv.type} size="small" variant="outlined" /></TableCell>
-                    <TableCell align="right">{formatCurrency(jv.totalDebit)}</TableCell>
-                    <TableCell><Chip label={jv.status.replace(/_/g, ' ')} size="small" color={JV_STATUS_COLORS[jv.status] ?? 'default'} /></TableCell>
-                    <TableCell>{jv.createdByUser?.name ?? '—'}</TableCell>
-                    <TableCell align="right">
+                    <TableCell sx={{ fontWeight: 600 }} data-label="JV Number">{jv.jvNumber}</TableCell>
+                    <TableCell data-label="Date">{formatDate(jv.date)}</TableCell>
+                    <TableCell data-label="Type"><Chip label={JV_TYPE_LABELS[jv.type] ?? jv.type} size="small" variant="outlined" /></TableCell>
+                    <TableCell align="right" data-label="Amount">{formatCurrency(jv.totalDebit)}</TableCell>
+                    <TableCell data-label="Status"><Chip label={jv.status.replace(/_/g, ' ')} size="small" color={JV_STATUS_COLORS[jv.status] ?? 'default'} /></TableCell>
+                    <TableCell data-label="Created By">{jv.createdByUser?.name ?? '—'}</TableCell>
+                    <TableCell align="right" data-label="Actions">
                       <Stack direction="row" spacing={0.5} justifyContent="flex-end">
                         <Tooltip title="View Details"><IconButton size="small" onClick={() => setDetailJv(jv)}><ViewIcon fontSize="small" /></IconButton></Tooltip>
                         {jv.status === 'DRAFT' && (
@@ -471,6 +473,7 @@ export default function JournalVouchersPage() {
             </TableBody>
           </Table>
         </TableContainer>
+        </ResponsiveTable>
 
         <TablePagination
           component="div"
@@ -497,7 +500,8 @@ export default function JournalVouchersPage() {
           </Box>
 
           <Typography variant="subtitle2" sx={{ mb: 1 }}>Journal Entries (Debit must equal Credit)</Typography>
-          <TableContainer component={Card} variant="outlined">
+          <ResponsiveTable>
+          <TableContainer component={Card} variant="outlined" sx={{ overflowX: 'auto' }}>
             <Table size="small">
               <TableHead>
                 <TableRow>
@@ -512,13 +516,13 @@ export default function JournalVouchersPage() {
               <TableBody>
                 {entries.map((entry, index) => (
                   <TableRow key={index}>
-                    <TableCell>
+                    <TableCell data-label="Account Type">
                       <TextField select size="small" value={entry.accountType} onChange={(e) => updateEntry(index, 'accountType', e.target.value)} sx={{ minWidth: 130 }}>
                         {ACCOUNT_TYPES.map((t) => <MenuItem key={t.value} value={t.value}>{t.label}</MenuItem>)}
                       </TextField>
                     </TableCell>
-                    <TableCell>{renderEntryAccountSelector(entry, index)}</TableCell>
-                    <TableCell align="right">
+                    <TableCell data-label="Account">{renderEntryAccountSelector(entry, index)}</TableCell>
+                    <TableCell align="right" data-label="Debit">
                       <TextField
                         size="small"
                         value={formatIndianNumber(entry.debit)}
@@ -527,7 +531,7 @@ export default function JournalVouchersPage() {
                         InputProps={{ startAdornment: <InputAdornment position="start">₹</InputAdornment> }}
                       />
                     </TableCell>
-                    <TableCell align="right">
+                    <TableCell align="right" data-label="Credit">
                       <TextField
                         size="small"
                         value={formatIndianNumber(entry.credit)}
@@ -536,10 +540,10 @@ export default function JournalVouchersPage() {
                         InputProps={{ startAdornment: <InputAdornment position="start">₹</InputAdornment> }}
                       />
                     </TableCell>
-                    <TableCell>
+                    <TableCell data-label="Description">
                       <TextField size="small" value={entry.description} onChange={(e) => updateEntry(index, 'description', e.target.value)} sx={{ minWidth: 150 }} />
                     </TableCell>
-                    <TableCell>
+                    <TableCell data-label="Actions">
                       {entries.length > 2 && <IconButton size="small" onClick={() => removeEntry(index)}><DeleteIcon fontSize="small" /></IconButton>}
                     </TableCell>
                   </TableRow>
@@ -547,10 +551,11 @@ export default function JournalVouchersPage() {
               </TableBody>
             </Table>
           </TableContainer>
+          </ResponsiveTable>
 
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 1 }}>
             <Button size="small" startIcon={<AddIcon />} onClick={addEntry}>Add Entry</Button>
-            <Stack direction="row" spacing={2}>
+            <Stack direction="row" spacing={2} sx={{ flexWrap: 'wrap', gap: 1 }}>
               <Typography variant="body2">Total Debit: <Box component="strong" sx={{ color: isBalanced ? 'success.main' : 'error.main' }}>{formatCurrency(totalDebit)}</Box></Typography>
               <Typography variant="body2">Total Credit: <Box component="strong" sx={{ color: isBalanced ? 'success.main' : 'error.main' }}>{formatCurrency(totalCredit)}</Box></Typography>
               <Chip label={isBalanced ? 'Balanced' : 'Unbalanced'} size="small" color={isBalanced ? 'success' : 'error'} />
@@ -588,7 +593,8 @@ export default function JournalVouchersPage() {
 
                 <Divider />
                 <Typography variant="subtitle2">Journal Entries</Typography>
-                <TableContainer component={Card} variant="outlined">
+                <ResponsiveTable>
+                <TableContainer component={Card} variant="outlined" sx={{ overflowX: 'auto' }}>
                   <Table size="small">
                     <TableHead>
                       <TableRow>
@@ -602,13 +608,13 @@ export default function JournalVouchersPage() {
                     <TableBody>
                       {detailJv.entries.map((entry) => (
                         <TableRow key={entry.id}>
-                          <TableCell><Chip label={entry.accountType} size="small" variant="outlined" /></TableCell>
-                          <TableCell>
+                          <TableCell data-label="Account Type"><Chip label={entry.accountType} size="small" variant="outlined" /></TableCell>
+                          <TableCell data-label="Account">
                             {entry.budgetHead?.particulars ?? entry.ownerAccount?.ownerName ?? '—'}
                           </TableCell>
-                          <TableCell align="right" sx={{ color: 'error.main' }}>{Number(entry.debit) > 0 ? formatCurrency(entry.debit) : '—'}</TableCell>
-                          <TableCell align="right" sx={{ color: 'success.main' }}>{Number(entry.credit) > 0 ? formatCurrency(entry.credit) : '—'}</TableCell>
-                          <TableCell>{entry.description ?? '—'}</TableCell>
+                          <TableCell align="right" sx={{ color: 'error.main' }} data-label="Debit">{Number(entry.debit) > 0 ? formatCurrency(entry.debit) : '—'}</TableCell>
+                          <TableCell align="right" sx={{ color: 'success.main' }} data-label="Credit">{Number(entry.credit) > 0 ? formatCurrency(entry.credit) : '—'}</TableCell>
+                          <TableCell data-label="Description">{entry.description ?? '—'}</TableCell>
                         </TableRow>
                       ))}
                       <TableRow>
@@ -620,6 +626,7 @@ export default function JournalVouchersPage() {
                     </TableBody>
                   </Table>
                 </TableContainer>
+                </ResponsiveTable>
 
                 {detailJv.approvalWorkflow && (
                   <>

@@ -24,3 +24,46 @@ html, body {
   max-width: 180px;
   display: inline-block;
 }
+
+/* ── Responsive table safety net ──────────────────────────────────────────
+   Below 900px, tables that are NOT converted to stacked cards (i.e. tables
+   inside a TableContainer but NOT wrapped in ResponsiveTable) get a readable
+   minimum width so the table scrolls horizontally INSIDE its container instead
+   of compressing columns into unreadable 1–3 character widths.
+   Tables wrapped in ResponsiveTable are turned into stacked cards and are
+   explicitly excluded (min-width: auto) so they never scroll in card mode. */
+@media (max-width: 899.95px) {
+  .MuiTableContainer-root > .MuiTable-root {
+    min-width: 640px;
+  }
+  .responsive-table .MuiTableContainer-root > .MuiTable-root {
+    min-width: auto;
+  }
+}
+
+/* ── Dialog safety net for raw <Dialog> usages (not using ResponsiveDialog) ─
+   On small screens, constrain the dialog paper to the viewport with a margin
+   so content never extends beyond the screen edges. */
+@media (max-width: 599.95px) {
+  .MuiDialog-paper {
+    margin: 8px !important;
+    width: calc(100% - 16px) !important;
+    max-height: calc(100% - 16px) !important;
+  }
+}
+
+/* ── Tabs: always allow horizontal scrolling so tab labels never clip ────── */
+.MuiTabs-scroller {
+  overflow-x: auto !important;
+}
+
+/* ── Tab: comfortable touch target, no uppercase transform ───────────────── */
+.MuiTab-root {
+  text-transform: none;
+  min-width: 72px;
+}
+@media (min-width: 600px) {
+  .MuiTab-root {
+    min-width: 96px;
+  }
+}

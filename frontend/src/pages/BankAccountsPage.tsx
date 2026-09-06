@@ -42,6 +42,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import api, { extractErrorMessage } from '../config/api';
 import ResponsiveDialog from '../components/ResponsiveDialog';
+import ResponsiveTable from '../components/ResponsiveTable';
 import RefreshButton from '../components/RefreshButton';
 import LedgerAutocomplete, { type LedgerOption } from '../components/LedgerAutocomplete';
 import { formatCurrency, formatIndianNumber, formatDate, amountToWords, todayLocalDate } from '../utils/enumOptions';
@@ -586,6 +587,7 @@ export default function BankAccountsPage() {
           />
         </Box>
 
+        <ResponsiveTable>
         <TableContainer sx={{ overflowX: 'auto' }}>
           <Table size="small" sx={{ '@media (min-width: 900px)': { minWidth: 'max-content', '& .MuiTableCell-root': { whiteSpace: 'nowrap' } } }}>
             <TableHead>
@@ -615,14 +617,14 @@ export default function BankAccountsPage() {
               ) : (
                 rows.map((row) => (
                   <TableRow key={row.id} hover ref={rowRef(row.id)} sx={{ ...(highlightId === row.id && { bgcolor: 'warning.light', '&:hover': { bgcolor: 'warning.light' } }) }}>
-                    <TableCell sx={{ fontWeight: 600 }}>{row.bankName || row.accountName}</TableCell>
-                    <TableCell>{row.accountName}</TableCell>
-                    <TableCell>{row.accountNumber || '—'}</TableCell>
-                    <TableCell>{row.ifscCode || '—'}</TableCell>
-                    <TableCell align="right">{formatCurrency(row.openingBalance)}</TableCell>
-                    <TableCell align="right" sx={{ fontWeight: 600, color: 'success.main' }}>{formatCurrency(row.currentBalance)}</TableCell>
-                    <TableCell><Chip label={row.isActive ? 'Active' : 'Inactive'} size="small" color={row.isActive ? 'success' : 'default'} /></TableCell>
-                    <TableCell align="right">
+                    <TableCell data-label="Bank Name" sx={{ fontWeight: 600 }}>{row.bankName || row.accountName}</TableCell>
+                    <TableCell data-label="Account Name">{row.accountName}</TableCell>
+                    <TableCell data-label="Account No.">{row.accountNumber || '—'}</TableCell>
+                    <TableCell data-label="IFSC">{row.ifscCode || '—'}</TableCell>
+                    <TableCell data-label="Opening" align="right">{formatCurrency(row.openingBalance)}</TableCell>
+                    <TableCell data-label="Current Balance" align="right" sx={{ fontWeight: 600, color: 'success.main' }}>{formatCurrency(row.currentBalance)}</TableCell>
+                    <TableCell data-label="Status"><Chip label={row.isActive ? 'Active' : 'Inactive'} size="small" color={row.isActive ? 'success' : 'default'} /></TableCell>
+                    <TableCell data-label="Actions" align="right">
                       <Stack direction="row" spacing={0.5} justifyContent="flex-end">
                         <IconButton size="small" title="Statement" onClick={() => { setStatementAccountId(row.id); setStmtPage(0); }}><StatementIcon fontSize="small" /></IconButton>
                         <IconButton size="small" title="Deposit" onClick={() => openTxnDialog(row.id, 'DEPOSIT')}><DepositIcon fontSize="small" color="success" /></IconButton>
@@ -637,6 +639,7 @@ export default function BankAccountsPage() {
             </TableBody>
           </Table>
         </TableContainer>
+        </ResponsiveTable>
 
         <TablePagination
           component="div"
@@ -779,11 +782,11 @@ export default function BankAccountsPage() {
       {/* Statement dialog */}
       <ResponsiveDialog open={!!statementAccountId} onClose={() => setStatementAccountId(null)} maxWidth="md" fullWidth>
         <DialogTitle>
-          <Stack direction="row" alignItems="center" justifyContent="space-between">
+          <Stack direction={{ xs: 'column', sm: 'row' }} alignItems={{ xs: 'flex-start', sm: 'center' }} justifyContent="space-between" gap={1}>
             <Stack direction="row" alignItems="center" gap={1}>
               <BankIcon /><Typography variant="h6">Bank Statement</Typography>
             </Stack>
-            <Stack direction="row" spacing={1}>
+            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
               <Button size="small" startIcon={<PrintIcon />} onClick={() => handlePrintStatement(false)}>
                 {hasFilters ? 'Print' : 'Print Page'}
               </Button>
@@ -804,7 +807,7 @@ export default function BankAccountsPage() {
           )}
 
           {/* Filters */}
-          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 2 }}>
+          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 2, alignItems: 'center' }}>
             <TextField
               size="small"
               type="date"
@@ -812,7 +815,7 @@ export default function BankAccountsPage() {
               value={stmtStartDate}
               onChange={(e) => { setStmtStartDate(e.target.value); setStmtPage(0); }}
               InputLabelProps={{ shrink: true }}
-              sx={{ width: 150 }}
+              sx={{ width: { xs: '100%', sm: 150 }, flex: { xs: '1 1 100%', sm: '0 0 auto' } }}
             />
             <TextField
               size="small"
@@ -821,7 +824,7 @@ export default function BankAccountsPage() {
               value={stmtEndDate}
               onChange={(e) => { setStmtEndDate(e.target.value); setStmtPage(0); }}
               InputLabelProps={{ shrink: true }}
-              sx={{ width: 150 }}
+              sx={{ width: { xs: '100%', sm: 150 }, flex: { xs: '1 1 100%', sm: '0 0 auto' } }}
             />
             <TextField
               size="small"
@@ -829,7 +832,7 @@ export default function BankAccountsPage() {
               label="Type"
               value={stmtTypeFilter}
               onChange={(e) => { setStmtTypeFilter(e.target.value); setStmtPage(0); }}
-              sx={{ width: 140 }}
+              sx={{ width: { xs: '100%', sm: 140 }, flex: { xs: '1 1 100%', sm: '0 0 auto' } }}
             >
               <MenuItem value="">All Types</MenuItem>
               {Object.entries(TXN_TYPE_LABELS).map(([val, label]) => <MenuItem key={val} value={val}>{label}</MenuItem>)}
@@ -840,7 +843,7 @@ export default function BankAccountsPage() {
               label="Ledger"
               value={stmtLedgerFilter}
               onChange={(e) => { setStmtLedgerFilter(e.target.value); setStmtPage(0); }}
-              sx={{ width: 180 }}
+              sx={{ width: { xs: '100%', sm: 180 }, flex: { xs: '1 1 100%', sm: '0 0 auto' } }}
             >
               <MenuItem value="">All Ledgers</MenuItem>
               {ledgers.map((l) => <MenuItem key={l.id} value={l.id}>{l.name}</MenuItem>)}
@@ -852,6 +855,7 @@ export default function BankAccountsPage() {
             )}
           </Box>
 
+          <ResponsiveTable>
           <TableContainer sx={{ overflowX: 'auto' }}>
             <Table size="small">
               <TableHead>
@@ -874,13 +878,13 @@ export default function BankAccountsPage() {
                 ) : (
                   stmtRows.map((txn) => (
                     <TableRow key={txn.id} hover>
-                      <TableCell>{formatDate(txn.date)}</TableCell>
-                      <TableCell><Chip label={TXN_TYPE_LABELS[txn.type] ?? txn.type} size="small" color={TXN_TYPE_COLORS[txn.type] ?? 'default'} /></TableCell>
-                      <TableCell align="right" sx={{ color: ['DEPOSIT', 'TRANSFER_IN', 'REVERSAL_IN'].includes(txn.type) ? 'success.main' : 'error.main', fontWeight: 600 }}>
+                      <TableCell data-label="Date">{formatDate(txn.date)}</TableCell>
+                      <TableCell data-label="Type"><Chip label={TXN_TYPE_LABELS[txn.type] ?? txn.type} size="small" color={TXN_TYPE_COLORS[txn.type] ?? 'default'} /></TableCell>
+                      <TableCell data-label="Amount" align="right" sx={{ color: ['DEPOSIT', 'TRANSFER_IN', 'REVERSAL_IN'].includes(txn.type) ? 'success.main' : 'error.main', fontWeight: 600 }}>
                         {['DEPOSIT', 'TRANSFER_IN', 'REVERSAL_IN'].includes(txn.type) ? '+' : '−'}{formatCurrency(txn.amount)}
                       </TableCell>
-                      <TableCell align="right">{formatCurrency(txn.balanceAfter)}</TableCell>
-                      <TableCell>
+                      <TableCell data-label="Balance After" align="right">{formatCurrency(txn.balanceAfter)}</TableCell>
+                      <TableCell data-label="Description">
                         {editingTxnId === txn.id ? (
                           <Stack direction="row" spacing={1} alignItems="center">
                             <TextField
@@ -897,11 +901,11 @@ export default function BankAccountsPage() {
                           </Stack>
                         ) : (txn.description || '—')}
                       </TableCell>
-                      <TableCell sx={{ fontWeight: 600, fontSize: '0.8rem' }}>
+                      <TableCell data-label="Voucher No." sx={{ fontWeight: 600, fontSize: '0.8rem' }}>
                         {txn.referenceId ? (voucherNumberMap.get(txn.referenceId) ?? '—') : '—'}
                       </TableCell>
-                      <TableCell><Chip label={REF_TYPE_LABELS[txn.referenceType] ?? txn.referenceType} size="small" variant="outlined" /></TableCell>
-                      <TableCell>
+                      <TableCell data-label="Ref"><Chip label={REF_TYPE_LABELS[txn.referenceType] ?? txn.referenceType} size="small" variant="outlined" /></TableCell>
+                      <TableCell data-label="Edit">
                         {editingTxnId !== txn.id && (
                           <IconButton size="small" onClick={() => { setEditingTxnId(txn.id); setEditTxnDesc(txn.description ?? ''); }} title="Edit description">
                             <EditIcon fontSize="small" />
@@ -914,6 +918,7 @@ export default function BankAccountsPage() {
               </TableBody>
             </Table>
           </TableContainer>
+          </ResponsiveTable>
           <TablePagination
             component="div"
             count={stmtPagination.total}

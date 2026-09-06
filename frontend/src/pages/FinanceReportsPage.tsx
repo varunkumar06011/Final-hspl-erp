@@ -27,6 +27,7 @@ import {
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '../config/api';
 import RefreshButton from '../components/RefreshButton';
+import ResponsiveTable from '../components/ResponsiveTable';
 import { formatCurrency } from '../utils/enumOptions';
 
 type TabValue = 'budget' | 'cashflow' | 'accounts' | 'owner' | 'reconciliation' | 'aging';
@@ -145,14 +146,14 @@ export default function FinanceReportsPage() {
 
   return (
     <Box sx={{ minWidth: 0, overflow: 'hidden' }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-        <Typography variant="h5" fontWeight={600}>Finance Reports</Typography>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap', gap: 1 }}>
+        <Typography variant="h5" fontWeight={600} sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' } }}>Finance Reports</Typography>
         <RefreshButton onClick={() => queryClient.invalidateQueries()} />
       </Box>
 
       {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
 
-      <Tabs value={tab} onChange={(_, v: TabValue) => setTab(v)} sx={{ mb: 2, borderBottom: 1, borderColor: 'divider' }}>
+      <Tabs value={tab} onChange={(_, v: TabValue) => setTab(v)} sx={{ mb: 2, borderBottom: 1, borderColor: 'divider' }} variant="scrollable" scrollButtons="auto" allowScrollButtonsMobile>
         <Tab label="Budget vs Actual" value="budget" />
         <Tab label="Cash Flow" value="cashflow" />
         <Tab label="Account Summary" value="accounts" />
@@ -183,6 +184,7 @@ export default function FinanceReportsPage() {
             <Box sx={{ py: 4, textAlign: 'center' }}><CircularProgress /></Box>
           ) : (
             <>
+              <ResponsiveTable>
               <TableContainer sx={{ overflowX: 'auto' }}>
                 <Table size="small">
                   <TableHead>
@@ -203,16 +205,16 @@ export default function FinanceReportsPage() {
                       const pct = Number(row.utilizationPct ?? 0);
                       return (
                         <TableRow key={row.id as string} hover>
-                          <TableCell>{String(row.slNo)}</TableCell>
-                          <TableCell>{String(row.particulars ?? '—')}</TableCell>
-                          <TableCell align="right">{formatCurrency(row.allocatedAmount)}</TableCell>
-                          <TableCell align="right">{formatCurrency(row.committedAmount)}</TableCell>
-                          <TableCell align="right">{formatCurrency(row.actualAmount)}</TableCell>
-                          <TableCell align="right">{formatCurrency(row.paidAmount)}</TableCell>
-                          <TableCell align="right" sx={{ fontWeight: 600, color: Number(row.uncommittedAvailable ?? row.available) < 0 ? 'error.main' : 'success.main' }}>
+                          <TableCell data-label="Sl. No.">{String(row.slNo)}</TableCell>
+                          <TableCell data-label="Particulars">{String(row.particulars ?? '—')}</TableCell>
+                          <TableCell data-label="Allocated" align="right">{formatCurrency(row.allocatedAmount)}</TableCell>
+                          <TableCell data-label="Committed" align="right">{formatCurrency(row.committedAmount)}</TableCell>
+                          <TableCell data-label="Actual" align="right">{formatCurrency(row.actualAmount)}</TableCell>
+                          <TableCell data-label="Paid" align="right">{formatCurrency(row.paidAmount)}</TableCell>
+                          <TableCell data-label="Available" align="right" sx={{ fontWeight: 600, color: Number(row.uncommittedAvailable ?? row.available) < 0 ? 'error.main' : 'success.main' }}>
                             {formatCurrency(row.uncommittedAvailable ?? row.available)}
                           </TableCell>
-                          <TableCell sx={{ minWidth: 100 }}>
+                          <TableCell data-label="Utilization" sx={{ minWidth: 100 }}>
                             <Stack spacing={0.5}>
                               <LinearProgress
                                 variant="determinate"
@@ -223,7 +225,7 @@ export default function FinanceReportsPage() {
                               <Typography variant="caption" color="text.secondary">{pct}%</Typography>
                             </Stack>
                           </TableCell>
-                          <TableCell><Chip label={String(row.status ?? 'ACTIVE')} size="small" color={row.status === 'CLOSED' ? 'default' : 'success'} /></TableCell>
+                          <TableCell data-label="Status"><Chip label={String(row.status ?? 'ACTIVE')} size="small" color={row.status === 'CLOSED' ? 'default' : 'success'} /></TableCell>
                         </TableRow>
                       );
                     })}
@@ -243,6 +245,7 @@ export default function FinanceReportsPage() {
                   </TableBody>
                 </Table>
               </TableContainer>
+              </ResponsiveTable>
             </>
           )}
         </Card>
@@ -312,6 +315,7 @@ export default function FinanceReportsPage() {
           {cashFlowLoading ? (
             <Box sx={{ py: 4, textAlign: 'center' }}><CircularProgress /></Box>
           ) : (
+            <ResponsiveTable>
             <TableContainer sx={{ overflowX: 'auto' }}>
               <Table size="small">
                 <TableHead>
@@ -331,9 +335,9 @@ export default function FinanceReportsPage() {
                   ) : (
                     (cashFlow?.data ?? []).map((entry: Record<string, unknown>, i: number) => (
                       <TableRow key={i} hover>
-                        <TableCell>{String(entry.date ?? '—')}</TableCell>
-                        <TableCell>{String(entry.account ?? '—')}</TableCell>
-                        <TableCell>
+                        <TableCell data-label="Date">{String(entry.date ?? '—')}</TableCell>
+                        <TableCell data-label="Account">{String(entry.account ?? '—')}</TableCell>
+                        <TableCell data-label="Type">
                           <Chip
                             label={String(entry.type ?? '').replace(/_/g, ' ')}
                             size="small"
@@ -341,20 +345,21 @@ export default function FinanceReportsPage() {
                             variant="outlined"
                           />
                         </TableCell>
-                        <TableCell align="right" sx={{ color: 'success.main' }}>
+                        <TableCell data-label="Inflow" align="right" sx={{ color: 'success.main' }}>
                           {Number(entry.inflow) > 0 ? formatCurrency(entry.inflow) : '—'}
                         </TableCell>
-                        <TableCell align="right" sx={{ color: 'error.main' }}>
+                        <TableCell data-label="Outflow" align="right" sx={{ color: 'error.main' }}>
                           {Number(entry.outflow) > 0 ? formatCurrency(entry.outflow) : '—'}
                         </TableCell>
-                        <TableCell>{String(entry.description ?? '—')}</TableCell>
-                        <TableCell><Chip label={String(entry.referenceType ?? '')} size="small" variant="outlined" /></TableCell>
+                        <TableCell data-label="Description">{String(entry.description ?? '—')}</TableCell>
+                        <TableCell data-label="Ref"><Chip label={String(entry.referenceType ?? '')} size="small" variant="outlined" /></TableCell>
                       </TableRow>
                     ))
                   )}
                 </TableBody>
               </Table>
             </TableContainer>
+            </ResponsiveTable>
           )}
         </Card>
       )}
@@ -377,6 +382,7 @@ export default function FinanceReportsPage() {
               {accountsLoading ? (
                 <Box sx={{ py: 4, textAlign: 'center' }}><CircularProgress /></Box>
               ) : (
+                <ResponsiveTable>
                 <TableContainer>
                   <Table size="small">
                     <TableHead>
@@ -390,13 +396,13 @@ export default function FinanceReportsPage() {
                     <TableBody>
                       {(accountSummary?.bankAccounts ?? []).map((acc: Record<string, unknown>) => (
                         <TableRow key={acc.id as string} hover>
-                          <TableCell>
+                          <TableCell data-label="Account">
                             <Typography variant="body2" fontWeight={500}>{String(acc.accountName)}</Typography>
                             <Typography variant="caption" color="text.secondary">{String(acc.bankName ?? '')} {String(acc.accountNumber ?? '')}</Typography>
                           </TableCell>
-                          <TableCell align="right">{formatCurrency(acc.openingBalance)}</TableCell>
-                          <TableCell align="right" sx={{ fontWeight: 600, color: 'success.main' }}>{formatCurrency(acc.currentBalance)}</TableCell>
-                          <TableCell align="right">{String((acc._count as Record<string, number>)?.transactions ?? 0)}</TableCell>
+                          <TableCell data-label="Opening" align="right">{formatCurrency(acc.openingBalance)}</TableCell>
+                          <TableCell data-label="Current" align="right" sx={{ fontWeight: 600, color: 'success.main' }}>{formatCurrency(acc.currentBalance)}</TableCell>
+                          <TableCell data-label="Txns" align="right">{String((acc._count as Record<string, number>)?.transactions ?? 0)}</TableCell>
                         </TableRow>
                       ))}
                       {(accountSummary?.bankAccounts ?? []).length === 0 && (
@@ -414,6 +420,7 @@ export default function FinanceReportsPage() {
                     </TableBody>
                   </Table>
                 </TableContainer>
+                </ResponsiveTable>
               )}
             </Card>
           </Grid>
@@ -427,6 +434,7 @@ export default function FinanceReportsPage() {
               {accountsLoading ? (
                 <Box sx={{ py: 4, textAlign: 'center' }}><CircularProgress /></Box>
               ) : (
+                <ResponsiveTable>
                 <TableContainer>
                   <Table size="small">
                     <TableHead>
@@ -440,10 +448,10 @@ export default function FinanceReportsPage() {
                     <TableBody>
                       {(accountSummary?.cashAccounts ?? []).map((acc: Record<string, unknown>) => (
                         <TableRow key={acc.id as string} hover>
-                          <TableCell><Typography variant="body2" fontWeight={500}>{String(acc.name)}</Typography></TableCell>
-                          <TableCell align="right">{formatCurrency(acc.openingBalance)}</TableCell>
-                          <TableCell align="right" sx={{ fontWeight: 600, color: 'success.main' }}>{formatCurrency(acc.currentBalance)}</TableCell>
-                          <TableCell align="right">{String((acc._count as Record<string, number>)?.transactions ?? 0)}</TableCell>
+                          <TableCell data-label="Account"><Typography variant="body2" fontWeight={500}>{String(acc.name)}</Typography></TableCell>
+                          <TableCell data-label="Opening" align="right">{formatCurrency(acc.openingBalance)}</TableCell>
+                          <TableCell data-label="Current" align="right" sx={{ fontWeight: 600, color: 'success.main' }}>{formatCurrency(acc.currentBalance)}</TableCell>
+                          <TableCell data-label="Txns" align="right">{String((acc._count as Record<string, number>)?.transactions ?? 0)}</TableCell>
                         </TableRow>
                       ))}
                       {(accountSummary?.cashAccounts ?? []).length === 0 && (
@@ -461,6 +469,7 @@ export default function FinanceReportsPage() {
                     </TableBody>
                   </Table>
                 </TableContainer>
+                </ResponsiveTable>
               )}
             </Card>
           </Grid>
@@ -520,6 +529,7 @@ export default function FinanceReportsPage() {
                   </Grid>
                 </Box>
               )}
+              <ResponsiveTable>
               <TableContainer>
                 <Table size="small">
                   <TableHead>
@@ -535,12 +545,12 @@ export default function FinanceReportsPage() {
                       const balance = Number(acc.currentBalance ?? 0);
                       return (
                         <TableRow key={acc.id as string} hover>
-                          <TableCell sx={{ fontWeight: 500 }}>{String(acc.ownerName)}</TableCell>
-                          <TableCell align="right">{formatCurrency(acc.openingBalance)}</TableCell>
-                          <TableCell align="right" sx={{ fontWeight: 600, color: balance > 0 ? 'error.main' : balance < 0 ? 'info.main' : 'text.primary' }}>
+                          <TableCell data-label="Owner Name" sx={{ fontWeight: 500 }}>{String(acc.ownerName)}</TableCell>
+                          <TableCell data-label="Opening" align="right">{formatCurrency(acc.openingBalance)}</TableCell>
+                          <TableCell data-label="Current Balance" align="right" sx={{ fontWeight: 600, color: balance > 0 ? 'error.main' : balance < 0 ? 'info.main' : 'text.primary' }}>
                             {formatCurrency(balance)}
                           </TableCell>
-                          <TableCell>
+                          <TableCell data-label="Meaning">
                             <Chip
                               label={balance > 0 ? 'Company owes owner' : balance < 0 ? 'Owner owes company' : 'Settled'}
                               size="small"
@@ -556,6 +566,7 @@ export default function FinanceReportsPage() {
                   </TableBody>
                 </Table>
               </TableContainer>
+              </ResponsiveTable>
             </>
           )}
         </Card>
@@ -570,7 +581,7 @@ export default function FinanceReportsPage() {
               <Box sx={{ p: 2 }}>
                 <Typography variant="subtitle1" fontWeight={600}>Bank Account Reconciliation</Typography>
                 {bankReconciliation?.summary && (
-                  <Stack direction="row" spacing={2} sx={{ mt: 1 }}>
+                  <Stack direction="row" spacing={2} sx={{ mt: 1, flexWrap: 'wrap', gap: 1 }}>
                     <Chip label={`Reconciled: ${bankReconciliation.summary.reconciledCount}/${bankReconciliation.summary.totalAccounts}`} size="small" color="success" />
                     {bankReconciliation.summary.unreconciledCount > 0 && (
                       <Chip label={`Unreconciled: ${bankReconciliation.summary.unreconciledCount}`} size="small" color="error" />
@@ -584,6 +595,7 @@ export default function FinanceReportsPage() {
               {bankReconLoading ? (
                 <Box sx={{ py: 4, textAlign: 'center' }}><CircularProgress /></Box>
               ) : (
+                <ResponsiveTable>
                 <TableContainer>
                   <Table size="small">
                     <TableHead>
@@ -602,24 +614,24 @@ export default function FinanceReportsPage() {
                         const discrepancy = Number(acc.discrepancy ?? 0);
                         return (
                           <TableRow key={acc.id as string} hover>
-                            <TableCell>
+                            <TableCell data-label="Account">
                               <Typography variant="body2" fontWeight={500}>{String(acc.accountName)}</Typography>
                               <Typography variant="caption" color="text.secondary">{String(acc.bankName ?? '')} {String(acc.accountNumber ?? '')}</Typography>
                             </TableCell>
-                            <TableCell align="right">{formatCurrency(acc.openingBalance)}</TableCell>
-                            <TableCell align="right">{formatCurrency(acc.expectedBalance)}</TableCell>
-                            <TableCell align="right" sx={{ fontWeight: 600 }}>{formatCurrency(acc.currentBalance)}</TableCell>
-                            <TableCell align="right" sx={{ fontWeight: 600, color: Math.abs(discrepancy) > 0.01 ? 'error.main' : 'success.main' }}>
+                            <TableCell data-label="Opening" align="right">{formatCurrency(acc.openingBalance)}</TableCell>
+                            <TableCell data-label="Expected" align="right">{formatCurrency(acc.expectedBalance)}</TableCell>
+                            <TableCell data-label="System" align="right" sx={{ fontWeight: 600 }}>{formatCurrency(acc.currentBalance)}</TableCell>
+                            <TableCell data-label="Discrepancy" align="right" sx={{ fontWeight: 600, color: Math.abs(discrepancy) > 0.01 ? 'error.main' : 'success.main' }}>
                               {formatCurrency(discrepancy)}
                             </TableCell>
-                            <TableCell>
+                            <TableCell data-label="Status">
                               <Chip
                                 label={acc.isReconciled ? 'Reconciled' : 'Discrepancy'}
                                 size="small"
                                 color={acc.isReconciled ? 'success' : 'error'}
                               />
                             </TableCell>
-                            <TableCell align="right">{String(acc.transactionCount ?? 0)}</TableCell>
+                            <TableCell data-label="Txns" align="right">{String(acc.transactionCount ?? 0)}</TableCell>
                           </TableRow>
                         );
                       })}
@@ -629,6 +641,7 @@ export default function FinanceReportsPage() {
                     </TableBody>
                   </Table>
                 </TableContainer>
+                </ResponsiveTable>
               )}
             </Card>
           </Grid>
@@ -639,7 +652,7 @@ export default function FinanceReportsPage() {
               <Box sx={{ p: 2 }}>
                 <Typography variant="subtitle1" fontWeight={600}>Cash Account Reconciliation</Typography>
                 {cashReconciliation?.summary && (
-                  <Stack direction="row" spacing={2} sx={{ mt: 1 }}>
+                  <Stack direction="row" spacing={2} sx={{ mt: 1, flexWrap: 'wrap', gap: 1 }}>
                     <Chip label={`Reconciled: ${cashReconciliation.summary.reconciledCount}/${cashReconciliation.summary.totalAccounts}`} size="small" color="success" />
                     {cashReconciliation.summary.unreconciledCount > 0 && (
                       <Chip label={`Unreconciled: ${cashReconciliation.summary.unreconciledCount}`} size="small" color="error" />
@@ -650,6 +663,7 @@ export default function FinanceReportsPage() {
               {cashReconLoading ? (
                 <Box sx={{ py: 4, textAlign: 'center' }}><CircularProgress /></Box>
               ) : (
+                <ResponsiveTable>
                 <TableContainer>
                   <Table size="small">
                     <TableHead>
@@ -668,21 +682,21 @@ export default function FinanceReportsPage() {
                         const discrepancy = Number(acc.discrepancy ?? 0);
                         return (
                           <TableRow key={acc.id as string} hover>
-                            <TableCell><Typography variant="body2" fontWeight={500}>{String(acc.name)}</Typography></TableCell>
-                            <TableCell align="right">{formatCurrency(acc.openingBalance)}</TableCell>
-                            <TableCell align="right">{formatCurrency(acc.expectedBalance)}</TableCell>
-                            <TableCell align="right" sx={{ fontWeight: 600 }}>{formatCurrency(acc.currentBalance)}</TableCell>
-                            <TableCell align="right" sx={{ fontWeight: 600, color: Math.abs(discrepancy) > 0.01 ? 'error.main' : 'success.main' }}>
+                            <TableCell data-label="Account"><Typography variant="body2" fontWeight={500}>{String(acc.name)}</Typography></TableCell>
+                            <TableCell data-label="Opening" align="right">{formatCurrency(acc.openingBalance)}</TableCell>
+                            <TableCell data-label="Expected" align="right">{formatCurrency(acc.expectedBalance)}</TableCell>
+                            <TableCell data-label="System" align="right" sx={{ fontWeight: 600 }}>{formatCurrency(acc.currentBalance)}</TableCell>
+                            <TableCell data-label="Discrepancy" align="right" sx={{ fontWeight: 600, color: Math.abs(discrepancy) > 0.01 ? 'error.main' : 'success.main' }}>
                               {formatCurrency(discrepancy)}
                             </TableCell>
-                            <TableCell>
+                            <TableCell data-label="Status">
                               <Chip
                                 label={acc.isReconciled ? 'Reconciled' : 'Discrepancy'}
                                 size="small"
                                 color={acc.isReconciled ? 'success' : 'error'}
                               />
                             </TableCell>
-                            <TableCell align="right">{String(acc.transactionCount ?? 0)}</TableCell>
+                            <TableCell data-label="Txns" align="right">{String(acc.transactionCount ?? 0)}</TableCell>
                           </TableRow>
                         );
                       })}
@@ -692,6 +706,7 @@ export default function FinanceReportsPage() {
                     </TableBody>
                   </Table>
                 </TableContainer>
+                </ResponsiveTable>
               )}
             </Card>
           </Grid>
@@ -746,6 +761,7 @@ export default function FinanceReportsPage() {
           ) : (vendorAging?.data ?? []).length === 0 ? (
             <Box sx={{ py: 4, textAlign: 'center' }}><Typography color="text.secondary">No vendor invoices found</Typography></Box>
           ) : (
+            <ResponsiveTable>
             <TableContainer>
               <Table size="small">
                 <TableHead>
@@ -765,25 +781,26 @@ export default function FinanceReportsPage() {
                     const buckets = vendor.agingBuckets as Record<string, number>;
                     return (
                       <TableRow key={vendor.vendorId as string} hover>
-                        <TableCell>
+                        <TableCell data-label="Vendor">
                           <Typography variant="body2" fontWeight={500}>{String(vendor.vendorName)}</Typography>
                           <Typography variant="caption" color="text.secondary">{String(vendor.vendorCode)}</Typography>
                         </TableCell>
-                        <TableCell align="right">{formatCurrency(vendor.totalInvoiced)}</TableCell>
-                        <TableCell align="right" sx={{ color: 'success.main' }}>{formatCurrency(vendor.totalPaid)}</TableCell>
-                        <TableCell align="right" sx={{ fontWeight: 600, color: Number(vendor.totalOutstanding) > 0 ? 'error.main' : 'success.main' }}>
+                        <TableCell data-label="Invoiced" align="right">{formatCurrency(vendor.totalInvoiced)}</TableCell>
+                        <TableCell data-label="Paid" align="right" sx={{ color: 'success.main' }}>{formatCurrency(vendor.totalPaid)}</TableCell>
+                        <TableCell data-label="Outstanding" align="right" sx={{ fontWeight: 600, color: Number(vendor.totalOutstanding) > 0 ? 'error.main' : 'success.main' }}>
                           {formatCurrency(vendor.totalOutstanding)}
                         </TableCell>
-                        <TableCell align="right">{formatCurrency(buckets?.current ?? 0)}</TableCell>
-                        <TableCell align="right">{formatCurrency(buckets?.days30 ?? 0)}</TableCell>
-                        <TableCell align="right">{formatCurrency(buckets?.days60 ?? 0)}</TableCell>
-                        <TableCell align="right">{formatCurrency((buckets?.days90 ?? 0) + (buckets?.days90Plus ?? 0))}</TableCell>
+                        <TableCell data-label="0-30" align="right">{formatCurrency(buckets?.current ?? 0)}</TableCell>
+                        <TableCell data-label="31-60" align="right">{formatCurrency(buckets?.days30 ?? 0)}</TableCell>
+                        <TableCell data-label="61-90" align="right">{formatCurrency(buckets?.days60 ?? 0)}</TableCell>
+                        <TableCell data-label="91+" align="right">{formatCurrency((buckets?.days90 ?? 0) + (buckets?.days90Plus ?? 0))}</TableCell>
                       </TableRow>
                     );
                   })}
                 </TableBody>
               </Table>
             </TableContainer>
+            </ResponsiveTable>
           )}
         </Card>
       )}

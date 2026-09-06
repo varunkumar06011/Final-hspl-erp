@@ -9,6 +9,7 @@ import { Link as LinkIcon, ReceiptLong as StatementIcon } from '@mui/icons-mater
 import { useQuery } from '@tanstack/react-query';
 import EntityPage from '../components/EntityPage';
 import ResponsiveDialog from '../components/ResponsiveDialog';
+import ResponsiveTable from '../components/ResponsiveTable';
 import api from '../config/api';
 import { formatDate, formatCurrency, formatIndianNumber, STATUS_COLORS } from '../utils/enumOptions';
 
@@ -79,6 +80,7 @@ function VendorStatementDialog({ vendorId, open, onClose }: { vendorId: string |
             </Stack>
 
             {/* Statement table */}
+            <ResponsiveTable>
             <TableContainer component={Box} sx={{ overflowX: 'auto' }}>
               <Table size="small">
                 <TableHead>
@@ -105,19 +107,19 @@ function VendorStatementDialog({ vendorId, open, onClose }: { vendorId: string |
                         // Highlight invoice and payment rows
                         bgcolor: row.type === 'Invoice' ? 'error.lightest' : row.type === 'Payment' ? 'success.lightest' : 'inherit',
                       }}>
-                        <TableCell>{row.date ? formatDate(row.date) : '—'}</TableCell>
-                        <TableCell>
+                        <TableCell data-label="Date">{row.date ? formatDate(row.date) : '—'}</TableCell>
+                        <TableCell data-label="Type">
                           <Typography variant="body2" fontWeight={500}>{row.type}</Typography>
                           {row.status && <Chip label={row.status} size="small" sx={{ ml: 0.5, fontSize: '0.65rem', height: 16 }} />}
                         </TableCell>
-                        <TableCell>{row.reference}</TableCell>
-                        <TableCell align="right" sx={{ color: row.debit > 0 ? 'error.main' : 'text.disabled' }}>
+                        <TableCell data-label="Reference">{row.reference}</TableCell>
+                        <TableCell data-label="Debit (Invoice)" align="right" sx={{ color: row.debit > 0 ? 'error.main' : 'text.disabled' }}>
                           {row.debit > 0 ? formatIndianNumber(row.debit) : '—'}
                         </TableCell>
-                        <TableCell align="right" sx={{ color: row.credit > 0 ? 'success.main' : 'text.disabled' }}>
+                        <TableCell data-label="Credit (Paid)" align="right" sx={{ color: row.credit > 0 ? 'success.main' : 'text.disabled' }}>
                           {row.credit > 0 ? formatIndianNumber(row.credit) : '—'}
                         </TableCell>
-                        <TableCell align="right" sx={{ fontWeight: 600 }}>
+                        <TableCell data-label="Balance" align="right" sx={{ fontWeight: 600 }}>
                           {formatIndianNumber(row.runningBalance)}
                         </TableCell>
                       </TableRow>
@@ -133,6 +135,7 @@ function VendorStatementDialog({ vendorId, open, onClose }: { vendorId: string |
                 </TableBody>
               </Table>
             </TableContainer>
+            </ResponsiveTable>
 
             {/* Ledger info */}
             {data.ledger && (
@@ -271,6 +274,7 @@ function RecordTable({
   if (data.length === 0) return <Typography variant="body2" color="text.secondary">No {section.toLowerCase()} found.</Typography>;
 
   return (
+    <ResponsiveTable>
     <TableContainer sx={{ overflowX: 'auto' }}>
       <Table size="small">
         <TableHead>
@@ -287,7 +291,7 @@ function RecordTable({
               sx={{ cursor: onRowClick ? 'pointer' : 'default' }}
             >
               {columns.map((c) => (
-                <TableCell key={c.key}>
+                <TableCell key={c.key} data-label={c.label}>
                   {c.chip
                     ? <Chip size="small" label={statusLabel(String(row[c.key]))} color={(STATUS_COLORS[String(row[c.key])] ?? 'default') as never} />
                     : c.render
@@ -300,6 +304,7 @@ function RecordTable({
         </TableBody>
       </Table>
     </TableContainer>
+    </ResponsiveTable>
   );
 }
 

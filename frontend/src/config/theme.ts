@@ -43,13 +43,26 @@ const sharedOverrides: ThemeOptions = {
     MuiMenuItem: {
       styleOverrides: {
         root: {
-          whiteSpace: 'normal', wordBreak: 'break-word', overflowWrap: 'break-word',
+          whiteSpace: 'normal', overflowWrap: 'break-word',
           minHeight: 'auto', paddingTop: 8, paddingBottom: 8,
         },
       },
     },
     MuiTableCell: {
-      styleOverrides: { root: { wordBreak: 'break-word', overflowWrap: 'break-word' } },
+      // NOTE: do NOT set `wordBreak: 'break-word'` here — that is non-standard and
+      // behaves like `break-all` in several browsers, snapping normal words
+      // mid-character ("Ba nk Na me") when a column is narrow. `overflowWrap`
+      // only breaks a word when it is genuinely longer than the available line,
+      // so normal words stay intact while very long unbreakable strings still wrap.
+      styleOverrides: { root: { overflowWrap: 'break-word' } },
+    },
+    MuiTablePagination: {
+      styleOverrides: {
+        root: { overflowX: 'auto' },
+        toolbar: { flexWrap: 'wrap', gap: 1 },
+        selectRoot: { margin: 0 },
+        actions: { flexShrink: 0 },
+      },
     },
     MuiTypography: {
       styleOverrides: { root: { overflowWrap: 'break-word' } },

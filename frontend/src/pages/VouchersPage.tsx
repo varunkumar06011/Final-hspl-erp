@@ -45,6 +45,7 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { extractErrorMessage } from '../config/api';
 import ResponsiveDialog from '../components/ResponsiveDialog';
+import ResponsiveTable from '../components/ResponsiveTable';
 import RefreshButton from '../components/RefreshButton';
 import { formatCurrency, formatIndianNumber, formatDate, amountToWords, todayLocalDate } from '../utils/enumOptions';
 import { VoucherType, LedgerGroup, Permission, UserRole, hasPermission } from '@hospital-erp/shared';
@@ -774,6 +775,7 @@ export default function VouchersPage() {
 
       {/* Voucher list */}
       <Card sx={{ overflow: 'hidden' }}>
+        <ResponsiveTable>
         <TableContainer sx={{ overflowX: 'auto' }}>
           <Table size="small" sx={{ '@media (min-width: 900px)': { minWidth: 'max-content', '& .MuiTableCell-root': { whiteSpace: 'nowrap' } } }}>
             <TableHead>
@@ -803,14 +805,14 @@ export default function VouchersPage() {
               ) : (
                 rows.map((v) => (
                   <TableRow key={v.id} hover>
-                    <TableCell sx={{ fontWeight: 600 }}>{v.jvNumber}</TableCell>
-                    <TableCell>{formatDate(v.date)}</TableCell>
-                    <TableCell><Chip label={v.voucherType.replace(/_/g, ' ')} size="small" color={VOUCHER_TYPE_COLORS[v.voucherType] ?? 'default'} /></TableCell>
-                    <TableCell sx={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis' }}>{v.description ?? '—'}</TableCell>
-                    <TableCell align="right">{formatCurrency(v.totalDebit)}</TableCell>
-                    <TableCell><Chip label={v.status} size="small" color={v.status === 'POSTED' ? 'success' : v.status === 'CANCELLED' ? 'error' : 'default'} /></TableCell>
-                    <TableCell>{v.createdBy ?? '—'}</TableCell>
-                    <TableCell align="right">
+                    <TableCell sx={{ fontWeight: 600 }} data-label="Voucher No.">{v.jvNumber}</TableCell>
+                    <TableCell data-label="Date">{formatDate(v.date)}</TableCell>
+                    <TableCell data-label="Type"><Chip label={v.voucherType.replace(/_/g, ' ')} size="small" color={VOUCHER_TYPE_COLORS[v.voucherType] ?? 'default'} /></TableCell>
+                    <TableCell sx={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis' }} data-label="Description">{v.description ?? '—'}</TableCell>
+                    <TableCell align="right" data-label="Amount">{formatCurrency(v.totalDebit)}</TableCell>
+                    <TableCell data-label="Status"><Chip label={v.status} size="small" color={v.status === 'POSTED' ? 'success' : v.status === 'CANCELLED' ? 'error' : 'default'} /></TableCell>
+                    <TableCell data-label="Created By">{v.createdBy ?? '—'}</TableCell>
+                    <TableCell align="right" data-label="Actions">
                       <Stack direction="row" spacing={0.5} justifyContent="flex-end">
                         <Tooltip title="View Details"><IconButton size="small" onClick={() => setDetailVoucher(v)}><ViewIcon fontSize="small" /></IconButton></Tooltip>
                         {v.status === 'POSTED' && canReverseVoucher && (
@@ -840,6 +842,7 @@ export default function VouchersPage() {
             </TableBody>
           </Table>
         </TableContainer>
+        </ResponsiveTable>
         <TablePagination
           component="div"
           count={pagination.total}
@@ -1047,7 +1050,7 @@ export default function VouchersPage() {
               )}
 
               {/* Cheque details (Tally-style: shown when bank ledger is involved) */}
-              <Stack direction="row" spacing={2}>
+              <Stack direction="row" spacing={2} sx={{ flexWrap: 'wrap', gap: 1 }}>
                 <TextField
                   size="small"
                   label="Cheque Number"
@@ -1083,7 +1086,8 @@ export default function VouchersPage() {
                 JOURNAL / CREDIT NOTE / DEBIT NOTE — Table-based multi-line entry
                 ═══════════════════════════════════════════════════════════════ */
             <>
-              <TableContainer component={Card} variant="outlined">
+              <ResponsiveTable>
+              <TableContainer component={Card} variant="outlined" sx={{ overflowX: 'auto' }}>
                 <Table size="small">
                   <TableHead>
                     <TableRow sx={{ bgcolor: 'grey.50' }}>
@@ -1097,7 +1101,7 @@ export default function VouchersPage() {
                   <TableBody>
                     {entries.map((entry, index) => (
                       <TableRow key={index} sx={{ '&:hover': { bgcolor: 'action.hover' } }}>
-                        <TableCell>
+                        <TableCell data-label="Particulars">
                           <LedgerAutocomplete
                             value={entry.ledgerId}
                             onChange={(ledgerId, ledger) => selectLedger(index, ledgerId, ledger)}
@@ -1115,7 +1119,7 @@ export default function VouchersPage() {
                             />
                           )}
                         </TableCell>
-                        <TableCell align="right">
+                        <TableCell align="right" data-label="Debit (Dr)">
                           <TextField
                             size="small"
                             value={formatIndianNumber(entry.debit)}
@@ -1124,7 +1128,7 @@ export default function VouchersPage() {
                             inputProps={{ style: { textAlign: 'right' }, inputMode: 'decimal' }}
                           />
                         </TableCell>
-                        <TableCell align="right">
+                        <TableCell align="right" data-label="Credit (Cr)">
                           <TextField
                             size="small"
                             value={formatIndianNumber(entry.credit)}
@@ -1133,7 +1137,7 @@ export default function VouchersPage() {
                             inputProps={{ style: { textAlign: 'right' }, inputMode: 'decimal' }}
                           />
                         </TableCell>
-                        <TableCell>
+                        <TableCell data-label="Cost Center">
                           {entry.budgetHeadId ? (
                             <Chip
                               label={budgetHeads.find((b) => b.id === entry.budgetHeadId)?.particulars ?? 'CC'}
@@ -1154,7 +1158,7 @@ export default function VouchersPage() {
                             <Typography variant="caption" color="text.disabled">—</Typography>
                           )}
                         </TableCell>
-                        <TableCell>
+                        <TableCell data-label="Actions">
                           {entries.length > 2 && (
                             <IconButton size="small" onClick={() => removeEntry(index)}><CancelIcon fontSize="small" /></IconButton>
                           )}
@@ -1184,6 +1188,7 @@ export default function VouchersPage() {
                   </TableHead>
                 </Table>
               </TableContainer>
+              </ResponsiveTable>
 
               {totalDebit > 0 && (
                 <Typography variant="body2" color="text.secondary" sx={{ mt: 1, fontStyle: 'italic' }}>
@@ -1340,7 +1345,8 @@ export default function VouchersPage() {
                 )}
                 <Typography variant="body2"><strong>Status:</strong> <Chip label={detailVoucher.status} size="small" color={detailVoucher.status === 'POSTED' ? 'success' : 'error'} /></Typography>
               </Box>
-              <TableContainer component={Card} variant="outlined">
+              <ResponsiveTable>
+              <TableContainer component={Card} variant="outlined" sx={{ overflowX: 'auto' }}>
                 <Table size="small">
                   <TableHead>
                     <TableRow>
@@ -1355,12 +1361,12 @@ export default function VouchersPage() {
                   <TableBody>
                     {detailVoucher.entries.map((entry, i) => (
                       <TableRow key={i}>
-                        <TableCell sx={{ fontWeight: 500 }}>{entry.ledgerName}</TableCell>
-                        <TableCell><Chip label={entry.ledgerGroup.replace(/_/g, ' ')} size="small" variant="outlined" /></TableCell>
-                        <TableCell align="right" sx={{ color: 'error.main' }}>{entry.debit > 0 ? formatCurrency(entry.debit) : '—'}</TableCell>
-                        <TableCell align="right" sx={{ color: 'success.main' }}>{entry.credit > 0 ? formatCurrency(entry.credit) : '—'}</TableCell>
-                        <TableCell>{entry.description ?? '—'}</TableCell>
-                        <TableCell>{entry.budgetHead ? <Chip label={entry.budgetHead.particulars} size="small" color="primary" variant="outlined" /> : '—'}</TableCell>
+                        <TableCell sx={{ fontWeight: 500 }} data-label="Ledger">{entry.ledgerName}</TableCell>
+                        <TableCell data-label="Group"><Chip label={entry.ledgerGroup.replace(/_/g, ' ')} size="small" variant="outlined" /></TableCell>
+                        <TableCell align="right" sx={{ color: 'error.main' }} data-label="Debit">{entry.debit > 0 ? formatCurrency(entry.debit) : '—'}</TableCell>
+                        <TableCell align="right" sx={{ color: 'success.main' }} data-label="Credit">{entry.credit > 0 ? formatCurrency(entry.credit) : '—'}</TableCell>
+                        <TableCell data-label="Description">{entry.description ?? '—'}</TableCell>
+                        <TableCell data-label="Cost Center">{entry.budgetHead ? <Chip label={entry.budgetHead.particulars} size="small" color="primary" variant="outlined" /> : '—'}</TableCell>
                       </TableRow>
                     ))}
                     <TableRow>
@@ -1373,6 +1379,7 @@ export default function VouchersPage() {
                   </TableBody>
                 </Table>
               </TableContainer>
+              </ResponsiveTable>
 
               {/* Amount in words — Tally-style */}
               <Typography variant="body2" color="text.secondary" sx={{ mt: 1, fontStyle: 'italic' }}>
@@ -1408,7 +1415,8 @@ export default function VouchersPage() {
               {voucherAuditLogs && (voucherAuditLogs.data as AuditLogEntry[])?.length > 0 && (
                 <Box sx={{ mt: 3 }}>
                   <Typography variant="subtitle2" gutterBottom>Audit History</Typography>
-                  <TableContainer component={Card} variant="outlined">
+                  <ResponsiveTable>
+                  <TableContainer component={Card} variant="outlined" sx={{ overflowX: 'auto' }}>
                     <Table size="small">
                       <TableHead>
                         <TableRow>
@@ -1421,7 +1429,7 @@ export default function VouchersPage() {
                       <TableBody>
                         {(voucherAuditLogs.data as AuditLogEntry[]).map((log) => (
                           <TableRow key={log.id} hover>
-                            <TableCell>
+                            <TableCell data-label="Action">
                               <Chip
                                 label={log.action}
                                 size="small"
@@ -1429,9 +1437,9 @@ export default function VouchersPage() {
                                 variant="outlined"
                               />
                             </TableCell>
-                            <TableCell>{log.user?.name ?? '—'}</TableCell>
-                            <TableCell>{new Date(log.timestamp).toLocaleString()}</TableCell>
-                            <TableCell>
+                            <TableCell data-label="By">{log.user?.name ?? '—'}</TableCell>
+                            <TableCell data-label="When">{new Date(log.timestamp).toLocaleString()}</TableCell>
+                            <TableCell data-label="Details">
                               {log.newValue && Object.keys(log.newValue).length > 0
                                 ? Object.entries(log.newValue)
                                     .filter(([k]) => k !== 'edited')
@@ -1451,6 +1459,7 @@ export default function VouchersPage() {
                       </TableBody>
                     </Table>
                   </TableContainer>
+                  </ResponsiveTable>
                 </Box>
               )}
             </DialogContent>

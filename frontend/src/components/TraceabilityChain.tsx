@@ -23,6 +23,7 @@ import {
   Person as PersonIcon,
 } from '@mui/icons-material';
 import { formatDate, formatIndianNumber, STATUS_COLORS } from '../utils/enumOptions';
+import ResponsiveTable from './ResponsiveTable';
 
 // Shape returned by GET /assets/:id/trace and the authenticated scan endpoint.
 export interface TraceData {
@@ -130,8 +131,8 @@ function ChainCard({ step, label, badge, badgeColor, subtitle, onOpen, openLabel
 function Field({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '130px 1fr', sm: '170px 1fr' }, gap: 1.5, py: 0.5, alignItems: 'start' }}>
-      <Typography variant="body2" color="text.secondary" sx={{ wordBreak: 'break-word' }}>{label}</Typography>
-      <Box sx={{ fontSize: '0.875rem', fontWeight: 500, wordBreak: 'break-word' }}>{value}</Box>
+      <Typography variant="body2" color="text.secondary" sx={{ overflowWrap: 'break-word' }}>{label}</Typography>
+      <Box sx={{ fontSize: '0.875rem', fontWeight: 500, overflowWrap: 'break-word' }}>{value}</Box>
     </Box>
   );
 }
@@ -205,6 +206,7 @@ export default function TraceabilityChain({ trace, hideNavigation = false }: { t
             </Box>
           )}
           {quotation.items && quotation.items.length > 0 && (
+            <ResponsiveTable>
             <TableContainer component={Card} variant="outlined" sx={{ mt: 1.5, overflowX: 'auto' }}>
               <Table size="small" sx={{ '& .MuiTableCell-root': { p: { xs: '4px', sm: '8px' }, fontSize: { xs: '0.7rem', sm: '0.875rem' }, whiteSpace: 'nowrap' } }}>
                 <TableHead>
@@ -220,17 +222,18 @@ export default function TraceabilityChain({ trace, hideNavigation = false }: { t
                 <TableBody>
                   {quotation.items.map((it, i) => (
                     <TableRow key={i}>
-                      <TableCell>{it.materialName}</TableCell>
-                      <TableCell>{qty(it.quantity)}</TableCell>
-                      <TableCell>{it.unit ?? '—'}</TableCell>
-                      <TableCell>{money(it.unitPrice)}</TableCell>
-                      <TableCell>{it.gstRate}</TableCell>
-                      <TableCell>{money(it.amount)}</TableCell>
+                      <TableCell data-label="Material">{it.materialName}</TableCell>
+                      <TableCell data-label="Qty">{qty(it.quantity)}</TableCell>
+                      <TableCell data-label="Unit">{it.unit ?? '—'}</TableCell>
+                      <TableCell data-label="Unit Price">{money(it.unitPrice)}</TableCell>
+                      <TableCell data-label="GST %">{it.gstRate}</TableCell>
+                      <TableCell data-label="Amount">{money(it.amount)}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
               </Table>
             </TableContainer>
+            </ResponsiveTable>
           )}
         </ChainCard>
       )}
@@ -258,6 +261,7 @@ export default function TraceabilityChain({ trace, hideNavigation = false }: { t
             {po.editReason?.trim() && <Field label="Edit Reason" value={po.editReason} />}
           </Box>
           {po.items && po.items.length > 0 && (
+            <ResponsiveTable>
             <TableContainer component={Card} variant="outlined" sx={{ mt: 1.5, overflowX: 'auto' }}>
               <Table size="small" sx={{ '& .MuiTableCell-root': { p: { xs: '4px', sm: '8px' }, fontSize: { xs: '0.7rem', sm: '0.875rem' }, whiteSpace: 'nowrap' } }}>
                 <TableHead>
@@ -273,17 +277,18 @@ export default function TraceabilityChain({ trace, hideNavigation = false }: { t
                 <TableBody>
                   {po.items.map((it, i) => (
                     <TableRow key={i}>
-                      <TableCell>{it.materialName}</TableCell>
-                      <TableCell>{qty(it.quantity)}</TableCell>
-                      <TableCell>{it.unit ?? '—'}</TableCell>
-                      <TableCell>{money(it.unitPrice)}</TableCell>
-                      <TableCell>{it.gstRate}</TableCell>
-                      <TableCell>{money(it.amount)}</TableCell>
+                      <TableCell data-label="Material">{it.materialName}</TableCell>
+                      <TableCell data-label="Qty">{qty(it.quantity)}</TableCell>
+                      <TableCell data-label="Unit">{it.unit ?? '—'}</TableCell>
+                      <TableCell data-label="Unit Price">{money(it.unitPrice)}</TableCell>
+                      <TableCell data-label="GST %">{it.gstRate}</TableCell>
+                      <TableCell data-label="Amount">{money(it.amount)}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
               </Table>
             </TableContainer>
+            </ResponsiveTable>
           )}
         </ChainCard>
       )}
@@ -309,6 +314,7 @@ export default function TraceabilityChain({ trace, hideNavigation = false }: { t
           </Box>
           {gatePass.remarks && <Field label="Remarks" value={gatePass.remarks} />}
           {gatePass.items && gatePass.items.length > 0 && (
+            <ResponsiveTable>
             <TableContainer component={Card} variant="outlined" sx={{ mt: 1.5, overflowX: 'auto' }}>
               <Table size="small" sx={{ '& .MuiTableCell-root': { p: { xs: '4px', sm: '8px' }, fontSize: { xs: '0.7rem', sm: '0.875rem' }, whiteSpace: 'nowrap' } }}>
                 <TableHead>
@@ -321,14 +327,15 @@ export default function TraceabilityChain({ trace, hideNavigation = false }: { t
                 <TableBody>
                   {gatePass.items.map((it, i) => (
                     <TableRow key={i}>
-                      <TableCell>{it.materialName}</TableCell>
-                      <TableCell>{qty(it.quantity)}</TableCell>
-                      <TableCell>{it.unit ?? '—'}</TableCell>
+                      <TableCell data-label="Material">{it.materialName}</TableCell>
+                      <TableCell data-label="Qty">{qty(it.quantity)}</TableCell>
+                      <TableCell data-label="Unit">{it.unit ?? '—'}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
               </Table>
             </TableContainer>
+            </ResponsiveTable>
           )}
         </ChainCard>
       )}
@@ -356,6 +363,7 @@ export default function TraceabilityChain({ trace, hideNavigation = false }: { t
             {grn.postedByUser && <Field label="Posted By" value={grn.postedByUser.name} />}
           </Box>
           {grn.items && grn.items.length > 0 && (
+            <ResponsiveTable>
             <TableContainer component={Card} variant="outlined" sx={{ mt: 1.5, overflowX: 'auto' }}>
               <Table size="small" sx={{ '& .MuiTableCell-root': { p: { xs: '4px', sm: '8px' }, fontSize: { xs: '0.7rem', sm: '0.875rem' }, whiteSpace: 'nowrap' } }}>
                 <TableHead>
@@ -370,16 +378,17 @@ export default function TraceabilityChain({ trace, hideNavigation = false }: { t
                 <TableBody>
                   {grn.items.map((it, i) => (
                     <TableRow key={i}>
-                      <TableCell>{it.materialName}</TableCell>
-                      <TableCell>{qty(it.deliveredQty)}</TableCell>
-                      <TableCell sx={{ color: 'success.main' }}>{qty(it.acceptedQty)}</TableCell>
-                      <TableCell sx={{ color: Number(it.rejectedQty) > 0 ? 'error.main' : 'text.secondary' }}>{qty(it.rejectedQty)}</TableCell>
-                      <TableCell>{it.rejectionReason ?? '—'}</TableCell>
+                      <TableCell data-label="Material">{it.materialName}</TableCell>
+                      <TableCell data-label="Delivered">{qty(it.deliveredQty)}</TableCell>
+                      <TableCell data-label="Accepted" sx={{ color: 'success.main' }}>{qty(it.acceptedQty)}</TableCell>
+                      <TableCell data-label="Rejected" sx={{ color: Number(it.rejectedQty) > 0 ? 'error.main' : 'text.secondary' }}>{qty(it.rejectedQty)}</TableCell>
+                      <TableCell data-label="Reason">{it.rejectionReason ?? '—'}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
               </Table>
             </TableContainer>
+            </ResponsiveTable>
           )}
         </ChainCard>
       )}

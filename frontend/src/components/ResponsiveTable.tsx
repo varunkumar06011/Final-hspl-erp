@@ -16,6 +16,7 @@ import { Box } from '@mui/material';
 export default function ResponsiveTable({ children }: { children: React.ReactNode }) {
   return (
     <Box
+      className="responsive-table"
       sx={{
         // Desktop: no changes at all
         // Mobile: transform table rows into stacked cards
@@ -52,12 +53,13 @@ export default function ResponsiveTable({ children }: { children: React.ReactNod
               textTransform: 'uppercase',
               letterSpacing: '0.04em',
             },
-            // Value text wraps instead of sticking to right wall
+            // Value text wraps instead of sticking to right wall.
+            // overflowWrap (not wordBreak) so normal words stay intact and only
+            // genuinely-long unbreakable strings wrap.
             '& > *': {
               textAlign: 'right',
               maxWidth: '65%',
               overflowWrap: 'break-word',
-              wordBreak: 'break-word',
             },
           },
           // Action buttons stay in a horizontal row, pushed to the right

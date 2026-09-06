@@ -38,6 +38,7 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { extractErrorMessage } from '../config/api';
 import ResponsiveDialog from '../components/ResponsiveDialog';
+import ResponsiveTable from '../components/ResponsiveTable';
 import RefreshButton from '../components/RefreshButton';
 import { formatCurrency, formatIndianNumber } from '../utils/enumOptions';
 import { useDeepLinkRow } from '../hooks/useDeepLinkRow';
@@ -333,6 +334,7 @@ export default function BudgetHeadsPage() {
           />
         </Box>
 
+        <ResponsiveTable>
         <TableContainer sx={{ overflowX: 'auto' }}>
           <Table size="small" sx={{ '@media (min-width: 900px)': { minWidth: 'max-content', '& .MuiTableCell-root': { whiteSpace: 'nowrap' } } }}>
             <TableHead>
@@ -370,16 +372,16 @@ export default function BudgetHeadsPage() {
                   const utilization = allocated > 0 ? (actual / allocated) * 100 : 0;
                   return (
                     <TableRow key={row.id as string} hover ref={rowRef(row.id as string)} sx={{ ...(highlightId === row.id && { bgcolor: 'warning.light', '&:hover': { bgcolor: 'warning.light' } }) }}>
-                      <TableCell>{String(row.slNo)}</TableCell>
-                      <TableCell>{String(row.particulars ?? '—')}</TableCell>
-                      <TableCell align="right">{formatCurrency(row.allocatedAmount)}</TableCell>
-                      <TableCell align="right">{formatCurrency(row.committedAmount)}</TableCell>
-                      <TableCell align="right">{formatCurrency(row.actualAmount)}</TableCell>
-                      <TableCell align="right">{formatCurrency(row.paidAmount)}</TableCell>
-                      <TableCell align="right" sx={{ fontWeight: 600, color: available < 0 ? 'error.main' : 'success.main' }}>
+                      <TableCell data-label="Sl. No.">{String(row.slNo)}</TableCell>
+                      <TableCell data-label="Particulars">{String(row.particulars ?? '—')}</TableCell>
+                      <TableCell data-label="Allocated" align="right">{formatCurrency(row.allocatedAmount)}</TableCell>
+                      <TableCell data-label="Committed" align="right">{formatCurrency(row.committedAmount)}</TableCell>
+                      <TableCell data-label="Actual" align="right">{formatCurrency(row.actualAmount)}</TableCell>
+                      <TableCell data-label="Paid" align="right">{formatCurrency(row.paidAmount)}</TableCell>
+                      <TableCell data-label="Available" align="right" sx={{ fontWeight: 600, color: available < 0 ? 'error.main' : 'success.main' }}>
                         {formatCurrency(available)}
                       </TableCell>
-                      <TableCell sx={{ minWidth: 100 }}>
+                      <TableCell data-label="Utilization" sx={{ minWidth: 100 }}>
                         <Stack spacing={0.5}>
                           <LinearProgress
                             variant="determinate"
@@ -392,10 +394,10 @@ export default function BudgetHeadsPage() {
                           </Typography>
                         </Stack>
                       </TableCell>
-                      <TableCell>
+                      <TableCell data-label="Status">
                         <Chip label={String(row.status ?? 'ACTIVE')} size="small" color={row.status === 'CLOSED' ? 'default' : 'success'} />
                       </TableCell>
-                      <TableCell align="right">
+                      <TableCell data-label="Actions" align="right">
                         <IconButton size="small" onClick={() => openRevisionDialog(row)} title="Request Edit"><EditIcon fontSize="small" /></IconButton>
                         <IconButton size="small" onClick={() => { setHistoryHeadId(row.id as string); setHistoryOpen(true); }} title="Revision History"><HistoryIcon fontSize="small" /></IconButton>
                         <IconButton size="small" onClick={() => setDeleteConfirm(row.id as string)}><DeleteIcon fontSize="small" /></IconButton>
@@ -407,6 +409,7 @@ export default function BudgetHeadsPage() {
             </TableBody>
           </Table>
         </TableContainer>
+        </ResponsiveTable>
 
         <TablePagination
           component="div"
@@ -595,6 +598,7 @@ export default function BudgetHeadsPage() {
           ) : (revisionHistory?.data ?? []).length === 0 ? (
             <Typography color="text.secondary" sx={{ py: 2, textAlign: 'center' }}>No revisions recorded for this budget head.</Typography>
           ) : (
+            <ResponsiveTable>
             <TableContainer component={Card} variant="outlined">
               <Table size="small">
                 <TableHead>
@@ -616,24 +620,25 @@ export default function BudgetHeadsPage() {
                     if (rev.newStatus) changes.push(`Status: ${String(rev.oldStatus)} → ${String(rev.newStatus)}`);
                     return (
                       <TableRow key={rev.id as string} hover>
-                        <TableCell>{new Date(String(rev.requestedAt)).toLocaleDateString('en-IN')}</TableCell>
-                        <TableCell>{String((rev.requestedByUser as Record<string, unknown>)?.name ?? '—')}</TableCell>
-                        <TableCell sx={{ fontSize: '0.75rem' }}>{changes.join(', ') || '—'}</TableCell>
-                        <TableCell sx={{ fontSize: '0.75rem' }}>{String(rev.reason ?? '—')}</TableCell>
-                        <TableCell>
+                        <TableCell data-label="Date">{new Date(String(rev.requestedAt)).toLocaleDateString('en-IN')}</TableCell>
+                        <TableCell data-label="Requested By">{String((rev.requestedByUser as Record<string, unknown>)?.name ?? '—')}</TableCell>
+                        <TableCell data-label="Changes" sx={{ fontSize: '0.75rem' }}>{changes.join(', ') || '—'}</TableCell>
+                        <TableCell data-label="Reason" sx={{ fontSize: '0.75rem' }}>{String(rev.reason ?? '—')}</TableCell>
+                        <TableCell data-label="Status">
                           <Chip
                             label={String(rev.status)}
                             size="small"
                             color={rev.status === 'APPLIED' ? 'success' : rev.status === 'REJECTED' ? 'error' : rev.status === 'PENDING' ? 'warning' : 'default'}
                           />
                         </TableCell>
-                        <TableCell>{String((rev.reviewedByUser as Record<string, unknown>)?.name ?? '—')}</TableCell>
+                        <TableCell data-label="Reviewed By">{String((rev.reviewedByUser as Record<string, unknown>)?.name ?? '—')}</TableCell>
                       </TableRow>
                     );
                   })}
                 </TableBody>
               </Table>
             </TableContainer>
+            </ResponsiveTable>
           )}
         </DialogContent>
         <DialogActions>
@@ -649,6 +654,7 @@ export default function BudgetHeadsPage() {
           {(pendingRevisions?.data ?? []).length === 0 ? (
             <Typography color="text.secondary" sx={{ py: 2, textAlign: 'center' }}>No pending revisions.</Typography>
           ) : (
+            <ResponsiveTable>
             <TableContainer component={Card} variant="outlined">
               <Table size="small">
                 <TableHead>
@@ -669,11 +675,11 @@ export default function BudgetHeadsPage() {
                     if (rev.newStatus) changes.push(`Status → ${String(rev.newStatus)}`);
                     return (
                       <TableRow key={rev.id as string} hover>
-                        <TableCell>{String((rev.budgetHead as Record<string, unknown>)?.particulars ?? '—')}</TableCell>
-                        <TableCell>{String((rev.requestedByUser as Record<string, unknown>)?.name ?? '—')}</TableCell>
-                        <TableCell sx={{ fontSize: '0.75rem' }}>{changes.join(', ')}</TableCell>
-                        <TableCell sx={{ fontSize: '0.75rem' }}>{String(rev.reason ?? '—')}</TableCell>
-                        <TableCell>
+                        <TableCell data-label="Budget Head">{String((rev.budgetHead as Record<string, unknown>)?.particulars ?? '—')}</TableCell>
+                        <TableCell data-label="Requested By">{String((rev.requestedByUser as Record<string, unknown>)?.name ?? '—')}</TableCell>
+                        <TableCell data-label="Changes" sx={{ fontSize: '0.75rem' }}>{changes.join(', ')}</TableCell>
+                        <TableCell data-label="Reason" sx={{ fontSize: '0.75rem' }}>{String(rev.reason ?? '—')}</TableCell>
+                        <TableCell data-label="Actions">
                           {reviewTarget?.id === rev.id ? (
                             <Stack direction="row" spacing={1}>
                               <IconButton size="small" color="success" title="Approve"
@@ -695,6 +701,7 @@ export default function BudgetHeadsPage() {
                 </TableBody>
               </Table>
             </TableContainer>
+            </ResponsiveTable>
           )}
           {reviewTarget && (
             <TextField

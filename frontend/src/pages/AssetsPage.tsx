@@ -33,6 +33,7 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import api, { extractErrorMessage } from '../config/api';
 import RefreshButton from '../components/RefreshButton';
+import ResponsiveTable from '../components/ResponsiveTable';
 import { usePrefetchDetail } from '../hooks/usePrefetchDetail';
 
 const STATUS_COLORS: Record<string, 'success' | 'warning' | 'info' | 'error' | 'default'> = {
@@ -261,6 +262,7 @@ export default function AssetsPage() {
         </>
       ) : (
         <Card>
+          <ResponsiveTable>
           <TableContainer sx={{ overflowX: 'auto' }}>
             <Table size="small">
               <TableHead>
@@ -292,6 +294,7 @@ export default function AssetsPage() {
               </TableBody>
             </Table>
           </TableContainer>
+          </ResponsiveTable>
           <TablePagination
             component="div"
             count={pagination.total}

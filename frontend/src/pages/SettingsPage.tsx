@@ -283,7 +283,7 @@ export default function SettingsPage() {
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
             Your 4-digit PIN is used with your phone number to sign in. No OTP needed after setting it.
           </Typography>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, maxWidth: 400, flexWrap: 'wrap' }}>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, maxWidth: { xs: '100%', sm: 400 }, flexWrap: 'wrap' }}>
             <Input
               type={showPins ? 'text' : 'password'}
               value={oldPin}

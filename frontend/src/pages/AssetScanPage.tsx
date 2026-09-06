@@ -95,8 +95,8 @@ export default function AssetScanPage() {
       <Card sx={{ maxWidth: 600, width: '100%' }}>
         <CardContent>
           {/* Header */}
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-            <Typography variant="h5" fontWeight={600}>Asset Details</Typography>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap', gap: 1 }}>
+            <Typography variant="h5" fontWeight={600} sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' } }}>Asset Details</Typography>
             <Chip
               label={STATUS_LABELS[String(data.status)] ?? String(data.status)}
               color={STATUS_COLORS[String(data.status)] ?? 'default'}

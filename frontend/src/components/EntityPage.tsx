@@ -244,7 +244,7 @@ export default function EntityPage({
   return (
     <Box sx={{ minWidth: 0, overflow: 'hidden' }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: { xs: 'flex-start', sm: 'center' }, mb: 2, flexWrap: 'wrap', gap: 1 }}>
-        <Typography variant="h5" fontWeight={600} sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' }, whiteSpace: 'nowrap' }}>
+        <Typography variant="h5" fontWeight={600} sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' }, overflowWrap: 'break-word' }}>
           {title}
         </Typography>
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', justifyContent: { xs: 'flex-end', md: 'flex-end' }, alignItems: 'center', width: { xs: '100%', md: 'auto' }, minWidth: { md: 'max-content' } }}>
@@ -358,10 +358,10 @@ export default function EntityPage({
                     {canCreate && (
                       <TableCell align="right" data-label="Actions">
                         {rowActions?.(row)}
-                        <IconButton size="small" onClick={() => openEdit(row)}>
+                        <IconButton size="small" title="Edit" onClick={() => openEdit(row)}>
                           <EditIcon fontSize="small" />
                         </IconButton>
-                        <IconButton size="small" color="error" onClick={() => setDeleteConfirm(row.id as string)}>
+                        <IconButton size="small" color="error" title="Delete" onClick={() => setDeleteConfirm(row.id as string)}>
                           <DeleteIcon fontSize="small" />
                         </IconButton>
                       </TableCell>

@@ -28,6 +28,7 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import api from '../config/api';
 import RefreshButton from '../components/RefreshButton';
+import ResponsiveTable from '../components/ResponsiveTable';
 import { formatCurrency, formatDate, todayLocalDate } from '../utils/enumOptions';
 import { LedgerGroup, isDebitNatureGroup } from '@hospital-erp/shared';
 
@@ -179,14 +180,14 @@ export default function AccountingReportsPage() {
 
   return (
     <Box sx={{ minWidth: 0, overflow: 'hidden' }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-        <Typography variant="h5" fontWeight={600}>Accounting Reports</Typography>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap', gap: 1 }}>
+        <Typography variant="h5" fontWeight={600} sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' } }}>Accounting Reports</Typography>
         <RefreshButton onClick={() => setError('')} />
       </Box>
 
       {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
 
-      <Tabs value={tab} onChange={(_, v: TabValue) => setTab(v)} sx={{ mb: 2, borderBottom: 1, borderColor: 'divider' }}>
+      <Tabs value={tab} onChange={(_, v: TabValue) => setTab(v)} sx={{ mb: 2, borderBottom: 1, borderColor: 'divider' }} variant="scrollable" scrollButtons="auto" allowScrollButtonsMobile>
         <Tab label="Ledger Statement" value="ledger" />
         <Tab label="Group Summary" value="groupsummary" />
         <Tab label="Day Book" value="daybook" />
@@ -207,7 +208,7 @@ export default function AccountingReportsPage() {
                 getOptionLabel={(option) => `${option.name} (${GROUP_LABELS[option.group] ?? option.group})`}
                 value={selectedLedger}
                 onChange={(_, value) => setSelectedLedger(value)}
-                renderInput={(params) => <TextField {...params} label="Select Ledger" sx={{ minWidth: 300 }} />}
+                renderInput={(params) => <TextField {...params} label="Select Ledger" sx={{ minWidth: { xs: '100%', sm: 300 } }} />}
                 isOptionEqualToValue={(opt, val) => opt.id === val.id}
               />
               <TextField size="small" type="date" label="From" value={stmtStartDate} onChange={(e) => setStmtStartDate(e.target.value)} InputLabelProps={{ shrink: true }} />
@@ -246,6 +247,7 @@ export default function AccountingReportsPage() {
               </Grid>
 
               <Card sx={{ overflow: 'hidden' }}>
+                <ResponsiveTable>
                 <TableContainer sx={{ overflowX: 'auto' }}>
                   <Table size="small">
                     <TableHead>
@@ -269,13 +271,13 @@ export default function AccountingReportsPage() {
                       ) : (
                         statementData.data.map((entry: any) => (
                           <TableRow key={entry.id} hover>
-                            <TableCell>{formatDate(entry.voucherDate)}</TableCell>
-                            <TableCell sx={{ fontWeight: 600 }}>{entry.voucherNumber}</TableCell>
-                            <TableCell><Chip label={entry.voucherType.replace(/_/g, ' ')} size="small" variant="outlined" /></TableCell>
-                            <TableCell>{entry.description ?? '—'}</TableCell>
-                            <TableCell align="right" sx={{ color: 'error.main' }}>{entry.debit > 0 ? formatCurrency(entry.debit) : '—'}</TableCell>
-                            <TableCell align="right" sx={{ color: 'success.main' }}>{entry.credit > 0 ? formatCurrency(entry.credit) : '—'}</TableCell>
-                            <TableCell align="right" sx={{ fontWeight: 600 }}>{formatBal(entry.balance, statementData.ledger.isDebitNature)}</TableCell>
+                            <TableCell data-label="Date">{formatDate(entry.voucherDate)}</TableCell>
+                            <TableCell data-label="Voucher" sx={{ fontWeight: 600 }}>{entry.voucherNumber}</TableCell>
+                            <TableCell data-label="Type"><Chip label={entry.voucherType.replace(/_/g, ' ')} size="small" variant="outlined" /></TableCell>
+                            <TableCell data-label="Description">{entry.description ?? '—'}</TableCell>
+                            <TableCell data-label="Debit" align="right" sx={{ color: 'error.main' }}>{entry.debit > 0 ? formatCurrency(entry.debit) : '—'}</TableCell>
+                            <TableCell data-label="Credit" align="right" sx={{ color: 'success.main' }}>{entry.credit > 0 ? formatCurrency(entry.credit) : '—'}</TableCell>
+                            <TableCell data-label="Balance" align="right" sx={{ fontWeight: 600 }}>{formatBal(entry.balance, statementData.ledger.isDebitNature)}</TableCell>
                           </TableRow>
                         ))
                       )}
@@ -286,6 +288,7 @@ export default function AccountingReportsPage() {
                     </TableBody>
                   </Table>
                 </TableContainer>
+                </ResponsiveTable>
               </Card>
             </>
           ) : null}
@@ -303,7 +306,7 @@ export default function AccountingReportsPage() {
                 label="Select Group"
                 value={selectedGroup}
                 onChange={(e) => setSelectedGroup(e.target.value)}
-                sx={{ minWidth: 250 }}
+                sx={{ minWidth: { xs: '100%', sm: 250 } }}
               >
                 <MenuItem value="">— Select a Group —</MenuItem>
                 {GROUP_ORDER.map((g) => <MenuItem key={g} value={g}>{GROUP_LABELS[g] ?? g}</MenuItem>)}
@@ -318,6 +321,7 @@ export default function AccountingReportsPage() {
             </Card>
           ) : (
             <Card sx={{ overflow: 'hidden' }}>
+              <ResponsiveTable>
               <TableContainer>
                 <Table size="small">
                   <TableHead>
@@ -339,14 +343,14 @@ export default function AccountingReportsPage() {
                           const suffix = l.currentBalance === 0 ? '' : (isDebit ? (l.currentBalance >= 0 ? ' Dr' : ' Cr') : (l.currentBalance >= 0 ? ' Dr' : ' Cr'));
                           return (
                             <TableRow key={l.id} hover sx={{ cursor: 'pointer' }} onClick={() => { setSelectedLedger(l); setTab('ledger'); }}>
-                              <TableCell sx={{ fontWeight: 500 }}>{l.name}</TableCell>
-                              <TableCell>
+                              <TableCell data-label="Ledger Name" sx={{ fontWeight: 500 }}>{l.name}</TableCell>
+                              <TableCell data-label="Type">
                                 <Typography variant="caption" color="text.secondary">
                                   {l.linkedEntityType === 'VENDOR' ? 'Vendor' : l.linkedEntityType === 'BANK_ACCOUNT' ? 'Bank' : l.linkedEntityType === 'CASH_ACCOUNT' ? 'Cash' : l.linkedEntityType === 'OWNER_ACCOUNT' ? 'Owner' : 'Manual'}
                                 </Typography>
                               </TableCell>
-                              <TableCell align="right">{formatCurrency(l.openingBalance)}</TableCell>
-                              <TableCell align="right" sx={{ fontWeight: 600 }}>{formatCurrency(absBal)}{suffix}</TableCell>
+                              <TableCell data-label="Opening Balance" align="right">{formatCurrency(l.openingBalance)}</TableCell>
+                              <TableCell data-label="Current Balance" align="right" sx={{ fontWeight: 600 }}>{formatCurrency(absBal)}{suffix}</TableCell>
                             </TableRow>
                           );
                         })}
@@ -364,6 +368,7 @@ export default function AccountingReportsPage() {
                   </TableBody>
                 </Table>
               </TableContainer>
+              </ResponsiveTable>
               <Typography variant="caption" color="text.secondary" sx={{ p: 1, display: 'block' }}>
                 Tip: Click any ledger row to view its detailed statement.
               </Typography>
@@ -376,10 +381,10 @@ export default function AccountingReportsPage() {
       {tab === 'daybook' && (
         <Box>
           <Card sx={{ p: 2, mb: 2 }}>
-            <Stack direction="row" spacing={2} alignItems="center">
+            <Stack direction="row" spacing={2} alignItems="center" sx={{ flexWrap: 'wrap', gap: 1 }}>
               <TextField size="small" type="date" label="Date" value={dayBookDate} onChange={(e) => setDayBookDate(e.target.value)} InputLabelProps={{ shrink: true }} />
               {dayBookData && (
-                <Stack direction="row" spacing={2}>
+                <Stack direction="row" spacing={2} sx={{ flexWrap: 'wrap', gap: 1 }}>
                   <Chip label={`${dayBookData.summary.count} vouchers`} size="small" />
                   <Chip label={`Dr ${formatCurrency(dayBookData.summary.totalDebit)}`} size="small" color="error" />
                   <Chip label={`Cr ${formatCurrency(dayBookData.summary.totalCredit)}`} size="small" color="success" />
@@ -407,6 +412,7 @@ export default function AccountingReportsPage() {
                     <Typography variant="body2" color="text.secondary">{formatDate(v.date)} · {v.createdBy}</Typography>
                   </Stack>
                   {v.description && <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>{v.description}</Typography>}
+                  <ResponsiveTable>
                   <TableContainer>
                     <Table size="small">
                       <TableHead>
@@ -419,9 +425,9 @@ export default function AccountingReportsPage() {
                       <TableBody>
                         {v.entries.map((e: any, i: number) => (
                           <TableRow key={i}>
-                            <TableCell>{e.ledgerName}{e.description ? ` — ${e.description}` : ''}</TableCell>
-                            <TableCell align="right" sx={{ color: 'error.main' }}>{e.debit > 0 ? formatCurrency(e.debit) : '—'}</TableCell>
-                            <TableCell align="right" sx={{ color: 'success.main' }}>{e.credit > 0 ? formatCurrency(e.credit) : '—'}</TableCell>
+                            <TableCell data-label="Ledger">{e.ledgerName}{e.description ? ` — ${e.description}` : ''}</TableCell>
+                            <TableCell data-label="Debit" align="right" sx={{ color: 'error.main' }}>{e.debit > 0 ? formatCurrency(e.debit) : '—'}</TableCell>
+                            <TableCell data-label="Credit" align="right" sx={{ color: 'success.main' }}>{e.credit > 0 ? formatCurrency(e.credit) : '—'}</TableCell>
                           </TableRow>
                         ))}
                         <TableRow>
@@ -432,6 +438,7 @@ export default function AccountingReportsPage() {
                       </TableBody>
                     </Table>
                   </TableContainer>
+                  </ResponsiveTable>
                 </Card>
               ))}
             </Stack>
@@ -443,10 +450,10 @@ export default function AccountingReportsPage() {
       {tab === 'trial' && (
         <Box>
           <Card sx={{ p: 2, mb: 2 }}>
-            <Stack direction="row" spacing={2} alignItems="center">
+            <Stack direction="row" spacing={2} alignItems="center" sx={{ flexWrap: 'wrap', gap: 1 }}>
               <TextField size="small" type="date" label="As of Date" value={asOfDate} onChange={(e) => setAsOfDate(e.target.value)} InputLabelProps={{ shrink: true }} />
               {trialBalanceData && (
-                <Stack direction="row" spacing={2}>
+                <Stack direction="row" spacing={2} sx={{ flexWrap: 'wrap', gap: 1 }}>
                   <Chip label={`Total Dr: ${formatCurrency(trialBalanceData.totals.debit)}`} size="small" color="error" />
                   <Chip label={`Total Cr: ${formatCurrency(trialBalanceData.totals.credit)}`} size="small" color="success" />
                   <Chip
@@ -463,6 +470,7 @@ export default function AccountingReportsPage() {
             <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress /></Box>
           ) : trialBalanceData ? (
             <Card sx={{ overflow: 'hidden' }}>
+              <ResponsiveTable>
               <TableContainer sx={{ overflowX: 'auto' }}>
                 <Table size="small">
                   <TableHead>
@@ -483,10 +491,10 @@ export default function AccountingReportsPage() {
                         </TableRow>
                         {g.ledgers.map((l: any) => (
                           <TableRow key={l.id}>
-                            <TableCell sx={{ pl: 3 }}>{l.name}</TableCell>
-                            <TableCell><Chip label={GROUP_LABELS[l.group] ?? l.group} size="small" variant="outlined" /></TableCell>
-                            <TableCell align="right">{l.debit > 0 ? formatCurrency(l.debit) : '—'}</TableCell>
-                            <TableCell align="right">{l.credit > 0 ? formatCurrency(l.credit) : '—'}</TableCell>
+                            <TableCell data-label="Ledger" sx={{ pl: 3 }}>{l.name}</TableCell>
+                            <TableCell data-label="Group"><Chip label={GROUP_LABELS[l.group] ?? l.group} size="small" variant="outlined" /></TableCell>
+                            <TableCell data-label="Debit" align="right">{l.debit > 0 ? formatCurrency(l.debit) : '—'}</TableCell>
+                            <TableCell data-label="Credit" align="right">{l.credit > 0 ? formatCurrency(l.credit) : '—'}</TableCell>
                           </TableRow>
                         ))}
                       </>
@@ -499,6 +507,7 @@ export default function AccountingReportsPage() {
                   </TableBody>
                 </Table>
               </TableContainer>
+              </ResponsiveTable>
             </Card>
           ) : null}
         </Box>
@@ -508,7 +517,7 @@ export default function AccountingReportsPage() {
       {tab === 'pl' && (
         <Box>
           <Card sx={{ p: 2, mb: 2 }}>
-            <Stack direction="row" spacing={2} alignItems="center">
+            <Stack direction="row" spacing={2} alignItems="center" sx={{ flexWrap: 'wrap', gap: 1 }}>
               <TextField size="small" type="date" label="From" value={plStartDate} onChange={(e) => setPlStartDate(e.target.value)} InputLabelProps={{ shrink: true }} />
               <TextField size="small" type="date" label="To" value={plEndDate} onChange={(e) => setPlEndDate(e.target.value)} InputLabelProps={{ shrink: true }} />
               {plData && (
@@ -530,6 +539,7 @@ export default function AccountingReportsPage() {
                   <Box sx={{ p: 2, bgcolor: 'error.light', color: 'error.contrastText' }}>
                     <Typography variant="h6" fontWeight={600}>Expenses</Typography>
                   </Box>
+                  <ResponsiveTable>
                   <TableContainer>
                     <Table size="small">
                       <TableBody>
@@ -537,33 +547,34 @@ export default function AccountingReportsPage() {
                           <>
                             <TableRow sx={{ bgcolor: 'grey.50' }}><TableCell colSpan={2} sx={{ fontWeight: 700 }}>Purchases</TableCell></TableRow>
                             {plData.expenses.purchases.ledgers.map((l: any) => (
-                              <TableRow key={l.id}><TableCell sx={{ pl: 3 }}>{l.name}</TableCell><TableCell align="right">{formatCurrency(l.amount)}</TableCell></TableRow>
+                              <TableRow key={l.id}><TableCell data-label="Particulars" sx={{ pl: 3 }}>{l.name}</TableCell><TableCell data-label="Amount" align="right">{formatCurrency(l.amount)}</TableCell></TableRow>
                             ))}
-                            <TableRow><TableCell align="right" sx={{ fontWeight: 600 }}>Total Purchases</TableCell><TableCell align="right" sx={{ fontWeight: 600 }}>{formatCurrency(plData.expenses.purchases.total)}</TableCell></TableRow>
+                            <TableRow><TableCell data-label="Particulars" align="right" sx={{ fontWeight: 600 }}>Total Purchases</TableCell><TableCell data-label="Amount" align="right" sx={{ fontWeight: 600 }}>{formatCurrency(plData.expenses.purchases.total)}</TableCell></TableRow>
                           </>
                         )}
                         {plData.expenses.directExpenses.ledgers.length > 0 && (
                           <>
                             <TableRow sx={{ bgcolor: 'grey.50' }}><TableCell colSpan={2} sx={{ fontWeight: 700 }}>Direct Expenses</TableCell></TableRow>
                             {plData.expenses.directExpenses.ledgers.map((l: any) => (
-                              <TableRow key={l.id}><TableCell sx={{ pl: 3 }}>{l.name}</TableCell><TableCell align="right">{formatCurrency(l.amount)}</TableCell></TableRow>
+                              <TableRow key={l.id}><TableCell data-label="Particulars" sx={{ pl: 3 }}>{l.name}</TableCell><TableCell data-label="Amount" align="right">{formatCurrency(l.amount)}</TableCell></TableRow>
                             ))}
-                            <TableRow><TableCell align="right" sx={{ fontWeight: 600 }}>Total Direct</TableCell><TableCell align="right" sx={{ fontWeight: 600 }}>{formatCurrency(plData.expenses.directExpenses.total)}</TableCell></TableRow>
+                            <TableRow><TableCell data-label="Particulars" align="right" sx={{ fontWeight: 600 }}>Total Direct</TableCell><TableCell data-label="Amount" align="right" sx={{ fontWeight: 600 }}>{formatCurrency(plData.expenses.directExpenses.total)}</TableCell></TableRow>
                           </>
                         )}
                         {plData.expenses.indirectExpenses.ledgers.length > 0 && (
                           <>
                             <TableRow sx={{ bgcolor: 'grey.50' }}><TableCell colSpan={2} sx={{ fontWeight: 700 }}>Indirect Expenses</TableCell></TableRow>
                             {plData.expenses.indirectExpenses.ledgers.map((l: any) => (
-                              <TableRow key={l.id}><TableCell sx={{ pl: 3 }}>{l.name}</TableCell><TableCell align="right">{formatCurrency(l.amount)}</TableCell></TableRow>
+                              <TableRow key={l.id}><TableCell data-label="Particulars" sx={{ pl: 3 }}>{l.name}</TableCell><TableCell data-label="Amount" align="right">{formatCurrency(l.amount)}</TableCell></TableRow>
                             ))}
-                            <TableRow><TableCell align="right" sx={{ fontWeight: 600 }}>Total Indirect</TableCell><TableCell align="right" sx={{ fontWeight: 600 }}>{formatCurrency(plData.expenses.indirectExpenses.total)}</TableCell></TableRow>
+                            <TableRow><TableCell data-label="Particulars" align="right" sx={{ fontWeight: 600 }}>Total Indirect</TableCell><TableCell data-label="Amount" align="right" sx={{ fontWeight: 600 }}>{formatCurrency(plData.expenses.indirectExpenses.total)}</TableCell></TableRow>
                           </>
                         )}
-                        <TableRow><TableCell align="right" sx={{ fontWeight: 700, borderTop: 2 }}>Total Expenses</TableCell><TableCell align="right" sx={{ fontWeight: 700, borderTop: 2 }}>{formatCurrency(plData.expenses.total)}</TableCell></TableRow>
+                        <TableRow><TableCell data-label="Particulars" align="right" sx={{ fontWeight: 700, borderTop: 2 }}>Total Expenses</TableCell><TableCell data-label="Amount" align="right" sx={{ fontWeight: 700, borderTop: 2 }}>{formatCurrency(plData.expenses.total)}</TableCell></TableRow>
                       </TableBody>
                     </Table>
                   </TableContainer>
+                  </ResponsiveTable>
                 </Card>
               </Grid>
 
@@ -573,6 +584,7 @@ export default function AccountingReportsPage() {
                   <Box sx={{ p: 2, bgcolor: 'success.light', color: 'success.contrastText' }}>
                     <Typography variant="h6" fontWeight={600}>Income</Typography>
                   </Box>
+                  <ResponsiveTable>
                   <TableContainer>
                     <Table size="small">
                       <TableBody>
@@ -580,33 +592,34 @@ export default function AccountingReportsPage() {
                           <>
                             <TableRow sx={{ bgcolor: 'grey.50' }}><TableCell colSpan={2} sx={{ fontWeight: 700 }}>Sales</TableCell></TableRow>
                             {plData.income.sales.ledgers.map((l: any) => (
-                              <TableRow key={l.id}><TableCell sx={{ pl: 3 }}>{l.name}</TableCell><TableCell align="right">{formatCurrency(l.amount)}</TableCell></TableRow>
+                              <TableRow key={l.id}><TableCell data-label="Particulars" sx={{ pl: 3 }}>{l.name}</TableCell><TableCell data-label="Amount" align="right">{formatCurrency(l.amount)}</TableCell></TableRow>
                             ))}
-                            <TableRow><TableCell align="right" sx={{ fontWeight: 600 }}>Total Sales</TableCell><TableCell align="right" sx={{ fontWeight: 600 }}>{formatCurrency(plData.income.sales.total)}</TableCell></TableRow>
+                            <TableRow><TableCell data-label="Particulars" align="right" sx={{ fontWeight: 600 }}>Total Sales</TableCell><TableCell data-label="Amount" align="right" sx={{ fontWeight: 600 }}>{formatCurrency(plData.income.sales.total)}</TableCell></TableRow>
                           </>
                         )}
                         {plData.income.directIncome.ledgers.length > 0 && (
                           <>
                             <TableRow sx={{ bgcolor: 'grey.50' }}><TableCell colSpan={2} sx={{ fontWeight: 700 }}>Direct Income</TableCell></TableRow>
                             {plData.income.directIncome.ledgers.map((l: any) => (
-                              <TableRow key={l.id}><TableCell sx={{ pl: 3 }}>{l.name}</TableCell><TableCell align="right">{formatCurrency(l.amount)}</TableCell></TableRow>
+                              <TableRow key={l.id}><TableCell data-label="Particulars" sx={{ pl: 3 }}>{l.name}</TableCell><TableCell data-label="Amount" align="right">{formatCurrency(l.amount)}</TableCell></TableRow>
                             ))}
-                            <TableRow><TableCell align="right" sx={{ fontWeight: 600 }}>Total Direct Income</TableCell><TableCell align="right" sx={{ fontWeight: 600 }}>{formatCurrency(plData.income.directIncome.total)}</TableCell></TableRow>
+                            <TableRow><TableCell data-label="Particulars" align="right" sx={{ fontWeight: 600 }}>Total Direct Income</TableCell><TableCell data-label="Amount" align="right" sx={{ fontWeight: 600 }}>{formatCurrency(plData.income.directIncome.total)}</TableCell></TableRow>
                           </>
                         )}
                         {plData.income.indirectIncome.ledgers.length > 0 && (
                           <>
                             <TableRow sx={{ bgcolor: 'grey.50' }}><TableCell colSpan={2} sx={{ fontWeight: 700 }}>Indirect Income</TableCell></TableRow>
                             {plData.income.indirectIncome.ledgers.map((l: any) => (
-                              <TableRow key={l.id}><TableCell sx={{ pl: 3 }}>{l.name}</TableCell><TableCell align="right">{formatCurrency(l.amount)}</TableCell></TableRow>
+                              <TableRow key={l.id}><TableCell data-label="Particulars" sx={{ pl: 3 }}>{l.name}</TableCell><TableCell data-label="Amount" align="right">{formatCurrency(l.amount)}</TableCell></TableRow>
                             ))}
-                            <TableRow><TableCell align="right" sx={{ fontWeight: 600 }}>Total Indirect Income</TableCell><TableCell align="right" sx={{ fontWeight: 600 }}>{formatCurrency(plData.income.indirectIncome.total)}</TableCell></TableRow>
+                            <TableRow><TableCell data-label="Particulars" align="right" sx={{ fontWeight: 600 }}>Total Indirect Income</TableCell><TableCell data-label="Amount" align="right" sx={{ fontWeight: 600 }}>{formatCurrency(plData.income.indirectIncome.total)}</TableCell></TableRow>
                           </>
                         )}
-                        <TableRow><TableCell align="right" sx={{ fontWeight: 700, borderTop: 2 }}>Total Income</TableCell><TableCell align="right" sx={{ fontWeight: 700, borderTop: 2 }}>{formatCurrency(plData.income.total)}</TableCell></TableRow>
+                        <TableRow><TableCell data-label="Particulars" align="right" sx={{ fontWeight: 700, borderTop: 2 }}>Total Income</TableCell><TableCell data-label="Amount" align="right" sx={{ fontWeight: 700, borderTop: 2 }}>{formatCurrency(plData.income.total)}</TableCell></TableRow>
                       </TableBody>
                     </Table>
                   </TableContainer>
+                  </ResponsiveTable>
                 </Card>
               </Grid>
 
@@ -631,10 +644,10 @@ export default function AccountingReportsPage() {
       {tab === 'bs' && (
         <Box>
           <Card sx={{ p: 2, mb: 2 }}>
-            <Stack direction="row" spacing={2} alignItems="center">
+            <Stack direction="row" spacing={2} alignItems="center" sx={{ flexWrap: 'wrap', gap: 1 }}>
               <TextField size="small" type="date" label="As of Date" value={asOfDate} onChange={(e) => setAsOfDate(e.target.value)} InputLabelProps={{ shrink: true }} />
               {bsData && (
-                <Stack direction="row" spacing={2}>
+                <Stack direction="row" spacing={2} sx={{ flexWrap: 'wrap', gap: 1 }}>
                   <Chip label={`Assets: ${formatCurrency(bsData.totals.totalAssets)}`} size="small" color="info" />
                   <Chip label={`Liabilities+Capital: ${formatCurrency(bsData.totals.totalCapitalAndLiabilities)}`} size="small" color="warning" />
                   <Chip
@@ -657,6 +670,7 @@ export default function AccountingReportsPage() {
                   <Box sx={{ p: 2, bgcolor: 'info.light', color: 'info.contrastText' }}>
                     <Typography variant="h6" fontWeight={600}>Assets</Typography>
                   </Box>
+                  <ResponsiveTable>
                   <TableContainer>
                     <Table size="small">
                       <TableBody>
@@ -666,15 +680,16 @@ export default function AccountingReportsPage() {
                               <TableCell colSpan={2} sx={{ fontWeight: 700 }}>{GROUP_LABELS[g.group] ?? g.group}</TableCell>
                             </TableRow>
                             {g.ledgers.map((l: any) => (
-                              <TableRow key={l.id}><TableCell sx={{ pl: 3 }}>{l.name}</TableCell><TableCell align="right">{formatCurrency(l.amount)}</TableCell></TableRow>
+                              <TableRow key={l.id}><TableCell data-label="Particulars" sx={{ pl: 3 }}>{l.name}</TableCell><TableCell data-label="Amount" align="right">{formatCurrency(l.amount)}</TableCell></TableRow>
                             ))}
-                            <TableRow><TableCell align="right" sx={{ fontWeight: 600 }}>Subtotal</TableCell><TableCell align="right" sx={{ fontWeight: 600 }}>{formatCurrency(g.total)}</TableCell></TableRow>
+                            <TableRow><TableCell data-label="Particulars" align="right" sx={{ fontWeight: 600 }}>Subtotal</TableCell><TableCell data-label="Amount" align="right" sx={{ fontWeight: 600 }}>{formatCurrency(g.total)}</TableCell></TableRow>
                           </>
                         ))}
-                        <TableRow><TableCell align="right" sx={{ fontWeight: 700, borderTop: 2 }}>Total Assets</TableCell><TableCell align="right" sx={{ fontWeight: 700, borderTop: 2 }}>{formatCurrency(bsData.totals.totalAssets)}</TableCell></TableRow>
+                        <TableRow><TableCell data-label="Particulars" align="right" sx={{ fontWeight: 700, borderTop: 2 }}>Total Assets</TableCell><TableCell data-label="Amount" align="right" sx={{ fontWeight: 700, borderTop: 2 }}>{formatCurrency(bsData.totals.totalAssets)}</TableCell></TableRow>
                       </TableBody>
                     </Table>
                   </TableContainer>
+                  </ResponsiveTable>
                 </Card>
               </Grid>
 
@@ -684,6 +699,7 @@ export default function AccountingReportsPage() {
                   <Box sx={{ p: 2, bgcolor: 'warning.light', color: 'warning.contrastText' }}>
                     <Typography variant="h6" fontWeight={600}>Liabilities & Capital</Typography>
                   </Box>
+                  <ResponsiveTable>
                   <TableContainer>
                     <Table size="small">
                       <TableBody>
@@ -693,20 +709,21 @@ export default function AccountingReportsPage() {
                               <TableCell colSpan={2} sx={{ fontWeight: 700 }}>{GROUP_LABELS[g.group] ?? g.group}</TableCell>
                             </TableRow>
                             {g.ledgers.map((l: any) => (
-                              <TableRow key={l.id}><TableCell sx={{ pl: 3 }}>{l.name}</TableCell><TableCell align="right">{formatCurrency(l.amount)}</TableCell></TableRow>
+                              <TableRow key={l.id}><TableCell data-label="Particulars" sx={{ pl: 3 }}>{l.name}</TableCell><TableCell data-label="Amount" align="right">{formatCurrency(l.amount)}</TableCell></TableRow>
                             ))}
-                            <TableRow><TableCell align="right" sx={{ fontWeight: 600 }}>Subtotal</TableCell><TableCell align="right" sx={{ fontWeight: 600 }}>{formatCurrency(g.total)}</TableCell></TableRow>
+                            <TableRow><TableCell data-label="Particulars" align="right" sx={{ fontWeight: 600 }}>Subtotal</TableCell><TableCell data-label="Amount" align="right" sx={{ fontWeight: 600 }}>{formatCurrency(g.total)}</TableCell></TableRow>
                           </>
                         ))}
                         {/* Net P&L as part of capital */}
                         <TableRow sx={{ bgcolor: bsData.netProfit >= 0 ? 'success.light' : 'error.light' }}>
-                          <TableCell sx={{ fontWeight: 700 }}>{bsData.netProfit >= 0 ? 'Net Profit (added to Capital)' : 'Net Loss (reduced from Capital)'}</TableCell>
-                          <TableCell align="right" sx={{ fontWeight: 700 }}>{formatCurrency(Math.abs(bsData.netProfit))}</TableCell>
+                          <TableCell data-label="Particulars" sx={{ fontWeight: 700 }}>{bsData.netProfit >= 0 ? 'Net Profit (added to Capital)' : 'Net Loss (reduced from Capital)'}</TableCell>
+                          <TableCell data-label="Amount" align="right" sx={{ fontWeight: 700 }}>{formatCurrency(Math.abs(bsData.netProfit))}</TableCell>
                         </TableRow>
-                        <TableRow><TableCell align="right" sx={{ fontWeight: 700, borderTop: 2 }}>Total Liabilities + Capital</TableCell><TableCell align="right" sx={{ fontWeight: 700, borderTop: 2 }}>{formatCurrency(bsData.totals.totalCapitalAndLiabilities)}</TableCell></TableRow>
+                        <TableRow><TableCell data-label="Particulars" align="right" sx={{ fontWeight: 700, borderTop: 2 }}>Total Liabilities + Capital</TableCell><TableCell data-label="Amount" align="right" sx={{ fontWeight: 700, borderTop: 2 }}>{formatCurrency(bsData.totals.totalCapitalAndLiabilities)}</TableCell></TableRow>
                       </TableBody>
                     </Table>
                   </TableContainer>
+                  </ResponsiveTable>
                 </Card>
               </Grid>
             </Grid>
@@ -747,6 +764,7 @@ export default function AccountingReportsPage() {
                 </Grid>
               </Grid>
 
+              <ResponsiveTable>
               <TableContainer component={Card}>
                 <Table size="small">
                   <TableHead>
@@ -764,14 +782,14 @@ export default function AccountingReportsPage() {
                   <TableBody>
                     {ccData.costCenters.map((cc: any) => (
                       <TableRow key={cc.id} sx={{ '&:hover': { bgcolor: 'action.hover' } }}>
-                        <TableCell sx={{ fontWeight: 500 }}>{cc.particulars}</TableCell>
-                        <TableCell align="right">{formatCurrency(cc.allocatedAmount)}</TableCell>
-                        <TableCell align="right">{formatCurrency(cc.committedAmount)}</TableCell>
-                        <TableCell align="right">{formatCurrency(cc.actualAmount)}</TableCell>
-                        <TableCell align="right">{formatCurrency(cc.paidAmount)}</TableCell>
-                        <TableCell align="right" sx={{ color: 'error.main' }}>{formatCurrency(cc.totalDebit)}</TableCell>
-                        <TableCell align="right" sx={{ color: 'success.main' }}>{formatCurrency(cc.totalCredit)}</TableCell>
-                        <TableCell align="right" sx={{ fontWeight: 600, color: cc.netAmount > 0 ? 'error.main' : 'success.main' }}>{formatCurrency(cc.netAmount)}</TableCell>
+                        <TableCell data-label="Budget Head" sx={{ fontWeight: 500 }}>{cc.particulars}</TableCell>
+                        <TableCell data-label="Allocated" align="right">{formatCurrency(cc.allocatedAmount)}</TableCell>
+                        <TableCell data-label="Committed (PO)" align="right">{formatCurrency(cc.committedAmount)}</TableCell>
+                        <TableCell data-label="Actual (GRN)" align="right">{formatCurrency(cc.actualAmount)}</TableCell>
+                        <TableCell data-label="Paid" align="right">{formatCurrency(cc.paidAmount)}</TableCell>
+                        <TableCell data-label="Ledger Dr" align="right" sx={{ color: 'error.main' }}>{formatCurrency(cc.totalDebit)}</TableCell>
+                        <TableCell data-label="Ledger Cr" align="right" sx={{ color: 'success.main' }}>{formatCurrency(cc.totalCredit)}</TableCell>
+                        <TableCell data-label="Net" align="right" sx={{ fontWeight: 600, color: cc.netAmount > 0 ? 'error.main' : 'success.main' }}>{formatCurrency(cc.netAmount)}</TableCell>
                       </TableRow>
                     ))}
                     <TableRow sx={{ borderTop: 2 }}>
@@ -787,6 +805,7 @@ export default function AccountingReportsPage() {
                   </TableBody>
                 </Table>
               </TableContainer>
+              </ResponsiveTable>
             </Box>
           ) : (
             <Typography color="text.secondary">No data available</Typography>

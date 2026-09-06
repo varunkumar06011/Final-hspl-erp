@@ -121,12 +121,12 @@ export default function UsersPage() {
                   <TableCell data-label="Name">{user.name}</TableCell>
                   <TableCell data-label="Phone">
                     {isEditing ? (
-                      <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center' }}>
+                      <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center', flexWrap: 'wrap' }}>
                         <TextField
                           size="small"
                           value={editingPhone[user.id]}
                           onChange={(e) => setEditingPhone({ ...editingPhone, [user.id]: e.target.value })}
-                          sx={{ width: 160 }}
+                          sx={{ width: { xs: '100%', sm: 160 }, minWidth: { xs: 120, sm: 160 } }}
                           disabled={savePhoneMutation.isPending}
                         />
                         <Button

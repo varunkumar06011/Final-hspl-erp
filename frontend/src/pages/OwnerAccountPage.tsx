@@ -37,6 +37,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { extractErrorMessage } from '../config/api';
 import ResponsiveDialog from '../components/ResponsiveDialog';
 import RefreshButton from '../components/RefreshButton';
+import ResponsiveTable from '../components/ResponsiveTable';
 import { formatCurrency, formatIndianNumber, formatDate, todayLocalDate } from '../utils/enumOptions';
 import { useDeepLinkRow } from '../hooks/useDeepLinkRow';
 
@@ -266,6 +267,7 @@ export default function OwnerAccountPage() {
           />
         </Box>
 
+        <ResponsiveTable>
         <TableContainer sx={{ overflowX: 'auto' }}>
           <Table size="small" sx={{ '@media (min-width: 900px)': { minWidth: 'max-content', '& .MuiTableCell-root': { whiteSpace: 'nowrap' } } }}>
             <TableHead>
@@ -295,20 +297,20 @@ export default function OwnerAccountPage() {
                   const balance = Number(row.currentBalance);
                   return (
                     <TableRow key={row.id} hover ref={rowRef(row.id)} sx={{ ...(highlightId === row.id && { bgcolor: 'warning.light', '&:hover': { bgcolor: 'warning.light' } }) }}>
-                      <TableCell sx={{ fontWeight: 600 }}>{row.ownerName}</TableCell>
-                      <TableCell align="right">{formatCurrency(row.openingBalance)}</TableCell>
-                      <TableCell align="right" sx={{ fontWeight: 600, color: balance > 0 ? 'error.main' : balance < 0 ? 'success.main' : 'text.primary' }}>
+                      <TableCell data-label="Owner Name" sx={{ fontWeight: 600 }}>{row.ownerName}</TableCell>
+                      <TableCell data-label="Opening" align="right">{formatCurrency(row.openingBalance)}</TableCell>
+                      <TableCell data-label="Current Balance" align="right" sx={{ fontWeight: 600, color: balance > 0 ? 'error.main' : balance < 0 ? 'success.main' : 'text.primary' }}>
                         {formatCurrency(balance)}
                       </TableCell>
-                      <TableCell>
+                      <TableCell data-label="Meaning">
                         <Chip
                           label={balance > 0 ? 'Company owes owner' : balance < 0 ? 'Owner owes company' : 'Settled'}
                           size="small"
                           color={balance > 0 ? 'warning' : balance < 0 ? 'info' : 'success'}
                         />
                       </TableCell>
-                      <TableCell><Chip label={row.isActive ? 'Active' : 'Inactive'} size="small" color={row.isActive ? 'success' : 'default'} /></TableCell>
-                      <TableCell align="right">
+                      <TableCell data-label="Status"><Chip label={row.isActive ? 'Active' : 'Inactive'} size="small" color={row.isActive ? 'success' : 'default'} /></TableCell>
+                      <TableCell data-label="Actions" align="right">
                         <Stack direction="row" spacing={0.5} justifyContent="flex-end">
                           <IconButton size="small" title="Statement" onClick={() => setStatementAccountId(row.id)}><StatementIcon fontSize="small" /></IconButton>
                           <IconButton size="small" title="Add Contribution" onClick={() => openContrib(row.id)}><ContributionIcon fontSize="small" color="success" /></IconButton>
@@ -323,6 +325,7 @@ export default function OwnerAccountPage() {
             </TableBody>
           </Table>
         </TableContainer>
+        </ResponsiveTable>
 
         <TablePagination
           component="div"
@@ -414,6 +417,7 @@ export default function OwnerAccountPage() {
               <strong>{statementData.account.ownerName}</strong> — Current Balance: {formatCurrency(statementData.account.currentBalance)} ({Number(statementData.account.currentBalance) > 0 ? 'Company owes owner' : 'Owner owes company'})
             </Alert>
           )}
+          <ResponsiveTable>
           <TableContainer sx={{ overflowX: 'auto' }}>
             <Table size="small">
               <TableHead>
@@ -435,19 +439,20 @@ export default function OwnerAccountPage() {
                 ) : (
                   statement.map((entry) => (
                     <TableRow key={entry.id} hover>
-                      <TableCell>{formatDate(entry.date)}</TableCell>
-                      <TableCell>{entry.jvNumber}</TableCell>
-                      <TableCell><Chip label={entry.type.replace(/_/g, ' ')} size="small" variant="outlined" /></TableCell>
-                      <TableCell align="right" sx={{ color: 'error.main' }}>{entry.debit > 0 ? formatCurrency(entry.debit) : '—'}</TableCell>
-                      <TableCell align="right" sx={{ color: 'success.main' }}>{entry.credit > 0 ? formatCurrency(entry.credit) : '—'}</TableCell>
-                      <TableCell align="right" sx={{ fontWeight: 600 }}>{formatCurrency(entry.balanceAfter)}</TableCell>
-                      <TableCell>{entry.description}</TableCell>
+                      <TableCell data-label="Date">{formatDate(entry.date)}</TableCell>
+                      <TableCell data-label="JV Number">{entry.jvNumber}</TableCell>
+                      <TableCell data-label="Type"><Chip label={entry.type.replace(/_/g, ' ')} size="small" variant="outlined" /></TableCell>
+                      <TableCell data-label="Debit" align="right" sx={{ color: 'error.main' }}>{entry.debit > 0 ? formatCurrency(entry.debit) : '—'}</TableCell>
+                      <TableCell data-label="Credit" align="right" sx={{ color: 'success.main' }}>{entry.credit > 0 ? formatCurrency(entry.credit) : '—'}</TableCell>
+                      <TableCell data-label="Balance" align="right" sx={{ fontWeight: 600 }}>{formatCurrency(entry.balanceAfter)}</TableCell>
+                      <TableCell data-label="Description">{entry.description}</TableCell>
                     </TableRow>
                   ))
                 )}
               </TableBody>
             </Table>
           </TableContainer>
+          </ResponsiveTable>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setStatementAccountId(null)}>Close</Button>

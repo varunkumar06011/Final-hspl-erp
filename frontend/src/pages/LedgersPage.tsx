@@ -43,6 +43,7 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { extractErrorMessage } from '../config/api';
 import ResponsiveDialog from '../components/ResponsiveDialog';
+import ResponsiveTable from '../components/ResponsiveTable';
 import RefreshButton from '../components/RefreshButton';
 import { formatCurrency, formatDate } from '../utils/enumOptions';
 import { LedgerGroup, isDebitNatureGroup } from '@hospital-erp/shared';
@@ -346,11 +347,11 @@ export default function LedgersPage() {
 
   const renderLedgerRow = (ledger: Ledger) => (
     <TableRow key={ledger.id} hover ref={ledgerRowRef(ledger.id)} sx={{ ...(ledgerHighlightId === ledger.id && { bgcolor: 'warning.light', '&:hover': { bgcolor: 'warning.light' } }) }}>
-      <TableCell sx={{ fontWeight: 500 }}>
+      <TableCell sx={{ fontWeight: 500 }} data-label="Ledger Name">
         {ledger.name}
         {ledger.isSystem && <Chip label="System" size="small" variant="outlined" sx={{ ml: 1 }} />}
       </TableCell>
-      <TableCell>
+      <TableCell data-label="Type">
         <Typography variant="caption" color="text.secondary">
           {ledger.linkedEntityType === 'VENDOR' ? 'Vendor' :
            ledger.linkedEntityType === 'BANK_ACCOUNT' ? 'Bank' :
@@ -358,14 +359,14 @@ export default function LedgersPage() {
            ledger.linkedEntityType === 'OWNER_ACCOUNT' ? 'Owner' : 'Manual'}
         </Typography>
       </TableCell>
-      <TableCell align="right">{formatCurrency(ledger.openingBalance)}</TableCell>
-      <TableCell align="right" sx={{ fontWeight: 600 }}>
+      <TableCell align="right" data-label="Opening">{formatCurrency(ledger.openingBalance)}</TableCell>
+      <TableCell align="right" sx={{ fontWeight: 600 }} data-label="Current Balance">
         {formatBalance(ledger.currentBalance, ledger.group)}
       </TableCell>
-      <TableCell>
+      <TableCell data-label="Status">
         <Chip label={ledger.isActive ? 'Active' : 'Inactive'} size="small" color={ledger.isActive ? 'success' : 'default'} />
       </TableCell>
-      <TableCell align="right">
+      <TableCell align="right" data-label="Actions">
         <Stack direction="row" spacing={0.5} justifyContent="flex-end">
           <Tooltip title="View Ledger Statement">
             <IconButton size="small" onClick={() => { setStatementLedger(ledger); setStmtStartDate(''); setStmtEndDate(''); }}>
@@ -418,7 +419,7 @@ export default function LedgersPage() {
       {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
       {successMsg && <Alert severity="success" sx={{ mb: 2 }} onClose={() => setSuccessMsg('')}>{successMsg}</Alert>}
 
-      <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 2, borderBottom: 1, borderColor: 'divider' }}>
+      <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 2, borderBottom: 1, borderColor: 'divider' }} variant="scrollable" scrollButtons="auto" allowScrollButtonsMobile>
         <Tab label="Ledgers" value="ledgers" />
         <Tab label="Groups" value="groups" />
       </Tabs>
@@ -462,7 +463,7 @@ export default function LedgersPage() {
       {/* ── Groups management tab ── */}
       {tab === 'groups' && (
         <Box>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap', gap: 1 }}>
             <Typography variant="body2" color="text.secondary">
               Predefined groups are Tally's 15 primary groups. Custom groups are sub-groups you create under a primary group for finer classification.
             </Typography>
@@ -473,6 +474,7 @@ export default function LedgersPage() {
 
           <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 1 }}>Predefined Groups (15 Primary)</Typography>
           <Card sx={{ overflow: 'hidden', mb: 3 }}>
+            <ResponsiveTable>
             <TableContainer>
               <Table size="small">
                 <TableHead>
@@ -488,15 +490,16 @@ export default function LedgersPage() {
                     const isBS = ['FIXED_ASSET', 'CURRENT_ASSET', 'BANK', 'CASH', 'SUNDRY_DEBTORS', 'CURRENT_LIABILITY', 'LOAN', 'DUTIES_TAXES', 'CAPITAL_ACCOUNT', 'SUNDRY_CREDITORS'].includes(g);
                     return (
                       <TableRow key={g} hover>
-                        <TableCell sx={{ fontWeight: 500 }}>{GROUP_LABELS[g]}</TableCell>
-                        <TableCell><Chip label={isDebit ? 'Debit' : 'Credit'} size="small" color={isDebit ? 'info' : 'warning'} variant="outlined" /></TableCell>
-                        <TableCell><Chip label={isBS ? 'Balance Sheet' : 'Profit & Loss'} size="small" variant="outlined" /></TableCell>
+                        <TableCell sx={{ fontWeight: 500 }} data-label="Group Name">{GROUP_LABELS[g]}</TableCell>
+                        <TableCell data-label="Nature"><Chip label={isDebit ? 'Debit' : 'Credit'} size="small" color={isDebit ? 'info' : 'warning'} variant="outlined" /></TableCell>
+                        <TableCell data-label="Appears In"><Chip label={isBS ? 'Balance Sheet' : 'Profit & Loss'} size="small" variant="outlined" /></TableCell>
                       </TableRow>
                     );
                   })}
                 </TableBody>
               </Table>
             </TableContainer>
+            </ResponsiveTable>
           </Card>
 
           <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 1 }}>Custom Groups (Sub-groups)</Typography>
@@ -512,6 +515,7 @@ export default function LedgersPage() {
             </Card>
           ) : (
             <Card sx={{ overflow: 'hidden' }}>
+              <ResponsiveTable>
               <TableContainer>
                 <Table size="small">
                   <TableHead>
@@ -524,9 +528,9 @@ export default function LedgersPage() {
                   <TableBody>
                     {customGroups.map((g) => (
                       <TableRow key={g.id} hover>
-                        <TableCell sx={{ fontWeight: 500 }}>{g.name}</TableCell>
-                        <TableCell><Chip label={GROUP_LABELS[g.parentGroup] ?? g.parentGroup} size="small" variant="outlined" /></TableCell>
-                        <TableCell align="right">
+                        <TableCell sx={{ fontWeight: 500 }} data-label="Group Name">{g.name}</TableCell>
+                        <TableCell data-label="Under (Parent Group)"><Chip label={GROUP_LABELS[g.parentGroup] ?? g.parentGroup} size="small" variant="outlined" /></TableCell>
+                        <TableCell align="right" data-label="Actions">
                           <IconButton size="small" color="primary" onClick={() => { setEditingGroup(g); setGroupForm({ name: g.name, parentGroup: g.parentGroup }); setGroupError(''); setGroupDialogOpen(true); }}>
                             <EditIcon fontSize="small" />
                           </IconButton>
@@ -539,6 +543,7 @@ export default function LedgersPage() {
                   </TableBody>
                 </Table>
               </TableContainer>
+              </ResponsiveTable>
             </Card>
           )}
         </Box>
@@ -630,6 +635,7 @@ export default function LedgersPage() {
                   </Stack>
                 </AccordionSummary>
                 <AccordionDetails sx={{ p: 0 }}>
+                  <ResponsiveTable>
                   <TableContainer>
                     <Table size="small">
                       <TableHead>
@@ -672,6 +678,7 @@ export default function LedgersPage() {
                       </TableBody>
                     </Table>
                   </TableContainer>
+                  </ResponsiveTable>
                 </AccordionDetails>
               </Accordion>
             );
@@ -778,6 +785,7 @@ export default function LedgersPage() {
                 </Card>
               </Box>
 
+              <ResponsiveTable>
               <TableContainer component={Card} variant="outlined">
                 <Table size="small">
                   <TableHead>
@@ -794,7 +802,7 @@ export default function LedgersPage() {
                   <TableBody>
                     <TableRow>
                       <TableCell colSpan={6} sx={{ fontWeight: 600, color: 'text.secondary' }}>Opening Balance</TableCell>
-                      <TableCell align="right" sx={{ fontWeight: 600 }}>
+                      <TableCell align="right" sx={{ fontWeight: 600 }} data-label="Balance">
                         {formatCurrency(Math.abs(statementData.openingBalance))}
                         {statementData.openingBalance !== 0 && (statementData.ledger.isDebitNature ? (statementData.openingBalance >= 0 ? ' Dr' : ' Cr') : (statementData.openingBalance >= 0 ? ' Dr' : ' Cr'))}
                       </TableCell>
@@ -808,13 +816,13 @@ export default function LedgersPage() {
                     ) : (
                       statementData.data.map((entry: any) => (
                         <TableRow key={entry.id} hover>
-                          <TableCell>{formatDate(entry.voucherDate)}</TableCell>
-                          <TableCell sx={{ fontWeight: 600 }}>{entry.voucherNumber}</TableCell>
-                          <TableCell><Chip label={entry.voucherType.replace(/_/g, ' ')} size="small" variant="outlined" /></TableCell>
-                          <TableCell>{entry.description ?? '—'}</TableCell>
-                          <TableCell align="right" sx={{ color: 'error.main' }}>{entry.debit > 0 ? formatCurrency(entry.debit) : '—'}</TableCell>
-                          <TableCell align="right" sx={{ color: 'success.main' }}>{entry.credit > 0 ? formatCurrency(entry.credit) : '—'}</TableCell>
-                          <TableCell align="right" sx={{ fontWeight: 600 }}>
+                          <TableCell data-label="Date">{formatDate(entry.voucherDate)}</TableCell>
+                          <TableCell sx={{ fontWeight: 600 }} data-label="Voucher">{entry.voucherNumber}</TableCell>
+                          <TableCell data-label="Type"><Chip label={entry.voucherType.replace(/_/g, ' ')} size="small" variant="outlined" /></TableCell>
+                          <TableCell data-label="Description">{entry.description ?? '—'}</TableCell>
+                          <TableCell align="right" sx={{ color: 'error.main' }} data-label="Debit">{entry.debit > 0 ? formatCurrency(entry.debit) : '—'}</TableCell>
+                          <TableCell align="right" sx={{ color: 'success.main' }} data-label="Credit">{entry.credit > 0 ? formatCurrency(entry.credit) : '—'}</TableCell>
+                          <TableCell align="right" sx={{ fontWeight: 600 }} data-label="Balance">
                             {formatCurrency(Math.abs(entry.balance))}
                             {entry.balance !== 0 && (statementData.ledger.isDebitNature ? (entry.balance >= 0 ? ' Dr' : ' Cr') : (entry.balance >= 0 ? ' Dr' : ' Cr'))}
                           </TableCell>
@@ -824,6 +832,7 @@ export default function LedgersPage() {
                   </TableBody>
                 </Table>
               </TableContainer>
+              </ResponsiveTable>
             </>
           ) : (
             <Typography color="text.secondary">No data</Typography>

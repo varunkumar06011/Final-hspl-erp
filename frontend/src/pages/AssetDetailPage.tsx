@@ -28,6 +28,7 @@ import {
   InputAdornment,
 } from '@mui/material';
 import ResponsiveDialog from '../components/ResponsiveDialog';
+import ResponsiveTable from '../components/ResponsiveTable';
 import {
   ArrowBack as ArrowBackIcon,
   Download as DownloadIcon,
@@ -386,6 +387,7 @@ export default function AssetDetailPage() {
 
       {/* Asset list table */}
       <Card sx={{ mb: 2 }}>
+        <ResponsiveTable>
         <TableContainer sx={{ overflowX: 'auto' }}>
           <Table size="small">
             <TableHead>
@@ -483,6 +485,7 @@ export default function AssetDetailPage() {
             </TableBody>
           </Table>
         </TableContainer>
+        </ResponsiveTable>
         <TablePagination
           component="div"
           count={pagination.total}
@@ -530,7 +533,7 @@ export default function AssetDetailPage() {
 
                 {/* Right: Details grid */}
                 <Grid item xs={12} md={8}>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1, flexWrap: 'wrap', gap: 1 }}>
                     <Typography variant="h6">Asset Details</Typography>
                     <Button size="small" startIcon={<EditIcon />} onClick={() => openEdit(selectedAsset)}>Edit Details</Button>
                   </Box>
@@ -616,6 +619,7 @@ export default function AssetDetailPage() {
           {tab === 1 && (
             <CardContent>
               {selectedAsset.movements && selectedAsset.movements.length > 0 ? (
+                <ResponsiveTable>
                 <TableContainer component={Card} variant="outlined">
                   <Table size="small">
                     <TableHead>
@@ -631,17 +635,18 @@ export default function AssetDetailPage() {
                     <TableBody>
                       {selectedAsset.movements.map((m) => (
                         <TableRow key={m.id}>
-                          <TableCell>{formatDate(m.timestamp)}</TableCell>
-                          <TableCell><Chip label={MOVEMENT_LABELS[m.type] ?? m.type} size="small" variant="outlined" /></TableCell>
-                          <TableCell>{m.fromLocation ?? m.fromStatus ?? '—'}</TableCell>
-                          <TableCell>{m.toLocation ?? m.toStatus ?? '—'}</TableCell>
-                          <TableCell>{m.user.name}</TableCell>
-                          <TableCell>{m.reason ?? m.notes ?? '—'}</TableCell>
+                          <TableCell data-label="Date">{formatDate(m.timestamp)}</TableCell>
+                          <TableCell data-label="Type"><Chip label={MOVEMENT_LABELS[m.type] ?? m.type} size="small" variant="outlined" /></TableCell>
+                          <TableCell data-label="From">{m.fromLocation ?? m.fromStatus ?? '—'}</TableCell>
+                          <TableCell data-label="To">{m.toLocation ?? m.toStatus ?? '—'}</TableCell>
+                          <TableCell data-label="By">{m.user.name}</TableCell>
+                          <TableCell data-label="Notes">{m.reason ?? m.notes ?? '—'}</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
                   </Table>
                 </TableContainer>
+                </ResponsiveTable>
               ) : (
                 <Typography color="text.secondary">No movement history.</Typography>
               )}
@@ -652,6 +657,7 @@ export default function AssetDetailPage() {
           {tab === 2 && (
             <CardContent>
               {selectedAsset.maintenances && selectedAsset.maintenances.length > 0 ? (
+                <ResponsiveTable>
                 <TableContainer component={Card} variant="outlined">
                   <Table size="small">
                     <TableHead>
@@ -668,18 +674,19 @@ export default function AssetDetailPage() {
                     <TableBody>
                       {selectedAsset.maintenances.map((m) => (
                         <TableRow key={m.id}>
-                          <TableCell>{formatDate(m.sentAt)}</TableCell>
-                          <TableCell>{m.reason}</TableCell>
-                          <TableCell>{m.maintenanceVendor ?? '—'}</TableCell>
-                          <TableCell>{m.technician ?? '—'}</TableCell>
-                          <TableCell>{m.cost ? `₹${Number(m.cost).toLocaleString('en-IN')}` : '—'}</TableCell>
-                          <TableCell>{m.completedAt ? formatDate(m.completedAt) : <Chip label="Pending" size="small" color="warning" />}</TableCell>
-                          <TableCell>{m.finalCost ? `₹${Number(m.finalCost).toLocaleString('en-IN')}` : '—'}</TableCell>
+                          <TableCell data-label="Sent At">{formatDate(m.sentAt)}</TableCell>
+                          <TableCell data-label="Reason">{m.reason}</TableCell>
+                          <TableCell data-label="Vendor">{m.maintenanceVendor ?? '—'}</TableCell>
+                          <TableCell data-label="Technician">{m.technician ?? '—'}</TableCell>
+                          <TableCell data-label="Cost">{m.cost ? `₹${Number(m.cost).toLocaleString('en-IN')}` : '—'}</TableCell>
+                          <TableCell data-label="Completed">{m.completedAt ? formatDate(m.completedAt) : <Chip label="Pending" size="small" color="warning" />}</TableCell>
+                          <TableCell data-label="Final Cost">{m.finalCost ? `₹${Number(m.finalCost).toLocaleString('en-IN')}` : '—'}</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
                   </Table>
                 </TableContainer>
+                </ResponsiveTable>
               ) : (
                 <Typography color="text.secondary">No maintenance records.</Typography>
               )}
@@ -690,6 +697,7 @@ export default function AssetDetailPage() {
           {tab === 3 && (
             <CardContent>
               {selectedAsset.scans && selectedAsset.scans.length > 0 ? (
+                <ResponsiveTable>
                 <TableContainer component={Card} variant="outlined">
                   <Table size="small">
                     <TableHead>
@@ -702,14 +710,15 @@ export default function AssetDetailPage() {
                     <TableBody>
                       {selectedAsset.scans.map((s) => (
                         <TableRow key={s.id}>
-                          <TableCell>{formatDate(s.timestamp)}</TableCell>
-                          <TableCell>{s.location ?? '—'}</TableCell>
-                          <TableCell>{s.user?.name ?? 'Anonymous'}</TableCell>
+                          <TableCell data-label="Timestamp">{formatDate(s.timestamp)}</TableCell>
+                          <TableCell data-label="Location">{s.location ?? '—'}</TableCell>
+                          <TableCell data-label="User">{s.user?.name ?? 'Anonymous'}</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
                   </Table>
                 </TableContainer>
+                </ResponsiveTable>
               ) : (
                 <Typography color="text.secondary">No scan history.</Typography>
               )}

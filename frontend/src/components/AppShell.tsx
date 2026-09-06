@@ -330,17 +330,17 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           <Typography
             variant="h6"
             component="div"
-            sx={{ flexGrow: 1, fontSize: { xs: '1rem', sm: '1.25rem' } }}
+            sx={{ flexGrow: 1, fontSize: { xs: '1rem', sm: '1.25rem' }, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
           >
             Hospital Construction ERP
           </Typography>
-          <IconButton color="inherit" onClick={() => setNlQueryOpen(true)} title="Ask ERP (Ctrl+J)" size="large">
+          <IconButton color="inherit" onClick={() => setNlQueryOpen(true)} title="Ask ERP (Ctrl+J)" sx={{ display: { xs: 'none', sm: 'inline-flex' } }}>
             <AutoAwesomeIcon />
           </IconButton>
-          <IconButton color="inherit" onClick={toggleColorMode} title={mode === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'} size="large">
+          <IconButton color="inherit" onClick={toggleColorMode} title={mode === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}>
             {mode === 'dark' ? <LightModeIcon /> : <DarkModeIcon />}
           </IconButton>
-          <IconButton color="inherit" onClick={() => setSearchOpen(true)} title="Search (Ctrl+K)" size="large">
+          <IconButton color="inherit" onClick={() => setSearchOpen(true)} title="Search (Ctrl+K)">
             <SearchIcon />
           </IconButton>
           <IconButton color="inherit" size="large" sx={{ display: { xs: 'none', sm: 'inline-flex' } }}>

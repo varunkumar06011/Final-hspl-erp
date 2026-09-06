@@ -23,6 +23,7 @@ import { Add as AddIcon, FactCheck as InspectIcon, Inventory as PostIcon, Visibi
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import ResponsiveDialog from '../components/ResponsiveDialog';
+import ResponsiveTable from '../components/ResponsiveTable';
 import AttachmentUpload from '../components/AttachmentUpload';
 import api, { extractErrorMessage } from '../config/api';
 import { GoodsReceiptStatus, InventoryItemType } from '@hospital-erp/shared';
@@ -188,6 +189,7 @@ function GRNDetailDialog({ id, open, onClose }: { id: string | null; open: boole
             {/* Items */}
             <Box>
               <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>Receipt Items</Typography>
+              <ResponsiveTable>
               <TableContainer component={Card} variant="outlined" sx={{ overflowX: 'auto' }}>
                 <Table size="small">
                   <TableHead>
@@ -203,23 +205,25 @@ function GRNDetailDialog({ id, open, onClose }: { id: string | null; open: boole
                   <TableBody>
                     {data.items.map((item) => (
                       <TableRow key={item.id}>
-                        <TableCell>{item.materialName}</TableCell>
-                        <TableCell>{item.deliveredQty}</TableCell>
-                        <TableCell sx={{ color: 'success.main' }}>{item.acceptedQty}</TableCell>
-                        <TableCell sx={{ color: item.rejectedQty > 0 ? 'error.main' : 'text.secondary' }}>{item.rejectedQty}</TableCell>
-                        <TableCell>{item.rejectionReason ?? '—'}</TableCell>
-                        <TableCell><Chip size="small" label={statusLabel(item.itemType)} /></TableCell>
+                        <TableCell data-label="Material">{item.materialName}</TableCell>
+                        <TableCell data-label="Delivered">{item.deliveredQty}</TableCell>
+                        <TableCell data-label="Accepted" sx={{ color: 'success.main' }}>{item.acceptedQty}</TableCell>
+                        <TableCell data-label="Rejected" sx={{ color: item.rejectedQty > 0 ? 'error.main' : 'text.secondary' }}>{item.rejectedQty}</TableCell>
+                        <TableCell data-label="Reason">{item.rejectionReason ?? '—'}</TableCell>
+                        <TableCell data-label="Type"><Chip size="small" label={statusLabel(item.itemType)} /></TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
                 </Table>
               </TableContainer>
+              </ResponsiveTable>
             </Box>
 
             {/* Assets */}
             {data.assets.length > 0 && (
               <Box>
                 <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>Assets Generated ({data.assets.length})</Typography>
+                <ResponsiveTable>
                 <TableContainer component={Card} variant="outlined" sx={{ overflowX: 'auto' }}>
                   <Table size="small">
                     <TableHead>
@@ -235,17 +239,18 @@ function GRNDetailDialog({ id, open, onClose }: { id: string | null; open: boole
                     <TableBody>
                       {data.assets.map((asset) => (
                         <TableRow key={asset.id} hover sx={{ cursor: 'pointer' }} onClick={() => navigate(`/scan/${asset.assetId}`)}>
-                          <TableCell><strong>{asset.assetId}</strong></TableCell>
-                          <TableCell>{asset.inventoryItem.name}</TableCell>
-                          <TableCell>{asset.serialNumber ?? '—'}</TableCell>
-                          <TableCell><Chip size="small" label={statusLabel(asset.status)} color={(STATUS_COLORS[asset.status] ?? 'default') as never} /></TableCell>
-                          <TableCell>{asset.location}</TableCell>
-                          <TableCell>{money(asset.totalCost)}</TableCell>
+                          <TableCell data-label="Asset ID"><strong>{asset.assetId}</strong></TableCell>
+                          <TableCell data-label="Item">{asset.inventoryItem.name}</TableCell>
+                          <TableCell data-label="Serial">{asset.serialNumber ?? '—'}</TableCell>
+                          <TableCell data-label="Status"><Chip size="small" label={statusLabel(asset.status)} color={(STATUS_COLORS[asset.status] ?? 'default') as never} /></TableCell>
+                          <TableCell data-label="Location">{asset.location}</TableCell>
+                          <TableCell data-label="Cost">{money(asset.totalCost)}</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
                   </Table>
                 </TableContainer>
+                </ResponsiveTable>
               </Box>
             )}
           </Box>
@@ -380,14 +385,15 @@ export default function GoodsReceiptsPage() {
 
   return (
     <Box>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-        <Typography variant="h5" fontWeight={600}>Goods Receipts</Typography>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap', gap: 1 }}>
+        <Typography variant="h5" fontWeight={600} sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' } }}>Goods Receipts</Typography>
         <Button variant="contained" startIcon={<AddIcon />} onClick={() => { setError(''); setCreateOpen(true); }}>
           New Receipt
         </Button>
       </Box>
       {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
       <Card>
+        <ResponsiveTable>
         <TableContainer sx={{ overflowX: 'auto' }}>
           <Table size="small">
             <TableHead><TableRow>
@@ -403,23 +409,23 @@ export default function GoodsReceiptsPage() {
                 const types = new Set(receipt.items.map((i) => i.itemType || 'CONSUMABLE'));
                 return (
                 <TableRow key={receipt.id} hover>
-                  <TableCell>{receipt.receiptNumber}</TableCell>
-                  <TableCell>{receipt.purchaseOrder.poNumber}</TableCell>
-                  <TableCell>{receipt.gatePass.passNumber}</TableCell>
-                  <TableCell>{receipt.purchaseOrder.vendor.name}</TableCell>
-                  <TableCell>
+                  <TableCell data-label="Receipt">{receipt.receiptNumber}</TableCell>
+                  <TableCell data-label="PO">{receipt.purchaseOrder.poNumber}</TableCell>
+                  <TableCell data-label="Gatepass">{receipt.gatePass.passNumber}</TableCell>
+                  <TableCell data-label="Vendor">{receipt.purchaseOrder.vendor.name}</TableCell>
+                  <TableCell data-label="Budget Head">
                     {receipt.purchaseOrder.budgetHead
                       ? <Chip size="small" variant="outlined" color="primary" label={receipt.purchaseOrder.budgetHead.particulars} />
                       : <Typography variant="caption" color="text.secondary">—</Typography>}
                   </TableCell>
-                  <TableCell>
+                  <TableCell data-label="Item Types">
                     <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
                       {types.has('ASSET') && <Chip size="small" label="Asset" color="secondary" variant="outlined" />}
                       {types.has('CONSUMABLE') && <Chip size="small" label="Consumable" color="primary" variant="outlined" />}
                     </Box>
                   </TableCell>
-                  <TableCell><Chip size="small" label={receipt.status.replace(/_/g, ' ')} /></TableCell>
-                  <TableCell>
+                  <TableCell data-label="Status"><Chip size="small" label={receipt.status.replace(/_/g, ' ')} /></TableCell>
+                  <TableCell data-label="Actions">
                     <Button size="small" startIcon={<ViewIcon />} onClick={() => setDetailId(receipt.id)}>Details</Button>
                     {receipt.status === GoodsReceiptStatus.PENDING_INSPECTION && (
                       <Button size="small" startIcon={<InspectIcon />} onClick={() => openInspection(receipt)}>Inspect</Button>
@@ -439,6 +445,7 @@ export default function GoodsReceiptsPage() {
             </TableBody>
           </Table>
         </TableContainer>
+        </ResponsiveTable>
       </Card>
 
       <ResponsiveDialog open={createOpen} onClose={() => setCreateOpen(false)} maxWidth="md" fullWidth>
@@ -455,6 +462,7 @@ export default function GoodsReceiptsPage() {
             <Typography variant="body2" fontWeight={600} sx={{ mb: 1 }}>
               Enter the actual quantity delivered for each item:
             </Typography>
+            <ResponsiveTable>
             <TableContainer component={Card} variant="outlined" sx={{ overflowX: 'auto' }}>
               <Table size="small">
                 <TableHead>
@@ -468,9 +476,9 @@ export default function GoodsReceiptsPage() {
                 <TableBody>
                   {selectedGatepass.purchaseOrder.items.map((item) => (
                     <TableRow key={item.id}>
-                      <TableCell>{item.materialName}</TableCell>
-                      <TableCell>{Number(item.quantity)}</TableCell>
-                      <TableCell>
+                      <TableCell data-label="Material">{item.materialName}</TableCell>
+                      <TableCell data-label="Expected">{Number(item.quantity)}</TableCell>
+                      <TableCell data-label="Delivered">
                         <TextField
                           type="number"
                           size="small"
@@ -481,12 +489,13 @@ export default function GoodsReceiptsPage() {
                           placeholder="0"
                         />
                       </TableCell>
-                      <TableCell>{item.unit ?? '—'}</TableCell>
+                      <TableCell data-label="Unit">{item.unit ?? '—'}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
               </Table>
             </TableContainer>
+            </ResponsiveTable>
             <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
               Expected = quantity from the purchase order. Delivered = actual quantity that arrived. If less than expected, the PO will be marked as partially delivered.
             </Typography>

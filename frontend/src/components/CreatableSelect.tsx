@@ -163,7 +163,7 @@ export default function CreatableSelect({
       renderOption={(props, option) => {
         const isCreateOption = option.label.startsWith('Create "');
         return (
-          <li {...props} style={{ fontWeight: isCreateOption ? 600 : 400, whiteSpace: 'normal', wordBreak: 'break-word' }}>
+          <li {...props} style={{ fontWeight: isCreateOption ? 600 : 400, whiteSpace: 'normal', overflowWrap: 'break-word' }}>
             {isCreateOption ? (
               <span style={{ color: '#1976d2' }}>{option.label}</span>
             ) : (

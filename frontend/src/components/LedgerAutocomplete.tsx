@@ -241,7 +241,7 @@ export default function LedgerAutocomplete({
         renderOption={(props, option) => {
           const isCreateOption = option.id.startsWith('__create__');
           return (
-            <li {...props} style={{ fontWeight: isCreateOption ? 600 : 400, whiteSpace: 'normal', wordBreak: 'break-word' }}>
+            <li {...props} style={{ fontWeight: isCreateOption ? 600 : 400, whiteSpace: 'normal', overflowWrap: 'break-word' }}>
               {isCreateOption ? (
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, color: 'primary.main' }}>
                   <AddIcon fontSize="small" />

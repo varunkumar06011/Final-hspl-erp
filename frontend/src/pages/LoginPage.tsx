@@ -20,6 +20,7 @@ import { useNavigate, Navigate } from 'react-router-dom';
 import { auth, isConfigured } from '../config/firebase';
 import api, { extractErrorMessage } from '../config/api';
 import { useAuthStore } from '../stores/authStore';
+import loginBg from '../image.png';
 
 // ── Animations ──────────────────────────────────────────────
 const fadeInUp = keyframes`
@@ -297,10 +298,21 @@ export default function LoginPage() {
         minHeight: '100vh',
         display: 'flex',
         alignItems: 'center',
-        justifyContent: 'center',
-        // Premium dark gradient — deep navy to blue
-        background: 'linear-gradient(160deg, #0a1929 0%, #0d2847 40%, #0a1929 100%)',
+        justifyContent: { xs: 'center', md: 'flex-end' },
+        // Dark navy fallback (fills empty space when image is 'contain' on mobile)
+        backgroundColor: '#0a1929',
+        // Premium dark gradient — deep navy to blue (over the background image)
+        // Mobile: uniform dark overlay so the centered card stays readable while the full image shows
+        // Desktop: lighter on the left so the image/face stays clear; darker on the right behind the card
+        backgroundImage: {
+          xs: `linear-gradient(180deg, rgba(10, 25, 41, 0.75) 0%, rgba(10, 25, 41, 0.82) 100%), url(${loginBg})`,
+          md: `linear-gradient(90deg, rgba(10, 25, 41, 0.25) 0%, rgba(10, 25, 41, 0.45) 45%, rgba(10, 25, 41, 0.82) 70%, rgba(10, 25, 41, 0.92) 100%), url(${loginBg})`,
+        },
+        backgroundSize: { xs: 'contain', md: 'cover' },
+        backgroundPosition: { xs: 'center', md: 'left center' },
+        backgroundRepeat: 'no-repeat',
         p: 2,
+        pr: { xs: 2, md: 6 },
         position: 'relative',
         overflow: 'hidden',
       }}
@@ -336,20 +348,21 @@ export default function LoginPage() {
       {/* Frosted glass login card */}
       <Card
         sx={{
-          maxWidth: 420,
+          maxWidth: { xs: '100%', sm: 420 },
           width: '100%',
+          mx: { xs: 1, sm: 2 },
           // Frosted glass — 70% opaque so blobs tint through subtly
           background: 'rgba(255, 255, 255, 0.7)',
           backdropFilter: 'blur(30px) saturate(150%)',
           WebkitBackdropFilter: 'blur(30px) saturate(150%)',
           border: '1px solid rgba(255, 255, 255, 0.5)',
-          borderRadius: '24px',
+          borderRadius: { xs: '20px', sm: '24px' },
           boxShadow: '0 8px 32px rgba(0, 0, 0, 0.25), inset 0 1px 1px rgba(255, 255, 255, 0.5)',
           position: 'relative',
           zIndex: 1,
         }}
       >
-        <CardContent sx={{ p: 4 }}>
+        <CardContent sx={{ p: { xs: 3, sm: 4 } }}>
           {/* Logo + title */}
           <Box sx={{ textAlign: 'center', mb: 3, animation: fadeAnim }}>
             <Box
@@ -357,14 +370,14 @@ export default function LoginPage() {
               src={logoUrl || '/favicon-192.png'}
               alt="Logo"
               sx={{
-                width: 64,
-                height: 64,
+                width: { xs: 56, sm: 64 },
+                height: { xs: 56, sm: 64 },
                 borderRadius: '14px',
                 mb: 2,
                 objectFit: 'contain',
               }}
             />
-            <Typography variant="h5" align="center" gutterBottom fontWeight={700} sx={{ color: '#0a1929', letterSpacing: '-0.5px' }}>
+            <Typography variant="h6" align="center" gutterBottom fontWeight={700} sx={{ color: '#0a1929', letterSpacing: '-0.5px', fontSize: { xs: '1.15rem', sm: '1.5rem' } }}>
               Hospital Construction ERP
             </Typography>
             <Typography variant="body2" align="center" sx={{ color: 'rgba(10, 25, 41, 0.6)' }}>
@@ -445,17 +458,57 @@ export default function LoginPage() {
               <TextField
                 fullWidth
                 label="Phone Number"
-                placeholder="9381872579"
+                placeholder="9876543210"
                 value={phone}
                 onChange={(e) => {
                   const digits = e.target.value.replace(/\D/g, '').slice(0, 10);
                   setPhone(digits);
                 }}
+                inputProps={{ inputMode: 'numeric', pattern: '[0-9]*', maxLength: 10 }}
                 InputProps={{
-                  startAdornment: <InputAdornment position="start">+91</InputAdornment>,
+                  startAdornment: (
+                    <InputAdornment position="start" sx={{ mr: 0 }}>
+                      <Box
+                        sx={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          py: 1.25,
+                          pl: 0.5,
+                          pr: 1,
+                          mr: 0.5,
+                          color: '#0a1929',
+                          fontWeight: 600,
+                          fontSize: '0.95rem',
+                          borderRight: '1px solid rgba(10, 25, 41, 0.15)',
+                          whiteSpace: 'nowrap',
+                          flexShrink: 0,
+                        }}
+                      >
+                        +91
+                      </Box>
+                    </InputAdornment>
+                  ),
                 }}
-                sx={glassInputSx}
+                sx={[
+                  glassInputSx,
+                  {
+                    '& .MuiOutlinedInput-root': {
+                      paddingLeft: 0,
+                      minHeight: 56,
+                      '& input': {
+                        color: '#0a1929',
+                        fontSize: '1.05rem',
+                        letterSpacing: '0.02em',
+                        paddingTop: 1.5,
+                        paddingBottom: 1.5,
+                      },
+                    },
+                  },
+                ]}
               />
+              <Typography variant="caption" sx={{ display: 'block', mt: -1.5, mb: 2, color: 'rgba(10, 25, 41, 0.5)', fontSize: '0.72rem' }}>
+                We'll send a verification code to this number.
+              </Typography>
               <Button
                 fullWidth
                 variant="contained"

@@ -216,7 +216,7 @@ function PaymentHistoryAccordion({ invoiceId, invoiceCode, vendorName }: { invoi
                 <Typography color="text.secondary" sx={{ py: 2, textAlign: 'center' }}>No payments recorded yet</Typography>
               ) : data.ledger.map((entry, idx) => (
                 <Card key={idx} variant="outlined" sx={{ p: 1.5 }}>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1, flexWrap: 'wrap', gap: 1 }}>
                     <Typography variant="subtitle2" fontWeight={700}>{entry.type}</Typography>
                     <Chip label={entry.status} size="small" color={entry.status === 'PAID' ? 'success' : entry.status === 'REJECTED' ? 'error' : 'default'} />
                   </Box>

@@ -772,7 +772,7 @@ export default function PurchaseOrdersPage() {
                           {formatCurrency(item.amount)}
                         </Typography>
                       </Box>
-                      <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 1 }}>
+                      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'repeat(2, 1fr)', sm: 'repeat(4, minmax(0, 1fr))' }, gap: 1 }}>
                         <Box>
                           <Typography variant="caption" color="text.secondary">Quantity</Typography>
                           <Typography variant="body2" fontWeight={600}>{item.quantity}</Typography>
