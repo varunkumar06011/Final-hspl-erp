@@ -119,7 +119,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const [nlQueryOpen, setNlQueryOpen] = useState(false);
   const { mode, toggle: toggleColorMode } = useColorMode();
   useTrackPageView();
-  // Auto-logout after 15 min of inactivity (cross-tab aware).
+  // Auto-logout disabled — user stays logged in until manual logout.
   useIdleTimeout();
 
   // Cmd+K / Ctrl+K opens global search, Cmd+J / Ctrl+J opens NL query

@@ -23,14 +23,9 @@ api.interceptors.request.use(
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    // Only logout on 401 (invalid/expired token), not 403 (insufficient permissions)
-    if (error.response?.status === 401) {
-      localStorage.removeItem('firebaseToken');
-      localStorage.removeItem('user');
-      if (window.location.pathname !== '/login') {
-        window.location.href = '/login';
-      }
-    }
+    // Auto-logout is completely disabled per user request.
+    // The user stays logged in until they manually click Logout.
+    // 401 errors are surfaced to the calling component for handling.
 
     if (error.code === 'ECONNABORTED') {
       error.message = 'Request timed out. Please try again.';
