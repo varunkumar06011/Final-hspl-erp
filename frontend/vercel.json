@@ -4,6 +4,8 @@
     { "source": "/manifest.webmanifest", "destination": "/manifest.webmanifest" },
     { "source": "/icon.svg", "destination": "/icon.svg" },
     { "source": "/icon-maskable.svg", "destination": "/icon-maskable.svg" },
-    { "source": "/((?!firebase-messaging-sw.js|manifest.webmanifest|icon.svg|icon-maskable.svg).*)", "destination": "/index.html" }
+    { "source": "/api/:path*", "destination": "https://hospital-erp-backend.onrender.com/api/:path*" },
+    { "source": "/health", "destination": "https://hospital-erp-backend.onrender.com/health" },
+    { "source": "/((?!api|health|firebase-messaging-sw.js|manifest.webmanifest|icon.svg|icon-maskable.svg).*)", "destination": "/index.html" }
   ]
 }
