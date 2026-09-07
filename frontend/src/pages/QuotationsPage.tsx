@@ -147,6 +147,26 @@ export default function QuotationsPage() {
     },
   });
 
+  // ── Approval aging data (additive) — fetched separately to color rows ──
+  // Based on ApprovalWorkflow.createdAt (when approval was requested), not
+  // Quotation.createdAt. Does not modify any existing quotation logic.
+  // Note: overdue push notifications are sent by the backend scheduler
+  // (scheduler.service.ts), NOT by this frontend. This query is read-only
+  // and only used for display (row colors + aging labels).
+  const { data: agingData } = useQuery({
+    queryKey: ['/quotations/approval-aging'],
+    queryFn: async () => {
+      const response = await api.get('/quotations/approval-aging');
+      return response.data;
+    },
+    refetchInterval: 60000, // refresh every 60s so aging stays current
+  });
+
+  // Build a lookup map: quotationId → aging info
+  const agingMap = new Map<string, { agingStatus: string; agingLabel: string }>(
+    (agingData?.data ?? []).map((a: { id: string; agingStatus: string; agingLabel: string }) => [a.id, { agingStatus: a.agingStatus, agingLabel: a.agingLabel }])
+  );
+
   const { data: vendorsData } = useQuery({
     queryKey: ['/vendors', 'for-quotation'],
     queryFn: async () => {
@@ -561,9 +581,40 @@ export default function QuotationsPage() {
               ) : (
                 rows.map((row) => {
                   const pendingStep = canApprove(row);
+                  const aging = agingMap.get(row.id);
+                  const agingStatus = aging?.agingStatus ?? 'NORMAL';
+                  const agingLabel = aging?.agingLabel ?? '';
+
+                  // Aging-based row background colors (additive — only applies
+                  // to pending quotations, doesn't change approved/rejected rows)
+                  const rowBg =
+                    agingStatus === 'OVERDUE' ? '#ffebee' :       // red
+                    agingStatus === 'ATTENTION' ? '#fff3e0' :     // light red/orange
+                    highlightId === row.id ? 'warning.light' :    // existing highlight
+                    'inherit';
+
                   return (
-                    <TableRow key={row.id} hover ref={rowRef(row.id)} sx={{ ...(highlightId === row.id && { bgcolor: 'warning.light', '&:hover': { bgcolor: 'warning.light' } }) }}>
-                      <TableCell data-label="Quotation No">{row.quotationNumber}</TableCell>
+                    <TableRow
+                      key={row.id}
+                      hover
+                      ref={rowRef(row.id)}
+                      sx={{
+                        bgcolor: rowBg,
+                        '&:hover': { bgcolor: rowBg === 'inherit' ? undefined : rowBg },
+                        ...(highlightId === row.id && rowBg === 'inherit' && { bgcolor: 'warning.light', '&:hover': { bgcolor: 'warning.light' } }),
+                      }}
+                    >
+                      <TableCell data-label="Quotation No">
+                        {row.quotationNumber}
+                        {agingLabel && (
+                          <Typography variant="caption" display="block" sx={{
+                            color: agingStatus === 'OVERDUE' ? 'error.main' : agingStatus === 'ATTENTION' ? 'warning.dark' : 'text.secondary',
+                            fontWeight: agingStatus === 'OVERDUE' ? 700 : 500,
+                          }}>
+                            {agingLabel}
+                          </Typography>
+                        )}
+                      </TableCell>
                       <TableCell data-label="Vendor">{row.vendor?.vendorCode} - {row.vendor?.name ?? '—'}</TableCell>
                       <TableCell data-label="Quotation Date">{formatDate(row.date)}</TableCell>
                       <TableCell data-label="Generated On"><Typography variant="caption" color="text.secondary">{formatDate(row.createdAt)}</Typography></TableCell>
@@ -571,7 +622,19 @@ export default function QuotationsPage() {
                       <TableCell data-label="GST">{formatCurrency(row.gstAmount)}</TableCell>
                       <TableCell data-label="Grand Total">{formatCurrency(row.grandTotal)}</TableCell>
                       <TableCell data-label="Created By">{row.createdByUser?.name ?? '—'}</TableCell>
-                      <TableCell data-label="Status"><Chip label={row.status.replace(/_/g, ' ')} size="small" color={STATUS_COLORS[row.status] ?? 'default'} /></TableCell>
+                      <TableCell data-label="Status">
+                        <Chip
+                          label={row.status.replace(/_/g, ' ')}
+                          size="small"
+                          color={
+                            agingStatus === 'OVERDUE' ? 'error' :
+                            agingStatus === 'ATTENTION' ? 'warning' :
+                            agingStatus === 'APPROVED' ? 'success' :
+                            agingStatus === 'REJECTED' ? 'default' :
+                            STATUS_COLORS[row.status] ?? 'default'
+                          }
+                        />
+                      </TableCell>
                       <TableCell data-label="File">
                         {row.filePath ? (
                           <IconButton size="small" onClick={() => handleDownload(row.id, row.fileName ?? 'quotation')}><DownloadIcon fontSize="small" /></IconButton>

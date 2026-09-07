@@ -1,17 +1,25 @@
 import { useState } from 'react';
-import { Box, Card, CardContent, Typography, Skeleton, Alert, Chip } from '@mui/material';
+import { Box, Card, CardContent, Typography, Skeleton, Alert, Chip, useMediaQuery, useTheme } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
+import { UserRole } from '@hospital-erp/shared';
 import api from '../config/api';
 import { formatCurrency } from '../utils/enumOptions';
 import { AnimatedNumber } from '../components/AnimatedNumber';
 import MoneyFlowSankey from '../components/MoneyFlowSankey';
 import GanttChart from '../components/GanttChart';
 import PendingItemsDialog from '../components/PendingItemsDialog';
+import RateTrackerWidget from '../components/RateTrackerWidget';
+import AmountUsedTodayWidget from '../components/AmountUsedTodayWidget';
+import DocumentSummaryCard from '../components/DocumentSummaryCard';
+import FinanceSummaryCard from '../components/FinanceSummaryCard';
 import { useAuthStore } from '../stores/authStore';
 
 type PendingType = 'payments' | 'quotations' | 'pos' | 'invoices';
 
 export default function DashboardPage() {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+
   const { data: summary, isLoading, isError } = useQuery({
     queryKey: ['/dashboard/summary'],
     queryFn: async () => {
@@ -22,6 +30,15 @@ export default function DashboardPage() {
 
   const user = useAuthStore((s) => s.user);
   const [pendingDialog, setPendingDialog] = useState<PendingType | null>(null);
+
+  // Rate Tracker widget is admin-only (per roadmap: visible in admin dashboard).
+  const isAdmin = user?.role === UserRole.ADMIN || user?.role === UserRole.ADMIN_2;
+
+  // Amount Used Today widget — visible to admin + accountant roles only.
+  const canSeeTodaySpend =
+    user?.role === UserRole.ADMIN ||
+    user?.role === UserRole.ADMIN_2 ||
+    user?.role === UserRole.ACCOUNTANT;
 
   return (
     <Box>
@@ -118,6 +135,36 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
       </Box>
+
+      {/* Finance Dashboard + Document Summary — side by side on desktop,
+          compact small cards on mobile (like pending PO card style). */}
+      <Box
+        sx={{
+          mb: 3,
+          display: 'grid',
+          gridTemplateColumns: { xs: '1fr 1fr', sm: '1fr 1fr' },
+          gap: 2,
+        }}
+      >
+        <FinanceSummaryCard compact={isMobile} />
+        <DocumentSummaryCard compact={isMobile} />
+      </Box>
+
+      {/* Amount Used Today — admin + accountant only. Shows total of all PAID
+          payments made today (no carry-forward). Read-only, no data changes. */}
+      {canSeeTodaySpend && (
+        <Box sx={{ mb: 3 }}>
+          <AmountUsedTodayWidget />
+        </Box>
+      )}
+
+      {/* Material Rate Tracker — admin only. Shows previous vs latest cost per
+          material pulled from Quotations & POs. Read-only, no data changes. */}
+      {isAdmin && (
+        <Box sx={{ mb: 3 }}>
+          <RateTrackerWidget />
+        </Box>
+      )}
 
       {/* Money Flow Sankey */}
       {!isLoading && summary && (

@@ -250,3 +250,47 @@ export async function notifyApprovers(
     url: payload.url,
   });
 }
+
+// ─── Notify all admin users (ADMIN + ADMIN_2) ─────────────
+// Used by the warranty-expiring auto-notification feature.
+// Sends a push to every active admin regardless of which project
+// they're assigned to (admins oversee all projects).
+
+export async function notifyAdmins(
+  payload: NotificationPayload
+): Promise<{ notifiedCount: number; deviceCount: number }> {
+  const admins = await prisma.user.findMany({
+    where: {
+      isActive: true,
+      role: { in: [UserRole.ADMIN, UserRole.ADMIN_2] },
+    },
+    select: { id: true },
+  });
+
+  if (admins.length === 0) {
+    console.log('[Push] No admin users found to notify');
+    return { notifiedCount: 0, deviceCount: 0 };
+  }
+
+  const tokens = await getTokensForUsers(admins.map((a) => a.id), 'entity_created');
+
+  if (tokens.length === 0) {
+    console.log(`[Push] No push subscriptions for ${admins.length} admin(s)`);
+    return { notifiedCount: admins.length, deviceCount: 0 };
+  }
+
+  console.log(
+    `[Push] Notifying ${admins.length} admin(s) (${tokens.length} devices) — ${payload.entityType}`
+  );
+
+  await sendPushToTokens(tokens, payload.title, payload.body, {
+    type: 'entity_created',
+    entityType: payload.entityType,
+    entityId: payload.entityId,
+    title: payload.title,
+    body: payload.body,
+    url: payload.url,
+  });
+
+  return { notifiedCount: admins.length, deviceCount: tokens.length };
+}

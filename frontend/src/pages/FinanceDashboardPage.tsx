@@ -9,6 +9,14 @@ import {
   CircularProgress,
   Stack,
   Chip,
+  IconButton,
+  Link,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
 } from '@mui/material';
 import {
   AccountBalance as BankIcon,
@@ -17,10 +25,13 @@ import {
   Person as OwnerIcon,
   TrendingUp as UtilizationIcon,
   TrendingDown as UnpaidIcon,
+  Close as CloseIcon,
+  Savings as AllocatedIcon,
 } from '@mui/icons-material';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '../config/api';
 import RefreshButton from '../components/RefreshButton';
+import ResponsiveDialog from '../components/ResponsiveDialog';
 import { formatCurrency } from '../utils/enumOptions';
 
 interface DashboardData {
@@ -70,6 +81,7 @@ interface BudgetReport {
 
 export default function FinanceDashboardPage() {
   const [error, setError] = useState('');
+  const [allocatedModalOpen, setAllocatedModalOpen] = useState(false);
   const queryClient = useQueryClient();
 
   const { data: dashboard, isLoading } = useQuery<DashboardData>({
@@ -159,7 +171,7 @@ export default function FinanceDashboardPage() {
 
       {/* Liquidity Section */}
       <Grid container spacing={2} sx={{ mb: 3 }}>
-        <Grid item xs={12} md={4}>
+        <Grid item xs={12} md={3}>
           <KpiCard
             icon={<BankIcon />}
             label="Bank Balance"
@@ -167,7 +179,7 @@ export default function FinanceDashboardPage() {
             color="info.main"
           />
         </Grid>
-        <Grid item xs={12} md={4}>
+        <Grid item xs={12} md={3}>
           <KpiCard
             icon={<CashIcon />}
             label="Cash Balance"
@@ -175,7 +187,7 @@ export default function FinanceDashboardPage() {
             color="success.main"
           />
         </Grid>
-        <Grid item xs={12} md={4}>
+        <Grid item xs={12} md={3}>
           <KpiCard
             icon={<BudgetIcon />}
             label="Total Liquidity"
@@ -183,6 +195,35 @@ export default function FinanceDashboardPage() {
             sublabel="Bank + Cash"
             color="secondary.main"
           />
+        </Grid>
+        {/* Total Allocated — additive card. Clicking opens a modal showing
+            the same live liquidity values (no page navigation). Reuses the
+            existing /finance-reports/dashboard data — no new API, no
+            duplicated calculation logic. */}
+        <Grid item xs={12} md={3}>
+          <Card
+            onClick={() => setAllocatedModalOpen(true)}
+            sx={{
+              p: 2,
+              height: '100%',
+              cursor: 'pointer',
+              transition: 'box-shadow 0.2s, border-color 0.2s',
+              '&:hover': { boxShadow: 3, borderColor: 'primary.main' },
+            }}
+          >
+            <Stack direction="row" spacing={1.5} alignItems="flex-start">
+              <Box sx={{ color: 'primary.main', mt: 0.5 }}><AllocatedIcon /></Box>
+              <Box sx={{ flex: 1, minWidth: 0 }}>
+                <Typography variant="caption" color="text.secondary">Total Allocated</Typography>
+                <Typography variant="h6" sx={{ color: 'primary.main', fontSize: { xs: '1rem', sm: '1.25rem' }, fontWeight: 600, overflowWrap: 'break-word' }}>
+                  {formatCurrency(d?.budget.totalAllocated ?? 0)}
+                </Typography>
+                <Link component="button" variant="caption" onClick={(e) => { e.stopPropagation(); setAllocatedModalOpen(true); }} sx={{ mt: 0.5, display: 'block' }}>
+                  View Details →
+                </Link>
+              </Box>
+            </Stack>
+          </Card>
         </Grid>
       </Grid>
 
@@ -270,6 +311,122 @@ export default function FinanceDashboardPage() {
           </Box>
         )}
       </Card>
+
+      {/* Total Allocated detail modal — reuses the same live /finance-reports/dashboard
+          values already fetched above. No new API call, no duplicated calculation. */}
+      <ResponsiveDialog
+        open={allocatedModalOpen}
+        onClose={() => setAllocatedModalOpen(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', p: 2, borderBottom: 1, borderColor: 'divider' }}>
+          <Stack direction="row" alignItems="center" spacing={1}>
+            <AllocatedIcon color="primary" />
+            <Box>
+              <Typography variant="h6" fontWeight={600}>Total Allocated</Typography>
+              <Typography variant="caption" color="text.secondary">Financial Details</Typography>
+            </Box>
+          </Stack>
+          <IconButton onClick={() => setAllocatedModalOpen(false)} size="small" aria-label="close">
+            <CloseIcon />
+          </IconButton>
+        </Box>
+        <Box sx={{ p: 3 }}>
+          {/* Headline number */}
+          <Box sx={{ mb: 3 }}>
+            <Typography variant="subtitle2" color="text.secondary">Total Allocated</Typography>
+            <Typography variant="h4" fontWeight={700} color="primary.main">
+              {formatCurrency(d?.budget.totalAllocated ?? 0)}
+            </Typography>
+            <Typography variant="caption" color="text.secondary">
+              {d?.budgetHeadCount ?? 0} budget heads
+            </Typography>
+          </Box>
+
+          {/* Liquidity section */}
+          <Box sx={{ mb: 2.5 }}>
+            <Stack direction="row" alignItems="center" spacing={1}>
+              <BankIcon color="info" fontSize="small" />
+              <Typography variant="subtitle2" fontWeight={600}>Bank Balance</Typography>
+            </Stack>
+            <Typography variant="h6" color="info.main">
+              {formatCurrency(d?.liquidity.bankBalance ?? 0)}
+            </Typography>
+          </Box>
+
+          <Box sx={{ mb: 2.5 }}>
+            <Stack direction="row" alignItems="center" spacing={1}>
+              <CashIcon color="success" fontSize="small" />
+              <Typography variant="subtitle2" fontWeight={600}>Cash Balance</Typography>
+            </Stack>
+            <Typography variant="h6" color="success.main">
+              {formatCurrency(d?.liquidity.cashBalance ?? 0)}
+            </Typography>
+          </Box>
+
+          <Box sx={{ mb: 3 }}>
+            <Stack direction="row" alignItems="center" spacing={1}>
+              <BudgetIcon color="secondary" fontSize="small" />
+              <Typography variant="subtitle2" fontWeight={600}>Total Liquidity</Typography>
+            </Stack>
+            <Typography variant="h6" color="secondary.main">
+              {formatCurrency(d?.liquidity.totalLiquidity ?? 0)}
+            </Typography>
+            <Typography variant="caption" color="text.secondary">Bank + Cash</Typography>
+          </Box>
+
+          {/* Allocation breakdown table */}
+          <Typography variant="subtitle2" fontWeight={600} sx={{ mb: 1 }}>
+            Allocation Breakdown
+          </Typography>
+          <TableContainer component={Card} variant="outlined">
+            <Table size="small">
+              <TableHead>
+                <TableRow sx={{ bgcolor: 'grey.50' }}>
+                  <TableCell sx={{ fontWeight: 600 }}>Allocation</TableCell>
+                  <TableCell align="right" sx={{ fontWeight: 600 }}>Amount</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                <TableRow>
+                  <TableCell>Allocated</TableCell>
+                  <TableCell align="right" sx={{ fontWeight: 600, color: 'primary.main' }}>
+                    {formatCurrency(d?.budget.totalAllocated ?? 0)}
+                  </TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell>Bank</TableCell>
+                  <TableCell align="right" sx={{ color: 'info.main' }}>
+                    {formatCurrency(d?.liquidity.bankBalance ?? 0)}
+                  </TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell>Cash</TableCell>
+                  <TableCell align="right" sx={{ color: 'success.main' }}>
+                    {formatCurrency(d?.liquidity.cashBalance ?? 0)}
+                  </TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell>Actual Spent</TableCell>
+                  <TableCell align="right" sx={{ color: 'warning.main' }}>
+                    {formatCurrency(d?.budget.totalActual ?? 0)}
+                  </TableCell>
+                </TableRow>
+                <TableRow sx={{ bgcolor: 'grey.50' }}>
+                  <TableCell sx={{ fontWeight: 700 }}>Available / Remaining</TableCell>
+                  <TableCell align="right" sx={{ fontWeight: 700, color: (d?.budget.totalAvailable ?? 0) < 0 ? 'error.main' : 'success.main' }}>
+                    {formatCurrency(d?.budget.totalAvailable ?? 0)}
+                  </TableCell>
+                </TableRow>
+              </TableBody>
+            </Table>
+          </TableContainer>
+          <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+            Available / Remaining = Total Allocated − Actual Spent
+          </Typography>
+        </Box>
+      </ResponsiveDialog>
     </Box>
   );
 }

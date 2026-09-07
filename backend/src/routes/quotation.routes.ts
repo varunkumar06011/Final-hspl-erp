@@ -1,5 +1,5 @@
 import { Router, Response, NextFunction } from 'express';
-import { APPROVER_ROLES, Permission, QuotationStatus, AuditAction } from '@hospital-erp/shared';
+import { APPROVER_ROLES, Permission, QuotationStatus, AuditAction, UserRole } from '@hospital-erp/shared';
 import { createQuotationSchema, listQuotationsSchema, approvalActionSchema } from '@hospital-erp/shared';
 import { prisma } from '../config/prisma';
 import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middleware/auth';
@@ -8,6 +8,7 @@ import { validateMiddleware } from '../middleware/validate';
 import { logAudit } from '../services/audit.service';
 import * as approvalService from '../services/approval.service';
 import { getStorageService, serveFile } from '../services/storage.service';
+import { notifyAdmins } from '../services/push.service';
 import {
   createQuotation,
   generateQuotationNumber,
@@ -21,6 +22,225 @@ const allowedQuotationFileTypes = ['application/pdf', 'image/jpeg', 'image/png',
 
 const router = Router();
 router.use(authMiddleware);
+
+// ── Quotation Approval Aging (additive, read-only) ──────────────────
+// Calculates how long each quotation has been waiting for approval, based
+// on ApprovalWorkflow.createdAt (when approval was requested), NOT
+// Quotation.createdAt. Returns aging status + label for color-coding.
+//
+// Aging rules:
+//   < 1 day  → "NORMAL"   (neutral)
+//   ≥ 1 day  → "ATTENTION" (light red)
+//   > 1 day  → "OVERDUE"   (red)
+//   APPROVED → "APPROVED"  (green)
+//   REJECTED → "REJECTED"  (gray)
+router.get(
+  '/approval-aging',
+  rbacMiddleware(Permission.VIEW_FINANCIALS),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+
+      const quotations = await prisma.quotation.findMany({
+        where: {
+          projectId,
+          deletedAt: null,
+          approvalWorkflowId: { not: null },
+        },
+        select: {
+          id: true,
+          quotationNumber: true,
+          status: true,
+          approvalWorkflow: { select: { id: true, createdAt: true, status: true } },
+        },
+      });
+
+      const now = new Date();
+      const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+
+      const records = quotations.map((q) => {
+        const approvalRequestedAt = q.approvalWorkflow?.createdAt ?? null;
+        let agingMs = 0;
+        let agingHours = 0;
+        let agingDays = 0;
+        let agingLabel = '';
+        let agingStatus: 'NORMAL' | 'ATTENTION' | 'OVERDUE' | 'APPROVED' | 'REJECTED' = 'NORMAL';
+
+        if (q.status === QuotationStatus.APPROVED) {
+          agingStatus = 'APPROVED';
+          agingLabel = 'Approved';
+        } else if (q.status === QuotationStatus.REJECTED) {
+          agingStatus = 'REJECTED';
+          agingLabel = 'Rejected';
+        } else if (approvalRequestedAt) {
+          agingMs = now.getTime() - approvalRequestedAt.getTime();
+          agingHours = agingMs / (1000 * 60 * 60);
+          agingDays = Math.floor(agingHours / 24);
+          const remainingHours = Math.floor(agingHours % 24);
+
+          if (agingMs > ONE_DAY_MS) {
+            agingStatus = 'OVERDUE';
+            agingLabel = `Approval Overdue · ${agingDays}d ${remainingHours}h`;
+          } else if (agingMs >= ONE_DAY_MS) {
+            agingStatus = 'ATTENTION';
+            agingLabel = `Pending Approval · ${agingDays}d ${remainingHours}h`;
+          } else {
+            agingStatus = 'NORMAL';
+            agingLabel = `Pending Approval · ${agingDays}d ${remainingHours}h`;
+          }
+        } else {
+          agingLabel = 'Pending Approval';
+        }
+
+        return {
+          id: q.id,
+          quotationNumber: q.quotationNumber,
+          status: q.status,
+          approvalRequestedAt: approvalRequestedAt?.toISOString() ?? null,
+          agingMs,
+          agingHours: Math.round(agingHours * 10) / 10,
+          agingDays,
+          agingStatus,
+          agingLabel,
+        };
+      });
+
+      res.json({ data: records });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// ── Check & Notify Overdue Quotation Approvals (additive) ───────────
+// Scans for quotations pending approval for ≥ 1 day. For each, if no
+// AppNotification exists yet (dedup), sends a push notification to all
+// admins and creates an in-app notification entry. This avoids spam —
+// each quotation only generates one notification ever.
+router.post(
+  '/check-aging-notifications',
+  rbacMiddleware(Permission.VIEW_FINANCIALS),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      const now = new Date();
+      const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+
+      // Find quotations still pending approval with aging ≥ 1 day
+      const quotations = await prisma.quotation.findMany({
+        where: {
+          projectId,
+          deletedAt: null,
+          status: { in: [QuotationStatus.SUBMITTED, QuotationStatus.UNDER_REVIEW] },
+          approvalWorkflow: { isNot: null },
+        },
+        select: {
+          id: true,
+          quotationNumber: true,
+          grandTotal: true,
+          approvalWorkflow: { select: { id: true, createdAt: true } },
+        },
+      });
+
+      const overdueQuotations = quotations.filter((q) => {
+        const approvalRequestedAt = q.approvalWorkflow?.createdAt;
+        if (!approvalRequestedAt) return false;
+        return (now.getTime() - approvalRequestedAt.getTime()) >= ONE_DAY_MS;
+      });
+
+      if (overdueQuotations.length === 0) {
+        res.json({ success: true, checked: quotations.length, notified: 0, message: 'No overdue quotations found' });
+        return;
+      }
+
+      // Check which ones already have notifications (dedup)
+      const existingNotifications = await prisma.appNotification.findMany({
+        where: {
+          entityId: { in: overdueQuotations.map((q) => q.id) },
+          type: 'QUOTATION_APPROVAL_OVERDUE',
+        },
+        select: { entityId: true },
+      });
+      const alreadyNotified = new Set(existingNotifications.map((n) => n.entityId));
+
+      const newOverdue = overdueQuotations.filter((q) => !alreadyNotified.has(q.id));
+
+      if (newOverdue.length === 0) {
+        res.json({ success: true, checked: quotations.length, notified: 0, message: 'All overdue quotations already notified' });
+        return;
+      }
+
+      // Get all admin users to create in-app notifications for each
+      const admins = await prisma.user.findMany({
+        where: { isActive: true, role: { in: [UserRole.ADMIN, UserRole.ADMIN_2] } },
+        select: { id: true },
+      });
+
+      // Create in-app notifications for each admin × each overdue quotation
+      const notificationData: Array<{
+        userId: string;
+        projectId: string;
+        type: string;
+        title: string;
+        body: string;
+        url: string;
+        entityId: string;
+        entityType: string;
+      }> = [];
+
+      for (const q of newOverdue) {
+        const agingHours = Math.floor((now.getTime() - (q.approvalWorkflow?.createdAt?.getTime() ?? now.getTime())) / (1000 * 60 * 60));
+        const agingDays = Math.floor(agingHours / 24);
+        const agingLabel = agingDays > 0 ? `${agingDays} day${agingDays === 1 ? '' : 's'}` : `${agingHours} hours`;
+
+        for (const admin of admins) {
+          notificationData.push({
+            userId: admin.id,
+            projectId,
+            type: 'QUOTATION_APPROVAL_OVERDUE',
+            title: '🔴 Quotation Approval Required',
+            body: `Quotation ${q.quotationNumber} has been pending approval since ${agingLabel}. Total: ₹${Number(q.grandTotal).toLocaleString('en-IN')}`,
+            url: `/quotations?approval=${q.approvalWorkflow?.id ?? ''}`,
+            entityId: q.id,
+            entityType: 'QUOTATION',
+          });
+        }
+      }
+
+      // Batch create all notifications
+      if (notificationData.length > 0) {
+        await prisma.appNotification.createMany({ data: notificationData });
+      }
+
+      // Send push notifications (one per quotation, batched to all admins)
+      let pushSent = 0;
+      for (const q of newOverdue) {
+        try {
+          await notifyAdmins({
+            entityType: 'QUOTATION',
+            entityId: q.id,
+            title: 'Pending Approval',
+            body: `Quotation #${q.quotationNumber} has been pending approval for 1 day. Please review and confirm.`,
+            url: `/quotations?approval=${q.approvalWorkflow?.id ?? ''}`,
+          });
+          pushSent++;
+        } catch (pushError) {
+          console.error(`[Quotation Aging] Push failed for ${q.quotationNumber} (non-fatal):`, pushError);
+        }
+      }
+
+      res.json({
+        success: true,
+        checked: quotations.length,
+        notified: newOverdue.length,
+        pushSent,
+        message: `Created ${notificationData.length} in-app notification(s) and sent ${pushSent} push notification(s) for ${newOverdue.length} overdue quotation(s)`,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
 
 // GET / — list quotations
 router.get(

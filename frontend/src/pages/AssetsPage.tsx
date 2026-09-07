@@ -34,6 +34,8 @@ import { useQuery } from '@tanstack/react-query';
 import api, { extractErrorMessage } from '../config/api';
 import RefreshButton from '../components/RefreshButton';
 import ResponsiveTable from '../components/ResponsiveTable';
+import WarrantySavingsWidget from '../components/WarrantySavingsWidget';
+import WarrantyExpiringWidget from '../components/WarrantyExpiringWidget';
 import { usePrefetchDetail } from '../hooks/usePrefetchDetail';
 
 const STATUS_COLORS: Record<string, 'success' | 'warning' | 'info' | 'error' | 'default'> = {
@@ -180,6 +182,16 @@ export default function AssetsPage() {
           )}
         </Box>
       )}
+
+      {/* Warranty Expiring Soon — proactive alert + auto push to admins */}
+      <Box sx={{ mb: 3 }}>
+        <WarrantyExpiringWidget />
+      </Box>
+
+      {/* Warranty Claims vs Paid Repairs — read-only add-on, no data changes */}
+      <Box sx={{ mb: 3 }}>
+        <WarrantySavingsWidget />
+      </Box>
 
       {/* Filters + View Toggle */}
       <Box sx={{ display: 'flex', gap: 1, mb: 2, flexWrap: 'wrap', alignItems: 'center' }}>

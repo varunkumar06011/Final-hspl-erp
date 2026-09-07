@@ -115,4 +115,74 @@ router.patch(
   }
 );
 
+// ═══════════════════════════════════════════════════════════
+// In-App Notification Center (additive — new endpoints, no changes to existing)
+// ═══════════════════════════════════════════════════════════
+
+// GET /notifications/app — list current user's in-app notifications
+router.get(
+  '/app',
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const page = Math.max(1, parseInt(String(req.query.page ?? '1'), 10) || 1);
+      const pageSize = Math.min(100, Math.max(1, parseInt(String(req.query.pageSize ?? '20'), 10) || 20));
+
+      const [data, total, unreadCount] = await Promise.all([
+        prisma.appNotification.findMany({
+          where: { userId: req.user!.id },
+          orderBy: { createdAt: 'desc' },
+          skip: (page - 1) * pageSize,
+          take: pageSize,
+        }),
+        prisma.appNotification.count({ where: { userId: req.user!.id } }),
+        prisma.appNotification.count({ where: { userId: req.user!.id, isRead: false } }),
+      ]);
+
+      res.json({
+        data,
+        unreadCount,
+        pagination: { page, pageSize, total, totalPages: Math.ceil(total / pageSize) },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// PATCH /notifications/app/:id/read — mark a single notification as read
+router.patch(
+  '/app/:id/read',
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const updated = await prisma.appNotification.updateMany({
+        where: { id: req.params.id, userId: req.user!.id },
+        data: { isRead: true },
+      });
+      if (updated.count === 0) {
+        res.status(404).json({ error: 'Notification not found' });
+        return;
+      }
+      res.json({ success: true });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// PATCH /notifications/app/mark-all-read — mark all notifications as read
+router.patch(
+  '/app/mark-all-read',
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const result = await prisma.appNotification.updateMany({
+        where: { userId: req.user!.id, isRead: false },
+        data: { isRead: true },
+      });
+      res.json({ success: true, markedRead: result.count });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
 export default router;

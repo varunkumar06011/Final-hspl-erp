@@ -40,6 +40,7 @@ import {
 import { useAuthStore } from '../stores/authStore';
 import { hasPermission, Permission, UserRole } from '@hospital-erp/shared';
 import { onForegroundMessage, enableNotifications, isPushSupported, getPermissionState } from '../config/notifications';
+import NotificationBell from './NotificationBell';
 import api from '../config/api';
 import { useIdleTimeout } from '../hooks/useIdleTimeout';
 import { useColorMode } from '../config/ColorModeContext';
@@ -343,9 +344,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           <IconButton color="inherit" onClick={() => setSearchOpen(true)} title="Search (Ctrl+K)">
             <SearchIcon />
           </IconButton>
-          <IconButton color="inherit" size="large" sx={{ display: { xs: 'none', sm: 'inline-flex' } }}>
-            <NotificationsIcon />
-          </IconButton>
+          <Box sx={{ display: { xs: 'none', sm: 'inline-flex' } }}>
+            <NotificationBell />
+          </Box>
           {user && (
             <>
               <Chip

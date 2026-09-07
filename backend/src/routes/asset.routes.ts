@@ -20,8 +20,16 @@ import { optionalAuthMiddleware } from '../middleware/optional-auth';
 import { rbacMiddleware } from '../middleware/rbac';
 import { validateMiddleware } from '../middleware/validate';
 import { logAudit } from '../services/audit.service';
+import { notifyAdmins } from '../services/push.service';
 
 const router = Router();
+
+// ─── In-memory daily dedup for warranty-expiring auto-push ──────────
+// Key: projectId, Value: ISO date string of the last notification date.
+// Prevents spamming admins every time the Assets page loads — only one
+// auto-push per project per calendar day. Resets on server restart
+// (acceptable: worst case is one extra notification per restart).
+const warrantyNotifyLastSent = new Map<string, string>();
 
 const ASSET_ADMIN_ROLES = [UserRole.ADMIN, UserRole.ADMIN_2];
 
@@ -336,6 +344,333 @@ router.post(
       });
 
       res.status(201).json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// GET /warranty-expiring — Warranty Expiring Soon alert (read-only add-on)
+// -----------------------------------------------------------------------------
+// Returns all assets whose warranty expires within `days` days (default 30),
+// sorted by soonest-expiring first. Purely additive — reads existing
+// Asset.warrantyExpiry only. No schema changes, no writes.
+//
+// AUTO-PUSH: When this endpoint is called and there are expiring warranties,
+// it automatically sends a push notification to all admin users (ADMIN +
+// ADMIN_2) — but only once per calendar day per project (in-memory dedup)
+// to avoid spamming. This makes the notification "auto" — it fires when
+// anyone loads the Assets page, without anyone clicking a button.
+//
+// Query params:
+//   ?days=N  (default 30, max 365) — warranty expiring within N days
+router.get(
+  '/warranty-expiring',
+  authMiddleware,
+  rbacMiddleware(Permission.MANAGE_INVENTORY),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      const days = Math.min(Math.max(parseInt(String(req.query.days ?? '30'), 10) || 30, 1), 365);
+
+      const now = new Date();
+      now.setHours(0, 0, 0, 0);
+      const cutoff = new Date(now);
+      cutoff.setDate(cutoff.getDate() + days);
+
+      const assets = await prisma.asset.findMany({
+        where: {
+          projectId,
+          warrantyExpiry: { gte: now, lte: cutoff },
+          status: { not: 'RETIRED' },
+        },
+        select: {
+          id: true,
+          assetId: true,
+          serialNumber: true,
+          status: true,
+          location: true,
+          warrantyExpiry: true,
+          vendorName: true,
+          unitPrice: true,
+          inventoryItem: { select: { id: true, name: true, category: true } },
+        },
+        orderBy: { warrantyExpiry: 'asc' },
+      });
+
+      const records = assets.map((a) => {
+        const expiry = a.warrantyExpiry!;
+        const msDiff = expiry.getTime() - now.getTime();
+        const daysLeft = Math.ceil(msDiff / (1000 * 60 * 60 * 24));
+        return {
+          id: a.id,
+          assetId: a.assetId,
+          assetName: a.inventoryItem?.name ?? '—',
+          category: a.inventoryItem?.category ?? null,
+          serialNumber: a.serialNumber ?? null,
+          status: a.status,
+          location: a.location,
+          warrantyExpiry: expiry.toISOString(),
+          daysLeft,
+          vendorName: a.vendorName ?? null,
+          unitPrice: a.unitPrice ? Number(a.unitPrice) : null,
+        };
+      });
+
+      // ── AUTO-PUSH to admins (once per day per project) ──
+      const todayStr = now.toISOString().split('T')[0];
+      const lastSent = warrantyNotifyLastSent.get(projectId);
+      const alreadyNotifiedToday = lastSent === todayStr;
+
+      let pushSent = false;
+      let pushResult: { notifiedCount: number; deviceCount: number } | null = null;
+
+      if (records.length > 0 && !alreadyNotifiedToday) {
+        try {
+          pushResult = await notifyAdmins({
+            entityType: 'WARRANTY_EXPIRING',
+            entityId: projectId,
+            title: `⚠ ${records.length} asset${records.length === 1 ? '' : 's'} with warranty expiring soon`,
+            body: `${records.length} asset${records.length === 1 ? '' : 's'} in your project have warranty expiring within ${days} days. Review them before free repair coverage ends.`,
+            url: '/assets',
+          });
+          warrantyNotifyLastSent.set(projectId, todayStr);
+          pushSent = true;
+          console.log(`[Warranty] Auto-push sent to admins for project ${projectId}: ${records.length} asset(s) expiring`);
+        } catch (pushError) {
+          // Push failure should NOT break the API response.
+          console.error('[Warranty] Auto-push failed (non-fatal):', pushError);
+        }
+      }
+
+      res.json({
+        days,
+        count: records.length,
+        autoPushSent: pushSent,
+        autoPushResult: pushResult,
+        alreadyNotifiedToday,
+        assets: records,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// POST /warranty-expiring/notify — Manually trigger push notification to admins
+// -----------------------------------------------------------------------------
+// Sends a push notification to all admin users about warranty-expiring assets,
+// regardless of the daily dedup. Useful for manual reminders.
+router.post(
+  '/warranty-expiring/notify',
+  authMiddleware,
+  rbacMiddleware(Permission.MANAGE_INVENTORY),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      const days = Math.min(Math.max(parseInt(String(req.body.days ?? '30'), 10) || 30, 1), 365);
+
+      const now = new Date();
+      now.setHours(0, 0, 0, 0);
+      const cutoff = new Date(now);
+      cutoff.setDate(cutoff.getDate() + days);
+
+      const count = await prisma.asset.count({
+        where: {
+          projectId,
+          warrantyExpiry: { gte: now, lte: cutoff },
+          status: { not: 'RETIRED' },
+        },
+      });
+
+      if (count === 0) {
+        res.json({ success: false, message: 'No assets with warranty expiring in the given period', count: 0 });
+        return;
+      }
+
+      const result = await notifyAdmins({
+        entityType: 'WARRANTY_EXPIRING',
+        entityId: projectId,
+        title: `⚠ ${count} asset${count === 1 ? '' : 's'} with warranty expiring within ${days} days`,
+        body: `Manual alert: ${count} asset${count === 1 ? '' : 's'} have warranty expiring within ${days} days. Review them on the Assets page before free repair coverage ends.`,
+        url: '/assets',
+      });
+
+      // Update the dedup map so the auto-push doesn't also fire today.
+      warrantyNotifyLastSent.set(projectId, now.toISOString().split('T')[0]);
+
+      res.json({
+        success: true,
+        message: `Push notification sent to ${result.notifiedCount} admin(s) (${result.deviceCount} device(s))`,
+        count,
+        ...result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// GET /warranty-tracker — Warranty Claims vs Paid Repairs (read-only add-on)
+// -----------------------------------------------------------------------------
+// Surfaces how much money was saved by claiming warranty repairs (free) instead
+// of paying out of pocket. Purely additive — reads existing Asset + AssetMaintenance
+// rows only. No schema changes, no writes, no changes to any existing asset logic.
+//
+// Classification logic:
+//   - For each AssetMaintenance row, we check whether the asset had an active
+//     warranty at the time the repair was sent (asset.warrantyExpiry >= maintenance.sentAt).
+//   - WARRANTY_CLAIM  = sent under warranty AND finalCost is 0 or null (free repair).
+//                       "Savings" = the estimated `cost` (what you would have paid).
+//   - PAID_REPAIR     = finalCost > 0 (you paid for the repair, regardless of warranty).
+//   - WARRANTY_EXPIRED = sent after warranty expired AND finalCost > 0 (missed opportunity).
+//   - PENDING         = not yet completed (completedAt is null).
+//
+// Query params:
+//   ?limit=N  (default 50, max 200) — top N maintenance records
+router.get(
+  '/warranty-tracker',
+  authMiddleware,
+  rbacMiddleware(Permission.MANAGE_INVENTORY),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      const limit = Math.min(Math.max(parseInt(String(req.query.limit ?? '50'), 10) || 50, 1), 200);
+
+      // Fetch all maintenance records for assets in this project, with asset context.
+      const maintenances = await prisma.assetMaintenance.findMany({
+        where: {
+          asset: { projectId },
+        },
+        select: {
+          id: true,
+          reason: true,
+          maintenanceVendor: true,
+          technician: true,
+          notes: true,
+          cost: true,
+          sentAt: true,
+          completedAt: true,
+          completionNotes: true,
+          finalCost: true,
+          sentByUser: { select: { id: true, name: true } },
+          completedByUser: { select: { id: true, name: true } },
+          asset: {
+            select: {
+              id: true,
+              assetId: true,
+              serialNumber: true,
+              status: true,
+              location: true,
+              warrantyExpiry: true,
+              totalCost: true,
+              inventoryItem: { select: { id: true, name: true, category: true } },
+            },
+          },
+        },
+        orderBy: { sentAt: 'desc' },
+      });
+
+      type RepairType = 'WARRANTY_CLAIM' | 'PAID_REPAIR' | 'WARRANTY_EXPIRED' | 'PENDING';
+
+      const records = maintenances.map((m) => {
+        const warrantyExpiry = m.asset.warrantyExpiry;
+        const sentAt = m.sentAt;
+        const wasUnderWarranty = !!(warrantyExpiry && warrantyExpiry >= sentAt);
+        const finalCostNum = m.finalCost !== null ? Number(m.finalCost) : null;
+        const estimatedCost = m.cost !== null ? Number(m.cost) : null;
+        const isCompleted = m.completedAt !== null;
+
+        let repairType: RepairType;
+        if (!isCompleted) {
+          repairType = 'PENDING';
+        } else if (wasUnderWarranty && (finalCostNum === null || finalCostNum === 0)) {
+          repairType = 'WARRANTY_CLAIM';
+        } else if (!wasUnderWarranty && finalCostNum !== null && finalCostNum > 0) {
+          repairType = 'WARRANTY_EXPIRED';
+        } else {
+          repairType = 'PAID_REPAIR';
+        }
+
+        // Savings = estimated cost that was avoided by claiming warranty.
+        const savings = repairType === 'WARRANTY_CLAIM' ? (estimatedCost ?? 0) : 0;
+
+        return {
+          id: m.id,
+          assetId: m.asset.assetId,
+          assetName: m.asset.inventoryItem?.name ?? '—',
+          category: m.asset.inventoryItem?.category ?? null,
+          serialNumber: m.asset.serialNumber ?? null,
+          location: m.asset.location,
+          reason: m.reason,
+          maintenanceVendor: m.maintenanceVendor ?? null,
+          technician: m.technician ?? null,
+          sentAt: m.sentAt.toISOString(),
+          completedAt: m.completedAt ? m.completedAt.toISOString() : null,
+          warrantyExpiry: warrantyExpiry ? warrantyExpiry.toISOString() : null,
+          wasUnderWarranty,
+          estimatedCost,
+          finalCost: finalCostNum,
+          repairType,
+          savings,
+          sentBy: m.sentByUser?.name ?? '—',
+          completedBy: m.completedByUser?.name ?? null,
+          completionNotes: m.completionNotes ?? null,
+        };
+      });
+
+      // Summary aggregates
+      const warrantyClaims = records.filter((r) => r.repairType === 'WARRANTY_CLAIM');
+      const paidRepairs = records.filter((r) => r.repairType === 'PAID_REPAIR' || r.repairType === 'WARRANTY_EXPIRED');
+      const pendingRepairs = records.filter((r) => r.repairType === 'PENDING');
+      const expiredWarrantyRepairs = records.filter((r) => r.repairType === 'WARRANTY_EXPIRED');
+
+      const totalSavings = warrantyClaims.reduce((sum, r) => sum + r.savings, 0);
+      const totalPaidRepairCost = paidRepairs.reduce(
+        (sum, r) => sum + (r.finalCost ?? 0),
+        0
+      );
+
+      // Assets currently under warranty (warrantyExpiry >= now)
+      const now = new Date();
+      const assetsUnderWarranty = await prisma.asset.count({
+        where: {
+          projectId,
+          warrantyExpiry: { gte: now },
+        },
+      });
+
+      // Assets with warranty expired (had warranty, now expired)
+      const assetsWarrantyExpired = await prisma.asset.count({
+        where: {
+          projectId,
+          warrantyExpiry: { lt: now },
+        },
+      });
+
+      // Assets with no warranty set at all
+      const assetsNoWarranty = await prisma.asset.count({
+        where: {
+          projectId,
+          warrantyExpiry: null,
+        },
+      });
+
+      res.json({
+        summary: {
+          totalMaintenances: records.length,
+          warrantyClaimsCount: warrantyClaims.length,
+          paidRepairsCount: paidRepairs.length,
+          pendingCount: pendingRepairs.length,
+          expiredWarrantyRepairCount: expiredWarrantyRepairs.length,
+          totalSavings,
+          totalPaidRepairCost,
+          assetsUnderWarranty,
+          assetsWarrantyExpired,
+          assetsNoWarranty,
+        },
+        records: records.slice(0, limit),
+      });
     } catch (error) {
       next(error);
     }

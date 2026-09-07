@@ -1175,6 +1175,28 @@ model PushSubscription {
 }
 
 // ═══════════════════════════════════════════════════════════
+// In-App Notification Center (additive — new table, no changes to existing models)
+// ═══════════════════════════════════════════════════════════
+
+model AppNotification {
+  id         String    @id @default(uuid()) @db.Uuid
+  userId     String    @db.Uuid
+  projectId  String?   @db.Uuid
+  type       String    // e.g., 'QUOTATION_APPROVAL_OVERDUE'
+  title      String
+  body       String
+  url        String?   // frontend route to navigate to on click
+  entityId    String?   @db.Uuid // e.g., quotation ID
+  entityType  String?   // e.g., 'QUOTATION'
+  isRead     Boolean   @default(false)
+  createdAt  DateTime  @default(now())
+
+  @@index([userId, isRead])
+  @@index([entityId, type])
+  @@map("app_notifications")
+}
+
+// ═══════════════════════════════════════════════════════════
 // Finance Module — Budget Heads, Bank, Cash (Phase 1)
 // ═══════════════════════════════════════════════════════════
 
