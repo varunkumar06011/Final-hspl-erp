@@ -89,6 +89,44 @@ const NAV_ITEMS = [
   { label: 'Settings', icon: <SettingsIcon />, path: '/settings', section: 'Admin' },
 ];
 
+// ── Admin-only navigation (ADMIN + ADMIN_2) ──────────────────────────
+// Simplified grouping with plain-language labels. The existing NAV_ITEMS
+// array above is completely untouched — non-admin roles use it exactly
+// as before. This array is only used when role === ADMIN || ADMIN_2.
+// Same routes, just reorganized into clearer sections.
+const ADMIN_NAV_ITEMS = [
+  { label: 'Dashboard', icon: <DashboardIcon />, path: '/', section: '' },
+  // ── Project ──
+  { label: 'Work', icon: <WorkIcon />, path: '/work', permission: Permission.MANAGE_WORK_TASKS, section: 'Project' },
+  { label: 'Issues', icon: <IssueIcon />, path: '/issues', permission: Permission.MANAGE_ISSUES, section: 'Project' },
+  { label: 'Site Photos', icon: <PhotoIcon />, path: '/photos', permission: Permission.UPLOAD_PHOTOS, section: 'Project' },
+  { label: 'Documents', icon: <DocumentIcon />, path: '/documents', permission: Permission.MANAGE_DOCUMENTS, section: 'Project' },
+  { label: 'Contracts', icon: <ContractIcon />, path: '/contracts', permission: Permission.MANAGE_CONTRACTS, section: 'Project' },
+  // ── Budget ──
+  { label: 'Budget Heads', icon: <BudgetIcon />, path: '/budget-heads', permission: Permission.VIEW_FINANCIALS, section: 'Budget' },
+  { label: 'Owner Account', icon: <OwnerIcon />, path: '/owner-accounts', permission: Permission.VIEW_FINANCIALS, section: 'Budget' },
+  // ── Procurement ──
+  { label: 'Vendors', icon: <VendorIcon />, path: '/vendors', permission: Permission.VIEW_FINANCIALS, section: 'Procurement' },
+  { label: 'Quotations', icon: <ReceiptIcon />, path: '/quotations', permission: Permission.VIEW_FINANCIALS, section: 'Procurement' },
+  { label: 'Purchase Orders', icon: <ReceiptIcon />, path: '/pos', permission: Permission.VIEW_FINANCIALS, section: 'Procurement' },
+  { label: 'Gate Passes', icon: <GatePassIcon />, path: '/gate-passes', permission: Permission.VIEW_GATE_PASSES, section: 'Procurement' },
+  { label: 'Goods Receipts', icon: <ReceiptIcon />, path: '/goods-receipts', permission: Permission.MANAGE_INVENTORY, section: 'Procurement' },
+  // ── Accounting ──
+  { label: 'Bank & Cash', icon: <BankIcon />, path: '/bank-accounts', permission: Permission.VIEW_FINANCIALS, section: 'Accounting' },
+  { label: 'Payments', icon: <PaymentIcon />, path: '/payments', permission: Permission.VIEW_FINANCIALS, section: 'Accounting' },
+  { label: 'Sales (Invoices)', icon: <ReceiptIcon />, path: '/invoices', permission: Permission.VIEW_FINANCIALS, section: 'Accounting' },
+  { label: 'Vouchers', icon: <VouchersIcon />, path: '/vouchers', permission: Permission.VIEW_FINANCIALS, section: 'Accounting' },
+  { label: 'GST Records', icon: <ReceiptIcon />, path: '/gst-records', permission: Permission.VIEW_FINANCIALS, section: 'Accounting' },
+  // ── Reports ──
+  { label: 'Finance Dashboard', icon: <FinanceDashboardIcon />, path: '/finance-dashboard', permission: Permission.VIEW_FINANCIALS, section: 'Reports' },
+  { label: 'Accounting Reports', icon: <AccountingReportsIcon />, path: '/accounting-reports', permission: Permission.VIEW_FINANCIALS, section: 'Reports' },
+  { label: 'Finance Reports', icon: <ReportsIcon />, path: '/finance-reports', permission: Permission.VIEW_FINANCIALS, section: 'Reports' },
+  // ── Approvals ──
+  { label: 'Audit Log', icon: <AuditIcon />, path: '/audit', permission: Permission.VIEW_AUDIT_LOG, section: 'Approvals & Admin' },
+  { label: 'Users', icon: <PeopleIcon />, path: '/users', permission: Permission.MANAGE_USERS, section: 'Approvals & Admin' },
+  { label: 'Settings', icon: <SettingsIcon />, path: '/settings', section: 'Approvals & Admin' },
+];
+
 const ROLE_COLORS: Record<UserRole, string> = {
   [UserRole.SUPERVISOR]: '#546E7A',
   [UserRole.ACCOUNTANT]: '#00897B',
@@ -149,16 +187,18 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   // Build breadcrumb from current path
   const breadcrumbs = useMemo(() => {
     const path = location.pathname;
+    // Use the admin nav items for breadcrumb resolution if the user is an admin
+    const navSource = (user?.role === UserRole.ADMIN || user?.role === UserRole.ADMIN_2) ? ADMIN_NAV_ITEMS : NAV_ITEMS;
     if (path === '/') return [{ label: 'Dashboard', path: '/' }];
-    const navItem = NAV_ITEMS.find((item) => item.path === path);
+    const navItem = navSource.find((item) => item.path === path);
     if (navItem) return [{ label: 'Dashboard', path: '/' }, { label: navItem.label, path }];
-    const partial = NAV_ITEMS.filter((item) => path.startsWith(item.path + '/') || path === item.path);
+    const partial = navSource.filter((item) => path.startsWith(item.path + '/') || path === item.path);
     if (partial.length > 0) {
       const best = partial[partial.length - 1];
       return [{ label: 'Dashboard', path: '/' }, { label: best.label, path: best.path }, { label: 'Details', path }];
     }
     return [{ label: 'Dashboard', path: '/' }, { label: path.split('/')[1] ?? 'Page', path }];
-  }, [location.pathname]);
+  }, [location.pathname, user?.role]);
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
@@ -266,7 +306,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       <Toolbar />
       <Box sx={{ overflow: 'auto' }}>
         <List>
-          {NAV_ITEMS.filter((item) => !item.permission || (user && hasPermission(user.role as UserRole, item.permission))).map((item, idx, arr) => {
+          {/* Admin roles (ADMIN + ADMIN_2) use the simplified ADMIN_NAV_ITEMS.
+              All other roles use the original NAV_ITEMS — completely unchanged. */}
+          {((user?.role === UserRole.ADMIN || user?.role === UserRole.ADMIN_2) ? ADMIN_NAV_ITEMS : NAV_ITEMS)
+            .filter((item) => !item.permission || (user && hasPermission(user.role as UserRole, item.permission)))
+            .map((item, idx, arr) => {
             const prevItem = idx > 0 ? arr[idx - 1] : null;
             const showSectionHeader = item.section !== '' && (!prevItem || prevItem.section !== item.section);
             return (

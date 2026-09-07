@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useAuthStore } from '../stores/authStore';
 
-const IDLE_MS = 15 * 60 * 1000; // 15 minutes
+const IDLE_MS = Infinity; // Auto-logout disabled
 const CHECK_INTERVAL_MS = 30 * 1000; // check every 30s
 const ACTIVITY_EVENTS: (keyof WindowEventMap)[] = [
   'mousedown',

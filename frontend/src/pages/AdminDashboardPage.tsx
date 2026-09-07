@@ -1,0 +1,922 @@
+import { useState, useRef, useEffect, type ReactNode } from 'react';
+import { useNavigate } from 'react-router-dom';
+import {
+  Box,
+  Card,
+  CardContent,
+  Typography,
+  Skeleton,
+  Chip,
+  LinearProgress,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableRow,
+  IconButton,
+  Button,
+  Alert,
+  Divider,
+  TextField,
+  useTheme,
+  useMediaQuery,
+  Stack,
+} from '@mui/material';
+import {
+  ArrowForward as ArrowForwardIcon,
+  TrendingUp as TrendingUpIcon,
+  TrendingDown as TrendingDownIcon,
+  AccountBalance as AccountBalanceIcon,
+  Payments as PaymentsIcon,
+  PendingActions as PendingActionsIcon,
+  Receipt as ReceiptIcon,
+  AccountBalanceWallet as WalletIcon,
+} from '@mui/icons-material';
+import { useQuery } from '@tanstack/react-query';
+import api from '../config/api';
+import { formatCurrency, formatDate } from '../utils/enumOptions';
+import { AnimatedNumber } from '../components/AnimatedNumber';
+import RateTrackerWidget from '../components/RateTrackerWidget';
+import DocumentSummaryCard from '../components/DocumentSummaryCard';
+import PendingItemsDialog from '../components/PendingItemsDialog';
+import { useAuthStore } from '../stores/authStore';
+
+// ── Types ────────────────────────────────────────────────────────────
+
+interface AdminSummary {
+  project: { name: string; status: string } | null;
+  // Accounting-first summary
+  totalInwardFunds: number;
+  totalExpenditure: number;
+  balance: number;
+  // Bank & cash
+  bankBalance: number;
+  cashBalance: number;
+  totalLiquidity: number;
+  // Budget heads
+  budgetHeads: Array<{
+    id: string;
+    slNo: number;
+    particulars: string;
+    allocated: number;
+    committed: number;
+    actual: number;
+    paid: number;
+    available: number;
+    utilizationPct: number;
+  }>;
+  budgetTotals: { totalAllocated: number; totalActual: number; totalCommitted: number };
+  // Today's outflow (Amount Used Today)
+  todayOutflow: {
+    amount: number;
+    count: number;
+    transactions: Array<{
+      id: string;
+      account: string;
+      accountType: 'BANK' | 'CASH';
+      amount: number;
+      description: string;
+      time: string;
+    }>;
+  };
+  // Pending approvals
+  pendingPayments: number;
+  pendingQuotations: number;
+  pendingPOs: number;
+  pendingInvoices: number;
+  // Recent activity
+  recentTransactions: Array<{
+    id: string;
+    account: string;
+    accountType: 'BANK' | 'CASH';
+    type: string;
+    isInflow: boolean;
+    amount: number;
+    description: string;
+    date: string;
+  }>;
+  recentQuotations: Array<{
+    id: string;
+    quotationNumber: string;
+    vendorName: string;
+    grandTotal: number;
+    status: string;
+    createdAt: string;
+  }>;
+}
+
+type PendingType = 'payments' | 'quotations' | 'pos' | 'invoices';
+
+// ── Scrollable table container with swipe hint ───────────────────────
+// Provides a single, isolated horizontal-scroll container for tables.
+// The dashboard itself never scrolls horizontally — only this container.
+// A subtle "swipe →" hint appears when the table overflows and disappears
+// once the user interacts with the scroll.
+function ScrollableTableContainer({ children }: { children: ReactNode }) {
+  const [showHint, setShowHint] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const check = () => {
+      const el = scrollRef.current;
+      if (el && el.scrollWidth > el.clientWidth + 2) {
+        setShowHint(true);
+      } else {
+        setShowHint(false);
+      }
+    };
+    const timer = setTimeout(check, 100);
+    window.addEventListener('resize', check);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('resize', check);
+    };
+  }, []);
+
+  return (
+    <Box sx={{ position: 'relative', width: '100%', maxWidth: '100%', overflow: 'hidden' }}>
+      <Box
+        ref={scrollRef}
+        onScroll={() => showHint && setShowHint(false)}
+        sx={{
+          width: '100%',
+          maxWidth: '100%',
+          overflowX: 'auto',
+          overflowY: 'hidden',
+          WebkitOverflowScrolling: 'touch',
+          touchAction: 'pan-x',
+          '&::-webkit-scrollbar': { height: 6 },
+          '&::-webkit-scrollbar-track': { backgroundColor: 'transparent' },
+          '&::-webkit-scrollbar-thumb': { backgroundColor: 'rgba(0,0,0,0.2)', borderRadius: 3 },
+        }}
+      >
+        {children}
+      </Box>
+      {showHint && (
+        <Typography
+          variant="caption"
+          sx={{
+            position: 'absolute',
+            right: 8,
+            bottom: 4,
+            color: 'text.disabled',
+            fontSize: '0.65rem',
+            pointerEvents: 'none',
+            bgcolor: 'background.paper',
+            px: 0.75,
+            py: 0.15,
+            borderRadius: 1,
+            boxShadow: 1,
+            opacity: 0.8,
+          }}
+        >
+          swipe →
+        </Typography>
+      )}
+    </Box>
+  );
+}
+
+// ── Component ────────────────────────────────────────────────────────
+
+export default function AdminDashboardPage() {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  const navigate = useNavigate();
+  const user = useAuthStore((s) => s.user);
+  const [pendingDialog, setPendingDialog] = useState<PendingType | null>(null);
+
+  // ── Date range for Amount Used Today card ──
+  // Defaults to today. User can pick any start/end date.
+  // When the range changes, the outflow-by-range endpoint is called
+  // and the card shows the total expenditure for that range.
+  const todayStr = new Date().toISOString().split('T')[0];
+  const [outflowStartDate, setOutflowStartDate] = useState(todayStr);
+  const [outflowEndDate, setOutflowEndDate] = useState(todayStr);
+
+  // ── Single data query — all admin dashboard data in one call ──
+  const { data: adminData, isLoading } = useQuery<AdminSummary>({
+    queryKey: ['/dashboard/admin-summary'],
+    queryFn: async () => {
+      const response = await api.get('/dashboard/admin-summary');
+      return response.data;
+    },
+    refetchInterval: 30000,
+  });
+
+  // ── Outflow by date range query ──
+  // Fetches total expenditure for the selected date range.
+  // When the user changes the date range, this query refetches
+  // and the Amount Used Today card updates with the new total.
+  // No hardcoded values — all data is live from the database.
+  const isTodayRange = outflowStartDate === todayStr && outflowEndDate === todayStr;
+  const { data: outflowRangeData, isLoading: outflowRangeLoading } = useQuery({
+    queryKey: ['/dashboard/outflow-by-range', outflowStartDate, outflowEndDate],
+    queryFn: async () => {
+      const params: Record<string, string> = {};
+      if (!isTodayRange) {
+        params.startDate = outflowStartDate;
+        params.endDate = outflowEndDate;
+      }
+      const response = await api.get('/dashboard/outflow-by-range', { params });
+      return response.data as {
+        totalAmount: number;
+        totalCount: number;
+        transactions: Array<{
+          id: string;
+          account: string;
+          accountType: 'BANK' | 'CASH';
+          amount: number;
+          description: string;
+          date: string;
+        }>;
+      };
+    },
+    refetchInterval: 30000,
+  });
+
+  // ── Values from the single query ──
+  const totalInward = adminData?.totalInwardFunds ?? 0;
+  const totalExpenditure = adminData?.totalExpenditure ?? 0;
+  const balance = adminData?.balance ?? 0;
+
+  const budgetHeads = adminData?.budgetHeads ?? [];
+  const topBudgetHeads = [...budgetHeads]
+    .sort((a, b) => b.allocated - a.allocated)
+    .slice(0, 6);
+
+  const recentQuotations = adminData?.recentQuotations ?? [];
+  const recentTransactions = adminData?.recentTransactions ?? [];
+
+  // ── Amount Used Today / Date Range values ──
+  // When range is "today", use the data from admin-summary (already fetched).
+  // When range is custom, use the outflow-by-range endpoint data.
+  const outflowAmount = isTodayRange
+    ? (adminData?.todayOutflow?.amount ?? 0)
+    : (outflowRangeData?.totalAmount ?? 0);
+  const outflowCount = isTodayRange
+    ? (adminData?.todayOutflow?.count ?? 0)
+    : (outflowRangeData?.totalCount ?? 0);
+  const outflowTransactions = isTodayRange
+    ? (adminData?.todayOutflow?.transactions ?? [])
+    : (outflowRangeData?.transactions ?? []);
+  const outflowLoading = isTodayRange ? isLoading : outflowRangeLoading;
+
+  // ── Handlers ──
+  const handleInwardClick = () => navigate('/finance-dashboard');
+  const handleExpenditureClick = () => navigate('/finance-reports');
+  const handleBudgetHeadClick = () => navigate('/budget-heads');
+
+  return (
+    <Box sx={{ overflowX: 'hidden', minWidth: 0, width: '100%' }}>
+      {/* Header */}
+      <Typography variant="h5" gutterBottom fontWeight={600} sx={{ fontSize: { xs: '1.15rem', sm: '1.4rem' } }}>
+        Admin Dashboard
+      </Typography>
+
+      {adminData?.project && (
+        <Box sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+          <Typography variant="body2" color="text.secondary" component="span">
+            Project: <strong>{adminData.project.name}</strong>
+          </Typography>
+          <Chip label={adminData.project.status} size="small" />
+        </Box>
+      )}
+
+      {/* ═══════════════════════════════════════════════════════════════
+          A. Accounting-first summary: Inward − Expenditure = Balance
+          Compact cards — minimal padding, consistent height, responsive.
+      ═══════════════════════════════════════════════════════════════ */}
+      <Box
+        sx={{
+          mb: { xs: 2, sm: 3 },
+          display: 'grid',
+          gridTemplateColumns: { xs: '1fr', sm: '1fr auto 1fr auto 1fr' },
+          gap: { xs: 1, sm: 1 },
+          alignItems: 'stretch',
+        }}
+      >
+        {/* Total Inward Funds */}
+        <Card
+          onClick={handleInwardClick}
+          sx={{
+            cursor: 'pointer',
+            transition: 'all 0.2s',
+            borderLeft: '3px solid',
+            borderColor: 'success.main',
+            '&:hover': { boxShadow: 3 },
+          }}
+        >
+          <CardContent sx={{ py: 1.5, px: 2, '&:last-child': { pb: 1.5 } }}>
+            <Stack direction="row" alignItems="center" spacing={0.75} sx={{ mb: 0.5 }}>
+              <TrendingUpIcon color="success" sx={{ fontSize: 18 }} />
+              <Typography color="text.secondary" variant="caption" fontWeight={600} sx={{ fontSize: '0.75rem' }}>
+                Inward Funds
+              </Typography>
+            </Stack>
+            {isLoading ? (
+              <Skeleton variant="text" width={120} height={32} />
+            ) : (
+              <Typography variant="h5" fontWeight={700} color="success.dark" sx={{ lineHeight: 1.2 }}>
+                <AnimatedNumber value={totalInward} format={(n) => formatCurrency(n)} />
+              </Typography>
+            )}
+            <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.65rem' }}>
+              All funds received
+            </Typography>
+          </CardContent>
+        </Card>
+
+        {/* Minus sign */}
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', px: 0.5 }}>
+          <Typography variant="h6" sx={{ color: 'text.disabled', fontWeight: 300, display: { xs: 'none', sm: 'block' } }}>−</Typography>
+        </Box>
+
+        {/* Total Expenditure */}
+        <Card
+          onClick={handleExpenditureClick}
+          sx={{
+            cursor: 'pointer',
+            transition: 'all 0.2s',
+            borderLeft: '3px solid',
+            borderColor: 'error.main',
+            '&:hover': { boxShadow: 3 },
+          }}
+        >
+          <CardContent sx={{ py: 1.5, px: 2, '&:last-child': { pb: 1.5 } }}>
+            <Stack direction="row" alignItems="center" spacing={0.75} sx={{ mb: 0.5 }}>
+              <TrendingDownIcon color="error" sx={{ fontSize: 18 }} />
+              <Typography color="text.secondary" variant="caption" fontWeight={600} sx={{ fontSize: '0.75rem' }}>
+                Expenditure
+              </Typography>
+            </Stack>
+            {isLoading ? (
+              <Skeleton variant="text" width={120} height={32} />
+            ) : (
+              <Typography variant="h5" fontWeight={700} color="error.dark" sx={{ lineHeight: 1.2 }}>
+                <AnimatedNumber value={totalExpenditure} format={(n) => formatCurrency(n)} delay={150} />
+              </Typography>
+            )}
+            <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.65rem' }}>
+              All posted spend
+            </Typography>
+          </CardContent>
+        </Card>
+
+        {/* Equals sign */}
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', px: 0.5 }}>
+          <Typography variant="h6" sx={{ color: 'text.disabled', fontWeight: 300, display: { xs: 'none', sm: 'block' } }}>=</Typography>
+        </Box>
+
+        {/* Balance */}
+        <Card
+          sx={{
+            borderLeft: '3px solid',
+            borderColor: balance >= 0 ? 'primary.main' : 'error.main',
+            bgcolor: balance >= 0 ? 'primary.50' : 'error.50',
+          }}
+        >
+          <CardContent sx={{ py: 1.5, px: 2, '&:last-child': { pb: 1.5 } }}>
+            <Stack direction="row" alignItems="center" spacing={0.75} sx={{ mb: 0.5 }}>
+              <AccountBalanceIcon color={balance >= 0 ? 'primary' : 'error'} sx={{ fontSize: 18 }} />
+              <Typography color="text.secondary" variant="caption" fontWeight={600} sx={{ fontSize: '0.75rem' }}>
+                Balance
+              </Typography>
+            </Stack>
+            {isLoading ? (
+              <Skeleton variant="text" width={120} height={32} />
+            ) : (
+              <Typography variant="h5" fontWeight={700} color={balance >= 0 ? 'primary.dark' : 'error.dark'} sx={{ lineHeight: 1.2 }}>
+                <AnimatedNumber value={balance} format={(n) => formatCurrency(n)} delay={300} />
+              </Typography>
+            )}
+            <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.65rem' }}>
+              Inward − expenditure
+            </Typography>
+          </CardContent>
+        </Card>
+      </Box>
+
+      {/* ═══════════════════════════════════════════════════════════════
+          B. Budget Heads (left) + Amount Used Today (right)
+      ═══════════════════════════════════════════════════════════════ */}
+      <Box
+        sx={{
+          display: 'grid',
+          gridTemplateColumns: { xs: '1fr', md: '1fr 280px', lg: '1fr 300px' },
+          gap: 2,
+          mb: { xs: 2, sm: 3 },
+        }}
+      >
+        {/* ── Budget Heads table ── */}
+        <Box sx={{ minWidth: 0 }}>
+      <Typography variant="subtitle1" gutterBottom fontWeight={600} sx={{ mb: 1.5 }}>
+        Budget Heads
+      </Typography>
+      <Card sx={{ mb: { xs: 2, lg: 0 }, overflow: 'hidden', width: '100%', maxWidth: '100%' }}>
+        {/* Scrollable table container — scrolls horizontally within the card,
+            never breaks the dashboard width. First column is sticky. */}
+        <ScrollableTableContainer>
+            <Table size="small" sx={{ tableLayout: 'fixed', minWidth: 730 }}>
+              <TableHead>
+                <TableRow sx={{ bgcolor: 'action.hover' }}>
+                  <TableCell sx={{ fontWeight: 600, width: 150, position: 'sticky', left: 0, bgcolor: 'action.hover', zIndex: 2, borderRight: '1px solid', borderColor: 'divider', overflow: 'hidden' }}>Head</TableCell>
+                  <TableCell align="right" sx={{ fontWeight: 600, width: 130, overflow: 'hidden' }}>Approved</TableCell>
+                  <TableCell align="right" sx={{ fontWeight: 600, width: 120, overflow: 'hidden' }}>Actual</TableCell>
+                  <TableCell align="right" sx={{ fontWeight: 600, width: 120, overflow: 'hidden' }}>Remaining</TableCell>
+                  <TableCell sx={{ fontWeight: 600, width: 160, overflow: 'hidden' }}>% Used</TableCell>
+                  <TableCell align="right" sx={{ width: 50 }} />
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {isLoading ? (
+                  <TableRow>
+                    <TableCell colSpan={6}>
+                      <Skeleton variant="rectangular" height={40} />
+                    </TableCell>
+                  </TableRow>
+                ) : topBudgetHeads.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={6} align="center">
+                      <Typography color="text.secondary" sx={{ py: 2 }}>No budget heads found</Typography>
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  topBudgetHeads.map((head) => {
+                    const remaining = head.allocated - head.actual;
+                    const utilPct = Math.min(head.utilizationPct, 100);
+                    const barColor =
+                      head.utilizationPct >= 90 ? 'error' :
+                      head.utilizationPct >= 70 ? 'warning' :
+                      'success';
+                    return (
+                      <TableRow
+                        key={head.id}
+                        hover
+                        onClick={() => handleBudgetHeadClick()}
+                        sx={{ cursor: 'pointer' }}
+                      >
+                        <TableCell sx={{ position: 'sticky', left: 0, bgcolor: 'background.paper', zIndex: 1, borderRight: '1px solid', borderColor: 'divider', overflow: 'hidden' }}>
+                          <Typography variant="body2" fontWeight={500} noWrap>{head.particulars}</Typography>
+                        </TableCell>
+                        <TableCell align="right" sx={{ overflow: 'hidden' }}>
+                          <Typography variant="body2" noWrap>{formatCurrency(head.allocated)}</Typography>
+                        </TableCell>
+                        <TableCell align="right" sx={{ overflow: 'hidden' }}>
+                          <Typography variant="body2" noWrap>{formatCurrency(head.actual)}</Typography>
+                        </TableCell>
+                        <TableCell align="right" sx={{ overflow: 'hidden' }}>
+                          <Typography variant="body2" noWrap color={remaining < 0 ? 'error.main' : 'text.primary'}>
+                            {formatCurrency(remaining)}
+                          </Typography>
+                        </TableCell>
+                        <TableCell sx={{ overflow: 'hidden' }}>
+                          <Stack direction="row" spacing={0.75} alignItems="center" sx={{ minWidth: 0 }}>
+                            <LinearProgress
+                              variant="determinate"
+                              value={utilPct}
+                              color={barColor as 'success' | 'warning' | 'error'}
+                              sx={{ flex: 1, height: 6, borderRadius: 3, minWidth: 40 }}
+                            />
+                            <Typography variant="caption" sx={{ minWidth: 32, fontWeight: 600, fontSize: '0.7rem', flexShrink: 0 }}>
+                              {head.utilizationPct.toFixed(0)}%
+                            </Typography>
+                          </Stack>
+                        </TableCell>
+                        <TableCell align="right">
+                          <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleBudgetHeadClick(); }}>
+                            <ArrowForwardIcon fontSize="small" />
+                          </IconButton>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })
+                )}
+              </TableBody>
+            </Table>
+        </ScrollableTableContainer>
+        {budgetHeads.length > 6 && (
+          <Box sx={{ p: 1, textAlign: 'right' }}>
+            <Button
+              size="small"
+              onClick={() => navigate('/budget-heads')}
+              sx={{ textTransform: 'none' }}
+            >
+              View all {budgetHeads.length} heads →
+            </Button>
+          </Box>
+        )}
+      </Card>
+        </Box>
+
+        {/* ── Amount Used (beside budget heads) — with date range picker ── */}
+        <Box sx={{ minWidth: 0 }}>
+          <Typography variant="subtitle1" gutterBottom fontWeight={600} sx={{ mb: 1.5 }}>
+            {isTodayRange ? 'Amount Used Today' : 'Amount Used (Range)'}
+          </Typography>
+          <Card sx={{ borderLeft: '3px solid', borderColor: 'error.main', overflow: 'hidden', width: '100%', maxWidth: '100%' }}>
+            <CardContent sx={{ py: 1.5, px: 2, '&:last-child': { pb: 1.5 }, overflow: 'hidden' }}>
+              {/* Date range picker */}
+              <Stack direction="row" spacing={1} sx={{ mb: 1 }} flexWrap="wrap" useFlexGap>
+                <TextField
+                  type="date"
+                  size="small"
+                  label="From"
+                  value={outflowStartDate}
+                  onChange={(e) => setOutflowStartDate(e.target.value)}
+                  sx={{ flex: 1, minWidth: 0, '& .MuiInputBase-input': { py: 0.75, fontSize: '0.8rem' }, '& .MuiInputLabel-root': { fontSize: '0.75rem' } }}
+                  InputLabelProps={{ shrink: true }}
+                />
+                <TextField
+                  type="date"
+                  size="small"
+                  label="To"
+                  value={outflowEndDate}
+                  onChange={(e) => setOutflowEndDate(e.target.value)}
+                  sx={{ flex: 1, minWidth: 0, '& .MuiInputBase-input': { py: 0.75, fontSize: '0.8rem' }, '& .MuiInputLabel-root': { fontSize: '0.75rem' } }}
+                  InputLabelProps={{ shrink: true }}
+                />
+              </Stack>
+
+              {/* Quick range buttons */}
+              <Stack direction="row" spacing={0.5} sx={{ mb: 1 }} flexWrap="wrap" useFlexGap>
+                <Chip
+                  size="small"
+                  label="Today"
+                  color={isTodayRange ? 'primary' : 'default'}
+                  variant={isTodayRange ? 'filled' : 'outlined'}
+                  onClick={() => { setOutflowStartDate(todayStr); setOutflowEndDate(todayStr); }}
+                  sx={{ height: 20, fontSize: '0.65rem' }}
+                />
+                <Chip
+                  size="small"
+                  label="7D"
+                  color={false ? 'primary' : 'default'}
+                  variant="outlined"
+                  onClick={() => {
+                    const d = new Date();
+                    d.setDate(d.getDate() - 6);
+                    setOutflowStartDate(d.toISOString().split('T')[0]);
+                    setOutflowEndDate(todayStr);
+                  }}
+                  sx={{ height: 20, fontSize: '0.65rem' }}
+                />
+                <Chip
+                  size="small"
+                  label="30D"
+                  color={false ? 'primary' : 'default'}
+                  variant="outlined"
+                  onClick={() => {
+                    const d = new Date();
+                    d.setDate(d.getDate() - 29);
+                    setOutflowStartDate(d.toISOString().split('T')[0]);
+                    setOutflowEndDate(todayStr);
+                  }}
+                  sx={{ height: 20, fontSize: '0.65rem' }}
+                />
+                <Chip
+                  size="small"
+                  label="Reset"
+                  variant="outlined"
+                  onClick={() => { setOutflowStartDate(todayStr); setOutflowEndDate(todayStr); }}
+                  sx={{ height: 20, fontSize: '0.65rem' }}
+                />
+              </Stack>
+
+              {/* Total amount for the selected range */}
+              <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 0.5 }}>
+                <Typography variant="caption" color="text.secondary" fontWeight={500}>
+                  {isTodayRange
+                    ? new Date().toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short' })
+                    : `${new Date(outflowStartDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })} — ${new Date(outflowEndDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}`}
+                </Typography>
+                {!outflowLoading && (
+                  <Chip
+                    size="small"
+                    color={outflowCount ? 'error' : 'default'}
+                    label={`${outflowCount} txn${outflowCount === 1 ? '' : 's'}`}
+                    sx={{ height: 20, fontSize: '0.7rem' }}
+                  />
+                )}
+              </Stack>
+
+              {outflowLoading ? (
+                <Skeleton variant="text" width={140} height={32} />
+              ) : (
+                <Typography variant="h5" fontWeight={700} color={outflowAmount ? 'error.main' : 'text.secondary'} sx={{ lineHeight: 1.2 }}>
+                  <AnimatedNumber value={outflowAmount} format={(n) => formatCurrency(n)} />
+                </Typography>
+              )}
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1, fontSize: '0.65rem' }}>
+                {isTodayRange ? 'Total money out today' : 'Total money out in range'}
+              </Typography>
+
+              {!outflowLoading && outflowCount === 0 && (
+                <Alert severity="info" sx={{ py: 0.25, px: 1, fontSize: '0.75rem', '& .MuiAlert-message': { py: 0.25 } }}>
+                  No money spent in this {isTodayRange ? 'today' : 'period'}.
+                </Alert>
+              )}
+
+              {!outflowLoading && outflowTransactions.length > 0 && (
+                <Box sx={{ maxHeight: 200, overflowY: 'auto', overflowX: 'hidden', WebkitOverflowScrolling: 'touch', width: '100%' }}>
+                  <Divider sx={{ mb: 0.75 }} />
+                  <Stack spacing={0.75}>
+                    {outflowTransactions.slice(0, 10).map((t) => (
+                      <Box
+                        key={t.id}
+                        sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 1, width: '100%', maxWidth: '100%', overflow: 'hidden' }}
+                      >
+                        <Box sx={{ minWidth: 0, flex: 1, overflow: 'hidden' }}>
+                          <Stack direction="row" spacing={0.5} alignItems="center" sx={{ minWidth: 0 }}>
+                            <Chip size="small" label={t.accountType} variant="outlined" sx={{ height: 16, fontSize: '0.6rem', flexShrink: 0 }} />
+                            <Typography variant="caption" fontWeight={600} noWrap sx={{ minWidth: 0 }}>{t.account}</Typography>
+                          </Stack>
+                          <Typography variant="caption" color="text.secondary" component="div" noWrap sx={{ fontSize: '0.7rem', maxWidth: '100%' }}>
+                            {t.description || '—'}
+                          </Typography>
+                          {!isTodayRange && (
+                            <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.6rem' }}>
+                              {new Date('time' in t ? (t as { time: string }).time : (t as { date: string }).date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}
+                            </Typography>
+                          )}
+                        </Box>
+                        <Typography variant="caption" fontWeight={700} color="error.main" sx={{ whiteSpace: 'nowrap', fontSize: '0.75rem', flexShrink: 0 }}>
+                          {formatCurrency(t.amount)}
+                        </Typography>
+                      </Box>
+                    ))}
+                  </Stack>
+                </Box>
+              )}
+            </CardContent>
+          </Card>
+        </Box>
+      </Box>
+
+      {/* ═══════════════════════════════════════════════════════════════
+          C. Grouped secondary content
+      ═══════════════════════════════════════════════════════════════ */}
+      <Box
+        sx={{
+          display: 'grid',
+          gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' },
+          gap: 2,
+          mb: { xs: 2, sm: 3 },
+        }}
+      >
+        {/* ── Pending Approvals ── */}
+        <Box sx={{ minWidth: 0 }}>
+          <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 1.5, display: 'flex', alignItems: 'center', gap: 1 }}>
+            <PendingActionsIcon color="warning" fontSize="small" />
+            Pending Approvals
+          </Typography>
+          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', sm: '1fr 1fr' }, gap: 1.5 }}>
+            <Card
+              onClick={() => setPendingDialog('payments')}
+              sx={{ cursor: 'pointer', '&:hover': { boxShadow: 3 } }}
+            >
+              <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
+                <Typography variant="body2" color="text.secondary">Payments</Typography>
+                {isLoading ? <Skeleton width={40} /> : (
+                  <Typography variant="h5" color="warning.main" fontWeight={700}>
+                    {adminData?.pendingPayments ?? 0}
+                  </Typography>
+                )}
+              </CardContent>
+            </Card>
+            <Card
+              onClick={() => setPendingDialog('quotations')}
+              sx={{ cursor: 'pointer', '&:hover': { boxShadow: 3 } }}
+            >
+              <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
+                <Typography variant="body2" color="text.secondary">Quotations</Typography>
+                {isLoading ? <Skeleton width={40} /> : (
+                  <Typography variant="h5" color="warning.main" fontWeight={700}>
+                    {adminData?.pendingQuotations ?? 0}
+                  </Typography>
+                )}
+              </CardContent>
+            </Card>
+            <Card
+              onClick={() => setPendingDialog('pos')}
+              sx={{ cursor: 'pointer', '&:hover': { boxShadow: 3 } }}
+            >
+              <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
+                <Typography variant="body2" color="text.secondary">Purchase Orders</Typography>
+                {isLoading ? <Skeleton width={40} /> : (
+                  <Typography variant="h5" color="warning.main" fontWeight={700}>
+                    {adminData?.pendingPOs ?? 0}
+                  </Typography>
+                )}
+              </CardContent>
+            </Card>
+            <Card
+              onClick={() => setPendingDialog('invoices')}
+              sx={{ cursor: 'pointer', '&:hover': { boxShadow: 3 } }}
+            >
+              <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
+                <Typography variant="body2" color="text.secondary">Invoices</Typography>
+                {isLoading ? <Skeleton width={40} /> : (
+                  <Typography variant="h5" color="warning.main" fontWeight={700}>
+                    {adminData?.pendingInvoices ?? 0}
+                  </Typography>
+                )}
+              </CardContent>
+            </Card>
+          </Box>
+        </Box>
+
+        {/* ── Bank & Cash ── */}
+        <Box sx={{ minWidth: 0 }}>
+          <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 1.5, display: 'flex', alignItems: 'center', gap: 1 }}>
+            <WalletIcon color="primary" fontSize="small" />
+            Bank &amp; Cash
+          </Typography>
+          <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1.5 }}>
+            <Card
+              onClick={() => navigate('/bank-accounts')}
+              sx={{ cursor: 'pointer', '&:hover': { boxShadow: 3 } }}
+            >
+              <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
+                <Typography variant="body2" color="text.secondary">Bank Balance</Typography>
+                {isLoading ? <Skeleton width={100} /> : (
+                  <Typography variant="h6" fontWeight={700} color="primary.dark">
+                    {formatCurrency(adminData?.bankBalance ?? 0)}
+                  </Typography>
+                )}
+              </CardContent>
+            </Card>
+            <Card
+              onClick={() => navigate('/cash-accounts')}
+              sx={{ cursor: 'pointer', '&:hover': { boxShadow: 3 } }}
+            >
+              <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
+                <Typography variant="body2" color="text.secondary">Cash Balance</Typography>
+                {isLoading ? <Skeleton width={100} /> : (
+                  <Typography variant="h6" fontWeight={700} color="success.dark">
+                    {formatCurrency(adminData?.cashBalance ?? 0)}
+                  </Typography>
+                )}
+              </CardContent>
+            </Card>
+            <Card sx={{ gridColumn: 'span 2' }}>
+              <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
+                <Typography variant="body2" color="text.secondary">Total Liquidity</Typography>
+                {isLoading ? <Skeleton width={120} /> : (
+                  <Typography variant="h5" fontWeight={700}>
+                    {formatCurrency(adminData?.totalLiquidity ?? 0)}
+                  </Typography>
+                )}
+              </CardContent>
+            </Card>
+          </Box>
+        </Box>
+      </Box>
+
+      {/* ── Recent Transactions ── */}
+      <Typography variant="subtitle1" gutterBottom fontWeight={600} sx={{ mb: 1.5, display: 'flex', alignItems: 'center', gap: 1 }}>
+        <PaymentsIcon color="action" fontSize="small" />
+        Recent Transactions
+      </Typography>
+      <Card sx={{ mb: { xs: 2, sm: 3 }, overflow: 'hidden', width: '100%', maxWidth: '100%' }}>
+        <ScrollableTableContainer>
+            <Table size="small" sx={{ tableLayout: 'fixed', minWidth: 730 }}>
+              <TableHead>
+                <TableRow sx={{ bgcolor: 'action.hover' }}>
+                  <TableCell sx={{ fontWeight: 600, width: 160, position: 'sticky', left: 0, bgcolor: 'action.hover', zIndex: 2, borderRight: '1px solid', borderColor: 'divider', overflow: 'hidden' }}>Account</TableCell>
+                  <TableCell sx={{ fontWeight: 600, width: 240, overflow: 'hidden' }}>Description</TableCell>
+                  <TableCell align="right" sx={{ fontWeight: 600, width: 120, overflow: 'hidden' }}>Amount</TableCell>
+                  <TableCell sx={{ fontWeight: 600, width: 100, overflow: 'hidden' }}>Type</TableCell>
+                  <TableCell sx={{ fontWeight: 600, width: 110, overflow: 'hidden' }}>Date</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {isLoading ? (
+                  <TableRow>
+                    <TableCell colSpan={5}><Skeleton variant="rectangular" height={36} /></TableCell>
+                  </TableRow>
+                ) : recentTransactions.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={5} align="center">
+                      <Typography color="text.secondary" sx={{ py: 2 }}>No recent transactions</Typography>
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  recentTransactions.map((t) => (
+                    <TableRow
+                      key={t.id}
+                      hover
+                      onClick={() => navigate(t.accountType === 'BANK' ? '/bank-accounts' : '/cash-accounts')}
+                      sx={{ cursor: 'pointer' }}
+                    >
+                      <TableCell sx={{ position: 'sticky', left: 0, bgcolor: 'background.paper', zIndex: 1, borderRight: '1px solid', borderColor: 'divider', overflow: 'hidden' }}>
+                        <Stack direction="row" spacing={0.75} alignItems="center" sx={{ minWidth: 0 }}>
+                          <Chip
+                            label={t.accountType}
+                            size="small"
+                            color={t.isInflow ? 'success' : 'error'}
+                            variant="outlined"
+                            sx={{ height: 18, fontSize: '0.65rem', flexShrink: 0 }}
+                          />
+                          <Typography variant="body2" fontWeight={500} noWrap>{t.account}</Typography>
+                        </Stack>
+                      </TableCell>
+                      <TableCell sx={{ overflow: 'hidden' }}>
+                        <Typography variant="body2" noWrap>{t.description || t.type.replace(/_/g, ' ').toLowerCase()}</Typography>
+                      </TableCell>
+                      <TableCell align="right" sx={{ overflow: 'hidden' }}>
+                        <Typography variant="body2" fontWeight={600} noWrap color={t.isInflow ? 'success.main' : 'error.main'}>
+                          {t.isInflow ? '+' : '−'}{formatCurrency(t.amount)}
+                        </Typography>
+                      </TableCell>
+                      <TableCell sx={{ overflow: 'hidden' }}>
+                        <Chip label={t.isInflow ? 'Inflow' : 'Outflow'} size="small" color={t.isInflow ? 'success' : 'error'} variant="outlined" />
+                      </TableCell>
+                      <TableCell sx={{ overflow: 'hidden' }}>
+                        <Typography variant="caption" color="text.secondary" noWrap>{formatDate(t.date)}</Typography>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+        </ScrollableTableContainer>
+      </Card>
+
+      {/* ── Document Summary ── */}
+      <Box sx={{ mb: 3 }}>
+        <DocumentSummaryCard compact={isMobile} />
+      </Box>
+
+      {/* ── Material Rate Tracker (admin only) ── */}
+      <Box sx={{ mb: 3 }}>
+        <RateTrackerWidget />
+      </Box>
+
+      {/* ── Recent Quotations ── */}
+      <Typography variant="subtitle1" gutterBottom fontWeight={600} sx={{ mb: 1.5, display: 'flex', alignItems: 'center', gap: 1 }}>
+        <ReceiptIcon color="action" fontSize="small" />
+        Recent Quotations
+      </Typography>
+      <Card sx={{ mb: { xs: 2, sm: 3 }, overflow: 'hidden', width: '100%', maxWidth: '100%' }}>
+        <ScrollableTableContainer>
+            <Table size="small" sx={{ tableLayout: 'fixed', minWidth: 550 }}>
+              <TableHead>
+                <TableRow sx={{ bgcolor: 'action.hover' }}>
+                  <TableCell sx={{ fontWeight: 600, width: 130, position: 'sticky', left: 0, bgcolor: 'action.hover', zIndex: 2, borderRight: '1px solid', borderColor: 'divider', overflow: 'hidden' }}>Number</TableCell>
+                  <TableCell sx={{ fontWeight: 600, width: 180, overflow: 'hidden' }}>Vendor</TableCell>
+                  <TableCell align="right" sx={{ fontWeight: 600, width: 120, overflow: 'hidden' }}>Total</TableCell>
+                  <TableCell sx={{ fontWeight: 600, width: 120, overflow: 'hidden' }}>Status</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {isLoading ? (
+                  <TableRow>
+                    <TableCell colSpan={4}><Skeleton variant="rectangular" height={36} /></TableCell>
+                  </TableRow>
+                ) : recentQuotations.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={4} align="center">
+                      <Typography color="text.secondary" sx={{ py: 2 }}>No recent quotations</Typography>
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  recentQuotations.slice(0, 5).map((q) => (
+                    <TableRow
+                      key={q.id}
+                      hover
+                      onClick={() => navigate('/quotations')}
+                      sx={{ cursor: 'pointer' }}
+                    >
+                      <TableCell sx={{ position: 'sticky', left: 0, bgcolor: 'background.paper', zIndex: 1, borderRight: '1px solid', borderColor: 'divider', overflow: 'hidden' }}>
+                        <Typography variant="body2" fontWeight={500} noWrap>{q.quotationNumber}</Typography>
+                      </TableCell>
+                      <TableCell sx={{ overflow: 'hidden' }}>
+                        <Typography variant="body2" noWrap>{q.vendorName}</Typography>
+                      </TableCell>
+                      <TableCell align="right" sx={{ overflow: 'hidden' }}>
+                        <Typography variant="body2" fontWeight={600} noWrap>{formatCurrency(q.grandTotal)}</Typography>
+                      </TableCell>
+                      <TableCell sx={{ overflow: 'hidden' }}>
+                        <Chip label={q.status.replace(/_/g, ' ')} size="small" sx={{ height: 20, fontSize: '0.7rem' }} />
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+        </ScrollableTableContainer>
+      </Card>
+
+      {/* Pending items dialog */}
+      {pendingDialog && (
+        <PendingItemsDialog
+          open={!!pendingDialog}
+          entityType={pendingDialog}
+          user={user}
+          onClose={() => setPendingDialog(null)}
+        />
+      )}
+    </Box>
+  );
+}

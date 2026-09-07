@@ -632,3 +632,438 @@ router.get(
     }
   }
 );
+
+// ── Admin Dashboard Summary (additive, read-only) ───────────────────
+// Returns the accounting-first summary for the Admin dashboard:
+//   Total Inward Funds − Total Expenditure = Balance
+//
+// Calculated from ALL posted bank + cash transactions (no date filter),
+// so the balance always matches the actual account balances.
+//
+// Inward funds = DEPOSIT + TRANSFER_IN + REVERSAL_IN (bank) +
+//                IN + TRANSFER_IN + REVERSAL_IN (cash)
+// Expenditure  = WITHDRAWAL + TRANSFER_OUT + REVERSAL_OUT (bank) +
+//                OUT + TRANSFER_OUT + REVERSAL_OUT (cash)
+//
+// REVERSAL_OUT is treated as outflow because it reverses a previous
+// inflow (reduces the balance). REVERSAL_IN is treated as inflow
+// because it reverses a previous outflow (restores the balance).
+// This is consistent with how the existing cash-flow endpoint and
+// voucher posting logic classify transactions.
+//
+// Also returns budget heads (top by allocated), bank/cash balances,
+// and pending counts — all from existing data, no new fields.
+router.get(
+  '/admin-summary',
+  rbacMiddleware(Permission.VIEW_FINANCIALS),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+
+      // ── 1. Inward funds + expenditure from ALL posted transactions ──
+      // No date filter — includes future-dated transactions so the
+      // balance always matches actual account balances.
+      const inflowTypes = ['DEPOSIT', 'TRANSFER_IN', 'REVERSAL_IN'];
+      const outflowTypes = ['WITHDRAWAL', 'TRANSFER_OUT', 'REVERSAL_OUT', 'PAYMENT'];
+      const cashInflowTypes = ['IN', 'TRANSFER_IN', 'REVERSAL_IN'];
+      const cashOutflowTypes = ['OUT', 'TRANSFER_OUT', 'REVERSAL_OUT'];
+
+      const [
+        bankInflowAgg,
+        bankOutflowAgg,
+        cashInflowAgg,
+        cashOutflowAgg,
+        bankBalanceAgg,
+        cashBalanceAgg,
+        budgetHeads,
+        pendingPayments,
+        pendingQuotations,
+        pendingPOs,
+        pendingInvoices,
+        recentBankTxns,
+        recentCashTxns,
+        todayBankOutflowAgg,
+        todayCashOutflowAgg,
+        todayBankOutTxns,
+        todayCashOutTxns,
+        recentQuotations,
+        project,
+      ] = await Promise.all([
+        // Bank inflow (all time, no date filter)
+        prisma.bankTransaction.aggregate({
+          where: {
+            status: 'POSTED',
+            type: { in: inflowTypes },
+            bankAccount: { projectId, deletedAt: null },
+          },
+          _sum: { amount: true },
+        }),
+        // Bank outflow (all time, no date filter)
+        prisma.bankTransaction.aggregate({
+          where: {
+            status: 'POSTED',
+            type: { in: outflowTypes },
+            bankAccount: { projectId, deletedAt: null },
+          },
+          _sum: { amount: true },
+        }),
+        // Cash inflow (all time, no date filter)
+        prisma.cashTransaction.aggregate({
+          where: {
+            status: 'POSTED',
+            type: { in: cashInflowTypes },
+            cashAccount: { projectId, deletedAt: null },
+          },
+          _sum: { amount: true },
+        }),
+        // Cash outflow (all time, no date filter)
+        prisma.cashTransaction.aggregate({
+          where: {
+            status: 'POSTED',
+            type: { in: cashOutflowTypes },
+            cashAccount: { projectId, deletedAt: null },
+          },
+          _sum: { amount: true },
+        }),
+        // Bank balances
+        prisma.bankAccount.aggregate({
+          where: { projectId, deletedAt: null },
+          _sum: { currentBalance: true, openingBalance: true },
+        }),
+        // Cash balances
+        prisma.cashAccount.aggregate({
+          where: { projectId, deletedAt: null },
+          _sum: { currentBalance: true, openingBalance: true },
+        }),
+        // Budget heads (all, sorted by slNo)
+        prisma.budgetHead.findMany({
+          where: { projectId, deletedAt: null },
+          orderBy: { slNo: 'asc' },
+          select: {
+            id: true,
+            slNo: true,
+            particulars: true,
+            allocatedAmount: true,
+            committedAmount: true,
+            actualAmount: true,
+            paidAmount: true,
+          },
+        }),
+        // Pending counts
+        prisma.paymentRequest.count({ where: { projectId, status: 'PENDING', deletedAt: null } }),
+        prisma.quotation.count({ where: { projectId, status: 'SUBMITTED', deletedAt: null } }),
+        prisma.purchaseOrder.count({ where: { projectId, status: 'PENDING_APPROVAL', deletedAt: null } }),
+        prisma.vendorInvoice.count({ where: { projectId, verificationStatus: 'PENDING', deletedAt: null } }),
+        // Recent bank transactions (last 5)
+        prisma.bankTransaction.findMany({
+          where: { status: 'POSTED', bankAccount: { projectId, deletedAt: null } },
+          include: { bankAccount: { select: { accountName: true } } },
+          orderBy: { date: 'desc' },
+          take: 5,
+        }),
+        // Recent cash transactions (last 5)
+        prisma.cashTransaction.findMany({
+          where: { status: 'POSTED', cashAccount: { projectId, deletedAt: null } },
+          include: { cashAccount: { select: { name: true } } },
+          orderBy: { date: 'desc' },
+          take: 5,
+        }),
+        // Today's bank outflow (all outflow types, today only)
+        prisma.bankTransaction.aggregate({
+          where: {
+            status: 'POSTED',
+            type: { in: outflowTypes },
+            bankAccount: { projectId, deletedAt: null },
+            date: { gte: new Date(new Date().setHours(0, 0, 0, 0)) },
+          },
+          _sum: { amount: true },
+          _count: true,
+        }),
+        // Today's cash outflow (all outflow types, today only)
+        prisma.cashTransaction.aggregate({
+          where: {
+            status: 'POSTED',
+            type: { in: cashOutflowTypes },
+            cashAccount: { projectId, deletedAt: null },
+            date: { gte: new Date(new Date().setHours(0, 0, 0, 0)) },
+          },
+          _sum: { amount: true },
+          _count: true,
+        }),
+        // Today's outflow transactions (for the detail list)
+        prisma.bankTransaction.findMany({
+          where: {
+            status: 'POSTED',
+            type: { in: outflowTypes },
+            bankAccount: { projectId, deletedAt: null },
+            date: { gte: new Date(new Date().setHours(0, 0, 0, 0)) },
+          },
+          include: { bankAccount: { select: { accountName: true } } },
+          orderBy: { date: 'desc' },
+          take: 10,
+        }),
+        prisma.cashTransaction.findMany({
+          where: {
+            status: 'POSTED',
+            type: { in: cashOutflowTypes },
+            cashAccount: { projectId, deletedAt: null },
+            date: { gte: new Date(new Date().setHours(0, 0, 0, 0)) },
+          },
+          include: { cashAccount: { select: { name: true } } },
+          orderBy: { date: 'desc' },
+          take: 10,
+        }),
+        // Recent quotations (last 5)
+        prisma.quotation.findMany({
+          where: { projectId, deletedAt: null },
+          include: { vendor: { select: { name: true } } },
+          orderBy: { createdAt: 'desc' },
+          take: 5,
+        }),
+        // Project info
+        prisma.project.findUnique({
+          where: { id: projectId },
+          select: { name: true, status: true },
+        }),
+      ]);
+
+      // ── Calculate summary values ──
+      const totalInwardFunds =
+        Number(bankInflowAgg._sum.amount ?? 0) + Number(cashInflowAgg._sum.amount ?? 0);
+      const totalExpenditure =
+        Number(bankOutflowAgg._sum.amount ?? 0) + Number(cashOutflowAgg._sum.amount ?? 0);
+      const balance = totalInwardFunds - totalExpenditure;
+
+      const bankBalance = Number(bankBalanceAgg._sum.currentBalance ?? 0);
+      const cashBalance = Number(cashBalanceAgg._sum.currentBalance ?? 0);
+      const totalLiquidity = bankBalance + cashBalance;
+
+      // Budget heads with computed fields
+      const budgetHeadRows = budgetHeads.map((h) => {
+        const allocated = Number(h.allocatedAmount);
+        const committed = Number(h.committedAmount);
+        const actual = Number(h.actualAmount);
+        const paid = Number(h.paidAmount);
+        const available = allocated - actual;
+        const utilizationPct = allocated > 0 ? (actual / allocated) * 100 : 0;
+        return {
+          id: h.id,
+          slNo: h.slNo,
+          particulars: h.particulars,
+          allocated,
+          committed,
+          actual,
+          paid,
+          available,
+          utilizationPct: Math.round(utilizationPct * 100) / 100,
+        };
+      });
+
+      // ── Today's outflow (Amount Used Today) ──
+      const todayOutflowAmount =
+        Number(todayBankOutflowAgg._sum.amount ?? 0) + Number(todayCashOutflowAgg._sum.amount ?? 0);
+      const todayOutflowCount =
+        (todayBankOutflowAgg._count ?? 0) + (todayCashOutflowAgg._count ?? 0);
+      const todayOutflowTransactions = [
+        ...todayBankOutTxns.map((t) => ({
+          id: t.id,
+          account: t.bankAccount?.accountName ?? 'Bank',
+          accountType: 'BANK' as const,
+          amount: Number(t.amount),
+          description: t.description ?? '',
+          time: t.date.toISOString(),
+        })),
+        ...todayCashOutTxns.map((t) => ({
+          id: t.id,
+          account: t.cashAccount?.name ?? 'Cash',
+          accountType: 'CASH' as const,
+          amount: Number(t.amount),
+          description: t.description ?? '',
+          time: t.date.toISOString(),
+        })),
+      ].sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime());
+
+      res.json({
+        project: project ? { name: project.name, status: project.status } : null,
+        // Accounting-first summary
+        totalInwardFunds,
+        totalExpenditure,
+        balance,
+        // Bank & cash
+        bankBalance,
+        cashBalance,
+        totalLiquidity,
+        // Budget heads
+        budgetHeads: budgetHeadRows,
+        budgetTotals: {
+          totalAllocated: budgetHeadRows.reduce((s, h) => s + h.allocated, 0),
+          totalActual: budgetHeadRows.reduce((s, h) => s + h.actual, 0),
+          totalCommitted: budgetHeadRows.reduce((s, h) => s + h.committed, 0),
+        },
+        // Today's outflow (Amount Used Today)
+        todayOutflow: {
+          amount: todayOutflowAmount,
+          count: todayOutflowCount,
+          transactions: todayOutflowTransactions,
+        },
+        // Pending approvals
+        pendingPayments,
+        pendingQuotations,
+        pendingPOs,
+        pendingInvoices,
+        // Recent activity — merged bank + cash transactions, sorted by date desc
+        recentTransactions: [
+          ...recentBankTxns.map((t) => ({
+            id: t.id,
+            account: t.bankAccount?.accountName ?? 'Bank',
+            accountType: 'BANK' as const,
+            type: t.type,
+            isInflow: ['DEPOSIT', 'TRANSFER_IN', 'REVERSAL_IN'].includes(t.type),
+            amount: Number(t.amount),
+            description: t.description ?? '',
+            date: t.date.toISOString(),
+          })),
+          ...recentCashTxns.map((t) => ({
+            id: t.id,
+            account: t.cashAccount?.name ?? 'Cash',
+            accountType: 'CASH' as const,
+            type: t.type,
+            isInflow: ['IN', 'TRANSFER_IN', 'REVERSAL_IN'].includes(t.type),
+            amount: Number(t.amount),
+            description: t.description ?? '',
+            date: t.date.toISOString(),
+          })),
+        ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 8),
+        recentQuotations: recentQuotations.map((q) => ({
+          id: q.id,
+          quotationNumber: q.quotationNumber,
+          vendorName: q.vendor?.name ?? '—',
+          grandTotal: Number(q.grandTotal),
+          status: q.status,
+          createdAt: q.createdAt.toISOString(),
+        })),
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// ── Outflow by date range (additive, read-only) ─────────────────────
+// Returns total expenditure (bank + cash outflow) for a given date range.
+// Used by the Admin Dashboard "Amount Used Today" card when the user
+// selects a custom date range. Defaults to today if no range is provided.
+//
+// Query params:
+//   startDate — ISO date string (default: today 00:00)
+//   endDate   — ISO date string (default: today 23:59:59)
+//
+// All data is live from posted BankTransaction + CashTransaction rows.
+// No hardcoded values — everything is computed from real transactions.
+router.get(
+  '/outflow-by-range',
+  rbacMiddleware(Permission.VIEW_FINANCIALS),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+
+      // Parse date range — default to today
+      const now = new Date();
+      const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+
+      const startDate = req.query.startDate
+        ? new Date(String(req.query.startDate))
+        : startOfDay;
+      const endDate = req.query.endDate
+        ? new Date(String(req.query.endDate))
+        : endOfDay;
+
+      // If endDate is a date-only string (no time), set it to end of that day
+      if (req.query.endDate && endDate.getHours() === 0) {
+        endDate.setHours(23, 59, 59, 999);
+      }
+
+      const outflowTypes = ['WITHDRAWAL', 'TRANSFER_OUT', 'REVERSAL_OUT', 'PAYMENT'];
+      const cashOutflowTypes = ['OUT', 'TRANSFER_OUT', 'REVERSAL_OUT'];
+
+      const [bankOutflowAgg, cashOutflowAgg, bankOutTxns, cashOutTxns] = await Promise.all([
+        prisma.bankTransaction.aggregate({
+          where: {
+            status: 'POSTED',
+            type: { in: outflowTypes },
+            bankAccount: { projectId, deletedAt: null },
+            date: { gte: startDate, lte: endDate },
+          },
+          _sum: { amount: true },
+          _count: true,
+        }),
+        prisma.cashTransaction.aggregate({
+          where: {
+            status: 'POSTED',
+            type: { in: cashOutflowTypes },
+            cashAccount: { projectId, deletedAt: null },
+            date: { gte: startDate, lte: endDate },
+          },
+          _sum: { amount: true },
+          _count: true,
+        }),
+        prisma.bankTransaction.findMany({
+          where: {
+            status: 'POSTED',
+            type: { in: outflowTypes },
+            bankAccount: { projectId, deletedAt: null },
+            date: { gte: startDate, lte: endDate },
+          },
+          include: { bankAccount: { select: { accountName: true } } },
+          orderBy: { date: 'desc' },
+          take: 20,
+        }),
+        prisma.cashTransaction.findMany({
+          where: {
+            status: 'POSTED',
+            type: { in: cashOutflowTypes },
+            cashAccount: { projectId, deletedAt: null },
+            date: { gte: startDate, lte: endDate },
+          },
+          include: { cashAccount: { select: { name: true } } },
+          orderBy: { date: 'desc' },
+          take: 20,
+        }),
+      ]);
+
+      const totalAmount =
+        Number(bankOutflowAgg._sum.amount ?? 0) + Number(cashOutflowAgg._sum.amount ?? 0);
+      const totalCount = (bankOutflowAgg._count ?? 0) + (cashOutflowAgg._count ?? 0);
+
+      const transactions = [
+        ...bankOutTxns.map((t) => ({
+          id: t.id,
+          account: t.bankAccount?.accountName ?? 'Bank',
+          accountType: 'BANK' as const,
+          amount: Number(t.amount),
+          description: t.description ?? '',
+          date: t.date.toISOString(),
+        })),
+        ...cashOutTxns.map((t) => ({
+          id: t.id,
+          account: t.cashAccount?.name ?? 'Cash',
+          accountType: 'CASH' as const,
+          amount: Number(t.amount),
+          description: t.description ?? '',
+          date: t.date.toISOString(),
+        })),
+      ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+      res.json({
+        startDate: startDate.toISOString(),
+        endDate: endDate.toISOString(),
+        totalAmount,
+        totalCount,
+        transactions,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);

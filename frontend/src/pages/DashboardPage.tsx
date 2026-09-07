@@ -8,17 +8,32 @@ import { AnimatedNumber } from '../components/AnimatedNumber';
 import MoneyFlowSankey from '../components/MoneyFlowSankey';
 import GanttChart from '../components/GanttChart';
 import PendingItemsDialog from '../components/PendingItemsDialog';
-import RateTrackerWidget from '../components/RateTrackerWidget';
 import AmountUsedTodayWidget from '../components/AmountUsedTodayWidget';
 import DocumentSummaryCard from '../components/DocumentSummaryCard';
 import FinanceSummaryCard from '../components/FinanceSummaryCard';
 import { useAuthStore } from '../stores/authStore';
+import AdminDashboardPage from './AdminDashboardPage';
 
 type PendingType = 'payments' | 'quotations' | 'pos' | 'invoices';
 
 export default function DashboardPage() {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+
+  const user = useAuthStore((s) => s.user);
+
+  // ── Role-based dashboard branch ──
+  // ADMIN and ADMIN_2 see the dedicated Admin dashboard.
+  // All other roles see the existing dashboard — byte-for-byte unchanged.
+  // This branch is driven solely by the logged-in user's role from authStore,
+  // not by user ID, phone number, or any hardcoded allowlist. Any user
+  // assigned ADMIN or ADMIN_2 will automatically see the admin dashboard.
+  const isAdmin = user?.role === UserRole.ADMIN || user?.role === UserRole.ADMIN_2;
+  if (isAdmin) {
+    return <AdminDashboardPage />;
+  }
+
+  // ── Existing dashboard for all non-admin roles (unchanged) ──
 
   const { data: summary, isLoading, isError } = useQuery({
     queryKey: ['/dashboard/summary'],
@@ -28,16 +43,12 @@ export default function DashboardPage() {
     },
   });
 
-  const user = useAuthStore((s) => s.user);
   const [pendingDialog, setPendingDialog] = useState<PendingType | null>(null);
 
-  // Rate Tracker widget is admin-only (per roadmap: visible in admin dashboard).
-  const isAdmin = user?.role === UserRole.ADMIN || user?.role === UserRole.ADMIN_2;
-
   // Amount Used Today widget — visible to admin + accountant roles only.
+  // Note: admins never reach this code path (they get AdminDashboardPage above).
+  // This conditional only affects ACCOUNTANT and other non-admin roles.
   const canSeeTodaySpend =
-    user?.role === UserRole.ADMIN ||
-    user?.role === UserRole.ADMIN_2 ||
     user?.role === UserRole.ACCOUNTANT;
 
   return (
@@ -150,19 +161,11 @@ export default function DashboardPage() {
         <DocumentSummaryCard compact={isMobile} />
       </Box>
 
-      {/* Amount Used Today — admin + accountant only. Shows total of all PAID
-          payments made today (no carry-forward). Read-only, no data changes. */}
+      {/* Amount Used Today — accountant only on this dashboard.
+          (Admins see it in AdminDashboardPage instead.) */}
       {canSeeTodaySpend && (
         <Box sx={{ mb: 3 }}>
           <AmountUsedTodayWidget />
-        </Box>
-      )}
-
-      {/* Material Rate Tracker — admin only. Shows previous vs latest cost per
-          material pulled from Quotations & POs. Read-only, no data changes. */}
-      {isAdmin && (
-        <Box sx={{ mb: 3 }}>
-          <RateTrackerWidget />
         </Box>
       )}
 
