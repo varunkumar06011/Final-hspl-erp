@@ -51,6 +51,7 @@ import { formatCurrency, formatIndianNumber, formatDate, amountToWords, todayLoc
 import { VoucherType, LedgerGroup, Permission, UserRole, hasPermission } from '@hospital-erp/shared';
 import LedgerAutocomplete, { type LedgerOption } from '../components/LedgerAutocomplete';
 import { useAuthStore } from '../stores/authStore';
+import VoucherProofAttachment from '../components/VoucherProofAttachment';
 
 interface Ledger {
   id: string;
@@ -193,6 +194,8 @@ export default function VouchersPage() {
   // Tally-style: cheque details for bank payments/receipts
   const [chequeNumber, setChequeNumber] = useState('');
   const [chequeDate, setChequeDate] = useState('');
+  // Proof attachment — pending file held in memory until voucher is saved
+  const [pendingProofFile, setPendingProofFile] = useState<File | null>(null);
 
   // Detail dialog
   const [detailVoucher, setDetailVoucher] = useState<Voucher | null>(null);
@@ -258,7 +261,32 @@ export default function VouchersPage() {
       const response = await api.post('/vouchers', payload);
       return response.data;
     },
-    onSuccess: (data) => {
+    onSuccess: async (data) => {
+      // Upload proof attachment if one was selected (non-blocking — voucher is already saved)
+      if (pendingProofFile && data.voucherId) {
+        try {
+          const formData = new FormData();
+          formData.append('file', pendingProofFile);
+          formData.append('entityType', 'VOUCHER');
+          formData.append('entityId', data.voucherId);
+          formData.append('description', 'Proof attachment for voucher');
+          await api.post('/attachments/upload', formData, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+          });
+        } catch {
+          // Voucher is saved — attachment failure is non-fatal, just show a note
+          setSuccessMsg(`Voucher ${data.jvNumber} posted. Proof attachment upload failed — please edit the voucher to re-attach.`);
+          setPendingProofFile(null);
+          setCreateOpen(false);
+          queryClient.invalidateQueries({ queryKey: ['/vouchers'] });
+          queryClient.invalidateQueries({ queryKey: ['/ledgers'] });
+          queryClient.invalidateQueries({ queryKey: ['/bank-accounts'] });
+          queryClient.invalidateQueries({ queryKey: ['/cash-accounts'] });
+          setTimeout(() => setSuccessMsg(''), 6000);
+          return;
+        }
+      }
+      setPendingProofFile(null);
       queryClient.invalidateQueries({ queryKey: ['/vouchers'] });
       queryClient.invalidateQueries({ queryKey: ['/ledgers'] });
       queryClient.invalidateQueries({ queryKey: ['/bank-accounts'] });
@@ -328,6 +356,7 @@ export default function VouchersPage() {
     setSimpleToLedger('');
     setChequeNumber('');
     setChequeDate('');
+    setPendingProofFile(null);
     setError('');
   };
 
@@ -855,7 +884,7 @@ export default function VouchersPage() {
       </Card>
 
       {/* ── Create/Edit voucher dialog — Tally-style ── */}
-      <ResponsiveDialog open={createOpen} onClose={() => { setCreateOpen(false); setEditingVoucherId(null); }} maxWidth="md" fullWidth>
+      <ResponsiveDialog open={createOpen} onClose={() => { setCreateOpen(false); setEditingVoucherId(null); setPendingProofFile(null); }} maxWidth="md" fullWidth>
         <DialogTitle>
           {editingVoucherId ? 'Edit' : ''} {VOUCHER_TYPES.find((vt) => vt.value === selectedVoucherType)?.label ?? 'Voucher'}
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
@@ -1080,6 +1109,13 @@ export default function VouchersPage() {
                 onChange={(e) => setVoucherDescription(e.target.value)}
                 placeholder="Enter narration for this voucher..."
               />
+
+              {/* Proof Attachment — optional, after narration */}
+              <VoucherProofAttachment
+                voucherId={editingVoucherId}
+                pendingFile={pendingProofFile}
+                onPendingFileChange={setPendingProofFile}
+              />
             </Box>
           ) : (
             /* ═══════════════════════════════════════════════════════════════
@@ -1207,11 +1243,20 @@ export default function VouchersPage() {
                 sx={{ mt: 2 }}
                 placeholder="Enter narration for this voucher..."
               />
+
+              {/* Proof Attachment — optional, after narration */}
+              <Box sx={{ mt: 2 }}>
+                <VoucherProofAttachment
+                  voucherId={editingVoucherId}
+                  pendingFile={pendingProofFile}
+                  onPendingFileChange={setPendingProofFile}
+                />
+              </Box>
             </>
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => { setCreateOpen(false); setEditingVoucherId(null); }}>Cancel</Button>
+          <Button onClick={() => { setCreateOpen(false); setEditingVoucherId(null); setPendingProofFile(null); }}>Cancel</Button>
           <Button
             variant="contained"
             onClick={handleCreate}
@@ -1462,6 +1507,11 @@ export default function VouchersPage() {
                   </ResponsiveTable>
                 </Box>
               )}
+
+              {/* Proof Attachments — view/open/download/delete */}
+              <Box sx={{ mt: 3 }}>
+                <VoucherProofAttachment voucherId={detailVoucher.id} />
+              </Box>
             </DialogContent>
             <DialogActions>
               {detailVoucher.status === 'POSTED' && canReverseVoucher && (
