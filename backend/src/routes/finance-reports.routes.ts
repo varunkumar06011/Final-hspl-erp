@@ -145,7 +145,7 @@ router.get(
         });
       }
 
-      entries.sort((a, b) => a.date.localeCompare(b.date));
+      entries.sort((a, b) => b.date.localeCompare(a.date));
 
       const totalInflow = entries.reduce((s, e) => s + e.inflow, 0);
       const totalOutflow = entries.reduce((s, e) => s + e.outflow, 0);
@@ -835,7 +835,7 @@ router.get(
         const isIn = ['IN', 'TRANSFER_IN', 'REVERSAL_IN'].includes(t.type);
         entries.push({ date: t.date.toISOString().split('T')[0], account: t.cashAccount.name, type: t.type, inflow: isIn ? Number(t.amount) : 0, outflow: isIn ? 0 : Number(t.amount), description: t.description });
       }
-      entries.sort((a, b) => a.date.localeCompare(b.date));
+      entries.sort((a, b) => b.date.localeCompare(a.date));
 
       const totalInflow = entries.reduce((s, e) => s + e.inflow, 0);
       const totalOutflow = entries.reduce((s, e) => s + e.outflow, 0);

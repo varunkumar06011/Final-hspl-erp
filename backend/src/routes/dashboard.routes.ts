@@ -687,6 +687,12 @@ router.get(
         todayBankOutTxns,
         todayCashOutTxns,
         recentQuotations,
+        recentPOs,
+        recentInvoices,
+        totalQuotations,
+        totalPurchaseOrders,
+        totalInvoices,
+        phases,
         project,
       ] = await Promise.all([
         // Bank inflow (all time, no date filter)
@@ -820,10 +826,41 @@ router.get(
           orderBy: { createdAt: 'desc' },
           take: 5,
         }),
-        // Project info
+        // Recent purchase orders (last 5) — same pattern as recentQuotations
+        prisma.purchaseOrder.findMany({
+          where: { projectId, deletedAt: null },
+          include: { vendor: { select: { name: true } } },
+          orderBy: { createdAt: 'desc' },
+          take: 5,
+        }),
+        // Recent vendor invoices (last 5) — same pattern as recentQuotations
+        prisma.vendorInvoice.findMany({
+          where: { projectId, deletedAt: null },
+          include: { vendor: { select: { name: true } } },
+          orderBy: { createdAt: 'desc' },
+          take: 5,
+        }),
+        // Procurement totals — simple count() against existing tables
+        prisma.quotation.count({ where: { projectId, deletedAt: null } }),
+        prisma.purchaseOrder.count({ where: { projectId, deletedAt: null } }),
+        prisma.vendorInvoice.count({ where: { projectId, deletedAt: null } }),
+        // Project phases with progress — read-only, surfaces existing Phase.progressPercent
+        prisma.phase.findMany({
+          where: { projectId, deletedAt: null },
+          orderBy: { createdAt: 'asc' },
+          select: {
+            id: true,
+            name: true,
+            status: true,
+            progressPercent: true,
+            plannedStart: true,
+            plannedEnd: true,
+          },
+        }),
+        // Project info — now includes startDate and endDate for timeline
         prisma.project.findUnique({
           where: { id: projectId },
-          select: { name: true, status: true },
+          select: { name: true, status: true, startDate: true, endDate: true, totalBudget: true },
         }),
       ]);
 
@@ -942,6 +979,48 @@ router.get(
           status: q.status,
           createdAt: q.createdAt.toISOString(),
         })),
+        // Recent POs — same pattern as recentQuotations
+        recentPOs: recentPOs.map((p) => ({
+          id: p.id,
+          poNumber: p.poNumber,
+          vendorName: p.vendor?.name ?? '—',
+          grandTotal: Number(p.grandTotal),
+          status: p.status,
+          createdAt: p.createdAt.toISOString(),
+        })),
+        // Recent invoices — same pattern as recentQuotations
+        recentInvoices: recentInvoices.map((i) => ({
+          id: i.id,
+          invoiceCode: i.invoiceCode,
+          vendorName: i.vendor?.name ?? '—',
+          totalAmount: Number(i.totalAmount),
+          verificationStatus: i.verificationStatus,
+          createdAt: i.createdAt.toISOString(),
+        })),
+        // Procurement totals — simple counts
+        procurement: {
+          totalQuotations,
+          totalPurchaseOrders,
+          totalInvoices,
+          pendingQuotations,
+          pendingPOs,
+          pendingInvoices,
+        },
+        // Project phases — surfaces existing Phase.progressPercent (read-only)
+        phases: phases.map((p) => ({
+          id: p.id,
+          name: p.name,
+          status: p.status,
+          progressPercent: Number(p.progressPercent),
+          plannedStart: p.plannedStart?.toISOString() ?? null,
+          plannedEnd: p.plannedEnd?.toISOString() ?? null,
+        })),
+        // Project timeline — startDate and endDate for progress bar
+        projectTimeline: project ? {
+          startDate: project.startDate.toISOString(),
+          endDate: project.endDate?.toISOString() ?? null,
+          totalBudget: Number(project.totalBudget),
+        } : null,
       });
     } catch (error) {
       next(error);
@@ -987,6 +1066,10 @@ router.get(
       const outflowTypes = ['WITHDRAWAL', 'TRANSFER_OUT', 'REVERSAL_OUT', 'PAYMENT'];
       const cashOutflowTypes = ['OUT', 'TRANSFER_OUT', 'REVERSAL_OUT'];
 
+      // Optional limit parameter — defaults to 20 (for the Amount Used Today card).
+      // The expenditure detail dialog passes a higher limit to fetch all transactions.
+      const limit = req.query.limit ? Math.min(Number(req.query.limit), 5000) : 20;
+
       const [bankOutflowAgg, cashOutflowAgg, bankOutTxns, cashOutTxns] = await Promise.all([
         prisma.bankTransaction.aggregate({
           where: {
@@ -1017,7 +1100,7 @@ router.get(
           },
           include: { bankAccount: { select: { accountName: true } } },
           orderBy: { date: 'desc' },
-          take: 20,
+          take: limit,
         }),
         prisma.cashTransaction.findMany({
           where: {
@@ -1028,7 +1111,7 @@ router.get(
           },
           include: { cashAccount: { select: { name: true } } },
           orderBy: { date: 'desc' },
-          take: 20,
+          take: limit,
         }),
       ]);
 
@@ -1062,6 +1145,161 @@ router.get(
         totalCount,
         transactions,
       });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// ── Expenditure trend (additive, read-only) ─────────────────────────
+// Returns daily outflow totals for the last N days (default 30).
+// Used by the Admin Dashboard "Expenditure Trend" chart.
+// Groups posted bank + cash outflow transactions by date.
+router.get(
+  '/admin-outflow-trend',
+  rbacMiddleware(Permission.VIEW_FINANCIALS),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      const days = Math.min(Math.max(parseInt(String(req.query.days ?? '30'), 10) || 30, 1), 365);
+
+      const now = new Date();
+      const startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - days + 1);
+
+      const outflowTypes = ['WITHDRAWAL', 'TRANSFER_OUT', 'REVERSAL_OUT', 'PAYMENT'];
+      const cashOutflowTypes = ['OUT', 'TRANSFER_OUT', 'REVERSAL_OUT'];
+
+      const [bankTxns, cashTxns] = await Promise.all([
+        prisma.bankTransaction.findMany({
+          where: {
+            status: 'POSTED',
+            type: { in: outflowTypes },
+            bankAccount: { projectId, deletedAt: null },
+            date: { gte: startDate },
+          },
+          select: { date: true, amount: true },
+        }),
+        prisma.cashTransaction.findMany({
+          where: {
+            status: 'POSTED',
+            type: { in: cashOutflowTypes },
+            cashAccount: { projectId, deletedAt: null },
+            date: { gte: startDate },
+          },
+          select: { date: true, amount: true },
+        }),
+      ]);
+
+      // Group by date (YYYY-MM-DD)
+      const byDate = new Map<string, number>();
+      for (const t of bankTxns) {
+        const key = t.date.toISOString().split('T')[0];
+        byDate.set(key, (byDate.get(key) ?? 0) + Number(t.amount));
+      }
+      for (const t of cashTxns) {
+        const key = t.date.toISOString().split('T')[0];
+        byDate.set(key, (byDate.get(key) ?? 0) + Number(t.amount));
+      }
+
+      // Build a complete series with zero-fill for days with no spend
+      const trend: Array<{ date: string; amount: number }> = [];
+      for (let i = 0; i < days; i++) {
+        const d = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate() + i);
+        const key = d.toISOString().split('T')[0];
+        trend.push({ date: key, amount: byDate.get(key) ?? 0 });
+      }
+
+      const total = trend.reduce((s, d) => s + d.amount, 0);
+
+      res.json({ trend, total, days });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// ── Inward Funds detail (additive, read-only) ───────────────────────
+// Returns all inflow transactions (bank + cash) for the Admin Dashboard
+// "Inward Funds" click-through page. All data is live from posted
+// BankTransaction + CashTransaction rows. No hardcoded values.
+router.get(
+  '/admin-inflow-detail',
+  rbacMiddleware(Permission.VIEW_FINANCIALS),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      const limit = Math.min(Math.max(parseInt(String(req.query.limit ?? '5000'), 10) || 5000, 1), 5000);
+
+      const inflowTypes = ['DEPOSIT', 'TRANSFER_IN', 'REVERSAL_IN', 'MANUAL_DEPOSIT'];
+      const cashInflowTypes = ['IN', 'TRANSFER_IN', 'REVERSAL_IN'];
+
+      const [bankInflowAgg, cashInflowAgg, bankInTxns, cashInTxns] = await Promise.all([
+        prisma.bankTransaction.aggregate({
+          where: {
+            status: 'POSTED',
+            type: { in: inflowTypes },
+            bankAccount: { projectId, deletedAt: null },
+          },
+          _sum: { amount: true },
+          _count: true,
+        }),
+        prisma.cashTransaction.aggregate({
+          where: {
+            status: 'POSTED',
+            type: { in: cashInflowTypes },
+            cashAccount: { projectId, deletedAt: null },
+          },
+          _sum: { amount: true },
+          _count: true,
+        }),
+        prisma.bankTransaction.findMany({
+          where: {
+            status: 'POSTED',
+            type: { in: inflowTypes },
+            bankAccount: { projectId, deletedAt: null },
+          },
+          include: { bankAccount: { select: { accountName: true } } },
+          orderBy: { date: 'desc' },
+          take: limit,
+        }),
+        prisma.cashTransaction.findMany({
+          where: {
+            status: 'POSTED',
+            type: { in: cashInflowTypes },
+            cashAccount: { projectId, deletedAt: null },
+          },
+          include: { cashAccount: { select: { name: true } } },
+          orderBy: { date: 'desc' },
+          take: limit,
+        }),
+      ]);
+
+      const totalAmount =
+        Number(bankInflowAgg._sum.amount ?? 0) + Number(cashInflowAgg._sum.amount ?? 0);
+      const totalCount = (bankInflowAgg._count ?? 0) + (cashInflowAgg._count ?? 0);
+
+      const transactions = [
+        ...bankInTxns.map((t) => ({
+          id: t.id,
+          account: t.bankAccount?.accountName ?? 'Bank',
+          accountType: 'BANK' as const,
+          amount: Number(t.amount),
+          description: t.description ?? '',
+          type: t.type,
+          date: t.date.toISOString(),
+        })),
+        ...cashInTxns.map((t) => ({
+          id: t.id,
+          account: t.cashAccount?.name ?? 'Cash',
+          accountType: 'CASH' as const,
+          amount: Number(t.amount),
+          description: t.description ?? '',
+          type: t.type,
+          date: t.date.toISOString(),
+        })),
+      ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+      res.json({ totalAmount, totalCount, transactions });
     } catch (error) {
       next(error);
     }
