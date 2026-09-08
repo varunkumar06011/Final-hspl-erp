@@ -41,6 +41,8 @@ import LabourPage from './pages/LabourPage';
 import AuditLogPage from './pages/AuditLogPage';
 import SettingsPage from './pages/SettingsPage';
 import UsersPage from './pages/UsersPage';
+import InwardFundsPage from './pages/InwardFundsPage';
+import ExpenditurePage from './pages/ExpenditurePage';
 import ErrorBoundary from './components/ErrorBoundary';
 
 const queryClient = new QueryClient({
@@ -89,6 +91,9 @@ const ROUTES = [
   { path: '/audit', element: <AuditLogPage /> },
   { path: '/users', element: <UsersPage /> },
   { path: '/settings', element: <SettingsPage /> },
+  // ── Admin-only pages (additive — visible to all roles with permission, used by admin dashboard) ──
+  { path: '/inward-funds', element: <InwardFundsPage /> },
+  { path: '/expenditure', element: <ExpenditurePage /> },
 ];
 
 export default function App() {

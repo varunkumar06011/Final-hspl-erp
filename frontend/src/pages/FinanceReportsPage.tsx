@@ -28,7 +28,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '../config/api';
 import RefreshButton from '../components/RefreshButton';
 import ResponsiveTable from '../components/ResponsiveTable';
-import { formatCurrency } from '../utils/enumOptions';
+import { formatCurrency, formatDate } from '../utils/enumOptions';
 
 type TabValue = 'budget' | 'cashflow' | 'accounts' | 'owner' | 'reconciliation' | 'aging';
 
@@ -322,10 +322,10 @@ export default function FinanceReportsPage() {
                   <TableRow>
                     <TableCell sx={{ fontWeight: 600 }}>Date</TableCell>
                     <TableCell sx={{ fontWeight: 600 }}>Account</TableCell>
-                    <TableCell sx={{ fontWeight: 600 }}>Type</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>Description</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>Voch Type</TableCell>
                     <TableCell sx={{ fontWeight: 600 }} align="right">Inflow</TableCell>
                     <TableCell sx={{ fontWeight: 600 }} align="right">Outflow</TableCell>
-                    <TableCell sx={{ fontWeight: 600 }}>Description</TableCell>
                     <TableCell sx={{ fontWeight: 600 }}>Ref</TableCell>
                   </TableRow>
                 </TableHead>
@@ -335,9 +335,10 @@ export default function FinanceReportsPage() {
                   ) : (
                     (cashFlow?.data ?? []).map((entry: Record<string, unknown>, i: number) => (
                       <TableRow key={i} hover>
-                        <TableCell data-label="Date">{String(entry.date ?? '—')}</TableCell>
+                        <TableCell data-label="Date">{formatDate(entry.date)}</TableCell>
                         <TableCell data-label="Account">{String(entry.account ?? '—')}</TableCell>
-                        <TableCell data-label="Type">
+                        <TableCell data-label="Description">{String(entry.description ?? '—')}</TableCell>
+                        <TableCell data-label="Voch Type">
                           <Chip
                             label={String(entry.type ?? '').replace(/_/g, ' ')}
                             size="small"
@@ -351,7 +352,6 @@ export default function FinanceReportsPage() {
                         <TableCell data-label="Outflow" align="right" sx={{ color: 'error.main' }}>
                           {Number(entry.outflow) > 0 ? formatCurrency(entry.outflow) : '—'}
                         </TableCell>
-                        <TableCell data-label="Description">{String(entry.description ?? '—')}</TableCell>
                         <TableCell data-label="Ref"><Chip label={String(entry.referenceType ?? '')} size="small" variant="outlined" /></TableCell>
                       </TableRow>
                     ))

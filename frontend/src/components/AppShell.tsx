@@ -25,6 +25,7 @@ import {
   Search as SearchIcon,
   AccountBalanceWallet as BudgetIcon,
   Savings as BankIcon,
+  Savings as SavingsIcon,
   Payments as CashIcon,
   Person as OwnerIcon,
   Dashboard as FinanceDashboardIcon,
@@ -96,12 +97,13 @@ const NAV_ITEMS = [
 // Same routes, just reorganized into clearer sections.
 const ADMIN_NAV_ITEMS = [
   { label: 'Dashboard', icon: <DashboardIcon />, path: '/', section: '' },
-  // ── Project ──
-  { label: 'Work', icon: <WorkIcon />, path: '/work', permission: Permission.MANAGE_WORK_TASKS, section: 'Project' },
-  { label: 'Issues', icon: <IssueIcon />, path: '/issues', permission: Permission.MANAGE_ISSUES, section: 'Project' },
-  { label: 'Site Photos', icon: <PhotoIcon />, path: '/photos', permission: Permission.UPLOAD_PHOTOS, section: 'Project' },
-  { label: 'Documents', icon: <DocumentIcon />, path: '/documents', permission: Permission.MANAGE_DOCUMENTS, section: 'Project' },
-  { label: 'Contracts', icon: <ContractIcon />, path: '/contracts', permission: Permission.MANAGE_CONTRACTS, section: 'Project' },
+  // ── Accounting (FIRST — client wants accounting first) ──
+  { label: 'Inward Funds', icon: <SavingsIcon />, path: '/inward-funds', permission: Permission.VIEW_FINANCIALS, section: 'Accounting' },
+  { label: 'Expenditure', icon: <VouchersIcon />, path: '/expenditure', permission: Permission.VIEW_FINANCIALS, section: 'Accounting' },
+  { label: 'Bank & Cash', icon: <BankIcon />, path: '/bank-accounts', permission: Permission.VIEW_FINANCIALS, section: 'Accounting' },
+  { label: 'Payments', icon: <PaymentIcon />, path: '/payments', permission: Permission.VIEW_FINANCIALS, section: 'Accounting' },
+  { label: 'Vouchers', icon: <VouchersIcon />, path: '/vouchers', permission: Permission.VIEW_FINANCIALS, section: 'Accounting' },
+  { label: 'GST Records', icon: <ReceiptIcon />, path: '/gst-records', permission: Permission.VIEW_FINANCIALS, section: 'Accounting' },
   // ── Budget ──
   { label: 'Budget Heads', icon: <BudgetIcon />, path: '/budget-heads', permission: Permission.VIEW_FINANCIALS, section: 'Budget' },
   { label: 'Owner Account', icon: <OwnerIcon />, path: '/owner-accounts', permission: Permission.VIEW_FINANCIALS, section: 'Budget' },
@@ -111,20 +113,21 @@ const ADMIN_NAV_ITEMS = [
   { label: 'Purchase Orders', icon: <ReceiptIcon />, path: '/pos', permission: Permission.VIEW_FINANCIALS, section: 'Procurement' },
   { label: 'Gate Passes', icon: <GatePassIcon />, path: '/gate-passes', permission: Permission.VIEW_GATE_PASSES, section: 'Procurement' },
   { label: 'Goods Receipts', icon: <ReceiptIcon />, path: '/goods-receipts', permission: Permission.MANAGE_INVENTORY, section: 'Procurement' },
-  // ── Accounting ──
-  { label: 'Bank & Cash', icon: <BankIcon />, path: '/bank-accounts', permission: Permission.VIEW_FINANCIALS, section: 'Accounting' },
-  { label: 'Payments', icon: <PaymentIcon />, path: '/payments', permission: Permission.VIEW_FINANCIALS, section: 'Accounting' },
-  { label: 'Sales (Invoices)', icon: <ReceiptIcon />, path: '/invoices', permission: Permission.VIEW_FINANCIALS, section: 'Accounting' },
-  { label: 'Vouchers', icon: <VouchersIcon />, path: '/vouchers', permission: Permission.VIEW_FINANCIALS, section: 'Accounting' },
-  { label: 'GST Records', icon: <ReceiptIcon />, path: '/gst-records', permission: Permission.VIEW_FINANCIALS, section: 'Accounting' },
+  { label: 'Invoices', icon: <ReceiptIcon />, path: '/invoices', permission: Permission.VIEW_FINANCIALS, section: 'Procurement' },
+  // ── Project ──
+  { label: 'Work', icon: <WorkIcon />, path: '/work', permission: Permission.MANAGE_WORK_TASKS, section: 'Project' },
+  { label: 'Issues', icon: <IssueIcon />, path: '/issues', permission: Permission.MANAGE_ISSUES, section: 'Project' },
+  { label: 'Site Photos', icon: <PhotoIcon />, path: '/photos', permission: Permission.UPLOAD_PHOTOS, section: 'Project' },
+  { label: 'Documents', icon: <DocumentIcon />, path: '/documents', permission: Permission.MANAGE_DOCUMENTS, section: 'Project' },
+  { label: 'Contracts', icon: <ContractIcon />, path: '/contracts', permission: Permission.MANAGE_CONTRACTS, section: 'Project' },
   // ── Reports ──
   { label: 'Finance Dashboard', icon: <FinanceDashboardIcon />, path: '/finance-dashboard', permission: Permission.VIEW_FINANCIALS, section: 'Reports' },
   { label: 'Accounting Reports', icon: <AccountingReportsIcon />, path: '/accounting-reports', permission: Permission.VIEW_FINANCIALS, section: 'Reports' },
   { label: 'Finance Reports', icon: <ReportsIcon />, path: '/finance-reports', permission: Permission.VIEW_FINANCIALS, section: 'Reports' },
-  // ── Approvals ──
-  { label: 'Audit Log', icon: <AuditIcon />, path: '/audit', permission: Permission.VIEW_AUDIT_LOG, section: 'Approvals & Admin' },
-  { label: 'Users', icon: <PeopleIcon />, path: '/users', permission: Permission.MANAGE_USERS, section: 'Approvals & Admin' },
-  { label: 'Settings', icon: <SettingsIcon />, path: '/settings', section: 'Approvals & Admin' },
+  // ── Admin ──
+  { label: 'Audit Log', icon: <AuditIcon />, path: '/audit', permission: Permission.VIEW_AUDIT_LOG, section: 'Admin' },
+  { label: 'Users', icon: <PeopleIcon />, path: '/users', permission: Permission.MANAGE_USERS, section: 'Admin' },
+  { label: 'Settings', icon: <SettingsIcon />, path: '/settings', section: 'Admin' },
 ];
 
 const ROLE_COLORS: Record<UserRole, string> = {

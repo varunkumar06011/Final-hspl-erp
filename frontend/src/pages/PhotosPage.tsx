@@ -12,6 +12,7 @@ import {
   TableRow,
   TablePagination,
   TextField,
+  Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
@@ -19,11 +20,13 @@ import {
   Alert,
   CircularProgress,
   InputAdornment,
+  IconButton,
 } from '@mui/material';
 import ResponsiveDialog from '../components/ResponsiveDialog';
 import {
   Add as AddIcon,
   Search as SearchIcon,
+  Close as CloseIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { PhotoTag } from '@hospital-erp/shared';
@@ -42,6 +45,7 @@ export default function PhotosPage() {
   const [form, setForm] = useState<Record<string, unknown>>({});
   const [error, setError] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [previewPhoto, setPreviewPhoto] = useState<Record<string, unknown> | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
 
@@ -136,7 +140,12 @@ export default function PhotosPage() {
                 rows.map((row: Record<string, unknown>) => (
                   <TableRow key={row.id as string} hover>
                     <TableCell data-label="Image">
-                      <SecureImage route="photos" id={row.id as string} alt={String(row.caption ?? '')} sx={{ width: 60, height: 60 }} />
+                      <Box
+                        onClick={() => setPreviewPhoto(row)}
+                        sx={{ cursor: 'pointer', '&:hover': { opacity: 0.8 }, borderRadius: 1, overflow: 'hidden', display: 'inline-block' }}
+                      >
+                        <SecureImage route="photos" id={row.id as string} alt={String(row.caption ?? '')} sx={{ width: 60, height: 60 }} />
+                      </Box>
                     </TableCell>
                     <TableCell data-label="Caption">{String(row.caption ?? '—')}</TableCell>
                     <TableCell data-label="Tag"><Chip label={String(row.tag ?? '')} size="small" color={STATUS_COLORS[String(row.tag)] ?? 'default'} /></TableCell>
@@ -190,6 +199,43 @@ export default function PhotosPage() {
           </Button>
         </DialogActions>
       </ResponsiveDialog>
+
+      {/* Image preview dialog — click thumbnail to view full image */}
+      <Dialog
+        open={!!previewPhoto}
+        onClose={() => setPreviewPhoto(null)}
+        maxWidth="md"
+        fullWidth
+        PaperProps={{ sx: { bgcolor: 'background.paper' } }}
+      >
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', pr: 1 }}>
+          <Typography variant="h6" component="span" fontWeight={600}>
+            {previewPhoto ? String(previewPhoto.caption ?? 'Site Photo') : ''}
+          </Typography>
+          <IconButton onClick={() => setPreviewPhoto(null)} size="small">
+            <CloseIcon />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent dividers sx={{ p: 0, textAlign: 'center', bgcolor: 'common.black' }}>
+          {previewPhoto && (
+            <SecureImage
+              route="photos"
+              id={previewPhoto.id as string}
+              alt={String(previewPhoto.caption ?? '')}
+              sx={{ maxWidth: '100%', maxHeight: '70vh', width: 'auto', height: 'auto', objectFit: 'contain' }}
+            />
+          )}
+        </DialogContent>
+        {previewPhoto && (
+          <DialogActions sx={{ flexWrap: 'wrap', gap: 1, p: 2, justifyContent: 'flex-start' }}>
+            <Chip label={String(previewPhoto.tag ?? '')} size="small" color={STATUS_COLORS[String(previewPhoto.tag)] ?? 'default'} />
+            {previewPhoto.zone ? <Chip label={String(previewPhoto.zone)} size="small" variant="outlined" /> : null}
+            <Typography variant="body2" color="text.secondary" sx={{ ml: 'auto' }}>
+              {formatDate(previewPhoto.takenAt)}
+            </Typography>
+          </DialogActions>
+        )}
+      </Dialog>
     </Box>
   );
 }
