@@ -45,7 +45,7 @@ import { useDeepLinkRow } from '../hooks/useDeepLinkRow';
 
 export default function BudgetHeadsPage() {
   const [page, setPage] = useState(0);
-  const [pageSize, setPageSize] = useState(25);
+  const [pageSize, setPageSize] = useState(50);
   const [search, setSearch] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);

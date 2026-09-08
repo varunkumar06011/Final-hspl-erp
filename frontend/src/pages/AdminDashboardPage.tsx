@@ -497,7 +497,7 @@ export default function AdminDashboardPage() {
         sx={{
           mb: { xs: 2, sm: 3 },
           display: 'grid',
-          gridTemplateColumns: { xs: '1fr', sm: '1fr auto 1fr auto 1fr' },
+          gridTemplateColumns: { xs: '1fr 1fr 1fr', sm: '1fr auto 1fr auto 1fr' },
           gap: { xs: 1, sm: 1 },
           alignItems: 'stretch',
         }}
@@ -513,29 +513,29 @@ export default function AdminDashboardPage() {
             '&:hover': { boxShadow: 3 },
           }}
         >
-          <CardContent sx={{ py: 1.5, px: 2, '&:last-child': { pb: 1.5 } }}>
-            <Stack direction="row" alignItems="center" spacing={0.75} sx={{ mb: 0.5 }}>
-              <TrendingUpIcon color="success" sx={{ fontSize: 18 }} />
-              <Typography color="text.secondary" variant="caption" fontWeight={600} sx={{ fontSize: '0.75rem' }}>
+          <CardContent sx={{ py: 1, px: 1.5, '&:last-child': { pb: 1 } }}>
+            <Stack direction="row" alignItems="center" spacing={0.5} sx={{ mb: 0.25 }}>
+              <TrendingUpIcon color="success" sx={{ fontSize: 15 }} />
+              <Typography color="text.secondary" variant="caption" fontWeight={600} sx={{ fontSize: { xs: '0.65rem', sm: '0.7rem' } }} noWrap>
                 Inward Funds
               </Typography>
             </Stack>
             {isLoading ? (
-              <Skeleton variant="text" width={120} height={32} />
+              <Skeleton variant="text" width={100} height={24} />
             ) : (
-              <Typography variant="h5" fontWeight={700} color="success.dark" sx={{ lineHeight: 1.2 }}>
+              <Typography fontWeight={700} color="success.dark" sx={{ lineHeight: 1.2, fontSize: { xs: '0.85rem', sm: '1rem', md: '1.1rem' }, wordBreak: 'break-all' }}>
                 <AnimatedNumber value={totalInward} format={(n) => formatCurrency(n)} />
               </Typography>
             )}
-            <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.65rem' }}>
+            <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.6rem', display: { xs: 'none', sm: 'block' } }}>
               All funds received
             </Typography>
           </CardContent>
         </Card>
 
         {/* Minus sign */}
-        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', px: 0.5 }}>
-          <Typography variant="h6" sx={{ color: 'text.disabled', fontWeight: 300, display: { xs: 'none', sm: 'block' } }}>−</Typography>
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', px: 0.25 }}>
+          <Typography sx={{ color: 'text.disabled', fontWeight: 300, display: { xs: 'none', sm: 'block' }, fontSize: '1.1rem' }}>−</Typography>
         </Box>
 
         {/* Total Expenditure */}
@@ -549,29 +549,29 @@ export default function AdminDashboardPage() {
             '&:hover': { boxShadow: 3 },
           }}
         >
-          <CardContent sx={{ py: 1.5, px: 2, '&:last-child': { pb: 1.5 } }}>
-            <Stack direction="row" alignItems="center" spacing={0.75} sx={{ mb: 0.5 }}>
-              <TrendingDownIcon color="error" sx={{ fontSize: 18 }} />
-              <Typography color="text.secondary" variant="caption" fontWeight={600} sx={{ fontSize: '0.75rem' }}>
+          <CardContent sx={{ py: 1, px: 1.5, '&:last-child': { pb: 1 } }}>
+            <Stack direction="row" alignItems="center" spacing={0.5} sx={{ mb: 0.25 }}>
+              <TrendingDownIcon color="error" sx={{ fontSize: 15 }} />
+              <Typography color="text.secondary" variant="caption" fontWeight={600} sx={{ fontSize: { xs: '0.65rem', sm: '0.7rem' } }} noWrap>
                 Expenditure
               </Typography>
             </Stack>
             {isLoading ? (
-              <Skeleton variant="text" width={120} height={32} />
+              <Skeleton variant="text" width={100} height={24} />
             ) : (
-              <Typography variant="h5" fontWeight={700} color="error.dark" sx={{ lineHeight: 1.2 }}>
+              <Typography fontWeight={700} color="error.dark" sx={{ lineHeight: 1.2, fontSize: { xs: '0.85rem', sm: '1rem', md: '1.1rem' }, wordBreak: 'break-all' }}>
                 <AnimatedNumber value={totalExpenditure} format={(n) => formatCurrency(n)} delay={150} />
               </Typography>
             )}
-            <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.65rem' }}>
+            <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.6rem', display: { xs: 'none', sm: 'block' } }}>
               All posted spend
             </Typography>
           </CardContent>
         </Card>
 
         {/* Equals sign */}
-        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', px: 0.5 }}>
-          <Typography variant="h6" sx={{ color: 'text.disabled', fontWeight: 300, display: { xs: 'none', sm: 'block' } }}>=</Typography>
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', px: 0.25 }}>
+          <Typography sx={{ color: 'text.disabled', fontWeight: 300, display: { xs: 'none', sm: 'block' }, fontSize: '1.1rem' }}>=</Typography>
         </Box>
 
         {/* Balance */}
@@ -582,21 +582,21 @@ export default function AdminDashboardPage() {
             bgcolor: balance >= 0 ? 'primary.50' : 'error.50',
           }}
         >
-          <CardContent sx={{ py: 1.5, px: 2, '&:last-child': { pb: 1.5 } }}>
-            <Stack direction="row" alignItems="center" spacing={0.75} sx={{ mb: 0.5 }}>
-              <AccountBalanceIcon color={balance >= 0 ? 'primary' : 'error'} sx={{ fontSize: 18 }} />
-              <Typography color="text.secondary" variant="caption" fontWeight={600} sx={{ fontSize: '0.75rem' }}>
+          <CardContent sx={{ py: 1, px: 1.5, '&:last-child': { pb: 1 } }}>
+            <Stack direction="row" alignItems="center" spacing={0.5} sx={{ mb: 0.25 }}>
+              <AccountBalanceIcon color={balance >= 0 ? 'primary' : 'error'} sx={{ fontSize: 15 }} />
+              <Typography color="text.secondary" variant="caption" fontWeight={600} sx={{ fontSize: { xs: '0.65rem', sm: '0.7rem' } }} noWrap>
                 Balance
               </Typography>
             </Stack>
             {isLoading ? (
-              <Skeleton variant="text" width={120} height={32} />
+              <Skeleton variant="text" width={100} height={24} />
             ) : (
-              <Typography variant="h5" fontWeight={700} color={balance >= 0 ? 'primary.dark' : 'error.dark'} sx={{ lineHeight: 1.2 }}>
+              <Typography fontWeight={700} color={balance >= 0 ? 'primary.dark' : 'error.dark'} sx={{ lineHeight: 1.2, fontSize: { xs: '0.85rem', sm: '1rem', md: '1.1rem' }, wordBreak: 'break-all' }}>
                 <AnimatedNumber value={balance} format={(n) => formatCurrency(n)} delay={300} />
               </Typography>
             )}
-            <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.65rem' }}>
+            <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.6rem', display: { xs: 'none', sm: 'block' } }}>
               Inward − expenditure
             </Typography>
           </CardContent>
@@ -1576,12 +1576,11 @@ export default function AdminDashboardPage() {
             <Alert severity="info">No expenditure transactions found.</Alert>
           ) : (
             <ScrollableTableContainer>
-              <Table size="small" sx={{ tableLayout: 'fixed', minWidth: 780 }}>
+              <Table size="small" sx={{ tableLayout: 'fixed', minWidth: 630 }}>
                 <TableHead>
                   <TableRow sx={{ bgcolor: 'action.hover' }}>
                     <TableCell sx={{ fontWeight: 600, width: 100, position: 'sticky', left: 0, bgcolor: 'action.hover', zIndex: 2, borderRight: '1px solid', borderColor: 'divider' }}>Date</TableCell>
                     <TableCell sx={{ fontWeight: 600, width: 70 }}>Type</TableCell>
-                    <TableCell sx={{ fontWeight: 600, width: 150 }}>Account</TableCell>
                     <TableCell sx={{ fontWeight: 600, width: 180 }}>Budget Head</TableCell>
                     <TableCell sx={{ fontWeight: 600, width: 220 }}>Description</TableCell>
                     <TableCell align="right" sx={{ fontWeight: 600, width: 120 }}>Amount</TableCell>
@@ -1595,9 +1594,6 @@ export default function AdminDashboardPage() {
                       </TableCell>
                       <TableCell>
                         <Chip label={t.accountType} size="small" variant="outlined" sx={{ height: 18, fontSize: '0.65rem' }} />
-                      </TableCell>
-                      <TableCell>
-                        <Typography variant="body2" noWrap>{t.account}</Typography>
                       </TableCell>
                       <TableCell>
                         {t.budgetHead ? (
