@@ -89,6 +89,9 @@ export default function BudgetHeadsPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/budget-heads'] });
+      queryClient.invalidateQueries({ queryKey: ['/budget-heads/summary'] });
+      queryClient.invalidateQueries({ queryKey: ['/finance-reports/budget-vs-actual'] });
+      queryClient.invalidateQueries({ queryKey: ['/dashboard/admin-summary'] });
       closeDialog();
     },
     onError: (err: unknown) => setError(extractErrorMessage(err)),
@@ -101,6 +104,9 @@ export default function BudgetHeadsPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/budget-heads'] });
+      queryClient.invalidateQueries({ queryKey: ['/budget-heads/summary'] });
+      queryClient.invalidateQueries({ queryKey: ['/finance-reports/budget-vs-actual'] });
+      queryClient.invalidateQueries({ queryKey: ['/dashboard/admin-summary'] });
       closeDialog();
     },
     onError: (err: unknown) => setError(extractErrorMessage(err)),
@@ -112,6 +118,9 @@ export default function BudgetHeadsPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/budget-heads'] });
+      queryClient.invalidateQueries({ queryKey: ['/budget-heads/summary'] });
+      queryClient.invalidateQueries({ queryKey: ['/finance-reports/budget-vs-actual'] });
+      queryClient.invalidateQueries({ queryKey: ['/dashboard/admin-summary'] });
       setDeleteConfirm(null);
     },
     onError: (err: unknown) => setError(extractErrorMessage(err)),
@@ -125,6 +134,9 @@ export default function BudgetHeadsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/budget-heads'] });
       queryClient.invalidateQueries({ queryKey: ['/budget-heads', 'all'] });
+      queryClient.invalidateQueries({ queryKey: ['/budget-heads/summary'] });
+      queryClient.invalidateQueries({ queryKey: ['/finance-reports/budget-vs-actual'] });
+      queryClient.invalidateQueries({ queryKey: ['/dashboard/admin-summary'] });
       setImportOpen(false);
       setImportText('');
       setError('');
@@ -174,6 +186,9 @@ export default function BudgetHeadsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/budget-revisions'] });
       queryClient.invalidateQueries({ queryKey: ['/budget-heads'] });
+      queryClient.invalidateQueries({ queryKey: ['/budget-heads/summary'] });
+      queryClient.invalidateQueries({ queryKey: ['/finance-reports/budget-vs-actual'] });
+      queryClient.invalidateQueries({ queryKey: ['/dashboard/admin-summary'] });
       setReviewTarget(null);
       setReviewComments('');
     },

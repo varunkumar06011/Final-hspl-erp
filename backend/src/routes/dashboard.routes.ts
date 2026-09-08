@@ -804,7 +804,10 @@ router.get(
             bankAccount: { projectId, deletedAt: null },
             date: { gte: new Date(new Date().setHours(0, 0, 0, 0)) },
           },
-          include: { bankAccount: { select: { accountName: true } } },
+          include: {
+            bankAccount: { select: { accountName: true } },
+            budgetHead: { select: { id: true, particulars: true } },
+          },
           orderBy: { date: 'desc' },
           take: 10,
         }),
@@ -815,7 +818,10 @@ router.get(
             cashAccount: { projectId, deletedAt: null },
             date: { gte: new Date(new Date().setHours(0, 0, 0, 0)) },
           },
-          include: { cashAccount: { select: { name: true } } },
+          include: {
+            cashAccount: { select: { name: true } },
+            budgetHead: { select: { id: true, particulars: true } },
+          },
           orderBy: { date: 'desc' },
           take: 10,
         }),
@@ -901,6 +907,30 @@ router.get(
         Number(todayBankOutflowAgg._sum.amount ?? 0) + Number(todayCashOutflowAgg._sum.amount ?? 0);
       const todayOutflowCount =
         (todayBankOutflowAgg._count ?? 0) + (todayCashOutflowAgg._count ?? 0);
+
+      // Resolve budget head for today's outflow transactions (same logic as outflow-by-range)
+      const todayJvIds = [
+        ...todayBankOutTxns.filter((t) => !t.budgetHeadId).map((t) => t.referenceId),
+        ...todayCashOutTxns.filter((t) => !t.budgetHeadId).map((t) => t.referenceId),
+      ].filter((id): id is string => !!id);
+
+      const todayPayments = todayJvIds.length > 0
+        ? await prisma.payment.findMany({
+            where: { journalVoucherId: { in: todayJvIds } },
+            select: {
+              journalVoucherId: true,
+              budgetHead: { select: { id: true, particulars: true } },
+            },
+          })
+        : [];
+
+      const todayJvToBudgetHead = new Map<string, { id: string; particulars: string } | null>();
+      for (const p of todayPayments) {
+        if (p.journalVoucherId) {
+          todayJvToBudgetHead.set(p.journalVoucherId, p.budgetHead);
+        }
+      }
+
       const todayOutflowTransactions = [
         ...todayBankOutTxns.map((t) => ({
           id: t.id,
@@ -909,6 +939,7 @@ router.get(
           amount: Number(t.amount),
           description: t.description ?? '',
           time: t.date.toISOString(),
+          budgetHead: t.budgetHead ?? (t.referenceId ? (todayJvToBudgetHead.get(t.referenceId) ?? null) : null),
         })),
         ...todayCashOutTxns.map((t) => ({
           id: t.id,
@@ -917,6 +948,7 @@ router.get(
           amount: Number(t.amount),
           description: t.description ?? '',
           time: t.date.toISOString(),
+          budgetHead: t.budgetHead ?? (t.referenceId ? (todayJvToBudgetHead.get(t.referenceId) ?? null) : null),
         })),
       ].sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime());
 
@@ -1098,7 +1130,10 @@ router.get(
             bankAccount: { projectId, deletedAt: null },
             date: { gte: startDate, lte: endDate },
           },
-          include: { bankAccount: { select: { accountName: true } } },
+          include: {
+            bankAccount: { select: { accountName: true } },
+            budgetHead: { select: { id: true, particulars: true } },
+          },
           orderBy: { date: 'desc' },
           take: limit,
         }),
@@ -1109,11 +1144,40 @@ router.get(
             cashAccount: { projectId, deletedAt: null },
             date: { gte: startDate, lte: endDate },
           },
-          include: { cashAccount: { select: { name: true } } },
+          include: {
+            cashAccount: { select: { name: true } },
+            budgetHead: { select: { id: true, particulars: true } },
+          },
           orderBy: { date: 'desc' },
           take: limit,
         }),
       ]);
+
+      // ── Resolve Budget Head for each outflow transaction ──
+      // Priority 1: budgetHeadId directly on the transaction (manual cash flow entries)
+      // Priority 2: resolve via Payment → JournalVoucher chain (payment-created transactions)
+      const jvIds = [
+        ...bankOutTxns.filter((t) => !t.budgetHeadId).map((t) => t.referenceId),
+        ...cashOutTxns.filter((t) => !t.budgetHeadId).map((t) => t.referenceId),
+      ].filter((id): id is string => !!id);
+
+      const payments = jvIds.length > 0
+        ? await prisma.payment.findMany({
+            where: { journalVoucherId: { in: jvIds } },
+            select: {
+              journalVoucherId: true,
+              budgetHead: { select: { id: true, particulars: true } },
+            },
+          })
+        : [];
+
+      // Map: JV id → { id, particulars }
+      const jvToBudgetHead = new Map<string, { id: string; particulars: string } | null>();
+      for (const p of payments) {
+        if (p.journalVoucherId) {
+          jvToBudgetHead.set(p.journalVoucherId, p.budgetHead);
+        }
+      }
 
       const totalAmount =
         Number(bankOutflowAgg._sum.amount ?? 0) + Number(cashOutflowAgg._sum.amount ?? 0);
@@ -1127,6 +1191,7 @@ router.get(
           amount: Number(t.amount),
           description: t.description ?? '',
           date: t.date.toISOString(),
+          budgetHead: t.budgetHead ?? (t.referenceId ? (jvToBudgetHead.get(t.referenceId) ?? null) : null),
         })),
         ...cashOutTxns.map((t) => ({
           id: t.id,
@@ -1135,6 +1200,7 @@ router.get(
           amount: Number(t.amount),
           description: t.description ?? '',
           date: t.date.toISOString(),
+          budgetHead: t.budgetHead ?? (t.referenceId ? (jvToBudgetHead.get(t.referenceId) ?? null) : null),
         })),
       ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 

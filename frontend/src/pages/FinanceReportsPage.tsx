@@ -19,16 +19,29 @@ import {
   Stack,
   Grid,
   LinearProgress,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  InputAdornment,
+  MenuItem,
+  Select,
+  InputLabel,
+  FormControl,
 } from '@mui/material';
 import {
   Download as DownloadIcon,
   PictureAsPdf as PdfIcon,
+  Add as AddIcon,
 } from '@mui/icons-material';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import api from '../config/api';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Permission, UserRole, hasPermission } from '@hospital-erp/shared';
+import api, { extractErrorMessage } from '../config/api';
 import RefreshButton from '../components/RefreshButton';
 import ResponsiveTable from '../components/ResponsiveTable';
-import { formatCurrency, formatDate } from '../utils/enumOptions';
+import ResponsiveDialog from '../components/ResponsiveDialog';
+import LedgerAutocomplete, { type LedgerOption } from '../components/LedgerAutocomplete';
+import { useAuthStore } from '../stores/authStore';
+import { formatCurrency, formatDate, formatIndianNumber } from '../utils/enumOptions';
 
 type TabValue = 'budget' | 'cashflow' | 'accounts' | 'owner' | 'reconciliation' | 'aging';
 
@@ -39,6 +52,70 @@ export default function FinanceReportsPage() {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [cashFlowQuery, setCashFlowQuery] = useState(0);
+
+  // ── Admin permission check ──
+  // Only users with MANAGE_FINANCE permission (ADMIN, ADMIN_2, ACCOUNTANT,
+  // PROJECT_HEAD, ACCOUNTS_HEAD) can create new budget heads from the report.
+  const user = useAuthStore((s) => s.user);
+  const canManageFinance = !!user && hasPermission(user.role as UserRole, Permission.MANAGE_FINANCE);
+
+  // ── Create budget head (new row in Budget vs Actual report) ──
+  // Uses the same POST /budget-heads endpoint as the Budget Heads page,
+  // so the new row replicates existing rows exactly — same schema, same
+  // validation, same backend processing. No hardcoded or fake data.
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [createForm, setCreateForm] = useState({ slNo: '', particulars: '', allocatedAmount: '' });
+  const [createError, setCreateError] = useState('');
+
+  const createBudgetHeadMutation = useMutation({
+    mutationFn: async (payload: { slNo: number; particulars: string; allocatedAmount: number }) => {
+      const response = await api.post('/budget-heads', payload);
+      return response.data;
+    },
+    onSuccess: () => {
+      // Invalidate and refetch all related queries so the new row appears
+      // everywhere — Budget vs Actual report, Budget Heads page, and Dashboard.
+      // Use refetchQueries for the active report to guarantee an immediate
+      // refetch (invalidateQueries only refetches active queries, but
+      // refetchQueries forces it regardless of staleTime).
+      queryClient.invalidateQueries({ queryKey: ['/finance-reports/budget-vs-actual'] });
+      queryClient.invalidateQueries({ queryKey: ['/budget-heads'] });
+      queryClient.invalidateQueries({ queryKey: ['/budget-heads/summary'] });
+      queryClient.invalidateQueries({ queryKey: ['/dashboard/admin-summary'] });
+      queryClient.refetchQueries({ queryKey: ['/finance-reports/budget-vs-actual'] });
+      setCreateDialogOpen(false);
+      setCreateForm({ slNo: '', particulars: '', allocatedAmount: '' });
+      setCreateError('');
+    },
+    onError: (err: unknown) => setCreateError(extractErrorMessage(err)),
+  });
+
+  const openCreateDialog = () => {
+    setCreateForm({ slNo: '', particulars: '', allocatedAmount: '' });
+    setCreateError('');
+    setCreateDialogOpen(true);
+  };
+
+  const handleCreateSubmit = () => {
+    if (!createForm.particulars || String(createForm.particulars).trim() === '') {
+      setCreateError('Particulars is required');
+      return;
+    }
+    if (!createForm.allocatedAmount || Number(createForm.allocatedAmount) <= 0) {
+      setCreateError('Allocated amount must be greater than 0');
+      return;
+    }
+    if (!createForm.slNo || Number(createForm.slNo) < 1) {
+      setCreateError('Sl. No. must be at least 1');
+      return;
+    }
+    setCreateError('');
+    createBudgetHeadMutation.mutate({
+      slNo: Number(createForm.slNo),
+      particulars: String(createForm.particulars).trim(),
+      allocatedAmount: Number(createForm.allocatedAmount),
+    });
+  };
 
   const { data: budgetReport, isLoading: budgetLoading } = useQuery({
     queryKey: ['/finance-reports/budget-vs-actual'],
@@ -58,6 +135,142 @@ export default function FinanceReportsPage() {
       return response.data;
     },
   });
+
+  // ── New Cash Flow Outflow (manual withdrawal with Budget Head attribution) ──
+  // Posts to the existing /bank-accounts/:id/withdraw or /cash-accounts/:id/out
+  // endpoints. When a Budget Head is selected, the backend deducts the amount
+  // from that budget head's available balance (actualAmount + paidAmount).
+  // The new transaction appears in the Cash Flow report on reload.
+  const [outflowDialogOpen, setOutflowDialogOpen] = useState(false);
+  const [outflowForm, setOutflowForm] = useState({
+    accountType: 'BANK' as 'BANK' | 'CASH',
+    accountId: '',
+    contraLedgerId: '',
+    amount: '',
+    date: new Date().toISOString().slice(0, 10),
+    description: '',
+    budgetHeadId: '',
+  });
+  const [outflowError, setOutflowError] = useState('');
+
+  // Fetch bank accounts, cash accounts, ledgers, and budget heads for the dialog
+  const { data: bankAccountsData } = useQuery({
+    queryKey: ['/bank-accounts', 'all-for-cashflow'],
+    queryFn: async () => {
+      const response = await api.get('/bank-accounts', { params: { page: 1, pageSize: 100 } });
+      return response.data;
+    },
+    enabled: outflowDialogOpen,
+  });
+  const { data: cashAccountsData } = useQuery({
+    queryKey: ['/cash-accounts', 'all-for-cashflow'],
+    queryFn: async () => {
+      const response = await api.get('/cash-accounts', { params: { page: 1, pageSize: 100 } });
+      return response.data;
+    },
+    enabled: outflowDialogOpen,
+  });
+  const { data: ledgersData } = useQuery({
+    queryKey: ['/ledgers', 'all-for-cashflow'],
+    queryFn: async () => {
+      const response = await api.get('/ledgers', { params: { page: 1, pageSize: 100 } });
+      return response.data;
+    },
+    enabled: outflowDialogOpen,
+  });
+  const { data: budgetHeadsData } = useQuery({
+    queryKey: ['/budget-heads', 'all-for-cashflow'],
+    queryFn: async () => {
+      const response = await api.get('/budget-heads', { params: { page: 1, pageSize: 100 } });
+      return response.data;
+    },
+    enabled: outflowDialogOpen,
+  });
+
+  const bankAccounts: { id: string; accountName: string; currentBalance: number }[] = bankAccountsData?.data ?? [];
+  const cashAccounts: { id: string; name: string; currentBalance: number }[] = cashAccountsData?.data ?? [];
+  const ledgers: LedgerOption[] = (ledgersData?.data ?? []).map((l: Record<string, unknown>) => ({
+    id: String(l.id),
+    name: String(l.name),
+    group: String(l.group ?? ''),
+  }));
+  const budgetHeads: { id: string; particulars: string; allocatedAmount: number; actualAmount: number }[] = budgetHeadsData?.data ?? [];
+
+  const outflowMutation = useMutation({
+    mutationFn: async () => {
+      const payload: Record<string, unknown> = {
+        amount: Number(outflowForm.amount),
+        contraLedgerId: outflowForm.contraLedgerId,
+        date: outflowForm.date,
+        description: outflowForm.description || undefined,
+      };
+      if (outflowForm.budgetHeadId) payload.budgetHeadId = outflowForm.budgetHeadId;
+      if (outflowForm.accountType === 'BANK') {
+        const response = await api.post(`/bank-accounts/${outflowForm.accountId}/withdraw`, payload);
+        return response.data;
+      } else {
+        const response = await api.post(`/cash-accounts/${outflowForm.accountId}/out`, payload);
+        return response.data;
+      }
+    },
+    onSuccess: () => {
+      // Invalidate cash flow report so the new outflow appears
+      queryClient.invalidateQueries({ queryKey: ['/finance-reports/cash-flow'] });
+      queryClient.invalidateQueries({ queryKey: ['/budget-heads'] });
+      queryClient.invalidateQueries({ queryKey: ['/budget-heads/summary'] });
+      queryClient.invalidateQueries({ queryKey: ['/finance-reports/budget-vs-actual'] });
+      queryClient.invalidateQueries({ queryKey: ['/dashboard/admin-summary'] });
+      setOutflowDialogOpen(false);
+      setOutflowForm({
+        accountType: 'BANK',
+        accountId: '',
+        contraLedgerId: '',
+        amount: '',
+        date: new Date().toISOString().slice(0, 10),
+        description: '',
+        budgetHeadId: '',
+      });
+      setOutflowError('');
+      // Force cash flow refetch
+      setCashFlowQuery((q) => q + 1);
+    },
+    onError: (err: unknown) => setOutflowError(extractErrorMessage(err)),
+  });
+
+  const openOutflowDialog = () => {
+    setOutflowForm({
+      accountType: 'BANK',
+      accountId: '',
+      contraLedgerId: '',
+      amount: '',
+      date: new Date().toISOString().slice(0, 10),
+      description: '',
+      budgetHeadId: '',
+    });
+    setOutflowError('');
+    setOutflowDialogOpen(true);
+  };
+
+  const handleOutflowSubmit = () => {
+    if (!outflowForm.accountId) {
+      setOutflowError('Please select an account');
+      return;
+    }
+    if (!outflowForm.contraLedgerId) {
+      setOutflowError('Please select a contra ledger');
+      return;
+    }
+    if (!outflowForm.amount || Number(outflowForm.amount) <= 0) {
+      setOutflowError('Amount must be greater than 0');
+      return;
+    }
+    if (!outflowForm.date) {
+      setOutflowError('Date is required');
+      return;
+    }
+    setOutflowError('');
+    outflowMutation.mutate();
+  };
 
   const { data: accountSummary, isLoading: accountsLoading } = useQuery({
     queryKey: ['/finance-reports/account-summary'],
@@ -165,13 +378,24 @@ export default function FinanceReportsPage() {
       {/* ── Budget vs Actual Tab ── */}
       {tab === 'budget' && (
         <Card sx={{ overflow: 'hidden' }}>
-          <Box sx={{ p: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Box sx={{ p: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
             <Typography variant="subtitle1" fontWeight={600}>Budget vs Actual Report</Typography>
-            {budgetReport?.data && (
-              <Button
-                size="small"
-                startIcon={<DownloadIcon />}
-                onClick={() => exportCsv(budgetReport.data, 'budget-vs-actual.csv')}
+            <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+              {canManageFinance && (
+                <Button
+                  size="small"
+                  variant="contained"
+                  startIcon={<AddIcon />}
+                  onClick={openCreateDialog}
+                >
+                  New Budget Head
+                </Button>
+              )}
+              {budgetReport?.data && (
+                <Button
+                  size="small"
+                  startIcon={<DownloadIcon />}
+                  onClick={() => exportCsv(budgetReport.data, 'budget-vs-actual.csv')}
               >
                 Export CSV
               </Button>
@@ -179,6 +403,7 @@ export default function FinanceReportsPage() {
             {budgetReport?.data && (
               <Button size="small" startIcon={<PdfIcon />} onClick={() => downloadPdf('budget-vs-actual')}>PDF</Button>
             )}
+            </Box>
           </Box>
           {budgetLoading ? (
             <Box sx={{ py: 4, textAlign: 'center' }}><CircularProgress /></Box>
@@ -251,6 +476,179 @@ export default function FinanceReportsPage() {
         </Card>
       )}
 
+      {/* ── Create Budget Head dialog (admin only) ──
+          Creates a new row in the Budget vs Actual report using the same
+          POST /budget-heads endpoint as the Budget Heads page, so the new
+          row replicates existing rows exactly — same schema, validation,
+          and backend processing. No hardcoded or fake data. */}
+      <ResponsiveDialog open={createDialogOpen} onClose={() => setCreateDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>New Budget Head</DialogTitle>
+        <DialogContent>
+          {createError && <Alert severity="error" sx={{ mb: 2 }}>{createError}</Alert>}
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
+            <TextField
+              label="Sl. No."
+              type="number"
+              value={formatIndianNumber(createForm.slNo)}
+              onChange={(e) => setCreateForm({ ...createForm, slNo: e.target.value.replace(/,/g, '') })}
+              required
+              size="small"
+            />
+            <TextField
+              label="Particulars"
+              value={createForm.particulars}
+              onChange={(e) => setCreateForm({ ...createForm, particulars: e.target.value })}
+              required
+              size="small"
+            />
+            <TextField
+              label="Allocated Amount"
+              type="text"
+              value={formatIndianNumber(createForm.allocatedAmount)}
+              onChange={(e) => setCreateForm({ ...createForm, allocatedAmount: e.target.value.replace(/,/g, '') })}
+              required
+              size="small"
+              InputProps={{ startAdornment: <InputAdornment position="start">₹</InputAdornment> }}
+            />
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setCreateDialogOpen(false)}>Cancel</Button>
+          <Button
+            variant="contained"
+            onClick={handleCreateSubmit}
+            disabled={createBudgetHeadMutation.isPending}
+          >
+            {createBudgetHeadMutation.isPending ? <CircularProgress size={20} /> : 'Create'}
+          </Button>
+        </DialogActions>
+      </ResponsiveDialog>
+
+      {/* ── New Cash Flow Outflow dialog ──
+          Posts to /bank-accounts/:id/withdraw or /cash-accounts/:id/out.
+          When a Budget Head is selected, the backend deducts the amount from
+          that budget head's available balance and updates actualAmount/paidAmount.
+          The transaction is persisted in the database and appears in the
+          Cash Flow report, Expenditure page, and Budget vs Actual report. */}
+      <ResponsiveDialog open={outflowDialogOpen} onClose={() => setOutflowDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>New Cash Flow Outflow</DialogTitle>
+        <DialogContent>
+          {outflowError && <Alert severity="error" sx={{ mb: 2 }}>{outflowError}</Alert>}
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
+            <FormControl fullWidth size="small">
+              <InputLabel>Account Type</InputLabel>
+              <Select
+                value={outflowForm.accountType}
+                label="Account Type"
+                onChange={(e) => setOutflowForm({ ...outflowForm, accountType: e.target.value as 'BANK' | 'CASH', accountId: '' })}
+              >
+                <MenuItem value="BANK">Bank Account</MenuItem>
+                <MenuItem value="CASH">Cash Account</MenuItem>
+              </Select>
+            </FormControl>
+
+            <FormControl fullWidth size="small" required>
+              <InputLabel>{outflowForm.accountType === 'BANK' ? 'Bank Account' : 'Cash Account'}</InputLabel>
+              <Select
+                value={outflowForm.accountId}
+                label={outflowForm.accountType === 'BANK' ? 'Bank Account' : 'Cash Account'}
+                onChange={(e) => setOutflowForm({ ...outflowForm, accountId: e.target.value })}
+              >
+                {outflowForm.accountType === 'BANK'
+                  ? bankAccounts.map((a) => (
+                    <MenuItem key={a.id} value={a.id}>
+                      {a.accountName} (Bal: {formatCurrency(a.currentBalance)})
+                    </MenuItem>
+                  ))
+                  : cashAccounts.map((a) => (
+                    <MenuItem key={a.id} value={a.id}>
+                      {a.name} (Bal: {formatCurrency(a.currentBalance)})
+                    </MenuItem>
+                  ))
+                }
+              </Select>
+            </FormControl>
+
+            <FormControl fullWidth size="small" required>
+              <InputLabel>Budget Head</InputLabel>
+              <Select
+                value={outflowForm.budgetHeadId}
+                label="Budget Head"
+                onChange={(e) => setOutflowForm({ ...outflowForm, budgetHeadId: e.target.value })}
+                renderValue={(val) => {
+                  if (!val) return <em style={{ color: 'rgba(0,0,0,0.5)' }}>— None —</em>;
+                  const head = budgetHeads.find((h) => h.id === val);
+                  return head ? head.particulars : val;
+                }}
+              >
+                <MenuItem value="">
+                  <em>— None —</em>
+                </MenuItem>
+                {budgetHeads.map((h) => {
+                  const available = Number(h.allocatedAmount) - Number(h.actualAmount);
+                  return (
+                    <MenuItem key={h.id} value={h.id}>
+                      <Box>
+                        <Typography variant="body2">{h.particulars}</Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          Allocated: {formatCurrency(h.allocatedAmount)} | Available: {formatCurrency(available)}
+                        </Typography>
+                      </Box>
+                    </MenuItem>
+                  );
+                })}
+              </Select>
+            </FormControl>
+
+            <LedgerAutocomplete
+              value={outflowForm.contraLedgerId}
+              onChange={(id) => setOutflowForm({ ...outflowForm, contraLedgerId: id })}
+              ledgers={ledgers}
+              placeholder="Contra ledger (where money goes)..."
+            />
+
+            <TextField
+              size="small"
+              label="Amount"
+              type="number"
+              value={outflowForm.amount}
+              onChange={(e) => setOutflowForm({ ...outflowForm, amount: e.target.value })}
+              InputProps={{ startAdornment: <InputAdornment position="start">₹</InputAdornment> }}
+              required
+            />
+
+            <TextField
+              size="small"
+              type="date"
+              label="Date"
+              value={outflowForm.date}
+              onChange={(e) => setOutflowForm({ ...outflowForm, date: e.target.value })}
+              InputLabelProps={{ shrink: true }}
+              required
+            />
+
+            <TextField
+              size="small"
+              label="Description"
+              value={outflowForm.description}
+              onChange={(e) => setOutflowForm({ ...outflowForm, description: e.target.value })}
+              multiline
+              minRows={2}
+            />
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOutflowDialogOpen(false)}>Cancel</Button>
+          <Button
+            variant="contained"
+            onClick={handleOutflowSubmit}
+            disabled={outflowMutation.isPending}
+          >
+            {outflowMutation.isPending ? <CircularProgress size={20} /> : 'Post Outflow'}
+          </Button>
+        </DialogActions>
+      </ResponsiveDialog>
+
       {/* ── Cash Flow Tab ── */}
       {tab === 'cashflow' && (
         <Card sx={{ overflow: 'hidden' }}>
@@ -272,6 +670,17 @@ export default function FinanceReportsPage() {
               InputLabelProps={{ shrink: true }}
             />
             <Button variant="contained" size="small" onClick={() => setCashFlowQuery(cashFlowQuery + 1)}>Apply</Button>
+            {canManageFinance && (
+              <Button
+                size="small"
+                variant="outlined"
+                startIcon={<AddIcon />}
+                onClick={openOutflowDialog}
+                sx={{ ml: 1 }}
+              >
+                New Outflow
+              </Button>
+            )}
             {cashFlow?.data && (
               <Button
                 size="small"

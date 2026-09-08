@@ -274,7 +274,7 @@ export const createExpenseSchema = z.object({
     category: nonEmptyText(100),
     expenseDate: dateStr.optional(),
     paymentMode: z.string().trim().max(50).optional(),
-    budgetHeadId: uuid.optional(),
+    budgetHeadId: uuid,
   }),
 });
 export const createAdvancePaymentSchema = z.object({
@@ -1005,6 +1005,7 @@ export const bankDepositSchema = z.object({
     contraLedgerId: uuid,
     date: dateStr.optional(),
     description: z.string().max(500).optional(),
+    budgetHeadId: uuid.optional(),
   }),
 });
 export const bankWithdrawSchema = bankDepositSchema;

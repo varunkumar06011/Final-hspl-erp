@@ -45,6 +45,9 @@ import {
   YAxis,
   Tooltip as RechartsTooltip,
   ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
 } from 'recharts';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import api, { extractErrorMessage } from '../config/api';
@@ -91,6 +94,7 @@ interface AdminSummary {
       amount: number;
       description: string;
       time: string;
+      budgetHead?: { id: string; particulars: string } | null;
     }>;
   };
   // Pending approvals
@@ -292,6 +296,7 @@ export default function AdminDashboardPage() {
           amount: number;
           description: string;
           date: string;
+          budgetHead?: { id: string; particulars: string } | null;
         }>;
       };
     },
@@ -318,6 +323,7 @@ export default function AdminDashboardPage() {
           amount: number;
           description: string;
           date: string;
+          budgetHead?: { id: string; particulars: string } | null;
         }>;
       };
     },
@@ -608,37 +614,70 @@ export default function AdminDashboardPage() {
           mb: { xs: 2, sm: 3 },
         }}
       >
-        {/* Budget overview — derived from existing budgetTotals (no recomputation) */}
+        {/* Budget overview — pie chart showing Approved, Expenditure, Remaining.
+            Uses totalExpenditure (all posted spend) for the expenditure value,
+            consistent with the top summary card. */}
         <Box sx={{ minWidth: 0 }}>
           {adminData?.budgetTotals && (() => {
             const bt = adminData.budgetTotals;
-            const remaining = bt.totalAllocated - bt.totalActual;
-            const utilPct = bt.totalAllocated > 0 ? Math.min(100, Math.round((bt.totalActual / bt.totalAllocated) * 100)) : 0;
-            const barColor = utilPct >= 90 ? 'error' : utilPct >= 70 ? 'warning' : 'success';
+            const expenditure = totalExpenditure;
+            const remaining = bt.totalAllocated - expenditure;
+            const pieData = [
+              { name: 'Expenditure', value: expenditure, color: '#f44336' },
+              { name: 'Remaining', value: Math.max(0, remaining), color: '#4caf50' },
+            ].filter((d) => d.value > 0);
             return (
               <Card sx={{ overflow: 'hidden', width: '100%', maxWidth: '100%', height: '100%' }}>
                 <CardContent sx={{ py: 1.5, px: 2, '&:last-child': { pb: 1.5 } }}>
                   <Typography variant="subtitle2" fontWeight={600} sx={{ mb: 1.5 }}>Budget Overview</Typography>
-                  <Stack direction="row" spacing={2} flexWrap="wrap" useFlexGap sx={{ gap: 1.5 }}>
-                    <Box>
-                      <Typography variant="caption" color="text.secondary">Approved</Typography>
-                      <Typography variant="body2" fontWeight={700}>{formatCurrency(bt.totalAllocated)}</Typography>
+                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems="center">
+                    <Box sx={{ width: 140, height: 140, flexShrink: 0 }}>
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie
+                            data={pieData}
+                            dataKey="value"
+                            nameKey="name"
+                            cx="50%"
+                            cy="50%"
+                            innerRadius={38}
+                            outerRadius={60}
+                            paddingAngle={2}
+                          >
+                            {pieData.map((entry, idx) => (
+                              <Cell key={idx} fill={entry.color} />
+                            ))}
+                          </Pie>
+                          <RechartsTooltip
+                            formatter={(value: unknown) => formatCurrency(Number(value))}
+                            contentStyle={{ fontSize: 11 }}
+                          />
+                        </PieChart>
+                      </ResponsiveContainer>
                     </Box>
-                    <Box>
-                      <Typography variant="caption" color="text.secondary">Actual</Typography>
-                      <Typography variant="body2" fontWeight={700} color="error.main">{formatCurrency(bt.totalActual)}</Typography>
-                    </Box>
-                    <Box>
-                      <Typography variant="caption" color="text.secondary">Remaining</Typography>
-                      <Typography variant="body2" fontWeight={700} color={remaining < 0 ? 'error.main' : 'success.main'}>{formatCurrency(remaining)}</Typography>
-                    </Box>
-                    <Box sx={{ minWidth: 100, flex: 1 }}>
-                      <Typography variant="caption" color="text.secondary">% Utilized</Typography>
-                      <Stack direction="row" spacing={0.75} alignItems="center">
-                        <LinearProgress variant="determinate" value={utilPct} color={barColor as 'success' | 'warning' | 'error'} sx={{ flex: 1, height: 6, borderRadius: 3, minWidth: 30 }} />
-                        <Typography variant="caption" fontWeight={700}>{utilPct}%</Typography>
+                    <Stack spacing={1} sx={{ flex: 1, minWidth: 0 }}>
+                      <Stack direction="row" spacing={1} alignItems="center">
+                        <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: '#1976d2', flexShrink: 0 }} />
+                        <Box sx={{ minWidth: 0 }}>
+                          <Typography variant="caption" color="text.secondary">Approved</Typography>
+                          <Typography variant="body2" fontWeight={700}>{formatCurrency(bt.totalAllocated)}</Typography>
+                        </Box>
                       </Stack>
-                    </Box>
+                      <Stack direction="row" spacing={1} alignItems="center">
+                        <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: '#f44336', flexShrink: 0 }} />
+                        <Box sx={{ minWidth: 0 }}>
+                          <Typography variant="caption" color="text.secondary">Expenditure</Typography>
+                          <Typography variant="body2" fontWeight={700} color="error.main">{formatCurrency(expenditure)}</Typography>
+                        </Box>
+                      </Stack>
+                      <Stack direction="row" spacing={1} alignItems="center">
+                        <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: '#4caf50', flexShrink: 0 }} />
+                        <Box sx={{ minWidth: 0 }}>
+                          <Typography variant="caption" color="text.secondary">Remaining</Typography>
+                          <Typography variant="body2" fontWeight={700} color={remaining < 0 ? 'error.main' : 'success.main'}>{formatCurrency(remaining)}</Typography>
+                        </Box>
+                      </Stack>
+                    </Stack>
                   </Stack>
                 </CardContent>
               </Card>
@@ -937,6 +976,11 @@ export default function AdminDashboardPage() {
                             <Chip size="small" label={t.accountType} variant="outlined" sx={{ height: 16, fontSize: '0.6rem', flexShrink: 0 }} />
                             <Typography variant="caption" fontWeight={600} noWrap sx={{ minWidth: 0 }}>{t.account}</Typography>
                           </Stack>
+                          {t.budgetHead && (
+                            <Typography variant="caption" color="primary.main" component="div" noWrap sx={{ fontSize: '0.65rem', fontWeight: 600 }}>
+                              {t.budgetHead.particulars}
+                            </Typography>
+                          )}
                           <Typography variant="caption" color="text.secondary" component="div" noWrap sx={{ fontSize: '0.7rem', maxWidth: '100%' }}>
                             {t.description || '—'}
                           </Typography>
@@ -1532,12 +1576,13 @@ export default function AdminDashboardPage() {
             <Alert severity="info">No expenditure transactions found.</Alert>
           ) : (
             <ScrollableTableContainer>
-              <Table size="small" sx={{ tableLayout: 'fixed', minWidth: 600 }}>
+              <Table size="small" sx={{ tableLayout: 'fixed', minWidth: 780 }}>
                 <TableHead>
                   <TableRow sx={{ bgcolor: 'action.hover' }}>
                     <TableCell sx={{ fontWeight: 600, width: 100, position: 'sticky', left: 0, bgcolor: 'action.hover', zIndex: 2, borderRight: '1px solid', borderColor: 'divider' }}>Date</TableCell>
                     <TableCell sx={{ fontWeight: 600, width: 70 }}>Type</TableCell>
                     <TableCell sx={{ fontWeight: 600, width: 150 }}>Account</TableCell>
+                    <TableCell sx={{ fontWeight: 600, width: 180 }}>Budget Head</TableCell>
                     <TableCell sx={{ fontWeight: 600, width: 220 }}>Description</TableCell>
                     <TableCell align="right" sx={{ fontWeight: 600, width: 120 }}>Amount</TableCell>
                   </TableRow>
@@ -1553,6 +1598,13 @@ export default function AdminDashboardPage() {
                       </TableCell>
                       <TableCell>
                         <Typography variant="body2" noWrap>{t.account}</Typography>
+                      </TableCell>
+                      <TableCell>
+                        {t.budgetHead ? (
+                          <Chip label={t.budgetHead.particulars} size="small" color="primary" variant="outlined" sx={{ height: 20, fontSize: '0.65rem', maxWidth: 160 }} />
+                        ) : (
+                          <Typography variant="body2" color="text.secondary" noWrap>—</Typography>
+                        )}
                       </TableCell>
                       <TableCell>
                         <Typography variant="body2" noWrap>{t.description || '—'}</Typography>

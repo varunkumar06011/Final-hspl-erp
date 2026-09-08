@@ -771,6 +771,9 @@ export interface PostVoucherArgs {
   chequeNumber?: string | null;
   chequeDate?: Date | null;
   tx?: Prisma.TransactionClient; // optional: run inside an existing transaction
+  // Optional: when set, the bank/cash transaction created by this voucher will be
+  // tagged with this budget head, and the budget head's actualAmount will be updated.
+  budgetHeadId?: string | null;
 }
 
 export async function postVoucher(args: PostVoucherArgs) {
@@ -860,6 +863,7 @@ export async function postVoucher(args: PostVoucherArgs) {
               referenceType: VOUCHER_TO_REF_TYPE[args.voucherType] ?? AccountTxnRefType.JOURNAL_VOUCHER,
               referenceId: jv.id,
               status: 'POSTED',
+              budgetHeadId: args.budgetHeadId ?? null,
               createdBy: args.userId,
             },
           });
@@ -888,6 +892,7 @@ export async function postVoucher(args: PostVoucherArgs) {
               referenceType: VOUCHER_TO_REF_TYPE[args.voucherType] ?? AccountTxnRefType.JOURNAL_VOUCHER,
               referenceId: jv.id,
               status: 'POSTED',
+              budgetHeadId: args.budgetHeadId ?? null,
               createdBy: args.userId,
             },
           });

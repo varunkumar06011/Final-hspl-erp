@@ -473,6 +473,10 @@ export default function PaymentsPage() {
       setError('Description and category are required');
       return false;
     }
+    if (!expenseForm.budgetHeadId || String(expenseForm.budgetHeadId).trim() === '') {
+      setError('Budget Head is required');
+      return false;
+    }
     if (!Number.isFinite(Number(expenseForm.amount)) || Number(expenseForm.amount) <= 0) {
       setError('Expense amount must be greater than zero');
       return false;
@@ -1144,13 +1148,13 @@ export default function PaymentsPage() {
               </TextField>
               <TextField
                 select
-                label="Budget Head (optional)"
+                label="Budget Head"
                 value={String(expenseForm.budgetHeadId ?? '')}
                 onChange={(e) => setExpenseForm({ ...expenseForm, budgetHeadId: e.target.value })}
                 size="small"
                 sx={{ flex: 1, minWidth: 0 }}
+                required
               >
-                <MenuItem value="">— None —</MenuItem>
                 {budgetHeads.map((h) => <MenuItem key={h.id} value={h.id}>{h.particulars}</MenuItem>)}
               </TextField>
             </Box>

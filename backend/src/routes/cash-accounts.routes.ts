@@ -224,7 +224,7 @@ router.post(
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const projectId = requireProjectId(req);
-      const { amount, contraLedgerId, date, description } = req.body;
+      const { amount, contraLedgerId, date, description, budgetHeadId } = req.body;
 
       if (isFutureDate(date)) {
         res.status(400).json({ error: 'Date cannot be in the future' });
@@ -247,6 +247,23 @@ router.post(
       if (!contraLedger) {
         res.status(400).json({ error: 'Selected ledger not found' });
         return;
+      }
+
+      // Validate budget head if provided
+      if (budgetHeadId) {
+        const head = await prisma.budgetHead.findFirst({
+          where: { id: budgetHeadId, projectId, deletedAt: null },
+        });
+        if (!head) {
+          res.status(400).json({ error: 'Budget Head not found' });
+          return;
+        }
+        // Prevent overspend beyond allocated budget
+        const projectedActual = Number(head.actualAmount) + Number(amount);
+        if (projectedActual > Number(head.allocatedAmount)) {
+          res.status(400).json({ error: `Insufficient budget in ${head.particulars}. Allocated: ${head.allocatedAmount}, Already used: ${head.actualAmount}, Requested: ${amount}` });
+          return;
+        }
       }
 
       const amt = Number(amount);
@@ -276,7 +293,19 @@ router.post(
         sourceInvoiceId: null,
         billSettlements: [],
         userId: req.user!.id,
+        budgetHeadId: budgetHeadId ?? null,
       });
+
+      // Update budget head actualAmount for the cash out
+      if (budgetHeadId) {
+        await prisma.budgetHead.update({
+          where: { id: budgetHeadId },
+          data: {
+            actualAmount: { increment: amt },
+            paidAmount: { increment: amt },
+          },
+        });
+      }
 
       await logAudit({
         userId: req.user!.id,
@@ -284,7 +313,7 @@ router.post(
         entityType: 'CASH_TRANSACTION',
         entityId: result.voucherId,
         projectId,
-        newValue: { type: CashTxnType.OUT, amount, cashAccountId: req.params.id, contraLedgerId, jvNumber },
+        newValue: { type: CashTxnType.OUT, amount, cashAccountId: req.params.id, contraLedgerId, jvNumber, budgetHeadId },
       });
 
       res.status(201).json({ jvNumber, ...result });

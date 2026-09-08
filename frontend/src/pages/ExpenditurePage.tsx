@@ -33,6 +33,7 @@ interface OutflowTransaction {
   amount: number;
   description: string;
   date: string;
+  budgetHead?: { id: string; particulars: string } | null;
 }
 
 export default function ExpenditurePage() {
@@ -57,7 +58,8 @@ export default function ExpenditurePage() {
         return (
           t.account.toLowerCase().includes(q) ||
           t.description.toLowerCase().includes(q) ||
-          t.accountType.toLowerCase().includes(q)
+          t.accountType.toLowerCase().includes(q) ||
+          (t.budgetHead?.particulars ?? '').toLowerCase().includes(q)
         );
       })
     : allRows;
@@ -91,7 +93,7 @@ export default function ExpenditurePage() {
         <Box sx={{ p: 2 }}>
           <TextField
             size="small"
-            placeholder="Search by account, description..."
+            placeholder="Search by account, description, budget head..."
             value={search}
             onChange={(e) => { setSearch(e.target.value); setPage(0); }}
             InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> }}
@@ -106,15 +108,16 @@ export default function ExpenditurePage() {
                 <TableRow>
                   <TableCell sx={{ fontWeight: 600 }}>Date</TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>Account</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Budget Head</TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>Description</TableCell>
                   <TableCell sx={{ fontWeight: 600 }} align="right">Amount</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
                 {isLoading ? (
-                  <TableRow><TableCell colSpan={4} align="center" sx={{ py: 4 }}><CircularProgress size={32} /></TableCell></TableRow>
+                  <TableRow><TableCell colSpan={5} align="center" sx={{ py: 4 }}><CircularProgress size={32} /></TableCell></TableRow>
                 ) : rows.length === 0 ? (
-                  <TableRow><TableCell colSpan={4} align="center" sx={{ py: 4 }}><Typography color="text.secondary">No expenditure transactions found</Typography></TableCell></TableRow>
+                  <TableRow><TableCell colSpan={5} align="center" sx={{ py: 4 }}><Typography color="text.secondary">No expenditure transactions found</Typography></TableCell></TableRow>
                 ) : (
                   rows.map((t) => (
                     <TableRow key={t.id} hover>
@@ -124,6 +127,13 @@ export default function ExpenditurePage() {
                           <Chip label={t.accountType} size="small" variant="outlined" sx={{ height: 18, fontSize: '0.65rem' }} />
                           <Typography variant="body2" noWrap>{t.account}</Typography>
                         </Stack>
+                      </TableCell>
+                      <TableCell data-label="Budget Head">
+                        {t.budgetHead ? (
+                          <Chip label={t.budgetHead.particulars} size="small" color="primary" variant="outlined" sx={{ height: 22, fontSize: '0.7rem', maxWidth: 200 }} />
+                        ) : (
+                          <Typography variant="body2" color="text.secondary" noWrap>—</Typography>
+                        )}
                       </TableCell>
                       <TableCell data-label="Description">{t.description || '—'}</TableCell>
                       <TableCell data-label="Amount" align="right" sx={{ color: 'error.main', fontWeight: 700 }}>

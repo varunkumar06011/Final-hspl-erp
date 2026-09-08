@@ -1222,6 +1222,8 @@ model BudgetHead {
   purchaseOrders  PurchaseOrder[]
   revisions       BudgetRevision[]
   ledgerEntries   LedgerEntry[]
+  bankTransactions BankTransaction[] @relation("BankTxnBudgetHead")
+  cashTransactions CashTransaction[] @relation("CashTxnBudgetHead")
 
   @@unique([projectId, slNo])
   @@index([projectId])
@@ -1304,11 +1306,13 @@ model BankTransaction {
   transferPairId  String?  @db.Uuid // links the two sides of an atomic transfer
   status          String   @default("POSTED") // FinancialTxnStatus enum (POSTED | REVERSED)
   reversalOfId    String?  @db.Uuid // original txn this reverses
+  budgetHeadId    String?  @db.Uuid // optional cost tagging for manual cash flow entries
   createdBy       String   @db.Uuid
   createdAt       DateTime @default(now())
 
   bankAccount BankAccount @relation(fields: [bankAccountId], references: [id], onDelete: Cascade)
   user        User        @relation("BankTxnCreatedBy", fields: [createdBy], references: [id])
+  budgetHead  BudgetHead? @relation("BankTxnBudgetHead", fields: [budgetHeadId], references: [id])
 
   @@index([bankAccountId, date])
   @@index([referenceType, referenceId])
@@ -1347,11 +1351,13 @@ model CashTransaction {
   transferPairId  String?  @db.Uuid // links the two sides of an atomic transfer
   status          String   @default("POSTED") // FinancialTxnStatus enum (POSTED | REVERSED)
   reversalOfId    String?  @db.Uuid // original txn this reverses
+  budgetHeadId    String?  @db.Uuid // optional cost tagging for manual cash flow entries
   createdBy       String   @db.Uuid
   createdAt       DateTime @default(now())
 
   cashAccount CashAccount @relation(fields: [cashAccountId], references: [id], onDelete: Cascade)
   user        User        @relation("CashTxnCreatedBy", fields: [createdBy], references: [id])
+  budgetHead  BudgetHead? @relation("CashTxnBudgetHead", fields: [budgetHeadId], references: [id])
 
   @@index([cashAccountId, date])
   @@index([referenceType, referenceId])
