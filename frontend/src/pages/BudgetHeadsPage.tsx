@@ -34,13 +34,14 @@ import {
   History as HistoryIcon,
   Check as CheckIcon,
   Close as CloseIcon,
+  Visibility as VisibilityIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { extractErrorMessage } from '../config/api';
 import ResponsiveDialog from '../components/ResponsiveDialog';
 import ResponsiveTable from '../components/ResponsiveTable';
 import RefreshButton from '../components/RefreshButton';
-import { formatCurrency, formatIndianNumber } from '../utils/enumOptions';
+import { formatCurrency, formatIndianNumber, formatDate } from '../utils/enumOptions';
 import { useDeepLinkRow } from '../hooks/useDeepLinkRow';
 
 export default function BudgetHeadsPage() {
@@ -62,6 +63,7 @@ export default function BudgetHeadsPage() {
   const [pendingOpen, setPendingOpen] = useState(false);
   const [reviewTarget, setReviewTarget] = useState<Record<string, unknown> | null>(null);
   const [reviewComments, setReviewComments] = useState('');
+  const [usageHeadId, setUsageHeadId] = useState<string | null>(null);
   const queryClient = useQueryClient();
 
   const { data, isLoading, isError, refetch } = useQuery({
@@ -80,6 +82,19 @@ export default function BudgetHeadsPage() {
       const response = await api.get('/budget-heads/summary');
       return response.data;
     },
+  });
+
+  // ── Budget Head usage breakdown (opened on row click) ──
+  // Fetches the budget head's allocated/utilized/remaining summary plus the
+  // full list of related expenditures (POs, GRNs, payments, JVs) up to now.
+  const { data: usageData, isLoading: usageLoading } = useQuery({
+    queryKey: ['/budget-heads', usageHeadId, 'breakdown'],
+    queryFn: async () => {
+      if (!usageHeadId) return null;
+      const response = await api.get(`/budget-heads/${usageHeadId}/breakdown`);
+      return response.data;
+    },
+    enabled: !!usageHeadId,
   });
 
   const createMutation = useMutation({
@@ -358,8 +373,7 @@ export default function BudgetHeadsPage() {
                 <TableCell sx={{ fontWeight: 600 }}>Particulars</TableCell>
                 <TableCell sx={{ fontWeight: 600 }} align="right">Allocated</TableCell>
                 <TableCell sx={{ fontWeight: 600 }} align="right">Committed</TableCell>
-                <TableCell sx={{ fontWeight: 600 }} align="right">Actual</TableCell>
-                <TableCell sx={{ fontWeight: 600 }} align="right">Paid</TableCell>
+                <TableCell sx={{ fontWeight: 600 }} align="right">Utilized</TableCell>
                 <TableCell sx={{ fontWeight: 600 }} align="right">Available</TableCell>
                 <TableCell sx={{ fontWeight: 600 }}>Utilization</TableCell>
                 <TableCell sx={{ fontWeight: 600 }}>Status</TableCell>
@@ -368,14 +382,14 @@ export default function BudgetHeadsPage() {
             </TableHead>
             <TableBody>
               {isLoading ? (
-                <TableRow><TableCell colSpan={10} align="center" sx={{ py: 4 }}><CircularProgress size={32} /></TableCell></TableRow>
+                <TableRow><TableCell colSpan={9} align="center" sx={{ py: 4 }}><CircularProgress size={32} /></TableCell></TableRow>
               ) : isError ? (
-                <TableRow><TableCell colSpan={10} align="center" sx={{ py: 4 }}>
+                <TableRow><TableCell colSpan={9} align="center" sx={{ py: 4 }}>
                   <Alert severity="error" sx={{ mb: 1 }}>Failed to load data.</Alert>
                   <Button size="small" onClick={() => refetch()} startIcon={<RefreshIcon />}>Retry</Button>
                 </TableCell></TableRow>
               ) : rows.length === 0 ? (
-                <TableRow><TableCell colSpan={10} align="center" sx={{ py: 4 }}>
+                <TableRow><TableCell colSpan={9} align="center" sx={{ py: 4 }}>
                   <Typography color="text.secondary">No budget heads found. Click "New Budget Head" to create one.</Typography>
                 </TableCell></TableRow>
               ) : (
@@ -386,13 +400,18 @@ export default function BudgetHeadsPage() {
                   const available = allocated - committed - actual;
                   const utilization = allocated > 0 ? (actual / allocated) * 100 : 0;
                   return (
-                    <TableRow key={row.id as string} hover ref={rowRef(row.id as string)} sx={{ ...(highlightId === row.id && { bgcolor: 'warning.light', '&:hover': { bgcolor: 'warning.light' } }) }}>
+                    <TableRow
+                      key={row.id as string}
+                      hover
+                      ref={rowRef(row.id as string)}
+                      sx={{ ...(highlightId === row.id && { bgcolor: 'warning.light', '&:hover': { bgcolor: 'warning.light' } }), cursor: 'pointer' }}
+                      onClick={() => setUsageHeadId(row.id as string)}
+                    >
                       <TableCell data-label="Sl. No.">{String(row.slNo)}</TableCell>
                       <TableCell data-label="Particulars">{String(row.particulars ?? '—')}</TableCell>
                       <TableCell data-label="Allocated" align="right">{formatCurrency(row.allocatedAmount)}</TableCell>
                       <TableCell data-label="Committed" align="right">{formatCurrency(row.committedAmount)}</TableCell>
-                      <TableCell data-label="Actual" align="right">{formatCurrency(row.actualAmount)}</TableCell>
-                      <TableCell data-label="Paid" align="right">{formatCurrency(row.paidAmount)}</TableCell>
+                      <TableCell data-label="Utilized" align="right">{formatCurrency(row.actualAmount)}</TableCell>
                       <TableCell data-label="Available" align="right" sx={{ fontWeight: 600, color: available < 0 ? 'error.main' : 'success.main' }}>
                         {formatCurrency(available)}
                       </TableCell>
@@ -412,7 +431,8 @@ export default function BudgetHeadsPage() {
                       <TableCell data-label="Status">
                         <Chip label={String(row.status ?? 'ACTIVE')} size="small" color={row.status === 'CLOSED' ? 'default' : 'success'} />
                       </TableCell>
-                      <TableCell data-label="Actions" align="right">
+                      <TableCell data-label="Actions" align="right" onClick={(e) => e.stopPropagation()}>
+                        <IconButton size="small" onClick={() => setUsageHeadId(row.id as string)} title="Usage Details"><VisibilityIcon fontSize="small" /></IconButton>
                         <IconButton size="small" onClick={() => openRevisionDialog(row)} title="Request Edit"><EditIcon fontSize="small" /></IconButton>
                         <IconButton size="small" onClick={() => { setHistoryHeadId(row.id as string); setHistoryOpen(true); }} title="Revision History"><HistoryIcon fontSize="small" /></IconButton>
                         <IconButton size="small" onClick={() => setDeleteConfirm(row.id as string)}><DeleteIcon fontSize="small" /></IconButton>
@@ -733,6 +753,106 @@ export default function BudgetHeadsPage() {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => { setPendingOpen(false); setReviewTarget(null); }}>Close</Button>
+        </DialogActions>
+      </ResponsiveDialog>
+
+      {/* ── Usage Details Dialog (opens on row click) ── */}
+      <ResponsiveDialog open={!!usageHeadId} onClose={() => setUsageHeadId(null)} maxWidth="md" fullWidth>
+        <DialogTitle>
+          Budget Head Usage
+          {usageData?.budgetHead && (
+            <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 400, mt: 0.3 }}>
+              {String(usageData.budgetHead.particulars)} (Sl. No. {String(rows.find((r: Record<string, unknown>) => r.id === usageHeadId)?.slNo ?? '')})
+            </Typography>
+          )}
+        </DialogTitle>
+        <DialogContent>
+          {usageLoading ? (
+            <Box sx={{ py: 4, textAlign: 'center' }}><CircularProgress /></Box>
+          ) : !usageData ? (
+            <Typography color="text.secondary" sx={{ py: 2, textAlign: 'center' }}>No data available.</Typography>
+          ) : (
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              {/* Summary cards — one consolidated "Utilized" amount, matching the dashboard's single expenditure figure */}
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', sm: '1fr 1fr 1fr 1fr' }, gap: 1 }}>
+                {[
+                  { label: 'Allocated', value: Number(usageData.budgetHead.allocatedAmount), color: 'primary.main' },
+                  { label: 'Committed', value: Number(usageData.budgetHead.committedAmount), color: 'info.main' },
+                  { label: 'Utilized', value: Number(usageData.budgetHead.actualAmount), color: 'warning.main' },
+                  { label: 'Remaining', value: Number(usageData.budgetHead.available), color: Number(usageData.budgetHead.available) < 0 ? 'error.main' : 'success.main' },
+                ].map((card) => (
+                  <Card key={card.label} sx={{ p: 1.5 }}>
+                    <Typography variant="caption" color="text.secondary">{card.label}</Typography>
+                    <Typography variant="h6" sx={{ color: card.color, fontSize: { xs: '0.85rem', sm: '1rem' } }}>
+                      {formatCurrency(card.value)}
+                    </Typography>
+                  </Card>
+                ))}
+              </Box>
+
+              {/* Utilization bar */}
+              {Number(usageData.budgetHead.allocatedAmount) > 0 && (
+                <Box>
+                  <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 0.5 }}>
+                    <Typography variant="caption" color="text.secondary">Utilization</Typography>
+                    <Typography variant="caption" color="text.secondary" fontWeight={700}>
+                      {((Number(usageData.budgetHead.actualAmount) / Number(usageData.budgetHead.allocatedAmount)) * 100).toFixed(1)}%
+                    </Typography>
+                  </Stack>
+                  <LinearProgress
+                    variant="determinate"
+                    value={Math.min((Number(usageData.budgetHead.actualAmount) / Number(usageData.budgetHead.allocatedAmount)) * 100, 100)}
+                    color={Number(usageData.budgetHead.actualAmount) / Number(usageData.budgetHead.allocatedAmount) > 0.9 ? 'error' : Number(usageData.budgetHead.actualAmount) / Number(usageData.budgetHead.allocatedAmount) > 0.7 ? 'warning' : 'success'}
+                    sx={{ height: 8, borderRadius: 4 }}
+                  />
+                </Box>
+              )}
+
+              {/* Related expenditures table */}
+              <Box>
+                <Typography variant="subtitle2" sx={{ mb: 1 }}>Related Expenditures ({usageData.transactions.length})</Typography>
+                {usageData.transactions.length === 0 ? (
+                  <Typography color="text.secondary" sx={{ py: 2, textAlign: 'center' }}>
+                    No transactions recorded against this budget head yet.
+                  </Typography>
+                ) : (
+                  <ResponsiveTable>
+                    <TableContainer component={Card} variant="outlined">
+                      <Table size="small">
+                        <TableHead>
+                          <TableRow>
+                            <TableCell sx={{ fontWeight: 600 }}>Date</TableCell>
+                            <TableCell sx={{ fontWeight: 600 }}>Type</TableCell>
+                            <TableCell sx={{ fontWeight: 600 }}>Reference</TableCell>
+                            <TableCell sx={{ fontWeight: 600 }}>Description</TableCell>
+                            <TableCell sx={{ fontWeight: 600 }} align="right">Committed</TableCell>
+                            <TableCell sx={{ fontWeight: 600 }} align="right">Actual</TableCell>
+                            <TableCell sx={{ fontWeight: 600 }} align="right">Paid</TableCell>
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          {usageData.transactions.map((txn: Record<string, unknown>, idx: number) => (
+                            <TableRow key={idx} hover>
+                              <TableCell data-label="Date">{formatDate(String(txn.date))}</TableCell>
+                              <TableCell data-label="Type">{String(txn.type)}</TableCell>
+                              <TableCell data-label="Reference">{String(txn.reference)}</TableCell>
+                              <TableCell data-label="Description" sx={{ fontSize: '0.75rem', maxWidth: 240 }}>{String(txn.description)}</TableCell>
+                              <TableCell data-label="Committed" align="right">{Number(txn.committed) !== 0 ? formatCurrency(Number(txn.committed)) : '—'}</TableCell>
+                              <TableCell data-label="Actual" align="right">{Number(txn.actual) !== 0 ? formatCurrency(Number(txn.actual)) : '—'}</TableCell>
+                              <TableCell data-label="Paid" align="right">{Number(txn.paid) !== 0 ? formatCurrency(Number(txn.paid)) : '—'}</TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </TableContainer>
+                  </ResponsiveTable>
+                )}
+              </Box>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setUsageHeadId(null)}>Close</Button>
         </DialogActions>
       </ResponsiveDialog>
     </Box>
