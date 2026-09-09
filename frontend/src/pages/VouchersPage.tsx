@@ -119,6 +119,9 @@ interface EntryForm {
 interface BudgetHead {
   id: string;
   particulars: string;
+  allocatedAmount?: number;
+  actualAmount?: number;
+  paidAmount?: number;
 }
 
 interface PendingInvoice {
@@ -990,8 +993,8 @@ export default function VouchersPage() {
                         sx={{ mt: 0.5, fontSize: '0.65rem', height: 18 }}
                       />
                     )}
-                    {/* Cost center button — only for expense ledgers */}
-                    {ledgerIsExpense(simplePartyLedgerGroup) && budgetHeads.length > 0 && (
+                    {/* Budget Head — for PAYMENT vouchers always; for others only expense ledgers */}
+                    {(selectedVoucherType === VoucherType.PAYMENT || ledgerIsExpense(simplePartyLedgerGroup)) && budgetHeads.length > 0 && (
                       <Box sx={{ mt: 1 }}>
                         {simpleCostCenter ? (
                           <Chip
@@ -1007,7 +1010,7 @@ export default function VouchersPage() {
                             onClick={() => setCostCenterPopup({ entryIndex: -1 })}
                             sx={{ textTransform: 'none', fontSize: '0.75rem' }}
                           >
-                            Set Cost Center
+                            {selectedVoucherType === VoucherType.PAYMENT ? 'Set Budget Head' : 'Set Cost Center'}
                           </Button>
                         )}
                       </Box>
@@ -1297,10 +1300,22 @@ export default function VouchersPage() {
             }}
             displayEmpty
           >
-            <MenuItem value=""><em>No cost center</em></MenuItem>
-            {budgetHeads.map((bh) => (
-              <MenuItem key={bh.id} value={bh.id}>{bh.particulars}</MenuItem>
-            ))}
+            <MenuItem value=""><em>No budget head</em></MenuItem>
+            {budgetHeads.map((bh) => {
+              const allocated = Number(bh.allocatedAmount ?? 0);
+              const actual = Number(bh.actualAmount ?? 0);
+              const remaining = allocated - actual;
+              return (
+                <MenuItem key={bh.id} value={bh.id}>
+                  {bh.particulars}
+                  {allocated > 0 && (
+                    <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>
+                      (Avail: ₹{remaining.toLocaleString('en-IN')})
+                    </Typography>
+                  )}
+                </MenuItem>
+              );
+            })}
           </Select>
         </DialogContent>
         <DialogActions>

@@ -256,6 +256,37 @@ router.post(
         return;
       }
 
+      // ── For PAYMENT vouchers, extract the Budget Head from the party (debit) entry ──
+      // The Budget Head is the cost center selected for the expense/party side.
+      // We pass it to postVoucher so the bank/cash transaction gets tagged,
+      // and we update the Budget Head's actualAmount + paidAmount after posting.
+      let paymentBudgetHeadId: string | null = null;
+      let paymentAmount = 0;
+      if (voucherType === VoucherType.PAYMENT) {
+        const partyEntry = (entries as Array<{ debit: number; credit: number; budgetHeadId?: string }>)
+          .find((e) => Number(e.debit) > 0);
+        if (partyEntry?.budgetHeadId) {
+          paymentBudgetHeadId = partyEntry.budgetHeadId;
+          paymentAmount = Number(partyEntry.debit);
+          // ── Over-budget check ──
+          const bh = await prisma.budgetHead.findFirst({
+            where: { id: paymentBudgetHeadId, projectId, deletedAt: null },
+          });
+          if (!bh) {
+            res.status(400).json({ error: 'Selected Budget Head not found' });
+            return;
+          }
+          const projectedActual = Number(bh.actualAmount) + paymentAmount;
+          if (projectedActual > Number(bh.allocatedAmount) + 0.01) {
+            res.status(400).json({
+              error: `Payment of ₹${paymentAmount.toFixed(2)} would exceed the allocated budget for "${bh.particulars}" ` +
+                `(allocated: ₹${Number(bh.allocatedAmount).toFixed(2)}, current actual: ₹${Number(bh.actualAmount).toFixed(2)})`,
+            });
+            return;
+          }
+        }
+      }
+
       // Post the voucher atomically: create JV + ledger entries + update ledger balances
       const result = await postVoucher({
         projectId,
@@ -273,7 +304,21 @@ router.post(
         userId: req.user!.id,
         chequeNumber: req.body.chequeNumber ?? null,
         chequeDate: chequeDateCreate,
+        budgetHeadId: paymentBudgetHeadId,
       });
+
+      // ── Update Budget Head totals for PAYMENT vouchers ──
+      // Both actualAmount and paidAmount increase by the payment amount,
+      // mirroring how the Payment posting flow handles EXPENSE payments.
+      if (paymentBudgetHeadId && paymentAmount > 0) {
+        await prisma.budgetHead.update({
+          where: { id: paymentBudgetHeadId },
+          data: {
+            actualAmount: { increment: paymentAmount },
+            paidAmount: { increment: paymentAmount },
+          },
+        });
+      }
 
       await logAudit({
         userId: req.user!.id,
@@ -317,6 +362,13 @@ router.post(
 
       // Reverse: swap debit/credit on each ledger entry, update balances,
       // create reversing LedgerEntry rows, and reverse bank/cash transactions.
+      // For PAYMENT vouchers with a Budget Head, also reverse the budget deduction.
+      const paymentBudgetEntry = voucher.ledgerEntries.find(
+        (e) => voucher.voucherType === VoucherType.PAYMENT && Number(e.debit) > 0 && e.budgetHeadId,
+      );
+      const paymentBudgetHeadId = paymentBudgetEntry?.budgetHeadId ?? null;
+      const paymentAmount = paymentBudgetEntry ? Number(paymentBudgetEntry.debit) : 0;
+
       await prisma.$transaction(async (tx) => {
         // Atomically claim the voucher (prevent double-cancel)
         const claimed = await tx.journalVoucher.updateMany({
@@ -420,6 +472,17 @@ router.post(
               });
             }
           }
+        }
+
+        // ── Reverse Budget Head totals for cancelled PAYMENT vouchers ──
+        if (paymentBudgetHeadId && paymentAmount > 0) {
+          await tx.budgetHead.update({
+            where: { id: paymentBudgetHeadId },
+            data: {
+              actualAmount: { decrement: paymentAmount },
+              paidAmount: { decrement: paymentAmount },
+            },
+          });
         }
       });
 
@@ -542,6 +605,46 @@ router.patch(
         return;
       }
 
+      // ── For PAYMENT vouchers, extract old and new Budget Head info ──
+      // The old budget head is reversed (decremented), the new one is applied (incremented).
+      // Over-budget check is done on the new budget head.
+      const oldBudgetEntry = voucher.ledgerEntries.find(
+        (e) => voucher.voucherType === VoucherType.PAYMENT && Number(e.debit) > 0 && e.budgetHeadId,
+      );
+      const oldBudgetHeadId = oldBudgetEntry?.budgetHeadId ?? null;
+      const oldBudgetAmount = oldBudgetEntry ? Number(oldBudgetEntry.debit) : 0;
+
+      let newBudgetHeadId: string | null = null;
+      let newBudgetAmount = 0;
+      if (voucher.voucherType === VoucherType.PAYMENT) {
+        const newPartyEntry = newEntries.find((e) => Number(e.debit) > 0);
+        if (newPartyEntry?.budgetHeadId) {
+          newBudgetHeadId = newPartyEntry.budgetHeadId;
+          newBudgetAmount = Number(newPartyEntry.debit);
+          // Over-budget check (account for the reversal of the old budget head)
+          const bh = await prisma.budgetHead.findFirst({
+            where: { id: newBudgetHeadId, projectId, deletedAt: null },
+          });
+          if (!bh) {
+            res.status(400).json({ error: 'Selected Budget Head not found' });
+            return;
+          }
+          const currentActual = Number(bh.actualAmount);
+          // If reversing the old budget head on the same head, add it back first
+          const adjustedActual = oldBudgetHeadId === newBudgetHeadId
+            ? currentActual - oldBudgetAmount
+            : currentActual;
+          const projectedActual = adjustedActual + newBudgetAmount;
+          if (projectedActual > Number(bh.allocatedAmount) + 0.01) {
+            res.status(400).json({
+              error: `Payment of ₹${newBudgetAmount.toFixed(2)} would exceed the allocated budget for "${bh.particulars}" ` +
+                `(allocated: ₹${Number(bh.allocatedAmount).toFixed(2)}, current actual: ₹${currentActual.toFixed(2)})`,
+            });
+            return;
+          }
+        }
+      }
+
       // Execute the edit atomically: reverse old, apply new
       await prisma.$transaction(async (tx) => {
         // 1. Reverse old ledger entry effects
@@ -618,6 +721,17 @@ router.patch(
         await tx.ledgerEntry.deleteMany({ where: { journalVoucherId: voucher.id } });
         await tx.billSettlement.deleteMany({ where: { journalVoucherId: voucher.id } });
 
+        // ── Reverse old Budget Head totals (PAYMENT vouchers) ──
+        if (oldBudgetHeadId && oldBudgetAmount > 0) {
+          await tx.budgetHead.update({
+            where: { id: oldBudgetHeadId },
+            data: {
+              actualAmount: { decrement: oldBudgetAmount },
+              paidAmount: { decrement: oldBudgetAmount },
+            },
+          });
+        }
+
         // 3. Update voucher header
         await tx.journalVoucher.update({
           where: { id: voucher.id },
@@ -684,6 +798,7 @@ router.patch(
                   referenceType: VOUCHER_TO_REF_TYPE[voucher.voucherType ?? ''] ?? AccountTxnRefType.JOURNAL_VOUCHER,
                   referenceId: voucher.id,
                   status: 'POSTED',
+                  budgetHeadId: newBudgetHeadId,
                   createdBy: req.user!.id,
                 },
               });
@@ -712,6 +827,7 @@ router.patch(
                   referenceType: VOUCHER_TO_REF_TYPE[voucher.voucherType ?? ''] ?? AccountTxnRefType.JOURNAL_VOUCHER,
                   referenceId: voucher.id,
                   status: 'POSTED',
+                  budgetHeadId: newBudgetHeadId,
                   createdBy: req.user!.id,
                 },
               });
@@ -728,6 +844,17 @@ router.patch(
               invoiceId: settlement.invoiceId,
               vendorId: settlement.vendorId,
               amount: settlement.amount,
+            },
+          });
+        }
+
+        // ── Apply new Budget Head totals (PAYMENT vouchers) ──
+        if (newBudgetHeadId && newBudgetAmount > 0) {
+          await tx.budgetHead.update({
+            where: { id: newBudgetHeadId },
+            data: {
+              actualAmount: { increment: newBudgetAmount },
+              paidAmount: { increment: newBudgetAmount },
             },
           });
         }
