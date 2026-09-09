@@ -29,15 +29,15 @@ import RefreshButton from '../components/RefreshButton';
 const TXN_TYPE_LABELS: Record<string, string> = {
   DEPOSIT: 'Deposit',
   TRANSFER_IN: 'Transfer In',
-  REVERSAL_IN: 'Reversal In',
+  REVERSAL_OUT: 'Reversal Out',
   MANUAL_DEPOSIT: 'Manual Deposit',
   IN: 'Cash In',
 };
 
-const TXN_TYPE_COLORS: Record<string, 'success' | 'info' | 'warning' | 'default'> = {
+const TXN_TYPE_COLORS: Record<string, 'success' | 'info' | 'warning' | 'error' | 'default'> = {
   DEPOSIT: 'success',
   TRANSFER_IN: 'info',
-  REVERSAL_IN: 'warning',
+  REVERSAL_OUT: 'error',
   MANUAL_DEPOSIT: 'success',
   IN: 'success',
 };
@@ -151,8 +151,8 @@ export default function InwardFundsPage() {
                         />
                       </TableCell>
                       <TableCell data-label="Description">{t.description || '—'}</TableCell>
-                      <TableCell data-label="Amount" align="right" sx={{ color: 'success.main', fontWeight: 700 }}>
-                        +{formatCurrency(t.amount)}
+                      <TableCell data-label="Amount" align="right" sx={{ color: t.amount < 0 ? 'error.main' : 'success.main', fontWeight: 700 }}>
+                        {t.amount < 0 ? '-' : '+'}{formatCurrency(Math.abs(t.amount))}
                       </TableCell>
                     </TableRow>
                   ))
