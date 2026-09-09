@@ -307,18 +307,8 @@ router.post(
         budgetHeadId: paymentBudgetHeadId,
       });
 
-      // ── Update Budget Head totals for PAYMENT vouchers ──
-      // Both actualAmount and paidAmount increase by the payment amount,
-      // mirroring how the Payment posting flow handles EXPENSE payments.
-      if (paymentBudgetHeadId && paymentAmount > 0) {
-        await prisma.budgetHead.update({
-          where: { id: paymentBudgetHeadId },
-          data: {
-            actualAmount: { increment: paymentAmount },
-            paidAmount: { increment: paymentAmount },
-          },
-        });
-      }
+      // Budget Head totals are updated inside postVoucher's transaction
+      // (atomic with the voucher posting — no separate update needed here).
 
       await logAudit({
         userId: req.user!.id,
@@ -363,11 +353,38 @@ router.post(
       // Reverse: swap debit/credit on each ledger entry, update balances,
       // create reversing LedgerEntry rows, and reverse bank/cash transactions.
       // For PAYMENT vouchers with a Budget Head, also reverse the budget deduction.
-      const paymentBudgetEntry = voucher.ledgerEntries.find(
-        (e) => voucher.voucherType === VoucherType.PAYMENT && Number(e.debit) > 0 && e.budgetHeadId,
-      );
-      const paymentBudgetHeadId = paymentBudgetEntry?.budgetHeadId ?? null;
-      const paymentAmount = paymentBudgetEntry ? Number(paymentBudgetEntry.debit) : 0;
+      // The budget head may be stored on the party ledger entry (VouchersPage flow)
+      // or on the bank/cash transaction (cash-out / bank-withdrawal flows), so we
+      // check both sources.
+      let paymentBudgetHeadId: string | null = null;
+      let paymentAmount = 0;
+      if (voucher.voucherType === VoucherType.PAYMENT) {
+        // 1. Check the party (debit) ledger entry for a budgetHeadId
+        const partyEntry = voucher.ledgerEntries.find((e) => Number(e.debit) > 0 && e.budgetHeadId);
+        if (partyEntry) {
+          paymentBudgetHeadId = partyEntry.budgetHeadId!;
+          paymentAmount = Number(partyEntry.debit);
+        } else {
+          // 2. Check the bank/cash transaction linked to this voucher
+          const bankTxn = await prisma.bankTransaction.findFirst({
+            where: { referenceId: voucher.id, status: 'POSTED', budgetHeadId: { not: null } },
+            select: { budgetHeadId: true, amount: true },
+          });
+          if (bankTxn?.budgetHeadId) {
+            paymentBudgetHeadId = bankTxn.budgetHeadId;
+            paymentAmount = Number(bankTxn.amount);
+          } else {
+            const cashTxn = await prisma.cashTransaction.findFirst({
+              where: { referenceId: voucher.id, status: 'POSTED', budgetHeadId: { not: null } },
+              select: { budgetHeadId: true, amount: true },
+            });
+            if (cashTxn?.budgetHeadId) {
+              paymentBudgetHeadId = cashTxn.budgetHeadId;
+              paymentAmount = Number(cashTxn.amount);
+            }
+          }
+        }
+      }
 
       await prisma.$transaction(async (tx) => {
         // Atomically claim the voucher (prevent double-cancel)
@@ -608,11 +625,35 @@ router.patch(
       // ── For PAYMENT vouchers, extract old and new Budget Head info ──
       // The old budget head is reversed (decremented), the new one is applied (incremented).
       // Over-budget check is done on the new budget head.
-      const oldBudgetEntry = voucher.ledgerEntries.find(
-        (e) => voucher.voucherType === VoucherType.PAYMENT && Number(e.debit) > 0 && e.budgetHeadId,
-      );
-      const oldBudgetHeadId = oldBudgetEntry?.budgetHeadId ?? null;
-      const oldBudgetAmount = oldBudgetEntry ? Number(oldBudgetEntry.debit) : 0;
+      // The old budget head may be on the party ledger entry (VouchersPage flow)
+      // or on the bank/cash transaction (cash-out / bank-withdrawal flows).
+      let oldBudgetHeadId: string | null = null;
+      let oldBudgetAmount = 0;
+      if (voucher.voucherType === VoucherType.PAYMENT) {
+        const oldPartyEntry = voucher.ledgerEntries.find((e) => Number(e.debit) > 0 && e.budgetHeadId);
+        if (oldPartyEntry) {
+          oldBudgetHeadId = oldPartyEntry.budgetHeadId!;
+          oldBudgetAmount = Number(oldPartyEntry.debit);
+        } else {
+          const bankTxn = await prisma.bankTransaction.findFirst({
+            where: { referenceId: voucher.id, status: 'POSTED', budgetHeadId: { not: null } },
+            select: { budgetHeadId: true, amount: true },
+          });
+          if (bankTxn?.budgetHeadId) {
+            oldBudgetHeadId = bankTxn.budgetHeadId;
+            oldBudgetAmount = Number(bankTxn.amount);
+          } else {
+            const cashTxn = await prisma.cashTransaction.findFirst({
+              where: { referenceId: voucher.id, status: 'POSTED', budgetHeadId: { not: null } },
+              select: { budgetHeadId: true, amount: true },
+            });
+            if (cashTxn?.budgetHeadId) {
+              oldBudgetHeadId = cashTxn.budgetHeadId;
+              oldBudgetAmount = Number(cashTxn.amount);
+            }
+          }
+        }
+      }
 
       let newBudgetHeadId: string | null = null;
       let newBudgetAmount = 0;
@@ -1040,6 +1081,24 @@ export async function postVoucher(args: PostVoucherArgs) {
             invoiceId: settlement.invoiceId,
             vendorId: settlement.vendorId,
             amount: settlement.amount,
+          },
+        });
+      }
+    }
+
+    // 5. Update Budget Head totals for PAYMENT vouchers with a budget head.
+    // Both actualAmount and paidAmount increase by the payment amount.
+    // This runs inside the same transaction so the voucher and budget
+    // update are atomic — if either fails, both roll back.
+    if (args.budgetHeadId && args.voucherType === VoucherType.PAYMENT) {
+      const partyEntry = args.entries.find((e) => Number(e.debit) > 0);
+      const amt = partyEntry ? Number(partyEntry.debit) : 0;
+      if (amt > 0) {
+        await tx.budgetHead.update({
+          where: { id: args.budgetHeadId },
+          data: {
+            actualAmount: { increment: amt },
+            paidAmount: { increment: amt },
           },
         });
       }

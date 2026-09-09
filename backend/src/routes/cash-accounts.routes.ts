@@ -296,16 +296,8 @@ router.post(
         budgetHeadId: budgetHeadId ?? null,
       });
 
-      // Update budget head actualAmount for the cash out
-      if (budgetHeadId) {
-        await prisma.budgetHead.update({
-          where: { id: budgetHeadId },
-          data: {
-            actualAmount: { increment: amt },
-            paidAmount: { increment: amt },
-          },
-        });
-      }
+      // Budget Head totals are now updated inside postVoucher's transaction
+      // (atomic with the voucher posting — no separate update needed here).
 
       await logAudit({
         userId: req.user!.id,
