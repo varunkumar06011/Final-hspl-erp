@@ -635,19 +635,23 @@ router.get(
 
 // ── Admin Dashboard Summary (additive, read-only) ───────────────────
 // Returns the accounting-first summary for the Admin dashboard:
-//   Total Inward Funds − Total Expenditure = Balance
+//   Balance = (Inward − Bank Expenditure) + (Short Advance − Cash Expenditure)
+//           = Inward + Short Advance − Total Expenditure
 //
-// Calculated from ALL posted bank + cash transactions (no date filter),
-// so the balance always matches the actual account balances.
+// Source mapping (per business rule — never mix cash and bank sources):
+//   Bank expenditures (WITHDRAWAL + PAYMENT − REVERSAL_IN) → from Inward
+//   Cash expenditures  (OUT − REVERSAL_IN)                 → from Short Advance
 //
-// Reversals are NETTED so cancelled vouchers do not inflate the
-// Inward and Expenditure figures:
+// Calculated from posted bank/cash transactions and loan ledger entries
+// (no date filter). Inter-account transfers are excluded from pure inward
+// funds, while cash loan receipts are added separately as short advances.
+// Reversals are netted so cancelled vouchers do not inflate the figures:
 //
-// Inward funds  = (DEPOSIT + TRANSFER_IN + MANUAL_DEPOSIT)            // real inflows
-//                 - REVERSAL_OUT                                       // reversed receipts
-// Expenditure   = (WITHDRAWAL + TRANSFER_OUT + PAYMENT)                // real outflows
-//                 - REVERSAL_IN                                        // refunds of expenses
-// Balance       = Inward funds - Expenditure
+// Pure Bank Inward = (DEPOSIT + MANUAL_DEPOSIT) - reversed bank receipts
+// Bank Expenditure = (WITHDRAWAL + PAYMENT) - REVERSAL_IN (refunds)
+// Cash Expenditure = (OUT) - REVERSAL_IN (refunds)
+// Total Expenditure = Bank Expenditure + Cash Expenditure
+// Balance          = Pure Bank Inward + Short Advance/Loan - Total Expenditure
 //
 // This gives true net figures while keeping the balance unchanged.
 // For example, a cancelled receipt (DEPOSIT + REVERSAL_OUT) contributes
@@ -669,10 +673,11 @@ router.get(
       //
       // Base flows are real inflows/outflows. Reversal flows are separate
       // and subtracted from the corresponding base total to get net figures.
-      const bankInflowTypes = ['DEPOSIT', 'TRANSFER_IN', 'MANUAL_DEPOSIT'];
-      const bankOutflowTypes = ['WITHDRAWAL', 'TRANSFER_OUT', 'PAYMENT'];
-      const cashInflowTypes = ['IN', 'TRANSFER_IN'];
-      const cashOutflowTypes = ['OUT', 'TRANSFER_OUT'];
+      // Pure bank inward funds exclude inter-account transfers: a transfer
+      // moves existing money and is not new project income.
+      const bankInflowTypes = ['DEPOSIT', 'MANUAL_DEPOSIT'];
+      const bankOutflowTypes = ['WITHDRAWAL', 'PAYMENT'];
+      const cashOutflowTypes = ['OUT'];
       const bankReversalInTypes = ['REVERSAL_IN'];      // refunds of expenses
       const bankReversalOutTypes = ['REVERSAL_OUT'];    // reversed receipts
       const cashReversalInTypes = ['REVERSAL_IN'];
@@ -681,7 +686,6 @@ router.get(
       const [
         bankBaseInflowAgg,
         bankBaseOutflowAgg,
-        cashBaseInflowAgg,
         cashBaseOutflowAgg,
         bankReversalInAgg,
         bankReversalOutAgg,
@@ -726,15 +730,6 @@ router.get(
             status: 'POSTED',
             type: { in: bankOutflowTypes },
             bankAccount: { projectId, deletedAt: null },
-          },
-          _sum: { amount: true },
-        }),
-        // Cash base inflow (all time, no date filter)
-        prisma.cashTransaction.aggregate({
-          where: {
-            status: 'POSTED',
-            type: { in: cashInflowTypes },
-            cashAccount: { projectId, deletedAt: null },
           },
           _sum: { amount: true },
         }),
@@ -793,7 +788,7 @@ router.get(
           where: { projectId, deletedAt: null },
           _sum: { currentBalance: true, openingBalance: true },
         }),
-        // Budget heads (all, sorted by slNo)
+        // Budget heads (all, sorted by slNo; used-first reordering applied below)
         prisma.budgetHead.findMany({
           where: { projectId, deletedAt: null },
           orderBy: { slNo: 'asc' },
@@ -944,19 +939,103 @@ router.get(
         }),
       ]);
 
-      // ── Calculate summary values (net of reversals) ──
-      const baseInwardFunds =
-        Number(bankBaseInflowAgg._sum.amount ?? 0) + Number(cashBaseInflowAgg._sum.amount ?? 0);
-      const reversalOut =
-        Number(bankReversalOutAgg._sum.amount ?? 0) + Number(cashReversalOutAgg._sum.amount ?? 0);
-      const baseExpenditure =
-        Number(bankBaseOutflowAgg._sum.amount ?? 0) + Number(cashBaseOutflowAgg._sum.amount ?? 0);
-      const reversalIn =
-        Number(bankReversalInAgg._sum.amount ?? 0) + Number(cashReversalInAgg._sum.amount ?? 0);
+      // Short Advance / Loan is a cash receipt whose counter-entry is a
+      // liability ledger in the LOAN group. It is separate from pure bank
+      // inward funds and is included only once in the available balance.
+      const cashReceiptTransactions = await prisma.cashTransaction.findMany({
+        where: {
+          status: 'POSTED',
+          type: { in: ['IN', 'REVERSAL_OUT'] },
+          cashAccount: { projectId, deletedAt: null },
+          referenceId: { not: null },
+        },
+        select: { type: true, referenceId: true, amount: true },
+      });
+      const cashReceiptVoucherIds = cashReceiptTransactions
+        .map((t) => t.referenceId)
+        .filter((id): id is string => !!id);
+      const loanEntries = cashReceiptVoucherIds.length > 0
+        ? await prisma.ledgerEntry.findMany({
+            where: {
+              journalVoucherId: { in: cashReceiptVoucherIds },
+              credit: { gt: 0 },
+              // Match any ledger group containing "loan" (case-insensitive).
+              // The database uses "Unsecured Loan" as the group name, not "LOAN".
+              ledger: { group: { contains: 'loan', mode: 'insensitive' }, projectId, deletedAt: null },
+              journalVoucher: { status: 'POSTED', deletedAt: null },
+            },
+            select: { journalVoucherId: true, credit: true },
+          })
+        : [];
+      const loanVoucherIds = new Set(loanEntries.map((entry) => entry.journalVoucherId));
+      const shortAdvance = cashReceiptTransactions.reduce(
+        (sum, transaction) => {
+          if (!loanVoucherIds.has(transaction.referenceId ?? '')) return sum;
+          const amount = Number(transaction.amount);
+          return sum + (transaction.type === 'REVERSAL_OUT' ? -amount : amount);
+        },
+        0,
+      );
 
-      const totalInwardFunds = baseInwardFunds - reversalOut;
-      const totalExpenditure = baseExpenditure - reversalIn;
-      const balance = totalInwardFunds - totalExpenditure;
+      // Action Required items are real pending records, not derived alerts.
+      const [actionQuotations, actionPOs, actionInvoices, actionPayments] = await Promise.all([
+        prisma.quotation.findMany({
+          where: { projectId, deletedAt: null, status: { in: ['SUBMITTED', 'UNDER_REVIEW'] } },
+          select: { id: true, quotationNumber: true, status: true, createdAt: true },
+          orderBy: { createdAt: 'asc' },
+          take: 5,
+        }),
+        prisma.purchaseOrder.findMany({
+          where: { projectId, deletedAt: null, status: 'PENDING_APPROVAL' },
+          select: { id: true, poNumber: true, status: true, createdAt: true },
+          orderBy: { createdAt: 'asc' },
+          take: 5,
+        }),
+        prisma.vendorInvoice.findMany({
+          where: { projectId, deletedAt: null, verificationStatus: 'PENDING' },
+          select: { id: true, invoiceCode: true, invoiceNumber: true, verificationStatus: true, createdAt: true },
+          orderBy: { createdAt: 'asc' },
+          take: 5,
+        }),
+        prisma.paymentRequest.findMany({
+          where: { projectId, deletedAt: null, status: 'PENDING' },
+          select: { id: true, paymentCode: true, status: true, createdAt: true },
+          orderBy: { createdAt: 'asc' },
+          take: 5,
+        }),
+      ]);
+      const actionItems = [
+        ...actionQuotations.map((item) => ({ id: item.id, type: 'quotation' as const, code: item.quotationNumber, status: item.status, createdAt: item.createdAt.toISOString(), path: `/quotations?id=${item.id}` })),
+        ...actionPOs.map((item) => ({ id: item.id, type: 'purchase-order' as const, code: item.poNumber, status: item.status, createdAt: item.createdAt.toISOString(), path: `/pos?id=${item.id}` })),
+        ...actionInvoices.map((item) => ({ id: item.id, type: 'invoice' as const, code: item.invoiceCode ?? item.invoiceNumber, status: item.verificationStatus, createdAt: item.createdAt.toISOString(), path: `/invoices?id=${item.id}` })),
+        ...actionPayments.map((item) => ({ id: item.id, type: 'payment' as const, code: item.paymentCode, status: item.status, createdAt: item.createdAt.toISOString(), path: `/payments?id=${item.id}` })),
+      ].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()).slice(0, 8);
+
+      // ── Calculate summary values (net of reversals) ──
+      // Pure bank inward is net of reversed bank receipts. Cash receipts are
+      // intentionally excluded; qualifying cash LOAN receipts are reported
+      // separately as shortAdvance.
+      //
+      // Source mapping (per business rule):
+      //   Bank expenditures (WITHDRAWAL + PAYMENT − REVERSAL_IN) are deducted
+      //   from Inward Amount (bank receipts).
+      //   Cash expenditures (OUT − REVERSAL_IN) are deducted from
+      //   Short Advance / Loan.
+      //   Balance = (Inward − Bank Expenditure) + (Short Advance − Cash Expenditure)
+      //           = Inward + Short Advance − Total Expenditure
+      const pureBankInward =
+        Number(bankBaseInflowAgg._sum.amount ?? 0) - Number(bankReversalOutAgg._sum.amount ?? 0);
+      void cashReversalOutAgg;
+
+      // Expenditure broken down by payment source (bank vs cash), net of reversals.
+      const bankExpenditure =
+        Number(bankBaseOutflowAgg._sum.amount ?? 0) - Number(bankReversalInAgg._sum.amount ?? 0);
+      const cashExpenditure =
+        Number(cashBaseOutflowAgg._sum.amount ?? 0) - Number(cashReversalInAgg._sum.amount ?? 0);
+
+      const totalInwardFunds = pureBankInward;
+      const totalExpenditure = bankExpenditure + cashExpenditure;
+      const balance = totalInwardFunds + shortAdvance - totalExpenditure;
 
       const bankBalance = Number(bankBalanceAgg._sum.currentBalance ?? 0);
       const cashBalance = Number(cashBalanceAgg._sum.currentBalance ?? 0);
@@ -981,6 +1060,13 @@ router.get(
           available,
           utilizationPct: Math.round(utilizationPct * 100) / 100,
         };
+      });
+      // Reorder so used heads (committed/actual/paid > 0) appear first, then by slNo
+      budgetHeadRows.sort((a, b) => {
+        const aUsed = a.committed > 0 || a.actual > 0 || a.paid > 0 ? 0 : 1;
+        const bUsed = b.committed > 0 || b.actual > 0 || b.paid > 0 ? 0 : 1;
+        if (aUsed !== bUsed) return aUsed - bUsed;
+        return Number(a.slNo) - Number(b.slNo);
       });
 
       // ── Today's outflow (Amount Used Today) — net of refunds ──
@@ -1039,8 +1125,12 @@ router.get(
       res.json({
         project: project ? { name: project.name, status: project.status } : null,
         // Accounting-first summary
+        pureBankInward,
+        shortAdvance,
         totalInwardFunds,
         totalExpenditure,
+        bankExpenditure,
+        cashExpenditure,
         balance,
         // Bank & cash
         bankBalance,
@@ -1048,11 +1138,17 @@ router.get(
         totalLiquidity,
         // Budget heads
         budgetHeads: budgetHeadRows,
-        budgetTotals: {
-          totalAllocated: budgetHeadRows.reduce((s, h) => s + h.allocated, 0),
-          totalActual: budgetHeadRows.reduce((s, h) => s + h.actual, 0),
-          totalCommitted: budgetHeadRows.reduce((s, h) => s + h.committed, 0),
-        },
+        budgetTotals: (() => {
+          const totalAllocated = budgetHeadRows.reduce((s, h) => s + h.allocated, 0);
+          const totalActual = budgetHeadRows.reduce((s, h) => s + h.actual, 0);
+          return {
+            totalAllocated,
+            totalActual,
+            totalCommitted: budgetHeadRows.reduce((s, h) => s + h.committed, 0),
+            totalRemaining: totalAllocated - totalActual,
+            utilizationPct: totalAllocated > 0 ? (totalActual / totalAllocated) * 100 : 0,
+          };
+        })(),
         // Today's outflow (Amount Used Today)
         todayOutflow: {
           amount: todayOutflowAmount,
@@ -1064,6 +1160,7 @@ router.get(
         pendingQuotations,
         pendingPOs,
         pendingInvoices,
+        actionItems,
         // Recent activity — merged bank + cash transactions, sorted by date desc
         recentTransactions: [
           ...recentBankTxns.map((t) => ({
@@ -1166,7 +1263,9 @@ router.get(
     try {
       const projectId = requireProjectId(req);
 
-      // Parse date range — default to today
+      // Parse date range — default to today. The dashboard detail popup can
+      // explicitly request all historical posted expenditures.
+      const allTime = String(req.query.allTime).toLowerCase() === 'true';
       const now = new Date();
       const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
       const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
@@ -1183,14 +1282,16 @@ router.get(
         endDate.setHours(23, 59, 59, 999);
       }
 
-      const bankOutflowTypes = ['WITHDRAWAL', 'TRANSFER_OUT', 'PAYMENT'];
-      const cashOutflowTypes = ['OUT', 'TRANSFER_OUT'];
+      const bankOutflowTypes = ['WITHDRAWAL', 'PAYMENT'];
+      const cashOutflowTypes = ['OUT'];
       const bankReversalInTypes = ['REVERSAL_IN']; // refunds of expenses
       const cashReversalInTypes = ['REVERSAL_IN'];
 
       // Optional limit parameter — defaults to 20 (for the Amount Used Today card).
-      // The expenditure detail dialog passes a higher limit to fetch all transactions.
-      const limit = req.query.limit ? Math.min(Number(req.query.limit), 5000) : 20;
+      // The dashboard expenditure detail popup requests all posted outflows explicitly.
+      const fetchAll = String(req.query.all).toLowerCase() === 'true';
+      const limit = fetchAll ? undefined : (req.query.limit ? Math.min(Number(req.query.limit), 5000) : 20);
+      const dateFilter = allTime ? {} : { date: { gte: startDate, lte: endDate } };
 
       const [bankOutflowAgg, bankReversalInAgg, cashOutflowAgg, cashReversalInAgg, bankOutTxns, cashOutTxns] = await Promise.all([
         // Bank base outflow in range
@@ -1199,7 +1300,7 @@ router.get(
             status: 'POSTED',
             type: { in: bankOutflowTypes },
             bankAccount: { projectId, deletedAt: null },
-            date: { gte: startDate, lte: endDate },
+            ...dateFilter,
           },
           _sum: { amount: true },
           _count: true,
@@ -1210,7 +1311,7 @@ router.get(
             status: 'POSTED',
             type: { in: bankReversalInTypes },
             bankAccount: { projectId, deletedAt: null },
-            date: { gte: startDate, lte: endDate },
+            ...dateFilter,
           },
           _sum: { amount: true },
           _count: true,
@@ -1221,7 +1322,7 @@ router.get(
             status: 'POSTED',
             type: { in: cashOutflowTypes },
             cashAccount: { projectId, deletedAt: null },
-            date: { gte: startDate, lte: endDate },
+            ...dateFilter,
           },
           _sum: { amount: true },
           _count: true,
@@ -1232,7 +1333,7 @@ router.get(
             status: 'POSTED',
             type: { in: cashReversalInTypes },
             cashAccount: { projectId, deletedAt: null },
-            date: { gte: startDate, lte: endDate },
+            ...dateFilter,
           },
           _sum: { amount: true },
           _count: true,
@@ -1243,7 +1344,7 @@ router.get(
             status: 'POSTED',
             type: { in: bankOutflowTypes },
             bankAccount: { projectId, deletedAt: null },
-            date: { gte: startDate, lte: endDate },
+            ...dateFilter,
           },
           include: {
             bankAccount: { select: { accountName: true } },
@@ -1258,7 +1359,7 @@ router.get(
             status: 'POSTED',
             type: { in: cashOutflowTypes },
             cashAccount: { projectId, deletedAt: null },
-            date: { gte: startDate, lte: endDate },
+            ...dateFilter,
           },
           include: {
             cashAccount: { select: { name: true } },
@@ -1353,8 +1454,8 @@ router.get(
       const now = new Date();
       const startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - days + 1);
 
-      const bankOutflowTypes = ['WITHDRAWAL', 'TRANSFER_OUT', 'PAYMENT'];
-      const cashOutflowTypes = ['OUT', 'TRANSFER_OUT'];
+      const bankOutflowTypes = ['WITHDRAWAL', 'PAYMENT'];
+      const cashOutflowTypes = ['OUT'];
       const bankReversalInTypes = ['REVERSAL_IN']; // refunds of expenses
       const cashReversalInTypes = ['REVERSAL_IN'];
 

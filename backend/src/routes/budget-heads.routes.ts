@@ -634,6 +634,56 @@ router.get(
   },
 );
 
+// ── Custom list ordering: used heads first ──
+// Heads with any committed/actual/paid amount > 0 appear above unused heads.
+// Within each group, heads are ordered by slNo ascending. This is a display-only
+// sort; no data is changed. Overrides the CRUD factory's default slNo sort so
+// that "started" budget heads surface to the top of the list.
+router.get(
+  '/',
+  rbacMiddleware(Permission.VIEW_FINANCIALS),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      const { page = 1, pageSize = 20, search } = req.query as Record<string, unknown>;
+
+      const where: Record<string, unknown> = { projectId, deletedAt: null };
+      if (search) {
+        where.particulars = { contains: String(search), mode: 'insensitive' };
+      }
+
+      const all = await prisma.budgetHead.findMany({ where });
+
+      const isUsed = (h: typeof all[number]) =>
+        Number(h.committedAmount) > 0 || Number(h.actualAmount) > 0 || Number(h.paidAmount) > 0;
+
+      const sorted = all.sort((a, b) => {
+        const aUsed = isUsed(a) ? 0 : 1;
+        const bUsed = isUsed(b) ? 0 : 1;
+        if (aUsed !== bUsed) return aUsed - bUsed;
+        return Number(a.slNo) - Number(b.slNo);
+      });
+
+      const p = Number(page);
+      const ps = Number(pageSize);
+      const total = sorted.length;
+      const data = sorted.slice((p - 1) * ps, p * ps);
+
+      res.json({
+        data,
+        pagination: {
+          page: p,
+          pageSize: ps,
+          total,
+          totalPages: Math.ceil(total / ps),
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
 // ── Base CRUD (mounted AFTER custom routes so /:id does not shadow
 //    /import, /recompute, /summary, or /:id/breakdown) ──
 router.use(crudRouter);
