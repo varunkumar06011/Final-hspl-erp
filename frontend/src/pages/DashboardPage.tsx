@@ -23,12 +23,13 @@ export default function DashboardPage() {
   const user = useAuthStore((s) => s.user);
 
   // ── Role-based dashboard branch ──
-  // ADMIN and ADMIN_2 see the dedicated Admin dashboard.
-  // All other roles see the existing dashboard — byte-for-byte unchanged.
+  // ADMIN, ADMIN_2, and ACCOUNTANT see the dedicated Admin dashboard
+  // (which includes the Expenditure card and other finance summaries).
+  // PROJECT_HEAD and other allowed roles see the existing dashboard.
   // This branch is driven solely by the logged-in user's role from authStore,
   // not by user ID, phone number, or any hardcoded allowlist. Any user
-  // assigned ADMIN or ADMIN_2 will automatically see the admin dashboard.
-  const isAdmin = user?.role === UserRole.ADMIN || user?.role === UserRole.ADMIN_2;
+  // assigned ADMIN, ADMIN_2, or ACCOUNTANT will automatically see the admin dashboard.
+  const isAdmin = user?.role === UserRole.ADMIN || user?.role === UserRole.ADMIN_2 || user?.role === UserRole.ACCOUNTANT;
   if (isAdmin) {
     return <AdminDashboardPage />;
   }

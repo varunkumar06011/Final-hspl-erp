@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { Permission } from '@hospital-erp/shared';
 import { ColorModeProvider } from './config/ColorModeContext';
 import { ToastProvider } from './components/ToastProvider';
 import AppShell from './components/AppShell';
@@ -116,7 +117,7 @@ export default function App() {
                   <Route
                     path="/"
                     element={
-                      <ProtectedRoute>
+                      <ProtectedRoute permission={Permission.VIEW_DASHBOARD}>
                         <AppShell>
                           <DashboardPage />
                         </AppShell>

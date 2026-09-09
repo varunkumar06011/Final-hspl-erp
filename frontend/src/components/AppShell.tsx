@@ -51,7 +51,7 @@ import PresenceBar from './PresenceBar';
 import { useTrackPageView } from '../hooks/useTrackPageView';
 
 const NAV_ITEMS = [
-  { label: 'Dashboard', icon: <DashboardIcon />, path: '/', section: '' },
+  { label: 'Dashboard', icon: <DashboardIcon />, path: '/', permission: Permission.VIEW_DASHBOARD, section: '' },
   { label: 'Work Calendar', icon: <WorkIcon />, path: '/work-calendar', permission: Permission.MANAGE_WORK_TASKS, section: '' },
   // ── Procurement ──
   { label: 'Work', icon: <WorkIcon />, path: '/work', permission: Permission.MANAGE_WORK_TASKS, section: 'Procurement' },
@@ -70,6 +70,7 @@ const NAV_ITEMS = [
   // ── Voucher Entry (Tally: Accounting Vouchers) ──
   { label: 'Accounting Vouchers', icon: <VouchersIcon />, path: '/vouchers', permission: Permission.VIEW_FINANCIALS, section: 'Voucher Entry' },
   { label: 'Payments', icon: <PaymentIcon />, path: '/payments', permission: Permission.VIEW_FINANCIALS, section: 'Voucher Entry' },
+  { label: 'Expenditure', icon: <VouchersIcon />, path: '/expenditure', permission: Permission.VIEW_FINANCIALS, section: 'Voucher Entry' },
   { label: 'Sales (Invoices)', icon: <ReceiptIcon />, path: '/invoices', permission: Permission.VIEW_FINANCIALS, section: 'Voucher Entry' },
   // ── Reports (Tally: Display) ──
   { label: 'Finance Dashboard', icon: <FinanceDashboardIcon />, path: '/finance-dashboard', permission: Permission.VIEW_FINANCIALS, section: 'Reports' },
@@ -96,7 +97,7 @@ const NAV_ITEMS = [
 // as before. This array is only used when role === ADMIN || ADMIN_2.
 // Same routes, just reorganized into clearer sections.
 const ADMIN_NAV_ITEMS = [
-  { label: 'Dashboard', icon: <DashboardIcon />, path: '/', section: '' },
+  { label: 'Dashboard', icon: <DashboardIcon />, path: '/', permission: Permission.VIEW_DASHBOARD, section: '' },
   // ── Accounting (FIRST — client wants accounting first) ──
   { label: 'Inward Funds', icon: <SavingsIcon />, path: '/inward-funds', permission: Permission.VIEW_FINANCIALS, section: 'Accounting' },
   { label: 'Expenditure', icon: <VouchersIcon />, path: '/expenditure', permission: Permission.VIEW_FINANCIALS, section: 'Accounting' },
@@ -190,8 +191,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   // Build breadcrumb from current path
   const breadcrumbs = useMemo(() => {
     const path = location.pathname;
-    // Use the admin nav items for breadcrumb resolution if the user is an admin
-    const navSource = (user?.role === UserRole.ADMIN || user?.role === UserRole.ADMIN_2) ? ADMIN_NAV_ITEMS : NAV_ITEMS;
+    // Use the admin nav items for breadcrumb resolution if the user sees the admin dashboard
+    const navSource = (user?.role === UserRole.ADMIN || user?.role === UserRole.ADMIN_2 || user?.role === UserRole.ACCOUNTANT) ? ADMIN_NAV_ITEMS : NAV_ITEMS;
     if (path === '/') return [{ label: 'Dashboard', path: '/' }];
     const navItem = navSource.find((item) => item.path === path);
     if (navItem) return [{ label: 'Dashboard', path: '/' }, { label: navItem.label, path }];
@@ -309,9 +310,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       <Toolbar />
       <Box sx={{ overflow: 'auto' }}>
         <List>
-          {/* Admin roles (ADMIN + ADMIN_2) use the simplified ADMIN_NAV_ITEMS.
-              All other roles use the original NAV_ITEMS — completely unchanged. */}
-          {((user?.role === UserRole.ADMIN || user?.role === UserRole.ADMIN_2) ? ADMIN_NAV_ITEMS : NAV_ITEMS)
+          {/* Admin roles (ADMIN + ADMIN_2) and ACCOUNTANT use the simplified
+              ADMIN_NAV_ITEMS. All other roles use the original NAV_ITEMS. */}
+          {((user?.role === UserRole.ADMIN || user?.role === UserRole.ADMIN_2 || user?.role === UserRole.ACCOUNTANT) ? ADMIN_NAV_ITEMS : NAV_ITEMS)
             .filter((item) => !item.permission || (user && hasPermission(user.role as UserRole, item.permission)))
             .map((item, idx, arr) => {
             const prevItem = idx > 0 ? arr[idx - 1] : null;

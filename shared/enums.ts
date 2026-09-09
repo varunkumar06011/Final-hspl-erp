@@ -536,6 +536,8 @@ export enum Permission {
   MANAGE_LABOUR = 'MANAGE_LABOUR',
   // Audit
   VIEW_AUDIT_LOG = 'VIEW_AUDIT_LOG',
+  // Dashboard — restricted to ADMIN, ADMIN_2, ACCOUNTANT, PROJECT_HEAD only
+  VIEW_DASHBOARD = 'VIEW_DASHBOARD',
 }
 
 export const PERMISSION_MATRIX: Record<UserRole, Permission[]> = {
@@ -571,6 +573,7 @@ export const PERMISSION_MATRIX: Record<UserRole, Permission[]> = {
     Permission.VIEW_FINANCIALS,
     Permission.MANAGE_FINANCE,
     Permission.REVERSE_VOUCHER,
+    Permission.VIEW_DASHBOARD,
     // Site Operations — full CRUD; approvals are not applicable to these modules
     Permission.MANAGE_INVENTORY,
     Permission.MANAGE_LABOUR,
@@ -596,6 +599,7 @@ export const PERMISSION_MATRIX: Record<UserRole, Permission[]> = {
     Permission.MANAGE_FINANCE,
     Permission.MANAGE_USERS,
     Permission.MANAGE_APPROVALS_CONFIG,
+    Permission.VIEW_DASHBOARD,
     Permission.CREATE_GATE_PASS,
     Permission.VIEW_GATE_PASSES,
     Permission.MANAGE_INVENTORY,
@@ -649,6 +653,7 @@ export const PERMISSION_MATRIX: Record<UserRole, Permission[]> = {
     Permission.MANAGE_FINANCE,
     Permission.REVERSE_VOUCHER,
     Permission.MANAGE_USERS,
+    Permission.VIEW_DASHBOARD,
     Permission.CREATE_GATE_PASS,
     Permission.VIEW_GATE_PASSES,
     Permission.MANAGE_INVENTORY,
@@ -671,6 +676,7 @@ export const PERMISSION_MATRIX: Record<UserRole, Permission[]> = {
     Permission.MANAGE_FINANCE,
     Permission.REVERSE_VOUCHER,
     Permission.MANAGE_USERS,
+    Permission.VIEW_DASHBOARD,
     Permission.CREATE_GATE_PASS,
     Permission.VIEW_GATE_PASSES,
     Permission.MANAGE_INVENTORY,

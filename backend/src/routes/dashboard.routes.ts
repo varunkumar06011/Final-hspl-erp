@@ -9,7 +9,7 @@ router.use(authMiddleware);
 
 router.get(
   '/summary',
-  rbacMiddleware(Permission.VIEW_FINANCIALS),
+  rbacMiddleware(Permission.VIEW_DASHBOARD),
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const projectId = requireProjectId(req);
@@ -190,7 +190,7 @@ export default router;
 //   - Pending invoices that will need payment (expected outflows)
 router.get(
   '/cash-flow-forecast',
-  rbacMiddleware(Permission.VIEW_FINANCIALS),
+  rbacMiddleware(Permission.VIEW_DASHBOARD),
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const projectId = requireProjectId(req);
@@ -306,7 +306,7 @@ router.get(
 //   ?sort=inc  (default) | name      — sort by % increase desc, or by name
 router.get(
   '/rate-tracker',
-  rbacMiddleware(Permission.VIEW_FINANCIALS),
+  rbacMiddleware(Permission.VIEW_DASHBOARD),
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const projectId = requireProjectId(req);
@@ -523,7 +523,7 @@ router.get(
 // existing payment logic.
 router.get(
   '/payments-today',
-  rbacMiddleware(Permission.VIEW_FINANCIALS),
+  rbacMiddleware(Permission.VIEW_DASHBOARD),
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const projectId = requireProjectId(req);
@@ -604,7 +604,7 @@ router.get(
 // only, no changes to any existing logic.
 router.get(
   '/document-summary',
-  rbacMiddleware(Permission.VIEW_FINANCIALS),
+  rbacMiddleware(Permission.VIEW_DASHBOARD),
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const projectId = requireProjectId(req);
@@ -658,7 +658,7 @@ router.get(
 // and pending counts — all from existing data, no new fields.
 router.get(
   '/admin-summary',
-  rbacMiddleware(Permission.VIEW_FINANCIALS),
+  rbacMiddleware(Permission.VIEW_DASHBOARD),
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const projectId = requireProjectId(req);
@@ -1161,7 +1161,7 @@ router.get(
 // No hardcoded values — everything is computed from real transactions.
 router.get(
   '/outflow-by-range',
-  rbacMiddleware(Permission.VIEW_FINANCIALS),
+  rbacMiddleware(Permission.VIEW_DASHBOARD),
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const projectId = requireProjectId(req);
@@ -1344,7 +1344,7 @@ router.get(
 // payments do not inflate daily outflow.
 router.get(
   '/admin-outflow-trend',
-  rbacMiddleware(Permission.VIEW_FINANCIALS),
+  rbacMiddleware(Permission.VIEW_DASHBOARD),
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const projectId = requireProjectId(req);
@@ -1447,7 +1447,7 @@ router.get(
 // transaction list so the audit trail is preserved.
 router.get(
   '/admin-inflow-detail',
-  rbacMiddleware(Permission.VIEW_FINANCIALS),
+  rbacMiddleware(Permission.VIEW_DASHBOARD),
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const projectId = requireProjectId(req);
