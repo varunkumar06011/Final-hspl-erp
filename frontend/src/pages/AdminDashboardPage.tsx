@@ -447,8 +447,32 @@ export default function AdminDashboardPage() {
   const balance = adminData?.balance ?? 0;
 
   const budgetHeads = adminData?.budgetHeads ?? [];
+
+  // Sum today's used amount per budget head from today's outflow transactions.
+  // Budget heads used today (or on the selected date) are shown at the top,
+  // sorted by that day's used amount descending — so the heads being
+  // deducted daily appear first.
+  const todayBudgetHeadUsage = new Map<string, number>();
+  for (const t of adminData?.todayOutflow?.transactions ?? []) {
+    if (t.budgetHead?.id) {
+      todayBudgetHeadUsage.set(
+        t.budgetHead.id,
+        (todayBudgetHeadUsage.get(t.budgetHead.id) ?? 0) + (t.amount ?? 0),
+      );
+    }
+  }
+
   const topBudgetHeads = [...budgetHeads]
-    .sort((a, b) => b.allocated - a.allocated)
+    .sort((a, b) => {
+      const aToday = todayBudgetHeadUsage.get(a.id) ?? 0;
+      const bToday = todayBudgetHeadUsage.get(b.id) ?? 0;
+      // 1. Heads used today first, sorted by today's amount desc
+      if (aToday > 0 || bToday > 0) return bToday - aToday;
+      // 2. Then heads with any utilized amount, sorted by actual desc
+      if (a.actual > 0 || b.actual > 0) return b.actual - a.actual;
+      // 3. Then remaining heads by allocation desc
+      return b.allocated - a.allocated;
+    })
     .slice(0, 6);
 
   const recentQuotations = adminData?.recentQuotations ?? [];
@@ -799,6 +823,7 @@ export default function AdminDashboardPage() {
                       head.utilizationPct >= 90 ? 'error' :
                       head.utilizationPct >= 70 ? 'warning' :
                       'success';
+                    const usedToday = todayBudgetHeadUsage.get(head.id) ?? 0;
                     return (
                       <TableRow
                         key={head.id}
@@ -807,7 +832,18 @@ export default function AdminDashboardPage() {
                         sx={{ cursor: 'pointer' }}
                       >
                         <TableCell sx={{ position: 'sticky', left: 0, bgcolor: 'background.paper', zIndex: 1, borderRight: '1px solid', borderColor: 'divider', overflow: 'hidden' }}>
-                          <Typography variant="body2" fontWeight={500} noWrap>{head.particulars}</Typography>
+                          <Stack direction="row" spacing={0.5} alignItems="center" sx={{ minWidth: 0 }}>
+                            <Typography variant="body2" fontWeight={500} noWrap>{head.particulars}</Typography>
+                            {usedToday > 0 && (
+                              <Chip
+                                size="small"
+                                color="error"
+                                variant="outlined"
+                                label={`Used today ${formatCurrency(usedToday)}`}
+                                sx={{ height: 16, fontSize: '0.6rem', flexShrink: 0 }}
+                              />
+                            )}
+                          </Stack>
                         </TableCell>
                         <TableCell align="right" sx={{ overflow: 'hidden' }}>
                           <Typography variant="body2" noWrap>{formatCurrency(head.allocated)}</Typography>
