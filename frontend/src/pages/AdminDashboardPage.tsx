@@ -742,6 +742,11 @@ export default function AdminDashboardPage() {
         </Box>
       </Box>
 
+      {/* ── Material Rate Tracker (admin only) — compact, below Budget Overview ── */}
+      <Box sx={{ mb: { xs: 2, sm: 3 } }}>
+        <RateTrackerWidget />
+      </Box>
+
       {/* ═══════════════════════════════════════════════════════════════
           B. Budget Heads (left) + Amount Used Today (right)
       ═══════════════════════════════════════════════════════════════ */}
@@ -1311,11 +1316,6 @@ export default function AdminDashboardPage() {
       {/* ── Document Summary ── */}
       <Box sx={{ mb: 3 }}>
         <DocumentSummaryCard compact={isMobile} />
-      </Box>
-
-      {/* ── Material Rate Tracker (admin only) ── */}
-      <Box sx={{ mb: 3 }}>
-        <RateTrackerWidget />
       </Box>
 
       {/* ── Recent Quotations ── */}

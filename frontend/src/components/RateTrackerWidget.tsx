@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import {
   Box,
   Card,
@@ -14,8 +13,6 @@ import {
   Skeleton,
   Alert,
   Stack,
-  ToggleButtonGroup,
-  ToggleButton,
   Link,
 } from '@mui/material';
 import { TrendingUp, TrendingDown, TrendingFlat } from '@mui/icons-material';
@@ -59,23 +56,19 @@ function formatDate(iso: string): string {
 }
 
 function docRoute(docType: string): string | null {
-  // Link POs and quotations to their existing list pages. We intentionally
-  // don't pass the doc id (kept out of the response to stay small), so we
-  // link to the list page where the user can find the doc by its number.
   if (docType === 'PO') return '/pos';
   if (docType === 'QUOTATION') return '/quotations';
   return null;
 }
 
 /**
- * Material Rate Tracker widget — shows the previous cost vs the latest cost
- * for every material that has appeared on more than one Quotation or PO.
- *
- * This is a read-only dashboard add-on. It does not modify any data and only
- * renders for admin roles (the parent page gates visibility).
+ * Material Rate Tracker widget — compact version.
+ * Shows the previous cost vs the latest cost for every material that has
+ * appeared on more than one Quotation or PO. Read-only dashboard add-on.
  */
 export default function RateTrackerWidget() {
-  const [sort, setSort] = useState<'inc' | 'name'>('inc');
+  // Always sort by % increase (default) — toggle removed per request
+  const sort = 'inc';
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['/dashboard/rate-tracker', sort],
@@ -91,69 +84,51 @@ export default function RateTrackerWidget() {
   const summary = data?.summary;
 
   return (
-    <Card>
-      <CardContent>
-        <Stack direction="row" alignItems="center" justifyContent="space-between" flexWrap="wrap" gap={1} sx={{ mb: 2 }}>
-          <Box>
-            <Typography variant="h6" fontWeight={600}>
-              Material Rate Tracker
-            </Typography>
-            <Typography variant="body2" color="text.secondary">
-              Previous cost vs latest cost — from Quotations &amp; Purchase Orders
-            </Typography>
-          </Box>
-          <ToggleButtonGroup
-            size="small"
-            value={sort}
-            exclusive
-            onChange={(_e, v) => v && setSort(v)}
-            aria-label="sort mode"
-          >
-            <ToggleButton value="inc">By % increase</ToggleButton>
-            <ToggleButton value="name">By name</ToggleButton>
-          </ToggleButtonGroup>
+    <Card sx={{ overflow: 'hidden' }}>
+      <CardContent sx={{ py: 1.5, px: 2, '&:last-child': { pb: 1.5 } }}>
+        {/* Compact header — title + summary chips inline */}
+        <Stack direction="row" alignItems="center" justifyContent="space-between" flexWrap="wrap" gap={1} sx={{ mb: 1 }}>
+          <Typography variant="subtitle2" fontWeight={600}>
+            Material Rate Tracker
+          </Typography>
+          {!isLoading && summary && (
+            <Stack direction="row" spacing={0.5} flexWrap="wrap" sx={{ gap: 0.5 }}>
+              <Chip size="small" color="error" variant="outlined" icon={<TrendingUp sx={{ fontSize: 14 }} />} label={`${summary.increased} up`} sx={{ height: 20, fontSize: '0.65rem' }} />
+              <Chip size="small" color="success" variant="outlined" icon={<TrendingDown sx={{ fontSize: 14 }} />} label={`${summary.decreased} down`} sx={{ height: 20, fontSize: '0.65rem' }} />
+              <Chip size="small" color="default" variant="outlined" label={`${summary.totalWithChange} tracked`} sx={{ height: 20, fontSize: '0.65rem' }} />
+            </Stack>
+          )}
         </Stack>
 
-        {/* Summary chips */}
-        {!isLoading && summary && (
-          <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ mb: 2, gap: 1 }}>
-            <Chip size="small" color="default" label={`Materials tracked: ${summary.totalMaterialsTracked}`} />
-            <Chip size="small" color="info" label={`With rate history: ${summary.totalWithChange}`} />
-            <Chip size="small" color="error" icon={<TrendingUp />} label={`Increased: ${summary.increased}`} />
-            <Chip size="small" color="success" icon={<TrendingDown />} label={`Decreased: ${summary.decreased}`} />
-          </Stack>
-        )}
-
         {isError && (
-          <Alert severity="warning" sx={{ mb: 2 }}>
-            Could not load rate tracker data. Make sure the backend is running.
+          <Alert severity="warning" sx={{ mb: 1, py: 0.5 }}>
+            Could not load rate tracker data.
           </Alert>
         )}
 
         {isLoading ? (
           <Box>
-            {[0, 1, 2, 3].map((i) => (
-              <Skeleton key={i} variant="rectangular" height={40} sx={{ mb: 1 }} />
+            {[0, 1, 2].map((i) => (
+              <Skeleton key={i} variant="rectangular" height={28} sx={{ mb: 0.5 }} />
             ))}
           </Box>
         ) : materials.length === 0 ? (
-          <Alert severity="info">
-            No rate changes to show yet. Once the same material appears on more than one Quotation or
-            Purchase Order, its previous and latest cost will appear here.
-          </Alert>
+          <Typography variant="caption" color="text.secondary">
+            No rate changes yet. Materials appear here once they show up on more than one Quotation or PO.
+          </Typography>
         ) : (
-          <TableContainer sx={{ maxHeight: 480, overflowX: 'auto' }}>
+          <TableContainer sx={{ maxHeight: 220, overflowX: 'auto' }}>
             <Table size="small" stickyHeader>
               <TableHead>
                 <TableRow>
-                  <TableCell>Material</TableCell>
-                  <TableCell align="right">Previous Rate</TableCell>
-                  <TableCell align="right">Latest Rate</TableCell>
-                  <TableCell align="right">Difference</TableCell>
-                  <TableCell align="right">% Change</TableCell>
-                  <TableCell>Latest Vendor</TableCell>
-                  <TableCell>Latest Doc</TableCell>
-                  <TableCell>Latest Date</TableCell>
+                  <TableCell sx={{ py: 0.75, fontWeight: 600, fontSize: '0.7rem' }}>Material</TableCell>
+                  <TableCell align="right" sx={{ py: 0.75, fontWeight: 600, fontSize: '0.7rem' }}>Previous</TableCell>
+                  <TableCell align="right" sx={{ py: 0.75, fontWeight: 600, fontSize: '0.7rem' }}>Latest</TableCell>
+                  <TableCell align="right" sx={{ py: 0.75, fontWeight: 600, fontSize: '0.7rem' }}>Change</TableCell>
+                  <TableCell align="right" sx={{ py: 0.75, fontWeight: 600, fontSize: '0.7rem' }}>%</TableCell>
+                  <TableCell sx={{ py: 0.75, fontWeight: 600, fontSize: '0.7rem' }}>Vendor</TableCell>
+                  <TableCell sx={{ py: 0.75, fontWeight: 600, fontSize: '0.7rem' }}>Doc</TableCell>
+                  <TableCell sx={{ py: 0.75, fontWeight: 600, fontSize: '0.7rem' }}>Date</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -165,53 +140,47 @@ export default function RateTrackerWidget() {
                   const latestDocRoute = docRoute(m.latestDocType);
                   return (
                     <TableRow key={`${m.materialName}-${idx}`} hover>
-                      <TableCell>
-                        <Typography variant="body2" fontWeight={600}>
+                      <TableCell sx={{ py: 0.5, fontSize: '0.75rem' }}>
+                        <Typography variant="caption" fontWeight={600} noWrap>
                           {m.materialName}
                         </Typography>
                         {m.unit && (
-                          <Typography variant="caption" color="text.secondary">
+                          <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.6rem', display: 'block' }}>
                             per {m.unit}
                           </Typography>
                         )}
                       </TableCell>
-                      <TableCell align="right">{formatCurrency(m.previousRate)}</TableCell>
-                      <TableCell align="right">{formatCurrency(m.latestRate)}</TableCell>
-                      <TableCell align="right" sx={{ color: increased ? 'error.main' : decreased ? 'success.main' : 'text.secondary', whiteSpace: 'nowrap' }}>
+                      <TableCell align="right" sx={{ py: 0.5, fontSize: '0.7rem', whiteSpace: 'nowrap' }}>{formatCurrency(m.previousRate)}</TableCell>
+                      <TableCell align="right" sx={{ py: 0.5, fontSize: '0.7rem', whiteSpace: 'nowrap' }}>{formatCurrency(m.latestRate)}</TableCell>
+                      <TableCell align="right" sx={{ py: 0.5, fontSize: '0.7rem', color: increased ? 'error.main' : decreased ? 'success.main' : 'text.secondary', whiteSpace: 'nowrap' }}>
                         {m.difference > 0 ? '+' : ''}{formatCurrency(m.difference)}
                       </TableCell>
-                      <TableCell align="right">
+                      <TableCell align="right" sx={{ py: 0.5 }}>
                         <Chip
                           size="small"
                           color={pctColor as 'error' | 'success' | 'default'}
-                          icon={<TrendIcon />}
+                          icon={<TrendIcon sx={{ fontSize: 12 }} />}
                           label={`${m.percentChange > 0 ? '+' : ''}${m.percentChange.toFixed(1)}%`}
+                          sx={{ height: 18, fontSize: '0.6rem' }}
                         />
                       </TableCell>
-                      <TableCell>{m.latestVendor}</TableCell>
-                      <TableCell>
+                      <TableCell sx={{ py: 0.5, fontSize: '0.7rem' }}><Typography variant="caption" noWrap>{m.latestVendor}</Typography></TableCell>
+                      <TableCell sx={{ py: 0.5, fontSize: '0.7rem' }}>
                         {latestDocRoute ? (
-                          <Link href={`${latestDocRoute}`} underline="hover">
+                          <Link href={`${latestDocRoute}`} underline="hover" sx={{ fontSize: '0.7rem' }}>
                             {m.latestDocType} {m.latestDocNumber}
                           </Link>
                         ) : (
-                          `${m.latestDocType} ${m.latestDocNumber}`
+                          <Typography variant="caption" sx={{ fontSize: '0.7rem' }}>{m.latestDocType} {m.latestDocNumber}</Typography>
                         )}
                       </TableCell>
-                      <TableCell>{formatDate(m.latestDate)}</TableCell>
+                      <TableCell sx={{ py: 0.5, fontSize: '0.7rem', whiteSpace: 'nowrap' }}>{formatDate(m.latestDate)}</TableCell>
                     </TableRow>
                   );
                 })}
               </TableBody>
             </Table>
           </TableContainer>
-        )}
-
-        {!isLoading && materials.length > 0 && (
-          <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-            Showing top {materials.length} materials by rate change. Previous rate = the rate on the
-            Quotation/PO immediately before the latest one for the same material.
-          </Typography>
         )}
       </CardContent>
     </Card>
