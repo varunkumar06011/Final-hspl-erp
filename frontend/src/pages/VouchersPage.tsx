@@ -41,6 +41,7 @@ import {
   Undo as CreditNoteIcon,
   Description as DebitNoteIcon,
   ContentCopy as DuplicateIcon,
+  Print as PrintIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { extractErrorMessage } from '../config/api';
@@ -52,6 +53,7 @@ import { VoucherType, LedgerGroup, Permission, UserRole, hasPermission } from '@
 import LedgerAutocomplete, { type LedgerOption } from '../components/LedgerAutocomplete';
 import { useAuthStore } from '../stores/authStore';
 import VoucherProofAttachment from '../components/VoucherProofAttachment';
+import voucherTemplate from '../vochuer.png';
 
 interface Ledger {
   id: string;
@@ -202,6 +204,8 @@ export default function VouchersPage() {
 
   // Detail dialog
   const [detailVoucher, setDetailVoucher] = useState<Voucher | null>(null);
+  // Print preview uses a fresh persisted voucher read, never the list row state.
+  const [printVoucherId, setPrintVoucherId] = useState<string | null>(null);
   // Editing state — when set, the create dialog acts as an edit dialog
   const [editingVoucherId, setEditingVoucherId] = useState<string | null>(null);
 
@@ -257,6 +261,12 @@ export default function VouchersPage() {
     },
     enabled: !!detailVoucher,
     retry: false,
+  });
+
+  const { data: printVoucher, isLoading: isPrintVoucherLoading, isError: isPrintVoucherError } = useQuery<Voucher>({
+    queryKey: ['/vouchers', 'print', printVoucherId],
+    queryFn: async () => mapVoucher((await api.get(`/vouchers/${printVoucherId}`)).data),
+    enabled: !!printVoucherId,
   });
 
   const createMutation = useMutation({
@@ -854,6 +864,11 @@ export default function VouchersPage() {
                             </IconButton>
                           </Tooltip>
                         )}
+                        <Tooltip title="Print">
+                          <IconButton size="small" color="secondary" onClick={() => setPrintVoucherId(v.id)}>
+                            <PrintIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
                         <Tooltip title="Duplicate"><IconButton size="small" onClick={() => duplicateVoucher(v)}><DuplicateIcon fontSize="small" /></IconButton></Tooltip>
                         {v.status === 'POSTED' && canReverseVoucher && (
                           <Tooltip title="Cancel & Reverse">
@@ -1559,6 +1574,61 @@ export default function VouchersPage() {
           </>
         )}
       </ResponsiveDialog>
+
+      {/* Persisted voucher print preview. The preview is separate from the application UI and
+          the print stylesheet hides every other element when the browser print command runs. */}
+      <Dialog open={!!printVoucherId} onClose={() => setPrintVoucherId(null)} maxWidth="lg" fullWidth>
+        <DialogTitle>Payment Voucher Preview</DialogTitle>
+        <DialogContent sx={{ bgcolor: '#eef1f5', p: { xs: 1, sm: 2 } }}>
+          {isPrintVoucherLoading && <Box sx={{ py: 8, textAlign: 'center' }}><CircularProgress /></Box>}
+          {isPrintVoucherError && <Alert severity="error">Unable to load the saved voucher for printing.</Alert>}
+          {printVoucher && <PaymentVoucherPrintPreview voucher={printVoucher} template={voucherTemplate} />}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setPrintVoucherId(null)}>Close</Button>
+          <Button variant="contained" startIcon={<PrintIcon />} disabled={!printVoucher} onClick={() => window.print()}>Print Voucher</Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
+}
+
+function PaymentVoucherPrintPreview({ voucher, template }: { voucher: Voucher & { createdByUser?: { name: string } | null }; template: string }) {
+  const partyEntry = voucher.entries.find((entry) => entry.ledgerGroup !== LedgerGroup.BANK && entry.ledgerGroup !== LedgerGroup.CASH);
+  const accountEntry = voucher.entries.find((entry) => entry.ledgerGroup === LedgerGroup.BANK || entry.ledgerGroup === LedgerGroup.CASH);
+  const paymentMode = accountEntry?.ledgerGroup === LedgerGroup.BANK ? 'Bank' : 'Cash';
+  const amount = Number(voucher.totalDebit || voucher.totalCredit || 0);
+  const amountText = amountToWords(amount);
+  const createdBy = voucher.createdByUser?.name || voucher.createdBy || '';
+  const fieldSx = {
+    position: 'absolute',
+    transform: 'translateY(-50%)',
+    fontFamily: 'Okara, Arial, sans-serif',
+    fontSize: 'clamp(11px, 1.45vw, 20px)',
+    lineHeight: 1.15,
+    color: '#222',
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+  };
+  // The template lines are the baseline. Keep dynamic line fields above them.
+  const lineFieldSx = { ...fieldSx, transform: 'translateY(-100%)' };
+
+  return <>
+    <style>{`\n      @font-face { font-family: Okara; src: url('/fonts/Okara.woff2') format('woff2'); font-display: swap; }\n      @media print {\n        @page { margin: 0; size: auto; }\n        body * { visibility: hidden !important; }\n        .voucher-print-root, .voucher-print-root * { visibility: visible !important; }\n        .voucher-print-root { position: absolute !important; left: 0 !important; top: 0 !important; width: 100vw !important; max-width: none !important; padding: 0 !important; margin: 0 !important; background: white !important; }\n        .voucher-print-sheet { width: 100vw !important; max-width: none !important; box-shadow: none !important; }\n        .voucher-preview-controls { display: none !important; }\n      }\n    `}</style>
+    <Box className="voucher-print-root" sx={{ width: '100%', display: 'flex', justifyContent: 'center', p: { xs: 0, sm: 1 } }}>
+      <Box className="voucher-print-sheet" sx={{ position: 'relative', width: '100%', maxWidth: 1100, aspectRatio: '1568 / 1014', bgcolor: '#fff', boxShadow: 3, overflow: 'hidden' }}>
+        <Box component="img" src={template} alt="Payment voucher template" sx={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain' }} />
+        <Typography sx={{ ...fieldSx, left: '20.4%', top: '34.7%', maxWidth: '40%' }}>{voucher.jvNumber}</Typography>
+        <Typography sx={{ ...lineFieldSx, left: '76.2%', top: '34.7%', maxWidth: '18%' }}>{formatDate(voucher.date)}</Typography>
+        <Typography sx={{ ...lineFieldSx, left: '19%', top: '42.1%', width: '75%' }}>{partyEntry?.ledgerName || ''}</Typography>
+        <Typography sx={{ ...lineFieldSx, left: '24.3%', top: '49.5%', width: '41%' }}>{paymentMode}</Typography>
+        <Typography sx={{ ...lineFieldSx, left: '75.3%', top: '49.5%', width: '18%' }}>{paymentMode === 'Bank' ? (voucher.chequeNumber || '') : ''}</Typography>
+        <Typography sx={{ ...lineFieldSx, left: '23.2%', top: '57.1%', width: '70%' }}>{voucher.description || ''}</Typography>
+        <Typography sx={{ ...fieldSx, left: '16.8%', top: '72.7%', width: '20%', fontWeight: 700 }}>{formatIndianNumber(amount.toFixed(2))}</Typography>
+        <Typography sx={{ ...fieldSx, left: '46.4%', top: '72.7%', width: '44%', whiteSpace: 'normal', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{amountText}</Typography>
+        <Typography sx={{ ...fieldSx, left: '30.5%', top: '90.3%', maxWidth: '25%' }}>{createdBy}</Typography>
+      </Box>
+    </Box>
+  </>;
 }

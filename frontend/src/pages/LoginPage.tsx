@@ -20,7 +20,7 @@ import { useNavigate, Navigate } from 'react-router-dom';
 import { auth, isConfigured } from '../config/firebase';
 import api, { extractErrorMessage } from '../config/api';
 import { useAuthStore } from '../stores/authStore';
-import loginBg from '../image.png';
+import loginBg from '../login screen.png';
 
 // ── Animations ──────────────────────────────────────────────
 const fadeInUp = keyframes`
