@@ -686,6 +686,127 @@ router.patch(
         }
       }
 
+      // ── Budget-head-only shortcut ──
+      // When the financial entries (ledgerId + debit + credit) are unchanged
+      // and only the budget head / description / cheque info changed, we update
+      // the budget head in place on the existing ledger entries and bank/cash
+      // transactions instead of reversing and re-creating them. This prevents
+      // duplicate expenditure rows in the dashboard popup and avoids extra
+      // reversal transactions that would inflate the transaction list.
+      const oldEntriesKey = [...voucher.ledgerEntries]
+        .map((e) => `${e.ledgerId}:${Number(e.debit)}:${Number(e.credit)}`)
+        .sort()
+        .join('|');
+      const newEntriesKey = newEntries
+        .map((e) => `${e.ledgerId}:${Number(e.debit)}:${Number(e.credit)}`)
+        .sort()
+        .join('|');
+      const entriesUnchanged = oldEntriesKey === newEntriesKey;
+
+      if (entriesUnchanged) {
+        await prisma.$transaction(async (tx) => {
+          // 1. Update voucher header (date, description, cheque info)
+          await tx.journalVoucher.update({
+            where: { id: voucher.id },
+            data: {
+              date: voucherDate,
+              description: description ?? null,
+              chequeNumber,
+              chequeDate,
+              updatedBy: req.user!.id,
+            },
+          });
+
+          // 2. Update budget head on existing ledger entries (match by ledgerId+debit+credit)
+          for (const newEntry of newEntries) {
+            const matchingOld = voucher.ledgerEntries.find(
+              (e) =>
+                e.ledgerId === newEntry.ledgerId &&
+                Math.abs(Number(e.debit) - Number(newEntry.debit)) < 0.01 &&
+                Math.abs(Number(e.credit) - Number(newEntry.credit)) < 0.01,
+            );
+            if (matchingOld) {
+              await tx.ledgerEntry.update({
+                where: { id: matchingOld.id },
+                data: {
+                  budgetHeadId: newEntry.budgetHeadId ?? null,
+                  description: newEntry.description ?? description ?? matchingOld.description,
+                },
+              });
+            }
+          }
+
+          // 3. Update budget head on existing bank/cash transactions linked to this voucher
+          //    Only update the ORIGINAL outflow transactions (WITHDRAWAL/PAYMENT/OUT),
+          //    not reversal transactions created by prior edits.
+          await tx.bankTransaction.updateMany({
+            where: {
+              referenceId: voucher.id,
+              status: 'POSTED',
+              type: BankTxnType.WITHDRAWAL,
+            },
+            data: { budgetHeadId: newBudgetHeadId },
+          });
+          await tx.cashTransaction.updateMany({
+            where: {
+              referenceId: voucher.id,
+              status: 'POSTED',
+              type: CashTxnType.OUT,
+            },
+            data: { budgetHeadId: newBudgetHeadId },
+          });
+
+          // 4. Reverse old Budget Head totals and apply new Budget Head totals
+          if (oldBudgetHeadId && oldBudgetAmount > 0) {
+            await tx.budgetHead.update({
+              where: { id: oldBudgetHeadId },
+              data: {
+                actualAmount: { decrement: oldBudgetAmount },
+                paidAmount: { decrement: oldBudgetAmount },
+              },
+            });
+          }
+          if (newBudgetHeadId && newBudgetAmount > 0) {
+            await tx.budgetHead.update({
+              where: { id: newBudgetHeadId },
+              data: {
+                actualAmount: { increment: newBudgetAmount },
+                paidAmount: { increment: newBudgetAmount },
+              },
+            });
+          }
+
+          // 5. Update bill settlements if changed
+          if (validatedSettlements.length > 0 || voucher.billSettlements.length > 0) {
+            await tx.billSettlement.deleteMany({ where: { journalVoucherId: voucher.id } });
+            for (const settlement of validatedSettlements) {
+              await tx.billSettlement.create({
+                data: {
+                  projectId,
+                  journalVoucherId: voucher.id,
+                  invoiceId: settlement.invoiceId,
+                  vendorId: settlement.vendorId,
+                  amount: settlement.amount,
+                },
+              });
+            }
+          }
+        });
+
+        await logAudit({
+          userId: req.user!.id,
+          action: AuditAction.UPDATE,
+          entityType: 'VOUCHER',
+          entityId: voucher.id,
+          projectId,
+          oldValue: { date: voucher.date, description: voucher.description, budgetHeadOnly: true },
+          newValue: { date: voucherDate, description, budgetHeadOnly: true, newBudgetHeadId },
+        });
+
+        res.json({ message: 'Voucher updated successfully', jvNumber: voucher.jvNumber });
+        return;
+      }
+
       // Execute the edit atomically: reverse old, apply new
       await prisma.$transaction(async (tx) => {
         // 1. Reverse old ledger entry effects
