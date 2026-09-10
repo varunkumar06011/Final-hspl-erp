@@ -248,16 +248,32 @@ export async function streamPurchaseOrderPdf(res: NodeJS.WritableStream, po: any
     return yy + (bg ? 26 : 24);
   };
 
+  // Highlighted advance row — amber background to draw attention to the amount payable now
+  const advanceHighlight = '#E65100';
+  const drawAdvanceTotal = (lbl: string, val: string, yy: number) => {
+    doc.rect(totalsX, yy, totalsW, 28).fill(advanceHighlight);
+    const labelW = 145;
+    const valueW = 85;
+    doc.fillColor('#fff').font('Helvetica-Bold').fontSize(9.5).text(lbl, totalsX + 8, yy + 7, { width: labelW });
+    doc.fillColor('#fff').font('Helvetica-Bold').fontSize(10).text(val, totalsX + 8 + labelW, yy + 7, { width: valueW, align: 'right' });
+    return yy + 28;
+  };
+
   y += 12;
   y = drawTotal('Subtotal:', fmtMoney(Number(po.totalAmount)), y);
   const gstRate = po.items.length > 0 ? Number(po.items[0]?.gstRate ?? 0) : 0;
   const gstLabel = Number(po.gstAmount) > 0 ? `GST (${gstRate}%):` : 'GST (No Gst Applicable):';
   y = drawTotal(gstLabel, Number(po.gstAmount) > 0 ? fmtMoney(Number(po.gstAmount)) : 'Rs. 0.00', y);
-  // Agreed advance payable (only for ADVANCE / FULL_PAYMENT POs)
-  if (po.advanceAmount !== null && po.advanceAmount !== undefined && Number(po.advanceAmount) > 0) {
-    y = drawTotal('Advance Payable:', fmtMoney(Number(po.advanceAmount)), y);
-  }
   y = drawTotal('GRAND TOTAL (Inclusive of all taxes):', fmtMoney(Number(po.grandTotal)), y, true);
+
+  // For ADVANCE / FULL_PAYMENT POs, show the advance breakdown: total payable, advance now pay (highlighted), outstanding
+  if (po.advanceAmount !== null && po.advanceAmount !== undefined && Number(po.advanceAmount) > 0) {
+    const advanceVal = Number(po.advanceAmount);
+    const outstandingVal = Math.max(0, Number(po.grandTotal) - advanceVal);
+    y += 8;
+    y = drawAdvanceTotal('ADVANCE NOW PAY:', fmtMoney(advanceVal), y);
+    y = drawTotal('Outstanding (after advance):', fmtMoney(outstandingVal), y);
+  }
   y += 36;
 
   // ── Approval & Authorization boxes ──
