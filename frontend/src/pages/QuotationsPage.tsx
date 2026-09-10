@@ -55,6 +55,19 @@ import RefreshButton from '../components/RefreshButton';
 import QuotationTimelineDialog from '../components/QuotationTimelineDialog';
 import { useApprovalDeepLink } from '../utils/useApprovalDeepLink';
 
+const VENDOR_CATEGORY_LABELS: Record<string, string> = {
+  LABOUR_SUPPLIER: 'Labour Supplier',
+  ELECTRICAL_CONTRACTOR: 'Electrical Contractor',
+  WOOD_WORK_CONTRACTOR: 'Wood Work Contractor',
+  MACHINERY_SUPPLIER: 'Machinery Supplier',
+  TOOL_SUPPLIER: 'Tool Supplier',
+  MATERIAL_SUPPLIER: 'Material Supplier',
+  SUBCONTRACTOR: 'Subcontractor',
+  SERVICE_PROVIDER: 'Service Provider',
+  EQUIPMENT_SUPPLIER: 'Equipment Supplier',
+  OTHER: 'Other',
+};
+
 interface QuotationItem {
   id?: string;
   materialName: string;
@@ -93,7 +106,7 @@ interface QuotationRow {
   id: string;
   quotationNumber: string;
   vendorId: string;
-  vendor: { id: string; name: string; vendorCode: string };
+  vendor: { id: string; name: string; vendorCode: string; category?: string };
   date: string;
   createdAt: string;
   status: string;
@@ -562,6 +575,7 @@ export default function QuotationsPage() {
               <TableRow>
                 <TableCell sx={{ fontWeight: 600 }}>Quotation No</TableCell>
                 <TableCell sx={{ fontWeight: 600 }}>Vendor</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>Category</TableCell>
                 <TableCell sx={{ fontWeight: 600 }}>Quotation Date</TableCell>
                 <TableCell sx={{ fontWeight: 600 }}>Generated On</TableCell>
                 <TableCell sx={{ fontWeight: 600 }}>Total</TableCell>
@@ -575,9 +589,9 @@ export default function QuotationsPage() {
             </TableHead>
             <TableBody>
               {isLoading ? (
-                <TableRow><TableCell colSpan={11} align="center" sx={{ py: 4 }}><CircularProgress size={32} /></TableCell></TableRow>
+                <TableRow><TableCell colSpan={12} align="center" sx={{ py: 4 }}><CircularProgress size={32} /></TableCell></TableRow>
               ) : rows.length === 0 ? (
-                <TableRow><TableCell colSpan={11} align="center" sx={{ py: 4 }}><Typography color="text.secondary">No quotations found</Typography></TableCell></TableRow>
+                <TableRow><TableCell colSpan={12} align="center" sx={{ py: 4 }}><Typography color="text.secondary">No quotations found</Typography></TableCell></TableRow>
               ) : (
                 rows.map((row) => {
                   const pendingStep = canApprove(row);
@@ -616,6 +630,7 @@ export default function QuotationsPage() {
                         )}
                       </TableCell>
                       <TableCell data-label="Vendor">{row.vendor?.vendorCode} - {row.vendor?.name ?? '—'}</TableCell>
+                      <TableCell data-label="Category">{row.vendor?.category ? (VENDOR_CATEGORY_LABELS[row.vendor.category] ?? row.vendor.category) : '—'}</TableCell>
                       <TableCell data-label="Quotation Date">{formatDate(row.date)}</TableCell>
                       <TableCell data-label="Generated On"><Typography variant="caption" color="text.secondary">{formatDate(row.createdAt)}</Typography></TableCell>
                       <TableCell data-label="Total">{formatCurrency(row.totalAmount)}</TableCell>
