@@ -140,11 +140,14 @@ export default function PaymentReportPage() {
 
   function handleExportCsv() {
     if (!rows.length) return;
-    const headers = ['Payment No', 'Date', 'Type', 'Vendor', 'Description', 'Budget Head', 'Amount', 'Payment Mode', 'Status', 'PO', 'Invoice', 'Created By', 'Approved By'];
-    const csvRows = rows.map((r) => [
-      r.paymentCode,
-      r.expenseDate ? formatDate(r.expenseDate) : formatDate(r.createdAt),
-      TYPE_LABELS[r.type] ?? r.type,
+    const headers = ['Payment No', 'Request Date', 'Payment Date', 'Type', 'Vendor', 'Description', 'Budget Head', 'Amount', 'Payment Mode', 'Status', 'PO', 'Invoice', 'Created By', 'Approved By'];
+    const csvRows = rows.map((r) => {
+      const paid = r.payments[0];
+      return [
+        r.paymentCode,
+        r.expenseDate ? formatDate(r.expenseDate) : formatDate(r.createdAt),
+        paid?.date ? formatDate(paid.date) : '',
+        TYPE_LABELS[r.type] ?? r.type,
       r.vendor ? `${r.vendor.vendorCode} - ${r.vendor.name}` : '',
       r.description ?? '',
       r.budgetHead?.particulars ?? '',
@@ -155,7 +158,8 @@ export default function PaymentReportPage() {
       r.invoice?.invoiceNumber ?? '',
       r.createdByUser?.name ?? '',
       r.approvalWorkflow?.steps.map((s) => s.approverUser?.name).filter(Boolean).join(', ') ?? '',
-    ]);
+    ];
+    });
     const csv = [headers, ...csvRows].map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(',')).join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
@@ -347,8 +351,11 @@ export default function PaymentReportPage() {
                   <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>Payment No</Typography>
                   <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem' }}>{row.paymentCode}</Typography>
 
-                  <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>Date</Typography>
+                  <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>Request Date</Typography>
                   <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem' }}>{row.expenseDate ? formatDate(row.expenseDate) : formatDate(row.createdAt)}</Typography>
+
+                  <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>Payment Date</Typography>
+                  <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem' }}>{paidPayment?.date ? formatDate(paidPayment.date) : '—'}</Typography>
 
                   <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>Vendor</Typography>
                   <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem' }}>{row.vendor ? `${row.vendor.vendorCode} - ${row.vendor.name}` : '—'}</Typography>
