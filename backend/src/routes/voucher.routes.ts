@@ -87,7 +87,7 @@ router.get(
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const projectId = requireProjectId(req);
-      const { page = 1, pageSize = 20, search, voucherType, status, startDate, endDate, ids } = req.query as Record<string, unknown>;
+      const { page = 1, pageSize = 20, search, voucherType, status, startDate, endDate, ids, minAmount, maxAmount } = req.query as Record<string, unknown>;
 
       const where: Prisma.JournalVoucherWhereInput = {
         projectId,
@@ -108,6 +108,13 @@ router.get(
         } : {}),
         // Filter by specific voucher IDs (used by bank/cash statements to fetch voucher numbers)
         ...(ids ? { id: { in: String(ids).split(',') } } : {}),
+        // Amount range filter — totalDebit holds the voucher's total amount
+        ...(minAmount || maxAmount ? {
+          totalDebit: {
+            ...(minAmount ? { gte: Number(minAmount) } : {}),
+            ...(maxAmount ? { lte: Number(maxAmount) } : {}),
+          },
+        } : {}),
       };
 
       const [data, total] = await Promise.all([

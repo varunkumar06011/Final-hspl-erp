@@ -168,6 +168,8 @@ export default function VouchersPage() {
   const [pageSize, setPageSize] = useState(20);
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
+  const [minAmount, setMinAmount] = useState('');
+  const [maxAmount, setMaxAmount] = useState('');
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
 
@@ -212,11 +214,13 @@ export default function VouchersPage() {
   const queryClient = useQueryClient();
 
   const { data, isLoading, isError, refetch } = useQuery({
-    queryKey: ['/vouchers', page, pageSize, search, typeFilter],
+    queryKey: ['/vouchers', page, pageSize, search, typeFilter, minAmount, maxAmount],
     queryFn: async () => {
       const params: Record<string, unknown> = { page: page + 1, pageSize };
       if (search) params.search = search;
       if (typeFilter) params.voucherType = typeFilter;
+      if (minAmount) params.minAmount = minAmount;
+      if (maxAmount) params.maxAmount = maxAmount;
       const response = await api.get('/vouchers', { params });
       return response.data;
     },
@@ -812,6 +816,26 @@ export default function VouchersPage() {
             {VOUCHER_TYPES.map((vt) => <MenuItem key={vt.value} value={vt.value}>{vt.label}</MenuItem>)}
             <MenuItem value="PURCHASE">Purchase (F8)</MenuItem>
           </TextField>
+          <TextField
+            size="small"
+            label="Min Amount"
+            type="text"
+            value={minAmount}
+            onChange={(e) => { setMinAmount(e.target.value.replace(/[^0-9.]/g, '')); setPage(0); }}
+            inputMode="decimal"
+            InputProps={{ startAdornment: (<InputAdornment position="start">₹</InputAdornment>) }}
+            sx={{ width: 130 }}
+          />
+          <TextField
+            size="small"
+            label="Max Amount"
+            type="text"
+            value={maxAmount}
+            onChange={(e) => { setMaxAmount(e.target.value.replace(/[^0-9.]/g, '')); setPage(0); }}
+            inputMode="decimal"
+            InputProps={{ startAdornment: (<InputAdornment position="start">₹</InputAdornment>) }}
+            sx={{ width: 130 }}
+          />
         </Box>
       </Card>
 

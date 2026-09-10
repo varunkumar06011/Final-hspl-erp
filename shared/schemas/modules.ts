@@ -37,6 +37,36 @@ const acknowledgement = z.preprocess(
   z.literal(true, { errorMap: () => ({ message: 'Acknowledgement is required' }) }),
 );
 
+// ═══ Transaction Description Standard ═══
+// Format: "Payee · Item · Ref" — middle-dot (U+00B7) separated, 2-3 segments.
+// Enforced at entry to keep the Recent Transactions list scannable & consistent.
+// Forbidden: verbs ("paid to", "purchase of"), filler ("vide", "as on", "purpose"),
+// amounts (Rs, ₹, arithmetic), and phone numbers in prose.
+const MIDDLE_DOT = '\u00B7';
+const TXN_DESC_FORBIDDEN = /\b(paid to|purchase of|vide|as on|purpose)\b|rs\.|₹|\d\s*[x×]\s*\d/i;
+const txnDescStructure = (val: string): boolean => {
+  const segments = val.split(MIDDLE_DOT).map((s) => s.trim());
+  if (segments.length < 2 || segments.length > 3) return false;
+  return segments.every((s) => s.length >= 1 && s.length <= 40);
+};
+// Required version — used by expense entry (the main user-facing description field)
+export const transactionDescription = z
+  .string()
+  .trim()
+  .min(1, 'Description is required')
+  .max(120, 'Description too long (max 120 chars)')
+  .refine(txnDescStructure, 'Format: Payee · Item · Ref  (2-3 segments separated by middle-dot ·)')
+  .refine((val) => !TXN_DESC_FORBIDDEN.test(val), 'Remove forbidden words (paid to, vide, as on, purpose, Rs, amounts). Use Payee · Item · Ref.');
+// Optional version — used by bank/cash deposit, withdrawal, and transfer descriptions
+export const transactionDescriptionOptional = z
+  .string()
+  .trim()
+  .max(120, 'Description too long (max 120 chars)')
+  .refine((val) => val === '' || txnDescStructure(val), 'Format: Payee · Item · Ref  (2-3 segments separated by middle-dot ·)')
+  .refine((val) => val === '' || !TXN_DESC_FORBIDDEN.test(val), 'Remove forbidden words (paid to, vide, as on, purpose, Rs, amounts). Use Payee · Item · Ref.')
+  .optional()
+  .or(z.literal(''));
+
 const pagination = z.object({
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(500).default(20),
@@ -269,7 +299,7 @@ export const createPaymentRequestSchema = z.object({
 });
 export const createExpenseSchema = z.object({
   body: z.object({
-    description: nonEmptyText(500),
+    description: transactionDescription,
     amount: positiveMoney,
     category: nonEmptyText(100),
     expenseDate: dateStr.optional(),
@@ -1004,7 +1034,7 @@ export const bankDepositSchema = z.object({
     amount: positiveMoney,
     contraLedgerId: uuid,
     date: dateStr.optional(),
-    description: z.string().max(500).optional(),
+    description: transactionDescriptionOptional,
     budgetHeadId: uuid.optional(),
   }),
 });
@@ -1015,7 +1045,7 @@ export const bankTransferSchema = z.object({
     toAccountId: uuid,
     amount: positiveMoney,
     date: dateStr.optional(),
-    description: z.string().max(500).optional(),
+    description: transactionDescriptionOptional,
   }),
 });
 export const listBankTransactionsSchema = z
@@ -1063,7 +1093,7 @@ export const cashTransferSchema = z.object({
     toAccountId: uuid,
     amount: positiveMoney,
     date: dateStr.optional(),
-    description: z.string().max(500).optional(),
+    description: transactionDescriptionOptional,
   }),
 });
 // Bank → Cash withdrawal (money leaves bank, enters cash)
@@ -1073,7 +1103,7 @@ export const bankToCashSchema = z.object({
     cashAccountId: uuid,
     amount: positiveMoney,
     date: dateStr.optional(),
-    description: z.string().max(500).optional(),
+    description: transactionDescriptionOptional,
   }),
 });
 // Cash → Bank deposit (money leaves cash, enters bank)
@@ -1339,6 +1369,8 @@ export const listVouchersSchema = z.object({
     status: z.string().optional(),
     startDate: dateStr.optional(),
     endDate: dateStr.optional(),
+    minAmount: z.coerce.number().optional(),
+    maxAmount: z.coerce.number().optional(),
   }),
 });
 

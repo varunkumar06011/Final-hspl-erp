@@ -58,9 +58,9 @@ import { useApprovalDeepLink } from '../utils/useApprovalDeepLink';
 interface QuotationItem {
   id?: string;
   materialName: string;
-  quantity: number | '';
+  quantity: number | string;
   unit?: string | null;
-  unitPrice: string | number | '';
+  unitPrice: string | number;
   amount: number;
   gstRate: number;
 }
@@ -766,8 +766,8 @@ export default function QuotationsPage() {
                         <TextField
                           label="Qty"
                           type="text"
-                          value={formatIndianNumber(item.quantity)}
-                          onChange={(e) => updateLineItem(index, 'quantity', e.target.value === '' ? '' : Number(e.target.value.replace(/,/g, '')))}
+                          value={item.quantity}
+                          onChange={(e) => updateLineItem(index, 'quantity', e.target.value.replace(/,/g, ''))}
                           inputMode="decimal"
                           inputProps={{ min: 0.01, step: 0.01 }}
                           size="small"
