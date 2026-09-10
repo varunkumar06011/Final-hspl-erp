@@ -33,6 +33,7 @@ import {
   Download as DownloadIcon,
   Delete as DeleteIcon,
   Timeline as TimelineIcon,
+  Share as ShareIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { APPROVER_ROLES, QuotationStatus, GST_RATES } from '@hospital-erp/shared';
@@ -457,6 +458,52 @@ export default function QuotationsPage() {
     downloadFile('quotations', id, fileName).catch(() => setError('Failed to download file'));
   }
 
+  async function handleShareWhatsApp(row: QuotationRow) {
+    // Build a text summary of the quotation
+    const materials = row.items?.map((i) => `  • ${i.materialName} — ${i.quantity}${i.unit ? ` ${i.unit}` : ''}`).join('\n') ?? '';
+    const text = [
+      `*Quotation ${row.quotationNumber}*`,
+      `Vendor: ${row.vendor?.vendorCode} - ${row.vendor?.name ?? '—'}`,
+      row.vendor?.category ? `Category: ${VENDOR_CATEGORY_LABELS[row.vendor.category] ?? row.vendor.category}` : '',
+      `Date: ${formatDate(row.date)}`,
+      materials ? `Materials:\n${materials}` : '',
+      `Total: ${formatCurrency(row.totalAmount)}`,
+      `GST: ${formatCurrency(row.gstAmount)}`,
+      `Grand Total: ${formatCurrency(row.grandTotal)}`,
+      `Status: ${row.status.replace(/_/g, ' ')}`,
+    ].filter(Boolean).join('\n');
+
+    // If there's an attached file, try to share it via Web Share API (mobile)
+    if (row.filePath) {
+      try {
+        const res = await api.get(`/quotations/${row.id}/file`, { responseType: 'blob' });
+        const file = new File([res.data], row.fileName ?? 'quotation', { type: res.data.type });
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+          await navigator.share({
+            text,
+            files: [file],
+            title: `Quotation ${row.quotationNumber}`,
+          });
+          return;
+        }
+      } catch {
+        // File fetch/share failed — fall through to text-only share
+      }
+    }
+
+    // No file or file share not supported → share text only
+    if (navigator.share) {
+      try {
+        await navigator.share({ text, title: `Quotation ${row.quotationNumber}` });
+      } catch {
+        // User cancelled — no action needed
+      }
+    } else {
+      // Desktop fallback: open WhatsApp Web with pre-filled text
+      window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
+    }
+  }
+
   function handleOcrExtract(data: OcrQuotationData) {
     if (data.lineItems.length > 0) {
       const vendorMaterialsLower = new Set(
@@ -673,6 +720,7 @@ export default function QuotationsPage() {
                       ) : <Typography variant="caption" sx={{ fontSize: '0.75rem' }}>—</Typography>}
                     </Box>
                     <Box sx={{ display: 'flex', gap: 0.5 }}>
+                      <IconButton size="small" onClick={() => handleShareWhatsApp(row)} title="Share to WhatsApp"><ShareIcon fontSize="small" /></IconButton>
                       <IconButton size="small" onClick={() => setTimelineRow(row)} title="Show Timeline"><TimelineIcon fontSize="small" /></IconButton>
                       {row.status === QuotationStatus.SUBMITTED || row.status === QuotationStatus.UNDER_REVIEW ? (
                         <IconButton size="small" onClick={() => openEdit(row)} title="Edit"><EditIcon fontSize="small" /></IconButton>
