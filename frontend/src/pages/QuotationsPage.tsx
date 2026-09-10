@@ -628,28 +628,28 @@ export default function QuotationsPage() {
                     <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem' }}>{row.quotationNumber}</Typography>
 
                     <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>Vendor</Typography>
-                    <Typography variant="body2" sx={{ fontSize: '0.85rem' }}>{row.vendor?.vendorCode} - {row.vendor?.name ?? '—'}</Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem' }}>{row.vendor?.vendorCode} - {row.vendor?.name ?? '—'}</Typography>
 
                     <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>Category</Typography>
-                    <Typography variant="body2" sx={{ fontSize: '0.85rem' }}>{row.vendor?.category ? (VENDOR_CATEGORY_LABELS[row.vendor.category] ?? row.vendor.category) : '—'}</Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem' }}>{row.vendor?.category ? (VENDOR_CATEGORY_LABELS[row.vendor.category] ?? row.vendor.category) : '—'}</Typography>
 
                     <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>Quotation Date</Typography>
-                    <Typography variant="body2" sx={{ fontSize: '0.85rem' }}>{formatDate(row.date)}</Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem' }}>{formatDate(row.date)}</Typography>
 
                     <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>Generated On</Typography>
-                    <Typography variant="body2" sx={{ fontSize: '0.85rem' }}>{formatDate(row.createdAt)}</Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem' }}>{formatDate(row.createdAt)}</Typography>
 
                     <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>Total</Typography>
-                    <Typography variant="body2" sx={{ fontSize: '0.85rem' }}>{formatCurrency(row.totalAmount)}</Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem' }}>{formatCurrency(row.totalAmount)}</Typography>
 
                     <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>GST</Typography>
-                    <Typography variant="body2" sx={{ fontSize: '0.85rem' }}>{formatCurrency(row.gstAmount)}</Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem' }}>{formatCurrency(row.gstAmount)}</Typography>
 
                     <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>Grand Total</Typography>
                     <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem' }}>{formatCurrency(row.grandTotal)}</Typography>
 
                     <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>Created By</Typography>
-                    <Typography variant="body2" sx={{ fontSize: '0.85rem' }}>{row.createdByUser?.name ?? '—'}</Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem' }}>{row.createdByUser?.name ?? '—'}</Typography>
                   </Box>
 
                   {/* Materials — full width row */}
@@ -658,7 +658,7 @@ export default function QuotationsPage() {
                       <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem', flexShrink: 0, minWidth: 140 }}>Materials</Typography>
                       <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
                         {row.items.map((item, i) => (
-                          <Chip key={i} label={`${item.materialName} — ${item.quantity}${item.unit ? ` ${item.unit}` : ''}`} size="small" variant="outlined" sx={{ fontSize: '0.75rem', height: 22 }} />
+                          <Chip key={i} label={`${item.materialName} — ${item.quantity}${item.unit ? ` ${item.unit}` : ''}`} size="small" variant="outlined" sx={{ fontSize: '0.75rem', height: 22, fontWeight: 600 }} />
                         ))}
                       </Box>
                     </Box>
