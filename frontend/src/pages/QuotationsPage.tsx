@@ -723,12 +723,20 @@ export default function QuotationsPage() {
             {/* Materials / Line Items */}
             {selectedVendorId && (
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                <Typography variant="body2" fontWeight={600}>Materials (tick the ones you need)</Typography>
-                {selectedVendor?.materials?.length === 0 && (
-                  <Alert severity="info">This vendor has no materials registered. Please add materials to the vendor first.</Alert>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Typography variant="body2" fontWeight={600}>Materials (tick the ones you need)</Typography>
+                  <Button size="small" startIcon={<AddIcon />} onClick={() => {
+                    const newItem: QuotationItem = { materialName: '', quantity: '', unitPrice: '', amount: 0, gstRate: 0 };
+                    setLineItems([...lineItems, newItem]);
+                    setSelectedMaterialNames(new Set([...selectedMaterialNames, '']));
+                  }}>Add Row</Button>
+                </Box>
+                {selectedVendor?.materials?.length === 0 && lineItems.length === 0 && (
+                  <Alert severity="info">This vendor has no materials registered. Use "Add Row" to add items manually.</Alert>
                 )}
                 {lineItems.map((item, index) => {
                   const checked = selectedMaterialNames.has(item.materialName);
+                  const isManualRow = !selectedVendor?.materials?.some((m) => m.name === item.materialName);
                   return (
                     <Box key={index} sx={{
                       display: 'flex',
@@ -757,10 +765,22 @@ export default function QuotationsPage() {
                         <TextField
                           label="Material"
                           value={item.materialName}
+                          onChange={isManualRow ? (e) => updateLineItem(index, 'materialName', e.target.value) : undefined}
                           size="small"
-                          disabled
+                          disabled={!isManualRow}
                           sx={{ flex: 2, minWidth: 0 }}
                         />
+                        {isManualRow && (
+                          <IconButton size="small" color="error" onClick={() => {
+                            const updated = lineItems.filter((_, i) => i !== index);
+                            setLineItems(updated);
+                            const newSet = new Set(selectedMaterialNames);
+                            newSet.delete(item.materialName);
+                            setSelectedMaterialNames(newSet);
+                          }} title="Remove row">
+                            <DeleteIcon fontSize="small" />
+                          </IconButton>
+                        )}
                       </Box>
                       <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', pl: { xs: 5.5, sm: 0 }, flexWrap: { xs: 'wrap', sm: 'nowrap' } }}>
                         <TextField
