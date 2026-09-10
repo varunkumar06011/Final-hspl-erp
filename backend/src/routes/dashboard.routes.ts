@@ -49,10 +49,20 @@ router.get(
             where: { projectId, deletedAt: null, status: 'IN_PROGRESS' },
           }),
           prisma.quotation.count({
-            where: { projectId, deletedAt: null, status: { notIn: ['APPROVED', 'REJECTED', 'CONVERTED_TO_PO'] } },
+            where: {
+              projectId,
+              deletedAt: null,
+              status: { notIn: ['APPROVED', 'REJECTED', 'CONVERTED_TO_PO'] },
+              approvalWorkflow: { steps: { none: { status: 'REJECTED' } } },
+            },
           }),
           prisma.quotation.aggregate({
-            where: { projectId, deletedAt: null, status: { notIn: ['APPROVED', 'REJECTED', 'CONVERTED_TO_PO'] } },
+            where: {
+              projectId,
+              deletedAt: null,
+              status: { notIn: ['APPROVED', 'REJECTED', 'CONVERTED_TO_PO'] },
+              approvalWorkflow: { steps: { none: { status: 'REJECTED' } } },
+            },
             _sum: { totalAmount: true },
           }),
           prisma.quotation.findMany({
@@ -804,7 +814,7 @@ router.get(
         }),
         // Pending counts — all records not yet approved/verified/rejected/cancelled
         prisma.paymentRequest.count({ where: { projectId, status: { notIn: ['APPROVED', 'REJECTED', 'PAID'] }, deletedAt: null } }),
-        prisma.quotation.count({ where: { projectId, status: { notIn: ['APPROVED', 'REJECTED', 'CONVERTED_TO_PO'] }, deletedAt: null } }),
+        prisma.quotation.count({ where: { projectId, status: { notIn: ['APPROVED', 'REJECTED', 'CONVERTED_TO_PO'] }, deletedAt: null, approvalWorkflow: { steps: { none: { status: 'REJECTED' } } } } }),
         prisma.purchaseOrder.count({ where: { projectId, status: { notIn: ['APPROVED', 'REJECTED', 'CANCELLED', 'DELIVERED', 'PARTIALLY_DELIVERED'] }, deletedAt: null } }),
         prisma.vendorInvoice.count({ where: { projectId, verificationStatus: { notIn: ['VERIFIED', 'REJECTED'] }, deletedAt: null } }),
         // Recent bank transactions (last 15 — enough for the scrollable dashboard list)
@@ -983,7 +993,16 @@ router.get(
       // that still needs action. Sorted most-recent first.
       const [actionQuotations, actionPOs, actionInvoices, actionPayments] = await Promise.all([
         prisma.quotation.findMany({
-          where: { projectId, deletedAt: null, status: { notIn: ['APPROVED', 'REJECTED', 'CONVERTED_TO_PO'] } },
+          where: {
+            projectId,
+            deletedAt: null,
+            status: { notIn: ['APPROVED', 'REJECTED', 'CONVERTED_TO_PO'] },
+            // Also exclude quotations where any approval step has been rejected —
+            // the top-level status may not have been updated for older records.
+            approvalWorkflow: {
+              steps: { none: { status: 'REJECTED' } },
+            },
+          },
           select: { id: true, quotationNumber: true, status: true, createdAt: true },
           orderBy: { createdAt: 'desc' },
           take: 5,

@@ -657,7 +657,7 @@ router.post(
       }
 
       const reason = req.body.reason || req.body.comments || 'Rejected';
-      const result = await approvalService.reject(step.id, req.user!.id, reason);
+      await approvalService.reject(step.id, req.user!.id, reason);
 
       // A single rejection is enough to reject the entire quotation —
       // don't wait for minApprovers rejections. This prevents rejected
