@@ -218,10 +218,19 @@ export default function PendingItemsDialog({ open, entityType, user, onClose }: 
   });
 
   // Filter client-side for quotations (SUBMITTED + UNDER_REVIEW)
+  // Also exclude any record where an approval step has been REJECTED —
+  // a single rejection should remove it from the pending list even if
+  // the top-level status hasn't been updated yet.
   const rawRecords: Record<string, unknown>[] = data?.data ?? [];
   const records: RecordDisplay[] = rawRecords
     .map((raw) => extractRecord(entityType, raw))
-    .filter((rec) => config.pendingStatuses.includes(rec.status.toUpperCase()));
+    .filter((rec) => {
+      if (!config.pendingStatuses.includes(rec.status.toUpperCase())) return false;
+      const hasRejectedStep = rec.approvalWorkflow?.steps?.some(
+        (step) => step.status === 'REJECTED',
+      );
+      return !hasRejectedStep;
+    });
 
   // ── Approve mutation — uses the existing approve endpoint ──
   const approveMutation = useMutation({
