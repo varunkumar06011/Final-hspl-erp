@@ -29,6 +29,7 @@ import FinanceReportsPage from './pages/FinanceReportsPage';
 import LedgersPage from './pages/LedgersPage';
 import VouchersPage from './pages/VouchersPage';
 import AccountingReportsPage from './pages/AccountingReportsPage';
+import PaymentReportPage from './pages/PaymentReportPage';
 import InventoryPage from './pages/InventoryPage';
 import AssetsPage from './pages/AssetsPage';
 import AssetDetailPage from './pages/AssetDetailPage';
@@ -80,6 +81,7 @@ const ROUTES = [
   { path: '/ledgers', element: <LedgersPage /> },
   { path: '/vouchers', element: <VouchersPage /> },
   { path: '/accounting-reports', element: <AccountingReportsPage /> },
+  { path: '/payment-reports', element: <PaymentReportPage /> },
   { path: '/inventory', element: <InventoryPage /> },
   { path: '/assets', element: <AssetsPage /> },
   { path: '/assets/:itemId', element: <AssetDetailPage /> },

@@ -39,6 +39,7 @@ import {
   NavigateNext as NavigateNextIcon,
   AutoAwesome as AutoAwesomeIcon,
   ArrowBack as ArrowBackIcon,
+  RequestQuote as PaymentReportIcon,
 } from '@mui/icons-material';
 import { useAuthStore } from '../stores/authStore';
 import { hasPermission, Permission, UserRole } from '@hospital-erp/shared';
@@ -79,6 +80,7 @@ const NAV_ITEMS = [
   { label: 'Finance Dashboard', icon: <FinanceDashboardIcon />, path: '/finance-dashboard', permission: Permission.VIEW_FINANCIALS, section: 'Reports' },
   { label: 'Accounting Reports', icon: <AccountingReportsIcon />, path: '/accounting-reports', permission: Permission.VIEW_FINANCIALS, section: 'Reports' },
   { label: 'Finance Reports', icon: <ReportsIcon />, path: '/finance-reports', permission: Permission.VIEW_FINANCIALS, section: 'Reports' },
+  { label: 'Payment Report', icon: <PaymentReportIcon />, path: '/payment-reports', permission: Permission.VIEW_FINANCIALS, section: 'Reports', roles: [UserRole.PROJECT_HEAD] },
   // ── Site Operations ──
   { label: 'Inventory', icon: <InventoryIcon />, path: '/inventory', permission: Permission.MANAGE_INVENTORY, section: 'Site Operations' },
   { label: 'Assets', icon: <AssetsIcon />, path: '/assets', permission: Permission.MANAGE_INVENTORY, section: 'Site Operations' },
@@ -128,6 +130,7 @@ const ADMIN_NAV_ITEMS = [
   { label: 'Finance Dashboard', icon: <FinanceDashboardIcon />, path: '/finance-dashboard', permission: Permission.VIEW_FINANCIALS, section: 'Reports' },
   { label: 'Accounting Reports', icon: <AccountingReportsIcon />, path: '/accounting-reports', permission: Permission.VIEW_FINANCIALS, section: 'Reports' },
   { label: 'Finance Reports', icon: <ReportsIcon />, path: '/finance-reports', permission: Permission.VIEW_FINANCIALS, section: 'Reports' },
+  { label: 'Payment Report', icon: <PaymentReportIcon />, path: '/payment-reports', permission: Permission.VIEW_FINANCIALS, section: 'Reports' },
   // ── Admin ──
   { label: 'Audit Log', icon: <AuditIcon />, path: '/audit', permission: Permission.VIEW_AUDIT_LOG, section: 'Admin' },
   { label: 'Users', icon: <PeopleIcon />, path: '/users', permission: Permission.MANAGE_USERS, section: 'Admin' },
@@ -324,7 +327,13 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           {/* Admin roles (ADMIN + ADMIN_2) and ACCOUNTANT use the simplified
               ADMIN_NAV_ITEMS. All other roles use the original NAV_ITEMS. */}
           {((user?.role === UserRole.ADMIN || user?.role === UserRole.ADMIN_2 || user?.role === UserRole.ACCOUNTANT) ? ADMIN_NAV_ITEMS : NAV_ITEMS)
-            .filter((item) => !item.permission || (user && hasPermission(user.role as UserRole, item.permission)))
+            .filter((item) => {
+              // Role restriction — if item has `roles`, only show for those roles
+              if ('roles' in item && Array.isArray(item.roles) && item.roles.length > 0) {
+                if (!user || !item.roles.includes(user.role as UserRole)) return false;
+              }
+              return !item.permission || (user && hasPermission(user.role as UserRole, item.permission));
+            })
             .map((item, idx, arr) => {
             const prevItem = idx > 0 ? arr[idx - 1] : null;
             const showSectionHeader = item.section !== '' && (!prevItem || prevItem.section !== item.section);
