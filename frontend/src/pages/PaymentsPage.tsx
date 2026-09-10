@@ -126,6 +126,7 @@ interface PendingPO {
   poNumber: string;
   paymentType: string;
   grandTotal: number;
+  advanceAmount: number | null;
   vendor: { id: string; name: string; vendorCode: string };
   advancePaidToDate: number;
   outstanding: number;
@@ -657,7 +658,9 @@ export default function PaymentsPage() {
                               onClick={() => {
                                 setAdvancePayOpen(po);
                                 setAdvancePayForm({
-                                  amount: po.outstanding,
+                                  // Prefill with the agreed advance amount captured at PO creation (if any),
+                                  // otherwise fall back to the full outstanding balance. Still editable up to outstanding.
+                                  amount: po.advanceAmount !== null && po.advanceAmount > 0 ? po.advanceAmount : po.outstanding,
                                   requestNumber: `ADV-${po.poNumber}`,
                                   paymentMode: PaymentMode.BANK_TRANSFER,
                                 });
@@ -991,6 +994,9 @@ export default function PaymentsPage() {
             <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1 }}>
               <Typography variant="body2">PO Grand Total: <strong>{advancePayOpen ? formatCurrency(advancePayOpen.grandTotal) : ''}</strong></Typography>
               <Typography variant="body2">Payment Type: <strong>{advancePayOpen?.paymentType === POPaymentType.ADVANCE ? 'Against Advance' : 'Against Full Payment'}</strong></Typography>
+              {advancePayOpen && advancePayOpen.advanceAmount !== null && advancePayOpen.advanceAmount > 0 && (
+                <Typography variant="body2">Agreed Advance: <strong>{formatCurrency(advancePayOpen.advanceAmount)}</strong></Typography>
+              )}
               {advancePayOpen && advancePayOpen.advancePaidToDate > 0 && (
                 <Typography variant="body2">Advance Paid: <strong>{formatCurrency(advancePayOpen.advancePaidToDate)}</strong></Typography>
               )}
@@ -1029,6 +1035,24 @@ export default function PaymentsPage() {
               required
               helperText={advancePayOpen ? `Maximum: ${formatCurrency(advancePayOpen.outstanding)}` : ''}
             />
+            {advancePayOpen && advancePayOpen.advanceAmount !== null && advancePayOpen.advanceAmount > 0 && (
+              <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  onClick={() => setAdvancePayForm({ ...advancePayForm, amount: advancePayOpen.advanceAmount! })}
+                >
+                  Use Agreed Advance ({formatCurrency(advancePayOpen.advanceAmount)})
+                </Button>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  onClick={() => setAdvancePayForm({ ...advancePayForm, amount: advancePayOpen.outstanding })}
+                >
+                  Pay Full Outstanding
+                </Button>
+              </Box>
+            )}
             <TextField
               select
               label="Payment Mode"

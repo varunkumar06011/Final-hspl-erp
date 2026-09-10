@@ -99,6 +99,7 @@ interface PORow {
   createdAt: string;
   status: string;
   paymentType: string;
+  advanceAmount?: number | null;
   paymentTerms?: string | null;
   deliveryDate?: string | null;
   totalAmount: number;
@@ -140,6 +141,7 @@ export default function PurchaseOrdersPage() {
   const [selectedVendorId, setSelectedVendorId] = useState('');
   const [selectedQuotationId, setSelectedQuotationId] = useState('');
   const [paymentType, setPaymentType] = useState<string>(POPaymentType.AFTER_DELIVERY);
+  const [advanceAmount, setAdvanceAmount] = useState<string>('');
   const [paymentTerms, setPaymentTerms] = useState('');
   const [deliveryDate, setDeliveryDate] = useState('');
   const [selectedBudgetHeadId, setSelectedBudgetHeadId] = useState('');
@@ -249,6 +251,7 @@ export default function PurchaseOrdersPage() {
         vendorId: selectedVendorId,
         quotationId: selectedQuotationId,
         paymentType,
+        advanceAmount: (paymentType === POPaymentType.ADVANCE || paymentType === POPaymentType.FULL_PAYMENT) ? Number(advanceAmount) : undefined,
         paymentTerms,
         deliveryDate,
         acknowledged,
@@ -393,6 +396,7 @@ export default function PurchaseOrdersPage() {
     setSelectedVendorId('');
     setSelectedQuotationId('');
     setPaymentType(POPaymentType.AFTER_DELIVERY);
+    setAdvanceAmount('');
     setPaymentTerms('');
     setDeliveryDate('');
     setSelectedBudgetHeadId('');
@@ -684,7 +688,16 @@ export default function PurchaseOrdersPage() {
               select
               label="Payment Type"
               value={paymentType}
-              onChange={(e) => setPaymentType(e.target.value)}
+              onChange={(e) => {
+                const next = e.target.value;
+                setPaymentType(next);
+                // Auto-fill advance amount for FULL_PAYMENT (defaults to grand total); clear for AFTER_DELIVERY
+                if (next === POPaymentType.FULL_PAYMENT) {
+                  setAdvanceAmount(String(grandTotal || 0));
+                } else if (next === POPaymentType.AFTER_DELIVERY) {
+                  setAdvanceAmount('');
+                }
+              }}
               fullWidth
               size="small"
               required
@@ -694,6 +707,32 @@ export default function PurchaseOrdersPage() {
               <MenuItem value={POPaymentType.AFTER_DELIVERY}>After Delivery — pay after goods arrive + invoice</MenuItem>
               <MenuItem value={POPaymentType.FULL_PAYMENT}>Against Full Payment — full payment done, goods follow</MenuItem>
             </TextField>
+
+            {/* Advance Amount — only for ADVANCE / FULL_PAYMENT */}
+            {(paymentType === POPaymentType.ADVANCE || paymentType === POPaymentType.FULL_PAYMENT) && (
+              <TextField
+                label={paymentType === POPaymentType.ADVANCE ? 'Advance Amount' : 'Full Payment Amount'}
+                type="text"
+                value={formatIndianNumber(advanceAmount)}
+                onChange={(e) => {
+                  const value = e.target.value.replace(/,/g, '');
+                  const parsedAmount = Number(value);
+                  setAdvanceAmount(
+                    value === ''
+                      ? ''
+                      : !Number.isFinite(parsedAmount)
+                        ? ''
+                        : String(Math.min(parsedAmount, grandTotal))
+                  );
+                }}
+                inputMode="decimal"
+                inputProps={{ min: 0, max: grandTotal }}
+                fullWidth
+                size="small"
+                required
+                helperText={grandTotal > 0 ? `Maximum: ${formatCurrency(grandTotal)}` : 'Select a quotation first'}
+              />
+            )}
 
             <TextField
               label="Payment Terms"
@@ -812,7 +851,7 @@ export default function PurchaseOrdersPage() {
           <Button
             variant="contained"
             onClick={handleCreatePO}
-            disabled={(!selectedVendorId || !selectedQuotationId || !selectedBudgetHeadId || !acknowledged) || createMutation.isPending || createSubmissionLocked.current}
+            disabled={(!selectedVendorId || !selectedQuotationId || !selectedBudgetHeadId || !acknowledged || ((paymentType === POPaymentType.ADVANCE || paymentType === POPaymentType.FULL_PAYMENT) && (!advanceAmount || Number(advanceAmount) <= 0))) || createMutation.isPending || createSubmissionLocked.current}
           >
             {createMutation.isPending ? <CircularProgress size={20} /> : 'Create PO'}
           </Button>
@@ -1337,7 +1376,6 @@ function EditPODialog({ row, onClose, onSuccess }: { row: PORow | null; onClose:
 function EditUnapprovedPODialog({ row, onClose, onSuccess }: { row: PORow | null; onClose: () => void; onSuccess: () => void }) {
   const queryClient = useQueryClient();
   const [items, setItems] = useState<EditItem[]>([]);
-  const [paymentType, setPaymentType] = useState<string>(POPaymentType.AFTER_DELIVERY);
   const [paymentTerms, setPaymentTerms] = useState('');
   const [deliveryDate, setDeliveryDate] = useState('');
   const [budgetHeadId, setBudgetHeadId] = useState('');
@@ -1363,7 +1401,6 @@ function EditUnapprovedPODialog({ row, onClose, onSuccess }: { row: PORow | null
       accepted: 0,
       selected: true,
     })));
-    setPaymentType(row.paymentType);
     setPaymentTerms(row.paymentTerms ?? '');
     setDeliveryDate(row.deliveryDate ? new Date(row.deliveryDate).toISOString().split('T')[0] : '');
     setBudgetHeadId(row.budgetHeadId ?? '');
@@ -1373,7 +1410,6 @@ function EditUnapprovedPODialog({ row, onClose, onSuccess }: { row: PORow | null
   const mutation = useMutation({
     mutationFn: async () => {
       await api.post(`/purchase-orders/${row!.id}/edit-unapproved`, {
-        paymentType,
         paymentTerms: paymentTerms || undefined,
         deliveryDate: deliveryDate || undefined,
         budgetHeadId,
@@ -1403,21 +1439,30 @@ function EditUnapprovedPODialog({ row, onClose, onSuccess }: { row: PORow | null
       <DialogContent>
         {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
         <Alert severity="info" sx={{ mb: 2 }}>
-          This PO has not been approved yet. You can edit all fields — items, payment type, delivery date, and budget head.
-          The PO will remain pending approval after saving.
+          This PO has not been approved yet. You can edit items, payment terms, delivery date, and budget head.
+          Payment type is fixed at creation and cannot be changed. The PO will remain pending approval after saving.
         </Alert>
 
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mb: 2 }}>
-          <TextField
-            select
-            label="Payment Type *"
-            value={paymentType}
-            onChange={(e) => setPaymentType(e.target.value)}
-            fullWidth
-            size="small"
-          >
-            {Object.values(POPaymentType).map((t) => <MenuItem key={t} value={t}>{t.replace(/_/g, ' ')}</MenuItem>)}
-          </TextField>
+          <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+            <TextField
+              label="Payment Type"
+              value={row?.paymentType ? row.paymentType.replace(/_/g, ' ') : ''}
+              fullWidth
+              size="small"
+              InputProps={{ readOnly: true }}
+              helperText="Cannot be changed after creation"
+            />
+            {row?.advanceAmount !== null && row?.advanceAmount !== undefined && Number(row.advanceAmount) > 0 && (
+              <TextField
+                label="Agreed Advance"
+                value={formatCurrency(Number(row.advanceAmount))}
+                size="small"
+                InputProps={{ readOnly: true }}
+                sx={{ width: { xs: '100%', sm: 200 } }}
+              />
+            )}
+          </Box>
 
           <TextField
             label="Payment Terms"

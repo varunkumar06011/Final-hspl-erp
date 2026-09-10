@@ -359,6 +359,7 @@ router.get(
           poNumber: po.poNumber,
           paymentType: po.paymentType,
           grandTotal: Number(po.grandTotal),
+          advanceAmount: po.advanceAmount !== null ? Number(po.advanceAmount) : null,
           vendor: po.vendor,
           advancePaidToDate: paidAdvances,
           outstanding: Math.max(0, Number(po.grandTotal) - paidAdvances),

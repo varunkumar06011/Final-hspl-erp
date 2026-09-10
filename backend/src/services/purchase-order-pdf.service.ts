@@ -124,10 +124,16 @@ export async function streamPurchaseOrderPdf(res: NodeJS.WritableStream, po: any
 
   const paymentTerms = po.paymentTerms || 'After Delivery & Inspection';
 
+  const paymentTypeLabel =
+    po.paymentType === 'ADVANCE' ? 'Against Advance'
+    : po.paymentType === 'FULL_PAYMENT' ? 'Against Full Payment'
+    : 'After Delivery';
+
   const vBoxTop = y;
   y = drawLabel('Date', new Date(po.createdAt).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' }), leftCol, y, leftW);
   y = drawLabel('Created By', text(po.createdByUser?.name), leftCol, y, leftW);
   y = drawLabel('Delivery Due Date', po.deliveryDate ? new Date(po.deliveryDate).toLocaleDateString('en-IN') : '—', leftCol, y, leftW);
+  y = drawLabel('Payment Type', paymentTypeLabel, leftCol, y, leftW);
   y = drawLabel('Payment Terms', text(paymentTerms), leftCol, y, leftW);
   y = drawLabel('Project Head', text(head?.name), leftCol, y, leftW);
 
@@ -247,6 +253,10 @@ export async function streamPurchaseOrderPdf(res: NodeJS.WritableStream, po: any
   const gstRate = po.items.length > 0 ? Number(po.items[0]?.gstRate ?? 0) : 0;
   const gstLabel = Number(po.gstAmount) > 0 ? `GST (${gstRate}%):` : 'GST (No Gst Applicable):';
   y = drawTotal(gstLabel, Number(po.gstAmount) > 0 ? fmtMoney(Number(po.gstAmount)) : 'Rs. 0.00', y);
+  // Agreed advance payable (only for ADVANCE / FULL_PAYMENT POs)
+  if (po.advanceAmount !== null && po.advanceAmount !== undefined && Number(po.advanceAmount) > 0) {
+    y = drawTotal('Advance Payable:', fmtMoney(Number(po.advanceAmount)), y);
+  }
   y = drawTotal('GRAND TOTAL (Inclusive of all taxes):', fmtMoney(Number(po.grandTotal)), y, true);
   y += 36;
 

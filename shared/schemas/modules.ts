@@ -156,6 +156,9 @@ export const createPOSchema = z.object({
     vendorId: uuid,
     quotationId: uuid,
     paymentType: z.nativeEnum(POPaymentType),
+    // Agreed advance payable — required for ADVANCE / FULL_PAYMENT, must be 0/omitted for AFTER_DELIVERY.
+    // Backend re-validates against the PO grand total.
+    advanceAmount: money.optional(),
     paymentTerms: z.string().max(500).optional(),
     deliveryDate: z.coerce.date().optional().or(z.literal('').transform(() => undefined)),
     acknowledged: acknowledgement,
@@ -180,11 +183,11 @@ export const editPOSchema = z.object({
   }),
 });
 
-// Edit an un-approved PO (PENDING_APPROVAL or REJECTED) — all fields editable
+// Edit an un-approved PO (PENDING_APPROVAL or REJECTED) — payment type is NOT editable
+// (it is fixed at creation). Items, payment terms, delivery date, and budget head remain editable.
 export const editUnapprovedPOSchema = z.object({
   params: z.object({ id: uuid }),
   body: z.object({
-    paymentType: z.nativeEnum(POPaymentType),
     paymentTerms: z.string().max(500).optional(),
     deliveryDate: z.coerce.date().optional().or(z.literal('').transform(() => undefined)),
     budgetHeadId: uuid,

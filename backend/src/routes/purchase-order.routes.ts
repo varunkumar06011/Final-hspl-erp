@@ -1,5 +1,5 @@
 import { Router, Response, NextFunction } from 'express';
-import { Permission, POStatus, AuditAction, UserRole, GoodsReceiptStatus } from '@hospital-erp/shared';
+import { Permission, POStatus, POPaymentType, AuditAction, UserRole, GoodsReceiptStatus } from '@hospital-erp/shared';
 import { createPOSchema, listPOsSchema, approvalActionSchema, editPOSchema, editUnapprovedPOSchema, regeneratePOSchema } from '@hospital-erp/shared';
 import { prisma } from '../config/prisma';
 import { Prisma } from '@prisma/client';
@@ -384,7 +384,7 @@ router.post(
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const projectId = requireProjectId(req);
-      const { vendorId, quotationId, paymentType, paymentTerms, deliveryDate, budgetHeadId } = req.body;
+      const { vendorId, quotationId, paymentType, paymentTerms, deliveryDate, budgetHeadId, advanceAmount } = req.body;
 
       // Validate quotation exists, belongs to project, is approved, and matches vendor
       const quotation = await prisma.quotation.findFirst({
@@ -410,6 +410,24 @@ router.post(
       const gst = quotation.items.reduce((sum, item) => sum + Number(item.amount) * Number(item.gstRate) / 100, 0);
       const grandTotal = totalAmount + gst;
 
+      // Resolve the agreed advance amount based on payment type.
+      // ADVANCE / FULL_PAYMENT require an advance amount (≤ grandTotal); AFTER_DELIVERY must have none.
+      let resolvedAdvanceAmount: number | null;
+      if (paymentType === POPaymentType.ADVANCE || paymentType === POPaymentType.FULL_PAYMENT) {
+        const amt = Number(advanceAmount);
+        if (!Number.isFinite(amt) || amt <= 0) {
+          res.status(400).json({ error: 'Advance amount is required for advance / full payment POs' });
+          return;
+        }
+        if (amt > grandTotal) {
+          res.status(400).json({ error: `Advance amount cannot exceed PO grand total of ${grandTotal}` });
+          return;
+        }
+        resolvedAdvanceAmount = amt;
+      } else {
+        resolvedAdvanceAmount = null;
+      }
+
       // Create PO + approval workflow atomically so a rollback can't leave an
       // orphan workflow or a PO without its workflow linkage.
       const { po, workflow } = await prisma.$transaction(async (tx) => {
@@ -421,6 +439,7 @@ router.post(
             poNumber,
             status: POStatus.PENDING_APPROVAL,
             paymentType,
+            advanceAmount: resolvedAdvanceAmount,
             paymentTerms: paymentTerms ?? null,
             deliveryDate: deliveryDate ? new Date(deliveryDate) : null,
             totalAmount,
@@ -477,7 +496,7 @@ router.post(
         entityType: 'PURCHASE_ORDER',
         entityId: po.id,
         projectId,
-        newValue: { poNumber, vendorId, quotationId, totalAmount, grandTotal, acknowledged: true },
+        newValue: { poNumber, vendorId, quotationId, totalAmount, grandTotal, paymentType, advanceAmount: resolvedAdvanceAmount, acknowledged: true },
       });
 
       // Notify all approvers via push notification
@@ -862,7 +881,7 @@ router.post(
         return;
       }
 
-      const { paymentType, paymentTerms, deliveryDate, budgetHeadId, items: newItems } = req.body;
+      const { paymentTerms, deliveryDate, budgetHeadId, items: newItems } = req.body;
 
       // Validate budget head exists and belongs to project
       const budgetHead = await prisma.budgetHead.findFirst({
@@ -877,6 +896,13 @@ router.post(
       const totalAmount = newItems.reduce((sum: number, i: { quantity: number; unitPrice: number }) => sum + i.quantity * i.unitPrice, 0);
       const gstAmount = newItems.reduce((sum: number, i: { quantity: number; unitPrice: number; gstRate: number }) => sum + (i.quantity * i.unitPrice) * i.gstRate / 100, 0);
       const grandTotal = totalAmount + gstAmount;
+
+      // Payment type is fixed at creation — not editable here. If the PO has an
+      // agreed advance amount, ensure the edited grand total still covers it.
+      if (po.advanceAmount !== null && Number(po.advanceAmount) > grandTotal) {
+        res.status(400).json({ error: `Edited grand total (${grandTotal}) is less than the agreed advance amount (${Number(po.advanceAmount)}). Increase the items or reduce the advance.` });
+        return;
+      }
 
       // Snapshot old values for audit
       const oldValue = {
@@ -940,7 +966,6 @@ router.post(
         const updated = await tx.purchaseOrder.update({
           where: { id: po.id },
           data: {
-            paymentType,
             paymentTerms: paymentTerms ?? null,
             deliveryDate: deliveryDate ? new Date(deliveryDate) : null,
             budgetHeadId,
@@ -983,7 +1008,7 @@ router.post(
         entityId: po.id,
         projectId,
         oldValue,
-        newValue: { paymentType, paymentTerms, deliveryDate, budgetHeadId, items: newItems, totalAmount, gstAmount, grandTotal },
+        newValue: { paymentTerms, deliveryDate, budgetHeadId, items: newItems, totalAmount, gstAmount, grandTotal },
       });
 
       // Notify approvers
