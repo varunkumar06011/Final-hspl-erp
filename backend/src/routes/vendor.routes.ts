@@ -167,6 +167,7 @@ const router = createCrudRouter({
       address: body.address ?? null,
       phone: body.phone ?? null,
       email: body.email ?? null,
+      description: body.description ?? null,
       status: body.status ?? 'ACTIVE',
       rating: body.rating ?? 0,
       createdBy: userId,
@@ -182,7 +183,7 @@ const router = createCrudRouter({
     const data: Record<string, unknown> = {};
 
     // Copy scalar fields
-    for (const key of ['name', 'contactPersonName', 'contactPersonPhone', 'referenceBy', 'gstNumber', 'panNumber', 'category', 'bankName', 'bankAccountNumber', 'ifscCode', 'address', 'phone', 'email', 'status', 'rating']) {
+    for (const key of ['name', 'contactPersonName', 'contactPersonPhone', 'referenceBy', 'gstNumber', 'panNumber', 'category', 'bankName', 'bankAccountNumber', 'ifscCode', 'address', 'phone', 'email', 'description', 'status', 'rating']) {
       if (body[key] !== undefined) {
         data[key] = body[key];
       }

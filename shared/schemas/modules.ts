@@ -93,6 +93,7 @@ export const createVendorSchema = z.object({
     address: z.string().max(500).optional(),
     phone: z.string().max(20).optional(),
     email: z.string().email().optional().or(z.literal('')),
+    description: z.string().max(1000).optional(),
     status: z.nativeEnum(VendorStatus).default(VendorStatus.ACTIVE), // workflow status — keep enum
     rating: z.coerce.number().int().min(0).max(5).default(0),
     materials: z.array(vendorMaterial).optional(),

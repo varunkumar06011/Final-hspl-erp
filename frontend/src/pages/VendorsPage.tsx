@@ -328,6 +328,7 @@ export default function VendorsPage() {
           { key: 'createdAt', label: 'Date', render: (r) => formatDate(r.createdAt) },
           { key: 'phone', label: 'Phone' },
           { key: 'referenceBy', label: 'Referred By' },
+          { key: 'description', label: 'Description' },
           { key: 'totalBilled', label: 'Total Bill', render: (r) => `₹${Number(r.totalBilled ?? 0).toLocaleString('en-IN')}` },
           { key: 'totalPaid', label: 'Paid', render: (r) => `₹${Number(r.totalPaid ?? 0).toLocaleString('en-IN')}` },
           { key: 'outstanding', label: 'Outstanding', render: (r) => `₹${Number(r.outstanding ?? 0).toLocaleString('en-IN')}` },
@@ -345,6 +346,7 @@ export default function VendorsPage() {
           { key: 'gstNumber', label: 'GST No' },
           { key: 'phone', label: 'Phone' },
           { key: 'referenceBy', label: 'Referred By' },
+          { key: 'description', label: 'Description' },
           { key: 'totalBilled', label: 'Total Billed', format: (r) => String(Number(r.totalBilled ?? 0)) },
           { key: 'totalPaid', label: 'Total Paid', format: (r) => String(Number(r.totalPaid ?? 0)) },
           { key: 'outstanding', label: 'Outstanding', format: (r) => String(Number(r.outstanding ?? 0)) },
@@ -379,6 +381,7 @@ export default function VendorsPage() {
           { name: 'ifscCode', label: 'IFSC Code', type: 'text' },
           { name: 'address', label: 'Address', type: 'textarea' },
           { name: 'email', label: 'Email', type: 'text' },
+          { name: 'description', label: 'Description', type: 'textarea' },
         ]}
         rowActions={(row) => (
           <Stack direction="row" spacing={0.5}>
