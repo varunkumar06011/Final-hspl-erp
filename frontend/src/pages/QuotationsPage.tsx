@@ -776,8 +776,8 @@ export default function QuotationsPage() {
                         <TextField
                           label="Unit Price"
                           type="text"
-                          value={formatIndianNumber(item.unitPrice)}
-                          onChange={(e) => updateLineItem(index, 'unitPrice', e.target.value === '' ? '' : e.target.value.replace(/,/g, ''))}
+                          value={item.unitPrice}
+                          onChange={(e) => updateLineItem(index, 'unitPrice', e.target.value.replace(/,/g, ''))}
                           inputMode="decimal"
                           inputProps={{ min: 0, step: 0.01 }}
                           size="small"
