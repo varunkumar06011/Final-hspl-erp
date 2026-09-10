@@ -81,7 +81,7 @@ export default function FinanceReportsPage() {
       queryClient.invalidateQueries({ queryKey: ['/finance-reports/budget-vs-actual'] });
       queryClient.invalidateQueries({ queryKey: ['/budget-heads'] });
       queryClient.invalidateQueries({ queryKey: ['/budget-heads/summary'] });
-      queryClient.invalidateQueries({ queryKey: ['/dashboard/admin-summary'] });
+      queryClient.invalidateQueries({ queryKey: ['/dashboard', 'admin-summary'] });
       queryClient.refetchQueries({ queryKey: ['/finance-reports/budget-vs-actual'] });
       setCreateDialogOpen(false);
       setCreateForm({ slNo: '', particulars: '', allocatedAmount: '' });
@@ -219,7 +219,7 @@ export default function FinanceReportsPage() {
       queryClient.invalidateQueries({ queryKey: ['/budget-heads'] });
       queryClient.invalidateQueries({ queryKey: ['/budget-heads/summary'] });
       queryClient.invalidateQueries({ queryKey: ['/finance-reports/budget-vs-actual'] });
-      queryClient.invalidateQueries({ queryKey: ['/dashboard/admin-summary'] });
+      queryClient.invalidateQueries({ queryKey: ['/dashboard', 'admin-summary'] });
       setOutflowDialogOpen(false);
       setOutflowForm({
         accountType: 'BANK',

@@ -37,6 +37,7 @@ import {
   LightMode as LightModeIcon,
   NavigateNext as NavigateNextIcon,
   AutoAwesome as AutoAwesomeIcon,
+  ArrowBack as ArrowBackIcon,
 } from '@mui/icons-material';
 import { useAuthStore } from '../stores/authStore';
 import { hasPermission, Permission, UserRole } from '@hospital-erp/shared';
@@ -457,6 +458,12 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       )}
 
       <Box component="main" sx={{ flexGrow: 1, p: { xs: 1.5, sm: 2, md: 3 }, mt: 8, width: { xs: '100%', md: 'auto' }, minWidth: 0, overflow: 'hidden' }}>
+        {/* Mobile back button — iPhones have no hardware back gesture */}
+        {isMobile && location.pathname !== '/' && (
+          <IconButton onClick={() => navigate(-1)} sx={{ mb: 1, p: 0.5 }} aria-label="Back">
+            <ArrowBackIcon />
+          </IconButton>
+        )}
         {/* Breadcrumbs */}
         <Breadcrumbs
           separator={<NavigateNextIcon fontSize="small" />}

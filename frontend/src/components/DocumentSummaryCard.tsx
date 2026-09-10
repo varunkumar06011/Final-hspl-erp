@@ -41,7 +41,7 @@ export default function DocumentSummaryCard({ compact = false }: { compact?: boo
   const [open, setOpen] = useState(false);
 
   const { data, isLoading, isError } = useQuery({
-    queryKey: ['/dashboard/document-summary'],
+    queryKey: ['/dashboard', 'document-summary'],
     queryFn: async () => {
       const response = await api.get<DocumentSummaryResponse>('/dashboard/document-summary');
       return response.data;

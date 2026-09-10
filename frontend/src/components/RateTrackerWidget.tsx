@@ -71,7 +71,7 @@ export default function RateTrackerWidget() {
   const sort = 'inc';
 
   const { data, isLoading, isError } = useQuery({
-    queryKey: ['/dashboard/rate-tracker', sort],
+    queryKey: ['/dashboard', 'rate-tracker', sort],
     queryFn: async () => {
       const response = await api.get<RateTrackerResponse>('/dashboard/rate-tracker', {
         params: { limit: 50, sort },

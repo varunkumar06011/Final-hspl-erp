@@ -231,7 +231,7 @@ export default function PendingItemsDialog({ open, entityType, user, onClose }: 
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['pending-items', entityType] });
-      queryClient.invalidateQueries({ queryKey: ['/dashboard/summary'] });
+      queryClient.invalidateQueries({ queryKey: ['/dashboard', 'summary'] });
       queryClient.invalidateQueries({ queryKey: [config.endpoint] });
       setApprovalAction(null);
       setActionError('');
@@ -247,7 +247,7 @@ export default function PendingItemsDialog({ open, entityType, user, onClose }: 
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['pending-items', entityType] });
-      queryClient.invalidateQueries({ queryKey: ['/dashboard/summary'] });
+      queryClient.invalidateQueries({ queryKey: ['/dashboard', 'summary'] });
       queryClient.invalidateQueries({ queryKey: [config.endpoint] });
       setApprovalAction(null);
       setActionError('');

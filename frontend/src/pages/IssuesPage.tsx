@@ -115,7 +115,7 @@ export default function IssuesPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/issues'] });
-      queryClient.invalidateQueries({ queryKey: ['/dashboard/summary'] });
+      queryClient.invalidateQueries({ queryKey: ['/dashboard', 'summary'] });
       setCreateOpen(false);
       setEditingId(null);
       setForm({});
@@ -129,7 +129,7 @@ export default function IssuesPage() {
     mutationFn: async (id: string) => { await api.delete(`/issues/${id}`); },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/issues'] });
-      queryClient.invalidateQueries({ queryKey: ['/dashboard/summary'] });
+      queryClient.invalidateQueries({ queryKey: ['/dashboard', 'summary'] });
       setSuccessMsg('Issue deleted.');
       setTimeout(() => setSuccessMsg(''), 3000);
     },
@@ -169,7 +169,7 @@ export default function IssuesPage() {
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['/issues'] });
-      queryClient.invalidateQueries({ queryKey: ['/dashboard/summary'] });
+      queryClient.invalidateQueries({ queryKey: ['/dashboard', 'summary'] });
     },
     onSuccess: () => {
       setCloseTarget(null);

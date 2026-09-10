@@ -185,7 +185,7 @@ export default function WorkCalendarPage() {
   const invalidateAll = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ['/work-tasks/calendar'] });
     queryClient.invalidateQueries({ queryKey: ['/work-tasks'] });
-    queryClient.invalidateQueries({ queryKey: ['/dashboard/summary'] });
+    queryClient.invalidateQueries({ queryKey: ['/dashboard', 'summary'] });
   }, [queryClient]);
 
   const saveMutation = useMutation({

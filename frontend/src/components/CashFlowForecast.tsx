@@ -20,7 +20,7 @@ export default function CashFlowForecast() {
   const chartGridColor = mode === 'dark' ? '#333' : '#e0e0e0';
 
   const { data, isLoading } = useQuery({
-    queryKey: ['/dashboard/cash-flow-forecast'],
+    queryKey: ['/dashboard', 'cash-flow-forecast'],
     queryFn: async () => {
       const response = await api.get('/dashboard/cash-flow-forecast');
       return response.data;

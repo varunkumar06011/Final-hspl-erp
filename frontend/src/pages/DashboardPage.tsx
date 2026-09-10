@@ -37,7 +37,7 @@ export default function DashboardPage() {
   // ── Existing dashboard for all non-admin roles (unchanged) ──
 
   const { data: summary, isLoading, isError } = useQuery({
-    queryKey: ['/dashboard/summary'],
+    queryKey: ['/dashboard', 'summary'],
     queryFn: async () => {
       const response = await api.get('/dashboard/summary');
       return response.data;

@@ -63,7 +63,7 @@ function prettyMode(mode: string): string {
  */
 export default function AmountUsedTodayWidget() {
   const { data, isLoading, isError } = useQuery({
-    queryKey: ['/dashboard/payments-today'],
+    queryKey: ['/dashboard', 'payments-today'],
     queryFn: async () => {
       const response = await api.get<PaymentsTodayResponse>('/dashboard/payments-today');
       return response.data;

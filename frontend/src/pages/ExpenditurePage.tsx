@@ -42,7 +42,7 @@ export default function ExpenditurePage() {
   const [search, setSearch] = useState('');
 
   const { data, isLoading, refetch } = useQuery({
-    queryKey: ['/dashboard/outflow-by-range', 'all'],
+    queryKey: ['/dashboard', 'outflow-by-range', 'all'],
     queryFn: async () => {
       const response = await api.get('/dashboard/outflow-by-range', {
         params: { startDate: '2000-01-01', endDate: '2099-12-31', limit: 5000 },

@@ -97,12 +97,12 @@ function StatusChip({ value }: { value: string }) {
 export default function DenseAdminDashboard() {
   const navigate = useNavigate();
   const { data, isLoading } = useQuery<DashboardData>({
-    queryKey: ['/dashboard/admin-summary'],
+    queryKey: ['/dashboard', 'admin-summary'],
     queryFn: async () => (await api.get('/dashboard/admin-summary')).data,
     refetchInterval: 30000,
   });
   const { data: trend } = useQuery<TrendData>({
-    queryKey: ['/dashboard/admin-outflow-trend', 30],
+    queryKey: ['/dashboard', 'admin-outflow-trend', 30],
     queryFn: async () => (await api.get('/dashboard/admin-outflow-trend', { params: { days: 30 } })).data,
     refetchInterval: 30000,
   });
@@ -112,7 +112,7 @@ export default function DenseAdminDashboard() {
   const [expDateStart, setExpDateStart] = useState('');
   const [expDateEnd, setExpDateEnd] = useState('');
   const { data: expenditureDetails, isLoading: expenditureDetailsLoading } = useQuery<ExpenditureDetailData>({
-    queryKey: ['/dashboard/outflow-by-range', expDateStart, expDateEnd],
+    queryKey: ['/dashboard', 'outflow-by-range', expDateStart, expDateEnd],
     queryFn: async () => (await api.get('/dashboard/outflow-by-range', {
       params: {
         all: 'true',
@@ -124,12 +124,12 @@ export default function DenseAdminDashboard() {
     enabled: expenditureOpen,
   });
   const { data: inwardDetails, isLoading: inwardDetailsLoading } = useQuery<InwardDetailData>({
-    queryKey: ['/dashboard/admin-inflow-detail'],
+    queryKey: ['/dashboard', 'admin-inflow-detail'],
     queryFn: async () => (await api.get('/dashboard/admin-inflow-detail', { params: { limit: 5000 } })).data,
     enabled: inwardOpen,
   });
   const { data: shortAdvanceDetails, isLoading: shortAdvanceDetailsLoading } = useQuery<ShortAdvanceDetailData>({
-    queryKey: ['/dashboard/admin-short-advance-detail'],
+    queryKey: ['/dashboard', 'admin-short-advance-detail'],
     queryFn: async () => (await api.get('/dashboard/admin-short-advance-detail', { params: { limit: 5000 } })).data,
     enabled: shortAdvanceOpen,
   });

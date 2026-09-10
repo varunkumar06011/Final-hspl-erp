@@ -58,7 +58,7 @@ export default function InwardFundsPage() {
   const [search, setSearch] = useState('');
 
   const { data, isLoading, refetch } = useQuery({
-    queryKey: ['/dashboard/admin-inflow-detail'],
+    queryKey: ['/dashboard', 'admin-inflow-detail'],
     queryFn: async () => {
       const response = await api.get('/dashboard/admin-inflow-detail', { params: { limit: 5000 } });
       return response.data as { totalAmount: number; totalCount: number; transactions: InflowTransaction[] };
