@@ -197,14 +197,14 @@ export default function DenseAdminDashboard() {
                 <Typography sx={{ fontSize: '0.78rem', fontWeight: 800, color: 'error.dark', display: 'flex', alignItems: 'center', gap: 0.5 }}>Action Required</Typography>
                 <SirenIcon sx={{ fontSize: 22, color: 'error.main', animation: `${sirenIconPulse} 1s infinite` }} />
               </Stack>
-              <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 0.3, overflow: 'hidden' }}>
+              <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 0.3, overflow: 'auto', WebkitOverflowScrolling: 'touch', '&::-webkit-scrollbar': { width: 4 }, '&::-webkit-scrollbar-thumb': { bgcolor: 'divider', borderRadius: 2 } }}>
                 {loading ? <Skeleton variant="rectangular" height={20} /> : (data?.actionItems ?? []).length === 0 ? (
                   <Typography variant="caption" color="text.secondary" sx={{ textAlign: 'center', py: 1 }}>No pending action</Typography>
                 ) : (
                   <>
                     <Typography sx={{ fontSize: '1.4rem', fontWeight: 900, color: 'error.main', lineHeight: 1, textAlign: 'center' }}>{data?.actionItems.length}</Typography>
                     <Typography variant="caption" color="error.dark" sx={{ textAlign: 'center', fontWeight: 700, mb: 0.3 }}>pending items</Typography>
-                    {(data?.actionItems ?? []).slice(0, 3).map((item) => (
+                    {(data?.actionItems ?? []).map((item) => (
                       <Chip key={`${item.type}-${item.id}`} clickable onClick={() => navigate(item.path)} label={`${item.type === 'purchase-order' ? 'PO' : item.type === 'quotation' ? 'Quotation' : item.type === 'invoice' ? 'Invoice' : 'Payment'} ${item.code}`} color="error" variant="outlined" sx={{ height: 20, fontSize: '0.58rem', justifyContent: 'space-between' }} />
                     ))}
                   </>
