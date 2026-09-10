@@ -5,12 +5,6 @@ import {
   Typography,
   Button,
   Card,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
   TablePagination,
   TextField,
   DialogTitle,
@@ -50,7 +44,6 @@ import { useDeepLinkRow } from '../hooks/useDeepLinkRow';
 import AcknowledgementCheckbox from '../components/AcknowledgementCheckbox';
 import ApprovalActionDialog from '../components/ApprovalActionDialog';
 import OcrAutoFill, { type OcrQuotationData } from '../components/OcrAutoFill';
-import ResponsiveTable from '../components/ResponsiveTable';
 import RefreshButton from '../components/RefreshButton';
 import QuotationTimelineDialog from '../components/QuotationTimelineDialog';
 import { useApprovalDeepLink } from '../utils/useApprovalDeepLink';
@@ -568,134 +561,138 @@ export default function QuotationsPage() {
           </TextField>
         </Box>
 
-        <ResponsiveTable>
-        <TableContainer sx={{ overflowX: 'auto' }}>
-          <Table size="small" sx={{ '@media (min-width: 900px)': { minWidth: 'max-content', '& .MuiTableCell-root': { whiteSpace: 'nowrap' } } }}>
-            <TableHead>
-              <TableRow>
-                <TableCell sx={{ fontWeight: 600 }}>Quotation No</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Vendor / Materials</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Quotation Date</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Total</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>GST</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Grand Total</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Created By</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Status</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>File</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Actions</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {isLoading ? (
-                <TableRow><TableCell colSpan={10} align="center" sx={{ py: 4 }}><CircularProgress size={32} /></TableCell></TableRow>
-              ) : rows.length === 0 ? (
-                <TableRow><TableCell colSpan={10} align="center" sx={{ py: 4 }}><Typography color="text.secondary">No quotations found</Typography></TableCell></TableRow>
-              ) : (
-                rows.map((row) => {
-                  const pendingStep = canApprove(row);
-                  const aging = agingMap.get(row.id);
-                  const agingStatus = aging?.agingStatus ?? 'NORMAL';
-                  const agingLabel = aging?.agingLabel ?? '';
+        {/* Quotation cards — compact label/value layout, no horizontal scroll */}
+        {isLoading ? (
+          <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress size={32} /></Box>
+        ) : rows.length === 0 ? (
+          <Box sx={{ textAlign: 'center', py: 4 }}><Typography color="text.secondary">No quotations found</Typography></Box>
+        ) : (
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+            {rows.map((row) => {
+              const pendingStep = canApprove(row);
+              const aging = agingMap.get(row.id);
+              const agingStatus = aging?.agingStatus ?? 'NORMAL';
+              const agingLabel = aging?.agingLabel ?? '';
 
-                  // Aging-based row background colors (additive — only applies
-                  // to pending quotations, doesn't change approved/rejected rows)
-                  const rowBg =
-                    agingStatus === 'OVERDUE' ? '#ffebee' :       // red
-                    agingStatus === 'ATTENTION' ? '#fff3e0' :     // light red/orange
-                    highlightId === row.id ? 'warning.light' :    // existing highlight
-                    'inherit';
+              const rowBg =
+                agingStatus === 'OVERDUE' ? '#ffebee' :
+                agingStatus === 'ATTENTION' ? '#fff3e0' :
+                highlightId === row.id ? 'warning.light' :
+                'background.paper';
 
-                  return (
-                    <TableRow
-                      key={row.id}
-                      hover
-                      ref={rowRef(row.id)}
-                      sx={{
-                        bgcolor: rowBg,
-                        '&:hover': { bgcolor: rowBg === 'inherit' ? undefined : rowBg },
-                        ...(highlightId === row.id && rowBg === 'inherit' && { bgcolor: 'warning.light', '&:hover': { bgcolor: 'warning.light' } }),
-                      }}
-                    >
-                      <TableCell data-label="Quotation No">
-                        {row.quotationNumber}
-                        {agingLabel && (
-                          <Typography variant="caption" display="block" sx={{
-                            color: agingStatus === 'OVERDUE' ? 'error.main' : agingStatus === 'ATTENTION' ? 'warning.dark' : 'text.secondary',
-                            fontWeight: agingStatus === 'OVERDUE' ? 700 : 500,
-                          }}>
-                            {agingLabel}
-                          </Typography>
-                        )}
-                      </TableCell>
-                      <TableCell data-label="Vendor / Materials">
-                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.25 }}>
-                          <Typography variant="body2" sx={{ fontWeight: 600, whiteSpace: 'nowrap' }}>
-                            {row.vendor?.vendorCode} - {row.vendor?.name ?? '—'}
-                          </Typography>
-                          {row.vendor?.category && (
-                            <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: 'nowrap' }}>
-                              {VENDOR_CATEGORY_LABELS[row.vendor.category] ?? row.vendor.category}
-                            </Typography>
-                          )}
-                          {row.items && row.items.length > 0 && (
-                            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.25, mt: 0.25 }}>
-                              {row.items.map((item, i) => (
-                                <Typography key={i} variant="caption" color="text.secondary" sx={{ whiteSpace: 'nowrap' }}>
-                                  {item.materialName} — {item.quantity}{item.unit ? ` ${item.unit}` : ''}
-                                </Typography>
-                              ))}
-                            </Box>
-                          )}
-                        </Box>
-                      </TableCell>
-                      <TableCell data-label="Quotation Date">{formatDate(row.date)}</TableCell>
-                      <TableCell data-label="Total">{formatCurrency(row.totalAmount)}</TableCell>
-                      <TableCell data-label="GST">{formatCurrency(row.gstAmount)}</TableCell>
-                      <TableCell data-label="Grand Total">{formatCurrency(row.grandTotal)}</TableCell>
-                      <TableCell data-label="Created By">{row.createdByUser?.name ?? '—'}</TableCell>
-                      <TableCell data-label="Status">
-                        <Chip
-                          label={row.status.replace(/_/g, ' ')}
-                          size="small"
-                          color={
-                            agingStatus === 'OVERDUE' ? 'error' :
-                            agingStatus === 'ATTENTION' ? 'warning' :
-                            agingStatus === 'APPROVED' ? 'success' :
-                            agingStatus === 'REJECTED' ? 'default' :
-                            STATUS_COLORS[row.status] ?? 'default'
-                          }
-                        />
-                      </TableCell>
-                      <TableCell data-label="File">
-                        {row.filePath ? (
-                          <IconButton size="small" onClick={() => handleDownload(row.id, row.fileName ?? 'quotation')}><DownloadIcon fontSize="small" /></IconButton>
-                        ) : '—'}
-                      </TableCell>
-                      <TableCell data-label="Actions">
-                        <Box sx={{ display: 'flex', gap: 0.5 }}>
-                          <IconButton size="small" onClick={() => setTimelineRow(row)} title="Show Timeline"><TimelineIcon fontSize="small" /></IconButton>
-                          {row.status === QuotationStatus.SUBMITTED || row.status === QuotationStatus.UNDER_REVIEW ? (
-                            <IconButton size="small" onClick={() => openEdit(row)}><EditIcon /></IconButton>
-                          ) : null}
-                          {pendingStep && (
-                            <>
-                              <IconButton size="small" color="success" onClick={() => setApprovalAction({ row, step: pendingStep, action: 'approve' })} title="Approve"><CheckIcon fontSize="small" /></IconButton>
-                              <IconButton size="small" color="error" onClick={() => setApprovalAction({ row, step: pendingStep, action: 'reject' })} title="Reject"><CloseIcon fontSize="small" /></IconButton>
-                            </>
-                          )}
-                          {row.status !== QuotationStatus.APPROVED && row.status !== QuotationStatus.CONVERTED_TO_PO && (
-                            <IconButton size="small" color="error" onClick={() => setDeleteRow(row)} title="Delete"><DeleteIcon fontSize="small" /></IconButton>
-                          )}
-                        </Box>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })
-              )}
-            </TableBody>
-          </Table>
-        </TableContainer>
-        </ResponsiveTable>
+              return (
+                <Box
+                  key={row.id}
+                  ref={rowRef(row.id)}
+                  sx={{
+                    bgcolor: rowBg,
+                    border: '1px solid',
+                    borderColor: 'divider',
+                    borderRadius: 1,
+                    p: 1.25,
+                    '&:hover': { borderColor: 'primary.main' },
+                    ...(highlightId === row.id && rowBg === 'background.paper' && { bgcolor: 'warning.light' }),
+                  }}
+                >
+                  {/* Status bar */}
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 0.75, pb: 0.75, borderBottom: '1px solid', borderColor: 'action.hover' }}>
+                    <Chip
+                      label={row.status.replace(/_/g, ' ')}
+                      size="small"
+                      color={
+                        agingStatus === 'OVERDUE' ? 'error' :
+                        agingStatus === 'ATTENTION' ? 'warning' :
+                        agingStatus === 'APPROVED' ? 'success' :
+                        agingStatus === 'REJECTED' ? 'default' :
+                        STATUS_COLORS[row.status] ?? 'default'
+                      }
+                    />
+                    {agingLabel && (
+                      <Typography variant="caption" sx={{
+                        color: agingStatus === 'OVERDUE' ? 'error.main' : agingStatus === 'ATTENTION' ? 'warning.dark' : 'text.secondary',
+                        fontWeight: agingStatus === 'OVERDUE' ? 700 : 500,
+                      }}>
+                        {agingLabel}
+                      </Typography>
+                    )}
+                  </Box>
+
+                  {/* Two-column label/value grid */}
+                  <Box sx={{
+                    display: 'grid',
+                    gridTemplateColumns: { xs: '1fr', sm: '140px 1fr 140px 1fr' },
+                    gap: { xs: 0.25, sm: '2px 12px' },
+                    alignItems: 'baseline',
+                  }}>
+                    <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>Quotation No</Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem' }}>{row.quotationNumber}</Typography>
+
+                    <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>Vendor</Typography>
+                    <Typography variant="body2" sx={{ fontSize: '0.85rem' }}>{row.vendor?.vendorCode} - {row.vendor?.name ?? '—'}</Typography>
+
+                    <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>Category</Typography>
+                    <Typography variant="body2" sx={{ fontSize: '0.85rem' }}>{row.vendor?.category ? (VENDOR_CATEGORY_LABELS[row.vendor.category] ?? row.vendor.category) : '—'}</Typography>
+
+                    <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>Quotation Date</Typography>
+                    <Typography variant="body2" sx={{ fontSize: '0.85rem' }}>{formatDate(row.date)}</Typography>
+
+                    <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>Generated On</Typography>
+                    <Typography variant="body2" sx={{ fontSize: '0.85rem' }}>{formatDate(row.createdAt)}</Typography>
+
+                    <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>Total</Typography>
+                    <Typography variant="body2" sx={{ fontSize: '0.85rem' }}>{formatCurrency(row.totalAmount)}</Typography>
+
+                    <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>GST</Typography>
+                    <Typography variant="body2" sx={{ fontSize: '0.85rem' }}>{formatCurrency(row.gstAmount)}</Typography>
+
+                    <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>Grand Total</Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem' }}>{formatCurrency(row.grandTotal)}</Typography>
+
+                    <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>Created By</Typography>
+                    <Typography variant="body2" sx={{ fontSize: '0.85rem' }}>{row.createdByUser?.name ?? '—'}</Typography>
+                  </Box>
+
+                  {/* Materials — full width row */}
+                  {row.items && row.items.length > 0 && (
+                    <Box sx={{ display: 'flex', gap: 1, alignItems: 'baseline', mt: 0.5 }}>
+                      <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem', flexShrink: 0, minWidth: 140 }}>Materials</Typography>
+                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                        {row.items.map((item, i) => (
+                          <Chip key={i} label={`${item.materialName} — ${item.quantity}${item.unit ? ` ${item.unit}` : ''}`} size="small" variant="outlined" sx={{ fontSize: '0.75rem', height: 22 }} />
+                        ))}
+                      </Box>
+                    </Box>
+                  )}
+
+                  {/* File + Actions — bottom row */}
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 0.75, pt: 0.75, borderTop: '1px solid', borderColor: 'action.hover' }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>File</Typography>
+                      {row.filePath ? (
+                        <IconButton size="small" onClick={() => handleDownload(row.id, row.fileName ?? 'quotation')}><DownloadIcon fontSize="small" /></IconButton>
+                      ) : <Typography variant="caption" sx={{ fontSize: '0.75rem' }}>—</Typography>}
+                    </Box>
+                    <Box sx={{ display: 'flex', gap: 0.5 }}>
+                      <IconButton size="small" onClick={() => setTimelineRow(row)} title="Show Timeline"><TimelineIcon fontSize="small" /></IconButton>
+                      {row.status === QuotationStatus.SUBMITTED || row.status === QuotationStatus.UNDER_REVIEW ? (
+                        <IconButton size="small" onClick={() => openEdit(row)} title="Edit"><EditIcon fontSize="small" /></IconButton>
+                      ) : null}
+                      {pendingStep && (
+                        <>
+                          <IconButton size="small" color="success" onClick={() => setApprovalAction({ row, step: pendingStep, action: 'approve' })} title="Approve"><CheckIcon fontSize="small" /></IconButton>
+                          <IconButton size="small" color="error" onClick={() => setApprovalAction({ row, step: pendingStep, action: 'reject' })} title="Reject"><CloseIcon fontSize="small" /></IconButton>
+                        </>
+                      )}
+                      {row.status !== QuotationStatus.APPROVED && row.status !== QuotationStatus.CONVERTED_TO_PO && (
+                        <IconButton size="small" color="error" onClick={() => setDeleteRow(row)} title="Delete"><DeleteIcon fontSize="small" /></IconButton>
+                      )}
+                    </Box>
+                  </Box>
+                </Box>
+              );
+            })}
+          </Box>
+        )}
 
         <TablePagination
           component="div"
