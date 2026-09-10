@@ -460,7 +460,7 @@ export default function QuotationsPage() {
 
   async function handleShareWhatsApp(row: QuotationRow) {
     // Build a text summary of the quotation
-    const materials = row.items?.map((i) => `  • ${i.materialName} — ${i.quantity}${i.unit ? ` ${i.unit}` : ''}`).join('\n') ?? '';
+    const materials = row.items?.map((i) => `  • ${i.materialName} — ${i.quantity}${i.unit ? ` ${i.unit}` : ''} @ ${formatCurrency(Number(i.unitPrice))} = ${formatCurrency(Number(i.amount))}`).join('\n') ?? '';
     const text = [
       `*Quotation ${row.quotationNumber}*`,
       `Vendor: ${row.vendor?.vendorCode} - ${row.vendor?.name ?? '—'}`,
@@ -699,14 +699,29 @@ export default function QuotationsPage() {
                     <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem' }}>{row.createdByUser?.name ?? '—'}</Typography>
                   </Box>
 
-                  {/* Materials — full width row */}
+                  {/* Materials — full width compact table */}
                   {row.items && row.items.length > 0 && (
-                    <Box sx={{ display: 'flex', gap: 1, alignItems: 'baseline', mt: 0.5 }}>
-                      <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem', flexShrink: 0, minWidth: 140 }}>Materials</Typography>
-                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                        {row.items.map((item, i) => (
-                          <Chip key={i} label={`${item.materialName} — ${item.quantity}${item.unit ? ` ${item.unit}` : ''}`} size="small" variant="outlined" sx={{ fontSize: '0.75rem', height: 22, fontWeight: 600 }} />
-                        ))}
+                    <Box sx={{ mt: 0.5 }}>
+                      <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem', display: 'block', mb: 0.5 }}>Materials</Typography>
+                      <Box component="table" sx={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+                        <Box component="thead">
+                          <Box component="tr" sx={{ borderBottom: '1px solid', borderColor: 'divider' }}>
+                            <Box component="th" sx={{ textAlign: 'left', py: 0.25, px: 0.5, fontWeight: 600, fontSize: '0.7rem', color: 'text.secondary', textTransform: 'uppercase' }}>Material</Box>
+                            <Box component="th" sx={{ textAlign: 'right', py: 0.25, px: 0.5, fontWeight: 600, fontSize: '0.7rem', color: 'text.secondary', textTransform: 'uppercase' }}>Qty</Box>
+                            <Box component="th" sx={{ textAlign: 'right', py: 0.25, px: 0.5, fontWeight: 600, fontSize: '0.7rem', color: 'text.secondary', textTransform: 'uppercase' }}>Unit Price</Box>
+                            <Box component="th" sx={{ textAlign: 'right', py: 0.25, px: 0.5, fontWeight: 600, fontSize: '0.7rem', color: 'text.secondary', textTransform: 'uppercase' }}>Amount</Box>
+                          </Box>
+                        </Box>
+                        <Box component="tbody">
+                          {row.items.map((item, i) => (
+                            <Box key={i} component="tr" sx={{ borderBottom: '1px solid', borderColor: 'action.hover', '&:last-child': { borderBottom: 'none' } }}>
+                              <Box component="td" sx={{ py: 0.25, px: 0.5, fontWeight: 600, fontSize: '0.8rem' }}>{item.materialName}</Box>
+                              <Box component="td" sx={{ py: 0.25, px: 0.5, textAlign: 'right', fontSize: '0.8rem', whiteSpace: 'nowrap' }}>{item.quantity}{item.unit ? ` ${item.unit}` : ''}</Box>
+                              <Box component="td" sx={{ py: 0.25, px: 0.5, textAlign: 'right', fontSize: '0.8rem', whiteSpace: 'nowrap' }}>{formatCurrency(Number(item.unitPrice))}</Box>
+                              <Box component="td" sx={{ py: 0.25, px: 0.5, textAlign: 'right', fontWeight: 600, fontSize: '0.8rem', whiteSpace: 'nowrap' }}>{formatCurrency(Number(item.amount))}</Box>
+                            </Box>
+                          ))}
+                        </Box>
                       </Box>
                     </Box>
                   )}
