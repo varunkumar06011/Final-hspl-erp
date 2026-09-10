@@ -1,4 +1,4 @@
-﻿import { useState, useMemo, useRef, useEffect } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
   Box,
@@ -570,15 +570,12 @@ export default function QuotationsPage() {
 
         <ResponsiveTable>
         <TableContainer sx={{ overflowX: 'auto' }}>
-          <Table size="small">
+          <Table size="small" sx={{ '@media (min-width: 900px)': { minWidth: 'max-content', '& .MuiTableCell-root': { whiteSpace: 'nowrap' } } }}>
             <TableHead>
               <TableRow>
                 <TableCell sx={{ fontWeight: 600 }}>Quotation No</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Vendor</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Category</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Materials</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>Vendor / Materials</TableCell>
                 <TableCell sx={{ fontWeight: 600 }}>Quotation Date</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Generated On</TableCell>
                 <TableCell sx={{ fontWeight: 600 }}>Total</TableCell>
                 <TableCell sx={{ fontWeight: 600 }}>GST</TableCell>
                 <TableCell sx={{ fontWeight: 600 }}>Grand Total</TableCell>
@@ -590,9 +587,9 @@ export default function QuotationsPage() {
             </TableHead>
             <TableBody>
               {isLoading ? (
-                <TableRow><TableCell colSpan={13} align="center" sx={{ py: 4 }}><CircularProgress size={32} /></TableCell></TableRow>
+                <TableRow><TableCell colSpan={10} align="center" sx={{ py: 4 }}><CircularProgress size={32} /></TableCell></TableRow>
               ) : rows.length === 0 ? (
-                <TableRow><TableCell colSpan={13} align="center" sx={{ py: 4 }}><Typography color="text.secondary">No quotations found</Typography></TableCell></TableRow>
+                <TableRow><TableCell colSpan={10} align="center" sx={{ py: 4 }}><Typography color="text.secondary">No quotations found</Typography></TableCell></TableRow>
               ) : (
                 rows.map((row) => {
                   const pendingStep = canApprove(row);
@@ -630,21 +627,28 @@ export default function QuotationsPage() {
                           </Typography>
                         )}
                       </TableCell>
-                      <TableCell data-label="Vendor">{row.vendor?.vendorCode} - {row.vendor?.name ?? '—'}</TableCell>
-                      <TableCell data-label="Category">{row.vendor?.category ? (VENDOR_CATEGORY_LABELS[row.vendor.category] ?? row.vendor.category) : '—'}</TableCell>
-                      <TableCell data-label="Materials">
-                        {row.items && row.items.length > 0 ? (
-                          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.25, maxWidth: 260 }}>
-                            {row.items.map((item, i) => (
-                              <Typography key={i} variant="caption" sx={{ whiteSpace: 'nowrap' }}>
-                                {item.materialName} — {item.quantity}{item.unit ? ` ${item.unit}` : ''}
-                              </Typography>
-                            ))}
-                          </Box>
-                        ) : '—'}
+                      <TableCell data-label="Vendor / Materials">
+                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.25 }}>
+                          <Typography variant="body2" sx={{ fontWeight: 600, whiteSpace: 'nowrap' }}>
+                            {row.vendor?.vendorCode} - {row.vendor?.name ?? '—'}
+                          </Typography>
+                          {row.vendor?.category && (
+                            <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: 'nowrap' }}>
+                              {VENDOR_CATEGORY_LABELS[row.vendor.category] ?? row.vendor.category}
+                            </Typography>
+                          )}
+                          {row.items && row.items.length > 0 && (
+                            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.25, mt: 0.25 }}>
+                              {row.items.map((item, i) => (
+                                <Typography key={i} variant="caption" color="text.secondary" sx={{ whiteSpace: 'nowrap' }}>
+                                  {item.materialName} — {item.quantity}{item.unit ? ` ${item.unit}` : ''}
+                                </Typography>
+                              ))}
+                            </Box>
+                          )}
+                        </Box>
                       </TableCell>
                       <TableCell data-label="Quotation Date">{formatDate(row.date)}</TableCell>
-                      <TableCell data-label="Generated On"><Typography variant="caption" color="text.secondary">{formatDate(row.createdAt)}</Typography></TableCell>
                       <TableCell data-label="Total">{formatCurrency(row.totalAmount)}</TableCell>
                       <TableCell data-label="GST">{formatCurrency(row.gstAmount)}</TableCell>
                       <TableCell data-label="Grand Total">{formatCurrency(row.grandTotal)}</TableCell>
