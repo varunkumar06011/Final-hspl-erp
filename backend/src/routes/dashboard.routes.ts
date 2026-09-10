@@ -36,7 +36,7 @@ router.get(
             _sum: { amount: true },
           }),
           prisma.paymentRequest.count({
-            where: { projectId, deletedAt: null, status: 'PENDING' },
+            where: { projectId, deletedAt: null, status: { notIn: ['APPROVED', 'REJECTED', 'PAID'] } },
           }),
           prisma.issue.count({
             where: { projectId, deletedAt: null, status: { not: 'CLOSED' } },
@@ -49,10 +49,10 @@ router.get(
             where: { projectId, deletedAt: null, status: 'IN_PROGRESS' },
           }),
           prisma.quotation.count({
-            where: { projectId, deletedAt: null, status: { in: ['SUBMITTED', 'UNDER_REVIEW'] } },
+            where: { projectId, deletedAt: null, status: { notIn: ['APPROVED', 'REJECTED', 'CONVERTED_TO_PO'] } },
           }),
           prisma.quotation.aggregate({
-            where: { projectId, deletedAt: null, status: { in: ['SUBMITTED', 'UNDER_REVIEW'] } },
+            where: { projectId, deletedAt: null, status: { notIn: ['APPROVED', 'REJECTED', 'CONVERTED_TO_PO'] } },
             _sum: { totalAmount: true },
           }),
           prisma.quotation.findMany({
@@ -65,7 +65,7 @@ router.get(
             take: 5,
           }),
           prisma.purchaseOrder.count({
-            where: { projectId, deletedAt: null, status: 'PENDING_APPROVAL' },
+            where: { projectId, deletedAt: null, status: { notIn: ['APPROVED', 'REJECTED', 'CANCELLED', 'DELIVERED', 'PARTIALLY_DELIVERED'] } },
           }),
           prisma.purchaseOrder.findMany({
             where: { projectId, deletedAt: null },
@@ -77,7 +77,7 @@ router.get(
             take: 5,
           }),
           prisma.vendorInvoice.count({
-            where: { projectId, deletedAt: null, verificationStatus: 'PENDING' },
+            where: { projectId, deletedAt: null, verificationStatus: { notIn: ['VERIFIED', 'REJECTED'] } },
           }),
           prisma.vendorInvoice.findMany({
             where: { projectId, deletedAt: null },
@@ -802,11 +802,11 @@ router.get(
             paidAmount: true,
           },
         }),
-        // Pending counts
-        prisma.paymentRequest.count({ where: { projectId, status: 'PENDING', deletedAt: null } }),
-        prisma.quotation.count({ where: { projectId, status: 'SUBMITTED', deletedAt: null } }),
-        prisma.purchaseOrder.count({ where: { projectId, status: 'PENDING_APPROVAL', deletedAt: null } }),
-        prisma.vendorInvoice.count({ where: { projectId, verificationStatus: 'PENDING', deletedAt: null } }),
+        // Pending counts — all records not yet approved/verified/rejected/cancelled
+        prisma.paymentRequest.count({ where: { projectId, status: { notIn: ['APPROVED', 'REJECTED', 'PAID'] }, deletedAt: null } }),
+        prisma.quotation.count({ where: { projectId, status: { notIn: ['APPROVED', 'REJECTED', 'CONVERTED_TO_PO'] }, deletedAt: null } }),
+        prisma.purchaseOrder.count({ where: { projectId, status: { notIn: ['APPROVED', 'REJECTED', 'CANCELLED', 'DELIVERED', 'PARTIALLY_DELIVERED'] }, deletedAt: null } }),
+        prisma.vendorInvoice.count({ where: { projectId, verificationStatus: { notIn: ['VERIFIED', 'REJECTED'] }, deletedAt: null } }),
         // Recent bank transactions (last 15 — enough for the scrollable dashboard list)
         prisma.bankTransaction.findMany({
           where: { status: 'POSTED', bankAccount: { projectId, deletedAt: null } },
@@ -977,30 +977,33 @@ router.get(
         0,
       );
 
-      // Action Required items are real pending records, not derived alerts.
+      // Action Required items — all recent records that are NOT yet approved/verified,
+      // NOT rejected, and NOT cancelled. This includes DRAFT, SUBMITTED, UNDER_REVIEW
+      // quotations and DRAFT, PENDING_APPROVAL POs, so the admin sees everything
+      // that still needs action. Sorted most-recent first.
       const [actionQuotations, actionPOs, actionInvoices, actionPayments] = await Promise.all([
         prisma.quotation.findMany({
-          where: { projectId, deletedAt: null, status: { in: ['SUBMITTED', 'UNDER_REVIEW'] } },
+          where: { projectId, deletedAt: null, status: { notIn: ['APPROVED', 'REJECTED', 'CONVERTED_TO_PO'] } },
           select: { id: true, quotationNumber: true, status: true, createdAt: true },
-          orderBy: { createdAt: 'asc' },
+          orderBy: { createdAt: 'desc' },
           take: 5,
         }),
         prisma.purchaseOrder.findMany({
-          where: { projectId, deletedAt: null, status: 'PENDING_APPROVAL' },
+          where: { projectId, deletedAt: null, status: { notIn: ['APPROVED', 'REJECTED', 'CANCELLED', 'DELIVERED', 'PARTIALLY_DELIVERED'] } },
           select: { id: true, poNumber: true, status: true, createdAt: true },
-          orderBy: { createdAt: 'asc' },
+          orderBy: { createdAt: 'desc' },
           take: 5,
         }),
         prisma.vendorInvoice.findMany({
-          where: { projectId, deletedAt: null, verificationStatus: 'PENDING' },
+          where: { projectId, deletedAt: null, verificationStatus: { notIn: ['VERIFIED', 'REJECTED'] } },
           select: { id: true, invoiceCode: true, invoiceNumber: true, verificationStatus: true, createdAt: true },
-          orderBy: { createdAt: 'asc' },
+          orderBy: { createdAt: 'desc' },
           take: 5,
         }),
         prisma.paymentRequest.findMany({
-          where: { projectId, deletedAt: null, status: 'PENDING' },
+          where: { projectId, deletedAt: null, status: { notIn: ['APPROVED', 'REJECTED', 'PAID'] } },
           select: { id: true, paymentCode: true, status: true, createdAt: true },
-          orderBy: { createdAt: 'asc' },
+          orderBy: { createdAt: 'desc' },
           take: 5,
         }),
       ]);
@@ -1009,7 +1012,7 @@ router.get(
         ...actionPOs.map((item) => ({ id: item.id, type: 'purchase-order' as const, code: item.poNumber, status: item.status, createdAt: item.createdAt.toISOString(), path: `/pos?id=${item.id}` })),
         ...actionInvoices.map((item) => ({ id: item.id, type: 'invoice' as const, code: item.invoiceCode ?? item.invoiceNumber, status: item.verificationStatus, createdAt: item.createdAt.toISOString(), path: `/invoices?id=${item.id}` })),
         ...actionPayments.map((item) => ({ id: item.id, type: 'payment' as const, code: item.paymentCode, status: item.status, createdAt: item.createdAt.toISOString(), path: `/payments?id=${item.id}` })),
-      ].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()).slice(0, 8);
+      ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 8);
 
       // ── Calculate summary values (net of reversals) ──
       // Pure bank inward is net of reversed bank receipts. Cash receipts are
