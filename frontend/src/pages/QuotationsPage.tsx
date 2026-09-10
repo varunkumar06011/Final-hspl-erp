@@ -42,7 +42,7 @@ import {
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { APPROVER_ROLES, QuotationStatus, GST_RATES } from '@hospital-erp/shared';
-import { formatCurrency, formatDate, formatIndianNumber, STATUS_COLORS } from '../utils/enumOptions';
+import { formatCurrency, formatDate, STATUS_COLORS } from '../utils/enumOptions';
 import api, { extractErrorMessage } from '../config/api';
 import { useAuthStore } from '../stores/authStore';
 import { downloadFile } from '../utils/file';
@@ -61,7 +61,7 @@ interface QuotationItem {
   quantity: number | string;
   unit?: string | null;
   unitPrice: string | number;
-  amount: number;
+  amount: number | string;
   gstRate: number;
 }
 
@@ -189,7 +189,7 @@ export default function QuotationsPage() {
     mutationFn: async () => {
       const filteredItems = lineItems
         .filter((i) => selectedMaterialNames.has(i.materialName))
-        .map((i) => ({ materialName: i.materialName, quantity: i.quantity, unit: i.unit, unitPrice: i.unitPrice, gstRate: i.gstRate }));
+        .map((i) => ({ materialName: i.materialName, quantity: i.quantity, unit: i.unit, unitPrice: i.unitPrice, amount: i.amount, gstRate: i.gstRate }));
       const formData = new FormData();
       formData.append('vendorId', selectedVendorId);
       formData.append('items', JSON.stringify(filteredItems));
@@ -223,7 +223,7 @@ export default function QuotationsPage() {
   const updateMutation = useMutation({
     mutationFn: async () => {
       const formData = new FormData();
-      formData.append('items', JSON.stringify(lineItems.filter((i) => selectedMaterialNames.has(i.materialName)).map((i) => ({ materialName: i.materialName, quantity: i.quantity, unit: i.unit, unitPrice: i.unitPrice, gstRate: i.gstRate }))));
+      formData.append('items', JSON.stringify(lineItems.filter((i) => selectedMaterialNames.has(i.materialName)).map((i) => ({ materialName: i.materialName, quantity: i.quantity, unit: i.unit, unitPrice: i.unitPrice, amount: i.amount, gstRate: i.gstRate }))));
       if (selectedFile) formData.append('file', selectedFile);
       const response = await api.patch(`/quotations/${editing!.id}`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
@@ -797,9 +797,12 @@ export default function QuotationsPage() {
                         </TextField>
                         <TextField
                           label="Amount"
-                          value={formatIndianNumber(item.amount)}
+                          type="text"
+                          value={item.amount}
+                          onChange={(e) => updateLineItem(index, 'amount', e.target.value.replace(/,/g, ''))}
+                          inputMode="decimal"
+                          inputProps={{ min: 0, step: 0.01 }}
                           size="small"
-                          disabled
                           sx={{ flex: 1, minWidth: 0 }}
                         />
                       </Box>

@@ -15,6 +15,7 @@ export interface QuotationLineItem {
   unit?: string;
   unitPrice: number;
   gstRate?: number;
+  amount?: number; // optional manual override; if absent, calculated as qty × unitPrice
 }
 
 export interface CreateQuotationInput {
@@ -102,7 +103,11 @@ export async function createQuotation(input: CreateQuotationInput) {
 
   // Calculate totals — GST is auto-derived from per-item gstRate
   const itemsWithAmounts = items.map((item) => {
-    const amount = item.quantity * item.unitPrice;
+    const calculatedAmount = item.quantity * item.unitPrice;
+    // Use client-provided amount if present (allows manual override), else calculate
+    const amount = item.amount !== undefined && Number(item.amount) > 0
+      ? Number(item.amount)
+      : calculatedAmount;
     const rate = Number(item.gstRate) || 0;
     return {
       materialName: item.materialName,
