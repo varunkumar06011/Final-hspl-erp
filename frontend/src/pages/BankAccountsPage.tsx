@@ -22,6 +22,7 @@ import {
   InputAdornment,
   MenuItem,
   Stack,
+  FormHelperText,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -735,7 +736,10 @@ export default function BankAccountsPage() {
             </Box>
 
             <TextField label="Date" type="date" value={txnForm.date ?? ''} onChange={(e) => setTxnForm({ ...txnForm, date: e.target.value })} size="small" InputLabelProps={{ shrink: true }} inputProps={{ max: todayLocalDate() }} />
-            <TextField label="Description" value={txnForm.description ?? ''} onChange={(e) => setTxnForm({ ...txnForm, description: e.target.value })} size="small" multiline rows={2} />
+            <Box>
+              <TextField label="Description" value={txnForm.description ?? ''} onChange={(e) => setTxnForm({ ...txnForm, description: e.target.value })} size="small" multiline rows={2} fullWidth />
+              <FormHelperText>Format: <strong>Payee · Item · Ref</strong> (leave blank if not needed)</FormHelperText>
+            </Box>
           </Box>
         </DialogContent>
         <DialogActions>
@@ -768,7 +772,10 @@ export default function BankAccountsPage() {
               InputProps={{ startAdornment: <InputAdornment position="start">₹</InputAdornment> }}
             />
             <TextField label="Date" type="date" value={transferForm.date ?? ''} onChange={(e) => setTransferForm({ ...transferForm, date: e.target.value })} size="small" InputLabelProps={{ shrink: true }} inputProps={{ max: todayLocalDate() }} />
-            <TextField label="Description" value={transferForm.description ?? ''} onChange={(e) => setTransferForm({ ...transferForm, description: e.target.value })} size="small" multiline rows={2} />
+            <Box>
+              <TextField label="Description" value={transferForm.description ?? ''} onChange={(e) => setTransferForm({ ...transferForm, description: e.target.value })} size="small" multiline rows={2} fullWidth />
+              <FormHelperText>Format: <strong>Payee · Item · Ref</strong> (leave blank if not needed)</FormHelperText>
+            </Box>
           </Box>
         </DialogContent>
         <DialogActions>

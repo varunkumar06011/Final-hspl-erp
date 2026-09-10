@@ -28,6 +28,7 @@ import {
   AccordionDetails,
   Tabs,
   Tab,
+  FormHelperText,
 } from '@mui/material';
 import ResponsiveDialog from '../components/ResponsiveDialog';
 import ApprovalStepsDisplay from '../components/ApprovalStepsDisplay';
@@ -294,7 +295,11 @@ export default function PaymentsPage() {
   const createExpenseMutation = useMutation({
     mutationFn: async () => {
       const formData = new FormData();
-      formData.append('description', String(expenseForm.description ?? ''));
+      const payee = String(expenseForm.payee ?? '').trim();
+      const item = String(expenseForm.item ?? '').trim();
+      const ref = String(expenseForm.ref ?? '').trim();
+      const description = ref ? `${payee} · ${item} · ${ref}` : `${payee} · ${item}`;
+      formData.append('description', description);
       formData.append('amount', String(expenseForm.amount ?? ''));
       formData.append('category', String(expenseForm.category ?? ''));
       if (expenseForm.expenseDate) formData.append('expenseDate', String(expenseForm.expenseDate));
@@ -469,8 +474,14 @@ export default function PaymentsPage() {
   }
 
   function validateExpenseForm(): boolean {
-    if (!String(expenseForm.description ?? '').trim() || !String(expenseForm.category ?? '').trim()) {
-      setError('Description and category are required');
+    const payee = String(expenseForm.payee ?? '').trim();
+    const item = String(expenseForm.item ?? '').trim();
+    if (!payee || !item) {
+      setError('Payee and Item are required (format: Payee · Item · Ref)');
+      return false;
+    }
+    if (!String(expenseForm.category ?? '').trim()) {
+      setError('Category is required');
       return false;
     }
     if (!expenseForm.budgetHeadId || String(expenseForm.budgetHeadId).trim() === '') {
@@ -1093,14 +1104,42 @@ export default function PaymentsPage() {
         <DialogTitle>Add Daily Expense</DialogTitle>
         <DialogContent>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
-            <TextField
-              label="Description"
-              value={String(expenseForm.description ?? '')}
-              onChange={(e) => setExpenseForm({ ...expenseForm, description: e.target.value })}
-              fullWidth
-              size="small"
-              required
-            />
+            <Box>
+              <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 1 }}>
+                <TextField
+                  label="Payee"
+                  placeholder="e.g. Sri Ambica Plastic"
+                  value={String(expenseForm.payee ?? '')}
+                  onChange={(e) => setExpenseForm({ ...expenseForm, payee: e.target.value })}
+                  fullWidth
+                  size="small"
+                  required
+                  inputProps={{ maxLength: 40 }}
+                />
+                <TextField
+                  label="Item"
+                  placeholder="e.g. Green Mats"
+                  value={String(expenseForm.item ?? '')}
+                  onChange={(e) => setExpenseForm({ ...expenseForm, item: e.target.value })}
+                  fullWidth
+                  size="small"
+                  required
+                  inputProps={{ maxLength: 40 }}
+                />
+                <TextField
+                  label="Ref (optional)"
+                  placeholder="e.g. BILL-39"
+                  value={String(expenseForm.ref ?? '')}
+                  onChange={(e) => setExpenseForm({ ...expenseForm, ref: e.target.value })}
+                  size="small"
+                  sx={{ minWidth: { sm: 160 } }}
+                  inputProps={{ maxLength: 20 }}
+                />
+              </Box>
+              <FormHelperText sx={{ mt: 0.25 }}>
+                Standard format: <strong>Payee · Item · Ref</strong> — no verbs, dates, or amounts in the description.
+              </FormHelperText>
+            </Box>
             <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, flexWrap: 'wrap' }}>
               <TextField
                 label="Amount"

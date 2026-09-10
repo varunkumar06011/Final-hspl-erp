@@ -5,7 +5,7 @@ import { keyframes } from '@emotion/react';
 import {
   Box, Button, Card, CardContent, Chip, Dialog, DialogActions, DialogContent,
   DialogTitle, LinearProgress, Stack, Table, TableBody, TableCell, TableHead,
-  TableRow, Typography, Skeleton,
+  TableRow, TextField, Typography, Skeleton,
 } from '@mui/material';
 import {
   AccountBalance as AccountBalanceIcon,
@@ -23,6 +23,7 @@ import {
 import { Area, AreaChart, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import api from '../config/api';
 import { formatCurrency, formatDate } from '../utils/enumOptions';
+import RateTrackerWidget from '../components/RateTrackerWidget';
 
 interface DashboardData {
   project: { name: string; status: string } | null;
@@ -59,14 +60,19 @@ interface ExpenditureDetailData {
 interface InwardDetailData {
   transactions: Array<{ id: string; account: string; accountType: 'BANK' | 'CASH'; amount: number; description: string; type: string; date: string }>;
 }
+interface ShortAdvanceDetailData {
+  totalAmount: number;
+  totalCount: number;
+  transactions: Array<{ id: string; account: string; amount: number; description: string; type: string; ledger: string; date: string }>;
+}
 
 // Dashboard-only timeline display requested by the business layout. This does
 // not mutate Project master dates or affect scheduling/progress records elsewhere.
 const DASHBOARD_TIMELINE = { startDate: '2026-09-03', endDate: '2027-10-09' };
 const compactCard = { border: '1px solid', borderColor: 'divider', borderRadius: 2, boxShadow: '0 1px 3px rgba(15, 23, 42, .08)', minWidth: 0, overflow: 'hidden' };
 const financialCardContent = { height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'center', py: 1.1, px: { xs: 1, sm: 1.4, md: 1.8 }, '&:last-child': { pb: 1.1 } };
-const cellSx = { py: 0.35, px: 0.75, fontSize: '0.68rem', whiteSpace: 'nowrap' as const };
-const sectionTitleSx = { fontSize: '0.76rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.45 };
+const cellSx = { py: 0.2, px: 0.6, fontSize: '0.68rem', whiteSpace: 'nowrap' as const };
+const sectionTitleSx = { fontSize: '0.76rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.3 };
 
 // Siren pulse animation for the Action Required alert card.
 const sirenPulse = keyframes`
@@ -80,7 +86,7 @@ const sirenIconPulse = keyframes`
 `;
 
 function Section({ title, icon, children, sx = {} }: { title: string; icon?: ReactNode; children: ReactNode; sx?: object }) {
-  return <Card sx={{ ...compactCard, height: '100%', ...sx }}><CardContent sx={{ p: 0.8, '&:last-child': { pb: 0.8 }, height: '100%' }}><Typography sx={sectionTitleSx}>{icon}{title}</Typography>{children}</CardContent></Card>;
+  return <Card sx={{ ...compactCard, height: '100%', ...sx }}><CardContent sx={{ p: 0.6, '&:last-child': { pb: 0.6 }, height: '100%' }}><Typography sx={sectionTitleSx}>{icon}{title}</Typography>{children}</CardContent></Card>;
 }
 
 function StatusChip({ value }: { value: string }) {
@@ -102,15 +108,30 @@ export default function DenseAdminDashboard() {
   });
   const [expenditureOpen, setExpenditureOpen] = useState(false);
   const [inwardOpen, setInwardOpen] = useState(false);
+  const [shortAdvanceOpen, setShortAdvanceOpen] = useState(false);
+  const [expDateStart, setExpDateStart] = useState('');
+  const [expDateEnd, setExpDateEnd] = useState('');
   const { data: expenditureDetails, isLoading: expenditureDetailsLoading } = useQuery<ExpenditureDetailData>({
-    queryKey: ['/dashboard/outflow-by-range', 'all'],
-    queryFn: async () => (await api.get('/dashboard/outflow-by-range', { params: { all: 'true', allTime: 'true' } })).data,
+    queryKey: ['/dashboard/outflow-by-range', expDateStart, expDateEnd],
+    queryFn: async () => (await api.get('/dashboard/outflow-by-range', {
+      params: {
+        all: 'true',
+        allTime: (!expDateStart && !expDateEnd) ? 'true' : 'false',
+        startDate: expDateStart || undefined,
+        endDate: expDateEnd || undefined,
+      },
+    })).data,
     enabled: expenditureOpen,
   });
   const { data: inwardDetails, isLoading: inwardDetailsLoading } = useQuery<InwardDetailData>({
     queryKey: ['/dashboard/admin-inflow-detail'],
     queryFn: async () => (await api.get('/dashboard/admin-inflow-detail', { params: { limit: 5000 } })).data,
     enabled: inwardOpen,
+  });
+  const { data: shortAdvanceDetails, isLoading: shortAdvanceDetailsLoading } = useQuery<ShortAdvanceDetailData>({
+    queryKey: ['/dashboard/admin-short-advance-detail'],
+    queryFn: async () => (await api.get('/dashboard/admin-short-advance-detail', { params: { limit: 5000 } })).data,
+    enabled: shortAdvanceOpen,
   });
 
   const timeline = useMemo(() => {
@@ -125,68 +146,97 @@ export default function DenseAdminDashboard() {
   const loading = isLoading || !data;
 
   return (
-    <Box sx={{ height: { xs: 'auto', md: 'calc(100vh - 74px)' }, minHeight: 0, overflow: { xs: 'visible', md: 'hidden' }, bgcolor: 'background.default', p: { xs: 0.75, md: 1.25 }, display: 'grid', gridTemplateRows: { xs: 'auto', md: '58px 80px 1fr 108px' }, gap: 0.9 }}>
-      {/* Header: project identity + timeline */}
-      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1.15fr 1.25fr' }, gap: 0.8, minHeight: 0 }}>
-        <Card sx={{ ...compactCard }}><CardContent sx={{ py: 0.65, px: 1, '&:last-child': { pb: 0.65 } }}>
-          <Typography sx={{ fontSize: '1.05rem', fontWeight: 800, lineHeight: 1.15 }}>Project Dashboard</Typography>
-          <Typography variant="caption" color="text.secondary" noWrap>{data?.project?.name ?? 'Project'} <Chip label={data?.project?.status ?? 'Loading'} size="small" color="success" sx={{ ml: 0.5, height: 16, fontSize: '0.58rem' }} /></Typography>
-        </CardContent></Card>
-        <Card sx={{ ...compactCard }}><CardContent sx={{ py: 0.55, px: 1, '&:last-child': { pb: 0.55 } }}>
+    <Box sx={{ height: { xs: 'auto', md: 'calc(100vh - 74px)' }, minHeight: 0, overflow: { xs: 'visible', md: 'hidden' }, overflowX: 'clip', bgcolor: 'background.default', p: { xs: 1, md: 1.25 }, display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gridTemplateRows: { xs: 'auto auto auto auto', md: 'auto 100px 1fr 180px' }, gap: { xs: 1, md: 0.9 } }}>
+      {/* Header: project identity (plain text, no card) + timeline */}
+      <Box sx={{ display: 'flex', alignItems: { xs: 'flex-start', sm: 'center' }, flexDirection: { xs: 'column', sm: 'row' }, gap: { xs: 0.8, sm: 1.5 }, minHeight: 0 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexShrink: 0 }}>
+          <Typography sx={{ fontSize: '1.05rem', fontWeight: 800, lineHeight: 1.15, whiteSpace: 'nowrap' }}>Project Dashboard</Typography>
+          <Typography variant="caption" color="text.secondary" noWrap sx={{ maxWidth: { xs: 120, sm: 'none' } }}>{data?.project?.name ?? 'Project'}</Typography>
+          <Chip label={data?.project?.status ?? 'Loading'} size="small" color="success" sx={{ height: 18, fontSize: '0.6rem' }} />
+        </Box>
+        <Box sx={{ flex: 1, display: { xs: 'none', sm: 'block' } }} />
+        <Card sx={{ ...compactCard, flex: { xs: 'none', sm: '0 1 420px' }, width: { xs: '100%', sm: 'auto' } }}><CardContent sx={{ py: 0.55, px: 1, '&:last-child': { pb: 0.55 } }}>
           <Stack direction="row" justifyContent="space-between" alignItems="center"><Typography sx={{ fontSize: '0.7rem', fontWeight: 700 }}><CalendarIcon sx={{ fontSize: 13, verticalAlign: 'middle', mr: 0.3 }} />Project Timeline</Typography><Typography variant="caption" color="text.secondary">{formatDate(DASHBOARD_TIMELINE.startDate)} → {formatDate(DASHBOARD_TIMELINE.endDate)}</Typography></Stack>
-          <LinearProgress variant="determinate" value={timeline ?? 0} sx={{ mt: 0.8, height: 7, borderRadius: 4 }} />
+          <LinearProgress variant="determinate" value={timeline ?? 0} sx={{ mt: 0.6, height: 6, borderRadius: 4 }} />
         </CardContent></Card>
       </Box>
 
       {/* Primary financial cards: Inward + Short Advance − Expenditure = Balance */}
-      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))', lg: 'repeat(4, minmax(0, 1fr))' }, gap: { xs: 0.8, sm: 1, md: 1.25 }, minHeight: 0, alignItems: 'stretch' }}>
+      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'minmax(0, 1fr)', sm: 'repeat(2, minmax(0, 1fr))', lg: 'repeat(4, minmax(0, 1fr))' }, gap: { xs: 0.8, sm: 1, md: 1.25 }, minHeight: 0, minWidth: 0, alignItems: 'stretch' }}>
         <Card onClick={() => setInwardOpen(true)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') setInwardOpen(true); }} role="button" tabIndex={0} sx={{ ...compactCard, height: '100%', borderLeft: '4px solid', borderColor: 'success.main', bgcolor: 'rgba(232, 250, 241, .72)', cursor: 'pointer', '&:hover': { boxShadow: 3 } }}><CardContent sx={financialCardContent}><Stack direction="row" justifyContent="space-between" alignItems="center"><Typography sx={{ fontSize: { xs: '0.72rem', sm: '0.82rem' }, fontWeight: 700 }}>Inward Funds</Typography><TrendUpIcon color="success" sx={{ fontSize: { xs: 17, sm: 20 } }} /></Stack><Typography sx={{ mt: 0.45, fontSize: { xs: '1rem', sm: '1.3rem', md: '1.48rem' }, fontWeight: 800, color: 'success.dark', lineHeight: 1.2, whiteSpace: 'nowrap' }}>{loading ? <Skeleton width={145} /> : formatCurrency(data!.pureBankInward)}</Typography><Typography variant="caption" color="text.secondary" sx={{ mt: 0.3, fontSize: { xs: '0.62rem', sm: '0.7rem' } }}>All funds received</Typography></CardContent></Card>
-        <Card sx={{ ...compactCard, height: '100%', borderLeft: '4px solid', borderColor: 'warning.main', bgcolor: 'rgba(255, 251, 231, .82)' }}><CardContent sx={financialCardContent}><Stack direction="row" justifyContent="space-between" alignItems="center"><Typography sx={{ fontSize: { xs: '0.72rem', sm: '0.82rem' }, fontWeight: 700 }}>Short Advance / Loan</Typography><LoanIcon color="warning" sx={{ fontSize: { xs: 17, sm: 20 } }} /></Stack><Typography sx={{ mt: 0.45, fontSize: { xs: '1rem', sm: '1.3rem', md: '1.48rem' }, fontWeight: 800, color: 'warning.dark', lineHeight: 1.2, whiteSpace: 'nowrap' }}>{loading ? <Skeleton width={145} /> : formatCurrency(data!.shortAdvance)}</Typography><Typography variant="caption" color="text.secondary" sx={{ mt: 0.3, fontSize: { xs: '0.62rem', sm: '0.7rem' } }}>Cash loans received</Typography></CardContent></Card>
+        <Card onClick={() => setShortAdvanceOpen(true)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') setShortAdvanceOpen(true); }} role="button" tabIndex={0} sx={{ ...compactCard, height: '100%', borderLeft: '4px solid', borderColor: 'warning.main', bgcolor: 'rgba(255, 251, 231, .82)', cursor: 'pointer', '&:hover': { boxShadow: 3 } }}><CardContent sx={financialCardContent}><Stack direction="row" justifyContent="space-between" alignItems="center"><Typography sx={{ fontSize: { xs: '0.72rem', sm: '0.82rem' }, fontWeight: 700 }}>Short Advance / Loan</Typography><LoanIcon color="warning" sx={{ fontSize: { xs: 17, sm: 20 } }} /></Stack><Typography sx={{ mt: 0.45, fontSize: { xs: '1rem', sm: '1.3rem', md: '1.48rem' }, fontWeight: 800, color: 'warning.dark', lineHeight: 1.2, whiteSpace: 'nowrap' }}>{loading ? <Skeleton width={145} /> : formatCurrency(data!.shortAdvance)}</Typography><Typography variant="caption" color="text.secondary" sx={{ mt: 0.3, fontSize: { xs: '0.62rem', sm: '0.7rem' } }}>Cash loans received</Typography></CardContent></Card>
         <Card onClick={() => setExpenditureOpen(true)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') setExpenditureOpen(true); }} role="button" tabIndex={0} sx={{ ...compactCard, height: '100%', borderLeft: '4px solid', borderColor: 'error.main', bgcolor: 'rgba(255, 241, 242, .78)', cursor: 'pointer', '&:hover': { boxShadow: 3 } }}><CardContent sx={{ ...financialCardContent, justifyContent: 'flex-start', gap: 0.35 }}><Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ minHeight: 22 }}><Typography sx={{ fontSize: { xs: '0.72rem', sm: '0.82rem' }, fontWeight: 700 }}>Expenditure</Typography><TrendDownIcon color="error" sx={{ fontSize: { xs: 17, sm: 20 }, flexShrink: 0 }} /></Stack><Typography sx={{ fontSize: { xs: '1rem', sm: '1.3rem', md: '1.48rem' }, fontWeight: 800, color: 'error.dark', lineHeight: 1.15, whiteSpace: 'nowrap', mt: 0.15 }}>{loading ? <Skeleton width={145} /> : formatCurrency(data!.totalExpenditure)}</Typography><Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.62rem', sm: '0.7rem' }, lineHeight: 1.1 }}>All posted spend</Typography><Box sx={{ mt: 0.35, pt: 0.4, borderTop: '1px solid', borderColor: 'rgba(211, 47, 47, .2)', width: '100%', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0.3 }}><Box sx={{ minWidth: 0 }}><Typography variant="caption" color="text.secondary" sx={{ display: 'block', fontSize: '0.6rem', lineHeight: 1 }}>Bank</Typography><Typography variant="caption" color="primary.main" sx={{ display: 'block', fontWeight: 700, fontSize: { xs: '0.62rem', sm: '0.68rem' }, lineHeight: 1.15, whiteSpace: 'nowrap' }}>{formatCurrency(data?.bankExpenditure ?? 0)}</Typography></Box><Box sx={{ minWidth: 0 }}><Typography variant="caption" color="text.secondary" sx={{ display: 'block', fontSize: '0.6rem', lineHeight: 1 }}>Cash</Typography><Typography variant="caption" color="warning.dark" sx={{ display: 'block', fontWeight: 700, fontSize: { xs: '0.62rem', sm: '0.68rem' }, lineHeight: 1.15, whiteSpace: 'nowrap' }}>{formatCurrency(data?.cashExpenditure ?? 0)}</Typography></Box></Box></CardContent></Card>
         <Card sx={{ ...compactCard, height: '100%', borderLeft: '4px solid', borderColor: 'primary.main', bgcolor: 'rgba(237, 245, 255, .82)' }}><CardContent sx={financialCardContent}><Stack direction="row" justifyContent="space-between" alignItems="center"><Typography sx={{ fontSize: { xs: '0.72rem', sm: '0.82rem' }, fontWeight: 700 }}>Balance</Typography><AccountBalanceIcon color="primary" sx={{ fontSize: { xs: 17, sm: 20 } }} /></Stack><Typography sx={{ mt: 0.45, fontSize: { xs: '1rem', sm: '1.3rem', md: '1.48rem' }, fontWeight: 800, color: 'primary.dark', lineHeight: 1.2, whiteSpace: 'nowrap' }}>{loading ? <Skeleton width={145} /> : formatCurrency(data!.balance)}</Typography><Typography variant="caption" color="text.secondary" sx={{ mt: 0.3, fontSize: { xs: '0.62rem', sm: '0.7rem' } }}>Inward + loans − spend</Typography></CardContent></Card>
       </Box>
 
       {/* Dense middle area */}
-      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1.25fr 0.95fr 0.9fr' }, gap: 0.8, minHeight: 0, overflow: 'hidden' }}>
-        <Box sx={{ display: 'grid', gridTemplateRows: { xs: 'auto auto', md: '130px 1fr' }, gap: 0.8, minHeight: 0 }}>
-          <Section title="Project Budget Overview" icon={<MoneyIcon color="primary" sx={{ fontSize: 15 }} />}><Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 0 }}><Box sx={{ width: 76, height: 76, flexShrink: 0 }}><ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={[{ value: Math.max(0, data?.budgetTotals.totalActual ?? 0), color: '#ef5350' }, { value: Math.max(0, budgetRemaining), color: '#66bb6a' }]} dataKey="value" innerRadius={22} outerRadius={34} paddingAngle={2}>{[0, 1].map((index) => <Cell key={index} fill={index === 0 ? '#ef5350' : '#66bb6a'} />)}</Pie></PieChart></ResponsiveContainer></Box><Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 0.35, flex: 1, minWidth: 0 }}><Metric label="Approved Budget" value={data?.budgetTotals.totalAllocated ?? 0} /><Metric label="Total Spent" value={data?.budgetTotals.totalActual ?? 0} color="error.main" /><Metric label="Remaining" value={budgetRemaining} color="success.main" /><Box><Typography variant="caption" color="text.secondary">Utilization</Typography><Typography sx={{ fontSize: '0.95rem', fontWeight: 800 }}>{budgetPct.toFixed(1)}%</Typography><LinearProgress variant="determinate" value={Math.min(100, budgetPct)} sx={{ height: 4, borderRadius: 3 }} /></Box></Box></Stack></Section>
-          <Section title="Budget Heads" icon={<WalletIcon color="primary" sx={{ fontSize: 15 }} />}><Box sx={{ width: '100%', overflowX: 'auto', overflowY: 'hidden', WebkitOverflowScrolling: 'touch', '&::-webkit-scrollbar': { height: 6 }, '&::-webkit-scrollbar-thumb': { bgcolor: 'divider', borderRadius: 3 } }}><Table size="small" sx={{ minWidth: 650 }}><TableHead><TableRow><TableCell sx={cellSx}>Budget Head</TableCell><TableCell align="right" sx={cellSx}>Approved</TableCell><TableCell align="right" sx={cellSx}>Actual</TableCell><TableCell align="right" sx={cellSx}>Remaining</TableCell><TableCell sx={cellSx}>% Used</TableCell><TableCell sx={cellSx}>Status</TableCell></TableRow></TableHead><TableBody>{heads.map((head) => <TableRow key={head.id} hover onClick={() => navigate('/budget-heads')} sx={{ cursor: 'pointer' }}><TableCell sx={cellSx} title={head.particulars}><Typography sx={{ fontSize: '0.67rem', maxWidth: 130 }} noWrap>{head.particulars}</Typography></TableCell><TableCell align="right" sx={cellSx}>{formatCurrency(head.allocated)}</TableCell><TableCell align="right" sx={cellSx}>{formatCurrency(head.actual)}</TableCell><TableCell align="right" sx={{ ...cellSx, color: head.available < 0 ? 'error.main' : undefined }}>{formatCurrency(head.available)}</TableCell><TableCell sx={{ ...cellSx, minWidth: 72 }}><Stack direction="row" spacing={0.4} alignItems="center"><LinearProgress variant="determinate" value={Math.min(100, head.utilizationPct)} sx={{ width: 38, height: 5 }} /><Typography sx={{ fontSize: '0.62rem' }}>{head.utilizationPct.toFixed(0)}%</Typography></Stack></TableCell><TableCell sx={cellSx}><StatusChip value={head.actual > 0 ? 'IN USE' : 'NOT STARTED'} /></TableCell></TableRow>)}</TableBody></Table></Box></Section>
+      <Box sx={{
+        display: 'grid',
+        gridTemplateColumns: { xs: 'minmax(0, 1fr)', sm: 'repeat(2, minmax(0, 1fr))', md: 'minmax(0, 1.25fr) minmax(0, 0.95fr) minmax(0, 0.9fr)' },
+        // Named areas let mobile/tablet reorder freely while desktop keeps the 3 nested columns
+        gridTemplateAreas: {
+          xs: '"dashOverview" "dashAction" "dashHeadCell" "dashRecent" "dashBankCash" "dashDateRange" "dashTrend"',
+          sm: '"dashOverview dashOverview" "dashAction dashDateRange" "dashHeadCell dashHeadCell" "dashRecent dashBankCash" "dashTrend dashTrend"',
+          md: 'none',
+        },
+        gap: { xs: 1, md: 0.8 }, minHeight: 0, overflow: { xs: 'visible', md: 'hidden' },
+      }}>
+        <Box sx={{ display: { xs: 'contents', md: 'grid' }, gridTemplateRows: { md: '130px 1fr' }, gap: { xs: 1, md: 0.8 }, minHeight: 0 }}>
+          <Section title="Project Budget Overview" icon={<MoneyIcon color="primary" sx={{ fontSize: 15 }} />} sx={{ gridArea: { xs: 'dashOverview', md: 'auto' } }}><Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: { xs: 0.5, sm: 1 }, alignItems: { xs: 'stretch', sm: 'center' }, minWidth: 0 }}><Box sx={{ width: { xs: 64, sm: 76 }, height: { xs: 64, sm: 76 }, flexShrink: 0, alignSelf: 'center' }}><ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={[{ value: Math.max(0, data?.budgetTotals.totalActual ?? 0), color: '#ef5350' }, { value: Math.max(0, budgetRemaining), color: '#66bb6a' }]} dataKey="value" innerRadius={22} outerRadius={34} paddingAngle={2}>{[0, 1].map((index) => <Cell key={index} fill={index === 0 ? '#ef5350' : '#66bb6a'} />)}</Pie></PieChart></ResponsiveContainer></Box><Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 0.35, flex: 1, minWidth: 0 }}><Metric label="Approved Budget" value={data?.budgetTotals.totalAllocated ?? 0} /><Metric label="Total Spent" value={data?.budgetTotals.totalActual ?? 0} color="error.main" /><Metric label="Remaining" value={budgetRemaining} color="success.main" /><Box><Typography variant="caption" color="text.secondary">Utilization</Typography><Typography sx={{ fontSize: '0.95rem', fontWeight: 800 }}>{budgetPct.toFixed(1)}%</Typography><LinearProgress variant="determinate" value={Math.min(100, budgetPct)} sx={{ height: 4, borderRadius: 3 }} /></Box></Box></Box></Section>
+          <Section title="Budget Heads" icon={<WalletIcon color="primary" sx={{ fontSize: 15 }} />} sx={{ gridArea: { xs: 'dashHeadCell', md: 'auto' }, minWidth: 0 }}><Box sx={{ width: '100%', overflowX: 'auto', overflowY: { xs: 'auto', md: 'hidden' }, maxHeight: { xs: 300, md: 'none' }, WebkitOverflowScrolling: 'touch', '&::-webkit-scrollbar': { height: 6, width: 6 }, '&::-webkit-scrollbar-thumb': { bgcolor: 'divider', borderRadius: 3 } }}><Table size="small" sx={{ minWidth: 650 }}><TableHead><TableRow><TableCell sx={cellSx}>Budget Head</TableCell><TableCell align="right" sx={cellSx}>Approved</TableCell><TableCell align="right" sx={cellSx}>Actual</TableCell><TableCell align="right" sx={cellSx}>Remaining</TableCell><TableCell sx={cellSx}>% Used</TableCell><TableCell sx={cellSx}>Status</TableCell></TableRow></TableHead><TableBody>{heads.map((head) => <TableRow key={head.id} hover onClick={() => navigate('/budget-heads')} sx={{ cursor: 'pointer' }}><TableCell sx={cellSx} title={head.particulars}><Typography sx={{ fontSize: '0.67rem', maxWidth: 130 }} noWrap>{head.particulars}</Typography></TableCell><TableCell align="right" sx={cellSx}>{formatCurrency(head.allocated)}</TableCell><TableCell align="right" sx={cellSx}>{formatCurrency(head.actual)}</TableCell><TableCell align="right" sx={{ ...cellSx, color: head.available < 0 ? 'error.main' : undefined }}>{formatCurrency(head.available)}</TableCell><TableCell sx={{ ...cellSx, minWidth: 72 }}><Stack direction="row" spacing={0.4} alignItems="center"><LinearProgress variant="determinate" value={Math.min(100, head.utilizationPct)} sx={{ width: 38, height: 5 }} /><Typography sx={{ fontSize: '0.62rem' }}>{head.utilizationPct.toFixed(0)}%</Typography></Stack></TableCell><TableCell sx={cellSx}><StatusChip value={head.actual > 0 ? 'IN USE' : 'NOT STARTED'} /></TableCell></TableRow>)}</TableBody></Table></Box></Section>
         </Box>
-        <Box sx={{ display: 'grid', gridTemplateRows: '1fr 1fr', gap: 0.8, minHeight: 0 }}>
-          <Section title="Recent Transactions" icon={<PaymentsIcon color="primary" sx={{ fontSize: 15 }} />}><Stack spacing={0.25}>{(data?.recentTransactions ?? []).slice(0, 7).map((tx) => <Stack key={tx.id} direction="row" justifyContent="space-between" spacing={0.5}><Typography variant="caption" noWrap sx={{ maxWidth: '65%' }}>{tx.description || tx.account}</Typography><Typography variant="caption" fontWeight={700} color={tx.isInflow ? 'success.main' : 'error.main'}>{tx.isInflow ? '+' : '−'}{formatCurrency(tx.amount)}</Typography></Stack>)}</Stack></Section>
-          <Section title="Bank & Cash" icon={<AccountBalanceIcon color="primary" sx={{ fontSize: 15 }} />}><Stack spacing={0.55}><Stack direction="row" justifyContent="space-between"><Typography variant="caption">Bank Balance</Typography><Typography variant="caption" fontWeight={800} color="primary.main">{formatCurrency(data?.bankBalance ?? 0)}</Typography></Stack><Stack direction="row" justifyContent="space-between"><Typography variant="caption">Cash Balance</Typography><Typography variant="caption" fontWeight={800} color="success.main">{formatCurrency(data?.cashBalance ?? 0)}</Typography></Stack></Stack></Section>
+        <Box sx={{ display: { xs: 'contents', md: 'grid' }, gridTemplateRows: { md: '1fr 1fr' }, gap: { xs: 1, md: 0.8 }, minHeight: 0 }}>
+          <Section title="Recent Transactions" icon={<PaymentsIcon color="primary" sx={{ fontSize: 15 }} />} sx={{ gridArea: { xs: 'dashRecent', md: 'auto' } }}><Box sx={{ maxHeight: { xs: 180, md: 'calc(100% - 24px)' }, overflowY: 'auto', WebkitOverflowScrolling: 'touch', pr: 0.5, '&::-webkit-scrollbar': { width: 5 }, '&::-webkit-scrollbar-thumb': { bgcolor: 'divider', borderRadius: 3 } }}><Stack spacing={0.25}>{(data?.recentTransactions ?? []).map((tx) => <Stack key={tx.id} direction="row" justifyContent="space-between" spacing={0.5}><Typography variant="caption" noWrap sx={{ maxWidth: '65%' }}>{tx.description || tx.account}</Typography><Typography variant="caption" fontWeight={700} color={tx.isInflow ? 'success.main' : 'error.main'}>{tx.isInflow ? '+' : '−'}{formatCurrency(tx.amount)}</Typography></Stack>)}</Stack></Box></Section>
+          <Section title="Bank & Cash" icon={<AccountBalanceIcon color="primary" sx={{ fontSize: 15 }} />} sx={{ gridArea: { xs: 'dashBankCash', md: 'auto' } }}><Stack spacing={0.55}><Stack direction="row" justifyContent="space-between"><Typography variant="caption">Bank Balance</Typography><Typography variant="caption" fontWeight={800} color="primary.main">{formatCurrency(data?.bankBalance ?? 0)}</Typography></Stack><Stack direction="row" justifyContent="space-between"><Typography variant="caption">Cash Balance</Typography><Typography variant="caption" fontWeight={800} color="success.main">{formatCurrency(data?.cashBalance ?? 0)}</Typography></Stack></Stack></Section>
         </Box>
-        <Box sx={{ display: 'grid', gridTemplateRows: { xs: 'auto auto', md: '180px 1fr' }, gap: 0.8, minHeight: 0 }}>
-          {/* Action Required — square siren-style alert */}
-          <Card sx={{ ...compactCard, position: 'relative', bgcolor: 'rgba(255, 243, 244, .95)', borderColor: 'error.main', animation: `${sirenPulse} 1.8s infinite`, aspectRatio: { xs: 'auto', md: '1 / 1' }, maxHeight: { md: 180 }, display: 'flex', flexDirection: 'column' }}><CardContent sx={{ p: 1, '&:last-child': { pb: 1 }, height: '100%', display: 'flex', flexDirection: 'column' }}>
-            <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 0.5 }}>
-              <Typography sx={{ fontSize: '0.78rem', fontWeight: 800, color: 'error.dark', display: 'flex', alignItems: 'center', gap: 0.5 }}>Action Required</Typography>
-              <SirenIcon sx={{ fontSize: 22, color: 'error.main', animation: `${sirenIconPulse} 1s infinite` }} />
-            </Stack>
-            <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 0.3, overflow: 'hidden' }}>
-              {loading ? <Skeleton variant="rectangular" height={20} /> : (data?.actionItems ?? []).length === 0 ? (
-                <Typography variant="caption" color="text.secondary" sx={{ textAlign: 'center', py: 1 }}>No pending action</Typography>
-              ) : (
-                <>
-                  <Typography sx={{ fontSize: '1.4rem', fontWeight: 900, color: 'error.main', lineHeight: 1, textAlign: 'center' }}>{data?.actionItems.length}</Typography>
-                  <Typography variant="caption" color="error.dark" sx={{ textAlign: 'center', fontWeight: 700, mb: 0.3 }}>pending items</Typography>
-                  {(data?.actionItems ?? []).slice(0, 3).map((item) => (
-                    <Chip key={`${item.type}-${item.id}`} clickable onClick={() => navigate(item.path)} label={`${item.type === 'purchase-order' ? 'PO' : item.type === 'quotation' ? 'Quotation' : item.type === 'invoice' ? 'Invoice' : 'Payment'} ${item.code}`} color="error" variant="outlined" sx={{ height: 20, fontSize: '0.58rem', justifyContent: 'space-between' }} />
-                  ))}
-                </>
-              )}
-            </Box>
-          </CardContent></Card>
+        <Box sx={{ display: { xs: 'contents', md: 'grid' }, gridTemplateRows: { md: '1fr 1fr' }, gap: { xs: 1, md: 0.8 }, minHeight: 0 }}>
+          <Box sx={{ display: { xs: 'contents', md: 'grid' }, gridTemplateColumns: { md: '1fr 1fr' }, gap: { xs: 1, md: 0.8 }, minHeight: 0 }}>
+            {/* Action Required — siren-style alert */}
+            <Card sx={{ ...compactCard, position: 'relative', bgcolor: 'rgba(255, 243, 244, .95)', borderColor: 'error.main', animation: `${sirenPulse} 1.8s infinite`, display: 'flex', flexDirection: 'column', gridArea: { xs: 'dashAction', md: 'auto' } }}><CardContent sx={{ p: 1, '&:last-child': { pb: 1 }, height: '100%', display: 'flex', flexDirection: 'column' }}>
+              <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 0.5 }}>
+                <Typography sx={{ fontSize: '0.78rem', fontWeight: 800, color: 'error.dark', display: 'flex', alignItems: 'center', gap: 0.5 }}>Action Required</Typography>
+                <SirenIcon sx={{ fontSize: 22, color: 'error.main', animation: `${sirenIconPulse} 1s infinite` }} />
+              </Stack>
+              <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 0.3, overflow: 'hidden' }}>
+                {loading ? <Skeleton variant="rectangular" height={20} /> : (data?.actionItems ?? []).length === 0 ? (
+                  <Typography variant="caption" color="text.secondary" sx={{ textAlign: 'center', py: 1 }}>No pending action</Typography>
+                ) : (
+                  <>
+                    <Typography sx={{ fontSize: '1.4rem', fontWeight: 900, color: 'error.main', lineHeight: 1, textAlign: 'center' }}>{data?.actionItems.length}</Typography>
+                    <Typography variant="caption" color="error.dark" sx={{ textAlign: 'center', fontWeight: 700, mb: 0.3 }}>pending items</Typography>
+                    {(data?.actionItems ?? []).slice(0, 3).map((item) => (
+                      <Chip key={`${item.type}-${item.id}`} clickable onClick={() => navigate(item.path)} label={`${item.type === 'purchase-order' ? 'PO' : item.type === 'quotation' ? 'Quotation' : item.type === 'invoice' ? 'Invoice' : 'Payment'} ${item.code}`} color="error" variant="outlined" sx={{ height: 20, fontSize: '0.58rem', justifyContent: 'space-between' }} />
+                    ))}
+                  </>
+                )}
+              </Box>
+            </CardContent></Card>
+            {/* Date Range Picker for expenditure filtering */}
+            <Section title="Expenditure Date Range" icon={<CalendarIcon color="primary" sx={{ fontSize: 15 }} />} sx={{ gridArea: { xs: 'dashDateRange', md: 'auto' } }}>
+              <Stack spacing={0.5} sx={{ height: '100%', justifyContent: 'center' }}>
+                <Stack direction={{ xs: 'row', md: 'column' }} spacing={0.5}>
+                  <TextField type="date" size="small" label="From" value={expDateStart} onChange={(e) => setExpDateStart(e.target.value)} InputLabelProps={{ shrink: true }} sx={{ flex: 1, '& .MuiInputBase-input': { fontSize: '0.72rem', py: 0.5 } }} />
+                  <TextField type="date" size="small" label="To" value={expDateEnd} onChange={(e) => setExpDateEnd(e.target.value)} InputLabelProps={{ shrink: true }} sx={{ flex: 1, '& .MuiInputBase-input': { fontSize: '0.72rem', py: 0.5 } }} />
+                </Stack>
+                <Stack direction="row" spacing={0.5}>
+                  <Button size="small" variant="contained" onClick={() => setExpenditureOpen(true)} sx={{ fontSize: '0.62rem', py: 0.3, flex: 1 }}>View Spend</Button>
+                  {(expDateStart || expDateEnd) && <Button size="small" onClick={() => { setExpDateStart(''); setExpDateEnd(''); }} sx={{ fontSize: '0.62rem', py: 0.3 }}>Clear</Button>}
+                </Stack>
+                {!expDateStart && !expDateEnd && <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.6rem', textAlign: 'center' }}>All-time spend shown by default</Typography>}
+              </Stack>
+            </Section>
+          </Box>
           {/* Expenditure Trend — rectangle layout */}
-          <Section title="Expenditure Trend" icon={<TrendDownIcon color="error" sx={{ fontSize: 15 }} />} sx={{ minHeight: 0 }}><Box sx={{ height: '100%', minHeight: 140, width: '100%' }}><ResponsiveContainer width="100%" height="100%"><AreaChart data={(trend?.trend ?? []).map((point) => ({ ...point, date: new Date(point.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) }))} margin={{ top: 6, right: 6, bottom: 0, left: 0 }}><XAxis dataKey="date" tick={{ fontSize: 8 }} /><YAxis hide /><Tooltip formatter={(value: unknown) => formatCurrency(Number(value))} /><Area type="monotone" dataKey="amount" stroke="#e53935" fill="#ffcdd2" strokeWidth={2} /></AreaChart></ResponsiveContainer></Box></Section>
+          <Section title="Expenditure Trend" icon={<TrendDownIcon color="error" sx={{ fontSize: 15 }} />} sx={{ gridArea: { xs: 'dashTrend', md: 'auto' }, minHeight: { xs: 180, md: 0 } }}><Box sx={{ height: '100%', minHeight: { xs: 150, md: 140 }, width: '100%' }}><ResponsiveContainer width="100%" height="100%"><AreaChart data={(trend?.trend ?? []).map((point) => ({ ...point, date: new Date(point.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) }))} margin={{ top: 6, right: 6, bottom: 0, left: 0 }}><XAxis dataKey="date" tick={{ fontSize: 8 }} /><YAxis hide /><Tooltip formatter={(value: unknown) => formatCurrency(Number(value))} /><Area type="monotone" dataKey="amount" stroke="#e53935" fill="#ffcdd2" strokeWidth={2} /></AreaChart></ResponsiveContainer></Box></Section>
         </Box>
       </Box>
 
       {/* Lower compact area */}
-      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(3, minmax(0, 1fr))' }, gap: 0.8, minHeight: 0, minWidth: 0 }}>
+      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'minmax(0, 1fr)', sm: 'repeat(2, minmax(0, 1fr))', lg: 'minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 2fr)' }, gap: { xs: 1, md: 0.8 }, minHeight: 0, minWidth: 0, overflow: { xs: 'visible', md: 'hidden' } }}>
         <CompactRecords title="Recent Quotations" icon={<ReceiptIcon color="primary" sx={{ fontSize: 14 }} />} rows={(data?.recentQuotations ?? []).slice(0, 3).map((r) => ({ code: r.quotationNumber, name: r.vendorName, amount: r.grandTotal, status: r.status, date: r.createdAt }))} onRow={(r) => navigate(`/quotations?id=${(data?.recentQuotations ?? []).find((x) => x.quotationNumber === r.code)?.id ?? ''}`)} />
         <CompactRecords title="Recent Purchase Orders" icon={<ReceiptIcon color="primary" sx={{ fontSize: 14 }} />} rows={(data?.recentPOs ?? []).slice(0, 3).map((r) => ({ code: r.poNumber, name: r.vendorName, amount: r.grandTotal, status: r.status, date: r.createdAt }))} onRow={() => navigate('/pos')} />
         <CompactRecords title="Recent Invoices" icon={<ReceiptIcon color="primary" sx={{ fontSize: 14 }} />} rows={(data?.recentInvoices ?? []).slice(0, 3).map((r) => ({ code: r.invoiceCode, name: r.vendorName, amount: r.totalAmount, status: r.verificationStatus, date: r.createdAt }))} onRow={() => navigate('/invoices')} />
+        <Box sx={{ minHeight: { xs: 160, md: 0 }, overflow: 'hidden' }}><RateTrackerWidget /></Box>
       </Box>
 
       <Dialog open={inwardOpen} onClose={() => setInwardOpen(false)} maxWidth="md" fullWidth>
@@ -209,7 +259,7 @@ export default function DenseAdminDashboard() {
 
       <Dialog open={expenditureOpen} onClose={() => setExpenditureOpen(false)} maxWidth="md" fullWidth>
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', pb: 1 }}>
-          <Box><Typography sx={{ fontWeight: 800 }}>Expenditure Details</Typography><Typography variant="caption" color="text.secondary">All posted Bank and Cash expenditure records</Typography></Box>
+          <Box><Typography sx={{ fontWeight: 800 }}>Expenditure Details</Typography><Typography variant="caption" color="text.secondary">{expDateStart || expDateEnd ? `${expDateStart ? formatDate(expDateStart) : 'Start'} → ${expDateEnd ? formatDate(expDateEnd) : 'End'}` : 'All posted Bank and Cash expenditure records'}</Typography></Box>
           <Button aria-label="Close expenditure details" onClick={() => setExpenditureOpen(false)} sx={{ minWidth: 36, p: 0.5 }}><CloseIcon fontSize="small" /></Button>
         </DialogTitle>
         <DialogContent dividers sx={{ p: 0 }}>
@@ -228,6 +278,29 @@ export default function DenseAdminDashboard() {
           )}
         </DialogContent>
         <DialogActions><Button onClick={() => setExpenditureOpen(false)}>Close</Button></DialogActions>
+      </Dialog>
+
+      <Dialog open={shortAdvanceOpen} onClose={() => setShortAdvanceOpen(false)} maxWidth="md" fullWidth>
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', pb: 1 }}>
+          <Box><Typography sx={{ fontWeight: 800 }}>Short Advance / Loan Details</Typography><Typography variant="caption" color="text.secondary">Cash loan receipts only</Typography></Box>
+          <Button aria-label="Close short advance details" onClick={() => setShortAdvanceOpen(false)} sx={{ minWidth: 36, p: 0.5 }}><CloseIcon fontSize="small" /></Button>
+        </DialogTitle>
+        <DialogContent dividers sx={{ p: 0 }}>
+          {shortAdvanceDetailsLoading ? <Box sx={{ py: 6, textAlign: 'center' }}><Skeleton variant="rectangular" height={32} sx={{ mx: 2 }} /></Box> : (
+            <Box sx={{ overflowX: 'auto' }}>
+              <Stack direction="row" spacing={2} sx={{ px: 2, py: 1, bgcolor: 'grey.50', borderBottom: '1px solid', borderColor: 'divider' }}>
+                <Typography variant="caption" fontWeight={700}>Net Short Advance: {formatCurrency(shortAdvanceDetails?.totalAmount ?? 0)}</Typography>
+                <Typography variant="caption" color="text.secondary">Records: {shortAdvanceDetails?.totalCount ?? 0}</Typography>
+              </Stack>
+              <Table size="small" sx={{ minWidth: 620 }}>
+                <TableHead><TableRow><TableCell sx={cellSx}>Date</TableCell><TableCell sx={cellSx}>Type</TableCell><TableCell sx={cellSx}>Cash Account</TableCell><TableCell sx={cellSx}>Loan Ledger</TableCell><TableCell sx={cellSx}>Description</TableCell><TableCell align="right" sx={cellSx}>Amount</TableCell></TableRow></TableHead>
+                <TableBody>{(shortAdvanceDetails?.transactions ?? []).map((tx) => <TableRow key={tx.id} hover><TableCell sx={cellSx}>{formatDate(tx.date)}</TableCell><TableCell sx={cellSx}><Chip size="small" label={tx.type === 'REVERSAL_OUT' ? 'Reversed Loan' : 'Loan Receipt'} color={tx.type === 'REVERSAL_OUT' ? 'error' : 'warning'} sx={{ height: 18, fontSize: '0.6rem' }} /></TableCell><TableCell sx={cellSx}>{tx.account}</TableCell><TableCell sx={cellSx}>{tx.ledger}</TableCell><TableCell sx={{ ...cellSx, maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis' }} title={tx.description}>{tx.description || '—'}</TableCell><TableCell align="right" sx={{ ...cellSx, fontWeight: 700, color: tx.type === 'REVERSAL_OUT' ? 'error.main' : 'warning.dark' }}>{tx.type === 'REVERSAL_OUT' ? '−' : '+'}{formatCurrency(Math.abs(tx.amount))}</TableCell></TableRow>)}</TableBody>
+              </Table>
+              {!shortAdvanceDetails?.transactions.length && <Typography sx={{ p: 3, textAlign: 'center' }} color="text.secondary">No cash loan receipts found.</Typography>}
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions><Button onClick={() => setShortAdvanceOpen(false)}>Close</Button></DialogActions>
       </Dialog>
     </Box>
   );

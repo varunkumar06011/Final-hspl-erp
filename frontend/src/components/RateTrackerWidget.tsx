@@ -84,8 +84,8 @@ export default function RateTrackerWidget() {
   const summary = data?.summary;
 
   return (
-    <Card sx={{ overflow: 'hidden' }}>
-      <CardContent sx={{ py: 1.5, px: 2, '&:last-child': { pb: 1.5 } }}>
+    <Card sx={{ overflow: 'hidden', height: '100%', display: 'flex', flexDirection: 'column' }}>
+      <CardContent sx={{ py: 1.5, px: 2, '&:last-child': { pb: 1.5 }, height: '100%', display: 'flex', flexDirection: 'column' }}>
         {/* Compact header — title + summary chips inline */}
         <Stack direction="row" alignItems="center" justifyContent="space-between" flexWrap="wrap" gap={1} sx={{ mb: 1 }}>
           <Typography variant="subtitle2" fontWeight={600}>
@@ -117,7 +117,7 @@ export default function RateTrackerWidget() {
             No rate changes yet. Materials appear here once they show up on more than one Quotation or PO.
           </Typography>
         ) : (
-          <TableContainer sx={{ maxHeight: 220, overflowX: 'auto' }}>
+          <TableContainer sx={{ maxHeight: 140, overflowX: 'auto', flex: 1 }}>
             <Table size="small" stickyHeader>
               <TableHead>
                 <TableRow>
