@@ -98,7 +98,7 @@ async function getDeliveredValueForPo(
 }
 
 const HEAD_ROLES = [UserRole.PROJECT_HEAD, UserRole.HEAD_OF_CONSTRUCTION, UserRole.ACCOUNTS_HEAD, UserRole.ADMIN, UserRole.ADMIN_2];
-const PO_APPROVER_ROLES = [UserRole.PROJECT_HEAD, UserRole.ACCOUNTS_HEAD, UserRole.ADMIN, UserRole.ADMIN_2];
+const PO_APPROVER_ROLES = [UserRole.ADMIN, UserRole.ADMIN_2];
 
 async function generatePONumber(projectId: string): Promise<string> {
   return generateSequenceNumber('purchaseOrder', 'poNumber', 'VGH-PO', 3, { projectId });
@@ -442,7 +442,7 @@ router.post(
           include: poInclude,
         });
 
-        // Initiate approval workflow — one approval from any head/MD.
+        // Initiate approval workflow — one approval from any Admin (ADMIN or ADMIN_2).
         const workflow = await tx.approvalWorkflow.create({
           data: {
             entityType: 'PURCHASE_ORDER',
@@ -451,9 +451,9 @@ router.post(
             status: 'VERIFICATION',
             currentStep: 0,
             minApprovers: 1,
-            approvalPolicy: 'PO_HEAD_APPROVERS',
+            approvalPolicy: 'PO_SINGLE_APPROVER',
             steps: {
-              create: [UserRole.PROJECT_HEAD, UserRole.ACCOUNTS_HEAD, UserRole.ADMIN_2].map((role, idx) => ({
+              create: [UserRole.ADMIN, UserRole.ADMIN_2].map((role, idx) => ({
                 stepNumber: idx + 1,
                 approverRole: role,
                 status: 'PENDING',
@@ -596,7 +596,7 @@ router.post(
 
       // Check user is one of the PO approver roles (Admin or Admin 2)
       if (!PO_APPROVER_ROLES.includes(req.user!.role as UserRole)) {
-        res.status(403).json({ error: 'Only Project Head, Accounts Head or Admin 2 can approve purchase orders' });
+        res.status(403).json({ error: 'Only Admin or Admin 2 can approve purchase orders' });
         return;
       }
 
@@ -695,7 +695,7 @@ router.post(
   }
 );
 
-// POST /:id/reject — reject PO (any of 4 head roles)
+// POST /:id/reject — reject PO (Admin or Admin 2)
 router.post(
   '/:id/reject',
   rbacMiddleware(Permission.VIEW_FINANCIALS),
@@ -713,7 +713,7 @@ router.post(
       }
 
       if (!PO_APPROVER_ROLES.includes(req.user!.role as UserRole)) {
-        res.status(403).json({ error: 'Only Project Head, Accounts Head or Admin 2 can reject purchase orders' });
+        res.status(403).json({ error: 'Only Admin or Admin 2 can reject purchase orders' });
         return;
       }
 
@@ -1289,9 +1289,9 @@ router.post(
             status: 'VERIFICATION',
             currentStep: 0,
             minApprovers: 1,
-            approvalPolicy: 'PO_HEAD_APPROVERS',
+            approvalPolicy: 'PO_SINGLE_APPROVER',
             steps: {
-              create: [UserRole.PROJECT_HEAD, UserRole.ACCOUNTS_HEAD, UserRole.ADMIN_2].map((role, idx) => ({
+              create: [UserRole.ADMIN, UserRole.ADMIN_2].map((role, idx) => ({
                 stepNumber: idx + 1,
                 approverRole: role,
                 status: 'PENDING',

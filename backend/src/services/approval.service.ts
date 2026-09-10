@@ -8,7 +8,7 @@ interface InitiateParams {
   entityId: string;
   projectId: string;
   minApprovers?: number;
-  approvalPolicy?: 'HEAD_GROUPS' | 'PO_SINGLE_APPROVER' | 'PO_HEAD_APPROVERS';
+  approvalPolicy?: 'HEAD_GROUPS' | 'PO_SINGLE_APPROVER' | 'PO_HEAD_APPROVERS' | 'ANY_APPROVERS';
 }
 
 const STEP_ROLES: { stepNumber: number; approverRole: UserRole }[] = APPROVER_ROLES.map(
@@ -23,7 +23,7 @@ function satisfiesApprovalPolicy(policy: string | null | undefined, steps: { sta
   if (policy === 'PO_SINGLE_APPROVER') {
     return approvedRoles.has(UserRole.ADMIN) || approvedRoles.has(UserRole.ADMIN_2);
   }
-  if (policy === 'PO_HEAD_APPROVERS') {
+  if (policy === 'PO_HEAD_APPROVERS' || policy === 'ANY_APPROVERS') {
     return [...approvedRoles].filter((role) =>
       [UserRole.PROJECT_HEAD, UserRole.HEAD_OF_CONSTRUCTION, UserRole.ACCOUNTS_HEAD, UserRole.ADMIN, UserRole.ADMIN_2].includes(role as UserRole)
     ).length >= required;

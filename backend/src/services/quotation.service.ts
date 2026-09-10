@@ -3,7 +3,6 @@ import {
   APPROVER_ROLES,
   AuditAction,
   QuotationStatus,
-  getRequiredApproverCount,
 } from '@hospital-erp/shared';
 import { generateSequenceNumber } from './sequence.service';
 import * as approvalService from './approval.service';
@@ -142,13 +141,15 @@ export async function createQuotation(input: CreateQuotationInput) {
     include: quotationInclude,
   });
 
-  // Initiate approval workflow
+  // Initiate approval workflow — ANY_APPROVERS: any `required` distinct
+  // approver roles suffice (e.g. ADMIN + ADMIN_2), unlike HEAD_GROUPS which
+  // forces a PROJECT_HEAD/HEAD_OF_CONSTRUCTION approval.
   const workflow = await approvalService.initiate({
     entityType: 'QUOTATION',
     entityId: quotation.id,
     projectId,
-    minApprovers: getRequiredApproverCount(grandTotal),
-    approvalPolicy: 'HEAD_GROUPS',
+    minApprovers: 2,
+    approvalPolicy: 'ANY_APPROVERS',
   });
 
   // Link the workflow and return the full record (with includes) in one call.

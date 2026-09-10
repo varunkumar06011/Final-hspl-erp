@@ -807,19 +807,19 @@ router.get(
         prisma.quotation.count({ where: { projectId, status: 'SUBMITTED', deletedAt: null } }),
         prisma.purchaseOrder.count({ where: { projectId, status: 'PENDING_APPROVAL', deletedAt: null } }),
         prisma.vendorInvoice.count({ where: { projectId, verificationStatus: 'PENDING', deletedAt: null } }),
-        // Recent bank transactions (last 5)
+        // Recent bank transactions (last 15 — enough for the scrollable dashboard list)
         prisma.bankTransaction.findMany({
           where: { status: 'POSTED', bankAccount: { projectId, deletedAt: null } },
           include: { bankAccount: { select: { accountName: true } } },
           orderBy: { date: 'desc' },
-          take: 5,
+          take: 15,
         }),
-        // Recent cash transactions (last 5)
+        // Recent cash transactions (last 15)
         prisma.cashTransaction.findMany({
           where: { status: 'POSTED', cashAccount: { projectId, deletedAt: null } },
           include: { cashAccount: { select: { name: true } } },
           orderBy: { date: 'desc' },
-          take: 5,
+          take: 15,
         }),
         // Today's bank base outflow
         prisma.bankTransaction.aggregate({
@@ -1183,7 +1183,7 @@ router.get(
             description: t.description ?? '',
             date: t.date.toISOString(),
           })),
-        ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 8),
+        ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 30),
         recentQuotations: recentQuotations.map((q) => ({
           id: q.id,
           quotationNumber: q.quotationNumber,
@@ -1695,6 +1695,79 @@ router.get(
       ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
       res.json({ totalAmount, totalCount, transactions });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// ── Short Advance / Loan detail ──────────────────────────────────────
+// Returns the individual cash loan receipt transactions that make up the
+// shortAdvance figure shown on the dashboard.  A short advance is a cash
+// receipt (IN / REVERSAL_OUT) whose journal voucher has a credit entry in
+// a ledger whose group contains "loan" (case-insensitive).
+router.get(
+  '/admin-short-advance-detail',
+  rbacMiddleware(Permission.VIEW_DASHBOARD),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      const limit = Math.min(Math.max(parseInt(String(req.query.limit ?? '5000'), 10) || 5000, 1), 5000);
+
+      // 1. Fetch all posted cash receipt transactions linked to a voucher.
+      const cashReceipts = await prisma.cashTransaction.findMany({
+        where: {
+          status: 'POSTED',
+          type: { in: ['IN', 'REVERSAL_OUT'] },
+          cashAccount: { projectId, deletedAt: null },
+          referenceId: { not: null },
+        },
+        include: { cashAccount: { select: { name: true } } },
+        orderBy: { date: 'desc' },
+        take: limit,
+      });
+
+      const voucherIds = cashReceipts
+        .map((t) => t.referenceId)
+        .filter((id): id is string => !!id);
+
+      if (voucherIds.length === 0) {
+        res.json({ totalAmount: 0, totalCount: 0, transactions: [] });
+        return;
+      }
+
+      // 2. Find which vouchers have a loan-group credit ledger entry.
+      const loanEntries = await prisma.ledgerEntry.findMany({
+        where: {
+          journalVoucherId: { in: voucherIds },
+          credit: { gt: 0 },
+          ledger: { group: { contains: 'loan', mode: 'insensitive' }, projectId, deletedAt: null },
+          journalVoucher: { status: 'POSTED', deletedAt: null },
+        },
+        select: { journalVoucherId: true, ledger: { select: { name: true } } },
+      });
+      const loanVoucherIds = new Set(loanEntries.map((e) => e.journalVoucherId));
+      const loanLedgerByVoucher = new Map(loanEntries.map((e) => [e.journalVoucherId, e.ledger.name]));
+
+      // 3. Keep only the cash receipts whose voucher is a loan receipt.
+      const loanTxns = cashReceipts.filter((t) => loanVoucherIds.has(t.referenceId ?? ''));
+
+      const totalAmount = loanTxns.reduce(
+        (sum, t) => sum + (t.type === 'REVERSAL_OUT' ? -Number(t.amount) : Number(t.amount)),
+        0,
+      );
+
+      const transactions = loanTxns.map((t) => ({
+        id: t.id,
+        account: t.cashAccount?.name ?? 'Cash',
+        amount: t.type === 'REVERSAL_OUT' ? -Number(t.amount) : Number(t.amount),
+        description: t.description ?? '',
+        type: t.type,
+        ledger: loanLedgerByVoucher.get(t.referenceId ?? '') ?? 'Loan',
+        date: t.date.toISOString(),
+      })).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+      res.json({ totalAmount, totalCount: transactions.length, transactions });
     } catch (error) {
       next(error);
     }
