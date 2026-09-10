@@ -1,4 +1,4 @@
-import { Box, AppBar, Toolbar, Typography, IconButton, Avatar, Chip, Menu, MenuItem, Drawer, List, ListItem, ListItemIcon, ListItemText, useTheme, useMediaQuery, Snackbar, Alert, Breadcrumbs, Link } from '@mui/material';
+import { Box, AppBar, Toolbar, Typography, IconButton, Avatar, Chip, Menu, MenuItem, Drawer, List, ListItem, ListItemIcon, ListItemText, useTheme, useMediaQuery, Snackbar, Alert, Breadcrumbs, Link, CircularProgress } from '@mui/material';
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate, useLocation, Link as RouterLink } from 'react-router-dom';
 import {
@@ -8,6 +8,7 @@ import {
   Event as WorkIcon,
   Receipt as ReceiptIcon,
   AccountBalance as PaymentIcon,
+  Refresh as RefreshIcon,
   LocalShipping as GatePassIcon,
   Inventory as InventoryIcon,
   Engineering as LabourIcon,
@@ -50,6 +51,7 @@ import GlobalSearch from './GlobalSearch';
 import NLQueryBar from './NLQueryBar';
 import PresenceBar from './PresenceBar';
 import { useTrackPageView } from '../hooks/useTrackPageView';
+import { usePullToRefresh } from '../hooks/usePullToRefresh';
 
 const NAV_ITEMS = [
   { label: 'Dashboard', icon: <DashboardIcon />, path: '/', permission: Permission.VIEW_DASHBOARD, section: '' },
@@ -165,6 +167,14 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   useTrackPageView();
   // Auto-logout disabled — user stays logged in until manual logout.
   useIdleTimeout();
+
+  // Pull-to-refresh (mobile) + manual refresh (desktop)
+  const { state: pullState, scrollContainer, bind: pullBind } = usePullToRefresh();
+  const [manualRefreshing, setManualRefreshing] = useState(false);
+  const handleManualRefresh = useCallback(() => {
+    setManualRefreshing(true);
+    window.location.reload();
+  }, []);
 
   // Cmd+K / Ctrl+K opens global search, Cmd+J / Ctrl+J opens NL query
   useEffect(() => {
@@ -390,6 +400,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           <IconButton color="inherit" onClick={toggleColorMode} title={mode === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}>
             {mode === 'dark' ? <LightModeIcon /> : <DarkModeIcon />}
           </IconButton>
+          <IconButton color="inherit" onClick={handleManualRefresh} title="Refresh" disabled={manualRefreshing}>
+            {manualRefreshing ? <CircularProgress size={20} color="inherit" /> : <RefreshIcon />}
+          </IconButton>
           <IconButton color="inherit" onClick={() => setSearchOpen(true)} title="Search (Ctrl+K)">
             <SearchIcon />
           </IconButton>
@@ -457,7 +470,32 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         </Drawer>
       )}
 
-      <Box component="main" sx={{ flexGrow: 1, p: { xs: 1.5, sm: 2, md: 3 }, mt: 8, width: { xs: '100%', md: 'auto' }, minWidth: 0, overflow: 'hidden' }}>
+      <Box component="main" ref={scrollContainer} {...pullBind} sx={{ flexGrow: 1, p: { xs: 1.5, sm: 2, md: 3 }, mt: 8, width: { xs: '100%', md: 'auto' }, minWidth: 0, overflow: 'hidden', position: 'relative' }}>
+        {/* Pull-to-refresh indicator (mobile) */}
+        {(pullState.pulling || pullState.refreshing) && (
+          <Box sx={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            height: `${pullState.pullDistance}px`,
+            transition: pullState.pulling ? 'none' : 'height 0.3s ease',
+            zIndex: 10,
+            pointerEvents: 'none',
+          }}>
+            <CircularProgress
+              size={28}
+              sx={{
+                opacity: pullState.refreshing || pullState.pullDistance > 30 ? 1 : 0.3,
+                transform: pullState.refreshing ? 'rotate(360deg)' : `rotate(${pullState.pullDistance * 2}deg)`,
+                transition: pullState.pulling ? 'none' : 'transform 0.3s ease, opacity 0.3s ease',
+              }}
+            />
+          </Box>
+        )}
         {/* Mobile back button — iPhones have no hardware back gesture */}
         {isMobile && location.pathname !== '/' && (
           <IconButton onClick={() => navigate(-1)} sx={{ mb: 1, p: 0.5 }} aria-label="Back">
