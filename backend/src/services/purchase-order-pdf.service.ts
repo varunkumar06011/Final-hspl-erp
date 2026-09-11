@@ -294,10 +294,12 @@ export async function streamPurchaseOrderPdf(res: NodeJS.WritableStream, po: any
     y = drawTotal('NET PAYABLE:', fmtMoney(Number(po.netPayable)), y, true);
   }
 
-  // For ADVANCE / FULL_PAYMENT POs, show the advance breakdown: total payable, advance now pay (highlighted), outstanding
+  // For ADVANCE / FULL_PAYMENT POs, show the advance breakdown: advance now pay (highlighted), outstanding
   if (po.advanceAmount !== null && po.advanceAmount !== undefined && Number(po.advanceAmount) > 0) {
     const advanceVal = Number(po.advanceAmount);
-    const outstandingVal = Math.max(0, Number(po.grandTotal) - advanceVal);
+    // Calculate outstanding from netPayable (after deductions) if deductions exist, else from grandTotal
+    const baseForOutstanding = deductionRows.length > 0 ? Number(po.netPayable) : Number(po.grandTotal);
+    const outstandingVal = Math.max(0, baseForOutstanding - advanceVal);
     y += 8;
     y = drawAdvanceTotal('ADVANCE NOW PAY:', fmtMoney(advanceVal), y);
     y = drawTotal('Outstanding (after advance):', fmtMoney(outstandingVal), y);
