@@ -105,6 +105,9 @@ interface PORow {
   totalAmount: number;
   gstAmount: number;
   grandTotal: number;
+  deductions?: { amount: number; reason: string }[] | null;
+  totalDeductions?: number;
+  netPayable?: number;
   createdBy: string;
   createdByUser: { id: string; name: string };
   items: POItem[];
@@ -146,6 +149,7 @@ export default function PurchaseOrdersPage() {
   const [deliveryDate, setDeliveryDate] = useState('');
   const [selectedBudgetHeadId, setSelectedBudgetHeadId] = useState('');
   const [acknowledged, setAcknowledged] = useState(false);
+  const [deductions, setDeductions] = useState<{ amount: string; reason: string }[]>([]);
   const [approvalAction, setApprovalAction] = useState<{ row: PORow; action: 'approve' | 'reject' } | null>(null);
   const [approvalPopup, setApprovalPopup] = useState<PORow | null>(null);
   const [trailRow, setTrailRow] = useState<PORow | null>(null);
@@ -256,6 +260,9 @@ export default function PurchaseOrdersPage() {
         deliveryDate,
         acknowledged,
         budgetHeadId: selectedBudgetHeadId,
+        deductions: deductions
+          .filter((d) => d.amount && Number(d.amount) > 0 && d.reason.trim())
+          .map((d) => ({ amount: Number(d.amount), reason: d.reason.trim() })),
       });
       return response.data;
     },
@@ -392,6 +399,12 @@ export default function PurchaseOrdersPage() {
 
   const grandTotal = quotationTotal + gstAmount;
 
+  const totalDeductions = useMemo(() => {
+    return deductions.reduce((sum, d) => sum + (d.amount ? Number(d.amount) : 0), 0);
+  }, [deductions]);
+
+  const netPayable = grandTotal - totalDeductions;
+
   function resetForm() {
     setSelectedVendorId('');
     setSelectedQuotationId('');
@@ -401,6 +414,7 @@ export default function PurchaseOrdersPage() {
     setDeliveryDate('');
     setSelectedBudgetHeadId('');
     setAcknowledged(false);
+    setDeductions([]);
     setError('');
   }
 
@@ -500,6 +514,8 @@ export default function PurchaseOrdersPage() {
                 <TableCell sx={{ fontWeight: 600 }}>Total</TableCell>
                 <TableCell sx={{ fontWeight: 600 }}>GST</TableCell>
                 <TableCell sx={{ fontWeight: 600 }}>Grand Total</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>Deductions</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>Net Payable</TableCell>
                 <TableCell sx={{ fontWeight: 600 }}>Budget Head</TableCell>
                 <TableCell sx={{ fontWeight: 600 }}>Created By</TableCell>
                 <TableCell sx={{ fontWeight: 600 }}>Status</TableCell>
@@ -508,9 +524,9 @@ export default function PurchaseOrdersPage() {
             </TableHead>
             <TableBody>
               {isLoading ? (
-                <TableRow><TableCell colSpan={12} align="center" sx={{ py: 4 }}><CircularProgress size={32} /></TableCell></TableRow>
+                <TableRow><TableCell colSpan={14} align="center" sx={{ py: 4 }}><CircularProgress size={32} /></TableCell></TableRow>
               ) : rows.length === 0 ? (
-                <TableRow><TableCell colSpan={12} align="center" sx={{ py: 4 }}><Typography color="text.secondary">No purchase orders found</Typography></TableCell></TableRow>
+                <TableRow><TableCell colSpan={14} align="center" sx={{ py: 4 }}><Typography color="text.secondary">No purchase orders found</Typography></TableCell></TableRow>
               ) : (
                 rows.map((row) => (
                   <TableRow key={row.id} hover ref={rowRef(row.id)} sx={{ ...(highlightId === row.id && { bgcolor: 'warning.light', '&:hover': { bgcolor: 'warning.light' } }) }}>
@@ -564,6 +580,23 @@ export default function PurchaseOrdersPage() {
                     <TableCell data-label="Total">{formatCurrency(row.totalAmount)}</TableCell>
                     <TableCell data-label="GST">{formatCurrency(row.gstAmount)}</TableCell>
                     <TableCell data-label="Grand Total">{formatCurrency(row.grandTotal)}</TableCell>
+                    <TableCell data-label="Deductions">
+                      {row.deductions && row.deductions.length > 0 ? (
+                        <Box>
+                          <Typography color="error" fontWeight={600}>-{formatCurrency(Number(row.totalDeductions ?? 0))}</Typography>
+                          {row.deductions.map((d, i) => (
+                            <Typography key={i} variant="caption" color="text.secondary" display="block">
+                              {d.reason}: {formatCurrency(d.amount)}
+                            </Typography>
+                          ))}
+                        </Box>
+                      ) : (
+                        <Typography variant="caption" color="text.secondary">—</Typography>
+                      )}
+                    </TableCell>
+                    <TableCell data-label="Net Payable">
+                      <Typography fontWeight={600}>{formatCurrency(Number(row.netPayable ?? row.grandTotal))}</Typography>
+                    </TableCell>
                     <TableCell data-label="Budget Head">
                       {row.budgetHead ? (
                         <Chip label={row.budgetHead.particulars} size="small" variant="outlined" color="primary" />
@@ -577,7 +610,7 @@ export default function PurchaseOrdersPage() {
                       <Box sx={{ display: 'flex', gap: 0.5 }}>
                         <IconButton size="small" onClick={() => previewPDF(row.id)} title="Preview PDF"><PdfIcon fontSize="small" /></IconButton>
                         <IconButton size="small" onClick={() => downloadPDF(row.id, row.poNumber)} title="Download PDF"><DownloadIcon fontSize="small" /></IconButton>
-                        <IconButton size="small" sx={{ color: '#25D366' }} onClick={() => shareOnWhatsApp(buildPOShareMessage({ poNumber: row.poNumber, vendorName: row.vendor?.name, grandTotal: Number(row.grandTotal), status: row.status, date: row.date }))} title="Share on WhatsApp"><WhatsAppIcon fontSize="small" /></IconButton>
+                        <IconButton size="small" sx={{ color: '#25D366' }} onClick={() => shareOnWhatsApp(buildPOShareMessage({ poNumber: row.poNumber, vendorName: row.vendor?.name, grandTotal: Number(row.grandTotal), status: row.status, date: row.date, totalDeductions: Number(row.totalDeductions ?? 0), netPayable: Number(row.netPayable ?? row.grandTotal), deductions: row.deductions ?? undefined }))} title="Share on WhatsApp"><WhatsAppIcon fontSize="small" /></IconButton>
                         {canApprove(row) && (
                           <>
                             <IconButton size="small" color="success" onClick={() => setApprovalAction({ row, action: 'approve' })} title="Approve"><CheckIcon fontSize="small" /></IconButton>
@@ -768,6 +801,69 @@ export default function PurchaseOrdersPage() {
               {budgetHeads.map((h) => <MenuItem key={h.id} value={h.id}>{h.particulars}</MenuItem>)}
             </TextField>
 
+            {/* Deductions Section */}
+            {selectedQuotation && (
+              <Box>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                  <Typography variant="body2" fontWeight={600}>Deductions (optional)</Typography>
+                  <Button
+                    size="small"
+                    startIcon={<AddIcon />}
+                    onClick={() => setDeductions([...deductions, { amount: '', reason: '' }])}
+                  >
+                    Add Deduction
+                  </Button>
+                </Box>
+                {deductions.length === 0 ? (
+                  <Typography variant="caption" color="text.secondary">
+                    No deductions. Add TDS, retention, advance adjustment, or other deductions to reduce the net payable.
+                  </Typography>
+                ) : (
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                    {deductions.map((d, idx) => (
+                      <Box key={idx} sx={{ display: 'flex', gap: 1, alignItems: 'flex-start', flexWrap: { xs: 'wrap', sm: 'nowrap' } }}>
+                        <TextField
+                          label="Amount"
+                          type="text"
+                          value={formatIndianNumber(d.amount)}
+                          onChange={(e) => {
+                            const value = e.target.value.replace(/,/g, '');
+                            const parsed = Number(value);
+                            const updated = [...deductions];
+                            updated[idx] = { ...d, amount: value === '' ? '' : !Number.isFinite(parsed) ? '' : String(Math.min(parsed, grandTotal)) };
+                            setDeductions(updated);
+                          }}
+                          inputMode="decimal"
+                          size="small"
+                          sx={{ width: { xs: '100%', sm: 150 }, flexShrink: 0 }}
+                        />
+                        <TextField
+                          label="Reason"
+                          value={d.reason}
+                          onChange={(e) => {
+                            const updated = [...deductions];
+                            updated[idx] = { ...d, reason: e.target.value };
+                            setDeductions(updated);
+                          }}
+                          size="small"
+                          fullWidth
+                          placeholder="E.g. TDS, retention, advance adjustment"
+                        />
+                        <IconButton
+                          size="small"
+                          color="error"
+                          onClick={() => setDeductions(deductions.filter((_, i) => i !== idx))}
+                          title="Remove"
+                        >
+                          <CloseIcon fontSize="small" />
+                        </IconButton>
+                      </Box>
+                    ))}
+                  </Box>
+                )}
+              </Box>
+            )}
+
             {/* Items from quotation (read-only) */}
             {selectedQuotation?.items && selectedQuotation.items.length > 0 && (
               <Box>
@@ -836,6 +932,16 @@ export default function PurchaseOrdersPage() {
                   <Typography variant="body2" sx={{ textAlign: { xs: 'left', sm: 'right' } }}>Total: <strong>{formatCurrency(quotationTotal)}</strong></Typography>
                   <Typography variant="body2" sx={{ textAlign: { xs: 'left', sm: 'right' } }}>GST (auto-calculated): <strong>{formatCurrency(gstAmount)}</strong></Typography>
                   <Typography variant="body2" sx={{ textAlign: { xs: 'left', sm: 'right' } }}>Grand Total: <strong>{formatCurrency(grandTotal)}</strong></Typography>
+                  {totalDeductions > 0 && (
+                    <>
+                      <Typography variant="body2" color="error" sx={{ textAlign: { xs: 'left', sm: 'right' } }}>
+                        Less Deductions: <strong>-{formatCurrency(totalDeductions)}</strong>
+                      </Typography>
+                      <Typography variant="body2" sx={{ textAlign: { xs: 'left', sm: 'right' }, fontWeight: 700, fontSize: '1rem' }}>
+                        Net Payable: {formatCurrency(netPayable)}
+                      </Typography>
+                    </>
+                  )}
                 </Box>
               </Box>
             )}

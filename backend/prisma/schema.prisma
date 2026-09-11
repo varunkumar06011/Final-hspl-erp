@@ -259,6 +259,10 @@ model PurchaseOrder {
   totalAmount        Decimal   @default(0) @db.Decimal(15, 2)
   gstAmount          Decimal   @default(0) @db.Decimal(15, 2)
   grandTotal         Decimal   @default(0) @db.Decimal(15, 2)
+  // Deductions applied at PO creation (TDS, retention, advance adjustment, etc.)
+  deductions         Json?     // array of { amount: number, reason: string }
+  totalDeductions    Decimal   @default(0) @db.Decimal(15, 2)
+  netPayable         Decimal   @default(0) @db.Decimal(15, 2) // grandTotal - totalDeductions
   notes              String?
   createdBy          String    @db.Uuid
   approvalWorkflowId String?   @unique @db.Uuid

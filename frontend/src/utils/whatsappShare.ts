@@ -19,17 +19,32 @@ export function buildPOShareMessage(po: {
   grandTotal?: number;
   status?: string;
   date?: string;
+  totalDeductions?: number;
+  netPayable?: number;
+  deductions?: { amount: number; reason: string }[];
 }): string {
-  return [
+  const lines: string[] = [
     `📋 *Purchase Order ${po.poNumber}*`,
     ``,
     `Vendor: ${po.vendorName ?? '—'}`,
-    `Amount: ₹${Number(po.grandTotal ?? 0).toLocaleString('en-IN')}`,
+    `Grand Total: ₹${Number(po.grandTotal ?? 0).toLocaleString('en-IN')}`,
+  ];
+  if (po.deductions && po.deductions.length > 0) {
+    lines.push(``, `*Deductions:*`);
+    po.deductions.forEach((d) => {
+      lines.push(`• ${d.reason}: ₹${Number(d.amount).toLocaleString('en-IN')}`);
+    });
+    lines.push(`Total Deductions: ₹${Number(po.totalDeductions ?? 0).toLocaleString('en-IN')}`);
+    lines.push(`*Net Payable: ₹${Number(po.netPayable ?? po.grandTotal ?? 0).toLocaleString('en-IN')}*`);
+  }
+  lines.push(
+    ``,
     `Status: ${po.status ?? '—'}`,
     `Date: ${po.date ?? '—'}`,
     ``,
     `Sent from Hospital Construction ERP`,
-  ].join('\n');
+  );
+  return lines.join('\n');
 }
 
 /**

@@ -107,6 +107,9 @@ interface RecordDisplay {
       status: string;
     }>;
   };
+  deductions?: { amount: number; reason: string }[];
+  totalDeductions?: number;
+  netPayable?: number;
 }
 
 function extractRecord(entityType: PendingEntityType, raw: Record<string, unknown>): RecordDisplay {
@@ -141,6 +144,9 @@ function extractRecord(entityType: PendingEntityType, raw: Record<string, unknow
         date: formatDate(String(raw.date ?? raw.createdAt ?? '')),
         status: String(raw.status ?? 'PENDING_APPROVAL'),
         approvalWorkflow: raw.approvalWorkflow as RecordDisplay['approvalWorkflow'],
+        deductions: Array.isArray(raw.deductions) ? raw.deductions : undefined,
+        totalDeductions: raw.totalDeductions ? Number(raw.totalDeductions) : undefined,
+        netPayable: raw.netPayable ? Number(raw.netPayable) : undefined,
       };
     case 'invoices':
       return {
@@ -344,6 +350,15 @@ export default function PendingItemsDialog({ open, entityType, user, onClose }: 
                         <Stack spacing={0.5} sx={{ mb: 1.5 }}>
                           <DetailRow label="Vendor" value={record.vendorName} />
                           <DetailRow label="Amount" value={record.amount} />
+                          {record.deductions && record.deductions.length > 0 && (
+                            <>
+                              {record.deductions.map((d, i) => (
+                                <DetailRow key={i} label={`  Less: ${d.reason}`} value={`-${formatCurrency(d.amount)}`} />
+                              ))}
+                              <DetailRow label="Total Deductions" value={formatCurrency(Number(record.totalDeductions ?? 0))} />
+                              <DetailRow label="Net Payable" value={formatCurrency(Number(record.netPayable ?? 0))} />
+                            </>
+                          )}
                           <DetailRow label="Date" value={record.date} />
                         </Stack>
 

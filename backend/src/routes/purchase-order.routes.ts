@@ -384,7 +384,7 @@ router.post(
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const projectId = requireProjectId(req);
-      const { vendorId, quotationId, paymentType, paymentTerms, deliveryDate, budgetHeadId, advanceAmount } = req.body;
+      const { vendorId, quotationId, paymentType, paymentTerms, deliveryDate, budgetHeadId, advanceAmount, deductions } = req.body;
 
       // Validate quotation exists, belongs to project, is approved, and matches vendor
       const quotation = await prisma.quotation.findFirst({
@@ -409,6 +409,15 @@ router.post(
       // Auto-calculate GST from per-item gstRate (copied from quotation items)
       const gst = quotation.items.reduce((sum, item) => sum + Number(item.amount) * Number(item.gstRate) / 100, 0);
       const grandTotal = totalAmount + gst;
+
+      // ── Compute deductions (TDS, retention, advance adjustment, etc.) ──
+      const deductionRows: { amount: number; reason: string }[] = Array.isArray(deductions) ? deductions : [];
+      const totalDeductions = deductionRows.reduce((sum, d) => sum + Number(d.amount), 0);
+      if (totalDeductions > grandTotal) {
+        res.status(400).json({ error: `Total deductions (${totalDeductions}) cannot exceed PO grand total (${grandTotal})` });
+        return;
+      }
+      const netPayable = grandTotal - totalDeductions;
 
       // Resolve the agreed advance amount based on payment type.
       // ADVANCE / FULL_PAYMENT require an advance amount (≤ grandTotal); AFTER_DELIVERY must have none.
@@ -445,6 +454,9 @@ router.post(
             totalAmount,
             gstAmount: gst,
             grandTotal,
+            deductions: deductionRows.length > 0 ? deductionRows : Prisma.JsonNull,
+            totalDeductions,
+            netPayable,
             budgetHeadId: budgetHeadId ?? null,
             createdBy: req.user!.id,
             items: {
@@ -881,7 +893,7 @@ router.post(
         return;
       }
 
-      const { paymentTerms, deliveryDate, budgetHeadId, items: newItems } = req.body;
+      const { paymentTerms, deliveryDate, budgetHeadId, items: newItems, deductions } = req.body;
 
       // Validate budget head exists and belongs to project
       const budgetHead = await prisma.budgetHead.findFirst({
@@ -896,6 +908,15 @@ router.post(
       const totalAmount = newItems.reduce((sum: number, i: { quantity: number; unitPrice: number }) => sum + i.quantity * i.unitPrice, 0);
       const gstAmount = newItems.reduce((sum: number, i: { quantity: number; unitPrice: number; gstRate: number }) => sum + (i.quantity * i.unitPrice) * i.gstRate / 100, 0);
       const grandTotal = totalAmount + gstAmount;
+
+      // ── Compute deductions ──
+      const deductionRows: { amount: number; reason: string }[] = Array.isArray(deductions) ? deductions : [];
+      const totalDeductions = deductionRows.reduce((sum, d) => sum + Number(d.amount), 0);
+      if (totalDeductions > grandTotal) {
+        res.status(400).json({ error: `Total deductions (${totalDeductions}) cannot exceed PO grand total (${grandTotal})` });
+        return;
+      }
+      const netPayable = grandTotal - totalDeductions;
 
       // Payment type is fixed at creation — not editable here. If the PO has an
       // agreed advance amount, ensure the edited grand total still covers it.
@@ -972,6 +993,9 @@ router.post(
             totalAmount,
             gstAmount,
             grandTotal,
+            deductions: deductionRows.length > 0 ? deductionRows : Prisma.JsonNull,
+            totalDeductions,
+            netPayable,
             editedAt: new Date(),
             editedBy: req.user!.id,
             status: POStatus.PENDING_APPROVAL,

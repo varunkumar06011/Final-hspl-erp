@@ -266,6 +266,17 @@ export async function streamPurchaseOrderPdf(res: NodeJS.WritableStream, po: any
   y = drawTotal(gstLabel, Number(po.gstAmount) > 0 ? fmtMoney(Number(po.gstAmount)) : 'Rs. 0.00', y);
   y = drawTotal('GRAND TOTAL (Inclusive of all taxes):', fmtMoney(Number(po.grandTotal)), y, true);
 
+  // ── Deductions breakdown ──
+  const deductionRows = Array.isArray((po as { deductions?: unknown }).deductions) ? (po as { deductions: { amount: number; reason: string }[] }).deductions : [];
+  if (deductionRows.length > 0) {
+    y += 6;
+    deductionRows.forEach((d) => {
+      y = drawTotal(`Less: ${d.reason}`, `-${fmtMoney(Number(d.amount))}`, y);
+    });
+    y = drawTotal('Total Deductions:', fmtMoney(Number(po.totalDeductions)), y);
+    y = drawTotal('NET PAYABLE:', fmtMoney(Number(po.netPayable)), y, true);
+  }
+
   // For ADVANCE / FULL_PAYMENT POs, show the advance breakdown: total payable, advance now pay (highlighted), outstanding
   if (po.advanceAmount !== null && po.advanceAmount !== undefined && Number(po.advanceAmount) > 0) {
     const advanceVal = Number(po.advanceAmount);

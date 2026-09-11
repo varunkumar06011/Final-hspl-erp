@@ -163,6 +163,11 @@ export const createPOSchema = z.object({
     deliveryDate: z.coerce.date().optional().or(z.literal('').transform(() => undefined)),
     acknowledged: acknowledgement,
     budgetHeadId: uuid,
+    // Deductions applied at PO creation (TDS, retention, advance adjustment, etc.)
+    deductions: z.array(z.object({
+      amount: money,
+      reason: z.string().trim().min(1, 'Reason is required').max(200),
+    })).optional(),
   }),
 });
 export const updatePOSchema = z.object({
@@ -198,6 +203,10 @@ export const editUnapprovedPOSchema = z.object({
       unitPrice: money,
       gstRate: z.coerce.number().min(0).max(100),
     })).min(1, 'At least one item is required'),
+    deductions: z.array(z.object({
+      amount: money,
+      reason: z.string().trim().min(1, 'Reason is required').max(200),
+    })).optional(),
   }),
 });
 export const regeneratePOSchema = z.object({
