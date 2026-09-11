@@ -121,6 +121,7 @@ const ADMIN_NAV_ITEMS = [
   { label: 'Goods Receipts', icon: <ReceiptIcon />, path: '/goods-receipts', permission: Permission.MANAGE_INVENTORY, section: 'Procurement' },
   { label: 'Invoices', icon: <ReceiptIcon />, path: '/invoices', permission: Permission.VIEW_FINANCIALS, section: 'Procurement' },
   // ── Project ──
+  { label: 'Work Calendar', icon: <WorkIcon />, path: '/work-calendar', permission: Permission.MANAGE_WORK_TASKS, section: 'Project' },
   { label: 'Work', icon: <WorkIcon />, path: '/work', permission: Permission.MANAGE_WORK_TASKS, section: 'Project' },
   { label: 'Issues', icon: <IssueIcon />, path: '/issues', permission: Permission.MANAGE_ISSUES, section: 'Project' },
   { label: 'Site Photos', icon: <PhotoIcon />, path: '/photos', permission: Permission.UPLOAD_PHOTOS, section: 'Project' },
