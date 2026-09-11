@@ -437,6 +437,8 @@ export default function PurchaseOrdersPage() {
     return !alreadyApproved;
   }
 
+  const [pdfLoading, setPdfLoading] = useState(false);
+
   function handleCreatePO() {
     if (createSubmissionLocked.current || createMutation.isPending) return;
     if (!selectedBudgetHeadId) {
@@ -465,15 +467,31 @@ export default function PurchaseOrdersPage() {
   }
 
   function previewPDF(poId: string) {
+    if (pdfLoading) return;
+    setPdfLoading(true);
     const token = localStorage.getItem('firebaseToken');
     const url = `${api.defaults.baseURL}/purchase-orders/${poId}/pdf`;
+    // Open blank window synchronously to avoid popup blockers, then set URL after fetch
+    const newWindow = window.open('', '_blank');
+    if (newWindow) {
+      newWindow.document.write('<html><head><title>PO PDF Loading...</title></head><body style="display:flex;align-items:center;justify-content:center;height:100vh;margin:0;font-family:sans-serif;"><div style="text-align:center;"><div style="border:4px solid #f3f3f3;border-top:4px solid #1976d2;border-radius:50%;width:40px;height:40px;animation:spin 1s linear infinite;margin:0 auto 16px;"></div><style>@keyframes spin{0%{transform:rotate(0)}100%{transform:rotate(360deg)}}</style><p>Loading PDF...</p></div></body></html>');
+    }
     fetch(url, { headers: { Authorization: `Bearer ${token}` } })
       .then((res) => res.blob())
       .then((blob) => {
-        const url = window.URL.createObjectURL(blob);
-        window.open(url, '_blank');
+        const objUrl = window.URL.createObjectURL(blob);
+        if (newWindow && !newWindow.closed) {
+          newWindow.location.href = objUrl;
+        } else {
+          // Popup was blocked — fall back to opening in same tab
+          window.open(objUrl, '_blank');
+        }
       })
-      .catch(() => setError('Failed to preview PDF'));
+      .catch(() => {
+        if (newWindow && !newWindow.closed) newWindow.close();
+        setError('Failed to preview PDF');
+      })
+      .finally(() => setPdfLoading(false));
   }
 
   return (
@@ -612,7 +630,7 @@ export default function PurchaseOrdersPage() {
                     <TableCell data-label="Status"><Chip label={row.status.replace(/_/g, ' ')} size="small" color={STATUS_COLORS[row.status] ?? 'default'} /></TableCell>
                     <TableCell data-label="Actions">
                       <Box sx={{ display: 'flex', gap: 0.5 }}>
-                        <IconButton size="small" onClick={() => previewPDF(row.id)} title="Preview PDF"><PdfIcon fontSize="small" /></IconButton>
+                        <IconButton size="small" onClick={() => previewPDF(row.id)} title="Preview PDF" disabled={pdfLoading}>{pdfLoading ? <CircularProgress size={16} /> : <PdfIcon fontSize="small" />}</IconButton>
                         <IconButton size="small" onClick={() => downloadPDF(row.id, row.poNumber)} title="Download PDF"><DownloadIcon fontSize="small" /></IconButton>
                         <IconButton size="small" sx={{ color: '#25D366' }} onClick={() => shareOnWhatsApp(buildPOShareMessage({ poNumber: row.poNumber, vendorName: row.vendor?.name, grandTotal: Number(row.grandTotal), status: row.status, date: row.date, totalDeductions: Number(row.totalDeductions ?? 0), netPayable: Number(row.netPayable ?? row.grandTotal), deductions: row.deductions ?? undefined, notes: row.notes ?? undefined }))} title="Share on WhatsApp"><WhatsAppIcon fontSize="small" /></IconButton>
                         {canApprove(row) && (
