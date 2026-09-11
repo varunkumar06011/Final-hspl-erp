@@ -101,7 +101,7 @@ const HEAD_ROLES = [UserRole.PROJECT_HEAD, UserRole.HEAD_OF_CONSTRUCTION, UserRo
 const PO_APPROVER_ROLES = [UserRole.ADMIN, UserRole.ADMIN_2];
 
 async function generatePONumber(projectId: string): Promise<string> {
-  return generateSequenceNumber('purchaseOrder', 'poNumber', 'VGH-PO', 3, { projectId });
+  return generateSequenceNumber('purchaseOrder', 'poNumber', 'VGH-PO', 3, { projectId, deletedAt: null });
 }
 
 /**
@@ -589,9 +589,14 @@ router.delete(
         return;
       }
 
+      // Rename the PO number on soft-delete so the original number can be reused.
+      // The unique constraint [projectId, poNumber] would otherwise block reuse.
       await prisma.purchaseOrder.update({
         where: { id: existing.id },
-        data: { deletedAt: new Date() },
+        data: {
+          poNumber: `${existing.poNumber}-DEL-${Date.now()}`,
+          deletedAt: new Date(),
+        },
       });
 
       await logAudit({
