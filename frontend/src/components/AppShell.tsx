@@ -273,17 +273,19 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         const rawMime = response.headers['content-type'];
         const mime = typeof rawMime === 'string' ? rawMime : 'image/png';
         objectUrl = URL.createObjectURL(new Blob([response.data], { type: mime }));
+        const url = objectUrl;
 
-        const icon = document.querySelector("link[rel~='icon']") as HTMLLinkElement | null;
-        const appleIcon = document.querySelector("link[rel='apple-touch-icon']") as HTMLLinkElement | null;
+        // Update all favicon and apple-touch-icon links with the custom logo
+        const icons = document.querySelectorAll("link[rel~='icon']") as NodeListOf<HTMLLinkElement>;
+        const appleIcons = document.querySelectorAll("link[rel='apple-touch-icon']") as NodeListOf<HTMLLinkElement>;
 
-        if (icon) {
-          icon.href = objectUrl;
+        icons.forEach((icon) => {
+          icon.href = url;
           icon.type = mime;
-        }
-        if (appleIcon) {
-          appleIcon.href = objectUrl;
-        }
+        });
+        appleIcons.forEach((appleIcon) => {
+          appleIcon.href = url;
+        });
       } catch {
         // Favicon update is best-effort; keep the default on failure
       }
