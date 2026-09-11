@@ -166,7 +166,7 @@ export default function DenseAdminDashboard() {
   const loading = isLoading || !data;
 
   return (
-    <Box sx={{ height: { xs: 'auto', md: 'calc(100vh - 74px)' }, minHeight: 0, overflow: { xs: 'visible', md: 'hidden' }, overflowX: 'clip', bgcolor: 'background.default', p: { xs: 1, md: 1.25 }, display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gridTemplateRows: { xs: 'auto auto auto auto auto', md: 'auto 100px 1fr 160px 70px' }, gap: { xs: 1, md: 0.9 } }}>
+    <Box sx={{ height: { xs: 'auto', md: 'calc(100vh - 74px)' }, minHeight: 0, overflow: { xs: 'visible', md: 'hidden' }, overflowX: 'clip', bgcolor: 'background.default', p: { xs: 1, md: 1.25 }, display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gridTemplateRows: { xs: 'auto auto auto auto auto auto auto auto', md: 'auto 100px 1fr 180px' }, gap: { xs: 1, md: 0.9 } }}>
       {/* Header: project identity (plain text, no card) + timeline */}
       <Box sx={{ display: 'flex', alignItems: { xs: 'flex-start', sm: 'center' }, flexDirection: { xs: 'column', sm: 'row' }, gap: { xs: 0.8, sm: 1.5 }, minHeight: 0 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexShrink: 0 }}>
@@ -195,8 +195,8 @@ export default function DenseAdminDashboard() {
         gridTemplateColumns: { xs: 'minmax(0, 1fr)', sm: 'repeat(2, minmax(0, 1fr))', md: 'minmax(0, 1.25fr) minmax(0, 0.95fr) minmax(0, 0.9fr)' },
         // Named areas let mobile/tablet reorder freely while desktop keeps the 3 nested columns
         gridTemplateAreas: {
-          xs: '"dashOverview" "dashAction" "dashHeadCell" "dashRecent" "dashBankCash" "dashDateRange" "dashTrend"',
-          sm: '"dashOverview dashOverview" "dashAction dashDateRange" "dashHeadCell dashHeadCell" "dashRecent dashBankCash" "dashTrend dashTrend"',
+          xs: '"dashOverview" "dashAction" "dashWork" "dashHeadCell" "dashRecent" "dashBankCash" "dashDateRange" "dashTrend"',
+          sm: '"dashOverview dashOverview" "dashAction dashWork" "dashDateRange dashDateRange" "dashHeadCell dashHeadCell" "dashRecent dashBankCash" "dashTrend dashTrend"',
           md: 'none',
         },
         gap: { xs: 1, md: 0.8 }, minHeight: 0, overflow: { xs: 'visible', md: 'hidden' },
@@ -210,7 +210,7 @@ export default function DenseAdminDashboard() {
           <Section title="Bank & Cash" icon={<AccountBalanceIcon color="primary" sx={{ fontSize: 15 }} />} sx={{ gridArea: { xs: 'dashBankCash', md: 'auto' } }}><Stack spacing={0.55}><Stack direction="row" justifyContent="space-between"><Typography variant="caption">Bank Balance</Typography><Typography variant="caption" fontWeight={800} color="primary.main">{formatCurrency(data?.bankBalance ?? 0)}</Typography></Stack><Stack direction="row" justifyContent="space-between"><Typography variant="caption">Cash Balance</Typography><Typography variant="caption" fontWeight={800} color="success.main">{formatCurrency(data?.cashBalance ?? 0)}</Typography></Stack></Stack></Section>
         </Box>
         <Box sx={{ display: { xs: 'contents', md: 'grid' }, gridTemplateRows: { md: '1fr 1fr' }, gap: { xs: 1, md: 0.8 }, minHeight: 0 }}>
-          <Box sx={{ display: { xs: 'contents', md: 'grid' }, gridTemplateColumns: { md: '1fr 1fr' }, gap: { xs: 1, md: 0.8 }, minHeight: 0 }}>
+          <Box sx={{ display: { xs: 'contents', md: 'grid' }, gridTemplateColumns: { md: '1fr 1fr 1fr' }, gap: { xs: 1, md: 0.8 }, minHeight: 0 }}>
             {/* Action Required — siren-style alert */}
             <Card sx={{ ...compactCard, position: 'relative', bgcolor: 'rgba(255, 243, 244, .95)', borderColor: 'error.main', animation: `${sirenPulse} 1.8s infinite`, display: 'flex', flexDirection: 'column', gridArea: { xs: 'dashAction', md: 'auto' } }}><CardContent sx={{ p: 1, '&:last-child': { pb: 1 }, height: '100%', display: 'flex', flexDirection: 'column' }}>
               <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 0.5 }}>
@@ -231,6 +231,22 @@ export default function DenseAdminDashboard() {
                 )}
               </Box>
             </CardContent></Card>
+            {/* Work Calendar — compact card like Action Required */}
+            <Card onClick={() => navigate('/work-calendar')} sx={{ ...compactCard, cursor: 'pointer', borderLeft: '4px solid', borderColor: 'info.main', bgcolor: 'rgba(227, 242, 253, .85)', '&:hover': { boxShadow: 3 }, transition: 'box-shadow 0.2s', display: 'flex', flexDirection: 'column', gridArea: { xs: 'dashWork', md: 'auto' } }}>
+              <CardContent sx={{ p: 1, '&:last-child': { pb: 1 }, height: '100%', display: 'flex', flexDirection: 'column' }}>
+                <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 0.5 }}>
+                  <Typography sx={{ fontSize: '0.78rem', fontWeight: 800, color: 'info.dark', display: 'flex', alignItems: 'center', gap: 0.5 }}><WorkIcon sx={{ fontSize: 16, color: 'info.main' }} />Work Calendar</Typography>
+                </Stack>
+                <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 0.3, overflow: 'auto', WebkitOverflowScrolling: 'touch', '&::-webkit-scrollbar': { width: 4 }, '&::-webkit-scrollbar-thumb': { bgcolor: 'divider', borderRadius: 2 } }}>
+                  <Typography sx={{ fontSize: '1.4rem', fontWeight: 900, color: 'info.main', lineHeight: 1, textAlign: 'center' }}>{todaysTasks.length}</Typography>
+                  <Typography variant="caption" color="info.dark" sx={{ textAlign: 'center', fontWeight: 700, mb: 0.3 }}>tasks today</Typography>
+                  <Stack direction="row" spacing={0.5} justifyContent="center">
+                    <Chip label={`${pendingWorkTasks.length} pending`} size="small" color={pendingWorkTasks.length > 0 ? 'warning' : 'success'} variant="outlined" sx={{ height: 18, fontSize: '0.55rem' }} />
+                    <Chip label={`${workTasks.length} total`} size="small" variant="outlined" sx={{ height: 18, fontSize: '0.55rem' }} />
+                  </Stack>
+                </Box>
+              </CardContent>
+            </Card>
             {/* Date Range Picker for expenditure filtering */}
             <Section title="Expenditure Date Range" icon={<CalendarIcon color="primary" sx={{ fontSize: 15 }} />} sx={{ gridArea: { xs: 'dashDateRange', md: 'auto' } }}>
               <Stack spacing={0.5} sx={{ height: '100%', justifyContent: 'center' }}>
@@ -250,42 +266,6 @@ export default function DenseAdminDashboard() {
           <Section title="Expenditure Trend" icon={<TrendDownIcon color="error" sx={{ fontSize: 15 }} />} sx={{ gridArea: { xs: 'dashTrend', md: 'auto' }, minHeight: { xs: 180, md: 0 } }}><Box sx={{ height: '100%', minHeight: { xs: 150, md: 140 }, width: '100%' }}><ResponsiveContainer width="100%" height="100%"><AreaChart data={(trend?.trend ?? []).map((point) => ({ ...point, date: new Date(point.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) }))} margin={{ top: 6, right: 6, bottom: 0, left: 0 }}><XAxis dataKey="date" tick={{ fontSize: 8 }} /><YAxis hide /><Tooltip formatter={(value: unknown) => formatCurrency(Number(value))} /><Area type="monotone" dataKey="amount" stroke="#e53935" fill="#ffcdd2" strokeWidth={2} /></AreaChart></ResponsiveContainer></Box></Section>
         </Box>
       </Box>
-
-      {/* Work Calendar quick-access card */}
-      <Card
-        onClick={() => navigate('/work-calendar')}
-        sx={{ ...compactCard, cursor: 'pointer', borderLeft: '4px solid', borderColor: 'info.main', '&:hover': { boxShadow: 3 }, transition: 'box-shadow 0.2s', height: '100%', overflow: 'hidden' }}
-      >
-        <CardContent sx={{ p: 1, '&:last-child': { pb: 1 }, height: '100%', display: 'flex', alignItems: 'center', gap: 2 }}>
-          <Stack direction="row" alignItems="center" spacing={1} sx={{ flexShrink: 0 }}>
-            <WorkIcon sx={{ fontSize: 20, color: 'info.main' }} />
-            <Typography sx={{ fontSize: '0.78rem', fontWeight: 800 }}>Work Calendar</Typography>
-          </Stack>
-          <Stack direction="row" spacing={2} sx={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
-            <Box sx={{ flexShrink: 0 }}>
-              <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.6rem', lineHeight: 1 }}>Today</Typography>
-              <Typography sx={{ fontSize: '1rem', fontWeight: 800, lineHeight: 1.1, color: todaysTasks.length > 0 ? 'info.main' : 'text.secondary' }}>{todaysTasks.length}</Typography>
-            </Box>
-            <Box sx={{ flexShrink: 0 }}>
-              <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.6rem', lineHeight: 1 }}>Pending</Typography>
-              <Typography sx={{ fontSize: '1rem', fontWeight: 800, lineHeight: 1.1, color: pendingWorkTasks.length > 0 ? 'warning.main' : 'success.main' }}>{pendingWorkTasks.length}</Typography>
-            </Box>
-            <Box sx={{ flexShrink: 0 }}>
-              <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.6rem', lineHeight: 1 }}>Total</Typography>
-              <Typography sx={{ fontSize: '1rem', fontWeight: 800, lineHeight: 1.1 }}>{workTasks.length}</Typography>
-            </Box>
-            {todaysTasks.length > 0 && (
-              <Box sx={{ display: { xs: 'none', sm: 'flex' }, gap: 0.3, flexWrap: 'wrap', alignItems: 'center', minWidth: 0, overflow: 'hidden' }}>
-                {todaysTasks.slice(0, 2).map((t) => (
-                  <Chip key={t.id} label={t.title} size="small" variant="outlined" sx={{ height: 18, fontSize: '0.55rem', maxWidth: 100 }} />
-                ))}
-                {todaysTasks.length > 2 && <Chip label={`+${todaysTasks.length - 2}`} size="small" sx={{ height: 18, fontSize: '0.55rem' }} />}
-              </Box>
-            )}
-          </Stack>
-          <Chip label="Open →" size="small" color="info" sx={{ height: 20, fontSize: '0.6rem', flexShrink: 0 }} />
-        </CardContent>
-      </Card>
 
       {/* Lower compact area */}
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'minmax(0, 1fr)', sm: 'repeat(2, minmax(0, 1fr))', lg: 'minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 2fr)' }, gap: { xs: 1, md: 0.8 }, minHeight: 0, minWidth: 0, overflow: { xs: 'visible', md: 'hidden' } }}>

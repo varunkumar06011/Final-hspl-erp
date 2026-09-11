@@ -508,9 +508,20 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             />
           </Box>
         )}
-        {/* Mobile back button — iPhones have no hardware back gesture */}
+        {/* Mobile back button — iPhones have no hardware back gesture.
+            Use navigate(-1) when history exists, otherwise fall back to dashboard. */}
         {isMobile && location.pathname !== '/' && (
-          <IconButton onClick={() => navigate(-1)} sx={{ mb: 1, p: 0.5 }} aria-label="Back">
+          <IconButton
+            onClick={() => {
+              if (window.history.length > 1) {
+                navigate(-1);
+              } else {
+                navigate('/');
+              }
+            }}
+            sx={{ mb: 1, p: 0.5 }}
+            aria-label="Back"
+          >
             <ArrowBackIcon />
           </IconButton>
         )}
