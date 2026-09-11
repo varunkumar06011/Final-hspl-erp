@@ -14,6 +14,7 @@ import { rbacMiddleware } from '../middleware/rbac';
 import { validateMiddleware } from '../middleware/validate';
 import { logAudit } from '../services/audit.service';
 import { createQuotation, type QuotationLineItem } from '../services/quotation.service';
+import { notifyUser } from '../services/push.service';
 
 const router = Router();
 
@@ -219,6 +220,32 @@ router.use(
     searchFields: ['title', 'description'],
     include: WORK_TASK_INCLUDE,
     defaultSort: { scheduledDate: 'asc' },
+    afterCreate: async (record) => {
+      const assignedTo = record.assignedTo as string | null;
+      const title = record.title as string;
+      if (assignedTo && title) {
+        await notifyUser(assignedTo, {
+          entityType: 'WORK_TASK',
+          entityId: record.id as string,
+          title: 'New Work Task Assigned',
+          body: `"${title}" assigned to you`,
+          url: '/work-calendar',
+        });
+      }
+    },
+    afterUpdate: async (record) => {
+      const assignedTo = record.assignedTo as string | null;
+      const title = record.title as string;
+      if (assignedTo && title) {
+        await notifyUser(assignedTo, {
+          entityType: 'WORK_TASK',
+          entityId: record.id as string,
+          title: 'Work Task Assigned',
+          body: `"${title}" assigned to you`,
+          url: '/work-calendar',
+        });
+      }
+    },
   })
 );
 
