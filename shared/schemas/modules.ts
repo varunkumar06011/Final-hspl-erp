@@ -163,6 +163,8 @@ export const createPOSchema = z.object({
     deliveryDate: z.coerce.date().optional().or(z.literal('').transform(() => undefined)),
     acknowledged: acknowledgement,
     budgetHeadId: uuid,
+    // Optional PO-level description / notes
+    notes: z.string().trim().max(1000).optional(),
     // Deductions applied at PO creation (TDS, retention, advance adjustment, etc.)
     deductions: z.array(z.object({
       amount: money,
@@ -196,6 +198,7 @@ export const editUnapprovedPOSchema = z.object({
     paymentTerms: z.string().max(500).optional(),
     deliveryDate: z.coerce.date().optional().or(z.literal('').transform(() => undefined)),
     budgetHeadId: uuid,
+    notes: z.string().trim().max(1000).optional(),
     items: z.array(z.object({
       materialName: z.string().min(1).max(200),
       quantity: qty,

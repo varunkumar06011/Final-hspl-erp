@@ -108,6 +108,7 @@ interface PORow {
   deductions?: { amount: number; reason: string }[] | null;
   totalDeductions?: number;
   netPayable?: number;
+  notes?: string | null;
   createdBy: string;
   createdByUser: { id: string; name: string };
   items: POItem[];
@@ -150,6 +151,7 @@ export default function PurchaseOrdersPage() {
   const [selectedBudgetHeadId, setSelectedBudgetHeadId] = useState('');
   const [acknowledged, setAcknowledged] = useState(false);
   const [deductions, setDeductions] = useState<{ amount: string; reason: string }[]>([]);
+  const [poNotes, setPoNotes] = useState('');
   const [approvalAction, setApprovalAction] = useState<{ row: PORow; action: 'approve' | 'reject' } | null>(null);
   const [approvalPopup, setApprovalPopup] = useState<PORow | null>(null);
   const [trailRow, setTrailRow] = useState<PORow | null>(null);
@@ -260,6 +262,7 @@ export default function PurchaseOrdersPage() {
         deliveryDate,
         acknowledged,
         budgetHeadId: selectedBudgetHeadId,
+        notes: poNotes.trim() || undefined,
         deductions: deductions
           .filter((d) => d.amount && Number(d.amount) > 0 && d.reason.trim())
           .map((d) => ({ amount: Number(d.amount), reason: d.reason.trim() })),
@@ -415,6 +418,7 @@ export default function PurchaseOrdersPage() {
     setSelectedBudgetHeadId('');
     setAcknowledged(false);
     setDeductions([]);
+    setPoNotes('');
     setError('');
   }
 
@@ -610,7 +614,7 @@ export default function PurchaseOrdersPage() {
                       <Box sx={{ display: 'flex', gap: 0.5 }}>
                         <IconButton size="small" onClick={() => previewPDF(row.id)} title="Preview PDF"><PdfIcon fontSize="small" /></IconButton>
                         <IconButton size="small" onClick={() => downloadPDF(row.id, row.poNumber)} title="Download PDF"><DownloadIcon fontSize="small" /></IconButton>
-                        <IconButton size="small" sx={{ color: '#25D366' }} onClick={() => shareOnWhatsApp(buildPOShareMessage({ poNumber: row.poNumber, vendorName: row.vendor?.name, grandTotal: Number(row.grandTotal), status: row.status, date: row.date, totalDeductions: Number(row.totalDeductions ?? 0), netPayable: Number(row.netPayable ?? row.grandTotal), deductions: row.deductions ?? undefined }))} title="Share on WhatsApp"><WhatsAppIcon fontSize="small" /></IconButton>
+                        <IconButton size="small" sx={{ color: '#25D366' }} onClick={() => shareOnWhatsApp(buildPOShareMessage({ poNumber: row.poNumber, vendorName: row.vendor?.name, grandTotal: Number(row.grandTotal), status: row.status, date: row.date, totalDeductions: Number(row.totalDeductions ?? 0), netPayable: Number(row.netPayable ?? row.grandTotal), deductions: row.deductions ?? undefined, notes: row.notes ?? undefined }))} title="Share on WhatsApp"><WhatsAppIcon fontSize="small" /></IconButton>
                         {canApprove(row) && (
                           <>
                             <IconButton size="small" color="success" onClick={() => setApprovalAction({ row, action: 'approve' })} title="Approve"><CheckIcon fontSize="small" /></IconButton>
@@ -800,6 +804,19 @@ export default function PurchaseOrdersPage() {
               <MenuItem value="">— Select Budget Head —</MenuItem>
               {budgetHeads.map((h) => <MenuItem key={h.id} value={h.id}>{h.particulars}</MenuItem>)}
             </TextField>
+
+            {/* PO Description / Notes */}
+            <TextField
+              label="Description / Notes"
+              value={poNotes}
+              onChange={(e) => setPoNotes(e.target.value)}
+              fullWidth
+              size="small"
+              multiline
+              minRows={2}
+              maxRows={4}
+              placeholder="Optional description or notes for this PO (shown highlighted in PDF)"
+            />
 
             {/* Deductions Section */}
             {selectedQuotation && (

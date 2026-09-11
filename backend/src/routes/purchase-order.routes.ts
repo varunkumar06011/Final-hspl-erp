@@ -384,7 +384,7 @@ router.post(
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const projectId = requireProjectId(req);
-      const { vendorId, quotationId, paymentType, paymentTerms, deliveryDate, budgetHeadId, advanceAmount, deductions } = req.body;
+      const { vendorId, quotationId, paymentType, paymentTerms, deliveryDate, budgetHeadId, advanceAmount, deductions, notes } = req.body;
 
       // Validate quotation exists, belongs to project, is approved, and matches vendor
       const quotation = await prisma.quotation.findFirst({
@@ -451,6 +451,7 @@ router.post(
             advanceAmount: resolvedAdvanceAmount,
             paymentTerms: paymentTerms ?? null,
             deliveryDate: deliveryDate ? new Date(deliveryDate) : null,
+            notes: notes ?? null,
             totalAmount,
             gstAmount: gst,
             grandTotal,
@@ -893,7 +894,7 @@ router.post(
         return;
       }
 
-      const { paymentTerms, deliveryDate, budgetHeadId, items: newItems, deductions } = req.body;
+      const { paymentTerms, deliveryDate, budgetHeadId, items: newItems, deductions, notes } = req.body;
 
       // Validate budget head exists and belongs to project
       const budgetHead = await prisma.budgetHead.findFirst({
@@ -989,6 +990,7 @@ router.post(
           data: {
             paymentTerms: paymentTerms ?? null,
             deliveryDate: deliveryDate ? new Date(deliveryDate) : null,
+            notes: notes ?? null,
             budgetHeadId,
             totalAmount,
             gstAmount,

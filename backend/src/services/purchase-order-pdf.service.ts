@@ -234,6 +234,23 @@ export async function streamPurchaseOrderPdf(res: NodeJS.WritableStream, po: any
     y += rowH;
   }
 
+  // ── PO Description / Notes (highlighted) ──
+  const poNotes = (po as { notes?: string | null }).notes;
+  if (poNotes && poNotes.trim().length > 0) {
+    if (y > pageH - 80) { doc.addPage(); y = 40; }
+    y += 8;
+    const notesW = width;
+    const notesLabel = 'PO Description / Notes';
+    doc.font('Helvetica-Bold').fontSize(8.5);
+    const notesTextH = doc.heightOfString(poNotes.trim(), { width: notesW - 24, align: 'left' });
+    const notesBoxH = Math.max(30, 18 + notesTextH + 10);
+    // Light amber background to highlight the description
+    doc.rect(left, y, notesW, notesBoxH).fill('#FFF8E1').stroke('#FFB300');
+    doc.fillColor('#E65100').font('Helvetica-Bold').fontSize(8.5).text(notesLabel, left + 8, y + 6, { width: notesW - 16 });
+    doc.fillColor(dark).font('Helvetica').fontSize(9).text(poNotes.trim(), left + 8, y + 18, { width: notesW - 24, align: 'left' });
+    y += notesBoxH + 6;
+  }
+
   // ── Totals ──
   const totalsW = 240;
   const totalsX = right - totalsW;

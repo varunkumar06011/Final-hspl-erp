@@ -22,6 +22,7 @@ export function buildPOShareMessage(po: {
   totalDeductions?: number;
   netPayable?: number;
   deductions?: { amount: number; reason: string }[];
+  notes?: string | null;
 }): string {
   const lines: string[] = [
     `📋 *Purchase Order ${po.poNumber}*`,
@@ -29,6 +30,9 @@ export function buildPOShareMessage(po: {
     `Vendor: ${po.vendorName ?? '—'}`,
     `Grand Total: ₹${Number(po.grandTotal ?? 0).toLocaleString('en-IN')}`,
   ];
+  if (po.notes && po.notes.trim().length > 0) {
+    lines.push(``, `📝 *Description:* ${po.notes.trim()}`);
+  }
   if (po.deductions && po.deductions.length > 0) {
     lines.push(``, `*Deductions:*`);
     po.deductions.forEach((d) => {
