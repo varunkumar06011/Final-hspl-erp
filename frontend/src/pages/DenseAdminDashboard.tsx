@@ -19,6 +19,7 @@ import {
   Savings as LoanIcon,
   TrendingDown as TrendDownIcon,
   TrendingUp as TrendUpIcon,
+  Work as WorkIcon,
 } from '@mui/icons-material';
 import { Area, AreaChart, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import api from '../config/api';
@@ -134,6 +135,25 @@ export default function DenseAdminDashboard() {
     enabled: shortAdvanceOpen,
   });
 
+  // ── Work Calendar: fetch this month's tasks for the dashboard card ──
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  const { data: workTasksData } = useQuery<{ data: Array<{ id: string; title: string; status: string; scheduledDate: string; deadlineDate: string | null }> }>({
+    queryKey: ['/work-tasks', 'calendar', 'dashboard', monthStart.toISOString(), monthEnd.toISOString()],
+    queryFn: async () => {
+      const res = await api.get('/work-tasks/calendar', {
+        params: { startDate: monthStart.toISOString().slice(0, 10), endDate: monthEnd.toISOString().slice(0, 10) },
+      });
+      return res.data;
+    },
+    refetchInterval: 30000,
+  });
+  const workTasks = workTasksData?.data ?? [];
+  const pendingWorkTasks = workTasks.filter((t) => t.status !== 'COMPLETED' && t.status !== 'CANCELLED');
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const todaysTasks = workTasks.filter((t) => t.scheduledDate?.slice(0, 10) === todayStr);
+
   const timeline = useMemo(() => {
     const start = new Date(DASHBOARD_TIMELINE.startDate).getTime();
     const end = new Date(DASHBOARD_TIMELINE.endDate).getTime();
@@ -229,6 +249,46 @@ export default function DenseAdminDashboard() {
           {/* Expenditure Trend — rectangle layout */}
           <Section title="Expenditure Trend" icon={<TrendDownIcon color="error" sx={{ fontSize: 15 }} />} sx={{ gridArea: { xs: 'dashTrend', md: 'auto' }, minHeight: { xs: 180, md: 0 } }}><Box sx={{ height: '100%', minHeight: { xs: 150, md: 140 }, width: '100%' }}><ResponsiveContainer width="100%" height="100%"><AreaChart data={(trend?.trend ?? []).map((point) => ({ ...point, date: new Date(point.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) }))} margin={{ top: 6, right: 6, bottom: 0, left: 0 }}><XAxis dataKey="date" tick={{ fontSize: 8 }} /><YAxis hide /><Tooltip formatter={(value: unknown) => formatCurrency(Number(value))} /><Area type="monotone" dataKey="amount" stroke="#e53935" fill="#ffcdd2" strokeWidth={2} /></AreaChart></ResponsiveContainer></Box></Section>
         </Box>
+      </Box>
+
+      {/* Work Calendar quick-access card */}
+      <Box sx={{ mb: 0 }}>
+        <Card
+          onClick={() => navigate('/work-calendar')}
+          sx={{ ...compactCard, cursor: 'pointer', borderLeft: '4px solid', borderColor: 'info.main', '&:hover': { boxShadow: 3 }, transition: 'box-shadow 0.2s' }}
+        >
+          <CardContent sx={{ p: 1, '&:last-child': { pb: 1 } }}>
+            <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 0.5 }}>
+              <Typography sx={{ fontSize: '0.78rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                <WorkIcon sx={{ fontSize: 16, color: 'info.main' }} />
+                Work Calendar
+              </Typography>
+              <Chip label="Open" size="small" color="info" variant="outlined" sx={{ height: 18, fontSize: '0.6rem' }} />
+            </Stack>
+            <Stack direction="row" spacing={2} sx={{ flexWrap: 'wrap', gap: 1 }}>
+              <Box>
+                <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.62rem' }}>Today</Typography>
+                <Typography sx={{ fontSize: '1.1rem', fontWeight: 800, color: todaysTasks.length > 0 ? 'info.main' : 'text.secondary' }}>{todaysTasks.length}</Typography>
+              </Box>
+              <Box>
+                <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.62rem' }}>Pending (this month)</Typography>
+                <Typography sx={{ fontSize: '1.1rem', fontWeight: 800, color: pendingWorkTasks.length > 0 ? 'warning.main' : 'success.main' }}>{pendingWorkTasks.length}</Typography>
+              </Box>
+              <Box>
+                <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.62rem' }}>Total (this month)</Typography>
+                <Typography sx={{ fontSize: '1.1rem', fontWeight: 800 }}>{workTasks.length}</Typography>
+              </Box>
+            </Stack>
+            {todaysTasks.length > 0 && (
+              <Box sx={{ mt: 0.5, display: 'flex', gap: 0.3, flexWrap: 'wrap' }}>
+                {todaysTasks.slice(0, 3).map((t) => (
+                  <Chip key={t.id} label={t.title} size="small" variant="outlined" sx={{ height: 18, fontSize: '0.55rem', maxWidth: 120 }} />
+                ))}
+                {todaysTasks.length > 3 && <Chip label={`+${todaysTasks.length - 3} more`} size="small" sx={{ height: 18, fontSize: '0.55rem' }} />}
+              </Box>
+            )}
+          </CardContent>
+        </Card>
       </Box>
 
       {/* Lower compact area */}
