@@ -40,7 +40,13 @@ api.interceptors.response.use(
 
 export function extractErrorMessage(err: unknown): string {
   if (axios.isAxiosError(err)) {
-    return err.response?.data?.error ?? err.message ?? 'Request failed';
+    const data = err.response?.data;
+    if (data?.details && Array.isArray(data.details) && data.details.length > 0) {
+      const detail = data.details[0];
+      const field = detail.path ? `[${detail.path}] ` : '';
+      return `${data.error}: ${field}${detail.message}`;
+    }
+    return data?.error ?? err.message ?? 'Request failed';
   }
   if (err instanceof Error) return err.message;
   return 'An unexpected error occurred';
