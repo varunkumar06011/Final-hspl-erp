@@ -464,7 +464,7 @@ export default function QuotationsPage() {
 
   function downloadQuotationPDF(quotationId: string, quotationNumber: string) {
     const token = localStorage.getItem('firebaseToken');
-    const url = `${api.defaults.baseURL}/quotations/${quotationId}/pdf`;
+    const url = `${api.defaults.baseURL}/quotations/${quotationId}/pdf?_t=${Date.now()}`;
     fetch(url, { headers: { Authorization: `Bearer ${token}` } })
       .then((res) => res.blob())
       .then((blob) => {
@@ -482,7 +482,7 @@ export default function QuotationsPage() {
     if (pdfLoading) return;
     setPdfLoading(true);
     const token = localStorage.getItem('firebaseToken');
-    const url = `${api.defaults.baseURL}/quotations/${quotationId}/pdf`;
+    const url = `${api.defaults.baseURL}/quotations/${quotationId}/pdf?_t=${Date.now()}`;
     const newWindow = window.open('', '_blank');
     if (newWindow) {
       newWindow.document.write('<html><head><title>Quotation PDF Loading...</title></head><body style="display:flex;align-items:center;justify-content:center;height:100vh;margin:0;font-family:sans-serif;"><div style="text-align:center;"><div style="border:4px solid #f3f3f3;border-top:4px solid #1976d2;border-radius:50%;width:40px;height:40px;animation:spin 1s linear infinite;margin:0 auto 16px;"></div><style>@keyframes spin{0%{transform:rotate(0)}100%{transform:rotate(360deg)}}</style><p>Loading PDF...</p></div></body></html>');
