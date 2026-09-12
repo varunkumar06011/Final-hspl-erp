@@ -47,7 +47,7 @@ import {
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { POStatus, UserRole, POPaymentType, GST_RATES } from '@hospital-erp/shared';
-import { formatCurrency, formatDate, formatIndianNumber, STATUS_COLORS } from '../utils/enumOptions';
+import { formatCurrency, formatDate, formatIndianNumber, STATUS_COLORS, QTY_UNIT_OPTIONS } from '../utils/enumOptions';
 import api, { extractErrorMessage } from '../config/api';
 import { useAuthStore } from '../stores/authStore';
 import AcknowledgementCheckbox from '../components/AcknowledgementCheckbox';
@@ -1433,6 +1433,7 @@ function EditPODialog({ row, onClose, onSuccess }: { row: PORow | null; onClose:
                   </TableCell>
                   <TableCell>
                     <TextField
+                      select
                       size="small"
                       value={item.unit}
                       onChange={(e) => {
@@ -1440,8 +1441,12 @@ function EditPODialog({ row, onClose, onSuccess }: { row: PORow | null; onClose:
                         next[idx] = { ...item, unit: e.target.value };
                         setItems(next);
                       }}
-                      sx={{ width: 70 }}
-                    />
+                      sx={{ width: 120 }}
+                    >
+                      {QTY_UNIT_OPTIONS.map((opt) => (
+                        <MenuItem key={opt.value} value={opt.value}>{opt.label}</MenuItem>
+                      ))}
+                    </TextField>
                   </TableCell>
                   <TableCell>
                     <TextField
@@ -1682,6 +1687,7 @@ function EditUnapprovedPODialog({ row, onClose, onSuccess }: { row: PORow | null
                   </TableCell>
                   <TableCell>
                     <TextField
+                      select
                       size="small"
                       value={item.unit}
                       onChange={(e) => {
@@ -1689,8 +1695,12 @@ function EditUnapprovedPODialog({ row, onClose, onSuccess }: { row: PORow | null
                         updated[index] = { ...updated[index], unit: e.target.value };
                         setItems(updated);
                       }}
-                      sx={{ width: 80 }}
-                    />
+                      sx={{ width: 120 }}
+                    >
+                      {QTY_UNIT_OPTIONS.map((opt) => (
+                        <MenuItem key={opt.value} value={opt.value}>{opt.label}</MenuItem>
+                      ))}
+                    </TextField>
                   </TableCell>
                   <TableCell align="right">
                     <TextField

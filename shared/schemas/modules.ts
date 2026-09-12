@@ -1485,3 +1485,60 @@ export const costCenterReportSchema = z
 export const invoiceCrossLinkSchema = z.object({
   params: z.object({ id: uuid }),
 });
+
+// ═══════════════════════════════════════════════════════════
+// Material Purchase Requests (MPR)
+// ═══════════════════════════════════════════════════════════
+
+const mprItemInput = z.object({
+  materialName: nonEmptyText(200),
+  materialCode: z.string().trim().max(50).optional(),
+  specification: z.string().trim().max(500).optional(),
+  quantity: positiveQty,
+  unit: z.string().trim().max(20).optional(),
+  requiredDate: dateStr.optional(),
+  estimatedRate: money.default(0),
+  remarks: z.string().trim().max(500).optional(),
+});
+
+export const createMPRSchema = z.object({
+  body: z.object({
+    requiredBy: dateStr.optional(),
+    department: z.string().trim().max(100).optional(),
+    priority: z.string().trim().max(20).optional(),
+    description: z.string().trim().max(2000).optional(),
+    deliveryAddress: z.string().trim().max(1000).optional(),
+    contactPerson: z.string().trim().max(100).optional(),
+    contactNumber: z.string().trim().max(20).optional(),
+    billingAddress: z.string().trim().max(1000).optional(),
+    stateCode: z.string().trim().max(20).optional(),
+    estimatedGstRate: z.coerce.number().min(0).max(100).default(0),
+    technicalRequirements: z.string().trim().max(5000).optional(),
+    items: z.array(mprItemInput).min(1, 'At least one item is required'),
+  }),
+});
+
+export const updateMPRSchema = z.object({
+  params: z.object({ id: uuid }),
+  body: z.object({
+    requiredBy: dateStr.optional(),
+    department: z.string().trim().max(100).optional(),
+    priority: z.string().trim().max(20).optional(),
+    description: z.string().trim().max(2000).optional(),
+    deliveryAddress: z.string().trim().max(1000).optional(),
+    contactPerson: z.string().trim().max(100).optional(),
+    contactNumber: z.string().trim().max(20).optional(),
+    billingAddress: z.string().trim().max(1000).optional(),
+    stateCode: z.string().trim().max(20).optional(),
+    estimatedGstRate: z.coerce.number().min(0).max(100).optional(),
+    technicalRequirements: z.string().trim().max(5000).optional(),
+    items: z.array(mprItemInput).min(1, 'At least one item is required').optional(),
+  }),
+});
+
+export const listMPRSchema = z.object({
+  query: pagination.extend({
+    search: z.string().optional(),
+    status: z.string().optional(),
+  }),
+});

@@ -68,6 +68,16 @@ export enum POStatus {
   CANCELLED = 'CANCELLED',
 }
 
+// Material Purchase Request (MPR) — internal request raised by company,
+// shared with vendors as PDF so they can respond with quotations.
+export enum MPRStatus {
+  DRAFT = 'DRAFT',
+  SUBMITTED = 'SUBMITTED',
+  QUOTATIONS_RECEIVED = 'QUOTATIONS_RECEIVED',
+  CLOSED = 'CLOSED',
+  CANCELLED = 'CANCELLED',
+}
+
 export enum InvoiceVerificationStatus {
   PENDING = 'PENDING',
   VERIFIED = 'VERIFIED',
@@ -301,6 +311,12 @@ export enum AuditAction {
   DELETE = 'DELETE',
   APPROVE = 'APPROVE',
   REJECT = 'REJECT',
+  CREATE_MPR = 'CREATE_MPR',
+  UPDATE_MPR = 'UPDATE_MPR',
+  SUBMIT_MPR = 'SUBMIT_MPR',
+  CANCEL_MPR = 'CANCEL_MPR',
+  CLOSE_MPR = 'CLOSE_MPR',
+  DELETE_MPR = 'DELETE_MPR',
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -538,6 +554,9 @@ export enum Permission {
   VIEW_AUDIT_LOG = 'VIEW_AUDIT_LOG',
   // Dashboard — restricted to ADMIN, ADMIN_2, ACCOUNTANT, PROJECT_HEAD only
   VIEW_DASHBOARD = 'VIEW_DASHBOARD',
+  // Material Purchase Requests — raise internal material requests, share as PDF to vendors
+  CREATE_MPR = 'CREATE_MPR',
+  VIEW_MPR = 'VIEW_MPR',
 }
 
 export const PERMISSION_MATRIX: Record<UserRole, Permission[]> = {
@@ -582,6 +601,8 @@ export const PERMISSION_MATRIX: Record<UserRole, Permission[]> = {
     Permission.MANAGE_INSPECTIONS,
     Permission.MANAGE_DOCUMENTS,
     Permission.MANAGE_CONTRACTS,
+    Permission.CREATE_MPR,
+    Permission.VIEW_MPR,
   ],
   [UserRole.SITE_SUPERVISOR]: [
     Permission.CREATE_GATE_PASS,
@@ -664,6 +685,8 @@ export const PERMISSION_MATRIX: Record<UserRole, Permission[]> = {
     Permission.MANAGE_INSPECTIONS,
     Permission.MANAGE_DOCUMENTS,
     Permission.MANAGE_LABOUR,
+    Permission.CREATE_MPR,
+    Permission.VIEW_MPR,
   ],
   [UserRole.ADMIN_2]: [
     Permission.CREATE_VENDOR,
@@ -687,6 +710,8 @@ export const PERMISSION_MATRIX: Record<UserRole, Permission[]> = {
     Permission.MANAGE_INSPECTIONS,
     Permission.MANAGE_DOCUMENTS,
     Permission.MANAGE_LABOUR,
+    Permission.CREATE_MPR,
+    Permission.VIEW_MPR,
   ],
 };
 

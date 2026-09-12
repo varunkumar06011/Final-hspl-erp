@@ -36,6 +36,7 @@ import ledgerRoutes from './ledger.routes';
 import voucherRoutes from './voucher.routes';
 import accountingReportRoutes from './accounting-reports.routes';
 import paymentReportRoutes from './payment-reports.routes';
+import mprRoutes from './mpr.routes';
 
 const router = Router();
 
@@ -76,5 +77,6 @@ router.use('/ledgers', ledgerRoutes);
 router.use('/vouchers', voucherRoutes);
 router.use('/accounting-reports', accountingReportRoutes);
 router.use('/payment-reports', paymentReportRoutes);
+router.use('/material-purchase-requests', mprRoutes);
 
 export default router;

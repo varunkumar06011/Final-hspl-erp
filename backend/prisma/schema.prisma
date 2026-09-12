@@ -72,6 +72,7 @@ model User {
   updatedJournalVouchers  JournalVoucher[]       @relation("JVUpdatedBy")
   requestedBudgetRevisions BudgetRevision[]      @relation("BudgetRevisionRequestedBy")
   reviewedBudgetRevisions  BudgetRevision[]      @relation("BudgetRevisionReviewedBy")
+  createdMPRs              MaterialPurchaseRequest[] @relation("MPRCreatedBy")
 
   @@map("users")
 }
@@ -124,6 +125,7 @@ model Project {
   ledgers           Ledger[]
   ledgerCustomGroups LedgerCustomGroup[]
   billSettlements   BillSettlement[]
+  materialPurchaseRequests MaterialPurchaseRequest[]
 
   @@map("projects")
 }
@@ -1567,4 +1569,67 @@ model BillSettlement {
   @@index([invoiceId])
   @@index([vendorId])
   @@map("bill_settlements")
+}
+
+// ═══════════════════════════════════════════════════════════
+// Material Purchase Requests (MPR)
+// Internal request raised by company → shared with vendors as PDF
+// Vendors respond with quotations → company selects → creates PO
+// ═══════════════════════════════════════════════════════════
+
+model MaterialPurchaseRequest {
+  id              String   @id @default(uuid()) @db.Uuid
+  projectId       String   @db.Uuid
+  mprNumber       String
+  date            DateTime @default(now())
+  requiredBy      DateTime?
+  department      String?
+  status          String   @default("DRAFT") // MPRStatus enum: DRAFT | SUBMITTED | QUOTATIONS_RECEIVED | CLOSED | CANCELLED
+  description     String?
+  deliveryAddress String?
+  contactPerson   String?
+  contactNumber   String?
+  billingAddress  String?
+  stateCode       String?
+  priority        String? // Normal | Urgent | Critical
+  // Estimated cost summary (computed from items)
+  estimatedSubtotal Decimal @default(0) @db.Decimal(15, 2)
+  estimatedGstRate  Decimal @default(0) @db.Decimal(5, 2)
+  estimatedGstAmount Decimal @default(0) @db.Decimal(15, 2)
+  estimatedTotal    Decimal @default(0) @db.Decimal(15, 2)
+  // Technical / purchase requirements (free text shown in PDF)
+  technicalRequirements String?
+  createdBy       String   @db.Uuid
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  deletedAt       DateTime?
+
+  project       Project @relation(fields: [projectId], references: [id])
+  createdByUser User    @relation("MPRCreatedBy", fields: [createdBy], references: [id])
+  items         MaterialPurchaseRequestItem[]
+
+  @@unique([projectId, mprNumber])
+  @@index([projectId, deletedAt])
+  @@index([projectId, status, date])
+  @@map("material_purchase_requests")
+}
+
+model MaterialPurchaseRequestItem {
+  id              String   @id @default(uuid()) @db.Uuid
+  mprId           String   @db.Uuid
+  materialName    String
+  materialCode    String?
+  specification   String?
+  quantity        Decimal  @db.Decimal(10, 2)
+  unit            String?
+  requiredDate    DateTime?
+  estimatedRate   Decimal  @default(0) @db.Decimal(15, 2)
+  estimatedAmount Decimal @default(0) @db.Decimal(15, 2)
+  remarks         String?
+  createdAt       DateTime @default(now())
+
+  mpr MaterialPurchaseRequest @relation(fields: [mprId], references: [id], onDelete: Cascade)
+
+  @@index([mprId])
+  @@map("material_purchase_request_items")
 }

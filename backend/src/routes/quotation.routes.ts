@@ -15,6 +15,7 @@ import {
   quotationInclude,
   type QuotationLineItem,
 } from '../services/quotation.service';
+import { streamQuotationPdf } from '../services/quotation-pdf.service';
 import multer from 'multer';
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 100 * 1024 * 1024 } });
@@ -840,6 +841,44 @@ router.get(
         },
         timeline,
       });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// GET /:id/pdf — generate and download PDF
+router.get(
+  '/:id/pdf',
+  rbacMiddleware(Permission.VIEW_FINANCIALS),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      const quotation = await prisma.quotation.findFirst({
+        where: { id: req.params.id, projectId, deletedAt: null },
+        include: {
+          vendor: true,
+          items: true,
+          createdByUser: { select: { name: true } },
+          approvalWorkflow: {
+            include: {
+              steps: {
+                orderBy: { stepNumber: 'asc' as const },
+                include: { approverUser: { select: { name: true, role: true } } },
+              },
+            },
+          },
+          project: { select: { name: true, officeAddress: true, hospitalAddress: true, gstNumber: true, panNumber: true, logoUrl: true } },
+        },
+      });
+      if (!quotation) {
+        res.status(404).json({ error: 'Quotation not found' });
+        return;
+      }
+
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${quotation.quotationNumber}.pdf"`);
+      await streamQuotationPdf(res as unknown as NodeJS.WritableStream, quotation);
     } catch (error) {
       next(error);
     }

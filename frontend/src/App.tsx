@@ -45,6 +45,7 @@ import SettingsPage from './pages/SettingsPage';
 import UsersPage from './pages/UsersPage';
 import InwardFundsPage from './pages/InwardFundsPage';
 import ExpenditurePage from './pages/ExpenditurePage';
+import MaterialPurchaseRequestsPage from './pages/MaterialPurchaseRequestsPage';
 import ErrorBoundary from './components/ErrorBoundary';
 
 const queryClient = new QueryClient({
@@ -97,6 +98,7 @@ const ROUTES = [
   // ── Admin-only pages (additive — visible to all roles with permission, used by admin dashboard) ──
   { path: '/inward-funds', element: <InwardFundsPage /> },
   { path: '/expenditure', element: <ExpenditurePage /> },
+  { path: '/material-purchase-requests', element: <MaterialPurchaseRequestsPage /> },
 ];
 
 export default function App() {

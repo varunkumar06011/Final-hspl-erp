@@ -172,3 +172,23 @@ export const STATUS_COLORS: Record<string, 'default' | 'primary' | 'secondary' |
   HIGH: 'error',
   CRITICAL: 'error',
 };
+
+// ── Quantity unit options for quotation & PO line items ──
+// "nos" = regular quantity (number of pieces/items)
+// "hrs" = hours (for labour/services)
+// "sqft" = square feet (for area-based materials like tiles, granite, etc.)
+// "rft" = running feet (for length-based materials like pipes, wood)
+// "kg" = kilograms (for weight-based materials like iron, cement)
+// "ton" = metric ton (for bulk materials like sand, gravel)
+// "ltr" = liters (for liquids like paint, diesel)
+// "set" = a set/kit (for grouped items like doors, windows)
+export const QTY_UNIT_OPTIONS = [
+  { value: 'nos', label: 'Nos (pieces)' },
+  { value: 'hrs', label: 'Hrs (hours)' },
+  { value: 'sqft', label: 'Sqft (square feet)' },
+  { value: 'rft', label: 'Rft (running feet)' },
+  { value: 'kg', label: 'Kg (kilograms)' },
+  { value: 'ton', label: 'Ton (metric ton)' },
+  { value: 'ltr', label: 'Ltr (liters)' },
+  { value: 'set', label: 'Set (kit/set)' },
+] as const;

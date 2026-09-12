@@ -34,10 +34,11 @@ import {
   Delete as DeleteIcon,
   Timeline as TimelineIcon,
   Share as ShareIcon,
+  PictureAsPdf as PdfIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { APPROVER_ROLES, QuotationStatus, GST_RATES } from '@hospital-erp/shared';
-import { formatCurrency, formatDate, STATUS_COLORS } from '../utils/enumOptions';
+import { formatCurrency, formatDate, STATUS_COLORS, QTY_UNIT_OPTIONS } from '../utils/enumOptions';
 import api, { extractErrorMessage } from '../config/api';
 import { useAuthStore } from '../stores/authStore';
 import { downloadFile } from '../utils/file';
@@ -135,6 +136,7 @@ export default function QuotationsPage() {
   const [approvalAction, setApprovalAction] = useState<{ row: QuotationRow; step: ApprovalStep; action: 'approve' | 'reject' } | null>(null);
   const [timelineRow, setTimelineRow] = useState<QuotationRow | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [pdfLoading, setPdfLoading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const createSubmissionLocked = useRef(false);
   const workTaskIdRef = useRef<string | null>(null);
@@ -401,6 +403,7 @@ export default function QuotationsPage() {
     const items = selectedVendor.materials.map((m) => ({
       materialName: m.name,
       quantity: 1,
+      unit: m.unit ?? 'nos',
       unitPrice: 0,
       amount: 0,
       gstRate: 0,
@@ -421,6 +424,7 @@ export default function QuotationsPage() {
         .map((m) => ({
           materialName: m.name,
           quantity: 1,
+          unit: m.unit ?? 'nos',
           unitPrice: 0,
           amount: 0,
           gstRate: 0,
@@ -456,6 +460,48 @@ export default function QuotationsPage() {
 
   function handleDownload(id: string, fileName: string) {
     downloadFile('quotations', id, fileName).catch(() => setError('Failed to download file'));
+  }
+
+  function downloadQuotationPDF(quotationId: string, quotationNumber: string) {
+    const token = localStorage.getItem('firebaseToken');
+    const url = `${api.defaults.baseURL}/quotations/${quotationId}/pdf`;
+    fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+      .then((res) => res.blob())
+      .then((blob) => {
+        const objUrl = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = objUrl;
+        a.download = `${quotationNumber}.pdf`;
+        a.click();
+        window.URL.revokeObjectURL(objUrl);
+      })
+      .catch(() => setError('Failed to download PDF'));
+  }
+
+  function previewQuotationPDF(quotationId: string) {
+    if (pdfLoading) return;
+    setPdfLoading(true);
+    const token = localStorage.getItem('firebaseToken');
+    const url = `${api.defaults.baseURL}/quotations/${quotationId}/pdf`;
+    const newWindow = window.open('', '_blank');
+    if (newWindow) {
+      newWindow.document.write('<html><head><title>Quotation PDF Loading...</title></head><body style="display:flex;align-items:center;justify-content:center;height:100vh;margin:0;font-family:sans-serif;"><div style="text-align:center;"><div style="border:4px solid #f3f3f3;border-top:4px solid #1976d2;border-radius:50%;width:40px;height:40px;animation:spin 1s linear infinite;margin:0 auto 16px;"></div><style>@keyframes spin{0%{transform:rotate(0)}100%{transform:rotate(360deg)}}</style><p>Loading PDF...</p></div></body></html>');
+    }
+    fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+      .then((res) => res.blob())
+      .then((blob) => {
+        const objUrl = window.URL.createObjectURL(blob);
+        if (newWindow && !newWindow.closed) {
+          newWindow.location.href = objUrl;
+        } else {
+          window.open(objUrl, '_blank');
+        }
+      })
+      .catch(() => {
+        if (newWindow && !newWindow.closed) newWindow.close();
+        setError('Failed to preview PDF');
+      })
+      .finally(() => setPdfLoading(false));
   }
 
   async function handleShareWhatsApp(row: QuotationRow) {
@@ -735,6 +781,8 @@ export default function QuotationsPage() {
                       ) : <Typography variant="caption" sx={{ fontSize: '0.75rem' }}>—</Typography>}
                     </Box>
                     <Box sx={{ display: 'flex', gap: 0.5 }}>
+                      <IconButton size="small" onClick={() => previewQuotationPDF(row.id)} title="Preview PDF" disabled={pdfLoading}>{pdfLoading ? <CircularProgress size={16} /> : <PdfIcon fontSize="small" />}</IconButton>
+                      <IconButton size="small" onClick={() => downloadQuotationPDF(row.id, row.quotationNumber)} title="Download PDF"><DownloadIcon fontSize="small" /></IconButton>
                       <IconButton size="small" onClick={() => handleShareWhatsApp(row)} title="Share to WhatsApp"><ShareIcon fontSize="small" /></IconButton>
                       <IconButton size="small" onClick={() => setTimelineRow(row)} title="Show Timeline"><TimelineIcon fontSize="small" /></IconButton>
                       {row.status === QuotationStatus.SUBMITTED || row.status === QuotationStatus.UNDER_REVIEW ? (
@@ -817,7 +865,7 @@ export default function QuotationsPage() {
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <Typography variant="body2" fontWeight={600}>Materials (tick the ones you need)</Typography>
                   <Button size="small" startIcon={<AddIcon />} onClick={() => {
-                    const newItem: QuotationItem = { materialName: '', quantity: '', unitPrice: '', amount: 0, gstRate: 0 };
+                    const newItem: QuotationItem = { materialName: '', quantity: '', unit: 'nos', unitPrice: '', amount: 0, gstRate: 0 };
                     setLineItems([...lineItems, newItem]);
                     setSelectedMaterialNames(new Set([...selectedMaterialNames, '']));
                   }}>Add Row</Button>
@@ -884,6 +932,18 @@ export default function QuotationsPage() {
                           size="small"
                           sx={{ flex: 1, minWidth: 0 }}
                         />
+                        <TextField
+                          select
+                          label="Unit"
+                          value={item.unit ?? 'nos'}
+                          onChange={(e) => updateLineItem(index, 'unit', e.target.value)}
+                          size="small"
+                          sx={{ flex: { xs: '1 1 100px', sm: '0 0 120px' }, minWidth: 100 }}
+                        >
+                          {QTY_UNIT_OPTIONS.map((opt) => (
+                            <MenuItem key={opt.value} value={opt.value}>{opt.label}</MenuItem>
+                          ))}
+                        </TextField>
                         <TextField
                           label="Unit Price"
                           type="text"
