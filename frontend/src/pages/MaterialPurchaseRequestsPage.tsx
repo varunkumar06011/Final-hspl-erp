@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Box, Typography, Button, Card, CardContent, Chip, IconButton, Dialog, DialogTitle, DialogContent, DialogActions,
   TextField, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, CircularProgress,
@@ -65,18 +65,57 @@ export default function MaterialPurchaseRequestsPage() {
   const [error, setError] = useState('');
   const [pdfLoading, setPdfLoading] = useState(false);
 
-  // Form state
-  const [requiredBy, setRequiredBy] = useState('');
-  const [department, setDepartment] = useState('');
-  const [priority, setPriority] = useState('Normal');
-  const [description, setDescription] = useState('');
-  const [deliveryAddress, setDeliveryAddress] = useState('');
-  const [contactPerson, setContactPerson] = useState('');
-  const [contactNumber, setContactNumber] = useState('');
-  const [billingAddress, setBillingAddress] = useState('');
-  const [stateCode, setStateCode] = useState('');
-  const [technicalRequirements, setTechnicalRequirements] = useState('');
-  const [items, setItems] = useState<MPRItem[]>([]);
+  const MPR_DRAFT_KEY = 'mpr_form_draft';
+
+  // Form state — initialized from localStorage if available
+  const [requiredBy, setRequiredBy] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(MPR_DRAFT_KEY) || '{}').requiredBy ?? ''; } catch { return ''; }
+  });
+  const [department, setDepartment] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(MPR_DRAFT_KEY) || '{}').department ?? ''; } catch { return ''; }
+  });
+  const [priority, setPriority] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(MPR_DRAFT_KEY) || '{}').priority ?? 'Normal'; } catch { return 'Normal'; }
+  });
+  const [description, setDescription] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(MPR_DRAFT_KEY) || '{}').description ?? ''; } catch { return ''; }
+  });
+  const [deliveryAddress, setDeliveryAddress] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(MPR_DRAFT_KEY) || '{}').deliveryAddress ?? ''; } catch { return ''; }
+  });
+  const [contactPerson, setContactPerson] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(MPR_DRAFT_KEY) || '{}').contactPerson ?? ''; } catch { return ''; }
+  });
+  const [contactNumber, setContactNumber] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(MPR_DRAFT_KEY) || '{}').contactNumber ?? ''; } catch { return ''; }
+  });
+  const [billingAddress, setBillingAddress] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(MPR_DRAFT_KEY) || '{}').billingAddress ?? ''; } catch { return ''; }
+  });
+  const [stateCode, setStateCode] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(MPR_DRAFT_KEY) || '{}').stateCode ?? ''; } catch { return ''; }
+  });
+  const [technicalRequirements, setTechnicalRequirements] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(MPR_DRAFT_KEY) || '{}').technicalRequirements ?? ''; } catch { return ''; }
+  });
+  const [items, setItems] = useState<MPRItem[]>(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(MPR_DRAFT_KEY) || '{}').items;
+      if (Array.isArray(saved) && saved.length > 0) return saved;
+    } catch { /* ignore */ }
+    return [{ materialName: '', materialCode: '', quantity: '', unit: 'nos', requiredDate: '', remarks: '' }];
+  });
+
+  // Persist form state to localStorage whenever it changes (only for new MPR, not editing)
+  useEffect(() => {
+    if (editRow) return; // Don't save when editing an existing MPR
+    const draft = {
+      requiredBy, department, priority, description, deliveryAddress,
+      contactPerson, contactNumber, billingAddress, stateCode,
+      technicalRequirements, items,
+    };
+    try { localStorage.setItem(MPR_DRAFT_KEY, JSON.stringify(draft)); } catch { /* ignore quota errors */ }
+  }, [requiredBy, department, priority, description, deliveryAddress, contactPerson, contactNumber, billingAddress, stateCode, technicalRequirements, items, editRow]);
 
   const { data, isLoading } = useQuery({
     queryKey: ['mprs', search, statusFilter],
@@ -103,6 +142,7 @@ export default function MaterialPurchaseRequestsPage() {
     setStateCode('');
     setTechnicalRequirements('');
     setItems([{ materialName: '', materialCode: '', quantity: '', unit: 'nos', requiredDate: '', remarks: '' }]);
+    try { localStorage.removeItem(MPR_DRAFT_KEY); } catch { /* ignore */ }
   }
 
   function openCreate() {
@@ -183,6 +223,7 @@ export default function MaterialPurchaseRequestsPage() {
       queryClient.invalidateQueries({ queryKey: ['mprs'] });
       setCreateOpen(false);
       setError('');
+      try { localStorage.removeItem(MPR_DRAFT_KEY); } catch { /* ignore */ }
     },
     onError: (err: unknown) => {
       setError(extractErrorMessage(err));

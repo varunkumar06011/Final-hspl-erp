@@ -1490,20 +1490,26 @@ export const invoiceCrossLinkSchema = z.object({
 // Material Purchase Requests (MPR)
 // ═══════════════════════════════════════════════════════════
 
+// Date field that tolerates empty strings (treats '' as undefined)
+const mprDateStr = z.preprocess(
+  (val) => (val === '' || val === null ? undefined : val),
+  z.coerce.date().optional()
+);
+
 const mprItemInput = z.object({
   materialName: nonEmptyText(200),
   materialCode: z.string().trim().max(50).optional(),
   specification: z.string().trim().max(500).optional(),
   quantity: positiveQty,
   unit: z.string().trim().max(20).optional(),
-  requiredDate: dateStr.optional(),
+  requiredDate: mprDateStr.optional(),
   estimatedRate: money.default(0),
   remarks: z.string().trim().max(500).optional(),
 });
 
 export const createMPRSchema = z.object({
   body: z.object({
-    requiredBy: dateStr.optional(),
+    requiredBy: mprDateStr.optional(),
     department: z.string().trim().max(100).optional(),
     priority: z.string().trim().max(20).optional(),
     description: z.string().trim().max(2000).optional(),
@@ -1521,7 +1527,7 @@ export const createMPRSchema = z.object({
 export const updateMPRSchema = z.object({
   params: z.object({ id: uuid }),
   body: z.object({
-    requiredBy: dateStr.optional(),
+    requiredBy: mprDateStr.optional(),
     department: z.string().trim().max(100).optional(),
     priority: z.string().trim().max(20).optional(),
     description: z.string().trim().max(2000).optional(),
