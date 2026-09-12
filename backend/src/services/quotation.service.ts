@@ -28,6 +28,7 @@ export interface CreateQuotationInput {
   filePath?: string | null;
   fileName?: string | null;
   fileMimeType?: string | null;
+  notes?: string | null;
 }
 
 const quotationInclude = {
@@ -72,6 +73,7 @@ export async function createQuotation(input: CreateQuotationInput) {
     filePath = null,
     fileName = null,
     fileMimeType = null,
+    notes = null,
   } = input;
 
   // Validate vendor exists and belongs to project
@@ -140,6 +142,7 @@ export async function createQuotation(input: CreateQuotationInput) {
       filePath,
       fileName,
       fileMimeType,
+      notes,
       createdBy,
       items: { create: itemsWithAmounts },
     },

@@ -131,6 +131,7 @@ export const createQuotationSchema = z.object({
     items: itemsField,
     acknowledged: acknowledgement,
     workTaskId: uuid.optional(),
+    notes: z.string().trim().max(2000).optional(),
   }),
 });
 export const updateQuotationSchema = z.object({
@@ -140,6 +141,7 @@ export const updateQuotationSchema = z.object({
       (val) => (val === undefined ? undefined : typeof val === 'string' ? JSON.parse(val) : val),
       z.array(quotationLineItem).min(1).optional(),
     ),
+    notes: z.string().trim().max(2000).optional(),
   }),
 });
 export const listQuotationsSchema = z.object({

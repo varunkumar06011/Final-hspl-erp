@@ -355,6 +355,7 @@ router.post(
         filePath,
         fileName,
         fileMimeType,
+        notes: req.body.notes || null,
       });
 
       res.status(201).json(result);
@@ -415,6 +416,10 @@ router.patch(
       }
 
       const updateData: Record<string, unknown> = {};
+
+      if (req.body.notes !== undefined) {
+        updateData.notes = req.body.notes || null;
+      }
 
       if (req.body.items) {
         const items = typeof req.body.items === 'string'

@@ -110,6 +110,7 @@ interface QuotationRow {
   grandTotal: number;
   fileName?: string | null;
   filePath?: string | null;
+  notes?: string | null;
   createdByUser: { id: string; name: string };
   items: QuotationItem[];
   approvalWorkflow?: {
@@ -136,6 +137,7 @@ export default function QuotationsPage() {
   const [approvalAction, setApprovalAction] = useState<{ row: QuotationRow; step: ApprovalStep; action: 'approve' | 'reject' } | null>(null);
   const [timelineRow, setTimelineRow] = useState<QuotationRow | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [quotationNotes, setQuotationNotes] = useState('');
   const [pdfLoading, setPdfLoading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const createSubmissionLocked = useRef(false);
@@ -204,6 +206,7 @@ export default function QuotationsPage() {
       formData.append('items', JSON.stringify(filteredItems));
       formData.append('acknowledged', String(acknowledged));
       if (workTaskIdRef.current) formData.append('workTaskId', workTaskIdRef.current);
+      if (quotationNotes.trim()) formData.append('notes', quotationNotes.trim());
       if (selectedFile) formData.append('file', selectedFile);
       const response = await api.post('/quotations', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
@@ -233,6 +236,7 @@ export default function QuotationsPage() {
     mutationFn: async () => {
       const formData = new FormData();
       formData.append('items', JSON.stringify(lineItems.filter((i) => selectedMaterialNames.has(i.materialName)).map((i) => ({ materialName: i.materialName, quantity: i.quantity, unit: i.unit, unitPrice: i.unitPrice, amount: i.amount, gstRate: i.gstRate }))));
+      if (quotationNotes.trim()) formData.append('notes', quotationNotes.trim());
       if (selectedFile) formData.append('file', selectedFile);
       const response = await api.patch(`/quotations/${editing!.id}`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
@@ -363,6 +367,7 @@ export default function QuotationsPage() {
     setSelectedMaterialNames(new Set());
     setAcknowledged(false);
     setSelectedFile(null);
+    setQuotationNotes('');
     setError('');
   }
 
@@ -393,6 +398,7 @@ export default function QuotationsPage() {
     })));
     setSelectedMaterialNames(new Set(row.items.map((item) => item.materialName)));
     setSelectedFile(null);
+    setQuotationNotes(row.notes ?? '');
     setError('');
     setEditOpen(true);
   }
@@ -1019,6 +1025,20 @@ export default function QuotationsPage() {
                 </Typography>
               )}
             </Box>
+
+            {/* Description / Notes */}
+            <TextField
+              label="Description / Notes"
+              value={quotationNotes}
+              onChange={(e) => setQuotationNotes(e.target.value)}
+              fullWidth
+              size="small"
+              multiline
+              minRows={2}
+              maxRows={4}
+              placeholder="Optional description or notes for this quotation"
+              sx={{ mt: 2 }}
+            />
           </Box>
         </DialogContent>
         <DialogActions>
