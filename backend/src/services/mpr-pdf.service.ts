@@ -109,7 +109,7 @@ export async function streamMprPdf(res: NodeJS.WritableStream, mpr: any) {
     ['Request No.', text(mpr.mprNumber), 'Request Date', new Date(mpr.date).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' })],
     ['Required By', mpr.requiredBy ? new Date(mpr.requiredBy).toLocaleDateString('en-IN') : '—', 'Project / Site', text(mpr.project?.name)],
     ['Department', text(mpr.department), 'Priority', priorityLabel],
-    ['Requested By', text(mpr.createdByUser?.name ?? projectHead?.name), '', ''],
+    ['Requested By', text(mpr.createdByUser?.name ?? projectHead?.name), 'Request Raised By', text(mpr.requestRaisedBy?.name)],
   ];
 
   for (const row of infoRows) {

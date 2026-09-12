@@ -73,6 +73,7 @@ model User {
   requestedBudgetRevisions BudgetRevision[]      @relation("BudgetRevisionRequestedBy")
   reviewedBudgetRevisions  BudgetRevision[]      @relation("BudgetRevisionReviewedBy")
   createdMPRs              MaterialPurchaseRequest[] @relation("MPRCreatedBy")
+  raisedMPRs               MaterialPurchaseRequest[] @relation("MPRRaisedBy")
 
   @@map("users")
 }
@@ -1592,6 +1593,7 @@ model MaterialPurchaseRequest {
   billingAddress  String?
   stateCode       String?
   priority        String? // Normal | Urgent | Critical
+  requestRaisedById String? @db.Uuid // User who raised the request (may differ from createdBy)
   // Estimated cost summary (computed from items)
   estimatedSubtotal Decimal @default(0) @db.Decimal(15, 2)
   estimatedGstRate  Decimal @default(0) @db.Decimal(5, 2)
@@ -1606,6 +1608,7 @@ model MaterialPurchaseRequest {
 
   project       Project @relation(fields: [projectId], references: [id])
   createdByUser User    @relation("MPRCreatedBy", fields: [createdBy], references: [id])
+  requestRaisedBy User? @relation("MPRRaisedBy", fields: [requestRaisedById], references: [id])
   items         MaterialPurchaseRequestItem[]
 
   @@unique([projectId, mprNumber])

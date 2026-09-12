@@ -43,6 +43,8 @@ interface MPRRow {
   contactNumber?: string | null;
   billingAddress?: string | null;
   stateCode?: string | null;
+  requestRaisedById?: string | null;
+  requestRaisedBy?: { id: string; name: string } | null;
   technicalRequirements?: string | null;
   createdByUser: { id: string; name: string };
   items: MPRItem[];
@@ -95,6 +97,9 @@ export default function MaterialPurchaseRequestsPage() {
   const [stateCode, setStateCode] = useState(() => {
     try { return JSON.parse(localStorage.getItem(MPR_DRAFT_KEY) || '{}').stateCode ?? ''; } catch { return ''; }
   });
+  const [requestRaisedById, setRequestRaisedById] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(MPR_DRAFT_KEY) || '{}').requestRaisedById ?? ''; } catch { return ''; }
+  });
   const [technicalRequirements, setTechnicalRequirements] = useState(() => {
     try { return JSON.parse(localStorage.getItem(MPR_DRAFT_KEY) || '{}').technicalRequirements ?? ''; } catch { return ''; }
   });
@@ -112,10 +117,10 @@ export default function MaterialPurchaseRequestsPage() {
     const draft = {
       requiredBy, department, priority, description, deliveryAddress,
       contactPerson, contactNumber, billingAddress, stateCode,
-      technicalRequirements, items,
+      requestRaisedById, technicalRequirements, items,
     };
     try { localStorage.setItem(MPR_DRAFT_KEY, JSON.stringify(draft)); } catch { /* ignore quota errors */ }
-  }, [requiredBy, department, priority, description, deliveryAddress, contactPerson, contactNumber, billingAddress, stateCode, technicalRequirements, items, editRow]);
+  }, [requiredBy, department, priority, description, deliveryAddress, contactPerson, contactNumber, billingAddress, stateCode, requestRaisedById, technicalRequirements, items, editRow]);
 
   const { data, isLoading } = useQuery({
     queryKey: ['mprs', search, statusFilter],
@@ -127,6 +132,12 @@ export default function MaterialPurchaseRequestsPage() {
       return res.data;
     },
   });
+
+  const { data: usersData } = useQuery({
+    queryKey: ['/work-tasks/assignable-users'],
+    queryFn: async () => (await api.get('/work-tasks/assignable-users')).data?.data ?? [],
+  });
+  const users: { id: string; name: string; role: string }[] = usersData ?? [];
 
   const mprs: MPRRow[] = data?.data ?? [];
 
@@ -140,6 +151,7 @@ export default function MaterialPurchaseRequestsPage() {
     setContactNumber('');
     setBillingAddress('');
     setStateCode('');
+    setRequestRaisedById('');
     setTechnicalRequirements('');
     setItems([{ materialName: '', materialCode: '', quantity: '', unit: 'nos', requiredDate: '', remarks: '' }]);
     try { localStorage.removeItem(MPR_DRAFT_KEY); } catch { /* ignore */ }
@@ -162,6 +174,7 @@ export default function MaterialPurchaseRequestsPage() {
     setContactNumber(row.contactNumber ?? '');
     setBillingAddress(row.billingAddress ?? '');
     setStateCode(row.stateCode ?? '');
+    setRequestRaisedById(row.requestRaisedById ?? '');
     setTechnicalRequirements(row.technicalRequirements ?? '');
     setItems(row.items.map((i) => ({
       materialName: i.materialName,
@@ -201,6 +214,7 @@ export default function MaterialPurchaseRequestsPage() {
         contactNumber: contactNumber || undefined,
         billingAddress: billingAddress || undefined,
         stateCode: stateCode || undefined,
+        requestRaisedById: requestRaisedById || undefined,
         technicalRequirements: technicalRequirements || undefined,
         items: items.map((i) => ({
           materialName: i.materialName,
@@ -480,6 +494,22 @@ export default function MaterialPurchaseRequestsPage() {
                 <MenuItem value="Normal">Normal</MenuItem>
                 <MenuItem value="Urgent">Urgent</MenuItem>
                 <MenuItem value="Critical">Critical</MenuItem>
+              </TextField>
+            </Grid>
+            <Grid item xs={12} sm={6} md={3}>
+              <TextField
+                fullWidth
+                size="small"
+                select
+                label="Request Raised By"
+                value={requestRaisedById}
+                onChange={(e) => setRequestRaisedById(e.target.value)}
+                SelectProps={{ displayEmpty: true }}
+              >
+                <MenuItem value=""><em>— Select —</em></MenuItem>
+                {users.map((u) => (
+                  <MenuItem key={u.id} value={u.id}>{u.name}</MenuItem>
+                ))}
               </TextField>
             </Grid>
           </Grid>

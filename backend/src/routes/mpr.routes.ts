@@ -14,6 +14,7 @@ router.use(authMiddleware);
 
 const mprInclude = {
   createdByUser: { select: { id: true, name: true } },
+  requestRaisedBy: { select: { id: true, name: true } },
   items: true,
   project: { select: { name: true, officeAddress: true, hospitalAddress: true, gstNumber: true, panNumber: true, logoUrl: true } },
 };
@@ -112,6 +113,7 @@ router.post(
           contactNumber: req.body.contactNumber || null,
           billingAddress: req.body.billingAddress || null,
           stateCode: req.body.stateCode || null,
+          requestRaisedById: req.body.requestRaisedById || null,
           estimatedSubtotal,
           estimatedGstRate,
           estimatedGstAmount,
@@ -173,6 +175,7 @@ router.put(
       if (req.body.contactNumber !== undefined) updateData.contactNumber = req.body.contactNumber || null;
       if (req.body.billingAddress !== undefined) updateData.billingAddress = req.body.billingAddress || null;
       if (req.body.stateCode !== undefined) updateData.stateCode = req.body.stateCode || null;
+      if (req.body.requestRaisedById !== undefined) updateData.requestRaisedById = req.body.requestRaisedById || null;
       if (req.body.technicalRequirements !== undefined) updateData.technicalRequirements = req.body.technicalRequirements || null;
       if (req.body.estimatedGstRate !== undefined) updateData.estimatedGstRate = Number(req.body.estimatedGstRate);
 
