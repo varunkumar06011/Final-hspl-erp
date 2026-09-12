@@ -534,7 +534,7 @@ router.post(
   }
 );
 
-// PATCH /:id — update PO (no editable fields after GST became per-item; kept for future use)
+// PATCH /:id — update PO notes (allowed for any status, including APPROVED/DELIVERED)
 router.patch(
   '/:id',
   rbacMiddleware(Permission.CREATE_PO),
@@ -548,14 +548,16 @@ router.patch(
         res.status(404).json({ error: 'Purchase order not found' });
         return;
       }
-      if (existing.status === POStatus.APPROVED || existing.status === POStatus.DELIVERED) {
-        res.status(400).json({ error: 'Cannot edit an approved purchase order' });
+
+      // Only notes/description can be edited — allowed for ALL statuses
+      if (req.body.notes === undefined) {
+        res.status(400).json({ error: 'Only description/notes can be updated' });
         return;
       }
 
-      // GST is now auto-calculated from per-item gstRate — no manual override
-      const updated = await prisma.purchaseOrder.findUnique({
+      const updated = await prisma.purchaseOrder.update({
         where: { id: existing.id },
+        data: { notes: req.body.notes || null },
         include: poInclude,
       });
 

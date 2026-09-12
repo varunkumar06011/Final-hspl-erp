@@ -158,6 +158,8 @@ export default function PurchaseOrdersPage() {
   const [editRow, setEditRow] = useState<PORow | null>(null);
   const [editUnapprovedRow, setEditUnapprovedRow] = useState<PORow | null>(null);
   const [regenRow, setRegenRow] = useState<PORow | null>(null);
+  const [notesEditRow, setNotesEditRow] = useState<PORow | null>(null);
+  const [notesEditValue, setNotesEditValue] = useState('');
   const queryClient = useQueryClient();
   const { user } = useAuthStore();
   const navigate = useNavigate();
@@ -375,6 +377,20 @@ export default function PurchaseOrdersPage() {
       queryClient.invalidateQueries({ queryKey: ['/pos'] });
       queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
       setDeleteRow(null);
+    },
+    onError: (err: unknown) => setError(extractErrorMessage(err)),
+  });
+
+  const updateNotesMutation = useMutation({
+    mutationFn: async () => {
+      const response = await api.patch(`/purchase-orders/${notesEditRow!.id}`, { notes: notesEditValue.trim() });
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/pos'] });
+      setNotesEditRow(null);
+      setNotesEditValue('');
+      setError('');
     },
     onError: (err: unknown) => setError(extractErrorMessage(err)),
   });
@@ -650,6 +666,9 @@ export default function PurchaseOrdersPage() {
                         )}
                         {(row.status === POStatus.PENDING_APPROVAL || row.status === POStatus.REJECTED) && (
                           <IconButton size="small" color="primary" onClick={() => setEditUnapprovedRow(row)} title="Edit PO"><EditIcon fontSize="small" /></IconButton>
+                        )}
+                        {(row.status === POStatus.APPROVED || row.status === POStatus.DELIVERED || row.status === POStatus.PARTIALLY_DELIVERED) && (
+                          <IconButton size="small" onClick={() => { setNotesEditRow(row); setNotesEditValue(row.notes ?? ''); }} title="Edit Description"><EditIcon fontSize="small" /></IconButton>
                         )}
                         {row.status === POStatus.DELIVERED && !row.parentPoId && Array.isArray(row.regenerationData) && (row.regenerationData as unknown[]).length > 0 && (!row.childPos || row.childPos.length === 0) ? (
                           <IconButton size="small" color="secondary" onClick={() => setRegenRow(row)} title="Generate Regenerated PO"><AutoRenewIcon fontSize="small" /></IconButton>
@@ -1062,6 +1081,35 @@ export default function PurchaseOrdersPage() {
           <Button onClick={() => setDeleteRow(null)}>Cancel</Button>
           <Button color="error" variant="contained" disabled={deleteMutation.isPending} onClick={() => deleteRow && deleteMutation.mutate(deleteRow.id)}>
             {deleteMutation.isPending ? <CircularProgress size={20} /> : 'Delete'}
+          </Button>
+        </DialogActions>
+      </ResponsiveDialog>
+
+      {/* Edit Description/Notes only (for approved/delivered POs) */}
+      <ResponsiveDialog open={notesEditRow !== null} onClose={() => { setNotesEditRow(null); setNotesEditValue(''); }} maxWidth="sm" fullWidth>
+        <DialogTitle>Edit Description — {notesEditRow?.poNumber}</DialogTitle>
+        <DialogContent>
+          {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
+          <TextField
+            label="Description / Notes"
+            value={notesEditValue}
+            onChange={(e) => setNotesEditValue(e.target.value)}
+            fullWidth
+            multiline
+            minRows={3}
+            maxRows={6}
+            placeholder="Description or notes for this PO"
+            sx={{ mt: 1 }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => { setNotesEditRow(null); setNotesEditValue(''); }}>Cancel</Button>
+          <Button
+            variant="contained"
+            disabled={updateNotesMutation.isPending}
+            onClick={() => updateNotesMutation.mutate()}
+          >
+            {updateNotesMutation.isPending ? <CircularProgress size={20} /> : 'Save'}
           </Button>
         </DialogActions>
       </ResponsiveDialog>

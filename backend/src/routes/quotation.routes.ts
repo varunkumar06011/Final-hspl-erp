@@ -411,14 +411,28 @@ router.patch(
         return;
       }
       if (existing.status === QuotationStatus.APPROVED || existing.status === QuotationStatus.CONVERTED_TO_PO) {
-        res.status(400).json({ error: 'Cannot edit an approved quotation' });
-        return;
+        // Allow editing only the notes/description on approved quotations
+        const isNotesOnlyUpdate = req.body.notes !== undefined
+          && !req.body.items
+          && !req.file;
+        if (!isNotesOnlyUpdate) {
+          res.status(400).json({ error: 'Cannot edit an approved quotation (only description/notes can be updated)' });
+          return;
+        }
       }
 
       const updateData: Record<string, unknown> = {};
 
       if (req.body.notes !== undefined) {
         updateData.notes = req.body.notes || null;
+      }
+
+      // Block item/file changes on approved quotations (notes-only allowed above)
+      if (existing.status === QuotationStatus.APPROVED || existing.status === QuotationStatus.CONVERTED_TO_PO) {
+        if (req.body.items || req.file) {
+          res.status(400).json({ error: 'Cannot edit line items or file on an approved quotation' });
+          return;
+        }
       }
 
       if (req.body.items) {

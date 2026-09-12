@@ -138,6 +138,8 @@ export default function QuotationsPage() {
   const [timelineRow, setTimelineRow] = useState<QuotationRow | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [quotationNotes, setQuotationNotes] = useState('');
+  const [notesEditRow, setNotesEditRow] = useState<QuotationRow | null>(null);
+  const [notesEditValue, setNotesEditValue] = useState('');
   const [pdfLoading, setPdfLoading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const createSubmissionLocked = useRef(false);
@@ -249,6 +251,20 @@ export default function QuotationsPage() {
       setEditOpen(false);
       setEditing(null);
       resetForm();
+    },
+    onError: (err: unknown) => setError(extractErrorMessage(err)),
+  });
+
+  const updateNotesMutation = useMutation({
+    mutationFn: async () => {
+      const response = await api.patch(`/quotations/${notesEditRow!.id}`, { notes: notesEditValue.trim() });
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/quotations'] });
+      setNotesEditRow(null);
+      setNotesEditValue('');
+      setError('');
     },
     onError: (err: unknown) => setError(extractErrorMessage(err)),
   });
@@ -793,7 +809,9 @@ export default function QuotationsPage() {
                       <IconButton size="small" onClick={() => setTimelineRow(row)} title="Show Timeline"><TimelineIcon fontSize="small" /></IconButton>
                       {row.status === QuotationStatus.SUBMITTED || row.status === QuotationStatus.UNDER_REVIEW ? (
                         <IconButton size="small" onClick={() => openEdit(row)} title="Edit"><EditIcon fontSize="small" /></IconButton>
-                      ) : null}
+                      ) : (
+                        <IconButton size="small" onClick={() => { setNotesEditRow(row); setNotesEditValue(row.notes ?? ''); }} title="Edit Description"><EditIcon fontSize="small" /></IconButton>
+                      )}
                       {pendingStep && (
                         <>
                           <IconButton size="small" color="success" onClick={() => setApprovalAction({ row, step: pendingStep, action: 'approve' })} title="Approve"><CheckIcon fontSize="small" /></IconButton>
@@ -1100,6 +1118,35 @@ export default function QuotationsPage() {
         open={timelineRow !== null}
         onClose={() => setTimelineRow(null)}
       />
+
+      {/* Edit Description/Notes only (for approved quotations) */}
+      <ResponsiveDialog open={notesEditRow !== null} onClose={() => { setNotesEditRow(null); setNotesEditValue(''); }} maxWidth="sm" fullWidth>
+        <DialogTitle>Edit Description — {notesEditRow?.quotationNumber}</DialogTitle>
+        <DialogContent>
+          {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
+          <TextField
+            label="Description / Notes"
+            value={notesEditValue}
+            onChange={(e) => setNotesEditValue(e.target.value)}
+            fullWidth
+            multiline
+            minRows={3}
+            maxRows={6}
+            placeholder="Description or notes for this quotation"
+            sx={{ mt: 1 }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => { setNotesEditRow(null); setNotesEditValue(''); }}>Cancel</Button>
+          <Button
+            variant="contained"
+            disabled={updateNotesMutation.isPending}
+            onClick={() => updateNotesMutation.mutate()}
+          >
+            {updateNotesMutation.isPending ? <CircularProgress size={20} /> : 'Save'}
+          </Button>
+        </DialogActions>
+      </ResponsiveDialog>
     </Box>
   );
 }
