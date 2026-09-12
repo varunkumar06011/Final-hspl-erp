@@ -192,15 +192,16 @@ export async function streamMprPdf(res: NodeJS.WritableStream, mpr: any) {
   doc.fillColor(primary).font('Helvetica-Bold').fontSize(10).text('MATERIAL DETAILS', left, y);
   y += 18;
 
-  // Column widths — Description is widest
+  // Column widths — must fit within page width (511px)
+  // Total: 25+58+150+120+35+35+65 = 488 + 6 gaps × 3 = 506 (fits in 511)
   const colGap = 3;
-  const wSl = 28;
-  const wCode = 65;
-  const wDesc = 175;
-  const wSpec = 100;
-  const wQty = 40;
-  const wUnit = 42;
-  const wReqDate = 70;
+  const wSl = 25;
+  const wCode = 58;
+  const wDesc = 150;
+  const wSpec = 120;
+  const wQty = 35;
+  const wUnit = 35;
+  const wReqDate = 65;
 
   const colSl = left;
   const colCode = colSl + wSl + colGap;
@@ -224,7 +225,7 @@ export async function streamMprPdf(res: NodeJS.WritableStream, mpr: any) {
   y += headerRowH;
 
   // Data rows — only show actual entered items (no blank rows)
-  const dataRowH = 26;
+  const dataRowH = 30;
   const items = mpr.items ?? [];
   for (let i = 0; i < items.length; i++) {
     if (y > pageH - 120) { doc.addPage(); y = 40; }
