@@ -99,7 +99,7 @@ export async function streamMprPdf(res: NodeJS.WritableStream, mpr: any) {
 
   // Info table — 2 columns x 4 rows
   const infoColW = (width - 10) / 2;
-  const infoRowH = 22;
+  const infoRowH = 26;
   const infoCol1 = left;
   const infoCol2 = left + infoColW + 10;
 
@@ -115,17 +115,17 @@ export async function streamMprPdf(res: NodeJS.WritableStream, mpr: any) {
   for (const row of infoRows) {
     // Label cell 1
     doc.rect(infoCol1, y, 90, infoRowH).fill(primaryLight).stroke(border);
-    doc.fillColor(primary).font('Helvetica-Bold').fontSize(8).text(row[0], infoCol1 + 6, y + 6, { width: 80 });
+    doc.fillColor(primary).font('Helvetica-Bold').fontSize(8).text(row[0], infoCol1 + 6, y + 8, { width: 80 });
     // Value cell 1
     doc.rect(infoCol1 + 90, y, infoColW - 90, infoRowH).fill('#ffffff').stroke(border);
-    doc.fillColor(dark).font('Helvetica').fontSize(8.5).text(row[1], infoCol1 + 96, y + 6, { width: infoColW - 100 });
+    doc.fillColor(dark).font('Helvetica').fontSize(8.5).text(row[1], infoCol1 + 96, y + 8, { width: infoColW - 102, height: infoRowH - 12, ellipsis: true });
 
     // Label cell 2 (skip if empty — last row right side)
     if (row[2]) {
       doc.rect(infoCol2, y, 90, infoRowH).fill(primaryLight).stroke(border);
-      doc.fillColor(primary).font('Helvetica-Bold').fontSize(8).text(row[2], infoCol2 + 6, y + 6, { width: 80 });
+      doc.fillColor(primary).font('Helvetica-Bold').fontSize(8).text(row[2], infoCol2 + 6, y + 8, { width: 80 });
       doc.rect(infoCol2 + 90, y, infoColW - 90, infoRowH).fill('#ffffff').stroke(border);
-      doc.fillColor(dark).font('Helvetica').fontSize(8.5).text(row[3], infoCol2 + 96, y + 6, { width: infoColW - 100 });
+      doc.fillColor(dark).font('Helvetica').fontSize(8.5).text(row[3], infoCol2 + 96, y + 8, { width: infoColW - 102, height: infoRowH - 12, ellipsis: true });
     } else {
       // Empty cell to keep grid alignment
       doc.rect(infoCol2, y, infoColW, infoRowH).fill('#ffffff').stroke(border);
@@ -223,25 +223,23 @@ export async function streamMprPdf(res: NodeJS.WritableStream, mpr: any) {
   doc.text('REQUIRED DATE', colReqDate + 2, y + 8, { width: wReqDate - 4, align: 'center' });
   y += headerRowH;
 
-  // Data rows
+  // Data rows — only show actual entered items (no blank rows)
   const dataRowH = 26;
   const items = mpr.items ?? [];
-  // Show actual items + blank rows (minimum 8 rows total for print use)
-  const minRows = Math.max(8, items.length);
-  for (let i = 0; i < minRows; i++) {
+  for (let i = 0; i < items.length; i++) {
     if (y > pageH - 120) { doc.addPage(); y = 40; }
     const item = items[i];
     if (i % 2 === 0) doc.rect(left, y, width, dataRowH).fill(primaryLight);
     doc.rect(left, y, width, dataRowH).stroke(border);
 
     doc.fillColor(dark).font('Helvetica').fontSize(8);
-    doc.text(item ? String(i + 1) : '', colSl, y + 7, { width: wSl, align: 'center' });
-    doc.text(item ? text(item.materialCode) : '', colCode + 2, y + 7, { width: wCode - 4 });
-    doc.text(item ? text(item.materialName) : '', colDesc + 2, y + 7, { width: wDesc - 4 });
-    doc.text(item ? text(item.specification) : '', colSpec + 2, y + 7, { width: wSpec - 4 });
-    doc.text(item ? String(item.quantity) : '', colQty, y + 7, { width: wQty, align: 'center' });
-    doc.text(item ? text(item.unit) : '', colUnit, y + 7, { width: wUnit, align: 'center' });
-    doc.text(item && item.requiredDate ? new Date(item.requiredDate).toLocaleDateString('en-IN') : '', colReqDate + 2, y + 7, { width: wReqDate - 4, align: 'center' });
+    doc.text(String(i + 1), colSl, y + 7, { width: wSl, align: 'center' });
+    doc.text(text(item.materialCode), colCode + 2, y + 7, { width: wCode - 4 });
+    doc.text(text(item.materialName), colDesc + 2, y + 7, { width: wDesc - 4 });
+    doc.text(text(item.specification), colSpec + 2, y + 7, { width: wSpec - 4 });
+    doc.text(String(item.quantity), colQty, y + 7, { width: wQty, align: 'center' });
+    doc.text(text(item.unit), colUnit, y + 7, { width: wUnit, align: 'center' });
+    doc.text(item.requiredDate ? new Date(item.requiredDate).toLocaleDateString('en-IN') : '—', colReqDate + 2, y + 7, { width: wReqDate - 4, align: 'center' });
     y += dataRowH;
   }
   y += 16;
@@ -265,19 +263,9 @@ export async function streamMprPdf(res: NodeJS.WritableStream, mpr: any) {
   y += purposeBoxH + 16;
 
   // ═══════════════════════════════════════════════════════════
-  // 7. FOOTER (existing V Grand address + subtle form reference)
+  // 7. FOOTER — removed per user request
+  // No office address, no form reference, no extra text
   // ═══════════════════════════════════════════════════════════
-  // NO approval section — no signature blocks
-
-  // Push footer to bottom of page
-  const footerY = pageH - 60;
-  doc.moveTo(left, footerY).lineTo(right, footerY).strokeColor(primary).lineWidth(1).stroke();
-
-  // Company address line (existing footer)
-  doc.fillColor(muted).font('Helvetica').fontSize(7).text(text(mpr.project?.officeAddress ?? 'V Grand Health Care Pvt. Ltd.'), left, footerY + 6, { width, align: 'center' });
-
-  // Subtle form reference
-  doc.fillColor(muted).font('Helvetica').fontSize(6.5).text('Form No.: VGH/PROC/MRF/001  |  Rev. 00  |  Page 1 of 1  |  Generated from Hospital Construction ERP', left, footerY + 18, { width, align: 'center' });
 
   doc.end();
 }
