@@ -48,6 +48,7 @@ import {
   WhatsApp as WhatsAppIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { PaymentStatus, PaymentMode, UserRole, POPaymentType } from '@hospital-erp/shared';
 import { formatCurrency, formatIndianNumber, STATUS_COLORS, todayLocalDate } from '../utils/enumOptions';
 import api, { extractErrorMessage } from '../config/api';
@@ -171,9 +172,6 @@ export default function PaymentsPage() {
   const [dateFilter, setDateFilter] = useState('');
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
-  const [payOpen, setPayOpen] = useState<string | null>(null);
-  const [payForm, setPayForm] = useState<Record<string, unknown>>({});
-  const [postApprovePrompt, setPostApprovePrompt] = useState<PaymentRequestRow | null>(null);
   const [expenseOpen, setExpenseOpen] = useState(false);
   const [invoicePayOpen, setInvoicePayOpen] = useState<PendingInvoice | null>(null);
   const [invoicePayForm, setInvoicePayForm] = useState<Record<string, unknown>>({});
@@ -186,6 +184,7 @@ export default function PaymentsPage() {
   const fileRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
   const { user } = useAuthStore();
+  const navigate = useNavigate();
 
   // Expense form state
   const [expenseForm, setExpenseForm] = useState<Record<string, unknown>>({});
@@ -231,24 +230,6 @@ export default function PaymentsPage() {
     },
   });
   const budgetHeads: { id: string; particulars: string }[] = budgetHeadsData?.data ?? [];
-
-  const { data: bankAccountsData } = useQuery({
-    queryKey: ['/bank-accounts', 'all'],
-    queryFn: async () => {
-      const response = await api.get('/bank-accounts', { params: { page: 1, pageSize: 100 } });
-      return response.data;
-    },
-  });
-  const bankAccounts: { id: string; accountName: string; currentBalance: number }[] = bankAccountsData?.data ?? [];
-
-  const { data: cashAccountsData } = useQuery({
-    queryKey: ['/cash-accounts', 'all'],
-    queryFn: async () => {
-      const response = await api.get('/cash-accounts', { params: { page: 1, pageSize: 100 } });
-      return response.data;
-    },
-  });
-  const cashAccounts: { id: string; name: string; currentBalance: number }[] = cashAccountsData?.data ?? [];
 
   const createInvoicePaymentMutation = useMutation({
     mutationFn: async (payload: Record<string, unknown>) => {
@@ -368,14 +349,8 @@ export default function PaymentsPage() {
       queryClient.invalidateQueries({ queryKey: ['/invoices'] });
       queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
     },
-    onSuccess: (updated: PaymentRequestRow) => {
+    onSuccess: () => {
       setApprovalAction(null);
-      // After the final approval, ask whether to record the payment now.
-      // Yes → opens Record Payment (posts the payment voucher, marks PAID).
-      // Not yet → stays APPROVED; can be paid later via the Pay button.
-      if (updated?.status === PaymentStatus.APPROVED && (updated.payments?.length ?? 0) === 0) {
-        setPostApprovePrompt(updated);
-      }
     },
   });
 
@@ -434,28 +409,10 @@ export default function PaymentsPage() {
     onError: (err: unknown) => setError(extractErrorMessage(err)),
   });
 
-  const payMutation = useMutation({
-    mutationFn: async ({ id, payload }: { id: string; payload: Record<string, unknown> }) => {
-      const response = await api.post(`/payments/${id}/pay`, payload);
-      return response.data;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/payments'] });
-      queryClient.invalidateQueries({ queryKey: ['/invoices'] });
-      queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
-      setPayOpen(null);
-      setPayForm({});
-      setSuccessMsg('Payment recorded successfully.');
-      setTimeout(() => setSuccessMsg(''), 3000);
-    },
-    onError: (err: unknown) => setError(extractErrorMessage(err)),
-  });
-
   const rows: PaymentRequestRow[] = data?.data ?? [];
   const pagination = data?.pagination ?? { page: 1, pageSize: 20, total: 0, totalPages: 0 };
   const pendingInvoicesData: PendingInvoice[] = pendingInvoices?.data ?? [];
   const pendingPOsData: PendingPO[] = pendingPOs?.data ?? [];
-  const currentPaymentRequest = rows.find((row) => row.id === payOpen);
 
   // Auto-open approval dialog when navigated from a push notification
   useApprovalDeepLink(rows, (row) => setApprovalAction({ row, action: 'approve' }));
@@ -799,8 +756,8 @@ export default function PaymentsPage() {
                           )}
                           {row.status === PaymentStatus.APPROVED && row.payments.length === 0 && (
                             <Button size="small" variant="outlined" startIcon={<PaymentsIcon />}
-                              onClick={() => { setPayOpen(row.id); setPayForm({ amount: row.amount, mode: PaymentMode.BANK_TRANSFER }); }}>
-                              Pay
+                              onClick={() => navigate(`/vouchers?paymentRequest=${row.id}`)}>
+                              Post to Ledgers
                             </Button>
                           )}
                           {row.payments.length > 0 && (
@@ -1270,124 +1227,6 @@ export default function PaymentsPage() {
             disabled={createExpenseMutation.isPending}
           >
             {createExpenseMutation.isPending ? <CircularProgress size={20} /> : 'Create Expense'}
-          </Button>
-        </DialogActions>
-      </ResponsiveDialog>
-
-      {/* Record Payment Dialog */}
-      <ResponsiveDialog open={!!payOpen} onClose={() => setPayOpen(null)} maxWidth="sm" fullWidth>
-        <DialogTitle>Record Payment</DialogTitle>
-        <DialogContent>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
-            <TextField
-              label="Amount"
-              type="text"
-              value={formatIndianNumber(payForm.amount ?? '')}
-              onChange={(e) => {
-                const value = e.target.value.replace(/,/g, '');
-                const parsedAmount = Number(value);
-                setPayForm({
-                  ...payForm,
-                  amount: value === '' ? '' : Number.isFinite(parsedAmount) ? Math.min(parsedAmount, currentPaymentRequest?.amount ?? parsedAmount) : '',
-                });
-              }}
-              inputMode="decimal"
-              inputProps={{ min: 0.01, max: currentPaymentRequest?.amount, step: 0.01 }}
-              fullWidth
-              size="small"
-              required
-            />
-            <TextField
-              select
-              label="Payment Mode"
-              value={String(payForm.mode ?? PaymentMode.BANK_TRANSFER)}
-              onChange={(e) => setPayForm({ ...payForm, mode: e.target.value })}
-              fullWidth
-              size="small"
-              required
-            >
-              {PAYMENT_MODES.map((m) => <MenuItem key={m} value={m}>{m.replace(/_/g, ' ')}</MenuItem>)}
-            </TextField>
-            <TextField
-              select
-              label="Pay from Bank Account (optional)"
-              value={String(payForm.bankAccountId ?? '')}
-              onChange={(e) => setPayForm({ ...payForm, bankAccountId: e.target.value, cashAccountId: '' })}
-              fullWidth
-              size="small"
-              helperText="Selecting an account will create a bank transaction and update balance"
-            >
-              <MenuItem value="">— None —</MenuItem>
-              {bankAccounts.map((a) => <MenuItem key={a.id} value={a.id}>{a.accountName} ({formatCurrency(a.currentBalance)})</MenuItem>)}
-            </TextField>
-            <TextField
-              select
-              label="Pay from Cash Account (optional)"
-              value={String(payForm.cashAccountId ?? '')}
-              onChange={(e) => setPayForm({ ...payForm, cashAccountId: e.target.value, bankAccountId: '' })}
-              fullWidth
-              size="small"
-              helperText="Selecting an account will create a cash transaction and update balance"
-            >
-              <MenuItem value="">— None —</MenuItem>
-              {cashAccounts.map((a) => <MenuItem key={a.id} value={a.id}>{a.name} ({formatCurrency(a.currentBalance)})</MenuItem>)}
-            </TextField>
-            <TextField
-              label="Reference (cheque no, UPI ID, etc.)"
-              value={String(payForm.reference ?? '')}
-              onChange={(e) => setPayForm({ ...payForm, reference: e.target.value })}
-              fullWidth
-              size="small"
-            />
-          </Box>
-        </DialogContent>
-        <DialogActions sx={{ flexWrap: "wrap", gap: 1 }}>
-          <Button onClick={() => setPayOpen(null)}>Cancel</Button>
-          <Button
-            variant="contained"
-            onClick={() => {
-              if (!payOpen) return;
-              setError('');
-              payMutation.mutate({
-                id: payOpen,
-                payload: {
-                  amount: Number(payForm.amount),
-                  mode: payForm.mode,
-                  reference: payForm.reference || undefined,
-                  bankAccountId: payForm.bankAccountId || undefined,
-                  cashAccountId: payForm.cashAccountId || undefined,
-                },
-              });
-            }}
-            disabled={payMutation.isPending}
-          >
-            {payMutation.isPending ? <CircularProgress size={20} /> : 'Record Payment'}
-          </Button>
-        </DialogActions>
-      </ResponsiveDialog>
-
-      {/* Post-approval prompt — ask whether to record the payment (post voucher) now */}
-      <ResponsiveDialog open={!!postApprovePrompt} onClose={() => setPostApprovePrompt(null)} maxWidth="xs" fullWidth>
-        <DialogTitle>Payment Request Approved</DialogTitle>
-        <DialogContent>
-          <Typography variant="body2">
-            {postApprovePrompt?.paymentCode} — {formatCurrency(Number(postApprovePrompt?.amount ?? 0))} is approved.
-            Record the payment now to post the payment voucher to ledgers?
-          </Typography>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setPostApprovePrompt(null)}>Not Yet</Button>
-          <Button
-            variant="contained"
-            onClick={() => {
-              if (postApprovePrompt) {
-                setPayOpen(postApprovePrompt.id);
-                setPayForm({ amount: postApprovePrompt.amount, mode: PaymentMode.BANK_TRANSFER });
-              }
-              setPostApprovePrompt(null);
-            }}
-          >
-            Yes, Record Payment
           </Button>
         </DialogActions>
       </ResponsiveDialog>

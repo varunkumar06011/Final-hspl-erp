@@ -10,7 +10,6 @@ import {
   POPaymentType,
 } from '@hospital-erp/shared';
 import { prisma } from '../config/prisma';
-import { Prisma } from '@prisma/client';
 import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middleware/auth';
 import { rbacMiddleware } from '../middleware/rbac';
 import { validateMiddleware } from '../middleware/validate';
@@ -21,6 +20,7 @@ import { notifyApprovers } from '../services/push.service';
 import { getStorageService, serveFile } from '../services/storage.service';
 import { postVoucher, generateVoucherNumber } from './voucher.routes';
 import { ensureVendorLedger, ensureBankLedger, ensureCashLedger, findLedgerByName } from './ledger.routes';
+import { getInvoicePaymentSummary, recalcInvoicePaymentStatus } from '../services/invoice-payment.service';
 import multer from 'multer';
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
@@ -29,115 +29,6 @@ const router = Router();
 router.use(authMiddleware);
 
 const HEAD_ROLES = [UserRole.PROJECT_HEAD, UserRole.HEAD_OF_CONSTRUCTION, UserRole.ADMIN, UserRole.ADMIN_2];
-
-/**
- * Calculate paid-to-date for an invoice: advance + sum of all PAID payment request amounts.
- * Returns { paidToDate, outstanding, totalAmount, advancePaid, installmentsPaid,
- *           poAdvancePaid, unclaimedAdvance }.
- *
- * poAdvancePaid: total actual PAID advance payment requests on the linked PO.
- * unclaimedAdvance: paid on PO but not yet claimed by any invoice (poAdvancePaid - sum of all invoice advancePaid on that PO).
- *
- * These cross-reference fields expose the connection between actual PO advances and
- * the invoice's claimed advance, preventing a parallel financial reality where the
- * invoice says "advancePaid = ₹2L" while ₹3L was actually paid on the PO.
- *
- * Accepts optional transaction client for use inside transactions.
- */
-async function getInvoicePaymentSummary(invoiceId: string, tx?: Prisma.TransactionClient) {
-  const client = tx ?? prisma;
-  const invoice = await client.vendorInvoice.findUnique({
-    where: { id: invoiceId },
-    select: { totalAmount: true, advancePaid: true, poId: true },
-  });
-  if (!invoice) throw new Error('Invoice not found');
-
-  const paidRequests = await client.paymentRequest.findMany({
-    where: { invoiceId, status: PaymentStatus.PAID, deletedAt: null },
-    select: { amount: true },
-  });
-
-  const installmentsPaid = paidRequests.reduce((sum, pr) => sum + Number(pr.amount), 0);
-
-  const advancePaid = Number(invoice.advancePaid) || 0;
-  const totalAmount = Number(invoice.totalAmount) || 0;
-
-  // Cross-reference with actual paid advances on the linked PO.
-  // The unclaimed portion of PO advances (paid but not yet claimed on any
-  // invoice) is allocated to invoices in date order so the SAME advance is
-  // never counted against multiple invoices — preventing double-payment.
-  let poAdvancePaid = 0;
-  let unclaimedAdvance = 0;
-  let allocatedUnclaimed = 0;
-  if (invoice.poId) {
-    const [paidAdvancesOnPo, claimedByInvoices] = await Promise.all([
-      client.paymentRequest.aggregate({
-        where: { poId: invoice.poId, type: 'ADVANCE', status: PaymentStatus.PAID, deletedAt: null },
-        _sum: { amount: true },
-      }),
-      client.vendorInvoice.aggregate({
-        where: { poId: invoice.poId, deletedAt: null },
-        _sum: { advancePaid: true },
-      }),
-    ]);
-    poAdvancePaid = Number(paidAdvancesOnPo._sum.amount) || 0;
-    const totalClaimed = Number(claimedByInvoices._sum.advancePaid) || 0;
-    unclaimedAdvance = Math.max(0, poAdvancePaid - totalClaimed);
-
-    // Allocate unclaimed advance to invoices in date order, each capped at its
-    // remaining (totalAmount - its own advancePaid), until exhausted.
-    if (unclaimedAdvance > 0) {
-      const poInvoices = await client.vendorInvoice.findMany({
-        where: { poId: invoice.poId, deletedAt: null },
-        select: { id: true, totalAmount: true, advancePaid: true, date: true },
-        orderBy: { date: 'asc' },
-      });
-      let remainingPool = unclaimedAdvance;
-      for (const inv of poInvoices) {
-        if (remainingPool <= 0) break;
-        const cap = Math.max(0, Number(inv.totalAmount) - Number(inv.advancePaid));
-        const share = Math.min(remainingPool, cap);
-        if (inv.id === invoiceId) {
-          allocatedUnclaimed = share;
-          break;
-        }
-        remainingPool -= share;
-      }
-    }
-  }
-
-  // This invoice's effective advance = its own claimed advance + its allocated
-  // share of unclaimed PO advances, capped at the invoice total.
-  const effectiveAdvance = Math.min(totalAmount, advancePaid + allocatedUnclaimed);
-  const paidToDate = effectiveAdvance + installmentsPaid;
-  const outstanding = totalAmount - paidToDate;
-
-  return { totalAmount, advancePaid, installmentsPaid, paidToDate, outstanding, poAdvancePaid, unclaimedAdvance };
-}
-
-/**
- * Recalculate and update invoice payment status based on outstanding balance.
- * - outstanding <= 0 → PAID
- * - paidToDate > 0 but outstanding > 0 → PARTIALLY_PAID
- * - paidToDate === 0 → PENDING
- * Accepts optional transaction client for use inside transactions.
- */
-async function recalcInvoicePaymentStatus(invoiceId: string, tx?: Prisma.TransactionClient): Promise<void> {
-  const { paidToDate, outstanding } = await getInvoicePaymentSummary(invoiceId, tx);
-  let status: PaymentStatus;
-  if (outstanding <= 0) {
-    status = PaymentStatus.PAID;
-  } else if (paidToDate > 0) {
-    status = PaymentStatus.PARTIALLY_PAID;
-  } else {
-    status = PaymentStatus.PENDING;
-  }
-  const client = tx ?? prisma;
-  await client.vendorInvoice.update({
-    where: { id: invoiceId },
-    data: { paymentStatus: status },
-  });
-}
 
 async function generatePaymentCode(): Promise<string> {
   return generateSequenceNumber('paymentRequest', 'paymentCode', 'VGH-PAY', 3);
@@ -796,6 +687,80 @@ router.get(
         return;
       }
       res.json(record);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// GET /:id/voucher-prefill — data to prefill a PAYMENT voucher for an approved,
+// unpaid request ("Post to Ledgers" flow). Resolves the party-side ledger:
+// vendor ledger for INVOICE/ADVANCE (auto-created if missing), expense ledger
+// for EXPENSE requests.
+router.get(
+  '/:id/voucher-prefill',
+  rbacMiddleware(Permission.VIEW_FINANCIALS),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      const pr = await prisma.paymentRequest.findFirst({
+        where: { id: req.params.id, projectId, deletedAt: null },
+        include: {
+          payments: { select: { id: true } },
+          vendor: { select: { id: true, name: true, vendorCode: true } },
+          invoice: { select: { id: true, invoiceCode: true, invoiceNumber: true } },
+          purchaseOrder: { select: { id: true, poNumber: true } },
+          budgetHead: { select: { id: true, particulars: true } },
+        },
+      });
+      if (!pr) {
+        res.status(404).json({ error: 'Payment request not found' });
+        return;
+      }
+      if (pr.status !== PaymentStatus.APPROVED) {
+        res.status(400).json({ error: `Payment request must be APPROVED to post a voucher. Current status: ${pr.status}` });
+        return;
+      }
+      if (pr.payments.length > 0) {
+        res.status(409).json({ error: 'Payment has already been recorded for this request' });
+        return;
+      }
+
+      let partyLedgerId: string | null = null;
+      if (pr.vendorId) {
+        partyLedgerId = await ensureVendorLedger(pr.vendorId, projectId);
+      } else {
+        const expenseName = pr.category || pr.description || 'Miscellaneous Expense';
+        partyLedgerId = (await findLedgerByName(expenseName, projectId))
+          ?? (await findLedgerByName('Miscellaneous Expense', projectId));
+      }
+      const ledger = partyLedgerId
+        ? await prisma.ledger.findUnique({ where: { id: partyLedgerId } })
+        : null;
+
+      res.json({
+        paymentRequest: {
+          id: pr.id,
+          paymentCode: pr.paymentCode,
+          type: pr.type,
+          amount: Number(pr.amount),
+          description: pr.description,
+          vendor: pr.vendor,
+          invoice: pr.invoice,
+          purchaseOrder: pr.purchaseOrder,
+          budgetHead: pr.budgetHead,
+        },
+        partyLedger: ledger
+          ? {
+              id: ledger.id,
+              name: ledger.name,
+              group: ledger.group,
+              currentBalance: Number(ledger.currentBalance),
+              isActive: ledger.isActive,
+              linkedEntityType: ledger.linkedEntityType,
+            }
+          : null,
+      });
     } catch (error) {
       next(error);
     }

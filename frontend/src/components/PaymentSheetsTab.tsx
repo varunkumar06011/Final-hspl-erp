@@ -136,7 +136,7 @@ export default function PaymentSheetsTab() {
     queryKey,
     queryFn: async () => {
       const res = await api.get('/payment-sheets', { params: { date } });
-      return res.data as { data: PaymentSheetRow[]; totalAmount: number };
+      return res.data as { data: PaymentSheetRow[]; totalAmount: number; payableAmount: number };
     },
   });
 
@@ -224,6 +224,7 @@ export default function PaymentSheetsTab() {
 
   const rows = data?.data ?? [];
   const totalAmount = data?.totalAmount ?? 0;
+  const payableAmount = data?.payableAmount ?? 0;
 
   const handleSelectPO = (po: POOption | null) => {
     setSelectedPO(po);
@@ -302,8 +303,12 @@ export default function PaymentSheetsTab() {
               <Typography variant="h6">{rows.length}</Typography>
             </Box>
             <Box>
-              <Typography variant="caption" color="text.secondary">Total Payable</Typography>
+              <Typography variant="caption" color="text.secondary">Total Paid Today</Typography>
               <Typography variant="h6">{formatCurrency(totalAmount)}</Typography>
+            </Box>
+            <Box>
+              <Typography variant="caption" color="text.secondary">Total Payable</Typography>
+              <Typography variant="h6">{formatCurrency(payableAmount)}</Typography>
             </Box>
           </Stack>
         </CardContent>

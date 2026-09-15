@@ -1363,6 +1363,8 @@ export const createVoucherSchema = z
       sourceInvoiceId: uuid.optional(),
       // For PAYMENT vouchers: which invoices are being settled (bill-wise accounting)
       billSettlements: z.array(billSettlementInput).optional(),
+      // For PAYMENT vouchers created from an approved payment request ("Post to Ledgers")
+      paymentRequestId: uuid.optional(),
       // Tally-style: cheque details for bank payments/receipts
       chequeNumber: z.string().max(50).optional(),
       chequeDate: dateStr.optional(),

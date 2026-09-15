@@ -8,7 +8,9 @@ import {
   CashTxnType,
   AccountTxnRefType,
   GST_LEDGER_NAMES,
+  PaymentStatus,
 } from '@hospital-erp/shared';
+import { recalcInvoicePaymentStatus } from '../services/invoice-payment.service';
 import {
   createVoucherSchema,
   listVouchersSchema,
@@ -172,7 +174,7 @@ router.post(
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const projectId = requireProjectId(req);
-      const { voucherType, date, description, entries, sourceInvoiceId, billSettlements } = req.body;
+      const { voucherType, date, description, entries, sourceInvoiceId, billSettlements, paymentRequestId } = req.body;
 
       const totalDebit = (entries as Array<{ debit: number }>).reduce((s, e) => s + Number(e.debit), 0);
       const totalCredit = (entries as Array<{ credit: number }>).reduce((s, e) => s + Number(e.credit), 0);
@@ -189,6 +191,61 @@ router.post(
         return;
       }
       const ledgerMap = new Map(ledgers.map((l) => [l.id, l]));
+
+      // ── Payment-request-linked voucher ("Post to Ledgers" from Payments page) ──
+      // The voucher posts normally and, in the same transaction, the payment
+      // request is claimed (APPROVED → PAID) and a Payment record is created
+      // pointing at this voucher — identical semantics to POST /payments/:id/pay.
+      let linkedPaymentRequest: {
+        id: string; amount: number; type: string; invoiceId: string | null; budgetHeadId: string | null;
+      } | null = null;
+      let linkedBankAccountId: string | null = null;
+      let linkedCashAccountId: string | null = null;
+      if (paymentRequestId) {
+        if (voucherType !== VoucherType.PAYMENT) {
+          res.status(400).json({ error: 'paymentRequestId can only be used with PAYMENT vouchers' });
+          return;
+        }
+        const pr = await prisma.paymentRequest.findFirst({
+          where: { id: paymentRequestId, projectId, deletedAt: null },
+          include: { payments: { select: { id: true } } },
+        });
+        if (!pr) {
+          res.status(404).json({ error: 'Payment request not found' });
+          return;
+        }
+        if (pr.status !== PaymentStatus.APPROVED) {
+          res.status(400).json({ error: `Payment request must be APPROVED. Current status: ${pr.status}` });
+          return;
+        }
+        if (pr.payments.length > 0) {
+          res.status(409).json({ error: 'Payment has already been recorded for this request' });
+          return;
+        }
+        if (Math.abs(totalDebit - Number(pr.amount)) > 0.01) {
+          res.status(400).json({ error: `Voucher amount must equal the approved amount of ${Number(pr.amount)}` });
+          return;
+        }
+        // The credit entry must be a bank/cash ledger linked to a real account —
+        // otherwise no account balance actually moves (phantom payment).
+        for (const e of entries as Array<{ ledgerId: string; credit: number }>) {
+          if (Number(e.credit) <= 0) continue;
+          const l = ledgerMap.get(e.ledgerId);
+          if (l?.linkedEntityType === 'BANK_ACCOUNT' && l.linkedEntityId) linkedBankAccountId = l.linkedEntityId;
+          if (l?.linkedEntityType === 'CASH_ACCOUNT' && l.linkedEntityId) linkedCashAccountId = l.linkedEntityId;
+        }
+        if (!linkedBankAccountId && !linkedCashAccountId) {
+          res.status(400).json({ error: 'The credit entry must be a bank or cash ledger linked to an account' });
+          return;
+        }
+        linkedPaymentRequest = {
+          id: pr.id,
+          amount: Number(pr.amount),
+          type: pr.type,
+          invoiceId: pr.invoiceId,
+          budgetHeadId: pr.budgetHeadId,
+        };
+      }
 
       // Validate budget head IDs (cost centers) if any entry has them
       const budgetHeadIds = (entries as Array<{ budgetHeadId?: string }>)
@@ -272,46 +329,91 @@ router.post(
       if (voucherType === VoucherType.PAYMENT) {
         const partyEntry = (entries as Array<{ debit: number; credit: number; budgetHeadId?: string }>)
           .find((e) => Number(e.debit) > 0);
-        if (partyEntry?.budgetHeadId) {
-          paymentBudgetHeadId = partyEntry.budgetHeadId;
-          paymentAmount = Number(partyEntry.debit);
+        // For payment-request-linked vouchers, fall back to the request's budget head
+        const effectiveBudgetHeadId = partyEntry?.budgetHeadId ?? linkedPaymentRequest?.budgetHeadId ?? null;
+        if (effectiveBudgetHeadId) {
+          paymentBudgetHeadId = effectiveBudgetHeadId;
+          paymentAmount = partyEntry ? Number(partyEntry.debit) : 0;
           // ── Over-budget check ──
-          const bh = await prisma.budgetHead.findFirst({
-            where: { id: paymentBudgetHeadId, projectId, deletedAt: null },
-          });
-          if (!bh) {
-            res.status(400).json({ error: 'Selected Budget Head not found' });
-            return;
-          }
-          const projectedActual = Number(bh.actualAmount) + paymentAmount;
-          if (projectedActual > Number(bh.allocatedAmount) + 0.01) {
-            res.status(400).json({
-              error: `Payment of ₹${paymentAmount.toFixed(2)} would exceed the allocated budget for "${bh.particulars}" ` +
-                `(allocated: ₹${Number(bh.allocatedAmount).toFixed(2)}, current actual: ₹${Number(bh.actualAmount).toFixed(2)})`,
+          // Only applies when this voucher books actual spend. For INVOICE/ADVANCE
+          // payment requests the actual was already accrued at GRN/invoice time —
+          // this voucher only moves paidAmount, so no check is needed.
+          const countsActual = !linkedPaymentRequest || linkedPaymentRequest.type === 'EXPENSE';
+          if (countsActual) {
+            const bh = await prisma.budgetHead.findFirst({
+              where: { id: paymentBudgetHeadId, projectId, deletedAt: null },
             });
-            return;
+            if (!bh) {
+              res.status(400).json({ error: 'Selected Budget Head not found' });
+              return;
+            }
+            const projectedActual = Number(bh.actualAmount) + paymentAmount;
+            if (projectedActual > Number(bh.allocatedAmount) + 0.01) {
+              res.status(400).json({
+                error: `Payment of ₹${paymentAmount.toFixed(2)} would exceed the allocated budget for "${bh.particulars}" ` +
+                  `(allocated: ₹${Number(bh.allocatedAmount).toFixed(2)}, current actual: ₹${Number(bh.actualAmount).toFixed(2)})`,
+              });
+              return;
+            }
           }
         }
       }
 
-      // Post the voucher atomically: create JV + ledger entries + update ledger balances
-      const result = await postVoucher({
-        projectId,
-        jvNumber,
-        voucherType: String(voucherType),
-        voucherDate,
-        description: description ?? null,
-        totalDebit,
-        totalCredit,
-        entries: entries as Array<{ ledgerId: string; debit: number; credit: number; description?: string; budgetHeadId?: string }>,
-        ledgerMap,
-        budgetHeadMap,
-        sourceInvoiceId: sourceInvoiceId ?? null,
-        billSettlements: validatedSettlements,
-        userId: req.user!.id,
-        chequeNumber: req.body.chequeNumber ?? null,
-        chequeDate: chequeDateCreate,
-        budgetHeadId: paymentBudgetHeadId,
+      // Post the voucher atomically: create JV + ledger entries + update ledger
+      // balances. When linked to a payment request, the PR claim and Payment
+      // record ride along in the same transaction — all-or-nothing.
+      const result = await prisma.$transaction(async (tx) => {
+        const voucherResult = await postVoucher({
+          projectId,
+          jvNumber,
+          voucherType: String(voucherType),
+          voucherDate,
+          description: description ?? null,
+          totalDebit,
+          totalCredit,
+          entries: entries as Array<{ ledgerId: string; debit: number; credit: number; description?: string; budgetHeadId?: string }>,
+          ledgerMap,
+          budgetHeadMap,
+          sourceInvoiceId: sourceInvoiceId ?? null,
+          billSettlements: validatedSettlements,
+          userId: req.user!.id,
+          chequeNumber: req.body.chequeNumber ?? null,
+          chequeDate: chequeDateCreate,
+          budgetHeadId: paymentBudgetHeadId,
+          budgetPaidOnly: !!linkedPaymentRequest && linkedPaymentRequest.type !== 'EXPENSE',
+          tx,
+        });
+
+        if (linkedPaymentRequest) {
+          // Atomically claim the request — only one poster can flip APPROVED → PAID
+          const claimed = await tx.paymentRequest.updateMany({
+            where: { id: linkedPaymentRequest.id, status: PaymentStatus.APPROVED },
+            data: { status: PaymentStatus.PAID },
+          });
+          if (claimed.count !== 1) {
+            throw new Error('Payment has already been recorded by another request');
+          }
+
+          await tx.payment.create({
+            data: {
+              paymentRequestId: linkedPaymentRequest.id,
+              amount: linkedPaymentRequest.amount,
+              mode: linkedBankAccountId ? 'BANK_TRANSFER' : 'CASH',
+              reference: req.body.chequeNumber ?? null,
+              bankAccountId: linkedBankAccountId,
+              cashAccountId: linkedCashAccountId,
+              budgetHeadId: paymentBudgetHeadId ?? linkedPaymentRequest.budgetHeadId ?? null,
+              journalVoucherId: voucherResult.voucherId,
+              postedAt: new Date(),
+            },
+          });
+
+          if (linkedPaymentRequest.invoiceId) {
+            await recalcInvoicePaymentStatus(linkedPaymentRequest.invoiceId, tx);
+          }
+        }
+
+        return voucherResult;
       });
 
       // Budget Head totals are updated inside postVoucher's transaction
@@ -1070,6 +1172,10 @@ export interface PostVoucherArgs {
   // Optional: when set, the bank/cash transaction created by this voucher will be
   // tagged with this budget head, and the budget head's actualAmount will be updated.
   budgetHeadId?: string | null;
+  // Optional: for vouchers linked to a payment request of type INVOICE/ADVANCE —
+  // the actual expense was already accrued (at GRN/invoice time), so only
+  // paidAmount increases here. EXPENSE-type requests keep the default (actual+paid).
+  budgetPaidOnly?: boolean;
 }
 
 export async function postVoucher(args: PostVoucherArgs) {
@@ -1215,7 +1321,9 @@ export async function postVoucher(args: PostVoucherArgs) {
     }
 
     // 5. Update Budget Head totals for PAYMENT vouchers with a budget head.
-    // Both actualAmount and paidAmount increase by the payment amount.
+    // Both actualAmount and paidAmount increase by the payment amount —
+    // unless budgetPaidOnly is set (payment-request-linked INVOICE/ADVANCE
+    // vouchers, where actual was already accrued at GRN/invoice time).
     // This runs inside the same transaction so the voucher and budget
     // update are atomic — if either fails, both roll back.
     if (args.budgetHeadId && args.voucherType === VoucherType.PAYMENT) {
@@ -1224,10 +1332,12 @@ export async function postVoucher(args: PostVoucherArgs) {
       if (amt > 0) {
         await tx.budgetHead.update({
           where: { id: args.budgetHeadId },
-          data: {
-            actualAmount: { increment: amt },
-            paidAmount: { increment: amt },
-          },
+          data: args.budgetPaidOnly
+            ? { paidAmount: { increment: amt } }
+            : {
+                actualAmount: { increment: amt },
+                paidAmount: { increment: amt },
+              },
         });
       }
     }

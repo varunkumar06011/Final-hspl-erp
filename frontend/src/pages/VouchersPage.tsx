@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Box,
   Typography,
@@ -210,8 +211,12 @@ export default function VouchersPage() {
   const [printVoucherId, setPrintVoucherId] = useState<string | null>(null);
   // Editing state — when set, the create dialog acts as an edit dialog
   const [editingVoucherId, setEditingVoucherId] = useState<string | null>(null);
+  // Set when the voucher form was opened from a payment request ("Post to Ledgers")
+  const [linkedPaymentRequest, setLinkedPaymentRequest] = useState<{ id: string; paymentCode: string; type: string; amount: number } | null>(null);
 
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['/vouchers', page, pageSize, search, typeFilter, minAmount, maxAmount],
@@ -273,12 +278,51 @@ export default function VouchersPage() {
     enabled: !!printVoucherId,
   });
 
+  // Deep-link from Payments page: /vouchers?paymentRequest=<id> opens a
+  // pre-filled PAYMENT voucher. On save, the backend marks the request PAID.
+  useEffect(() => {
+    const prId = searchParams.get('paymentRequest');
+    if (!prId) return;
+    const params = new URLSearchParams(searchParams);
+    params.delete('paymentRequest');
+    setSearchParams(params, { replace: true });
+    api.get(`/payments/${prId}/voucher-prefill`)
+      .then((res) => {
+        const { paymentRequest: pr, partyLedger } = res.data;
+        openCreate(VoucherType.PAYMENT);
+        setLinkedPaymentRequest({ id: pr.id, paymentCode: pr.paymentCode, type: pr.type, amount: Number(pr.amount) });
+        setSimpleAmount(String(Number(pr.amount)));
+        setVoucherDescription(`Payment: ${pr.paymentCode} (${pr.type})`);
+        setVoucherDate(todayLocalDate());
+        if (pr.budgetHead?.id) setSimpleCostCenter(pr.budgetHead.id);
+        if (partyLedger) {
+          // Ensure the resolved ledger is in the autocomplete's list so it displays
+          queryClient.setQueryData(['/ledgers', 'all-for-voucher'], (old: { data?: LedgerOption[] } | undefined) => {
+            if (!old?.data || old.data.some((l) => l.id === partyLedger.id)) return old;
+            return { ...old, data: [...old.data, partyLedger as LedgerOption] };
+          });
+          setSimplePartyLedger(partyLedger.id);
+          setSimplePartyLedgerGroup(partyLedger.group);
+        }
+      })
+      .catch((err) => setError(extractErrorMessage(err)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const createMutation = useMutation({
     mutationFn: async (payload: Record<string, unknown>) => {
       const response = await api.post('/vouchers', payload);
       return response.data;
     },
     onSuccess: async (data) => {
+      // Voucher was created from a payment request — the request is now PAID.
+      // Return to the Payments page so the updated status is visible.
+      const finishLinked = () => {
+        if (!linkedPaymentRequest) return;
+        queryClient.invalidateQueries({ queryKey: ['/payments'] });
+        setLinkedPaymentRequest(null);
+        navigate('/payments');
+      };
       // Upload proof attachment if one was selected (non-blocking — voucher is already saved)
       if (pendingProofFile && data.voucherId) {
         try {
@@ -300,6 +344,7 @@ export default function VouchersPage() {
           queryClient.invalidateQueries({ queryKey: ['/bank-accounts'] });
           queryClient.invalidateQueries({ queryKey: ['/cash-accounts'] });
           setTimeout(() => setSuccessMsg(''), 6000);
+          finishLinked();
           return;
         }
       }
@@ -311,6 +356,7 @@ export default function VouchersPage() {
       setCreateOpen(false);
       setSuccessMsg(`Voucher ${data.jvNumber} posted successfully`);
       setTimeout(() => setSuccessMsg(''), 4000);
+      finishLinked();
     },
     onError: (err: unknown) => setError(extractErrorMessage(err)),
   });
@@ -374,6 +420,7 @@ export default function VouchersPage() {
     setChequeNumber('');
     setChequeDate('');
     setPendingProofFile(null);
+    setLinkedPaymentRequest(null);
     setError('');
   };
 
@@ -677,6 +724,7 @@ export default function VouchersPage() {
         billSettlements: validSettlements.length > 0
           ? validSettlements.map((s) => ({ invoiceId: s.invoiceId, amount: Number(s.amount) }))
           : undefined,
+        paymentRequestId: linkedPaymentRequest?.id || undefined,
       };
       submitVoucher(payload);
       return;
@@ -926,7 +974,7 @@ export default function VouchersPage() {
       </Card>
 
       {/* ── Create/Edit voucher dialog — Tally-style ── */}
-      <ResponsiveDialog open={createOpen} onClose={() => { setCreateOpen(false); setEditingVoucherId(null); setPendingProofFile(null); }} maxWidth="md" fullWidth>
+      <ResponsiveDialog open={createOpen} onClose={() => { setCreateOpen(false); setEditingVoucherId(null); setPendingProofFile(null); setLinkedPaymentRequest(null); }} maxWidth="md" fullWidth>
         <DialogTitle>
           {editingVoucherId ? 'Edit' : ''} {VOUCHER_TYPES.find((vt) => vt.value === selectedVoucherType)?.label ?? 'Voucher'}
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
@@ -935,6 +983,13 @@ export default function VouchersPage() {
         </DialogTitle>
         <DialogContent>
           {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+
+          {linkedPaymentRequest && (
+            <Alert severity="info" sx={{ mb: 2 }}>
+              Posting voucher for payment request <strong>{linkedPaymentRequest.paymentCode}</strong> ({linkedPaymentRequest.type}) — {formatCurrency(linkedPaymentRequest.amount)}.
+              Saving this voucher marks the request as PAID.
+            </Alert>
+          )}
 
           {/* Date — Tally shows date at top */}
           <Box sx={{ display: 'flex', gap: 2, mb: 2, mt: 1 }}>
