@@ -34,6 +34,19 @@ async function generatePaymentCode(): Promise<string> {
   return generateSequenceNumber('paymentRequest', 'paymentCode', 'VGH-PAY', 3);
 }
 
+/**
+ * requestNumber is unique per project — auto-generated values like
+ * ADV-<poNumber> / PAY-<invoiceCode> collide with earlier rejected or
+ * deleted requests. Append -2, -3, ... until free.
+ */
+async function resolveUniqueRequestNumber(projectId: string, base: string): Promise<string> {
+  let candidate = base;
+  for (let i = 2; await prisma.paymentRequest.findFirst({ where: { projectId, requestNumber: candidate }, select: { id: true } }); i++) {
+    candidate = `${base}-${i}`;
+  }
+  return candidate;
+}
+
 const prInclude = {
   vendor: { select: { id: true, name: true, vendorCode: true } },
   invoice: { select: { id: true, invoiceCode: true, invoiceNumber: true, totalAmount: true } },
@@ -248,16 +261,19 @@ router.get(
         const paidAdvances = po.advancePaymentRequests
           .filter((pr) => pr.status === PaymentStatus.PAID)
           .reduce((sum, pr) => sum + Number(pr.amount), 0);
+        const payable = Number(po.grandTotal) - Number(po.totalDeductions ?? 0);
         return {
           id: po.id,
           poNumber: po.poNumber,
           paymentType: po.paymentType,
           grandTotal: Number(po.grandTotal),
+          totalDeductions: Number(po.totalDeductions ?? 0),
+          netPayable: payable,
           advanceAmount: po.advanceAmount !== null ? Number(po.advanceAmount) : null,
           vendor: po.vendor,
           budgetHead: po.budgetHead,
           advancePaidToDate: paidAdvances,
-          outstanding: Math.max(0, Number(po.grandTotal) - paidAdvances),
+          outstanding: Math.max(0, payable - paidAdvances),
           activePaymentRequest: activeRequest
             ? { id: activeRequest.id, status: activeRequest.status, amount: Number(activeRequest.amount), requestNumber: activeRequest.requestNumber }
             : null,
@@ -314,15 +330,16 @@ router.post(
         return;
       }
 
-      // Check amount doesn't exceed PO grand total
+      // Check amount doesn't exceed net payable (grand total minus deductions)
       const paidAdvances = await prisma.paymentRequest.aggregate({
         where: { poId, status: PaymentStatus.PAID, deletedAt: null, type: 'ADVANCE' },
         _sum: { amount: true },
       });
       const alreadyPaid = Number(paidAdvances._sum.amount) || 0;
-      const outstanding = Number(po.grandTotal) - alreadyPaid;
+      const payable = Number(po.grandTotal) - Number(po.totalDeductions ?? 0);
+      const outstanding = payable - alreadyPaid;
       if (Number(amount) > outstanding) {
-        res.status(400).json({ error: `Advance amount cannot exceed outstanding balance of ${outstanding}` });
+        res.status(400).json({ error: `Advance amount cannot exceed net payable outstanding of ${outstanding}` });
         return;
       }
       if (Number(amount) <= 0) {
@@ -347,6 +364,7 @@ router.post(
       }
 
       const paymentCode = await generatePaymentCode();
+      const finalRequestNumber = await resolveUniqueRequestNumber(projectId, String(requestNumber));
 
       const result = await prisma.$transaction(async (tx) => {
         const created = await tx.paymentRequest.create({
@@ -355,7 +373,7 @@ router.post(
             poId,
             vendorId,
             paymentCode,
-            requestNumber,
+            requestNumber: finalRequestNumber,
             type: 'ADVANCE',
             amount: Number(amount),
             paymentMode: paymentMode ?? null,
@@ -403,7 +421,7 @@ router.post(
         entityType: 'PAYMENT_REQUEST',
         entityId: result.id,
         projectId,
-        newValue: { paymentCode, requestNumber, amount: String(amount), type: 'ADVANCE', poId },
+        newValue: { paymentCode, requestNumber: finalRequestNumber, amount: String(amount), type: 'ADVANCE', poId },
       });
 
       const record = await prisma.paymentRequest.findUnique({
@@ -477,6 +495,7 @@ router.post(
       }
 
       const paymentCode = await generatePaymentCode();
+      const finalRequestNumber = await resolveUniqueRequestNumber(projectId, String(requestNumber));
 
       const result = await prisma.$transaction(async (tx) => {
         const created = await tx.paymentRequest.create({
@@ -485,7 +504,7 @@ router.post(
             invoiceId,
             vendorId,
             paymentCode,
-            requestNumber,
+            requestNumber: finalRequestNumber,
             type: 'INVOICE',
             amount: Number(amount),
             paymentMode: paymentMode ?? null,
@@ -530,7 +549,7 @@ router.post(
         entityType: 'PAYMENT_REQUEST',
         entityId: result.id,
         projectId,
-        newValue: { paymentCode, requestNumber, amount: String(amount), type: 'INVOICE' },
+        newValue: { paymentCode, requestNumber: finalRequestNumber, amount: String(amount), type: 'INVOICE' },
       });
 
       const record = await prisma.paymentRequest.findUnique({

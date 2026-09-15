@@ -130,6 +130,8 @@ interface PendingPO {
   poNumber: string;
   paymentType: string;
   grandTotal: number;
+  totalDeductions: number;
+  netPayable: number;
   advanceAmount: number | null;
   vendor: { id: string; name: string; vendorCode: string };
   budgetHead: { id: string; particulars: string } | null;
@@ -631,7 +633,7 @@ export default function PaymentsPage() {
                                 setAdvancePayForm({
                                   // Prefill with the agreed advance amount captured at PO creation (if any),
                                   // otherwise fall back to the full outstanding balance. Still editable up to outstanding.
-                                  amount: po.advanceAmount !== null && po.advanceAmount > 0 ? po.advanceAmount : po.outstanding,
+                                  amount: po.advanceAmount !== null && po.advanceAmount > 0 ? Math.min(po.advanceAmount, po.outstanding) : po.outstanding,
                                   requestNumber: `ADV-${po.poNumber}`,
                                   paymentMode: PaymentMode.BANK_TRANSFER,
                                   budgetHeadId: po.budgetHead?.id ?? '',
@@ -975,6 +977,10 @@ export default function PaymentsPage() {
             <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1 }}>
               <Typography variant="body2">PO Grand Total: <strong>{advancePayOpen ? formatCurrency(advancePayOpen.grandTotal) : ''}</strong></Typography>
               <Typography variant="body2">Payment Type: <strong>{advancePayOpen?.paymentType === POPaymentType.ADVANCE ? 'Against Advance' : 'Against Full Payment'}</strong></Typography>
+              {advancePayOpen && advancePayOpen.totalDeductions > 0 && (
+                <Typography variant="body2">Deductions: <strong>{formatCurrency(advancePayOpen.totalDeductions)}</strong></Typography>
+              )}
+              <Typography variant="body2">Net Payable: <strong>{advancePayOpen ? formatCurrency(advancePayOpen.netPayable) : ''}</strong></Typography>
               {advancePayOpen && advancePayOpen.advanceAmount !== null && advancePayOpen.advanceAmount > 0 && (
                 <Typography variant="body2">Agreed Advance: <strong>{formatCurrency(advancePayOpen.advanceAmount)}</strong></Typography>
               )}
@@ -1021,9 +1027,9 @@ export default function PaymentsPage() {
                 <Button
                   size="small"
                   variant="outlined"
-                  onClick={() => setAdvancePayForm({ ...advancePayForm, amount: advancePayOpen.advanceAmount! })}
+                  onClick={() => setAdvancePayForm({ ...advancePayForm, amount: Math.min(advancePayOpen.advanceAmount!, advancePayOpen.outstanding) })}
                 >
-                  Use Agreed Advance ({formatCurrency(advancePayOpen.advanceAmount)})
+                  Use Agreed Advance ({formatCurrency(Math.min(advancePayOpen.advanceAmount, advancePayOpen.outstanding))})
                 </Button>
                 <Button
                   size="small"
