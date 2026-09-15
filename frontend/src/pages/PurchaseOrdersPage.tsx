@@ -45,6 +45,7 @@ import {
   Edit as EditIcon,
   Autorenew as AutoRenewIcon,
   SwapHoriz as SwapBudgetIcon,
+  TableChart as TableChartIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { POStatus, UserRole, POPaymentType, GST_RATES } from '@hospital-erp/shared';
@@ -144,7 +145,7 @@ export default function PurchaseOrdersPage() {
   const [pageSize, setPageSize] = useState(20);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
-  const isMobileLandscape = useMobileLandscape();
+  const { excelView: isMobileLandscape, isMobile, toggleExcelView } = useMobileLandscape();
   const isMobilePortrait = useMobilePortrait();
   const [minAmount, setMinAmount] = useState('');
   const [maxAmount, setMaxAmount] = useState('');
@@ -550,6 +551,17 @@ export default function PurchaseOrdersPage() {
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap' }}>
         <Typography variant="h5" fontWeight={600} sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' } }}>Purchase Orders</Typography>
         <Box sx={{ display: { xs: isMobileLandscape ? 'none' : 'flex', sm: 'flex' }, gap: 1, flexWrap: 'wrap', justifyContent: { xs: 'flex-end', md: 'flex-end' }, width: { xs: '100%', md: 'auto' } }}>
+          {isMobile && (
+            <Button
+              variant={isMobileLandscape ? 'contained' : 'outlined'}
+              size="small"
+              startIcon={<TableChartIcon />}
+              onClick={toggleExcelView}
+              title="Toggle Excel-style table view"
+            >
+              {isMobileLandscape ? 'Card View' : 'Table View'}
+            </Button>
+          )}
           <RefreshButton onClick={() => refetch()} />
           <Button variant="contained" startIcon={<AddIcon />} onClick={() => { resetForm(); setCreateOpen(true); }}>Create PO</Button>
         </Box>

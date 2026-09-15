@@ -24,7 +24,8 @@ export default function PortraitRotateHint() {
         Rotate for a better view
       </AlertTitle>
       Rotate your phone horizontally to see an Excel-style table with all
-      columns, zoom controls, and search.
+      columns, zoom controls, and search. Or tap the <strong>Table View</strong>{' '}
+      button above to switch manually.
     </Alert>
   );
 }

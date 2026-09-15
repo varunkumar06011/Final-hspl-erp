@@ -1,24 +1,41 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useTheme, useMediaQuery } from '@mui/material';
 
 /**
- * Returns true only when the viewport is BOTH:
- *   - mobile-narrow (below the `md` breakpoint, i.e. < 900px), AND
- *   - in landscape orientation.
+ * Combined hook for mobile landscape detection + manual override.
  *
- * On desktop (wide screens) this is always false — desktop landscape keeps
- * the normal desktop UI. On mobile portrait this is false — the existing
- * card-based UI is kept. Only mobile + landscape triggers the Excel-style
- * horizontal table view.
+ * Returns:
+ *   - excelView: boolean — whether the Excel-style table should show
+ *   - isMobile: boolean — whether the viewport is mobile-width (< md)
+ *   - toggleExcelView: () => void — manually toggle the Excel view on/off
+ *
+ * excelView is true when EITHER:
+ *   - auto-detected: mobile width + landscape orientation, OR
+ *   - manually toggled on by the user (persists per session)
+ *
+ * The manual toggle lets users on devices where auto-rotate detection
+ * fails (or where landscape width exceeds the md breakpoint) still
+ * access the Excel table view.
  */
-export function useMobileLandscape(): boolean {
+export function useMobileLandscape(): {
+  excelView: boolean;
+  isMobile: boolean;
+  toggleExcelView: () => void;
+} {
   const theme = useTheme();
   const isMobileWidth = useMediaQuery(theme.breakpoints.down('md'));
+  // Also detect slightly wider screens (up to 1100px) as "mobile-ish" so
+  // phones in landscape that exceed the md breakpoint still qualify.
+  const isTabletWidth = useMediaQuery(theme.breakpoints.down('lg'));
+
+  const isMobile = isMobileWidth || (isTabletWidth && typeof window !== 'undefined' && window.matchMedia('(orientation: landscape)').matches);
 
   const [isLandscape, setIsLandscape] = useState<boolean>(() => {
     if (typeof window === 'undefined' || !window.matchMedia) return false;
     return window.matchMedia('(orientation: landscape)').matches;
   });
+
+  const [manualOverride, setManualOverride] = useState<boolean | null>(null);
 
   useEffect(() => {
     if (typeof window === 'undefined' || !window.matchMedia) return undefined;
@@ -28,7 +45,22 @@ export function useMobileLandscape(): boolean {
     return () => mql.removeEventListener('change', handler);
   }, []);
 
-  return isMobileWidth && isLandscape;
+  // Auto-detect: mobile width (or tablet in landscape) + landscape orientation
+  const autoDetected = isMobile && isLandscape;
+
+  // Manual override takes precedence; otherwise use auto-detection
+  const excelView = manualOverride !== null ? manualOverride : autoDetected;
+
+  const toggleExcelView = useCallback(() => {
+    setManualOverride((prev) => {
+      // If auto-detected is currently active and user toggles, turn it OFF
+      // If auto-detected is inactive and user toggles, turn it ON
+      const current = prev !== null ? prev : autoDetected;
+      return !current;
+    });
+  }, [autoDetected]);
+
+  return { excelView, isMobile, toggleExcelView };
 }
 
 /**

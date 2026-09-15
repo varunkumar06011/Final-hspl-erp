@@ -37,6 +37,7 @@ import {
   Check as CheckIcon,
   Close as CloseIcon,
   Visibility as VisibilityIcon,
+  TableChart as TableChartIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { extractErrorMessage } from '../config/api';
@@ -70,7 +71,7 @@ export default function BudgetHeadsPage() {
   const [reviewComments, setReviewComments] = useState('');
   const [usageHeadId, setUsageHeadId] = useState<string | null>(null);
   const queryClient = useQueryClient();
-  const isMobileLandscape = useMobileLandscape();
+  const { excelView: isMobileLandscape, isMobile, toggleExcelView } = useMobileLandscape();
   const isMobilePortrait = useMobilePortrait();
 
   const { data, isLoading, isError, refetch } = useQuery({
@@ -395,6 +396,17 @@ export default function BudgetHeadsPage() {
           Budget Heads
         </Typography>
         <Box sx={{ display: { xs: isMobileLandscape ? 'none' : 'flex', sm: 'flex' }, gap: 1, flexWrap: 'wrap' }}>
+          {isMobile && (
+            <Button
+              variant={isMobileLandscape ? 'contained' : 'outlined'}
+              size="small"
+              startIcon={<TableChartIcon />}
+              onClick={toggleExcelView}
+              title="Toggle Excel-style table view"
+            >
+              {isMobileLandscape ? 'Card View' : 'Table View'}
+            </Button>
+          )}
           <RefreshButton onClick={() => refetch()} />
           {pendingRevisions?.data?.length > 0 && (
             <Button
