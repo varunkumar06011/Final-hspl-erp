@@ -24,16 +24,18 @@ export function useMobileLandscape(): {
 } {
   const theme = useTheme();
   const isMobileWidth = useMediaQuery(theme.breakpoints.down('md'));
-  // Also detect slightly wider screens (up to 1100px) as "mobile-ish" so
-  // phones in landscape that exceed the md breakpoint still qualify.
-  const isTabletWidth = useMediaQuery(theme.breakpoints.down('lg'));
+  // Detect up to 1200px as "mobile-ish" so phones in landscape (which can
+  // be 900-1000px wide) still qualify for auto-rotate detection.
+  const isTabletWidth = useMediaQuery('(max-width: 1200px)');
 
-  const isMobile = isMobileWidth || (isTabletWidth && typeof window !== 'undefined' && window.matchMedia('(orientation: landscape)').matches);
-
+  // "isMobile" = narrow screen OR a wider screen that's currently in landscape
+  // (a phone rotated to landscape can be 900-1000px wide but is still a phone).
   const [isLandscape, setIsLandscape] = useState<boolean>(() => {
     if (typeof window === 'undefined' || !window.matchMedia) return false;
     return window.matchMedia('(orientation: landscape)').matches;
   });
+
+  const isMobile = isMobileWidth || (isTabletWidth && isLandscape);
 
   const [manualOverride, setManualOverride] = useState<boolean | null>(null);
 
@@ -45,7 +47,7 @@ export function useMobileLandscape(): {
     return () => mql.removeEventListener('change', handler);
   }, []);
 
-  // Auto-detect: mobile width (or tablet in landscape) + landscape orientation
+  // Auto-detect: mobile-ish width + landscape orientation
   const autoDetected = isMobile && isLandscape;
 
   // Manual override takes precedence; otherwise use auto-detection
@@ -53,8 +55,6 @@ export function useMobileLandscape(): {
 
   const toggleExcelView = useCallback(() => {
     setManualOverride((prev) => {
-      // If auto-detected is currently active and user toggles, turn it OFF
-      // If auto-detected is inactive and user toggles, turn it ON
       const current = prev !== null ? prev : autoDetected;
       return !current;
     });

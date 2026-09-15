@@ -395,7 +395,7 @@ export default function BudgetHeadsPage() {
         <Typography variant="h5" fontWeight={600} sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' } }}>
           Budget Heads
         </Typography>
-        <Box sx={{ display: { xs: isMobileLandscape ? 'none' : 'flex', sm: 'flex' }, gap: 1, flexWrap: 'wrap' }}>
+        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
           {isMobile && (
             <Button
               variant={isMobileLandscape ? 'contained' : 'outlined'}
