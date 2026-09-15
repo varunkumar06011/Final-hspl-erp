@@ -626,12 +626,14 @@ router.delete(
         res.status(404).json({ error: 'Purchase order not found' });
         return;
       }
-      if (existing.createdBy !== req.user!.id) {
-        res.status(403).json({ error: 'Only the creator can delete this purchase order' });
+      const isAdmin = req.user!.role === UserRole.ADMIN || req.user!.role === UserRole.ADMIN_2;
+      const isCreator = existing.createdBy === req.user!.id;
+      if (!isAdmin && !isCreator) {
+        res.status(403).json({ error: 'Only the creator or an admin can deactivate this purchase order' });
         return;
       }
-      if (existing.status === POStatus.APPROVED || existing.status === POStatus.PARTIALLY_DELIVERED || existing.status === POStatus.DELIVERED) {
-        res.status(400).json({ error: 'Cannot delete an approved, partially delivered, or delivered purchase order' });
+      if (!isAdmin && (existing.status === POStatus.APPROVED || existing.status === POStatus.PARTIALLY_DELIVERED || existing.status === POStatus.DELIVERED)) {
+        res.status(400).json({ error: 'Only an admin can deactivate an approved, partially delivered, or delivered purchase order' });
         return;
       }
       if (existing.status === POStatus.DELETED) {

@@ -397,6 +397,21 @@ export default function PurchaseOrdersPage() {
     onError: (err: unknown) => setError(extractErrorMessage(err)),
   });
 
+  const [deactivateRow, setDeactivateRow] = useState<PORow | null>(null);
+  const deactivateMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await api.delete(`/purchase-orders/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/pos'] });
+      queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
+      setDeactivateRow(null);
+      setNotesEditRow(null);
+      setNotesEditValue('');
+    },
+    onError: (err: unknown) => setError(extractErrorMessage(err)),
+  });
+
   const updateNotesMutation = useMutation({
     mutationFn: async () => {
       const response = await api.patch(`/purchase-orders/${notesEditRow!.id}`, { notes: notesEditValue.trim() });
@@ -1289,6 +1304,24 @@ export default function PurchaseOrdersPage() {
         </DialogActions>
       </ResponsiveDialog>
 
+      {/* Deactivate Confirmation Dialog (Admin only — works on any PO status) */}
+      <ResponsiveDialog open={deactivateRow !== null} onClose={() => setDeactivateRow(null)} maxWidth="xs" fullWidth>
+        <DialogTitle>Deactivate Purchase Order</DialogTitle>
+        <DialogContent>
+          <Typography>Are you sure you want to deactivate purchase order <strong>{deactivateRow?.poNumber}</strong>?</Typography>
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+            This will mark the PO as DELETED. It will no longer appear in the active PO list or Action Required.
+            The record remains in the database for audit purposes.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeactivateRow(null)}>Cancel</Button>
+          <Button color="error" variant="contained" disabled={deactivateMutation.isPending} onClick={() => deactivateRow && deactivateMutation.mutate(deactivateRow.id)}>
+            {deactivateMutation.isPending ? <CircularProgress size={20} /> : 'Deactivate'}
+          </Button>
+        </DialogActions>
+      </ResponsiveDialog>
+
       {/* Edit Item Description only (for approved/delivered POs) */}
       <ResponsiveDialog open={notesEditRow !== null} onClose={() => { setNotesEditRow(null); setNotesEditValue(''); }} maxWidth="sm" fullWidth>
         <DialogTitle>Edit Item Description — {notesEditRow?.poNumber}</DialogTitle>
@@ -1311,6 +1344,16 @@ export default function PurchaseOrdersPage() {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => { setNotesEditRow(null); setNotesEditValue(''); }}>Cancel</Button>
+          {user && (user.role === UserRole.ADMIN || user.role === UserRole.ADMIN_2) && notesEditRow && (
+            <Button
+              color="error"
+              variant="outlined"
+              disabled={deactivateMutation.isPending}
+              onClick={() => setDeactivateRow(notesEditRow)}
+            >
+              Deactivate PO
+            </Button>
+          )}
           <Button
             variant="contained"
             disabled={updateNotesMutation.isPending}
