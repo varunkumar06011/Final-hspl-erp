@@ -239,8 +239,11 @@ router.get(
           (sum, pr) => sum + (pr.payments ?? []).reduce((s, p) => s + Number(p.amount), 0),
           0,
         );
-        const netPayable = Number(po.netPayable) || Number(po.grandTotal);
-        const amountToPayNow = Math.max(0, netPayable - paidToDate);
+        // Net Payable = advance amount (if ADVANCE/FULL_PAYMENT) or grand total (if AFTER_DELIVERY)
+        const effectiveNetPayable = po.advanceAmount !== null && Number(po.advanceAmount) > 0
+          ? Number(po.advanceAmount)
+          : Number(po.grandTotal);
+        const amountToPayNow = Math.max(0, effectiveNetPayable - paidToDate);
         return {
           ...po,
           paidToDate,

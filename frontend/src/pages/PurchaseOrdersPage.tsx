@@ -637,7 +637,18 @@ export default function PurchaseOrdersPage() {
                       )}
                     </TableCell>
                     <TableCell data-label="Net Payable">
-                      <Typography fontWeight={600}>{formatCurrency(Number(row.netPayable ?? row.grandTotal))}</Typography>
+                      <Typography fontWeight={600}>
+                        {formatCurrency(
+                          row.advanceAmount && Number(row.advanceAmount) > 0
+                            ? Number(row.advanceAmount)
+                            : Number(row.grandTotal)
+                        )}
+                      </Typography>
+                      {row.advanceAmount && Number(row.advanceAmount) > 0 && (
+                        <Typography variant="caption" color="text.secondary" display="block">
+                          (Advance: {formatCurrency(Number(row.advanceAmount))})
+                        </Typography>
+                      )}
                     </TableCell>
                     <TableCell data-label="Paid">
                       <Typography color="success.main" fontWeight={600}>
@@ -645,8 +656,8 @@ export default function PurchaseOrdersPage() {
                       </Typography>
                     </TableCell>
                     <TableCell data-label="To Pay Now">
-                      <Typography fontWeight={700} color={Number(row.amountToPayNow ?? row.netPayable ?? row.grandTotal) > 0 ? 'error.main' : 'text.secondary'}>
-                        {formatCurrency(Number(row.amountToPayNow ?? row.netPayable ?? row.grandTotal))}
+                      <Typography fontWeight={700} color={Number(row.amountToPayNow ?? 0) > 0 ? 'error.main' : 'text.secondary'}>
+                        {formatCurrency(Number(row.amountToPayNow ?? 0))}
                       </Typography>
                     </TableCell>
                     <TableCell data-label="Budget Head">
