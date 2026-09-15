@@ -210,10 +210,10 @@ function drawSummaryTable(doc: PDFKit.PDFDocument, entries: any[], date: Date, s
   let y = startY;
 
   const cols = [
-    { label: 'S.No', w: 34, align: 'center' as const },
-    { label: 'PO Number', w: 75, align: 'left' as const },
-    { label: 'Vendor', w: 105, align: 'left' as const },
-    { label: 'Amount', w: 80, align: 'right' as const },
+    { label: 'S.No', w: 36, align: 'center' as const },
+    { label: 'PO Number', w: 88, align: 'left' as const },
+    { label: 'Vendor', w: 115, align: 'left' as const },
+    { label: 'Amount', w: 85, align: 'right' as const },
     { label: 'Mode', w: 85, align: 'left' as const },
     { label: 'Status', w: 0, align: 'right' as const }, // remainder
   ];
@@ -231,8 +231,10 @@ function drawSummaryTable(doc: PDFKit.PDFDocument, entries: any[], date: Date, s
   const sumRowH = 16;
   entries.forEach((e, i) => {
     // Description (notes) gets its own full-width line under the entry row.
+    const descX = colX[2] + 4;
+    const descW = RIGHT - descX - 8;
     const desc = showDescription ? String(e.notes ?? '').trim() : '';
-    const descH = desc ? doc.heightOfString(desc, { width: WIDTH - 100 }) + 6 : 0;
+    const descH = desc ? doc.heightOfString(desc, { width: descW }) + 6 : 0;
     const entryH = sumRowH + descH;
 
     if (i % 2 === 0) doc.rect(LEFT, y, WIDTH, entryH).fill(PRIMARY_LIGHT);
@@ -251,7 +253,7 @@ function drawSummaryTable(doc: PDFKit.PDFDocument, entries: any[], date: Date, s
     });
     if (desc) {
       doc.fillColor(MUTED).font('Helvetica-Oblique').fontSize(7.5)
-        .text(desc, colX[2] + 4, y + sumRowH, { width: WIDTH - 100 });
+        .text(desc, descX, y + sumRowH, { width: descW });
     }
     y += entryH;
   });
