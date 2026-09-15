@@ -45,6 +45,7 @@ import {
   Edit as EditIcon,
   Autorenew as AutoRenewIcon,
   SwapHoriz as SwapBudgetIcon,
+  Payment as PaymentIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { POStatus, UserRole, POPaymentType, GST_RATES } from '@hospital-erp/shared';
@@ -169,6 +170,7 @@ export default function PurchaseOrdersPage() {
   const [regenRow, setRegenRow] = useState<PORow | null>(null);
   const [notesEditRow, setNotesEditRow] = useState<PORow | null>(null);
   const [notesEditValue, setNotesEditValue] = useState('');
+  const [paymentTypeRow, setPaymentTypeRow] = useState<PORow | null>(null);
   const [budgetHeadRow, setBudgetHeadRow] = useState<PORow | null>(null);
   const [newBudgetHeadId, setNewBudgetHeadId] = useState('');
   const [budgetHeadReason, setBudgetHeadReason] = useState('');
@@ -668,6 +670,9 @@ export default function PurchaseOrdersPage() {
                               {(row.status === POStatus.APPROVED || row.status === POStatus.DELIVERED || row.status === POStatus.PARTIALLY_DELIVERED) && (
                                 <IconButton size="small" onClick={() => { setNotesEditRow(row); setNotesEditValue(row.notes ?? ''); }} title="Edit Item Description"><EditIcon fontSize="small" /></IconButton>
                               )}
+                              {row.status === POStatus.APPROVED && (
+                                <IconButton size="small" color="secondary" onClick={() => setPaymentTypeRow(row)} title="Change Payment Type"><PaymentIcon fontSize="small" /></IconButton>
+                              )}
                               {(row.status === POStatus.PENDING_APPROVAL || row.status === POStatus.REJECTED) && (
                                 <IconButton size="small" color="primary" onClick={() => setEditUnapprovedRow(row)} title="Edit PO"><EditIcon fontSize="small" /></IconButton>
                               )}
@@ -858,6 +863,9 @@ export default function PurchaseOrdersPage() {
                             )}
                             {(row.status === POStatus.APPROVED || row.status === POStatus.DELIVERED || row.status === POStatus.PARTIALLY_DELIVERED) && row.budgetHeadId && user && (user.role === UserRole.ADMIN || user.role === UserRole.ADMIN_2) && (
                               <IconButton size="small" color="info" onClick={() => { setBudgetHeadRow(row); setNewBudgetHeadId(''); setBudgetHeadReason(''); }} title="Change Budget Head"><SwapBudgetIcon fontSize="small" /></IconButton>
+                            )}
+                            {row.status === POStatus.APPROVED && (
+                              <IconButton size="small" color="secondary" onClick={() => setPaymentTypeRow(row)} title="Change Payment Type"><PaymentIcon fontSize="small" /></IconButton>
                             )}
                             {row.status === POStatus.DELIVERED && !row.parentPoId && Array.isArray(row.regenerationData) && (row.regenerationData as unknown[]).length > 0 && (!row.childPos || row.childPos.length === 0) ? (
                               <IconButton size="small" color="secondary" onClick={() => setRegenRow(row)} title="Generate Regenerated PO"><AutoRenewIcon fontSize="small" /></IconButton>
@@ -1276,6 +1284,9 @@ export default function PurchaseOrdersPage() {
           </Button>
         </DialogActions>
       </ResponsiveDialog>
+
+      {/* Change Payment Type (approved POs — sends back for re-approval) */}
+      <ChangePaymentTypeDialog row={paymentTypeRow} onClose={() => setPaymentTypeRow(null)} onSuccess={() => { refetch(); setPaymentTypeRow(null); }} />
 
       {/* Edit Item Description only (for approved/delivered POs) */}
       <ResponsiveDialog open={notesEditRow !== null} onClose={() => { setNotesEditRow(null); setNotesEditValue(''); }} maxWidth="sm" fullWidth>
@@ -1809,6 +1820,107 @@ function EditPODialog({ row, onClose, onSuccess }: { row: PORow | null; onClose:
           disabled={mutation.isPending}
         >
           {mutation.isPending ? <CircularProgress size={20} /> : 'Edit & Send for Re-approval'}
+        </Button>
+      </DialogActions>
+    </ResponsiveDialog>
+  );
+}
+
+// ─── Change Payment Type Dialog ───────────────────────────
+// Approved POs only. Saving sends the PO back for re-approval; once approved
+// again it is treated as the new type (advance payments / invoice flow).
+function ChangePaymentTypeDialog({ row, onClose, onSuccess }: { row: PORow | null; onClose: () => void; onSuccess: () => void }) {
+  const queryClient = useQueryClient();
+  const [newType, setNewType] = useState('');
+  const [advAmount, setAdvAmount] = useState('');
+  const [reason, setReason] = useState('');
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    setNewType('');
+    setAdvAmount('');
+    setReason('');
+    setError('');
+  }, [row]);
+
+  const mutation = useMutation({
+    mutationFn: async () => {
+      await api.post(`/purchase-orders/${row!.id}/change-payment-type`, {
+        paymentType: newType,
+        advanceAmount: (newType === POPaymentType.ADVANCE || newType === POPaymentType.FULL_PAYMENT) ? Number(advAmount) : undefined,
+        reason: reason.trim(),
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/pos'] });
+      onSuccess();
+    },
+    onError: (err: unknown) => setError(extractErrorMessage(err)),
+  });
+
+  const needsAdvance = newType === POPaymentType.ADVANCE || newType === POPaymentType.FULL_PAYMENT;
+  const canSubmit = !!newType && reason.trim().length > 0 && (!needsAdvance || Number(advAmount) > 0);
+
+  return (
+    <ResponsiveDialog open={!!row} onClose={onClose} maxWidth="sm" fullWidth>
+      <DialogTitle>Change Payment Type — {row?.poNumber}</DialogTitle>
+      <DialogContent>
+        {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
+        <Alert severity="info" sx={{ mb: 2 }}>
+          Changing the payment type sends the PO back for re-approval.
+          Once approved again, it is treated as the new type.
+        </Alert>
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
+          <TextField
+            label="Current Payment Type"
+            value={row?.paymentType ? row.paymentType.replace(/_/g, ' ') : ''}
+            size="small"
+            fullWidth
+            InputProps={{ readOnly: true }}
+          />
+          <TextField
+            select
+            label="New Payment Type"
+            value={newType}
+            onChange={(e) => setNewType(e.target.value)}
+            size="small"
+            fullWidth
+            required
+          >
+            <MenuItem value="">— Select —</MenuItem>
+            {[POPaymentType.ADVANCE, POPaymentType.AFTER_DELIVERY, POPaymentType.FULL_PAYMENT]
+              .filter((t) => t !== row?.paymentType)
+              .map((t) => <MenuItem key={t} value={t}>{t.replace(/_/g, ' ')}</MenuItem>)}
+          </TextField>
+          {needsAdvance && (
+            <TextField
+              label={newType === POPaymentType.ADVANCE ? 'Advance Amount' : 'Full Payment Amount'}
+              type="text"
+              value={formatIndianNumber(advAmount)}
+              onChange={(e) => setAdvAmount(e.target.value.replace(/,/g, ''))}
+              inputMode="decimal"
+              size="small"
+              fullWidth
+              required
+              helperText={`PO grand total: ${formatCurrency(Number(row?.grandTotal ?? 0))}`}
+            />
+          )}
+          <TextField
+            label="Reason (required)"
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            size="small"
+            fullWidth
+            multiline
+            rows={2}
+            required
+          />
+        </Box>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose}>Cancel</Button>
+        <Button variant="contained" onClick={() => mutation.mutate()} disabled={!canSubmit || mutation.isPending}>
+          {mutation.isPending ? <CircularProgress size={20} /> : 'Save & Send for Re-approval'}
         </Button>
       </DialogActions>
     </ResponsiveDialog>

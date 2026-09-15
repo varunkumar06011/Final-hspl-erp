@@ -219,6 +219,16 @@ export const regeneratePOSchema = z.object({
   params: z.object({ id: uuid }),
   body: z.object({}).optional(),
 });
+// Change an APPROVED PO's payment type — sends the PO back for re-approval.
+// advanceAmount is required for ADVANCE / FULL_PAYMENT; ignored for AFTER_DELIVERY.
+export const changePOPaymentTypeSchema = z.object({
+  params: z.object({ id: uuid }),
+  body: z.object({
+    paymentType: z.nativeEnum(POPaymentType),
+    advanceAmount: money.optional(),
+    reason: z.string().trim().min(1, 'Reason is required').max(500),
+  }),
+});
 export const listPOsSchema = z.object({
   query: pagination.extend({
     search: z.string().optional(),
