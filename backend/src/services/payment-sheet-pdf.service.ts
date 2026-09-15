@@ -210,12 +210,12 @@ function drawSummaryTable(doc: PDFKit.PDFDocument, entries: any[], date: Date, s
   let y = startY;
 
   const cols = [
-    { label: 'S.No', w: 26 },
-    { label: 'PO Number', w: 72 },
-    { label: 'Vendor', w: 100 },
-    { label: 'Amount', w: 75 },
-    { label: 'Mode', w: 70 },
-    { label: 'Status', w: 0 }, // remainder
+    { label: 'S.No', w: 34, align: 'center' as const },
+    { label: 'PO Number', w: 75, align: 'left' as const },
+    { label: 'Vendor', w: 105, align: 'left' as const },
+    { label: 'Amount', w: 80, align: 'right' as const },
+    { label: 'Mode', w: 85, align: 'left' as const },
+    { label: 'Status', w: 0, align: 'right' as const }, // remainder
   ];
   const descIdx = cols.findIndex((c) => c.w === 0);
   cols[descIdx].w = WIDTH - cols.filter((_, i) => i !== descIdx).reduce((s, c) => s + c.w + COL_GAP, 0);
@@ -224,8 +224,7 @@ function drawSummaryTable(doc: PDFKit.PDFDocument, entries: any[], date: Date, s
   doc.rect(LEFT, y, WIDTH, 20).fill(PRIMARY);
   doc.fillColor('#fff').font('Helvetica-Bold').fontSize(8.5);
   cols.forEach((c, i) => {
-    const align = c.label === 'Amount' ? 'right' : c.label === 'S.No' ? 'center' : 'left';
-    doc.text(c.label, colX[i] + 4, y + 6, { width: c.w - 8, align });
+    doc.text(c.label, colX[i] + 4, y + 6, { width: c.w - 8, align: c.align, lineBreak: false });
   });
   y += 20;
 
@@ -248,8 +247,7 @@ function drawSummaryTable(doc: PDFKit.PDFDocument, entries: any[], date: Date, s
       text(e.status),
     ];
     cols.forEach((c, ci) => {
-      const align = c.label === 'Amount' ? 'right' : c.label === 'S.No' ? 'center' : 'left';
-      doc.text(vals[ci], colX[ci] + 4, y + 4, { width: c.w - 8, align });
+      doc.text(vals[ci], colX[ci] + 4, y + 4, { width: c.w - 8, align: c.align, lineBreak: false });
     });
     if (desc) {
       doc.fillColor(MUTED).font('Helvetica-Oblique').fontSize(7.5)
