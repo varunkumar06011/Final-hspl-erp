@@ -249,7 +249,7 @@ function drawSummaryTable(doc: PDFKit.PDFDocument, entries: any[], date: Date, s
       fmtMoney(Number(e.amount)),
     ];
     cols.forEach((c, ci) => {
-      doc.font(c.label === 'Amount' ? 'Helvetica-Bold' : 'Helvetica').fontSize(8);
+      doc.font(c.label === 'Amount' ? 'Helvetica-Bold' : 'Helvetica').fontSize(c.label === 'Amount' ? 9.5 : 8);
       doc.text(vals[ci], colX[ci] + 4, y + 4, { width: c.w - 8, align: c.align, lineBreak: false });
     });
     if (desc) {
