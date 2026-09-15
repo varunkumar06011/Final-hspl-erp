@@ -7,6 +7,7 @@ import { rbacMiddleware } from '../middleware/rbac';
 import { validateMiddleware } from '../middleware/validate';
 import { logAudit } from '../services/audit.service';
 import { getStorageService, serveFile } from '../services/storage.service';
+import { streamPaymentSheetPdf } from '../services/payment-sheet-pdf.service';
 import multer from 'multer';
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
@@ -137,6 +138,51 @@ router.get(
   }
 );
 
+// GET /pdf — download the day's payment sheet as a branded PDF (must precede /:id)
+router.get(
+  '/pdf',
+  rbacMiddleware(Permission.VIEW_FINANCIALS),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      const { date } = req.query as Record<string, string | undefined>;
+
+      const day = date ? new Date(String(date)) : new Date();
+      const start = new Date(day);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(day);
+      end.setHours(23, 59, 59, 999);
+
+      const [entries, project] = await Promise.all([
+        prisma.paymentSheet.findMany({
+          where: { projectId, deletedAt: null, date: { gte: start, lte: end } },
+          include: {
+            ...sheetInclude,
+            purchaseOrder: {
+              include: {
+                ...sheetInclude.purchaseOrder.include,
+                project: { select: { name: true, officeAddress: true, hospitalAddress: true, gstNumber: true, panNumber: true, logoUrl: true } },
+              },
+            },
+          },
+          orderBy: { createdAt: 'asc' },
+        }),
+        prisma.project.findUnique({
+          where: { id: projectId },
+          select: { name: true, officeAddress: true, hospitalAddress: true, gstNumber: true, panNumber: true, logoUrl: true },
+        }),
+      ]);
+
+      const dateStr = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`;
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="payment-sheet-${dateStr}.pdf"`);
+      await streamPaymentSheetPdf(res as unknown as NodeJS.WritableStream, day, entries, project);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
 // GET /:id — single payment sheet entry (with full PO details for printing)
 router.get(
   '/:id',
@@ -178,6 +224,44 @@ router.get(
         return;
       }
       await serveFile(res, existing.filePath, existing.fileMimeType);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// GET /:id/pdf — download a single entry's payment sheet PDF
+router.get(
+  '/:id/pdf',
+  rbacMiddleware(Permission.VIEW_FINANCIALS),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      const entry = await prisma.paymentSheet.findFirst({
+        where: { id: req.params.id, projectId, deletedAt: null },
+        include: {
+          ...sheetInclude,
+          purchaseOrder: {
+            include: {
+              ...sheetInclude.purchaseOrder.include,
+              project: { select: { name: true, officeAddress: true, hospitalAddress: true, gstNumber: true, panNumber: true, logoUrl: true } },
+            },
+          },
+        },
+      });
+      if (!entry) {
+        res.status(404).json({ error: 'Payment sheet entry not found' });
+        return;
+      }
+
+      const project = await prisma.project.findUnique({
+        where: { id: projectId },
+        select: { name: true, officeAddress: true, hospitalAddress: true, gstNumber: true, panNumber: true, logoUrl: true },
+      });
+
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="payment-sheet-${entry.purchaseOrder.poNumber}-${entry.id.slice(0, 8)}.pdf"`);
+      await streamPaymentSheetPdf(res as unknown as NodeJS.WritableStream, new Date(entry.date), [entry], project);
     } catch (error) {
       next(error);
     }

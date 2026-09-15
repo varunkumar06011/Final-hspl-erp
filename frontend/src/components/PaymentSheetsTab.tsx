@@ -118,6 +118,10 @@ export default function PaymentSheetsTab() {
   const [form, setForm] = useState({ amount: '', paymentMode: PaymentMode.BANK_TRANSFER, reference: '', notes: '' });
   const [file, setFile] = useState<File | null>(null);
 
+  // Confirm-dialog state
+  const [confirmApproveId, setConfirmApproveId] = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+
   const queryKey = ['/payment-sheets', date];
 
   const { data, isLoading } = useQuery({
@@ -165,6 +169,7 @@ export default function PaymentSheetsTab() {
     mutationFn: async (id: string) => api.patch(`/payment-sheets/${id}/approve`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey });
+      setConfirmApproveId(null);
       setSuccessMsg('Entry marked done.');
     },
     onError: (err) => setError(extractErrorMessage(err)),
@@ -174,6 +179,7 @@ export default function PaymentSheetsTab() {
     mutationFn: async (id: string) => api.delete(`/payment-sheets/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey });
+      setConfirmDeleteId(null);
       setSuccessMsg('Entry deleted.');
     },
     onError: (err) => setError(extractErrorMessage(err)),
@@ -182,30 +188,33 @@ export default function PaymentSheetsTab() {
   const rows = data?.data ?? [];
   const totalAmount = data?.totalAmount ?? 0;
 
-  const handlePrint = () => window.print();
-
-  const handleExportCSV = () => {
-    const header = ['Date', 'PO Number', 'Vendor', 'Amount', 'Payment Mode', 'Reference', 'Status', 'Created By', 'Created At'];
-    const lines = rows.map((r) => [
-      formatDate(r.date),
-      r.purchaseOrder.poNumber,
-      r.purchaseOrder.vendor.name,
-      r.amount,
-      r.paymentMode,
-      r.reference ?? '',
-      r.status,
-      r.createdByUser.name,
-      formatDate(r.createdAt),
-    ].map((v) => `"${String(v).replace(/"/g, '""')}"`).join(','));
-    const csv = [header.join(','), ...lines].join('\n');
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `payment-sheet-${date}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+  const fetchPdfBlob = async (path: string): Promise<Blob> => {
+    const token = localStorage.getItem('firebaseToken');
+    const r = await fetch(`${api.defaults.baseURL}${path}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    return r.blob();
   };
+
+  const openPdf = async (path: string) => {
+    const blob = await fetchPdfBlob(path);
+    window.open(URL.createObjectURL(blob), '_blank');
+  };
+
+  const downloadPdf = async (path: string, filename: string) => {
+    const blob = await fetchPdfBlob(path);
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
+
+  const dayPdfPath = `/payment-sheets/pdf?date=${date}`;
+  const entryPdfPath = (id: string) => `/payment-sheets/${id}/pdf`;
+
+  const handlePrint = () => openPdf(dayPdfPath);
+  const handleExportPDF = () => downloadPdf(dayPdfPath, `payment-sheet-${date}.pdf`);
 
   return (
     <Box>
@@ -224,7 +233,7 @@ export default function PaymentSheetsTab() {
         />
         <Box sx={{ flex: 1 }} />
         <RefreshButton onClick={() => queryClient.invalidateQueries({ queryKey })} />
-        <Button variant="outlined" startIcon={<DownloadIcon />} onClick={handleExportCSV} disabled={rows.length === 0}>Export CSV</Button>
+        <Button variant="outlined" startIcon={<DownloadIcon />} onClick={handleExportPDF} disabled={rows.length === 0}>Export PDF</Button>
         <Button variant="outlined" startIcon={<PrintIcon />} onClick={handlePrint} disabled={rows.length === 0}>Print</Button>
         <Button variant="contained" startIcon={<AddIcon />} onClick={() => { setAddOpen(true); setSelectedPO(null); setPoSearch(''); }}>Add Entry</Button>
       </Box>
@@ -287,13 +296,19 @@ export default function PaymentSheetsTab() {
                           <AttachFileIcon fontSize="small" />
                         </IconButton>
                       )}
+                      <IconButton size="small" title="Download PDF" onClick={() => downloadPdf(entryPdfPath(r.id), `payment-sheet-${r.purchaseOrder.poNumber}.pdf`)}>
+                        <DownloadIcon fontSize="small" />
+                      </IconButton>
+                      <IconButton size="small" title="Print" onClick={() => openPdf(entryPdfPath(r.id))}>
+                        <PrintIcon fontSize="small" />
+                      </IconButton>
                       {r.status === PaymentStatus.PENDING && r.createdBy === user?.id && (
-                        <IconButton size="small" color="success" title="Mark done" onClick={() => approveMutation.mutate(r.id)}>
+                        <IconButton size="small" color="success" title="Mark done" onClick={() => setConfirmApproveId(r.id)}>
                           <CheckIcon fontSize="small" />
                         </IconButton>
                       )}
                       {r.status === PaymentStatus.PENDING && r.createdBy === user?.id && (
-                        <IconButton size="small" color="error" title="Delete" onClick={() => deleteMutation.mutate(r.id)}>
+                        <IconButton size="small" color="error" title="Delete" onClick={() => setConfirmDeleteId(r.id)}>
                           <DeleteIcon fontSize="small" />
                         </IconButton>
                       )}
@@ -305,62 +320,6 @@ export default function PaymentSheetsTab() {
           </Table>
         </TableContainer>
       </Card>
-
-      {/* Printable detail block — one card per entry with full PO details */}
-      <Box sx={{ display: 'none', '@media print': { display: 'block' } }}>
-        {rows.map((r) => (
-          <Box key={r.id} sx={{ mb: 4, pageBreakInside: 'avoid' }}>
-            <Typography variant="h6" gutterBottom>Payment Sheet — {formatDate(r.date)}</Typography>
-            <Typography variant="subtitle2">PO: {r.purchaseOrder.poNumber} &nbsp;|&nbsp; Vendor: {r.purchaseOrder.vendor.name}</Typography>
-            <Table size="small" sx={{ mb: 1 }}>
-              <TableBody>
-                <TableRow><TableCell sx={{ fontWeight: 600, width: '30%' }}>PO Date</TableCell><TableCell>{formatDate(r.purchaseOrder.date)}</TableCell></TableRow>
-                <TableRow><TableCell sx={{ fontWeight: 600 }}>Vendor Code</TableCell><TableCell>{r.purchaseOrder.vendor.vendorCode}</TableCell></TableRow>
-                <TableRow><TableCell sx={{ fontWeight: 600 }}>Vendor Phone</TableCell><TableCell>{r.purchaseOrder.vendor.phone ?? '—'}</TableCell></TableRow>
-                <TableRow><TableCell sx={{ fontWeight: 600 }}>Vendor Address</TableCell><TableCell>{r.purchaseOrder.vendor.address ?? '—'}</TableCell></TableRow>
-                <TableRow><TableCell sx={{ fontWeight: 600 }}>Payment Type</TableCell><TableCell>{r.purchaseOrder.paymentType}</TableCell></TableRow>
-                <TableRow><TableCell sx={{ fontWeight: 600 }}>PO Grand Total</TableCell><TableCell>{formatCurrency(r.purchaseOrder.grandTotal)}</TableCell></TableRow>
-                <TableRow><TableCell sx={{ fontWeight: 600 }}>Net Payable</TableCell><TableCell>{formatCurrency(r.purchaseOrder.netPayable)}</TableCell></TableRow>
-                <TableRow><TableCell sx={{ fontWeight: 600 }}>PO Created By</TableCell><TableCell>{r.purchaseOrder.createdByUser.name}</TableCell></TableRow>
-                <TableRow><TableCell sx={{ fontWeight: 600 }}>Payment Amount</TableCell><TableCell>{formatCurrency(r.amount)}</TableCell></TableRow>
-                <TableRow><TableCell sx={{ fontWeight: 600 }}>Payment Mode</TableCell><TableCell>{r.paymentMode}</TableCell></TableRow>
-                <TableRow><TableCell sx={{ fontWeight: 600 }}>Reference</TableCell><TableCell>{r.reference ?? '—'}</TableCell></TableRow>
-                <TableRow><TableCell sx={{ fontWeight: 600 }}>Notes</TableCell><TableCell>{r.notes ?? '—'}</TableCell></TableRow>
-                <TableRow><TableCell sx={{ fontWeight: 600 }}>Status</TableCell><TableCell>{r.status}</TableCell></TableRow>
-                <TableRow><TableCell sx={{ fontWeight: 600 }}>Recorded By</TableCell><TableCell>{r.createdByUser.name}</TableCell></TableRow>
-                <TableRow><TableCell sx={{ fontWeight: 600 }}>Recorded At</TableCell><TableCell>{formatDate(r.createdAt)}</TableCell></TableRow>
-              </TableBody>
-            </Table>
-            <Typography variant="subtitle2" sx={{ mt: 1 }}>PO Items</Typography>
-            <Table size="small">
-              <TableHead>
-                <TableRow>
-                  <TableCell sx={{ fontWeight: 600 }}>Material</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>Qty</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>Unit</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>Unit Price</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>GST %</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>Amount</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {r.purchaseOrder.items.map((it) => (
-                  <TableRow key={it.id}>
-                    <TableCell>{it.materialName}</TableCell>
-                    <TableCell>{it.quantity}</TableCell>
-                    <TableCell>{it.unit ?? '—'}</TableCell>
-                    <TableCell>{formatCurrency(it.unitPrice)}</TableCell>
-                    <TableCell>{it.gstRate}</TableCell>
-                    <TableCell>{formatCurrency(it.amount)}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-            <Divider sx={{ my: 2 }} />
-          </Box>
-        ))}
-        <Typography variant="h6" sx={{ mt: 2 }}>Total Paid: {formatCurrency(totalAmount)}</Typography>
-      </Box>
 
       {/* Add Entry dialog — PO-first flow */}
       <ResponsiveDialog open={addOpen} onClose={() => setAddOpen(false)} maxWidth="md" fullWidth>
@@ -420,6 +379,40 @@ export default function PaymentSheetsTab() {
           <Button variant="contained" startIcon={<ReceiptIcon />} disabled={!selectedPO || !form.amount || createMutation.isPending}
             onClick={() => createMutation.mutate()}>
             {createMutation.isPending ? <CircularProgress size={20} /> : 'Save Entry'}
+          </Button>
+        </DialogActions>
+      </ResponsiveDialog>
+
+      {/* Confirm: mark done */}
+      <ResponsiveDialog open={!!confirmApproveId} onClose={() => setConfirmApproveId(null)} maxWidth="xs" fullWidth>
+        <DialogTitle>Mark entry as done?</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary">
+            This confirms the payment was made and locks the entry from deletion.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmApproveId(null)}>Cancel</Button>
+          <Button variant="contained" color="success" disabled={approveMutation.isPending}
+            onClick={() => confirmApproveId && approveMutation.mutate(confirmApproveId)}>
+            {approveMutation.isPending ? <CircularProgress size={20} /> : 'Mark Done'}
+          </Button>
+        </DialogActions>
+      </ResponsiveDialog>
+
+      {/* Confirm: delete */}
+      <ResponsiveDialog open={!!confirmDeleteId} onClose={() => setConfirmDeleteId(null)} maxWidth="xs" fullWidth>
+        <DialogTitle>Delete this entry?</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary">
+            The payment sheet entry will be removed from the day's register. This cannot be undone.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmDeleteId(null)}>Cancel</Button>
+          <Button variant="contained" color="error" disabled={deleteMutation.isPending}
+            onClick={() => confirmDeleteId && deleteMutation.mutate(confirmDeleteId)}>
+            {deleteMutation.isPending ? <CircularProgress size={20} /> : 'Delete'}
           </Button>
         </DialogActions>
       </ResponsiveDialog>
