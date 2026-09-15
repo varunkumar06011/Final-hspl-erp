@@ -3,6 +3,18 @@ import ReactDOM from 'react-dom/client';
 import App from './App';
 import './index.css';
 
+// Unlock screen orientation — allow both portrait and landscape.
+// The manifest no longer specifies an orientation, but if the PWA was
+// previously installed with "portrait" lock, this explicitly removes
+// any active orientation lock so the screen rotates with the device.
+if (typeof screen !== 'undefined' && screen.orientation && typeof screen.orientation.unlock === 'function') {
+  try {
+    screen.orientation.unlock();
+  } catch {
+    // Some browsers throw if not in fullscreen; ignore silently
+  }
+}
+
 // Register the FCM service worker
 // Works in both dev (localhost) and production (HTTPS)
 if ('serviceWorker' in navigator) {

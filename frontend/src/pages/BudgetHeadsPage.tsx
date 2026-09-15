@@ -71,7 +71,7 @@ export default function BudgetHeadsPage() {
   const [reviewComments, setReviewComments] = useState('');
   const [usageHeadId, setUsageHeadId] = useState<string | null>(null);
   const queryClient = useQueryClient();
-  const { excelView: isMobileLandscape, isMobile, toggleExcelView } = useMobileLandscape();
+  const { excelView: isMobileLandscape, isMobile, wantsTable, showRotateHint, toggleExcelView } = useMobileLandscape();
   const isMobilePortrait = useMobilePortrait();
 
   const { data, isLoading, isError, refetch } = useQuery({
@@ -498,8 +498,18 @@ export default function BudgetHeadsPage() {
         </Alert>
       )}
 
-      {isMobilePortrait && <PortraitRotateHint />}
+      {isMobilePortrait && !wantsTable && <PortraitRotateHint />}
 
+      {/* Rotate instruction — shown when user tapped Table View but is still in portrait */}
+      {showRotateHint ? (
+        <Card sx={{ p: 4, textAlign: 'center' }}>
+          <Typography variant="h6" sx={{ mb: 2 }}>↻ Rotate your phone horizontally to view the table</Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+            The Excel-style table requires a landscape orientation. Please rotate your phone to see all columns, zoom controls, and search.
+          </Typography>
+          <Button variant="outlined" onClick={toggleExcelView}>Back to Card View</Button>
+        </Card>
+      ) : (
       <Card sx={{ overflow: 'hidden' }}>
         {isMobileLandscape ? (
           <Box sx={{ p: 1 }}>
@@ -540,6 +550,7 @@ export default function BudgetHeadsPage() {
           rowsPerPageOptions={[10, 25, 50, 100]}
         />
       </Card>
+      )}
 
       {/* Create/Edit dialog */}
       <ResponsiveDialog open={dialogOpen} onClose={closeDialog} maxWidth="sm" fullWidth>

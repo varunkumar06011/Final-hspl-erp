@@ -146,7 +146,7 @@ export default function PurchaseOrdersPage() {
   const [pageSize, setPageSize] = useState(20);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
-  const { excelView: isMobileLandscape, isMobile, toggleExcelView } = useMobileLandscape();
+  const { excelView: isMobileLandscape, isMobile, wantsTable, showRotateHint, toggleExcelView } = useMobileLandscape();
   const isMobilePortrait = useMobilePortrait();
   const [minAmount, setMinAmount] = useState('');
   const [maxAmount, setMaxAmount] = useState('');
@@ -586,7 +586,18 @@ export default function PurchaseOrdersPage() {
 
       {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
 
-      {isMobilePortrait && <PortraitRotateHint />}
+      {/* Rotate instruction — shown when user tapped Table View but is still in portrait */}
+      {showRotateHint ? (
+        <Card sx={{ p: 4, textAlign: 'center' }}>
+          <Typography variant="h6" sx={{ mb: 2 }}>↻ Rotate your phone horizontally to view the table</Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+            The Excel-style table requires a landscape orientation. Please rotate your phone to see all columns, zoom controls, and search.
+          </Typography>
+          <Button variant="outlined" onClick={toggleExcelView}>Back to Card View</Button>
+        </Card>
+      ) : (
+      <>
+      {isMobilePortrait && !wantsTable && <PortraitRotateHint />}
 
       <Card>
         {!isMobileLandscape && (
@@ -924,6 +935,8 @@ export default function PurchaseOrdersPage() {
           sx={{ '& .MuiTablePagination-toolbar': { flexWrap: 'wrap' } }}
         />
       </Card>
+      </>
+      )}
 
       {/* Approval details */}
       {rows.length > 0 && rows.some((r) => r.approvalWorkflow) && (
