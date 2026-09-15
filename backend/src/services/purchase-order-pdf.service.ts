@@ -39,13 +39,13 @@ export async function streamPurchaseOrderPdf(res: NodeJS.WritableStream, po: any
 
   // ── Find project users in named approver roles ──
   const approvers = await prisma.user.findMany({
-    where: { projectId: po.projectId, isActive: true, role: { in: ['PROJECT_HEAD', 'ACCOUNTS_HEAD', 'ADMIN_2'] } },
+    where: { projectId: po.projectId, isActive: true, role: { in: ['PROJECT_HEAD', 'ADMIN', 'ADMIN_2'] } },
     select: { name: true, role: true },
   });
 
   const head = approvers.find((u) => u.role === 'PROJECT_HEAD');
-  const accountsHead = approvers.find((u) => u.role === 'ACCOUNTS_HEAD');
-  const md = approvers.find((u) => u.role === 'ADMIN_2');
+  const admin1 = approvers.find((u) => u.role === 'ADMIN');
+  const admin2 = approvers.find((u) => u.role === 'ADMIN_2');
 
   const approvedByRole: Record<string, { name: string | null; at?: Date | null }> = {};
   for (const step of po.approvalWorkflow?.steps ?? []) {
@@ -303,39 +303,51 @@ export async function streamPurchaseOrderPdf(res: NodeJS.WritableStream, po: any
     y = drawAdvanceTotal('ADVANCE NOW PAY:', fmtMoney(advanceVal), y);
     y = drawTotal('Outstanding (after advance):', fmtMoney(outstandingVal), y);
   }
-  y += 36;
+  y += 20;
 
   // ── Approval & Authorization boxes ──
-  if (y > pageH - 150) {
-    doc.addPage();
-    y = 40;
+  // Ensure the approval section fits on the same page (single-page PDF).
+  // Reserve space for: heading (26) + signature row (sigH=65) + footer (~40) = ~131
+  // If not enough room, the layout below compacts spacing to make it fit.
+  const sigW = (width - 24) / 3;
+  const sigH = 60;
+  const approvalHeadingH = 24;
+  const footerH = 40;
+  const minSpaceNeeded = approvalHeadingH + sigH + footerH + 8;
+
+  // If the approval section would overflow the page, compact the spacing
+  // above (reduce the gap after totals) rather than adding a new page.
+  if (y + minSpaceNeeded > pageH - 20) {
+    // Clamp y so the approval section + footer fit on the current page
+    y = Math.min(y, pageH - minSpaceNeeded - 20);
   }
 
   doc.fillColor(primary).font('Helvetica-Bold').fontSize(12).text('APPROVAL & AUTHORIZATION:', left, y);
-  y += 26;
+  y += approvalHeadingH;
 
-  const sigW = (width - 24) / 3;
-  const sigH = 65;
+  // Order: Managing Director, Director, Construction Project Head
+  // Show just the person's name — no "Admin 1/2" or "Approver X" labels.
   const roles = [
-    { label: 'Approver 1', role: 'PROJECT_HEAD', title: 'Construction Project Head', user: head },
-    { label: 'Approver 2', role: 'ACCOUNTS_HEAD', title: 'Accounts Head', user: accountsHead },
-    { label: 'Approver 3', role: 'ADMIN_2', title: 'Managing Director', user: md },
+    { role: 'ADMIN_2', title: 'Managing Director', user: admin2 },
+    { role: 'ADMIN', title: 'Director', user: admin1 },
+    { role: 'PROJECT_HEAD', title: 'Construction Project Head', user: head },
   ];
 
   for (let i = 0; i < roles.length; i++) {
     const sx = left + i * (sigW + 12);
-    const { label, role, title, user: u } = roles[i];
+    const { role, title, user: u } = roles[i];
     const approved = approvedByRole[role];
+    const displayName = u?.name ?? approved?.name ?? '—';
 
     doc.roundedRect(sx, y, sigW, sigH, 4).stroke(border);
-    doc.fillColor(dark).font('Helvetica-Bold').fontSize(9).text(`${label}: ${u?.name ?? approved?.name ?? '—'}`, sx + 8, y + 18, { width: sigW - 16, align: 'center' });
+    doc.fillColor(dark).font('Helvetica-Bold').fontSize(10).text(displayName, sx + 8, y + 14, { width: sigW - 16, align: 'center' });
     doc.fillColor(muted).font('Helvetica').fontSize(8).text(`(${title})`, sx + 8, y + 38, { width: sigW - 16, align: 'center' });
   }
 
   // ── Footer ──
-  y += sigH + 24;
+  y += sigH + 16;
   doc.moveTo(left, y).lineTo(right, y).stroke(primary);
-  doc.fillColor(muted).font('Helvetica').fontSize(7).text(`Generated from Hospital Construction ERP — ${new Date().toLocaleDateString('en-IN')}`, left, y + 8, { width, align: 'center' });
+  doc.fillColor(muted).font('Helvetica').fontSize(7).text(`Generated from Hospital Construction ERP — ${new Date().toLocaleDateString('en-IN')}`, left, y + 6, { width, align: 'center' });
 
   doc.end();
 }

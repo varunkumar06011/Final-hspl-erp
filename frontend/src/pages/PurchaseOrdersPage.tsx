@@ -54,6 +54,7 @@ import { useAuthStore } from '../stores/authStore';
 import AcknowledgementCheckbox from '../components/AcknowledgementCheckbox';
 import ApprovalActionDialog from '../components/ApprovalActionDialog';
 import ResponsiveTable from '../components/ResponsiveTable';
+import TruncatedText from '../components/TruncatedText';
 import { useApprovalDeepLink } from '../utils/useApprovalDeepLink';
 import { useDeepLinkRow } from '../hooks/useDeepLinkRow';
 import { useUrlFilters } from '../hooks/useUrlFilters';
@@ -628,13 +629,7 @@ export default function PurchaseOrdersPage() {
                     </TableCell>
                     <TableCell data-label="Vendor Name">{row.vendor?.vendorCode} - {row.vendor?.name ?? '—'}</TableCell>
                     <TableCell data-label="Item Description" sx={{ maxWidth: 220 }}>
-                      {row.notes ? (
-                        <Typography variant="caption" sx={{ display: 'block', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
-                          {row.notes}
-                        </Typography>
-                      ) : (
-                        <Typography variant="caption" color="text.secondary">—</Typography>
-                      )}
+                      <TruncatedText text={row.notes ?? ''} wordLimit={3} variant="caption" />
                     </TableCell>
                     <TableCell data-label="Payment Type">
                       <Chip
