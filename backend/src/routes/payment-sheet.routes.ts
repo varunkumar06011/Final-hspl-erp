@@ -176,7 +176,7 @@ router.get(
       const dateStr = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`;
       res.setHeader('Content-Type', 'application/pdf');
       res.setHeader('Content-Disposition', `attachment; filename="payment-sheet-${dateStr}.pdf"`);
-      await streamPaymentSheetPdf(res as unknown as NodeJS.WritableStream, day, entries, project);
+      await streamPaymentSheetPdf(res as unknown as NodeJS.WritableStream, day, entries, project, { summaryOnly: true });
     } catch (error) {
       next(error);
     }

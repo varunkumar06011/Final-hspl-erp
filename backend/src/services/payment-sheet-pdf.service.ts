@@ -206,19 +206,31 @@ function drawSignature(doc: PDFKit.PDFDocument, y: number): number {
 }
 
 /** Entries summary table + day total row. Returns new y. */
-function drawSummaryTable(doc: PDFKit.PDFDocument, entries: any[], date: Date, startY: number): number {
+function drawSummaryTable(doc: PDFKit.PDFDocument, entries: any[], date: Date, startY: number, showDescription = false): number {
   let y = startY;
 
-  const cols = [
-    { label: 'S.No', w: 24 },
-    { label: 'PO Number', w: 70 },
-    { label: 'Vendor', w: 105 },
-    { label: 'Amount', w: 75 },
-    { label: 'Mode', w: 68 },
-    { label: 'Reference', w: 75 },
-    { label: 'Status', w: 0 }, // remainder
-  ];
-  cols[cols.length - 1].w = WIDTH - cols.slice(0, -1).reduce((s, c) => s + c.w + COL_GAP, 0);
+  const cols = showDescription
+    ? [
+        { label: 'S.No', w: 24 },
+        { label: 'PO Number', w: 62 },
+        { label: 'Vendor', w: 88 },
+        { label: 'Description', w: 0 }, // remainder
+        { label: 'Amount', w: 70 },
+        { label: 'Mode', w: 62 },
+        { label: 'Reference', w: 68 },
+        { label: 'Status', w: 60 },
+      ]
+    : [
+        { label: 'S.No', w: 24 },
+        { label: 'PO Number', w: 70 },
+        { label: 'Vendor', w: 105 },
+        { label: 'Amount', w: 75 },
+        { label: 'Mode', w: 68 },
+        { label: 'Reference', w: 75 },
+        { label: 'Status', w: 0 }, // remainder
+      ];
+  const descIdx = cols.findIndex((c) => c.w === 0);
+  cols[descIdx].w = WIDTH - cols.filter((_, i) => i !== descIdx).reduce((s, c) => s + c.w + COL_GAP, 0);
   const colX = cols.map((_, i) => LEFT + cols.slice(0, i).reduce((s, c2) => s + c2.w + COL_GAP, 0));
 
   doc.rect(LEFT, y, WIDTH, 20).fill(PRIMARY);
@@ -234,15 +246,26 @@ function drawSummaryTable(doc: PDFKit.PDFDocument, entries: any[], date: Date, s
     if (i % 2 === 0) doc.rect(LEFT, y, WIDTH, sumRowH).fill(PRIMARY_LIGHT);
     doc.rect(LEFT, y, WIDTH, sumRowH).stroke(BORDER);
     doc.fillColor(DARK).font('Helvetica').fontSize(8);
-    const vals = [
-      String(i + 1),
-      text(e.purchaseOrder?.poNumber),
-      text(e.purchaseOrder?.vendor?.name),
-      fmtMoney(Number(e.amount)),
-      text(e.paymentMode),
-      text(e.reference),
-      text(e.status),
-    ];
+    const vals = showDescription
+      ? [
+          String(i + 1),
+          text(e.purchaseOrder?.poNumber),
+          text(e.purchaseOrder?.vendor?.name),
+          text(e.notes),
+          fmtMoney(Number(e.amount)),
+          text(e.paymentMode),
+          text(e.reference),
+          text(e.status),
+        ]
+      : [
+          String(i + 1),
+          text(e.purchaseOrder?.poNumber),
+          text(e.purchaseOrder?.vendor?.name),
+          fmtMoney(Number(e.amount)),
+          text(e.paymentMode),
+          text(e.reference),
+          text(e.status),
+        ];
     cols.forEach((c, ci) => {
       const align = c.label === 'Amount' ? 'right' : c.label === 'S.No' ? 'center' : 'left';
       doc.text(vals[ci], colX[ci] + 4, y + 4, { width: c.w - 8, align });
@@ -262,15 +285,17 @@ function drawSummaryTable(doc: PDFKit.PDFDocument, entries: any[], date: Date, s
 
 /**
  * Streams the Payment Sheet PDF.
- * - Single entry: one page — header, summary row, full PO details, signature.
- * - Multiple entries: page 1 = header + summary table + day total; then each
- *   entry on its own page (same header) with full PO/vendor details + signature.
+ * - summaryOnly (day sheet): one page — header, all entries as rows with a
+ *   description column, day total, signature.
+ * - default (per-entry PDF): full detail — summary + PO/vendor details +
+ *   payment box + signature.
  */
 export async function streamPaymentSheetPdf(
   res: NodeJS.WritableStream,
   date: Date,
   entries: any[],
   project: any,
+  options: { summaryOnly?: boolean } = {},
 ) {
   const doc = new PDFDocument({ margin: 0, size: 'A4', bufferPages: true });
   doc.pipe(res as unknown as any);
@@ -297,27 +322,21 @@ export async function streamPaymentSheetPdf(
     }
   }
 
-  const singleEntry = entries.length === 1;
-
   // ── Page 1: header + summary ──
   let y = drawHeader(doc, logoBuffer, project, date);
   doc.fillColor(DARK).font('Helvetica-Bold').fontSize(15).text('PAYMENT SHEET', LEFT, y);
   y += 20;
-  y = drawSummaryTable(doc, entries, date, y);
+  y = drawSummaryTable(doc, entries, date, y, options.summaryOnly);
 
-  if (singleEntry) {
-    // Single entry keeps the existing one-page layout: details under the summary.
-    y += 12;
-    y = drawEntryDetails(doc, entries[0], y);
+  if (options.summaryOnly) {
+    // Day sheet — entries only, signature at the bottom.
     drawSignature(doc, y);
   } else {
-    // Each entry gets its own page with the same header.
     for (const e of entries) {
-      doc.addPage();
-      let ey = drawHeader(doc, logoBuffer, project, date);
-      ey = drawEntryDetails(doc, e, ey);
-      drawSignature(doc, ey);
+      if (y > PAGE_H - 220) { doc.addPage(); y = 40; }
+      y = drawEntryDetails(doc, e, y + 12);
     }
+    drawSignature(doc, y);
   }
 
   // ── Footer on every page ──
