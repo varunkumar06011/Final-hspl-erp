@@ -149,15 +149,16 @@ export async function createQuotation(input: CreateQuotationInput) {
     include: quotationInclude,
   });
 
-  // Initiate approval workflow — ANY_APPROVERS: any `required` distinct
-  // approver roles suffice (e.g. ADMIN + ADMIN_2), unlike HEAD_GROUPS which
-  // forces a PROJECT_HEAD/HEAD_OF_CONSTRUCTION approval.
+  // Initiate approval workflow — ADMIN_SINGLE_APPROVER: a single approval
+  // from any admin (ADMIN or ADMIN_2) is enough to fully approve the
+  // quotation. Other heads can still approve, but their approval alone is
+  // not sufficient — an admin must sign off.
   const workflow = await approvalService.initiate({
     entityType: 'QUOTATION',
     entityId: quotation.id,
     projectId,
     minApprovers: 2,
-    approvalPolicy: 'ANY_APPROVERS',
+    approvalPolicy: 'ADMIN_SINGLE_APPROVER',
   });
 
   // Link the workflow and return the full record (with includes) in one call.

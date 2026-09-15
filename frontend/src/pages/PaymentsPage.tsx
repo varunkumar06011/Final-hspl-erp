@@ -32,6 +32,7 @@ import {
 } from '@mui/material';
 import ResponsiveDialog from '../components/ResponsiveDialog';
 import ApprovalStepsDisplay from '../components/ApprovalStepsDisplay';
+import ApprovalCommentsInline from '../components/ApprovalCommentsInline';
 import AcknowledgementCheckbox from '../components/AcknowledgementCheckbox';
 import RefreshButton from '../components/RefreshButton';
 import {
@@ -720,6 +721,7 @@ export default function PaymentsPage() {
                   <TableCell sx={{ fontWeight: 600 }}>Amount</TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>Budget Head</TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>Approvals</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Approval Comments</TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>Status</TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>File</TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>Actions</TableCell>
@@ -727,9 +729,9 @@ export default function PaymentsPage() {
               </TableHead>
               <TableBody>
                 {isLoading ? (
-                  <TableRow><TableCell colSpan={10} align="center" sx={{ py: 4 }}><CircularProgress size={32} /></TableCell></TableRow>
+                  <TableRow><TableCell colSpan={11} align="center" sx={{ py: 4 }}><CircularProgress size={32} /></TableCell></TableRow>
                 ) : rows.length === 0 ? (
-                  <TableRow><TableCell colSpan={10} align="center" sx={{ py: 4 }}><Typography color="text.secondary">No payment requests found</Typography></TableCell></TableRow>
+                  <TableRow><TableCell colSpan={11} align="center" sx={{ py: 4 }}><Typography color="text.secondary">No payment requests found</Typography></TableCell></TableRow>
                 ) : (
                   rows.map((row) => (
                     <TableRow key={row.id} hover ref={rowRef(row.id)} sx={{ ...(highlightId === row.id && { bgcolor: 'warning.light', '&:hover': { bgcolor: 'warning.light' } }) }}>
@@ -753,6 +755,11 @@ export default function PaymentsPage() {
                         {row.approvalWorkflow
                           ? `${getApprovalCount(row)}/2`
                           : '—'}
+                      </TableCell>
+                      <TableCell data-label="Approval Comments" sx={{ maxWidth: 260 }}>
+                        {row.approvalWorkflow?.steps
+                          ? <ApprovalCommentsInline steps={row.approvalWorkflow.steps} />
+                          : <Typography variant="caption" color="text.secondary">—</Typography>}
                       </TableCell>
                       <TableCell data-label="Status">
                         <Stack spacing={0.5} alignItems="flex-start">

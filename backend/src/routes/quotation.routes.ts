@@ -1,5 +1,5 @@
 import { Router, Response, NextFunction } from 'express';
-import { APPROVER_ROLES, Permission, QuotationStatus, AuditAction, UserRole } from '@hospital-erp/shared';
+import { APPROVER_ROLES, Permission, QuotationStatus, AuditAction, UserRole, ApprovalStatus } from '@hospital-erp/shared';
 import { createQuotationSchema, listQuotationsSchema, approvalActionSchema } from '@hospital-erp/shared';
 import { prisma } from '../config/prisma';
 import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middleware/auth';
@@ -23,6 +23,49 @@ const allowedQuotationFileTypes = ['application/pdf', 'image/jpeg', 'image/png',
 
 const router = Router();
 router.use(authMiddleware);
+
+// ── Reconcile quotation status with approval workflow status ──────────
+// If the approval workflow is APPROVED/REJECTED but the quotation status
+// is still SUBMITTED/UNDER_REVIEW (data inconsistency or missed update),
+// fix the quotation status in the DB and in the in-memory records so the
+// UI immediately reflects the correct status (green "approved" / "rejected"
+// and the quotation becomes available for PO conversion).
+async function reconcileQuotationStatuses(
+  quotations: Array<{ id: string; status: string; approvalWorkflow?: { status: string } | null }>
+): Promise<void> {
+  const toApprove: string[] = [];
+  const toReject: string[] = [];
+
+  for (const q of quotations) {
+    const wfStatus = q.approvalWorkflow?.status;
+    if (!wfStatus) continue;
+    if (wfStatus === ApprovalStatus.APPROVED && q.status !== QuotationStatus.APPROVED && q.status !== QuotationStatus.CONVERTED_TO_PO) {
+      toApprove.push(q.id);
+    } else if (wfStatus === ApprovalStatus.REJECTED && q.status !== QuotationStatus.REJECTED && q.status !== QuotationStatus.CONVERTED_TO_PO) {
+      toReject.push(q.id);
+    }
+  }
+
+  if (toApprove.length > 0) {
+    await prisma.quotation.updateMany({
+      where: { id: { in: toApprove } },
+      data: { status: QuotationStatus.APPROVED },
+    });
+    for (const q of quotations) {
+      if (toApprove.includes(q.id)) q.status = QuotationStatus.APPROVED;
+    }
+  }
+
+  if (toReject.length > 0) {
+    await prisma.quotation.updateMany({
+      where: { id: { in: toReject } },
+      data: { status: QuotationStatus.REJECTED },
+    });
+    for (const q of quotations) {
+      if (toReject.includes(q.id)) q.status = QuotationStatus.REJECTED;
+    }
+  }
+}
 
 // ── Quotation Approval Aging (additive, read-only) ──────────────────
 // Calculates how long each quotation has been waiting for approval, based
@@ -276,6 +319,9 @@ router.get(
         prisma.quotation.count({ where }),
       ]);
 
+      // Fix any quotations whose status is out of sync with their approval workflow
+      await reconcileQuotationStatuses(data);
+
       res.json({
         data,
         pagination: { page: pageNum, pageSize: size, total, totalPages: Math.ceil(total / size) },
@@ -301,6 +347,8 @@ router.get(
         res.status(404).json({ error: 'Quotation not found' });
         return;
       }
+      // Fix status if out of sync with approval workflow
+      await reconcileQuotationStatuses([record]);
       res.json(record);
     } catch (error) {
       next(error);
@@ -582,6 +630,12 @@ router.post(
         return;
       }
 
+      // Prevent approving a quotation that's already been rejected or approved
+      if (quotation.status === QuotationStatus.REJECTED || quotation.status === QuotationStatus.APPROVED || quotation.status === QuotationStatus.CONVERTED_TO_PO) {
+        res.status(400).json({ error: `Cannot approve a quotation that is already ${quotation.status.replace(/_/g, ' ').toLowerCase()}` });
+        return;
+      }
+
       // Check user is one of the approver roles
       if (!APPROVER_ROLES.some((role) => role === req.user!.role)) {
         res.status(403).json({ error: 'Only heads can approve quotations' });
@@ -608,11 +662,14 @@ router.post(
 
       const result = await approvalService.approve(step.id, req.user!.id, req.body.comments);
 
+      // The approval service now syncs the quotation status atomically
+      // with the workflow status. This is a safety net for any edge case
+      // where the atomic sync inside the service didn't cover.
       if (result.isFullyApproved) {
         await prisma.quotation.update({
           where: { id: quotation.id },
           data: { status: QuotationStatus.APPROVED },
-        });
+        }).catch((err) => console.error('[Quotation] Safety-net status sync failed (non-fatal, reconciliation will fix):', err));
       }
 
       await logAudit({
@@ -652,6 +709,12 @@ router.post(
         return;
       }
 
+      // Prevent rejecting a quotation that's already been decided
+      if (quotation.status === QuotationStatus.REJECTED || quotation.status === QuotationStatus.APPROVED || quotation.status === QuotationStatus.CONVERTED_TO_PO) {
+        res.status(400).json({ error: `Cannot reject a quotation that is already ${quotation.status.replace(/_/g, ' ').toLowerCase()}` });
+        return;
+      }
+
       // Check user is one of the approver roles
       if (!APPROVER_ROLES.some((role) => role === req.user!.role)) {
         res.status(403).json({ error: 'Only heads can reject quotations' });
@@ -679,13 +742,12 @@ router.post(
       const reason = req.body.reason || req.body.comments || 'Rejected';
       await approvalService.reject(step.id, req.user!.id, reason);
 
-      // A single rejection is enough to reject the entire quotation —
-      // don't wait for minApprovers rejections. This prevents rejected
-      // quotations from lingering in the pending/action-required list.
+      // The approval service now syncs the quotation status atomically.
+      // This is a safety net for any edge case.
       await prisma.quotation.update({
         where: { id: quotation.id },
         data: { status: QuotationStatus.REJECTED },
-      });
+      }).catch((err) => console.error('[Quotation] Safety-net status sync failed (non-fatal, reconciliation will fix):', err));
 
       await logAudit({
         userId: req.user!.id,

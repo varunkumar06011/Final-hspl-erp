@@ -28,6 +28,7 @@ import {
 } from '@mui/material';
 import ResponsiveDialog from '../components/ResponsiveDialog';
 import ApprovalStepsDisplay from '../components/ApprovalStepsDisplay';
+import ApprovalCommentsInline from '../components/ApprovalCommentsInline';
 import {
   Add as AddIcon,
   Search as SearchIcon,
@@ -647,15 +648,16 @@ export default function InvoicesPage() {
                 <TableCell sx={{ fontWeight: 600 }}>Payment</TableCell>
                 <TableCell sx={{ fontWeight: 600 }}>Stock</TableCell>
                 <TableCell sx={{ fontWeight: 600 }}>Verification</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>Approval Comments</TableCell>
                 <TableCell sx={{ fontWeight: 600 }}>File</TableCell>
                 <TableCell sx={{ fontWeight: 600 }}>Actions</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {isLoading ? (
-                <TableRow><TableCell colSpan={17} align="center" sx={{ py: 4 }}><CircularProgress size={32} /></TableCell></TableRow>
+                <TableRow><TableCell colSpan={18} align="center" sx={{ py: 4 }}><CircularProgress size={32} /></TableCell></TableRow>
               ) : rows.length === 0 ? (
-                <TableRow><TableCell colSpan={17} align="center" sx={{ py: 4 }}><Typography color="text.secondary">No invoices found</Typography></TableCell></TableRow>
+                <TableRow><TableCell colSpan={18} align="center" sx={{ py: 4 }}><Typography color="text.secondary">No invoices found</Typography></TableCell></TableRow>
               ) : (
                 rows.map((row) => (
                   <TableRow key={row.id} hover ref={rowRef(row.id)} sx={{ ...(highlightId === row.id && { bgcolor: 'warning.light', '&:hover': { bgcolor: 'warning.light' } }) }}>
@@ -702,6 +704,11 @@ export default function InvoicesPage() {
                       />
                     </TableCell>
                     <TableCell data-label="Verification"><Chip label={row.verificationStatus.replace(/_/g, ' ')} size="small" color={STATUS_COLORS[row.verificationStatus] ?? 'default'} /></TableCell>
+                    <TableCell data-label="Approval Comments" sx={{ maxWidth: 260 }}>
+                      {row.approvalWorkflow?.steps
+                        ? <ApprovalCommentsInline steps={row.approvalWorkflow.steps} />
+                        : <Typography variant="caption" color="text.secondary">—</Typography>}
+                    </TableCell>
                     <TableCell data-label="File">
                       {row.filePath ? (
                         <IconButton size="small" onClick={() => handleDownload(row.id, row.fileName ?? 'invoice')}><DownloadIcon fontSize="small" /></IconButton>

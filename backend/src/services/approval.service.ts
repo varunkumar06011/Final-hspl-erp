@@ -8,7 +8,7 @@ interface InitiateParams {
   entityId: string;
   projectId: string;
   minApprovers?: number;
-  approvalPolicy?: 'HEAD_GROUPS' | 'PO_SINGLE_APPROVER' | 'PO_HEAD_APPROVERS' | 'ANY_APPROVERS';
+  approvalPolicy?: 'HEAD_GROUPS' | 'PO_SINGLE_APPROVER' | 'PO_HEAD_APPROVERS' | 'ANY_APPROVERS' | 'ADMIN_SINGLE_APPROVER';
 }
 
 const STEP_ROLES: { stepNumber: number; approverRole: UserRole }[] = APPROVER_ROLES.map(
@@ -20,7 +20,10 @@ function satisfiesApprovalPolicy(policy: string | null | undefined, steps: { sta
     steps.filter((step) => step.status === ApprovalStepStatus.APPROVED).map((step) => step.approverRole),
   );
 
-  if (policy === 'PO_SINGLE_APPROVER') {
+  if (policy === 'PO_SINGLE_APPROVER' || policy === 'ADMIN_SINGLE_APPROVER') {
+    // A single approval from ADMIN or ADMIN_2 is enough — no need to wait
+    // for other approvers. Other heads can still approve if they want, but
+    // their approval alone is not sufficient.
     return approvedRoles.has(UserRole.ADMIN) || approvedRoles.has(UserRole.ADMIN_2);
   }
   if (policy === 'PO_HEAD_APPROVERS' || policy === 'ANY_APPROVERS') {
@@ -62,6 +65,57 @@ const ENTITY_LABEL_MAP: Record<string, string> = {
   PAYMENT_REQUEST: 'Payment Request',
   JOURNAL_VOUCHER: 'Journal Voucher',
 };
+
+// ─── Entity type → status to set when workflow is APPROVED/REJECTED ──
+// Used to atomically sync the entity's status with the workflow status,
+// so the entity never gets stuck in a stale "SUBMITTED/PENDING" state
+// when its workflow has already been decided.
+const ENTITY_STATUS_MAP: Record<string, { approved: string; rejected: string }> = {
+  QUOTATION: { approved: 'APPROVED', rejected: 'REJECTED' },
+  PURCHASE_ORDER: { approved: 'APPROVED', rejected: 'REJECTED' },
+  VENDOR_INVOICE: { approved: 'APPROVED', rejected: 'REJECTED' },
+  PAYMENT_REQUEST: { approved: 'APPROVED', rejected: 'REJECTED' },
+  JOURNAL_VOUCHER: { approved: 'APPROVED', rejected: 'REJECTED' },
+};
+
+/**
+ * Sync the entity's status with the workflow status, atomically within
+ * the same Prisma transaction. This prevents the entity from getting stuck
+ * in a stale status (e.g. SUBMITTED) when its approval workflow has
+ * already been marked APPROVED or REJECTED.
+ *
+ * Must be called inside a `$transaction` callback.
+ */
+async function syncEntityStatusTx(
+  tx: any,
+  entityType: string,
+  entityId: string,
+  workflowStatus: ApprovalStatus,
+): Promise<void> {
+  const modelName = ENTITY_MODEL_MAP[entityType];
+  if (!modelName) return;
+  const statusMap = ENTITY_STATUS_MAP[entityType];
+  if (!statusMap) return;
+
+  let newStatus: string | null = null;
+  if (workflowStatus === ApprovalStatus.APPROVED) {
+    newStatus = statusMap.approved;
+  } else if (workflowStatus === ApprovalStatus.REJECTED) {
+    newStatus = statusMap.rejected;
+  }
+  if (!newStatus) return;
+
+  try {
+    await (tx as any)[modelName].update({
+      where: { id: entityId },
+      data: { status: newStatus },
+    });
+  } catch (err) {
+    // Non-fatal: the reconciliation in the list/get endpoints will fix it
+    // on the next read. Don't fail the entire approval.
+    console.error(`[Approval] Failed to sync ${entityType} ${entityId} status to ${newStatus}:`, err);
+  }
+}
 
 async function findEntityCreator(entityType: string, entityId: string): Promise<{ createdBy: string | null; projectId: string; label: string }> {
   const modelName = ENTITY_MODEL_MAP[entityType];
@@ -226,10 +280,25 @@ export async function approve(stepId: string, userId: string, comments?: string)
     (s: { status: string }) => s.status === ApprovalStepStatus.APPROVED
   );
 
-  if (approvedSteps.length >= workflow.minApprovers && satisfiesApprovalPolicy(workflow.approvalPolicy, workflow.steps, workflow.minApprovers)) {
-    await prisma.approvalWorkflow.update({
-      where: { id: workflow.id },
-      data: { status: ApprovalStatus.APPROVED, currentStep: workflow.steps.length },
+  // For single-approver policies (e.g. ADMIN_SINGLE_APPROVER), the policy
+  // itself is the gate — no minimum count needed. For multi-approver
+  // policies, require both the count AND the policy to be satisfied.
+  const isSingleApproverPolicy = workflow.approvalPolicy === 'ADMIN_SINGLE_APPROVER'
+    || workflow.approvalPolicy === 'PO_SINGLE_APPROVER';
+  const countSatisfied = isSingleApproverPolicy
+    ? approvedSteps.length >= 1
+    : approvedSteps.length >= workflow.minApprovers;
+
+  if (countSatisfied && satisfiesApprovalPolicy(workflow.approvalPolicy, workflow.steps, workflow.minApprovers)) {
+    // Atomically update the workflow status AND the entity status in a
+    // single transaction, so the entity never gets stuck in a stale
+    // "SUBMITTED/PENDING" state when its workflow is already APPROVED.
+    await prisma.$transaction(async (tx) => {
+      await tx.approvalWorkflow.update({
+        where: { id: workflow.id },
+        data: { status: ApprovalStatus.APPROVED, currentStep: workflow.steps.length },
+      });
+      await syncEntityStatusTx(tx, workflow.entityType, workflow.entityId, ApprovalStatus.APPROVED);
     });
 
     // Notify creator + all heads that the entity is fully approved
@@ -371,10 +440,21 @@ export async function reject(stepId: string, userId: string, reason: string) {
     (workflowStep) => workflowStep.status === ApprovalStepStatus.REJECTED
   ).length;
   const isFullyRejected = rejectedCount >= workflow.minApprovers;
-  const updatedWorkflow = await prisma.approvalWorkflow.update({
-    where: { id: workflow.id },
-    data: { status: isFullyRejected ? ApprovalStatus.REJECTED : workflow.status },
-    include: { steps: { orderBy: { stepNumber: 'asc' } } },
+  const newWorkflowStatus = isFullyRejected ? ApprovalStatus.REJECTED : workflow.status;
+
+  // Atomically update the workflow status AND the entity status in a
+  // single transaction, so the entity never gets stuck in a stale state
+  // when its workflow has already been REJECTED.
+  const updatedWorkflow = await prisma.$transaction(async (tx) => {
+    const wf = await tx.approvalWorkflow.update({
+      where: { id: workflow.id },
+      data: { status: newWorkflowStatus },
+      include: { steps: { orderBy: { stepNumber: 'asc' } } },
+    });
+    if (isFullyRejected) {
+      await syncEntityStatusTx(tx, workflow.entityType, workflow.entityId, ApprovalStatus.REJECTED);
+    }
+    return wf;
   });
 
   // Notify creator + all heads about the rejection

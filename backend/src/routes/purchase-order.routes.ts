@@ -239,10 +239,16 @@ router.get(
           (sum, pr) => sum + (pr.payments ?? []).reduce((s, p) => s + Number(p.amount), 0),
           0,
         );
-        // Net Payable = advance amount (if ADVANCE/FULL_PAYMENT) or grand total (if AFTER_DELIVERY)
-        const effectiveNetPayable = po.advanceAmount !== null && Number(po.advanceAmount) > 0
-          ? Number(po.advanceAmount)
-          : Number(po.grandTotal);
+        // Net Payable follows the same priority as the PDF:
+        //   1. NET PAYABLE (when deductions exist) — po.netPayable = grandTotal - totalDeductions
+        //   2. ADVANCE NOW PAY (when advance amount > 0) — po.advanceAmount
+        //   3. GRAND TOTAL (fallback) — po.grandTotal
+        const effectiveNetPayable =
+          po.totalDeductions !== null && Number(po.totalDeductions) > 0
+            ? Number(po.netPayable ?? po.grandTotal)
+            : po.advanceAmount !== null && Number(po.advanceAmount) > 0
+              ? Number(po.advanceAmount)
+              : Number(po.grandTotal);
         const amountToPayNow = Math.max(0, effectiveNetPayable - paidToDate);
         return {
           ...po,
@@ -1414,6 +1420,132 @@ router.post(
       }).catch((err) => console.error('[Push] Regen PO notification error:', err));
 
       res.json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// POST /:id/change-budget-head — admin-only: change the budget head of an
+// approved (or partially delivered / delivered) PO. Moves the committed and
+// actual amounts from the old budget head to the new one atomically so the
+// old head gets its money back and the new head is charged.
+//
+// Allowed for ADMIN / ADMIN_2 only (MANAGE_FINANCE permission).
+router.post(
+  '/:id/change-budget-head',
+  rbacMiddleware(Permission.MANAGE_FINANCE),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      const { budgetHeadId: newBudgetHeadId, reason } = req.body as { budgetHeadId: string; reason?: string };
+
+      if (!newBudgetHeadId || typeof newBudgetHeadId !== 'string') {
+        res.status(400).json({ error: 'New budget head ID is required' });
+        return;
+      }
+
+      const po = await prisma.purchaseOrder.findFirst({
+        where: { id: req.params.id, projectId, deletedAt: null },
+        include: { items: true, budgetHead: { select: { particulars: true } } },
+      });
+      if (!po) {
+        res.status(404).json({ error: 'Purchase order not found' });
+        return;
+      }
+
+      // Only approved / partially delivered / delivered POs have committed
+      // budget that needs to be moved. Pending/rejected POs can be edited
+      // directly via the edit-unapproved flow.
+      if (![POStatus.APPROVED, POStatus.PARTIALLY_DELIVERED, POStatus.DELIVERED].includes(po.status as POStatus)) {
+        res.status(400).json({ error: 'Budget head can only be changed on approved or delivered POs' });
+        return;
+      }
+
+      if (!po.budgetHeadId) {
+        res.status(400).json({ error: 'This PO has no budget head to change' });
+        return;
+      }
+
+      if (po.budgetHeadId === newBudgetHeadId) {
+        res.status(400).json({ error: 'New budget head is the same as the current one' });
+        return;
+      }
+
+      // Validate the new budget head exists and belongs to the project
+      const newBudgetHead = await prisma.budgetHead.findFirst({
+        where: { id: newBudgetHeadId, projectId, deletedAt: null },
+        select: { id: true, particulars: true, allocatedAmount: true, committedAmount: true, actualAmount: true },
+      });
+      if (!newBudgetHead) {
+        res.status(400).json({ error: 'New budget head not found' });
+        return;
+      }
+
+      // Compute how much of this PO's value is still committed vs already
+      // converted to actual via goods receipts (GRN).
+      const grandTotal = Number(po.grandTotal);
+      const deliveredValue = await getDeliveredValueForPo(po.id, po.items);
+      const remainingCommitted = Math.max(0, grandTotal - deliveredValue);
+
+      const oldBudgetHeadId = po.budgetHeadId;
+      const oldParticulars = po.budgetHead?.particulars ?? 'unknown';
+      const newParticulars = newBudgetHead.particulars;
+
+      // Atomic transaction: move committed + actual amounts from old head
+      // to new head, and update the PO's budgetHeadId.
+      const updated = await prisma.$transaction(async (tx) => {
+        // Old budget head: return the remaining committed amount AND the
+        // actual amount that was already moved via GRN.
+        await tx.budgetHead.update({
+          where: { id: oldBudgetHeadId },
+          data: {
+            committedAmount: { decrement: remainingCommitted },
+            actualAmount: { decrement: deliveredValue },
+          },
+        });
+
+        // New budget head: add the remaining committed amount AND the
+        // actual amount (so the new head reflects the full PO value).
+        await tx.budgetHead.update({
+          where: { id: newBudgetHeadId },
+          data: {
+            committedAmount: { increment: remainingCommitted },
+            actualAmount: { increment: deliveredValue },
+          },
+        });
+
+        // Update the PO's budget head
+        return tx.purchaseOrder.update({
+          where: { id: po.id },
+          data: { budgetHeadId: newBudgetHeadId },
+          include: poInclude,
+        });
+      });
+
+      await logAudit({
+        userId: req.user!.id,
+        action: AuditAction.UPDATE,
+        entityType: 'PURCHASE_ORDER',
+        entityId: po.id,
+        projectId,
+        oldValue: { budgetHeadId: oldBudgetHeadId, budgetHead: oldParticulars },
+        newValue: {
+          budgetHeadId: newBudgetHeadId,
+          budgetHead: newParticulars,
+          movedCommitted: remainingCommitted,
+          movedActual: deliveredValue,
+          reason: reason ?? 'Admin budget head change',
+        },
+      });
+
+      console.log(
+        `[PO] Budget head changed for ${po.poNumber}: ` +
+        `"${oldParticulars}" → "${newParticulars}" ` +
+        `(committed: ₹${remainingCommitted}, actual: ₹${deliveredValue})`
+      );
+
+      res.json(updated);
     } catch (error) {
       next(error);
     }

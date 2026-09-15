@@ -37,7 +37,7 @@ import {
   PictureAsPdf as PdfIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { APPROVER_ROLES, QuotationStatus, GST_RATES } from '@hospital-erp/shared';
+import { APPROVER_ROLES, QuotationStatus, GST_RATES, ApprovalStatus } from '@hospital-erp/shared';
 import { formatCurrency, formatDate, STATUS_COLORS, QTY_UNIT_OPTIONS } from '../utils/enumOptions';
 import api, { extractErrorMessage } from '../config/api';
 import { useAuthStore } from '../stores/authStore';
@@ -305,6 +305,7 @@ export default function QuotationsPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/quotations'] });
+      queryClient.invalidateQueries({ queryKey: ['/quotations/approval-aging'] });
       queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
       setApprovalAction(null);
     },
@@ -318,6 +319,7 @@ export default function QuotationsPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/quotations'] });
+      queryClient.invalidateQueries({ queryKey: ['/quotations/approval-aging'] });
       queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
       setApprovalAction(null);
     },
@@ -470,6 +472,9 @@ export default function QuotationsPage() {
 
   function canApprove(row: QuotationRow): ApprovalStep | null {
     if (!row.approvalWorkflow || !user || !APPROVER_ROLES.some((role) => role === user.role)) return null;
+    // If the workflow is already APPROVED/REJECTED, no further approval is possible
+    const wfStatus = row.approvalWorkflow.status;
+    if (wfStatus === ApprovalStatus.APPROVED || wfStatus === ApprovalStatus.REJECTED) return null;
     if (![QuotationStatus.SUBMITTED, QuotationStatus.UNDER_REVIEW].includes(row.status as QuotationStatus)) return null;
     const alreadyDecided = row.approvalWorkflow.steps.some(
       (step) => step.approverUserId === user.id && step.status !== 'PENDING'
@@ -689,9 +694,29 @@ export default function QuotationsPage() {
               const agingStatus = aging?.agingStatus ?? 'NORMAL';
               const agingLabel = aging?.agingLabel ?? '';
 
+              // Effective status: if the approval workflow is APPROVED/REJECTED
+              // but the quotation status hasn't caught up yet (stale data),
+              // use the workflow status for display so the row immediately
+              // turns green (approved) or gray (rejected).
+              const wfStatus = row.approvalWorkflow?.status;
+              const effectiveStatus =
+                wfStatus === ApprovalStatus.APPROVED && row.status !== QuotationStatus.CONVERTED_TO_PO
+                  ? QuotationStatus.APPROVED
+                  : wfStatus === ApprovalStatus.REJECTED
+                    ? QuotationStatus.REJECTED
+                    : row.status;
+
+              // If the effective status is APPROVED/REJECTED, override the
+              // aging status so the chip color and row background are correct
+              // even when the aging endpoint hasn't refreshed yet.
+              const displayAgingStatus =
+                effectiveStatus === QuotationStatus.APPROVED ? 'APPROVED' :
+                effectiveStatus === QuotationStatus.REJECTED ? 'REJECTED' :
+                agingStatus;
+
               const rowBg =
-                agingStatus === 'OVERDUE' ? '#ffebee' :
-                agingStatus === 'ATTENTION' ? '#fff3e0' :
+                displayAgingStatus === 'OVERDUE' ? '#ffebee' :
+                displayAgingStatus === 'ATTENTION' ? '#fff3e0' :
                 highlightId === row.id ? 'warning.light' :
                 'background.paper';
 
@@ -712,20 +737,20 @@ export default function QuotationsPage() {
                   {/* Status bar */}
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 0.75, pb: 0.75, borderBottom: '1px solid', borderColor: 'action.hover' }}>
                     <Chip
-                      label={row.status.replace(/_/g, ' ')}
+                      label={effectiveStatus.replace(/_/g, ' ')}
                       size="small"
                       color={
-                        agingStatus === 'OVERDUE' ? 'error' :
-                        agingStatus === 'ATTENTION' ? 'warning' :
-                        agingStatus === 'APPROVED' ? 'success' :
-                        agingStatus === 'REJECTED' ? 'default' :
-                        STATUS_COLORS[row.status] ?? 'default'
+                        displayAgingStatus === 'OVERDUE' ? 'error' :
+                        displayAgingStatus === 'ATTENTION' ? 'warning' :
+                        displayAgingStatus === 'APPROVED' ? 'success' :
+                        displayAgingStatus === 'REJECTED' ? 'default' :
+                        STATUS_COLORS[effectiveStatus] ?? 'default'
                       }
                     />
-                    {agingLabel && (
+                    {agingLabel && displayAgingStatus !== 'APPROVED' && displayAgingStatus !== 'REJECTED' && (
                       <Typography variant="caption" sx={{
-                        color: agingStatus === 'OVERDUE' ? 'error.main' : agingStatus === 'ATTENTION' ? 'warning.dark' : 'text.secondary',
-                        fontWeight: agingStatus === 'OVERDUE' ? 700 : 500,
+                        color: displayAgingStatus === 'OVERDUE' ? 'error.main' : displayAgingStatus === 'ATTENTION' ? 'warning.dark' : 'text.secondary',
+                        fontWeight: displayAgingStatus === 'OVERDUE' ? 700 : 500,
                       }}>
                         {agingLabel}
                       </Typography>
@@ -807,7 +832,7 @@ export default function QuotationsPage() {
                       <IconButton size="small" onClick={() => downloadQuotationPDF(row.id, row.quotationNumber)} title="Download PDF"><DownloadIcon fontSize="small" /></IconButton>
                       <IconButton size="small" onClick={() => handleShareWhatsApp(row)} title="Share to WhatsApp"><ShareIcon fontSize="small" /></IconButton>
                       <IconButton size="small" onClick={() => setTimelineRow(row)} title="Show Timeline"><TimelineIcon fontSize="small" /></IconButton>
-                      {row.status === QuotationStatus.SUBMITTED || row.status === QuotationStatus.UNDER_REVIEW ? (
+                      {effectiveStatus === QuotationStatus.SUBMITTED || effectiveStatus === QuotationStatus.UNDER_REVIEW ? (
                         <IconButton size="small" onClick={() => openEdit(row)} title="Edit"><EditIcon fontSize="small" /></IconButton>
                       ) : (
                         <IconButton size="small" onClick={() => { setNotesEditRow(row); setNotesEditValue(row.notes ?? ''); }} title="Edit Description"><EditIcon fontSize="small" /></IconButton>
@@ -818,7 +843,7 @@ export default function QuotationsPage() {
                           <IconButton size="small" color="error" onClick={() => setApprovalAction({ row, step: pendingStep, action: 'reject' })} title="Reject"><CloseIcon fontSize="small" /></IconButton>
                         </>
                       )}
-                      {row.status !== QuotationStatus.APPROVED && row.status !== QuotationStatus.CONVERTED_TO_PO && (
+                      {effectiveStatus !== QuotationStatus.APPROVED && effectiveStatus !== QuotationStatus.CONVERTED_TO_PO && (
                         <IconButton size="small" color="error" onClick={() => setDeleteRow(row)} title="Delete"><DeleteIcon fontSize="small" /></IconButton>
                       )}
                     </Box>

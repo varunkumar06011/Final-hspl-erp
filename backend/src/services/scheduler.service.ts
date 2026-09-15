@@ -1,5 +1,5 @@
 import { prisma } from '../config/prisma';
-import { QuotationStatus, UserRole } from '@hospital-erp/shared';
+import { QuotationStatus, UserRole, ApprovalStatus } from '@hospital-erp/shared';
 import { notifyAdmins } from './push.service';
 
 // ─── Quotation Approval Aging Scheduler ─────────────────────────────
@@ -27,6 +27,60 @@ let schedulerTimer: NodeJS.Timeout | null = null;
 async function checkOverdueQuotations(): Promise<void> {
   try {
     const now = new Date();
+
+    // ── Reconciliation: fix quotations stuck in SUBMITTED/UNDER_REVIEW
+    //    whose approval workflow is already APPROVED or REJECTED. This
+    //    catches any quotations that got stuck due to race conditions or
+    //    failed status updates, even if nobody has loaded the page.
+    const stuckQuotations = await prisma.quotation.findMany({
+      where: {
+        deletedAt: null,
+        status: { in: [QuotationStatus.SUBMITTED, QuotationStatus.UNDER_REVIEW] },
+        approvalWorkflow: { isNot: null },
+      },
+      select: {
+        id: true,
+        status: true,
+        approvalWorkflow: { select: { id: true, status: true } },
+      },
+    });
+
+    const toApprove = stuckQuotations
+      .filter((q) => q.approvalWorkflow?.status === ApprovalStatus.APPROVED)
+      .map((q) => q.id);
+    const toReject = stuckQuotations
+      .filter((q) => q.approvalWorkflow?.status === ApprovalStatus.REJECTED)
+      .map((q) => q.id);
+
+    if (toApprove.length > 0) {
+      await prisma.quotation.updateMany({
+        where: { id: { in: toApprove } },
+        data: { status: QuotationStatus.APPROVED },
+      });
+      console.log(`[Scheduler] Reconciled ${toApprove.length} quotation(s) stuck in SUBMITTED → APPROVED`);
+    }
+    if (toReject.length > 0) {
+      await prisma.quotation.updateMany({
+        where: { id: { in: toReject } },
+        data: { status: QuotationStatus.REJECTED },
+      });
+      console.log(`[Scheduler] Reconciled ${toReject.length} quotation(s) stuck in SUBMITTED → REJECTED`);
+    }
+
+    // ── Migrate existing pending quotation workflows to the new policy:
+    //    ADMIN_SINGLE_APPROVER — a single admin approval is enough. This
+    //    is idempotent so it's safe to run every cycle.
+    const migrated = await prisma.approvalWorkflow.updateMany({
+      where: {
+        entityType: 'QUOTATION',
+        status: { in: [ApprovalStatus.VERIFICATION, ApprovalStatus.APPROVAL_1, ApprovalStatus.APPROVAL_2] },
+        approvalPolicy: { not: 'ADMIN_SINGLE_APPROVER' },
+      },
+      data: { approvalPolicy: 'ADMIN_SINGLE_APPROVER' },
+    });
+    if (migrated.count > 0) {
+      console.log(`[Scheduler] Migrated ${migrated.count} pending quotation workflow(s) to ADMIN_SINGLE_APPROVER policy`);
+    }
 
     // Find all quotations across ALL projects that are still pending
     // approval with an approval workflow.

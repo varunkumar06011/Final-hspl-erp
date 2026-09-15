@@ -44,6 +44,7 @@ import {
   Delete as DeleteIcon,
   Edit as EditIcon,
   Autorenew as AutoRenewIcon,
+  SwapHoriz as SwapBudgetIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { POStatus, UserRole, POPaymentType, GST_RATES } from '@hospital-erp/shared';
@@ -162,6 +163,9 @@ export default function PurchaseOrdersPage() {
   const [regenRow, setRegenRow] = useState<PORow | null>(null);
   const [notesEditRow, setNotesEditRow] = useState<PORow | null>(null);
   const [notesEditValue, setNotesEditValue] = useState('');
+  const [budgetHeadRow, setBudgetHeadRow] = useState<PORow | null>(null);
+  const [newBudgetHeadId, setNewBudgetHeadId] = useState('');
+  const [budgetHeadReason, setBudgetHeadReason] = useState('');
   const queryClient = useQueryClient();
   const { user } = useAuthStore();
   const navigate = useNavigate();
@@ -397,6 +401,26 @@ export default function PurchaseOrdersPage() {
     onError: (err: unknown) => setError(extractErrorMessage(err)),
   });
 
+  const changeBudgetHeadMutation = useMutation({
+    mutationFn: async () => {
+      const response = await api.post(`/purchase-orders/${budgetHeadRow!.id}/change-budget-head`, {
+        budgetHeadId: newBudgetHeadId,
+        reason: budgetHeadReason.trim() || undefined,
+      });
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/pos'] });
+      queryClient.invalidateQueries({ queryKey: ['/budget-heads'] });
+      queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
+      setBudgetHeadRow(null);
+      setNewBudgetHeadId('');
+      setBudgetHeadReason('');
+      setError('');
+    },
+    onError: (err: unknown) => setError(extractErrorMessage(err)),
+  });
+
   const rows: PORow[] = data?.data ?? [];
   const pagination = data?.pagination ?? { page: 1, pageSize: 20, total: 0, totalPages: 0 };
   const vendors: { id: string; name: string; vendorCode: string }[] = vendorsData?.data ?? [];
@@ -546,10 +570,10 @@ export default function PurchaseOrdersPage() {
             <TableHead>
               <TableRow>
                 <TableCell sx={{ fontWeight: 600 }}>PO No</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Vendor</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Quotation</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>Quotation No</TableCell>
                 <TableCell sx={{ fontWeight: 600 }}>PO Date</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Generated On</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>Vendor Name</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>Item Description</TableCell>
                 <TableCell sx={{ fontWeight: 600 }}>Payment Type</TableCell>
                 <TableCell sx={{ fontWeight: 600 }}>Total</TableCell>
                 <TableCell sx={{ fontWeight: 600 }}>GST</TableCell>
@@ -560,15 +584,16 @@ export default function PurchaseOrdersPage() {
                 <TableCell sx={{ fontWeight: 600 }}>To Pay Now</TableCell>
                 <TableCell sx={{ fontWeight: 600 }}>Budget Head</TableCell>
                 <TableCell sx={{ fontWeight: 600 }}>Created By</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>Approved By</TableCell>
                 <TableCell sx={{ fontWeight: 600 }}>Status</TableCell>
                 <TableCell sx={{ fontWeight: 600 }}>Actions</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {isLoading ? (
-                <TableRow><TableCell colSpan={16} align="center" sx={{ py: 4 }}><CircularProgress size={32} /></TableCell></TableRow>
+                <TableRow><TableCell colSpan={18} align="center" sx={{ py: 4 }}><CircularProgress size={32} /></TableCell></TableRow>
               ) : rows.length === 0 ? (
-                <TableRow><TableCell colSpan={16} align="center" sx={{ py: 4 }}><Typography color="text.secondary">No purchase orders found</Typography></TableCell></TableRow>
+                <TableRow><TableCell colSpan={18} align="center" sx={{ py: 4 }}><Typography color="text.secondary">No purchase orders found</Typography></TableCell></TableRow>
               ) : (
                 rows.map((row) => (
                   <TableRow key={row.id} hover ref={rowRef(row.id)} sx={{ ...(highlightId === row.id && { bgcolor: 'warning.light', '&:hover': { bgcolor: 'warning.light' } }) }}>
@@ -592,8 +617,7 @@ export default function PurchaseOrdersPage() {
                         )}
                       </Box>
                     </TableCell>
-                    <TableCell data-label="Vendor">{row.vendor?.vendorCode} - {row.vendor?.name ?? '—'}</TableCell>
-                    <TableCell data-label="Quotation">{row.quotation?.quotationNumber ?? '—'}</TableCell>
+                    <TableCell data-label="Quotation No">{row.quotation?.quotationNumber ?? '—'}</TableCell>
                     <TableCell data-label="PO Date">
                       {row.quotation && new Date(row.date) < new Date(row.quotation.date) ? (
                         <Box>
@@ -602,7 +626,16 @@ export default function PurchaseOrdersPage() {
                         </Box>
                       ) : formatDate(row.date)}
                     </TableCell>
-                    <TableCell data-label="Generated On"><Typography variant="caption" color="text.secondary">{formatDate(row.createdAt)}</Typography></TableCell>
+                    <TableCell data-label="Vendor Name">{row.vendor?.vendorCode} - {row.vendor?.name ?? '—'}</TableCell>
+                    <TableCell data-label="Item Description" sx={{ maxWidth: 220 }}>
+                      {row.notes ? (
+                        <Typography variant="caption" sx={{ display: 'block', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
+                          {row.notes}
+                        </Typography>
+                      ) : (
+                        <Typography variant="caption" color="text.secondary">—</Typography>
+                      )}
+                    </TableCell>
                     <TableCell data-label="Payment Type">
                       <Chip
                         size="small"
@@ -639,16 +672,20 @@ export default function PurchaseOrdersPage() {
                     <TableCell data-label="Net Payable">
                       <Typography fontWeight={600}>
                         {formatCurrency(
-                          row.advanceAmount && Number(row.advanceAmount) > 0
-                            ? Number(row.advanceAmount)
-                            : Number(row.grandTotal)
+                          row.totalDeductions && Number(row.totalDeductions) > 0
+                            ? Number(row.netPayable ?? row.grandTotal)
+                            : row.advanceAmount && Number(row.advanceAmount) > 0
+                              ? Number(row.advanceAmount)
+                              : Number(row.grandTotal)
                         )}
                       </Typography>
-                      {row.advanceAmount && Number(row.advanceAmount) > 0 && (
-                        <Typography variant="caption" color="text.secondary" display="block">
-                          (Advance: {formatCurrency(Number(row.advanceAmount))})
-                        </Typography>
-                      )}
+                      <Typography variant="caption" color="text.secondary" display="block">
+                        {row.totalDeductions && Number(row.totalDeductions) > 0
+                          ? '(Net Payable)'
+                          : row.advanceAmount && Number(row.advanceAmount) > 0
+                            ? `(Advance: ${formatCurrency(Number(row.advanceAmount))})`
+                            : '(Grand Total)'}
+                      </Typography>
                     </TableCell>
                     <TableCell data-label="Paid">
                       <Typography color="success.main" fontWeight={600}>
@@ -668,6 +705,14 @@ export default function PurchaseOrdersPage() {
                       )}
                     </TableCell>
                     <TableCell data-label="Created By">{row.createdByUser?.name ?? '—'}</TableCell>
+                    <TableCell data-label="Approved By">
+                      {row.approvalWorkflow?.steps?.some((s) => s.status === 'APPROVED' && s.approverUser)
+                        ? row.approvalWorkflow!.steps
+                            .filter((s) => s.status === 'APPROVED' && s.approverUser)
+                            .map((s) => s.approverUser!.name)
+                            .join(', ')
+                        : '—'}
+                    </TableCell>
                     <TableCell data-label="Status"><Chip label={row.status.replace(/_/g, ' ')} size="small" color={STATUS_COLORS[row.status] ?? 'default'} /></TableCell>
                     <TableCell data-label="Actions">
                       <Box sx={{ display: 'flex', gap: 0.5 }}>
@@ -693,7 +738,10 @@ export default function PurchaseOrdersPage() {
                           <IconButton size="small" color="primary" onClick={() => setEditUnapprovedRow(row)} title="Edit PO"><EditIcon fontSize="small" /></IconButton>
                         )}
                         {(row.status === POStatus.APPROVED || row.status === POStatus.DELIVERED || row.status === POStatus.PARTIALLY_DELIVERED) && (
-                          <IconButton size="small" onClick={() => { setNotesEditRow(row); setNotesEditValue(row.notes ?? ''); }} title="Edit Description"><EditIcon fontSize="small" /></IconButton>
+                          <IconButton size="small" onClick={() => { setNotesEditRow(row); setNotesEditValue(row.notes ?? ''); }} title="Edit Item Description"><EditIcon fontSize="small" /></IconButton>
+                        )}
+                        {(row.status === POStatus.APPROVED || row.status === POStatus.DELIVERED || row.status === POStatus.PARTIALLY_DELIVERED) && row.budgetHeadId && user && (user.role === UserRole.ADMIN || user.role === UserRole.ADMIN_2) && (
+                          <IconButton size="small" color="info" onClick={() => { setBudgetHeadRow(row); setNewBudgetHeadId(''); setBudgetHeadReason(''); }} title="Change Budget Head"><SwapBudgetIcon fontSize="small" /></IconButton>
                         )}
                         {row.status === POStatus.DELIVERED && !row.parentPoId && Array.isArray(row.regenerationData) && (row.regenerationData as unknown[]).length > 0 && (!row.childPos || row.childPos.length === 0) ? (
                           <IconButton size="small" color="secondary" onClick={() => setRegenRow(row)} title="Generate Regenerated PO"><AutoRenewIcon fontSize="small" /></IconButton>
@@ -867,9 +915,9 @@ export default function PurchaseOrdersPage() {
               {budgetHeads.map((h) => <MenuItem key={h.id} value={h.id}>{h.particulars}</MenuItem>)}
             </TextField>
 
-            {/* PO Description / Notes */}
+            {/* Item Description / Notes */}
             <TextField
-              label="Description / Notes"
+              label="Item Description"
               value={poNotes}
               onChange={(e) => setPoNotes(e.target.value)}
               fullWidth
@@ -877,7 +925,7 @@ export default function PurchaseOrdersPage() {
               multiline
               minRows={2}
               maxRows={4}
-              placeholder="Optional description or notes for this PO (shown highlighted in PDF)"
+              placeholder="Optional item description for this PO (shown highlighted in PDF)"
             />
 
             {/* Deductions Section */}
@@ -1110,22 +1158,25 @@ export default function PurchaseOrdersPage() {
         </DialogActions>
       </ResponsiveDialog>
 
-      {/* Edit Description/Notes only (for approved/delivered POs) */}
+      {/* Edit Item Description only (for approved/delivered POs) */}
       <ResponsiveDialog open={notesEditRow !== null} onClose={() => { setNotesEditRow(null); setNotesEditValue(''); }} maxWidth="sm" fullWidth>
-        <DialogTitle>Edit Description — {notesEditRow?.poNumber}</DialogTitle>
+        <DialogTitle>Edit Item Description — {notesEditRow?.poNumber}</DialogTitle>
         <DialogContent>
           {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
           <TextField
-            label="Description / Notes"
+            label="Item Description"
             value={notesEditValue}
             onChange={(e) => setNotesEditValue(e.target.value)}
             fullWidth
             multiline
             minRows={3}
             maxRows={6}
-            placeholder="Description or notes for this PO"
+            placeholder="Item description for this PO"
             sx={{ mt: 1 }}
           />
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+            Only the Item Description can be edited after approval. Financial details cannot be modified.
+          </Typography>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => { setNotesEditRow(null); setNotesEditValue(''); }}>Cancel</Button>
@@ -1135,6 +1186,60 @@ export default function PurchaseOrdersPage() {
             onClick={() => updateNotesMutation.mutate()}
           >
             {updateNotesMutation.isPending ? <CircularProgress size={20} /> : 'Save'}
+          </Button>
+        </DialogActions>
+      </ResponsiveDialog>
+
+      {/* Change Budget Head (admin-only, for approved/delivered POs) */}
+      <ResponsiveDialog open={budgetHeadRow !== null} onClose={() => { setBudgetHeadRow(null); setNewBudgetHeadId(''); setBudgetHeadReason(''); }} maxWidth="sm" fullWidth>
+        <DialogTitle>Change Budget Head — {budgetHeadRow?.poNumber}</DialogTitle>
+        <DialogContent>
+          {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
+            <Alert severity="info" sx={{ mb: 1 }}>
+              This will move <strong>{formatCurrency(Number(budgetHeadRow?.grandTotal ?? 0))}</strong> from the current budget head
+              {' "'}<strong>{budgetHeadRow?.budgetHead?.particulars ?? '—'}</strong>{'" '} to the new one.
+              The old head gets its money back; the new head is charged.
+            </Alert>
+            <TextField
+              select
+              label="New Budget Head"
+              value={newBudgetHeadId}
+              onChange={(e) => setNewBudgetHeadId(e.target.value)}
+              fullWidth
+              size="small"
+              required
+              helperText={newBudgetHeadId === budgetHeadRow?.budgetHeadId ? 'Select a different budget head' : undefined}
+              error={newBudgetHeadId === budgetHeadRow?.budgetHeadId}
+            >
+              {budgetHeads
+                .filter((bh) => bh.id !== budgetHeadRow?.budgetHeadId)
+                .map((bh) => (
+                  <MenuItem key={bh.id} value={bh.id}>{bh.particulars}</MenuItem>
+                ))}
+            </TextField>
+            <TextField
+              label="Reason (optional)"
+              value={budgetHeadReason}
+              onChange={(e) => setBudgetHeadReason(e.target.value)}
+              fullWidth
+              size="small"
+              multiline
+              minRows={2}
+              maxRows={4}
+              placeholder="Why is the budget head being changed?"
+            />
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => { setBudgetHeadRow(null); setNewBudgetHeadId(''); setBudgetHeadReason(''); }}>Cancel</Button>
+          <Button
+            variant="contained"
+            color="info"
+            disabled={!newBudgetHeadId || newBudgetHeadId === budgetHeadRow?.budgetHeadId || changeBudgetHeadMutation.isPending}
+            onClick={() => changeBudgetHeadMutation.mutate()}
+          >
+            {changeBudgetHeadMutation.isPending ? <CircularProgress size={20} /> : 'Change Budget Head'}
           </Button>
         </DialogActions>
       </ResponsiveDialog>
