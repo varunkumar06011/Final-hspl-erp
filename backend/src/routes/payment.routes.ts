@@ -273,6 +273,7 @@ router.get(
         include: {
           vendor: { select: { id: true, name: true, vendorCode: true } },
           createdByUser: { select: { id: true, name: true } },
+          purchaseOrder: { select: { budgetHead: { select: { id: true, particulars: true } } } },
           paymentRequests: {
             where: { deletedAt: null },
             select: { id: true, status: true, amount: true, requestNumber: true },
@@ -294,6 +295,7 @@ router.get(
             invoiceNumber: inv.invoiceNumber,
             vendorId: inv.vendorId,
             vendor: inv.vendor,
+            budgetHead: inv.purchaseOrder?.budgetHead ?? null,
             totalAmount: summary.totalAmount,
             advancePaid: summary.advancePaid,
             installmentsPaid: summary.installmentsPaid,
@@ -339,6 +341,7 @@ router.get(
         },
         include: {
           vendor: { select: { id: true, name: true, vendorCode: true } },
+          budgetHead: { select: { id: true, particulars: true } },
           advancePaymentRequests: {
             where: { deletedAt: null, status: { in: [PaymentStatus.PENDING, PaymentStatus.APPROVED, PaymentStatus.PAID] } },
             select: { id: true, status: true, amount: true, requestNumber: true },
@@ -361,6 +364,7 @@ router.get(
           grandTotal: Number(po.grandTotal),
           advanceAmount: po.advanceAmount !== null ? Number(po.advanceAmount) : null,
           vendor: po.vendor,
+          budgetHead: po.budgetHead,
           advancePaidToDate: paidAdvances,
           outstanding: Math.max(0, Number(po.grandTotal) - paidAdvances),
           activePaymentRequest: activeRequest
@@ -482,7 +486,7 @@ router.post(
             status: 'VERIFICATION',
             currentStep: 0,
             minApprovers: getRequiredApproverCount(Number(amount)),
-            approvalPolicy: 'HEAD_GROUPS',
+            approvalPolicy: 'ADMIN_SINGLE_APPROVER',
             steps: {
               create: HEAD_ROLES.map((role, idx) => ({
                 stepNumber: idx + 1,
@@ -609,7 +613,7 @@ router.post(
             status: 'VERIFICATION',
             currentStep: 0,
             minApprovers: getRequiredApproverCount(Number(amount)),
-            approvalPolicy: 'HEAD_GROUPS',
+            approvalPolicy: 'ADMIN_SINGLE_APPROVER',
             steps: {
               create: HEAD_ROLES.map((role, idx) => ({
                 stepNumber: idx + 1,
@@ -723,7 +727,7 @@ router.post(
             status: 'VERIFICATION',
             currentStep: 0,
             minApprovers: getRequiredApproverCount(Number(amount)),
-            approvalPolicy: 'HEAD_GROUPS',
+            approvalPolicy: 'ADMIN_SINGLE_APPROVER',
             steps: {
               create: HEAD_ROLES.map((role, idx) => ({
                 stepNumber: idx + 1,
@@ -823,7 +827,7 @@ router.get(
   }
 );
 
-// POST /:id/approve — approve payment request (any of 4 heads, 2 approvals needed)
+// POST /:id/approve — approve payment request (a single ADMIN/ADMIN_2 approval is final)
 router.post(
   '/:id/approve',
   rbacMiddleware(Permission.VIEW_FINANCIALS),
