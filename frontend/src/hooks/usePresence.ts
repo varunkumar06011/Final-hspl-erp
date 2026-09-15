@@ -16,9 +16,19 @@ let socket: Socket | null = null;
 function getSocket(): Socket | null {
   if (socket) return socket;
   const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+  // Socket.io connects to the default namespace ("/"), so strip any path
+  // (e.g. the "/api" suffix used by the REST client) and keep only the origin.
+  let socketUrl = apiUrl;
+  try {
+    const u = new URL(apiUrl);
+    socketUrl = u.origin;
+  } catch {
+    // apiUrl is not a full URL (e.g. "/api") — fall back to current origin.
+    socketUrl = window.location.origin;
+  }
   const token = localStorage.getItem('firebaseToken');
   if (!token) return null;
-  socket = io(apiUrl, {
+  socket = io(socketUrl, {
     auth: { token },
     transports: ['websocket', 'polling'],
     autoConnect: true,
