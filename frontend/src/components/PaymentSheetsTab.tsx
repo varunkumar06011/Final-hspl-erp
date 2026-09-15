@@ -302,7 +302,7 @@ export default function PaymentSheetsTab() {
               <Typography variant="h6">{rows.length}</Typography>
             </Box>
             <Box>
-              <Typography variant="caption" color="text.secondary">Total Paid Today</Typography>
+              <Typography variant="caption" color="text.secondary">Total Payable</Typography>
               <Typography variant="h6">{formatCurrency(totalAmount)}</Typography>
             </Box>
           </Stack>

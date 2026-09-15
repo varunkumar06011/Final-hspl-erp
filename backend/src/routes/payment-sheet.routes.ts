@@ -81,7 +81,10 @@ router.get(
         prisma.paymentSheet.count({ where }),
       ]);
 
-      const totalAmount = data.reduce((sum, e) => sum + Number(e.amount), 0);
+      const totalAmount = data.reduce(
+        (sum, e) => (e.status === PaymentStatus.PAID || e.status === PaymentStatus.APPROVED ? sum : sum + Number(e.amount)),
+        0,
+      );
 
       res.json({
         data,

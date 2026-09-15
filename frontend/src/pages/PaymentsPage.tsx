@@ -108,6 +108,7 @@ interface PendingInvoice {
   invoiceNumber: string;
   vendorId: string;
   vendor: { id: string; name: string; vendorCode: string };
+  budgetHead: { id: string; particulars: string } | null;
   totalAmount: number;
   advancePaid: number;
   installmentsPaid: number;
@@ -130,6 +131,7 @@ interface PendingPO {
   grandTotal: number;
   advanceAmount: number | null;
   vendor: { id: string; name: string; vendorCode: string };
+  budgetHead: { id: string; particulars: string } | null;
   advancePaidToDate: number;
   outstanding: number;
   activePaymentRequest: {
@@ -171,6 +173,7 @@ export default function PaymentsPage() {
   const [successMsg, setSuccessMsg] = useState('');
   const [payOpen, setPayOpen] = useState<string | null>(null);
   const [payForm, setPayForm] = useState<Record<string, unknown>>({});
+  const [postApprovePrompt, setPostApprovePrompt] = useState<PaymentRequestRow | null>(null);
   const [expenseOpen, setExpenseOpen] = useState(false);
   const [invoicePayOpen, setInvoicePayOpen] = useState<PendingInvoice | null>(null);
   const [invoicePayForm, setInvoicePayForm] = useState<Record<string, unknown>>({});
@@ -365,8 +368,14 @@ export default function PaymentsPage() {
       queryClient.invalidateQueries({ queryKey: ['/invoices'] });
       queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
     },
-    onSuccess: () => {
+    onSuccess: (updated: PaymentRequestRow) => {
       setApprovalAction(null);
+      // After the final approval, ask whether to record the payment now.
+      // Yes → opens Record Payment (posts the payment voucher, marks PAID).
+      // Not yet → stays APPROVED; can be paid later via the Pay button.
+      if (updated?.status === PaymentStatus.APPROVED && (updated.payments?.length ?? 0) === 0) {
+        setPostApprovePrompt(updated);
+      }
     },
   });
 
@@ -588,6 +597,7 @@ export default function PaymentsPage() {
                                 amount: inv.outstanding,
                                 requestNumber: `PAY-${inv.invoiceCode}`,
                                 paymentMode: PaymentMode.BANK_TRANSFER,
+                                budgetHeadId: inv.budgetHead?.id ?? '',
                               });
                             }}
                           >
@@ -667,6 +677,7 @@ export default function PaymentsPage() {
                                   amount: po.advanceAmount !== null && po.advanceAmount > 0 ? po.advanceAmount : po.outstanding,
                                   requestNumber: `ADV-${po.poNumber}`,
                                   paymentMode: PaymentMode.BANK_TRANSFER,
+                                  budgetHeadId: po.budgetHead?.id ?? '',
                                 });
                                 setAdvanceFile(null);
                               }}
@@ -1351,6 +1362,32 @@ export default function PaymentsPage() {
             disabled={payMutation.isPending}
           >
             {payMutation.isPending ? <CircularProgress size={20} /> : 'Record Payment'}
+          </Button>
+        </DialogActions>
+      </ResponsiveDialog>
+
+      {/* Post-approval prompt — ask whether to record the payment (post voucher) now */}
+      <ResponsiveDialog open={!!postApprovePrompt} onClose={() => setPostApprovePrompt(null)} maxWidth="xs" fullWidth>
+        <DialogTitle>Payment Request Approved</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2">
+            {postApprovePrompt?.paymentCode} — {formatCurrency(Number(postApprovePrompt?.amount ?? 0))} is approved.
+            Record the payment now to post the payment voucher to ledgers?
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setPostApprovePrompt(null)}>Not Yet</Button>
+          <Button
+            variant="contained"
+            onClick={() => {
+              if (postApprovePrompt) {
+                setPayOpen(postApprovePrompt.id);
+                setPayForm({ amount: postApprovePrompt.amount, mode: PaymentMode.BANK_TRANSFER });
+              }
+              setPostApprovePrompt(null);
+            }}
+          >
+            Yes, Record Payment
           </Button>
         </DialogActions>
       </ResponsiveDialog>

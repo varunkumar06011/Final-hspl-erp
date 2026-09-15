@@ -104,6 +104,20 @@ async function checkOverdueQuotations(): Promise<void> {
       console.log(`[Scheduler] Migrated ${migrated.count} pending quotation workflow(s) to ADMIN_SINGLE_APPROVER policy`);
     }
 
+    // ── Same migration for payment requests: a single ADMIN/ADMIN_2 approval
+    //    is final. Idempotent, safe to run every cycle.
+    const migratedPayments = await prisma.approvalWorkflow.updateMany({
+      where: {
+        entityType: 'PAYMENT_REQUEST',
+        status: { in: [ApprovalStatus.VERIFICATION, ApprovalStatus.APPROVAL_1, ApprovalStatus.APPROVAL_2] },
+        approvalPolicy: { not: 'ADMIN_SINGLE_APPROVER' },
+      },
+      data: { approvalPolicy: 'ADMIN_SINGLE_APPROVER' },
+    });
+    if (migratedPayments.count > 0) {
+      console.log(`[Scheduler] Migrated ${migratedPayments.count} pending payment request workflow(s) to ADMIN_SINGLE_APPROVER policy`);
+    }
+
     // Find all quotations across ALL projects that are still pending
     // approval with an approval workflow.
     const quotations = await prisma.quotation.findMany({
