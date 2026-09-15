@@ -259,10 +259,13 @@ function drawSummaryTable(doc: PDFKit.PDFDocument, entries: any[], date: Date, s
     y += entryH;
   });
 
-  const totalAmount = entries.reduce((sum, e) => sum + Number(e.amount), 0);
+  const totalAmount = entries.reduce(
+    (sum, e) => (e.status === 'PAID' || e.status === 'APPROVED' ? sum : sum + Number(e.amount)),
+    0,
+  );
   doc.rect(LEFT, y, WIDTH, 22).fill(PRIMARY);
   doc.fillColor('#fff').font('Helvetica-Bold').fontSize(9)
-    .text(`TOTAL PAID — ${fmtDate(date)}`, LEFT + 8, y + 6, { width: WIDTH - 110 });
+    .text(`TOTAL PAYABLE — ${fmtDate(date)}`, LEFT + 8, y + 6, { width: WIDTH - 110 });
   doc.text(fmtMoney(totalAmount), LEFT + 8, y + 6, { width: WIDTH - 16, align: 'right' });
   y += 22;
 
