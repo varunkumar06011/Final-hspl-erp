@@ -82,13 +82,18 @@ router.get(
       ]);
 
       const totalAmount = data.reduce(
-        (sum, e) => (e.status === PaymentStatus.PAID || e.status === PaymentStatus.APPROVED ? sum : sum + Number(e.amount)),
+        (sum, e) => (e.status === PaymentStatus.PENDING ? sum : sum + Number(e.amount)),
+        0,
+      );
+      const payableAmount = data.reduce(
+        (sum, e) => (e.status === PaymentStatus.PENDING ? sum + Number(e.amount) : sum),
         0,
       );
 
       res.json({
         data,
         totalAmount,
+        payableAmount,
         pagination: { page: pageNum, pageSize: size, total, totalPages: Math.ceil(total / size) },
       });
     } catch (error) {
