@@ -176,7 +176,7 @@ function drawEntryDetails(doc: PDFKit.PDFDocument, e: any, startY: number): numb
   doc.fillColor('#E65100').font('Helvetica-Bold').fontSize(9)
     .text('PAYMENT MADE:', LEFT + 10, y + 6);
   doc.fillColor(DARK).font('Helvetica-Bold').fontSize(9)
-    .text(`Amount: ${fmtMoney(Number(e.amount))}    Mode: ${text(e.paymentMode)}    Reference: ${text(e.reference)}`,
+    .text(`Amount: ${fmtMoney(Number(e.amount))}    Mode: ${text(e.paymentMode)}`,
       LEFT + 10, y + 20, { width: WIDTH - 20 });
   doc.fillColor(DARK).font('Helvetica').fontSize(7.5)
     .text(`Status: ${text(e.status)}    Recorded By: ${text(e.createdByUser?.name)}    Recorded At: ${fmtDateTime(e.createdAt)}`,
@@ -215,7 +215,6 @@ function drawSummaryTable(doc: PDFKit.PDFDocument, entries: any[], date: Date, s
     { label: 'Vendor', w: 100 },
     { label: 'Amount', w: 75 },
     { label: 'Mode', w: 70 },
-    { label: 'Reference', w: 75 },
     { label: 'Status', w: 0 }, // remainder
   ];
   const descIdx = cols.findIndex((c) => c.w === 0);
@@ -246,7 +245,6 @@ function drawSummaryTable(doc: PDFKit.PDFDocument, entries: any[], date: Date, s
       text(e.purchaseOrder?.vendor?.name),
       fmtMoney(Number(e.amount)),
       text(e.paymentMode),
-      text(e.reference),
       text(e.status),
     ];
     cols.forEach((c, ci) => {
