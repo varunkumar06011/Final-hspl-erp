@@ -201,6 +201,7 @@ export default function PaymentsPage() {
       const response = await api.get('/payments', { params });
       return response.data;
     },
+    refetchOnWindowFocus: 'always',
   });
 
   const { data: pendingInvoices } = useQuery({

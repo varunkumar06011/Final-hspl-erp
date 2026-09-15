@@ -100,7 +100,11 @@ export default function DenseAdminDashboard() {
   const { data, isLoading } = useQuery<DashboardData>({
     queryKey: ['/dashboard', 'admin-summary'],
     queryFn: async () => (await api.get('/dashboard/admin-summary')).data,
-    refetchInterval: 30000,
+    // Poll frequently so approvals made on another device/section clear the
+    // "Action Required" card quickly, and always refetch when the app window
+    // regains focus (e.g. switching back from the POS/quotations section).
+    refetchInterval: 10000,
+    refetchOnWindowFocus: 'always',
   });
   const { data: trend } = useQuery<TrendData>({
     queryKey: ['/dashboard', 'admin-outflow-trend', 30],

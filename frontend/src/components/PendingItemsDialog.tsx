@@ -101,6 +101,7 @@ interface RecordDisplay {
   date: string; // formatted date
   status: string; // raw status for the chip
   approvalWorkflow?: {
+    status?: string;
     steps?: Array<{
       approverRole: string;
       approverUserId?: string | null;
@@ -169,6 +170,10 @@ function extractRecord(entityType: PendingEntityType, raw: Record<string, unknow
 function canUserApprove(record: RecordDisplay, user: UserResponse | null): boolean {
   if (!user || !APPROVER_ROLES.some((role) => role === user.role)) return false;
   if (!record.approvalWorkflow?.steps) return false;
+  // Workflow already decided elsewhere (approved/rejected on another device or
+  // by another admin) — never show approve/reject for it.
+  const wfStatus = record.approvalWorkflow.status;
+  if (wfStatus === 'APPROVED' || wfStatus === 'REJECTED') return false;
   const alreadyDecided = record.approvalWorkflow.steps.some(
     (step) => step.approverUserId === user.id && step.status !== 'PENDING',
   );
@@ -221,17 +226,25 @@ export default function PendingItemsDialog({ open, entityType, user, onClose }: 
       return response.data;
     },
     enabled: open,
+    // Keep the list in sync while the dialog is open — if an admin approves on
+    // another device/section, the record disappears here within seconds.
+    refetchInterval: 10000,
+    refetchOnWindowFocus: 'always',
   });
 
   // Filter client-side for quotations (SUBMITTED + UNDER_REVIEW)
   // Also exclude any record where an approval step has been REJECTED —
   // a single rejection should remove it from the pending list even if
   // the top-level status hasn't been updated yet.
+  // Additionally exclude records whose workflow is already APPROVED/REJECTED —
+  // the top-level status may lag behind the workflow decision.
   const rawRecords: Record<string, unknown>[] = data?.data ?? [];
   const records: RecordDisplay[] = rawRecords
     .map((raw) => extractRecord(entityType, raw))
     .filter((rec) => {
       if (!config.pendingStatuses.includes(rec.status.toUpperCase())) return false;
+      const wfStatus = rec.approvalWorkflow?.status;
+      if (wfStatus === 'APPROVED' || wfStatus === 'REJECTED') return false;
       const hasRejectedStep = rec.approvalWorkflow?.steps?.some(
         (step) => step.status === 'REJECTED',
       );
@@ -246,7 +259,7 @@ export default function PendingItemsDialog({ open, entityType, user, onClose }: 
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['pending-items', entityType] });
-      queryClient.invalidateQueries({ queryKey: ['/dashboard', 'summary'] });
+      queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
       queryClient.invalidateQueries({ queryKey: [config.endpoint] });
       setApprovalAction(null);
       setActionError('');
@@ -262,7 +275,7 @@ export default function PendingItemsDialog({ open, entityType, user, onClose }: 
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['pending-items', entityType] });
-      queryClient.invalidateQueries({ queryKey: ['/dashboard', 'summary'] });
+      queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
       queryClient.invalidateQueries({ queryKey: [config.endpoint] });
       setApprovalAction(null);
       setActionError('');

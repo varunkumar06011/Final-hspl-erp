@@ -42,6 +42,9 @@ export default function DashboardPage() {
       const response = await api.get('/dashboard/summary');
       return response.data;
     },
+    // Keep pending counts in sync with approvals made on other devices/sections
+    refetchInterval: 10000,
+    refetchOnWindowFocus: 'always',
   });
 
   const [pendingDialog, setPendingDialog] = useState<PendingType | null>(null);

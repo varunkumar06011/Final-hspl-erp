@@ -28,6 +28,11 @@ export function usePullToRefresh(onRefresh?: () => void) {
   const startY = useRef(0);
   const currentPull = useRef(0);
   const isPulling = useRef(false);
+  // Whether the current touch is eligible for pull tracking. Set false when the
+  // touch starts on an interactive element (button, link, input, ...) — calling
+  // preventDefault() during such touches makes iOS Safari suppress the click,
+  // which is why taps (e.g. the back button) intermittently did not respond.
+  const trackingTouch = useRef(false);
   const scrollContainer = useRef<HTMLElement | null>(null);
 
   const handleRefresh = useCallback(() => {
@@ -46,14 +51,19 @@ export function usePullToRefresh(onRefresh?: () => void) {
     // Only start tracking if we're at the top of the scroll
     const target = scrollContainer.current;
     const scrollTop = target ? target.scrollTop : window.scrollY;
-    if (scrollTop <= 0 && !state.refreshing) {
+    // Don't track touches that begin on interactive elements — a downward drift
+    // during a tap would otherwise trigger preventDefault() and kill the click.
+    const el = e.target as HTMLElement | null;
+    const onInteractive = !!el?.closest?.('button, a, input, select, textarea, [role="button"], [data-no-pull]');
+    trackingTouch.current = scrollTop <= 0 && !state.refreshing && !onInteractive;
+    if (trackingTouch.current) {
       startY.current = e.touches[0].clientY;
       isPulling.current = false; // set true only on actual downward move
     }
   }, [state.refreshing]);
 
   const onTouchMove = useCallback((e: React.TouchEvent) => {
-    if (state.refreshing) return;
+    if (!trackingTouch.current || state.refreshing) return;
 
     const target = scrollContainer.current;
     const scrollTop = target ? target.scrollTop : window.scrollY;
@@ -80,12 +90,14 @@ export function usePullToRefresh(onRefresh?: () => void) {
   }, [state.refreshing]);
 
   const onTouchEnd = useCallback(() => {
-    if (!isPulling.current) {
+    if (!trackingTouch.current || !isPulling.current) {
+      trackingTouch.current = false;
       currentPull.current = 0;
       setState((s) => ({ ...s, pulling: false, pullDistance: 0 }));
       return;
     }
 
+    trackingTouch.current = false;
     isPulling.current = false;
     if (currentPull.current >= THRESHOLD) {
       handleRefresh();
@@ -99,6 +111,7 @@ export function usePullToRefresh(onRefresh?: () => void) {
   useEffect(() => {
     return () => {
       isPulling.current = false;
+      trackingTouch.current = false;
       currentPull.current = 0;
     };
   }, []);

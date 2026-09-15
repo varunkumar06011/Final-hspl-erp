@@ -43,8 +43,11 @@ import api, { extractErrorMessage } from '../config/api';
 import ResponsiveDialog from '../components/ResponsiveDialog';
 import ResponsiveTable from '../components/ResponsiveTable';
 import RefreshButton from '../components/RefreshButton';
+import LandscapeExcelTable from '../components/LandscapeExcelTable';
+import PortraitRotateHint from '../components/PortraitRotateHint';
 import { formatCurrency, formatIndianNumber, formatDate } from '../utils/enumOptions';
 import { useDeepLinkRow } from '../hooks/useDeepLinkRow';
+import { useMobileLandscape, useMobilePortrait } from '../hooks/useMobileLandscape';
 
 export default function BudgetHeadsPage() {
   const [page, setPage] = useState(0);
@@ -67,6 +70,8 @@ export default function BudgetHeadsPage() {
   const [reviewComments, setReviewComments] = useState('');
   const [usageHeadId, setUsageHeadId] = useState<string | null>(null);
   const queryClient = useQueryClient();
+  const isMobileLandscape = useMobileLandscape();
+  const isMobilePortrait = useMobilePortrait();
 
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['/budget-heads', page, pageSize, search],
@@ -299,13 +304,97 @@ export default function BudgetHeadsPage() {
   // Deep-link from global search: ?id=<budgetHeadId> — filter and highlight
   const { highlightId, rowRef } = useDeepLinkRow<{ id: string; particulars: string }>('/budget-heads', rows, 'particulars', (v) => { setSearch(v); setPage(0); });
 
+  // Shared table body — rendered either as the desktop/portrait card table
+  // (ResponsiveTable) or inside the mobile-landscape Excel-style wrapper.
+  const tableNode = (
+    <TableContainer sx={{ overflowX: 'auto' }}>
+      <Table size="small" sx={{ '@media (min-width: 900px)': { minWidth: 'max-content', '& .MuiTableCell-root': { whiteSpace: 'nowrap' } } }}>
+        <TableHead>
+          <TableRow>
+            <TableCell sx={{ fontWeight: 600 }}>Sl. No.</TableCell>
+            <TableCell sx={{ fontWeight: 600 }}>Particulars</TableCell>
+            <TableCell sx={{ fontWeight: 600 }} align="right">Allocated</TableCell>
+            <TableCell sx={{ fontWeight: 600 }} align="right">Committed</TableCell>
+            <TableCell sx={{ fontWeight: 600 }} align="right">Utilized</TableCell>
+            <TableCell sx={{ fontWeight: 600 }} align="right">Available</TableCell>
+            <TableCell sx={{ fontWeight: 600 }}>Utilization</TableCell>
+            <TableCell sx={{ fontWeight: 600 }}>Status</TableCell>
+            <TableCell align="right" sx={{ fontWeight: 600 }}>Actions</TableCell>
+          </TableRow>
+        </TableHead>
+        <TableBody>
+          {isLoading ? (
+            <TableRow><TableCell colSpan={9} align="center" sx={{ py: 4 }}><CircularProgress size={32} /></TableCell></TableRow>
+          ) : isError ? (
+            <TableRow><TableCell colSpan={9} align="center" sx={{ py: 4 }}>
+              <Alert severity="error" sx={{ mb: 1 }}>Failed to load data.</Alert>
+              <Button size="small" onClick={() => refetch()} startIcon={<RefreshIcon />}>Retry</Button>
+            </TableCell></TableRow>
+          ) : rows.length === 0 ? (
+            <TableRow><TableCell colSpan={9} align="center" sx={{ py: 4 }}>
+              <Typography color="text.secondary">No budget heads found. Click "New Budget Head" to create one.</Typography>
+            </TableCell></TableRow>
+          ) : (
+            rows.map((row: Record<string, unknown>) => {
+              const allocated = Number(row.allocatedAmount ?? 0);
+              const committed = Number(row.committedAmount ?? 0);
+              const actual = Number(row.actualAmount ?? 0);
+              const available = allocated - committed - actual;
+              const utilization = allocated > 0 ? (actual / allocated) * 100 : 0;
+              return (
+                <TableRow
+                  key={row.id as string}
+                  hover
+                  ref={rowRef(row.id as string)}
+                  sx={{ ...(highlightId === row.id && { bgcolor: 'warning.light', '&:hover': { bgcolor: 'warning.light' } }), cursor: 'pointer' }}
+                  onClick={() => setUsageHeadId(row.id as string)}
+                >
+                  <TableCell data-label="Sl. No.">{String(row.slNo)}</TableCell>
+                  <TableCell data-label="Particulars">{String(row.particulars ?? '—')}</TableCell>
+                  <TableCell data-label="Allocated" align="right">{formatCurrency(row.allocatedAmount)}</TableCell>
+                  <TableCell data-label="Committed" align="right">{formatCurrency(row.committedAmount)}</TableCell>
+                  <TableCell data-label="Utilized" align="right">{formatCurrency(row.actualAmount)}</TableCell>
+                  <TableCell data-label="Available" align="right" sx={{ fontWeight: 600, color: available < 0 ? 'error.main' : 'success.main' }}>
+                    {formatCurrency(available)}
+                  </TableCell>
+                  <TableCell data-label="Utilization" sx={{ minWidth: 100 }}>
+                    <Stack spacing={0.5}>
+                      <LinearProgress
+                        variant="determinate"
+                        value={Math.min(utilization, 100)}
+                        color={utilization > 90 ? 'error' : utilization > 70 ? 'warning' : 'success'}
+                        sx={{ height: 6, borderRadius: 3 }}
+                      />
+                      <Typography variant="caption" color="text.secondary">
+                        {utilization.toFixed(1)}%
+                      </Typography>
+                    </Stack>
+                  </TableCell>
+                  <TableCell data-label="Status">
+                    <Chip label={String(row.status ?? 'ACTIVE')} size="small" color={row.status === 'CLOSED' ? 'default' : 'success'} />
+                  </TableCell>
+                  <TableCell data-label="Actions" align="right" onClick={(e) => e.stopPropagation()}>
+                    <IconButton size="small" onClick={() => setUsageHeadId(row.id as string)} title="Usage Details"><VisibilityIcon fontSize="small" /></IconButton>
+                    <IconButton size="small" onClick={() => openRevisionDialog(row)} title="Request Edit"><EditIcon fontSize="small" /></IconButton>
+                    <IconButton size="small" onClick={() => { setHistoryHeadId(row.id as string); setHistoryOpen(true); }} title="Revision History"><HistoryIcon fontSize="small" /></IconButton>
+                    <IconButton size="small" onClick={() => setDeleteConfirm(row.id as string)}><DeleteIcon fontSize="small" /></IconButton>
+                  </TableCell>
+                </TableRow>
+              );
+            })
+          )}
+        </TableBody>
+      </Table>
+    </TableContainer>
+  );
+
   return (
     <Box sx={{ minWidth: 0, overflow: 'hidden' }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: { xs: 'flex-start', sm: 'center' }, mb: 2, flexWrap: 'wrap', gap: 1 }}>
         <Typography variant="h5" fontWeight={600} sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' } }}>
           Budget Heads
         </Typography>
-        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+        <Box sx={{ display: { xs: isMobileLandscape ? 'none' : 'flex', sm: 'flex' }, gap: 1, flexWrap: 'wrap' }}>
           <RefreshButton onClick={() => refetch()} />
           {pendingRevisions?.data?.length > 0 && (
             <Button
@@ -326,8 +415,8 @@ export default function BudgetHeadsPage() {
         </Box>
       </Box>
 
-      {/* Summary cards */}
-      {summary && (() => {
+      {/* Summary cards — hidden in mobile landscape to maximize table space */}
+      {summary && !isMobileLandscape && (() => {
         const actual = Number(summary.totalActual ?? 0);
         const paid = Number(summary.totalPaid ?? 0);
         const actualDiffersFromPaid = Math.abs(actual - paid) > 0.01;
@@ -397,99 +486,37 @@ export default function BudgetHeadsPage() {
         </Alert>
       )}
 
-      <Card sx={{ overflow: 'hidden' }}>
-        <Box sx={{ p: 2 }}>
-          <TextField
-            size="small"
-            placeholder="Search budget heads..."
-            value={search}
-            onChange={(e) => { setSearch(e.target.value); setPage(0); }}
-            InputProps={{ startAdornment: (<InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment>) }}
-            sx={{ width: { xs: '100%', sm: 300 } }}
-          />
-        </Box>
+      {isMobilePortrait && <PortraitRotateHint />}
 
-        <ResponsiveTable>
-        <TableContainer sx={{ overflowX: 'auto' }}>
-          <Table size="small" sx={{ '@media (min-width: 900px)': { minWidth: 'max-content', '& .MuiTableCell-root': { whiteSpace: 'nowrap' } } }}>
-            <TableHead>
-              <TableRow>
-                <TableCell sx={{ fontWeight: 600 }}>Sl. No.</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Particulars</TableCell>
-                <TableCell sx={{ fontWeight: 600 }} align="right">Allocated</TableCell>
-                <TableCell sx={{ fontWeight: 600 }} align="right">Committed</TableCell>
-                <TableCell sx={{ fontWeight: 600 }} align="right">Utilized</TableCell>
-                <TableCell sx={{ fontWeight: 600 }} align="right">Available</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Utilization</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Status</TableCell>
-                <TableCell align="right" sx={{ fontWeight: 600 }}>Actions</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {isLoading ? (
-                <TableRow><TableCell colSpan={9} align="center" sx={{ py: 4 }}><CircularProgress size={32} /></TableCell></TableRow>
-              ) : isError ? (
-                <TableRow><TableCell colSpan={9} align="center" sx={{ py: 4 }}>
-                  <Alert severity="error" sx={{ mb: 1 }}>Failed to load data.</Alert>
-                  <Button size="small" onClick={() => refetch()} startIcon={<RefreshIcon />}>Retry</Button>
-                </TableCell></TableRow>
-              ) : rows.length === 0 ? (
-                <TableRow><TableCell colSpan={9} align="center" sx={{ py: 4 }}>
-                  <Typography color="text.secondary">No budget heads found. Click "New Budget Head" to create one.</Typography>
-                </TableCell></TableRow>
-              ) : (
-                rows.map((row: Record<string, unknown>) => {
-                  const allocated = Number(row.allocatedAmount ?? 0);
-                  const committed = Number(row.committedAmount ?? 0);
-                  const actual = Number(row.actualAmount ?? 0);
-                  const available = allocated - committed - actual;
-                  const utilization = allocated > 0 ? (actual / allocated) * 100 : 0;
-                  return (
-                    <TableRow
-                      key={row.id as string}
-                      hover
-                      ref={rowRef(row.id as string)}
-                      sx={{ ...(highlightId === row.id && { bgcolor: 'warning.light', '&:hover': { bgcolor: 'warning.light' } }), cursor: 'pointer' }}
-                      onClick={() => setUsageHeadId(row.id as string)}
-                    >
-                      <TableCell data-label="Sl. No.">{String(row.slNo)}</TableCell>
-                      <TableCell data-label="Particulars">{String(row.particulars ?? '—')}</TableCell>
-                      <TableCell data-label="Allocated" align="right">{formatCurrency(row.allocatedAmount)}</TableCell>
-                      <TableCell data-label="Committed" align="right">{formatCurrency(row.committedAmount)}</TableCell>
-                      <TableCell data-label="Utilized" align="right">{formatCurrency(row.actualAmount)}</TableCell>
-                      <TableCell data-label="Available" align="right" sx={{ fontWeight: 600, color: available < 0 ? 'error.main' : 'success.main' }}>
-                        {formatCurrency(available)}
-                      </TableCell>
-                      <TableCell data-label="Utilization" sx={{ minWidth: 100 }}>
-                        <Stack spacing={0.5}>
-                          <LinearProgress
-                            variant="determinate"
-                            value={Math.min(utilization, 100)}
-                            color={utilization > 90 ? 'error' : utilization > 70 ? 'warning' : 'success'}
-                            sx={{ height: 6, borderRadius: 3 }}
-                          />
-                          <Typography variant="caption" color="text.secondary">
-                            {utilization.toFixed(1)}%
-                          </Typography>
-                        </Stack>
-                      </TableCell>
-                      <TableCell data-label="Status">
-                        <Chip label={String(row.status ?? 'ACTIVE')} size="small" color={row.status === 'CLOSED' ? 'default' : 'success'} />
-                      </TableCell>
-                      <TableCell data-label="Actions" align="right" onClick={(e) => e.stopPropagation()}>
-                        <IconButton size="small" onClick={() => setUsageHeadId(row.id as string)} title="Usage Details"><VisibilityIcon fontSize="small" /></IconButton>
-                        <IconButton size="small" onClick={() => openRevisionDialog(row)} title="Request Edit"><EditIcon fontSize="small" /></IconButton>
-                        <IconButton size="small" onClick={() => { setHistoryHeadId(row.id as string); setHistoryOpen(true); }} title="Revision History"><HistoryIcon fontSize="small" /></IconButton>
-                        <IconButton size="small" onClick={() => setDeleteConfirm(row.id as string)}><DeleteIcon fontSize="small" /></IconButton>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })
-              )}
-            </TableBody>
-          </Table>
-        </TableContainer>
-        </ResponsiveTable>
+      <Card sx={{ overflow: 'hidden' }}>
+        {isMobileLandscape ? (
+          <Box sx={{ p: 1 }}>
+            <LandscapeExcelTable
+              search={search}
+              onSearchChange={(v) => { setSearch(v); setPage(0); }}
+              searchPlaceholder="Search budget heads..."
+            >
+              {tableNode}
+            </LandscapeExcelTable>
+          </Box>
+        ) : (
+          <>
+            <Box sx={{ p: 2 }}>
+              <TextField
+                size="small"
+                placeholder="Search budget heads..."
+                value={search}
+                onChange={(e) => { setSearch(e.target.value); setPage(0); }}
+                InputProps={{ startAdornment: (<InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment>) }}
+                sx={{ width: { xs: '100%', sm: 300 } }}
+              />
+            </Box>
+
+            <ResponsiveTable>
+              {tableNode}
+            </ResponsiveTable>
+          </>
+        )}
 
         <TablePagination
           component="div"

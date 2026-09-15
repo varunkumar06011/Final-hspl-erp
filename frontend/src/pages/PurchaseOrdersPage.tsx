@@ -55,6 +55,9 @@ import AcknowledgementCheckbox from '../components/AcknowledgementCheckbox';
 import ApprovalActionDialog from '../components/ApprovalActionDialog';
 import ResponsiveTable from '../components/ResponsiveTable';
 import TruncatedText from '../components/TruncatedText';
+import LandscapeExcelTable from '../components/LandscapeExcelTable';
+import PortraitRotateHint from '../components/PortraitRotateHint';
+import { useMobileLandscape, useMobilePortrait } from '../hooks/useMobileLandscape';
 import { useApprovalDeepLink } from '../utils/useApprovalDeepLink';
 import { useDeepLinkRow } from '../hooks/useDeepLinkRow';
 import { useUrlFilters } from '../hooks/useUrlFilters';
@@ -141,6 +144,8 @@ export default function PurchaseOrdersPage() {
   const [pageSize, setPageSize] = useState(20);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const isMobileLandscape = useMobileLandscape();
+  const isMobilePortrait = useMobilePortrait();
   const [minAmount, setMinAmount] = useState('');
   const [maxAmount, setMaxAmount] = useState('');
   const [dateFilter, setDateFilter] = useState('');
@@ -184,6 +189,9 @@ export default function PurchaseOrdersPage() {
       const response = await api.get('/purchase-orders', { params });
       return response.data;
     },
+    // Refetch when the app regains focus so approvals made on another
+    // device/section are reflected immediately in this list.
+    refetchOnWindowFocus: 'always',
   });
 
   // Check for newly approved POs on page load (popup for creator)
@@ -541,7 +549,7 @@ export default function PurchaseOrdersPage() {
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap' }}>
         <Typography variant="h5" fontWeight={600} sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' } }}>Purchase Orders</Typography>
-        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', justifyContent: { xs: 'flex-end', md: 'flex-end' }, width: { xs: '100%', md: 'auto' } }}>
+        <Box sx={{ display: { xs: isMobileLandscape ? 'none' : 'flex', sm: 'flex' }, gap: 1, flexWrap: 'wrap', justifyContent: { xs: 'flex-end', md: 'flex-end' }, width: { xs: '100%', md: 'auto' } }}>
           <RefreshButton onClick={() => refetch()} />
           <Button variant="contained" startIcon={<AddIcon />} onClick={() => { resetForm(); setCreateOpen(true); }}>Create PO</Button>
         </Box>
@@ -549,22 +557,133 @@ export default function PurchaseOrdersPage() {
 
       {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
 
-      <Card>
-        <Box sx={{ p: 2, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-          <TextField
-            size="small"
-            placeholder="Search POs..."
-            value={search}
-            onChange={(e) => { setSearch(e.target.value); setPage(0); }}
-            InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> }}
-            sx={{ width: { xs: '100%', sm: 300 } }}
-          />
-          <TextField select size="small" label="Status" value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(0); }} sx={{ width: { xs: '100%', sm: 180 } }}>
-            <MenuItem value="">All</MenuItem>
-            {Object.values(POStatus).map((s) => <MenuItem key={s} value={s}>{s.replace(/_/g, ' ')}</MenuItem>)}
-          </TextField>
-        </Box>
+      {isMobilePortrait && <PortraitRotateHint />}
 
+      <Card>
+        {!isMobileLandscape && (
+          <Box sx={{ p: 2, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+            <TextField
+              size="small"
+              placeholder="Search POs..."
+              value={search}
+              onChange={(e) => { setSearch(e.target.value); setPage(0); }}
+              InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> }}
+              sx={{ width: { xs: '100%', sm: 300 } }}
+            />
+            <TextField select size="small" label="Status" value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(0); }} sx={{ width: { xs: '100%', sm: 180 } }}>
+              <MenuItem value="">All</MenuItem>
+              {Object.values(POStatus).map((s) => <MenuItem key={s} value={s}>{s.replace(/_/g, ' ')}</MenuItem>)}
+            </TextField>
+          </Box>
+        )}
+
+        {isMobileLandscape && (
+          <Box sx={{ p: 1 }}>
+            <LandscapeExcelTable
+              search={search}
+              onSearchChange={(v) => { setSearch(v); setPage(0); }}
+              searchPlaceholder="Search POs..."
+            >
+              <TableContainer sx={{ overflowX: 'auto' }}>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell sx={{ fontWeight: 700 }}>SL. No.</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }}>PO No</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }}>Quotation No</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }}>PO Date</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }}>Vendor Name</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }}>Item Description</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }}>Payment Type</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }} align="right">Total</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }} align="right">GST</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }} align="right">Grand Total</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }} align="right">Net Payable</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }} align="right">Paid</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }} align="right">To Pay</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }} align="right">Actions</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {isLoading ? (
+                      <TableRow><TableCell colSpan={14} align="center" sx={{ py: 4 }}><CircularProgress size={32} /></TableCell></TableRow>
+                    ) : rows.length === 0 ? (
+                      <TableRow><TableCell colSpan={14} align="center" sx={{ py: 4 }}><Typography color="text.secondary">No purchase orders found</Typography></TableCell></TableRow>
+                    ) : (
+                      rows.map((row, idx) => (
+                        <TableRow
+                          key={row.id}
+                          hover
+                          ref={rowRef(row.id)}
+                          sx={{ ...(highlightId === row.id && { bgcolor: 'warning.light', '&:hover': { bgcolor: 'warning.light' } }) }}
+                        >
+                          <TableCell>{page * pageSize + idx + 1}</TableCell>
+                          <TableCell>{row.poNumber}</TableCell>
+                          <TableCell>{row.quotation?.quotationNumber ?? '—'}</TableCell>
+                          <TableCell>{formatDate(row.date)}</TableCell>
+                          <TableCell>{row.vendor?.vendorCode} - {row.vendor?.name ?? '—'}</TableCell>
+                          <TableCell className="truncate-cell" title={row.notes ?? ''}>{row.notes || '—'}</TableCell>
+                          <TableCell>
+                            <Chip
+                              size="small"
+                              label={row.paymentType === POPaymentType.ADVANCE
+                                ? 'Advance'
+                                : row.paymentType === POPaymentType.FULL_PAYMENT
+                                  ? 'Full Payment'
+                                  : 'After Delivery'}
+                              color={row.paymentType === POPaymentType.ADVANCE
+                                ? 'warning'
+                                : row.paymentType === POPaymentType.FULL_PAYMENT
+                                  ? 'success'
+                                  : 'info'}
+                              variant="outlined"
+                            />
+                          </TableCell>
+                          <TableCell align="right">{formatCurrency(row.totalAmount)}</TableCell>
+                          <TableCell align="right">{formatCurrency(row.gstAmount)}</TableCell>
+                          <TableCell align="right">{formatCurrency(row.grandTotal)}</TableCell>
+                          <TableCell align="right">
+                            <Typography fontWeight={600}>
+                              {formatCurrency(
+                                row.totalDeductions && Number(row.totalDeductions) > 0
+                                  ? Number(row.netPayable ?? row.grandTotal)
+                                  : row.advanceAmount && Number(row.advanceAmount) > 0
+                                    ? Number(row.advanceAmount)
+                                    : Number(row.grandTotal)
+                              )}
+                            </Typography>
+                          </TableCell>
+                          <TableCell align="right" sx={{ color: 'success.main', fontWeight: 600 }}>{formatCurrency(Number(row.paidToDate ?? 0))}</TableCell>
+                          <TableCell align="right" sx={{ fontWeight: 700, color: Number(row.amountToPayNow ?? 0) > 0 ? 'error.main' : 'text.secondary' }}>{formatCurrency(Number(row.amountToPayNow ?? 0))}</TableCell>
+                          <TableCell align="right">
+                            <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'flex-end' }}>
+                              <IconButton size="small" onClick={() => previewPDF(row.id)} title="Preview PDF" disabled={pdfLoading}>{pdfLoading ? <CircularProgress size={16} /> : <PdfIcon fontSize="small" />}</IconButton>
+                              <IconButton size="small" onClick={() => downloadPDF(row.id, row.poNumber)} title="Download PDF"><DownloadIcon fontSize="small" /></IconButton>
+                              {canApprove(row) && (
+                                <>
+                                  <IconButton size="small" color="success" onClick={() => setApprovalAction({ row, action: 'approve' })} title="Approve"><CheckIcon fontSize="small" /></IconButton>
+                                  <IconButton size="small" color="error" onClick={() => setApprovalAction({ row, action: 'reject' })} title="Reject"><CloseIcon fontSize="small" /></IconButton>
+                                </>
+                              )}
+                              {(row.status === POStatus.APPROVED || row.status === POStatus.DELIVERED || row.status === POStatus.PARTIALLY_DELIVERED) && (
+                                <IconButton size="small" onClick={() => { setNotesEditRow(row); setNotesEditValue(row.notes ?? ''); }} title="Edit Item Description"><EditIcon fontSize="small" /></IconButton>
+                              )}
+                              {(row.status === POStatus.PENDING_APPROVAL || row.status === POStatus.REJECTED) && (
+                                <IconButton size="small" color="primary" onClick={() => setEditUnapprovedRow(row)} title="Edit PO"><EditIcon fontSize="small" /></IconButton>
+                              )}
+                            </Box>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </LandscapeExcelTable>
+          </Box>
+        )}
+
+        {!isMobileLandscape && (
         <ResponsiveTable>
         <TableContainer sx={{ overflowX: 'auto' }}>
           <Table size="small">
@@ -757,6 +876,7 @@ export default function PurchaseOrdersPage() {
           </Table>
         </TableContainer>
         </ResponsiveTable>
+        )}
 
         <TablePagination
           component="div"

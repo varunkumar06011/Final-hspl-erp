@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { keyframes } from '@mui/system';
 import {
   Box,
@@ -54,6 +54,48 @@ export default function LoginPage() {
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const { setUser, setToken, isAuthenticated } = useAuthStore();
   const navigate = useNavigate();
+
+  // Refs for scrolling inputs above the on-screen keyboard on mobile
+  const pinInputRef = useRef<HTMLDivElement>(null);
+  const otpInputRef = useRef<HTMLDivElement>(null);
+
+  // When the step switches to pin/setPin/otp, scroll the input into view so
+  // it isn't covered by the mobile on-screen keyboard. Uses
+  // scrollIntoView({ block: 'center' }) which works even when the visual
+  // viewport has been shrunk by the keyboard.
+  useEffect(() => {
+    if (step === 'pin' || step === 'setPin') {
+      const t = setTimeout(() => {
+        pinInputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 100);
+      return () => clearTimeout(t);
+    }
+    if (step === 'otp') {
+      const t = setTimeout(() => {
+        otpInputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 100);
+      return () => clearTimeout(t);
+    }
+  }, [step]);
+
+  // Keep the active input visible when the mobile keyboard opens/closes.
+  // window.innerHeight shrinks on older browsers; visualViewport covers
+  // modern ones. We re-scroll the relevant input into view.
+  useEffect(() => {
+    const handler = () => {
+      if (step === 'pin' || step === 'setPin') {
+        pinInputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      } else if (step === 'otp') {
+        otpInputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    };
+    if (typeof window !== 'undefined' && (window as any).visualViewport) {
+      (window as any).visualViewport.addEventListener('resize', handler);
+      return () => (window as any).visualViewport.removeEventListener('resize', handler);
+    }
+    window.addEventListener('resize', handler);
+    return () => window.removeEventListener('resize', handler);
+  }, [step]);
 
   // Fetch project logo (public endpoint, no auth needed)
   useEffect(() => {
@@ -307,7 +349,7 @@ export default function LoginPage() {
   return (
     <Box
       sx={{
-        minHeight: '100vh',
+        minHeight: { xs: '100dvh', md: '100vh' },
         display: 'flex',
         alignItems: 'center',
         justifyContent: { xs: 'center', md: 'flex-end' },
@@ -543,8 +585,10 @@ export default function LoginPage() {
               <Typography variant="body2" sx={{ mb: 1, color: 'rgba(10, 25, 41, 0.7)' }}>
                 Phone: <strong>+91 {phone}</strong>
               </Typography>
+              <Box ref={pinInputRef}>
               <Input
                 fullWidth
+                autoFocus
                 type={showPin ? 'text' : 'password'}
                 value={pin}
                 onChange={(e) => {
@@ -553,7 +597,7 @@ export default function LoginPage() {
                 }}
                 placeholder="4-digit PIN"
                 sx={glassPinInputSx}
-                inputProps={{ maxLength: 4, style: { textAlign: 'center' } }}
+                inputProps={{ maxLength: 4, inputMode: 'numeric', style: { textAlign: 'center' } }}
                 endAdornment={
                   <MuiInputAdornment position="end">
                     <IconButton onClick={() => setShowPin(!showPin)} edge="end" sx={{ color: 'rgba(10, 25, 41, 0.5)' }}>
@@ -562,6 +606,7 @@ export default function LoginPage() {
                   </MuiInputAdornment>
                 }
               />
+              </Box>
               <Button
                 fullWidth
                 variant="contained"
@@ -597,6 +642,7 @@ export default function LoginPage() {
               <Alert severity="info" sx={glassAlertSx}>
                 OTP sent to +91 {phone}. Enter the 6-digit code to verify your identity.
               </Alert>
+              <Box ref={otpInputRef}>
               <TextField
                 fullWidth
                 label="Enter OTP"
@@ -604,8 +650,9 @@ export default function LoginPage() {
                 value={otp}
                 onChange={(e) => setOtp(e.target.value)}
                 sx={glassInputSx}
-                inputProps={{ maxLength: 6 }}
+                inputProps={{ maxLength: 6, inputMode: 'numeric' }}
               />
+              </Box>
               <Button
                 fullWidth
                 variant="contained"
@@ -638,8 +685,10 @@ export default function LoginPage() {
               <Alert severity="success" sx={glassAlertSx}>
                 Identity verified! Set a 4-digit PIN for quick login next time.
               </Alert>
+              <Box ref={pinInputRef}>
               <Input
                 fullWidth
+                autoFocus
                 type={showPin ? 'text' : 'password'}
                 value={pin}
                 onChange={(e) => {
@@ -648,7 +697,7 @@ export default function LoginPage() {
                 }}
                 placeholder="Choose a 4-digit PIN"
                 sx={glassPinInputSx}
-                inputProps={{ maxLength: 4, style: { textAlign: 'center' } }}
+                inputProps={{ maxLength: 4, inputMode: 'numeric', style: { textAlign: 'center' } }}
                 endAdornment={
                   <MuiInputAdornment position="end">
                     <IconButton onClick={() => setShowPin(!showPin)} edge="end" sx={{ color: 'rgba(10, 25, 41, 0.5)' }}>
@@ -657,6 +706,7 @@ export default function LoginPage() {
                   </MuiInputAdornment>
                 }
               />
+              </Box>
               <Typography variant="caption" sx={{ display: 'block', mb: 2, color: 'rgba(10, 25, 41, 0.5)' }}>
                 You'll use this PIN with your phone number to sign in — no OTP needed.
               </Typography>

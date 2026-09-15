@@ -287,6 +287,7 @@ export default function InvoicesPage() {
       const response = await api.get('/invoices', { params });
       return response.data;
     },
+    refetchOnWindowFocus: 'always',
   });
 
   // Check for newly approved invoices (popup for creator)

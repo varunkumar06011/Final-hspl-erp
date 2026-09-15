@@ -104,6 +104,7 @@ const NAV_ITEMS = [
 // Same routes, just reorganized into clearer sections.
 const ADMIN_NAV_ITEMS = [
   { label: 'Dashboard', icon: <DashboardIcon />, path: '/', permission: Permission.VIEW_DASHBOARD, section: '' },
+  { label: 'Work', icon: <WorkIcon />, path: '/work', permission: Permission.MANAGE_WORK_TASKS, section: '' },
   // ── Accounting (FIRST — client wants accounting first) ──
   { label: 'Inward Funds', icon: <SavingsIcon />, path: '/inward-funds', permission: Permission.VIEW_FINANCIALS, section: 'Accounting' },
   { label: 'Expenditure', icon: <VouchersIcon />, path: '/expenditure', permission: Permission.VIEW_FINANCIALS, section: 'Accounting' },
@@ -343,7 +344,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             const prevItem = idx > 0 ? arr[idx - 1] : null;
             const showSectionHeader = item.section !== '' && (!prevItem || prevItem.section !== item.section);
             return (
-              <Box key={item.path}>
+              <Box key={`${item.path}-${idx}`}>
                 {showSectionHeader && (
                   <Typography
                     variant="overline"
@@ -511,17 +512,25 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           </Box>
         )}
         {/* Mobile back button — iPhones have no hardware back gesture.
-            Use navigate(-1) when history exists, otherwise fall back to dashboard. */}
+            React Router sets location.key='default' on the first entry only,
+            which reliably detects in-app history (unlike window.history.length,
+            which also counts external sites and makes navigate(-1) flaky on iOS). */}
         {isMobile && location.pathname !== '/' && (
           <IconButton
             onClick={() => {
-              if (window.history.length > 1) {
+              if (location.key !== 'default') {
                 navigate(-1);
               } else {
                 navigate('/');
               }
             }}
-            sx={{ mb: 1, p: 0.5 }}
+            sx={{
+              mb: 1,
+              p: 1,
+              minWidth: 44,
+              minHeight: 44,
+              touchAction: 'manipulation',
+            }}
             aria-label="Back"
           >
             <ArrowBackIcon />

@@ -158,6 +158,7 @@ export default function QuotationsPage() {
       const response = await api.get('/quotations', { params });
       return response.data;
     },
+    refetchOnWindowFocus: 'always',
   });
 
   // ── Approval aging data (additive) — fetched separately to color rows ──
