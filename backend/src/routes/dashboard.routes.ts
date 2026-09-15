@@ -1008,7 +1008,7 @@ router.get(
           take: 5,
         }),
         prisma.purchaseOrder.findMany({
-          where: { projectId, deletedAt: null, status: { notIn: ['APPROVED', 'REJECTED', 'CANCELLED', 'DELIVERED', 'PARTIALLY_DELIVERED'] } },
+          where: { projectId, deletedAt: null, status: { notIn: ['APPROVED', 'REJECTED', 'CANCELLED', 'DELIVERED', 'PARTIALLY_DELIVERED', 'DELETED'] } },
           select: { id: true, poNumber: true, status: true, createdAt: true },
           orderBy: { createdAt: 'desc' },
           take: 5,
