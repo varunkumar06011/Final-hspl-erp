@@ -71,6 +71,19 @@ export default function LoginPage() {
   }, []);
 
   const setupRecaptcha = useCallback(() => {
+    // Reuse the existing verifier — creating a second RecaptchaVerifier on
+    // the same container throws "reCAPTCHA has already been rendered".
+    if (!(window as any).recaptchaVerifier) {
+      (window as any).recaptchaVerifier = new RecaptchaVerifier(
+        auth!,
+        'recaptcha-container',
+        { size: 'invisible' }
+      );
+    }
+    return (window as any).recaptchaVerifier;
+  }, []);
+
+  const resetRecaptcha = useCallback(() => {
     if ((window as any).recaptchaVerifier) {
       try {
         (window as any).recaptchaVerifier.clear();
@@ -79,12 +92,8 @@ export default function LoginPage() {
       }
       (window as any).recaptchaVerifier = null;
     }
-    (window as any).recaptchaVerifier = new RecaptchaVerifier(
-      auth!,
-      'recaptcha-container',
-      { size: 'invisible' }
-    );
-    return (window as any).recaptchaVerifier;
+    const container = document.getElementById('recaptcha-container');
+    if (container) container.innerHTML = '';
   }, []);
 
   // Step 2b: Send OTP via Firebase
@@ -101,12 +110,13 @@ export default function LoginPage() {
       setConfirmationResult(result);
       setStep('otp');
     } catch (err: unknown) {
+      resetRecaptcha();
       setError(extractErrorMessage(err));
       setStep('phone');
     } finally {
       setLoading(false);
     }
-  }, [phone, setupRecaptcha]);
+  }, [phone, setupRecaptcha, resetRecaptcha]);
 
   // Step 1: Check if phone has a PIN set
   const handleCheckPhone = useCallback(async () => {
