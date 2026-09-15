@@ -213,9 +213,9 @@ function drawSummaryTable(doc: PDFKit.PDFDocument, entries: any[], date: Date, s
     { label: 'S.No', w: 36, align: 'center' as const },
     { label: 'PO Number', w: 88, align: 'left' as const },
     { label: 'Vendor', w: 115, align: 'left' as const },
-    { label: 'Amount', w: 85, align: 'right' as const },
     { label: 'Mode', w: 85, align: 'left' as const },
-    { label: 'Status', w: 0, align: 'right' as const }, // remainder
+    { label: 'Status', w: 72, align: 'left' as const },
+    { label: 'Amount', w: 0, align: 'right' as const }, // remainder
   ];
   const descIdx = cols.findIndex((c) => c.w === 0);
   cols[descIdx].w = WIDTH - cols.filter((_, i) => i !== descIdx).reduce((s, c) => s + c.w + COL_GAP, 0);
@@ -244,11 +244,12 @@ function drawSummaryTable(doc: PDFKit.PDFDocument, entries: any[], date: Date, s
       String(i + 1),
       text(e.purchaseOrder?.poNumber),
       text(e.purchaseOrder?.vendor?.name),
-      fmtMoney(Number(e.amount)),
       text(e.paymentMode),
       text(e.status),
+      fmtMoney(Number(e.amount)),
     ];
     cols.forEach((c, ci) => {
+      doc.font(c.label === 'Amount' ? 'Helvetica-Bold' : 'Helvetica').fontSize(8);
       doc.text(vals[ci], colX[ci] + 4, y + 4, { width: c.w - 8, align: c.align, lineBreak: false });
     });
     if (desc) {
