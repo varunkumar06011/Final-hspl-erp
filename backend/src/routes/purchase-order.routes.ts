@@ -1,6 +1,6 @@
 import { Router, Response, NextFunction } from 'express';
 import { Permission, POStatus, POPaymentType, AuditAction, UserRole, GoodsReceiptStatus } from '@hospital-erp/shared';
-import { createPOSchema, listPOsSchema, approvalActionSchema, editPOSchema, editUnapprovedPOSchema, regeneratePOSchema } from '@hospital-erp/shared';
+import { createPOSchema, listPOsSchema, approvalActionSchema, editPOSchema, editUnapprovedPOSchema, regeneratePOSchema, changePOPaymentTypeSchema } from '@hospital-erp/shared';
 import { prisma } from '../config/prisma';
 import { Prisma } from '@prisma/client';
 import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middleware/auth';
@@ -1113,6 +1113,158 @@ router.post(
       }).catch((err) => console.error('[Push] PO edit notification error:', err));
 
       res.json(result);
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+// POST /:id/change-payment-type — change payment type on an APPROVED PO.
+// The PO goes back to PENDING_APPROVAL and must be re-approved; once approved
+// it is treated as the new type everywhere (advance payments, invoice flow).
+router.post(
+  '/:id/change-payment-type',
+  rbacMiddleware(Permission.CREATE_PO),
+  validateMiddleware(changePOPaymentTypeSchema),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      const po = await prisma.purchaseOrder.findFirst({
+        where: { id: req.params.id, projectId, deletedAt: null },
+        include: {
+          advancePaymentRequests: {
+            where: { deletedAt: null, status: { not: 'REJECTED' } },
+            select: { id: true, paymentCode: true },
+          },
+          invoices: { where: { deletedAt: null }, select: { id: true, invoiceCode: true } },
+        },
+      });
+      if (!po) {
+        res.status(404).json({ error: 'Purchase order not found' });
+        return;
+      }
+      if (po.status !== POStatus.APPROVED) {
+        res.status(400).json({ error: 'Only approved POs can have their payment type changed' });
+        return;
+      }
+      if (po.advancePaymentRequests.length > 0) {
+        res.status(409).json({
+          error: `Payment request ${po.advancePaymentRequests[0].paymentCode} already exists against this PO — cancel or complete it first`,
+        });
+        return;
+      }
+      if (po.invoices.length > 0) {
+        res.status(409).json({
+          error: `Invoice ${po.invoices[0].invoiceCode} already exists against this PO — payment type cannot be changed`,
+        });
+        return;
+      }
+
+      const { paymentType, advanceAmount, reason } = req.body;
+      if (paymentType === po.paymentType) {
+        res.status(400).json({ error: 'Payment type is already ' + paymentType });
+        return;
+      }
+
+      // Same rules as PO creation: ADVANCE / FULL_PAYMENT need an agreed
+      // advance amount ≤ grandTotal; AFTER_DELIVERY carries none.
+      let resolvedAdvanceAmount: number | null;
+      if (paymentType === POPaymentType.ADVANCE || paymentType === POPaymentType.FULL_PAYMENT) {
+        const amt = Number(advanceAmount);
+        if (!Number.isFinite(amt) || amt <= 0) {
+          res.status(400).json({ error: 'Advance amount is required for advance / full payment POs' });
+          return;
+        }
+        if (amt > Number(po.grandTotal)) {
+          res.status(400).json({ error: `Advance amount cannot exceed PO grand total of ${Number(po.grandTotal)}` });
+          return;
+        }
+        resolvedAdvanceAmount = amt;
+      } else {
+        resolvedAdvanceAmount = null;
+      }
+
+      const oldValue = { paymentType: po.paymentType, advanceAmount: po.advanceAmount ? Number(po.advanceAmount) : null };
+
+      const updated = await prisma.$transaction(async (tx) => {
+        const updatedPo = await tx.purchaseOrder.update({
+          where: { id: po.id },
+          data: {
+            paymentType,
+            advanceAmount: resolvedAdvanceAmount,
+            status: POStatus.PENDING_APPROVAL,
+            editReason: reason,
+            editedAt: new Date(),
+            editedBy: req.user!.id,
+          },
+          include: poInclude,
+        });
+
+        // Reset approval workflow for re-approval (one ADMIN/ADMIN_2 approval)
+        if (po.approvalWorkflowId) {
+          await tx.approvalStep.deleteMany({ where: { workflowId: po.approvalWorkflowId } });
+          await tx.approvalWorkflow.update({
+            where: { id: po.approvalWorkflowId },
+            data: {
+              status: 'VERIFICATION',
+              currentStep: 0,
+              steps: {
+                create: PO_APPROVER_ROLES.map((role, idx) => ({
+                  stepNumber: idx + 1,
+                  approverRole: role,
+                  status: 'PENDING',
+                })),
+              },
+            },
+          });
+        } else {
+          const workflow = await tx.approvalWorkflow.create({
+            data: {
+              entityType: 'PURCHASE_ORDER',
+              entityId: po.id,
+              projectId,
+              status: 'VERIFICATION',
+              currentStep: 0,
+              minApprovers: 1,
+              approvalPolicy: 'PO_SINGLE_APPROVER',
+              steps: {
+                create: PO_APPROVER_ROLES.map((role, idx) => ({
+                  stepNumber: idx + 1,
+                  approverRole: role,
+                  status: 'PENDING',
+                })),
+              },
+            },
+          });
+          await tx.purchaseOrder.update({
+            where: { id: po.id },
+            data: { approvalWorkflowId: workflow.id },
+          });
+        }
+
+        return updatedPo;
+      });
+
+      await logAudit({
+        userId: req.user!.id,
+        action: AuditAction.UPDATE,
+        entityType: 'PURCHASE_ORDER',
+        entityId: po.id,
+        projectId,
+        oldValue,
+        newValue: { paymentType, advanceAmount: resolvedAdvanceAmount, reason },
+      });
+
+      notifyApprovers(projectId, PO_APPROVER_ROLES as UserRole[], {
+        approvalId: po.approvalWorkflowId ?? '',
+        entityType: 'PURCHASE_ORDER',
+        entityId: po.id,
+        title: 'PO Payment Type Changed — Re-approval Required',
+        body: `${po.poNumber} payment type changed to ${paymentType.replace(/_/g, ' ')} and needs re-approval`,
+        url: `/pos?approval=${po.approvalWorkflowId ?? ''}`,
+      }).catch((err) => console.error('[Push] PO payment-type notification error:', err));
+
+      res.json(updated);
     } catch (error) {
       next(error);
     }
