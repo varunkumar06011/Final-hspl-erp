@@ -209,26 +209,15 @@ function drawSignature(doc: PDFKit.PDFDocument, y: number): number {
 function drawSummaryTable(doc: PDFKit.PDFDocument, entries: any[], date: Date, startY: number, showDescription = false): number {
   let y = startY;
 
-  const cols = showDescription
-    ? [
-        { label: 'S.No', w: 24 },
-        { label: 'PO Number', w: 62 },
-        { label: 'Vendor', w: 88 },
-        { label: 'Description', w: 0 }, // remainder
-        { label: 'Amount', w: 70 },
-        { label: 'Mode', w: 62 },
-        { label: 'Reference', w: 68 },
-        { label: 'Status', w: 60 },
-      ]
-    : [
-        { label: 'S.No', w: 24 },
-        { label: 'PO Number', w: 70 },
-        { label: 'Vendor', w: 105 },
-        { label: 'Amount', w: 75 },
-        { label: 'Mode', w: 68 },
-        { label: 'Reference', w: 75 },
-        { label: 'Status', w: 0 }, // remainder
-      ];
+  const cols = [
+    { label: 'S.No', w: 26 },
+    { label: 'PO Number', w: 72 },
+    { label: 'Vendor', w: 100 },
+    { label: 'Amount', w: 75 },
+    { label: 'Mode', w: 70 },
+    { label: 'Reference', w: 75 },
+    { label: 'Status', w: 0 }, // remainder
+  ];
   const descIdx = cols.findIndex((c) => c.w === 0);
   cols[descIdx].w = WIDTH - cols.filter((_, i) => i !== descIdx).reduce((s, c) => s + c.w + COL_GAP, 0);
   const colX = cols.map((_, i) => LEFT + cols.slice(0, i).reduce((s, c2) => s + c2.w + COL_GAP, 0));
@@ -243,34 +232,32 @@ function drawSummaryTable(doc: PDFKit.PDFDocument, entries: any[], date: Date, s
 
   const sumRowH = 16;
   entries.forEach((e, i) => {
-    if (i % 2 === 0) doc.rect(LEFT, y, WIDTH, sumRowH).fill(PRIMARY_LIGHT);
-    doc.rect(LEFT, y, WIDTH, sumRowH).stroke(BORDER);
+    // Description (notes) gets its own full-width line under the entry row.
+    const desc = showDescription ? String(e.notes ?? '').trim() : '';
+    const descH = desc ? doc.heightOfString(desc, { width: WIDTH - 100 }) + 6 : 0;
+    const entryH = sumRowH + descH;
+
+    if (i % 2 === 0) doc.rect(LEFT, y, WIDTH, entryH).fill(PRIMARY_LIGHT);
+    doc.rect(LEFT, y, WIDTH, entryH).stroke(BORDER);
     doc.fillColor(DARK).font('Helvetica').fontSize(8);
-    const vals = showDescription
-      ? [
-          String(i + 1),
-          text(e.purchaseOrder?.poNumber),
-          text(e.purchaseOrder?.vendor?.name),
-          text(e.notes),
-          fmtMoney(Number(e.amount)),
-          text(e.paymentMode),
-          text(e.reference),
-          text(e.status),
-        ]
-      : [
-          String(i + 1),
-          text(e.purchaseOrder?.poNumber),
-          text(e.purchaseOrder?.vendor?.name),
-          fmtMoney(Number(e.amount)),
-          text(e.paymentMode),
-          text(e.reference),
-          text(e.status),
-        ];
+    const vals = [
+      String(i + 1),
+      text(e.purchaseOrder?.poNumber),
+      text(e.purchaseOrder?.vendor?.name),
+      fmtMoney(Number(e.amount)),
+      text(e.paymentMode),
+      text(e.reference),
+      text(e.status),
+    ];
     cols.forEach((c, ci) => {
       const align = c.label === 'Amount' ? 'right' : c.label === 'S.No' ? 'center' : 'left';
       doc.text(vals[ci], colX[ci] + 4, y + 4, { width: c.w - 8, align });
     });
-    y += sumRowH;
+    if (desc) {
+      doc.fillColor(MUTED).font('Helvetica-Oblique').fontSize(7.5)
+        .text(desc, colX[2] + 4, y + sumRowH, { width: WIDTH - 100 });
+    }
+    y += entryH;
   });
 
   const totalAmount = entries.reduce((sum, e) => sum + Number(e.amount), 0);

@@ -1,6 +1,6 @@
 import { Router, Response, NextFunction } from 'express';
 import { Permission, AuditAction, PaymentStatus, POStatus } from '@hospital-erp/shared';
-import { createPaymentSheetSchema, listPaymentSheetsSchema } from '@hospital-erp/shared';
+import { createPaymentSheetSchema, listPaymentSheetsSchema, updatePaymentSheetSchema } from '@hospital-erp/shared';
 import { prisma } from '../config/prisma';
 import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middleware/auth';
 import { rbacMiddleware } from '../middleware/rbac';
@@ -277,7 +277,7 @@ router.post(
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const projectId = requireProjectId(req);
-      const { poId, date, amount, paymentMode, reference, notes } = req.body;
+      const { poId, date, amount, paymentMode, reference, notes, status } = req.body;
 
       const po = await prisma.purchaseOrder.findFirst({
         where: { id: poId, projectId, deletedAt: null },
@@ -318,7 +318,7 @@ router.post(
           filePath,
           fileName,
           fileMimeType,
-          status: PaymentStatus.PENDING,
+          status: status ?? PaymentStatus.PENDING,
           createdBy: req.user!.id,
         },
         include: sheetInclude,
@@ -334,6 +334,78 @@ router.post(
       });
 
       res.status(201).json(created);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// PATCH /:id — edit an entry (only by creator, only while still PENDING)
+router.patch(
+  '/:id',
+  rbacMiddleware(Permission.VIEW_FINANCIALS),
+  validateMiddleware(updatePaymentSheetSchema),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      const existing = await prisma.paymentSheet.findFirst({
+        where: { id: req.params.id, projectId, deletedAt: null },
+      });
+      if (!existing) {
+        res.status(404).json({ error: 'Payment sheet entry not found' });
+        return;
+      }
+      if (existing.createdBy !== req.user!.id) {
+        res.status(403).json({ error: 'Only the creator can edit this entry' });
+        return;
+      }
+      if (existing.status === PaymentStatus.APPROVED) {
+        res.status(400).json({ error: 'Cannot edit an entry that has been marked done' });
+        return;
+      }
+
+      const { poId, date, amount, paymentMode, reference, notes, status } = req.body;
+
+      // If PO is being changed, re-validate it
+      if (poId && poId !== existing.poId) {
+        const po = await prisma.purchaseOrder.findFirst({
+          where: { id: poId, projectId, deletedAt: null },
+        });
+        if (!po) {
+          res.status(404).json({ error: 'Purchase order not found' });
+          return;
+        }
+        if (po.status !== POStatus.APPROVED) {
+          res.status(400).json({ error: 'Only approved purchase orders can be added to a payment sheet' });
+          return;
+        }
+      }
+
+      const updated = await prisma.paymentSheet.update({
+        where: { id: existing.id },
+        data: {
+          ...(poId && { poId }),
+          ...(date && { date: new Date(date) }),
+          ...(amount !== undefined && { amount: Number(amount) }),
+          ...(paymentMode && { paymentMode }),
+          ...(reference !== undefined && { reference: reference || null }),
+          ...(notes !== undefined && { notes: notes || null }),
+          ...(status && { status }),
+        },
+        include: sheetInclude,
+      });
+
+      await logAudit({
+        userId: req.user!.id,
+        action: AuditAction.UPDATE,
+        entityType: 'PAYMENT_SHEET',
+        entityId: existing.id,
+        projectId,
+        oldValue: { amount: String(existing.amount), poId: existing.poId, status: existing.status },
+        newValue: { amount: String(updated.amount), poId: updated.poId, status: updated.status },
+      });
+
+      res.json(updated);
     } catch (error) {
       next(error);
     }

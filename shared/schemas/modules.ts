@@ -383,6 +383,19 @@ export const createPaymentSheetSchema = z.object({
     paymentMode: z.nativeEnum(PaymentMode),
     reference: z.string().trim().max(100).optional(),
     notes: z.string().trim().max(1000).optional(),
+    status: z.enum(['PENDING', 'APPROVED']).optional(),
+  }),
+});
+export const updatePaymentSheetSchema = z.object({
+  params: z.object({ id: uuid }),
+  body: z.object({
+    poId: uuid.optional(),
+    date: dateStr.optional(),
+    amount: positiveMoney.optional(),
+    paymentMode: z.nativeEnum(PaymentMode).optional(),
+    reference: z.string().trim().max(100).optional(),
+    notes: z.string().trim().max(1000).optional(),
+    status: z.enum(['PENDING', 'APPROVED']).optional(),
   }),
 });
 export const listPaymentSheetsSchema = z.object({

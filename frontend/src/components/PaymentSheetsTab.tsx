@@ -32,6 +32,7 @@ import {
   Search as SearchIcon,
   Check as CheckIcon,
   Delete as DeleteIcon,
+  Edit as EditIcon,
   Print as PrintIcon,
   Download as DownloadIcon,
   AttachFile as AttachFileIcon,
@@ -115,8 +116,12 @@ export default function PaymentSheetsTab() {
   const [addOpen, setAddOpen] = useState(false);
   const [poSearch, setPoSearch] = useState('');
   const [selectedPO, setSelectedPO] = useState<POOption | null>(null);
-  const [form, setForm] = useState({ amount: '', paymentMode: PaymentMode.BANK_TRANSFER, reference: '', notes: '' });
+  const [form, setForm] = useState({ amount: '', paymentMode: PaymentMode.BANK_TRANSFER, reference: '', notes: '', status: PaymentStatus.PENDING });
   const [file, setFile] = useState<File | null>(null);
+
+  // Edit-entry dialog state
+  const [editRow, setEditRow] = useState<PaymentSheetRow | null>(null);
+  const [editForm, setEditForm] = useState({ amount: '', paymentMode: '', reference: '', notes: '', status: '' });
 
   // Confirm-dialog state
   const [confirmApproveId, setConfirmApproveId] = useState<string | null>(null);
@@ -149,6 +154,7 @@ export default function PaymentSheetsTab() {
       fd.append('paymentMode', form.paymentMode);
       if (form.reference) fd.append('reference', form.reference);
       if (form.notes) fd.append('notes', form.notes);
+      fd.append('status', form.status);
       if (file) fd.append('file', file);
       const res = await api.post('/payment-sheets', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
       return res.data;
@@ -158,7 +164,7 @@ export default function PaymentSheetsTab() {
       setAddOpen(false);
       setSelectedPO(null);
       setPoSearch('');
-      setForm({ amount: '', paymentMode: PaymentMode.BANK_TRANSFER, reference: '', notes: '' });
+      setForm({ amount: '', paymentMode: PaymentMode.BANK_TRANSFER, reference: '', notes: '', status: PaymentStatus.PENDING });
       setFile(null);
       setSuccessMsg('Payment sheet entry added.');
     },
@@ -184,6 +190,34 @@ export default function PaymentSheetsTab() {
     },
     onError: (err) => setError(extractErrorMessage(err)),
   });
+
+  const updateMutation = useMutation({
+    mutationFn: async (id: string) =>
+      api.patch(`/payment-sheets/${id}`, {
+        amount: Number(editForm.amount),
+        paymentMode: editForm.paymentMode,
+        reference: editForm.reference || undefined,
+        notes: editForm.notes || undefined,
+        status: editForm.status || undefined,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey });
+      setEditRow(null);
+      setSuccessMsg('Entry updated.');
+    },
+    onError: (err) => setError(extractErrorMessage(err)),
+  });
+
+  const openEdit = (r: PaymentSheetRow) => {
+    setEditRow(r);
+    setEditForm({
+      amount: String(r.amount),
+      paymentMode: r.paymentMode,
+      reference: r.reference ?? '',
+      notes: r.notes ?? '',
+      status: r.status,
+    });
+  };
 
   const rows = data?.data ?? [];
   const totalAmount = data?.totalAmount ?? 0;
@@ -303,6 +337,11 @@ export default function PaymentSheetsTab() {
                         <PrintIcon fontSize="small" />
                       </IconButton>
                       {r.status === PaymentStatus.PENDING && r.createdBy === user?.id && (
+                        <IconButton size="small" title="Edit" onClick={() => openEdit(r)}>
+                          <EditIcon fontSize="small" />
+                        </IconButton>
+                      )}
+                      {r.status === PaymentStatus.PENDING && r.createdBy === user?.id && (
                         <IconButton size="small" color="success" title="Mark done" onClick={() => setConfirmApproveId(r.id)}>
                           <CheckIcon fontSize="small" />
                         </IconButton>
@@ -362,6 +401,12 @@ export default function PaymentSheetsTab() {
               {PAYMENT_MODES.map((m) => <MenuItem key={m} value={m}>{m}</MenuItem>)}
             </TextField>
 
+            <TextField select label="Status" size="small" value={form.status}
+              onChange={(e) => setForm({ ...form, status: e.target.value as PaymentStatus })}>
+              <MenuItem value={PaymentStatus.PENDING}>Pending</MenuItem>
+              <MenuItem value={PaymentStatus.APPROVED}>Done (Approved)</MenuItem>
+            </TextField>
+
             <TextField label="Reference (cheque / UPI / txn no.)" size="small" value={form.reference}
               onChange={(e) => setForm({ ...form, reference: e.target.value })} />
 
@@ -379,6 +424,42 @@ export default function PaymentSheetsTab() {
           <Button variant="contained" startIcon={<ReceiptIcon />} disabled={!selectedPO || !form.amount || createMutation.isPending}
             onClick={() => createMutation.mutate()}>
             {createMutation.isPending ? <CircularProgress size={20} /> : 'Save Entry'}
+          </Button>
+        </DialogActions>
+      </ResponsiveDialog>
+
+      {/* Edit Entry dialog */}
+      <ResponsiveDialog open={!!editRow} onClose={() => setEditRow(null)} maxWidth="sm" fullWidth>
+        <DialogTitle>Edit Payment Sheet Entry</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            {editRow && (
+              <Card variant="outlined" sx={{ p: 2 }}>
+                <Typography variant="subtitle2" gutterBottom>PO: {editRow.purchaseOrder.poNumber} — {editRow.purchaseOrder.vendor.name}</Typography>
+              </Card>
+            )}
+            <TextField label="Amount" type="number" size="small" required value={editForm.amount}
+              onChange={(e) => setEditForm({ ...editForm, amount: e.target.value })} />
+            <TextField select label="Payment Mode" size="small" value={editForm.paymentMode}
+              onChange={(e) => setEditForm({ ...editForm, paymentMode: e.target.value })}>
+              {PAYMENT_MODES.map((m) => <MenuItem key={m} value={m}>{m}</MenuItem>)}
+            </TextField>
+            <TextField select label="Status" size="small" value={editForm.status}
+              onChange={(e) => setEditForm({ ...editForm, status: e.target.value })}>
+              <MenuItem value={PaymentStatus.PENDING}>Pending</MenuItem>
+              <MenuItem value={PaymentStatus.APPROVED}>Done (Approved)</MenuItem>
+            </TextField>
+            <TextField label="Reference (cheque / UPI / txn no.)" size="small" value={editForm.reference}
+              onChange={(e) => setEditForm({ ...editForm, reference: e.target.value })} />
+            <TextField label="Notes" size="small" multiline rows={2} value={editForm.notes}
+              onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })} />
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setEditRow(null)}>Cancel</Button>
+          <Button variant="contained" disabled={!editForm.amount || updateMutation.isPending}
+            onClick={() => editRow && updateMutation.mutate(editRow.id)}>
+            {updateMutation.isPending ? <CircularProgress size={20} /> : 'Save Changes'}
           </Button>
         </DialogActions>
       </ResponsiveDialog>
