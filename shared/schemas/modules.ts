@@ -17,6 +17,7 @@ import {
   InspectionStatus,
   ContractStatus,
   POPaymentType,
+  PaymentMode,
   BudgetHeadStatus,
   BankTxnType,
   CashTxnType,
@@ -370,6 +371,28 @@ export const approvalActionSchema = z.object({
     comments: z.string().max(500).optional(),
     reason: z.string().min(1).max(500).optional(),
     acknowledged: acknowledgement,
+  }),
+});
+
+// ═══ Payment Sheets (daily printable register — standalone log) ═══
+export const createPaymentSheetSchema = z.object({
+  body: z.object({
+    poId: uuid,
+    date: dateStr.optional(),
+    amount: positiveMoney,
+    paymentMode: z.nativeEnum(PaymentMode),
+    reference: z.string().trim().max(100).optional(),
+    notes: z.string().trim().max(1000).optional(),
+  }),
+});
+export const listPaymentSheetsSchema = z.object({
+  query: pagination.extend({
+    // ISO date string (YYYY-MM-DD). Defaults to today when omitted.
+    date: z.string().trim().max(20).optional(),
+    startDate: z.string().trim().max(20).optional(),
+    endDate: z.string().trim().max(20).optional(),
+    poId: uuid.optional(),
+    status: z.string().optional(),
   }),
 });
 

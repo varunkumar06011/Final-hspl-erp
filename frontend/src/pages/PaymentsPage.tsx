@@ -54,6 +54,7 @@ import { useAuthStore } from '../stores/authStore';
 import { downloadFile } from '../utils/file';
 import ApprovalActionDialog from '../components/ApprovalActionDialog';
 import ResponsiveTable from '../components/ResponsiveTable';
+import PaymentSheetsTab from '../components/PaymentSheetsTab';
 import { useApprovalDeepLink } from '../utils/useApprovalDeepLink';
 import { useDeepLinkRow } from '../hooks/useDeepLinkRow';
 import { useUrlFilters } from '../hooks/useUrlFilters';
@@ -518,6 +519,7 @@ export default function PaymentsPage() {
         <Tab label={`Pending Invoices (${pendingInvoicesData.length})`} />
         <Tab label={`Advance Payments (${pendingPOsData.length})`} />
         <Tab label="All Payment Requests" />
+        <Tab label="Payment Sheets" />
       </Tabs>
 
       {/* Tab 0: Pending Invoices */}
@@ -842,6 +844,9 @@ export default function PaymentsPage() {
           ))}
         </Box>
       )}
+
+      {/* Tab 3: Payment Sheets — daily printable register of payments made against a PO */}
+      {tab === 3 && <PaymentSheetsTab />}
 
       {/* Create Invoice Payment Dialog */}
       <ResponsiveDialog open={!!invoicePayOpen} onClose={() => setInvoicePayOpen(null)} maxWidth="sm" fullWidth>
