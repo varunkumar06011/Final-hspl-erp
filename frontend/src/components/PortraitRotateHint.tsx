@@ -26,6 +26,12 @@ export default function PortraitRotateHint() {
       Rotate your phone horizontally to see an Excel-style table with all
       columns, zoom controls, and search. Or tap the <strong>Table View</strong>{' '}
       button above to switch manually.
+      <br />
+      <br />
+      If the screen doesn't rotate, make sure auto-rotate is enabled in your
+      phone settings. If you're using this app as an installed app (from home
+      screen), you may need to remove and re-add it for the orientation change
+      to take effect.
     </Alert>
   );
 }
