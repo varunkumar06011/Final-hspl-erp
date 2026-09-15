@@ -142,6 +142,20 @@ const poInclude = {
   parentPo: { select: { id: true, poNumber: true } },
   childPos: { select: { id: true, poNumber: true, regenerationNumber: true, status: true } },
   budgetHead: { select: { id: true, particulars: true } },
+  advancePaymentRequests: {
+    where: { deletedAt: null },
+    select: {
+      id: true,
+      status: true,
+      amount: true,
+      requestNumber: true,
+      type: true,
+      payments: {
+        where: { status: 'PAID' },
+        select: { id: true, amount: true, date: true, mode: true },
+      },
+    },
+  },
   approvalWorkflow: {
     include: {
       steps: {
@@ -219,8 +233,23 @@ router.get(
         prisma.purchaseOrder.count({ where }),
       ]);
 
+      // Calculate paidToDate and amountToPayNow for each PO
+      const dataWithPayments = data.map((po) => {
+        const paidToDate = (po.advancePaymentRequests ?? []).reduce(
+          (sum, pr) => sum + (pr.payments ?? []).reduce((s, p) => s + Number(p.amount), 0),
+          0,
+        );
+        const netPayable = Number(po.netPayable) || Number(po.grandTotal);
+        const amountToPayNow = Math.max(0, netPayable - paidToDate);
+        return {
+          ...po,
+          paidToDate,
+          amountToPayNow,
+        };
+      });
+
       res.json({
-        data,
+        data: dataWithPayments,
         pagination: { page: pageNum, pageSize: size, total, totalPages: Math.ceil(total / size) },
       });
     } catch (error) {

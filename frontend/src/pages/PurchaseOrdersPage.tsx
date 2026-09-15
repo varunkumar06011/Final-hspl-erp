@@ -108,6 +108,8 @@ interface PORow {
   deductions?: { amount: number; reason: string }[] | null;
   totalDeductions?: number;
   netPayable?: number;
+  paidToDate?: number;
+  amountToPayNow?: number;
   notes?: string | null;
   createdBy: string;
   createdByUser: { id: string; name: string };
@@ -554,6 +556,8 @@ export default function PurchaseOrdersPage() {
                 <TableCell sx={{ fontWeight: 600 }}>Grand Total</TableCell>
                 <TableCell sx={{ fontWeight: 600 }}>Deductions</TableCell>
                 <TableCell sx={{ fontWeight: 600 }}>Net Payable</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>Paid</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>To Pay Now</TableCell>
                 <TableCell sx={{ fontWeight: 600 }}>Budget Head</TableCell>
                 <TableCell sx={{ fontWeight: 600 }}>Created By</TableCell>
                 <TableCell sx={{ fontWeight: 600 }}>Status</TableCell>
@@ -562,9 +566,9 @@ export default function PurchaseOrdersPage() {
             </TableHead>
             <TableBody>
               {isLoading ? (
-                <TableRow><TableCell colSpan={14} align="center" sx={{ py: 4 }}><CircularProgress size={32} /></TableCell></TableRow>
+                <TableRow><TableCell colSpan={16} align="center" sx={{ py: 4 }}><CircularProgress size={32} /></TableCell></TableRow>
               ) : rows.length === 0 ? (
-                <TableRow><TableCell colSpan={14} align="center" sx={{ py: 4 }}><Typography color="text.secondary">No purchase orders found</Typography></TableCell></TableRow>
+                <TableRow><TableCell colSpan={16} align="center" sx={{ py: 4 }}><Typography color="text.secondary">No purchase orders found</Typography></TableCell></TableRow>
               ) : (
                 rows.map((row) => (
                   <TableRow key={row.id} hover ref={rowRef(row.id)} sx={{ ...(highlightId === row.id && { bgcolor: 'warning.light', '&:hover': { bgcolor: 'warning.light' } }) }}>
@@ -634,6 +638,16 @@ export default function PurchaseOrdersPage() {
                     </TableCell>
                     <TableCell data-label="Net Payable">
                       <Typography fontWeight={600}>{formatCurrency(Number(row.netPayable ?? row.grandTotal))}</Typography>
+                    </TableCell>
+                    <TableCell data-label="Paid">
+                      <Typography color="success.main" fontWeight={600}>
+                        {formatCurrency(Number(row.paidToDate ?? 0))}
+                      </Typography>
+                    </TableCell>
+                    <TableCell data-label="To Pay Now">
+                      <Typography fontWeight={700} color={Number(row.amountToPayNow ?? row.netPayable ?? row.grandTotal) > 0 ? 'error.main' : 'text.secondary'}>
+                        {formatCurrency(Number(row.amountToPayNow ?? row.netPayable ?? row.grandTotal))}
+                      </Typography>
                     </TableCell>
                     <TableCell data-label="Budget Head">
                       {row.budgetHead ? (
