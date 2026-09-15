@@ -123,7 +123,10 @@ router.get(
           date: true,
           grandTotal: true,
           netPayable: true,
+          advanceAmount: true,
           paymentType: true,
+          paymentTerms: true,
+          notes: true,
           status: true,
           vendor: { select: { id: true, name: true, vendorCode: true } },
         },
@@ -359,8 +362,8 @@ router.patch(
         res.status(403).json({ error: 'Only the creator can edit this entry' });
         return;
       }
-      if (existing.status === PaymentStatus.APPROVED) {
-        res.status(400).json({ error: 'Cannot edit an entry that has been marked done' });
+      if (existing.status === PaymentStatus.PAID || existing.status === PaymentStatus.APPROVED) {
+        res.status(400).json({ error: 'Cannot edit a paid entry' });
         return;
       }
 
@@ -430,15 +433,15 @@ router.patch(
         res.status(403).json({ error: 'Only the creator can mark this entry as done' });
         return;
       }
-      if (existing.status === PaymentStatus.APPROVED) {
-        res.status(400).json({ error: 'Entry is already marked done' });
+      if (existing.status === PaymentStatus.PAID || existing.status === PaymentStatus.APPROVED) {
+        res.status(400).json({ error: 'Entry is already marked paid' });
         return;
       }
 
       const oldValue = { status: existing.status };
       const updated = await prisma.paymentSheet.update({
         where: { id: existing.id },
-        data: { status: PaymentStatus.APPROVED },
+        data: { status: PaymentStatus.PAID },
         include: sheetInclude,
       });
 
@@ -449,7 +452,7 @@ router.patch(
         entityId: existing.id,
         projectId,
         oldValue,
-        newValue: { status: PaymentStatus.APPROVED },
+        newValue: { status: PaymentStatus.PAID },
       });
 
       res.json(updated);
@@ -477,8 +480,8 @@ router.delete(
         res.status(403).json({ error: 'Only the creator can delete this entry' });
         return;
       }
-      if (existing.status === PaymentStatus.APPROVED) {
-        res.status(400).json({ error: 'Cannot delete an entry that has been marked done' });
+      if (existing.status === PaymentStatus.PAID || existing.status === PaymentStatus.APPROVED) {
+        res.status(400).json({ error: 'Cannot delete a paid entry' });
         return;
       }
 

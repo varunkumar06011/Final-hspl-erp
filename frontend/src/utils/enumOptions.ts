@@ -142,6 +142,7 @@ export const STATUS_COLORS: Record<string, 'default' | 'primary' | 'secondary' |
   CANCELLED: 'error',
   VERIFIED: 'success',
   PAID: 'success',
+  ADVANCE_PAID: 'info',
   PARTIALLY_PAID: 'info',
   NOT_STARTED: 'default',
   IN_PROGRESS: 'info',

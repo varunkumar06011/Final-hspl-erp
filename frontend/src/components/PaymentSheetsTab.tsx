@@ -53,7 +53,10 @@ interface POOption {
   date: string;
   grandTotal: number;
   netPayable: number;
+  advanceAmount: number | null;
   paymentType: string;
+  paymentTerms: string | null;
+  notes: string | null;
   status: string;
   vendor: { id: string; name: string; vendorCode: string };
 }
@@ -222,6 +225,19 @@ export default function PaymentSheetsTab() {
   const rows = data?.data ?? [];
   const totalAmount = data?.totalAmount ?? 0;
 
+  const handleSelectPO = (po: POOption | null) => {
+    setSelectedPO(po);
+    if (!po) return;
+    // Auto-fill amount from PO type — advance POs default to the advance amount,
+    // others to the net payable. Still editable.
+    const suggested = po.paymentType === 'ADVANCE' && Number(po.advanceAmount) > 0
+      ? Number(po.advanceAmount)
+      : Number(po.netPayable ?? po.grandTotal);
+    // Auto-fill description from the PO's payment terms / notes.
+    const desc = po.paymentTerms || po.notes || '';
+    setForm((f) => ({ ...f, amount: String(suggested), notes: desc }));
+  };
+
   const fetchPdfBlob = async (path: string): Promise<Blob> => {
     const token = localStorage.getItem('firebaseToken');
     const r = await fetch(`${api.defaults.baseURL}${path}`, {
@@ -336,17 +352,17 @@ export default function PaymentSheetsTab() {
                       <IconButton size="small" title="Print" onClick={() => openPdf(entryPdfPath(r.id))}>
                         <PrintIcon fontSize="small" />
                       </IconButton>
-                      {r.status === PaymentStatus.PENDING && r.createdBy === user?.id && (
+                      {r.status !== PaymentStatus.PAID && r.status !== 'APPROVED' && r.createdBy === user?.id && (
                         <IconButton size="small" title="Edit" onClick={() => openEdit(r)}>
                           <EditIcon fontSize="small" />
                         </IconButton>
                       )}
-                      {r.status === PaymentStatus.PENDING && r.createdBy === user?.id && (
-                        <IconButton size="small" color="success" title="Mark done" onClick={() => setConfirmApproveId(r.id)}>
+                      {r.status !== PaymentStatus.PAID && r.status !== 'APPROVED' && r.createdBy === user?.id && (
+                        <IconButton size="small" color="success" title="Mark paid" onClick={() => setConfirmApproveId(r.id)}>
                           <CheckIcon fontSize="small" />
                         </IconButton>
                       )}
-                      {r.status === PaymentStatus.PENDING && r.createdBy === user?.id && (
+                      {r.status !== PaymentStatus.PAID && r.status !== 'APPROVED' && r.createdBy === user?.id && (
                         <IconButton size="small" color="error" title="Delete" onClick={() => setConfirmDeleteId(r.id)}>
                           <DeleteIcon fontSize="small" />
                         </IconButton>
@@ -369,7 +385,7 @@ export default function PaymentSheetsTab() {
               options={poOptions?.data ?? []}
               getOptionLabel={(po) => `${po.poNumber} — ${po.vendor.name}`}
               value={selectedPO}
-              onChange={(_, v) => setSelectedPO(v)}
+              onChange={(_, v) => handleSelectPO(v)}
               inputValue={poSearch}
               onInputChange={(_, v) => setPoSearch(v)}
               renderInput={(params) => (
@@ -388,6 +404,9 @@ export default function PaymentSheetsTab() {
                   <Box><Typography variant="caption" color="text.secondary">Vendor</Typography><Typography>{selectedPO.vendor.name}</Typography></Box>
                   <Box><Typography variant="caption" color="text.secondary">Grand Total</Typography><Typography>{formatCurrency(selectedPO.grandTotal)}</Typography></Box>
                   <Box><Typography variant="caption" color="text.secondary">Net Payable</Typography><Typography>{formatCurrency(selectedPO.netPayable)}</Typography></Box>
+                  {selectedPO.paymentType === 'ADVANCE' && Number(selectedPO.advanceAmount) > 0 && (
+                    <Box><Typography variant="caption" color="text.secondary">Advance Amount</Typography><Typography>{formatCurrency(Number(selectedPO.advanceAmount))}</Typography></Box>
+                  )}
                   <Box><Typography variant="caption" color="text.secondary">Payment Type</Typography><Typography>{selectedPO.paymentType}</Typography></Box>
                 </Stack>
               </Card>
@@ -404,7 +423,8 @@ export default function PaymentSheetsTab() {
             <TextField select label="Status" size="small" value={form.status}
               onChange={(e) => setForm({ ...form, status: e.target.value as PaymentStatus })}>
               <MenuItem value={PaymentStatus.PENDING}>Pending</MenuItem>
-              <MenuItem value={PaymentStatus.APPROVED}>Done (Approved)</MenuItem>
+              <MenuItem value={PaymentStatus.PAID}>Paid</MenuItem>
+              <MenuItem value={PaymentStatus.ADVANCE_PAID}>Advance Paid</MenuItem>
             </TextField>
 
             <TextField label="Reference (cheque / UPI / txn no.)" size="small" value={form.reference}
@@ -447,7 +467,8 @@ export default function PaymentSheetsTab() {
             <TextField select label="Status" size="small" value={editForm.status}
               onChange={(e) => setEditForm({ ...editForm, status: e.target.value })}>
               <MenuItem value={PaymentStatus.PENDING}>Pending</MenuItem>
-              <MenuItem value={PaymentStatus.APPROVED}>Done (Approved)</MenuItem>
+              <MenuItem value={PaymentStatus.PAID}>Paid</MenuItem>
+              <MenuItem value={PaymentStatus.ADVANCE_PAID}>Advance Paid</MenuItem>
             </TextField>
             <TextField label="Reference (cheque / UPI / txn no.)" size="small" value={editForm.reference}
               onChange={(e) => setEditForm({ ...editForm, reference: e.target.value })} />
@@ -464,19 +485,19 @@ export default function PaymentSheetsTab() {
         </DialogActions>
       </ResponsiveDialog>
 
-      {/* Confirm: mark done */}
+      {/* Confirm: mark paid */}
       <ResponsiveDialog open={!!confirmApproveId} onClose={() => setConfirmApproveId(null)} maxWidth="xs" fullWidth>
-        <DialogTitle>Mark entry as done?</DialogTitle>
+        <DialogTitle>Mark entry as paid?</DialogTitle>
         <DialogContent>
           <Typography variant="body2" color="text.secondary">
-            This confirms the payment was made and locks the entry from deletion.
+            This confirms the payment was made and locks the entry from editing and deletion.
           </Typography>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setConfirmApproveId(null)}>Cancel</Button>
           <Button variant="contained" color="success" disabled={approveMutation.isPending}
             onClick={() => confirmApproveId && approveMutation.mutate(confirmApproveId)}>
-            {approveMutation.isPending ? <CircularProgress size={20} /> : 'Mark Done'}
+            {approveMutation.isPending ? <CircularProgress size={20} /> : 'Mark Paid'}
           </Button>
         </DialogActions>
       </ResponsiveDialog>

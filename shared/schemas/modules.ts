@@ -375,6 +375,7 @@ export const approvalActionSchema = z.object({
 });
 
 // ═══ Payment Sheets (daily printable register — standalone log) ═══
+const paymentSheetStatus = z.enum(['PENDING', 'PAID', 'ADVANCE_PAID']);
 export const createPaymentSheetSchema = z.object({
   body: z.object({
     poId: uuid,
@@ -383,7 +384,7 @@ export const createPaymentSheetSchema = z.object({
     paymentMode: z.nativeEnum(PaymentMode),
     reference: z.string().trim().max(100).optional(),
     notes: z.string().trim().max(1000).optional(),
-    status: z.enum(['PENDING', 'APPROVED']).optional(),
+    status: paymentSheetStatus.optional(),
   }),
 });
 export const updatePaymentSheetSchema = z.object({
@@ -395,7 +396,7 @@ export const updatePaymentSheetSchema = z.object({
     paymentMode: z.nativeEnum(PaymentMode).optional(),
     reference: z.string().trim().max(100).optional(),
     notes: z.string().trim().max(1000).optional(),
-    status: z.enum(['PENDING', 'APPROVED']).optional(),
+    status: paymentSheetStatus.optional(),
   }),
 });
 export const listPaymentSheetsSchema = z.object({
