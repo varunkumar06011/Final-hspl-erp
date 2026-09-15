@@ -698,8 +698,10 @@ export default function QuotationsPage() {
               // but the quotation status hasn't caught up yet (stale data),
               // use the workflow status for display so the row immediately
               // turns green (approved) or gray (rejected).
+              // DELETED status is always preserved — never override it.
               const wfStatus = row.approvalWorkflow?.status;
               const effectiveStatus =
+                row.status === QuotationStatus.DELETED ? QuotationStatus.DELETED :
                 wfStatus === ApprovalStatus.APPROVED && row.status !== QuotationStatus.CONVERTED_TO_PO
                   ? QuotationStatus.APPROVED
                   : wfStatus === ApprovalStatus.REJECTED
@@ -710,6 +712,7 @@ export default function QuotationsPage() {
               // aging status so the chip color and row background are correct
               // even when the aging endpoint hasn't refreshed yet.
               const displayAgingStatus =
+                effectiveStatus === QuotationStatus.DELETED ? 'DELETED' :
                 effectiveStatus === QuotationStatus.APPROVED ? 'APPROVED' :
                 effectiveStatus === QuotationStatus.REJECTED ? 'REJECTED' :
                 agingStatus;
@@ -740,12 +743,14 @@ export default function QuotationsPage() {
                       label={effectiveStatus.replace(/_/g, ' ')}
                       size="small"
                       color={
+                        displayAgingStatus === 'DELETED' ? 'error' :
                         displayAgingStatus === 'OVERDUE' ? 'error' :
                         displayAgingStatus === 'ATTENTION' ? 'warning' :
                         displayAgingStatus === 'APPROVED' ? 'success' :
                         displayAgingStatus === 'REJECTED' ? 'default' :
                         STATUS_COLORS[effectiveStatus] ?? 'default'
                       }
+                      sx={displayAgingStatus === 'DELETED' ? { bgcolor: '#d32f2f', color: '#fff', textDecoration: 'line-through' } : undefined}
                     />
                     {agingLabel && displayAgingStatus !== 'APPROVED' && displayAgingStatus !== 'REJECTED' && (
                       <Typography variant="caption" sx={{
@@ -832,19 +837,23 @@ export default function QuotationsPage() {
                       <IconButton size="small" onClick={() => downloadQuotationPDF(row.id, row.quotationNumber)} title="Download PDF"><DownloadIcon fontSize="small" /></IconButton>
                       <IconButton size="small" onClick={() => handleShareWhatsApp(row)} title="Share to WhatsApp"><ShareIcon fontSize="small" /></IconButton>
                       <IconButton size="small" onClick={() => setTimelineRow(row)} title="Show Timeline"><TimelineIcon fontSize="small" /></IconButton>
-                      {effectiveStatus === QuotationStatus.SUBMITTED || effectiveStatus === QuotationStatus.UNDER_REVIEW ? (
-                        <IconButton size="small" onClick={() => openEdit(row)} title="Edit"><EditIcon fontSize="small" /></IconButton>
-                      ) : (
-                        <IconButton size="small" onClick={() => { setNotesEditRow(row); setNotesEditValue(row.notes ?? ''); }} title="Edit Description"><EditIcon fontSize="small" /></IconButton>
-                      )}
-                      {pendingStep && (
+                      {effectiveStatus !== QuotationStatus.DELETED && (
                         <>
-                          <IconButton size="small" color="success" onClick={() => setApprovalAction({ row, step: pendingStep, action: 'approve' })} title="Approve"><CheckIcon fontSize="small" /></IconButton>
-                          <IconButton size="small" color="error" onClick={() => setApprovalAction({ row, step: pendingStep, action: 'reject' })} title="Reject"><CloseIcon fontSize="small" /></IconButton>
+                          {effectiveStatus === QuotationStatus.SUBMITTED || effectiveStatus === QuotationStatus.UNDER_REVIEW ? (
+                            <IconButton size="small" onClick={() => openEdit(row)} title="Edit"><EditIcon fontSize="small" /></IconButton>
+                          ) : (
+                            <IconButton size="small" onClick={() => { setNotesEditRow(row); setNotesEditValue(row.notes ?? ''); }} title="Edit Description"><EditIcon fontSize="small" /></IconButton>
+                          )}
+                          {pendingStep && (
+                            <>
+                              <IconButton size="small" color="success" onClick={() => setApprovalAction({ row, step: pendingStep, action: 'approve' })} title="Approve"><CheckIcon fontSize="small" /></IconButton>
+                              <IconButton size="small" color="error" onClick={() => setApprovalAction({ row, step: pendingStep, action: 'reject' })} title="Reject"><CloseIcon fontSize="small" /></IconButton>
+                            </>
+                          )}
+                          {effectiveStatus !== QuotationStatus.APPROVED && effectiveStatus !== QuotationStatus.CONVERTED_TO_PO && (
+                            <IconButton size="small" color="error" onClick={() => setDeleteRow(row)} title="Delete"><DeleteIcon fontSize="small" /></IconButton>
+                          )}
                         </>
-                      )}
-                      {effectiveStatus !== QuotationStatus.APPROVED && effectiveStatus !== QuotationStatus.CONVERTED_TO_PO && (
-                        <IconButton size="small" color="error" onClick={() => setDeleteRow(row)} title="Delete"><DeleteIcon fontSize="small" /></IconButton>
                       )}
                     </Box>
                   </Box>

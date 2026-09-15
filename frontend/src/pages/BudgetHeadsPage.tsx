@@ -23,7 +23,9 @@ import {
   LinearProgress,
   Stack,
   MenuItem,
+  Tooltip,
 } from '@mui/material';
+import { InfoOutlined as InfoIcon } from '@mui/icons-material';
 import {
   Add as AddIcon,
   Edit as EditIcon,
@@ -257,19 +259,17 @@ export default function BudgetHeadsPage() {
       setError('Allocated amount must be greater than 0');
       return;
     }
-    if (!form.slNo || Number(form.slNo) < 1) {
-      setError('Sl. No. must be at least 1');
-      return;
-    }
     setError('');
-    const payload = {
-      slNo: Number(form.slNo),
+    const payload: Record<string, unknown> = {
       particulars: String(form.particulars).trim(),
       allocatedAmount: Number(form.allocatedAmount),
     };
     if (editing) {
+      // Only include slNo when editing (revision workflow uses it)
+      if (form.slNo) payload.slNo = Number(form.slNo);
       updateMutation.mutate({ id: editing.id as string, payload });
     } else {
+      // New budget head: slNo is auto-assigned by the backend
       createMutation.mutate(payload);
     }
   };
@@ -327,24 +327,69 @@ export default function BudgetHeadsPage() {
       </Box>
 
       {/* Summary cards */}
-      {summary && (
-        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', md: '1fr 1fr 1fr 1fr 1fr' }, gap: 1, mb: 2 }}>
+      {summary && (() => {
+        const actual = Number(summary.totalActual ?? 0);
+        const paid = Number(summary.totalPaid ?? 0);
+        const actualDiffersFromPaid = Math.abs(actual - paid) > 0.01;
+        return (
+        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', md: actualDiffersFromPaid ? '1fr 1fr 1fr 1fr 1fr' : '1fr 1fr 1fr 1fr' }, gap: 1, mb: 2 }}>
           {[
-            { label: 'Allocated', value: summary.totalAllocated, color: 'primary.main' },
-            { label: 'Committed', value: summary.totalCommitted, color: 'info.main' },
-            { label: 'Actual', value: summary.totalActual, color: 'warning.main' },
-            { label: 'Paid', value: summary.totalPaid, color: 'success.main' },
-            { label: 'Available', value: summary.totalUncommittedAvailable ?? summary.totalAvailable, color: 'secondary.main' },
+            {
+              label: 'Allocated',
+              value: summary.totalAllocated,
+              color: 'primary.main',
+              hint: 'Total budget allocated across all budget heads. This is the money you have set aside for spending.',
+              short: 'Sum of all heads',
+            },
+            {
+              label: 'Committed',
+              value: summary.totalCommitted,
+              color: 'info.main',
+              hint: 'Money earmarked by approved POs where goods have NOT yet been received. Goes UP when a PO is approved, goes DOWN when goods are received (GRN posted).',
+              short: 'Approved POs, not yet received',
+            },
+            ...(actualDiffersFromPaid ? [{
+              label: 'Actual',
+              value: actual,
+              color: 'warning.main',
+              hint: 'Money actually spent (goods received or direct expense). Differs from Paid when goods are received but not yet paid for.',
+              short: 'Goods received / expense incurred',
+            }] : []),
+            {
+              label: 'Paid',
+              value: paid,
+              color: 'success.main',
+              hint: actualDiffersFromPaid
+                ? 'Money actually paid out via bank/cash. When this is less than Actual, the difference is outstanding payables (goods received but not yet paid).'
+                : 'Money paid out via bank/cash. Equals Actual — everything received has been fully paid.',
+              short: actualDiffersFromPaid ? 'Paid out via bank/cash' : 'All received & paid',
+            },
+            {
+              label: 'Available',
+              value: summary.totalUncommittedAvailable ?? summary.totalAvailable,
+              color: 'secondary.main',
+              hint: 'Allocated − Committed − Actual. The uncommitted balance still free to spend on new POs.',
+              short: 'Allocated − Committed − Actual',
+            },
           ].map((card) => (
             <Card key={card.label} sx={{ p: 1.5 }}>
-              <Typography variant="caption" color="text.secondary">{card.label}</Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                <Typography variant="caption" color="text.secondary">{card.label}</Typography>
+                <Tooltip title={card.hint} arrow placement="bottom-start">
+                  <InfoIcon sx={{ fontSize: 14, color: 'text.disabled', cursor: 'help' }} />
+                </Tooltip>
+              </Box>
               <Typography variant="h6" sx={{ color: card.color, fontSize: { xs: '0.9rem', sm: '1.1rem' } }}>
                 {formatCurrency(card.value)}
+              </Typography>
+              <Typography variant="caption" color="text.disabled" sx={{ display: 'block', fontSize: '0.7rem', lineHeight: 1.2, mt: 0.25 }}>
+                {card.short}
               </Typography>
             </Card>
           ))}
         </Box>
-      )}
+        );
+      })()}
 
       {error && (
         <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>
@@ -463,14 +508,21 @@ export default function BudgetHeadsPage() {
         <DialogContent>
           {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
-            <TextField
-              label="Sl. No."
-              type="number"
-              value={formatIndianNumber(form.slNo ?? '')}
-              onChange={(e) => setForm({ ...form, slNo: e.target.value.replace(/,/g, '') })}
-              required
-              size="small"
-            />
+            {!editing && (
+              <Alert severity="info" sx={{ py: 0.5 }}>
+                Sl. No. will be auto-assigned (next available number).
+              </Alert>
+            )}
+            {editing && (
+              <TextField
+                label="Sl. No."
+                type="number"
+                value={formatIndianNumber(form.slNo ?? '')}
+                onChange={(e) => setForm({ ...form, slNo: e.target.value.replace(/,/g, '') })}
+                required
+                size="small"
+              />
+            )}
             <TextField
               label="Particulars"
               value={form.particulars ?? ''}

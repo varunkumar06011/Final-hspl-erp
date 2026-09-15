@@ -117,6 +117,85 @@ router.post(
   },
 );
 
+// ── POST / — create a single budget head with auto-assigned slNo ──
+// Overrides the CRUD factory's create route to:
+// 1. Auto-assign slNo = max(existing slNo) + 1 (no manual entry needed)
+// 2. Prevent duplicate budget heads (same particulars, case-insensitive)
+// 3. Ensure allocated amount is added once, not duplicated
+router.post(
+  '/',
+  rbacMiddleware(Permission.MANAGE_FINANCE),
+  validateMiddleware(createBudgetHeadSchema),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      const { particulars, allocatedAmount, slNo: manualSlNo } = req.body;
+
+      // ── Prevent duplicate budget heads (same particulars, case-insensitive) ──
+      // This stops the same budget head from being created twice, which would
+      // double-count its allocatedAmount in the total.
+      const existing = await prisma.budgetHead.findFirst({
+        where: {
+          projectId,
+          deletedAt: null,
+          particulars: { equals: String(particulars).trim(), mode: 'insensitive' },
+        },
+        select: { id: true, slNo: true, particulars: true, allocatedAmount: true },
+      });
+      if (existing) {
+        res.status(409).json({
+          error: `A budget head with the same particulars already exists (Sl. No. ${existing.slNo}: "${existing.particulars}", allocated ${Number(existing.allocatedAmount).toLocaleString('en-IN')}). Use the edit option to modify it instead of creating a duplicate.`,
+        });
+        return;
+      }
+
+      // ── Auto-assign slNo if not provided ──
+      let slNo: number;
+      if (manualSlNo) {
+        slNo = Number(manualSlNo);
+      } else {
+        const maxSlNo = await prisma.budgetHead.aggregate({
+          where: { projectId, deletedAt: null },
+          _max: { slNo: true },
+        });
+        slNo = (maxSlNo._max.slNo ?? 0) + 1;
+      }
+
+      // ── Check slNo conflict ──
+      const slNoConflict = await prisma.budgetHead.findFirst({
+        where: { projectId, deletedAt: null, slNo },
+        select: { id: true },
+      });
+      if (slNoConflict) {
+        res.status(409).json({ error: `Sl. No. ${slNo} is already in use. Leave it blank for auto-assignment.` });
+        return;
+      }
+
+      const record = await prisma.budgetHead.create({
+        data: {
+          projectId,
+          slNo,
+          particulars: String(particulars).trim(),
+          allocatedAmount: Number(allocatedAmount),
+        },
+      });
+
+      await logAudit({
+        userId: req.user!.id,
+        action: AuditAction.CREATE,
+        entityType: 'BUDGET_HEAD',
+        entityId: record.id,
+        projectId,
+        newValue: { slNo, particulars: record.particulars, allocatedAmount: record.allocatedAmount },
+      });
+
+      res.status(201).json(record);
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
 // ── Recompute cached totals from source events ──
 // Rebuilds committedAmount, actualAmount, paidAmount for all budget heads in
 // the project from the immutable financial events (POs, GRNs, Payments, JVs).

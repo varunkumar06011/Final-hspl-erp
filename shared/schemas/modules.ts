@@ -1024,7 +1024,7 @@ export const listAttachmentsSchema = z.object({
 // ── Budget Heads ──
 export const createBudgetHeadSchema = z.object({
   body: z.object({
-    slNo: z.coerce.number().int().min(1),
+    slNo: z.coerce.number().int().min(1).optional(), // auto-assigned if omitted
     particulars: nonEmptyText(200),
     allocatedAmount: positiveMoney,
   }),

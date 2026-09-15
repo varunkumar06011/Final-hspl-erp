@@ -129,6 +129,7 @@ export const STATUS_COLORS: Record<string, 'default' | 'primary' | 'secondary' |
   APPROVED: 'success',
   REJECTED: 'error',
   CONVERTED_TO_PO: 'success',
+  DELETED: 'error',
   PENDING: 'warning',
   PENDING_APPROVAL: 'warning',
   DELIVERED: 'success',

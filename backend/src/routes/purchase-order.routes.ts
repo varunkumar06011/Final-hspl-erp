@@ -587,7 +587,13 @@ router.patch(
         return;
       }
 
-      // Only notes/description can be edited — allowed for ALL statuses
+      // DELETED POs are frozen — no edits allowed
+      if (existing.status === POStatus.DELETED) {
+        res.status(400).json({ error: 'Cannot edit a deleted purchase order' });
+        return;
+      }
+
+      // Only notes/description can be edited — allowed for ALL other statuses
       if (req.body.notes === undefined) {
         res.status(400).json({ error: 'Only description/notes can be updated' });
         return;
@@ -606,7 +612,7 @@ router.patch(
   }
 );
 
-// DELETE /:id — soft delete (only by creator, only if not approved)
+// DELETE /:id — mark as DELETED (stays visible in list, excluded from counts/ledger)
 router.delete(
   '/:id',
   rbacMiddleware(Permission.CREATE_PO),
@@ -628,10 +634,14 @@ router.delete(
         res.status(400).json({ error: 'Cannot delete an approved, partially delivered, or delivered purchase order' });
         return;
       }
+      if (existing.status === POStatus.DELETED) {
+        res.status(400).json({ error: 'Purchase order is already deleted' });
+        return;
+      }
 
       await prisma.purchaseOrder.update({
         where: { id: existing.id },
-        data: { deletedAt: new Date() },
+        data: { status: POStatus.DELETED },
       });
 
       await logAudit({
@@ -640,9 +650,10 @@ router.delete(
         entityType: 'PURCHASE_ORDER',
         entityId: existing.id,
         projectId,
+        newValue: { status: 'DELETED', previousStatus: existing.status },
       });
 
-      res.json({ message: 'Purchase order deleted' });
+      res.json({ message: 'Purchase order marked as deleted' });
     } catch (error) {
       next(error);
     }
@@ -663,6 +674,12 @@ router.post(
       });
       if (!po || !po.approvalWorkflow) {
         res.status(404).json({ error: 'Purchase order or approval workflow not found' });
+        return;
+      }
+
+      // Prevent approving a deleted PO
+      if (po.status === POStatus.DELETED) {
+        res.status(400).json({ error: 'Cannot approve a deleted purchase order' });
         return;
       }
 
@@ -781,6 +798,12 @@ router.post(
       });
       if (!po || !po.approvalWorkflow) {
         res.status(404).json({ error: 'Purchase order or approval workflow not found' });
+        return;
+      }
+
+      // Prevent rejecting a deleted PO
+      if (po.status === POStatus.DELETED) {
+        res.status(400).json({ error: 'Cannot reject a deleted purchase order' });
         return;
       }
 

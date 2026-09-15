@@ -67,6 +67,28 @@ async function checkOverdueQuotations(): Promise<void> {
       console.log(`[Scheduler] Reconciled ${toReject.length} quotation(s) stuck in SUBMITTED → REJECTED`);
     }
 
+    // ── Migrate legacy soft-deleted quotations to the new DELETED status.
+    //    Previously, delete set deletedAt. Now we use status=DELETED and
+    //    clear deletedAt so the record stays visible in the list (clearly
+    //    marked as DELETED) instead of disappearing entirely.
+    const legacyDeletedQuotations = await prisma.quotation.updateMany({
+      where: { deletedAt: { not: null }, status: { not: QuotationStatus.DELETED } },
+      data: { deletedAt: null, status: QuotationStatus.DELETED },
+    });
+    if (legacyDeletedQuotations.count > 0) {
+      console.log(`[Scheduler] Migrated ${legacyDeletedQuotations.count} legacy soft-deleted quotation(s) to DELETED status`);
+    }
+
+    // ── Migrate legacy soft-deleted POs to the new DELETED status.
+    const { POStatus } = await import('@hospital-erp/shared');
+    const legacyDeletedPOs = await prisma.purchaseOrder.updateMany({
+      where: { deletedAt: { not: null }, status: { not: POStatus.DELETED } },
+      data: { deletedAt: null, status: POStatus.DELETED },
+    });
+    if (legacyDeletedPOs.count > 0) {
+      console.log(`[Scheduler] Migrated ${legacyDeletedPOs.count} legacy soft-deleted PO(s) to DELETED status`);
+    }
+
     // ── Migrate existing pending quotation workflows to the new policy:
     //    ADMIN_SINGLE_APPROVER — a single admin approval is enough. This
     //    is idempotent so it's safe to run every cycle.

@@ -39,6 +39,8 @@ async function reconcileQuotationStatuses(
   for (const q of quotations) {
     const wfStatus = q.approvalWorkflow?.status;
     if (!wfStatus) continue;
+    // Never reconcile a DELETED quotation — it should stay DELETED
+    if (q.status === QuotationStatus.DELETED) continue;
     if (wfStatus === ApprovalStatus.APPROVED && q.status !== QuotationStatus.APPROVED && q.status !== QuotationStatus.CONVERTED_TO_PO) {
       toApprove.push(q.id);
     } else if (wfStatus === ApprovalStatus.REJECTED && q.status !== QuotationStatus.REJECTED && q.status !== QuotationStatus.CONVERTED_TO_PO) {
@@ -569,7 +571,7 @@ router.patch(
   }
 );
 
-// DELETE /:id — soft delete
+// DELETE /:id — mark as DELETED (stays visible in list, excluded from counts/ledger)
 router.delete(
   '/:id',
   rbacMiddleware(Permission.CREATE_QUOTATION),
@@ -587,15 +589,14 @@ router.delete(
         res.status(400).json({ error: 'Cannot delete an approved quotation or one that has been converted to a purchase order' });
         return;
       }
-
-      const storage = getStorageService();
-      if (existing.filePath) {
-        await storage.deleteFile(existing.filePath).catch(() => {});
+      if (existing.status === QuotationStatus.DELETED) {
+        res.status(400).json({ error: 'Quotation is already deleted' });
+        return;
       }
 
       await prisma.quotation.update({
         where: { id: existing.id },
-        data: { deletedAt: new Date() },
+        data: { status: QuotationStatus.DELETED },
       });
 
       await logAudit({
@@ -604,9 +605,10 @@ router.delete(
         entityType: 'QUOTATION',
         entityId: existing.id,
         projectId,
+        newValue: { status: 'DELETED', previousStatus: existing.status },
       });
 
-      res.json({ message: 'Quotation deleted' });
+      res.json({ message: 'Quotation marked as deleted' });
     } catch (error) {
       next(error);
     }
@@ -630,8 +632,8 @@ router.post(
         return;
       }
 
-      // Prevent approving a quotation that's already been rejected or approved
-      if (quotation.status === QuotationStatus.REJECTED || quotation.status === QuotationStatus.APPROVED || quotation.status === QuotationStatus.CONVERTED_TO_PO) {
+      // Prevent approving a quotation that's already been rejected, approved, converted, or deleted
+      if (quotation.status === QuotationStatus.REJECTED || quotation.status === QuotationStatus.APPROVED || quotation.status === QuotationStatus.CONVERTED_TO_PO || quotation.status === QuotationStatus.DELETED) {
         res.status(400).json({ error: `Cannot approve a quotation that is already ${quotation.status.replace(/_/g, ' ').toLowerCase()}` });
         return;
       }
@@ -710,7 +712,7 @@ router.post(
       }
 
       // Prevent rejecting a quotation that's already been decided
-      if (quotation.status === QuotationStatus.REJECTED || quotation.status === QuotationStatus.APPROVED || quotation.status === QuotationStatus.CONVERTED_TO_PO) {
+      if (quotation.status === QuotationStatus.REJECTED || quotation.status === QuotationStatus.APPROVED || quotation.status === QuotationStatus.CONVERTED_TO_PO || quotation.status === QuotationStatus.DELETED) {
         res.status(400).json({ error: `Cannot reject a quotation that is already ${quotation.status.replace(/_/g, ' ').toLowerCase()}` });
         return;
       }

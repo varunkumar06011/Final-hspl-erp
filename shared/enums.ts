@@ -56,6 +56,7 @@ export enum QuotationStatus {
   APPROVED = 'APPROVED',
   REJECTED = 'REJECTED',
   CONVERTED_TO_PO = 'CONVERTED_TO_PO',
+  DELETED = 'DELETED',
 }
 
 export enum POStatus {
@@ -66,6 +67,7 @@ export enum POStatus {
   DELIVERED = 'DELIVERED',
   PARTIALLY_DELIVERED = 'PARTIALLY_DELIVERED',
   CANCELLED = 'CANCELLED',
+  DELETED = 'DELETED',
 }
 
 // Material Purchase Request (MPR) — internal request raised by company,

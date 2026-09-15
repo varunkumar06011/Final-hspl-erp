@@ -52,7 +52,7 @@ router.get(
             where: {
               projectId,
               deletedAt: null,
-              status: { notIn: ['APPROVED', 'REJECTED', 'CONVERTED_TO_PO'] },
+              status: { notIn: ['APPROVED', 'REJECTED', 'CONVERTED_TO_PO', 'DELETED'] },
               approvalWorkflow: { steps: { none: { status: 'REJECTED' } } },
             },
           }),
@@ -60,7 +60,7 @@ router.get(
             where: {
               projectId,
               deletedAt: null,
-              status: { notIn: ['APPROVED', 'REJECTED', 'CONVERTED_TO_PO'] },
+              status: { notIn: ['APPROVED', 'REJECTED', 'CONVERTED_TO_PO', 'DELETED'] },
               approvalWorkflow: { steps: { none: { status: 'REJECTED' } } },
             },
             _sum: { totalAmount: true },
@@ -75,7 +75,7 @@ router.get(
             take: 5,
           }),
           prisma.purchaseOrder.count({
-            where: { projectId, deletedAt: null, status: { notIn: ['APPROVED', 'REJECTED', 'CANCELLED', 'DELIVERED', 'PARTIALLY_DELIVERED'] } },
+            where: { projectId, deletedAt: null, status: { notIn: ['APPROVED', 'REJECTED', 'CANCELLED', 'DELIVERED', 'PARTIALLY_DELIVERED', 'DELETED'] } },
           }),
           prisma.purchaseOrder.findMany({
             where: { projectId, deletedAt: null },
