@@ -1,66 +1,97 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useTheme, useMediaQuery } from '@mui/material';
 
 /**
- * Combined hook for mobile landscape detection + manual override.
+ * Combined hook for mobile landscape detection + manual table-view toggle.
  *
  * Returns:
- *   - excelView: boolean — whether the Excel-style table should show
- *   - isMobile: boolean — whether the viewport is mobile-width (< md)
- *   - toggleExcelView: () => void — manually toggle the Excel view on/off
+ *   - isLandscape:  boolean — viewport is landscape (innerWidth > innerHeight)
+ *   - isPortrait:   boolean — viewport is portrait  (innerHeight >= innerWidth)
+ *   - isMobile:     boolean — viewport is mobile-width (< md)
+ *   - excelView:    boolean — whether the Excel-style table should show
+ *   - wantsTable:   boolean — whether user explicitly requested table view
+ *   - showRotateHint: boolean — show "rotate your phone" instruction
+ *   - toggleExcelView: () => void — toggle the table view on/off
  *
- * excelView is true when EITHER:
- *   - auto-detected: mobile width + landscape orientation, OR
- *   - manually toggled on by the user (persists per session)
+ * Uses window.resize + innerWidth > innerHeight as the primary trigger
+ * (more reliable than orientationchange across mobile browsers).
  *
- * The manual toggle lets users on devices where auto-rotate detection
- * fails (or where landscape width exceeds the md breakpoint) still
- * access the Excel table view.
+ * Flow:
+ *   Portrait → Card UI (existing layout)
+ *   Tap "Table View" while portrait → show "Rotate your phone" instruction
+ *   Rotate to landscape → Excel table appears automatically
+ *   Rotate back to portrait → Card UI returns automatically (wantsTable resets)
  */
 export function useMobileLandscape(): {
   excelView: boolean;
   isMobile: boolean;
+  isLandscape: boolean;
+  isPortrait: boolean;
+  wantsTable: boolean;
+  showRotateHint: boolean;
   toggleExcelView: () => void;
 } {
   const theme = useTheme();
   const isMobileWidth = useMediaQuery(theme.breakpoints.down('md'));
-  // Detect up to 1200px as "mobile-ish" so phones in landscape (which can
-  // be 900-1000px wide) still qualify for auto-rotate detection.
-  const isTabletWidth = useMediaQuery('(max-width: 1200px)');
 
-  // "isMobile" = narrow screen OR a wider screen that's currently in landscape
-  // (a phone rotated to landscape can be 900-1000px wide but is still a phone).
-  const [isLandscape, setIsLandscape] = useState<boolean>(() => {
-    if (typeof window === 'undefined' || !window.matchMedia) return false;
-    return window.matchMedia('(orientation: landscape)').matches;
-  });
+  const [isLandscape, setIsLandscape] = useState<boolean>(() =>
+    typeof window !== 'undefined' ? window.innerWidth > window.innerHeight : false
+  );
 
-  const isMobile = isMobileWidth || (isTabletWidth && isLandscape);
+  const [isPortrait, setIsPortrait] = useState<boolean>(() =>
+    typeof window !== 'undefined' ? window.innerHeight >= window.innerWidth : false
+  );
 
-  const [manualOverride, setManualOverride] = useState<boolean | null>(null);
+  // Whether the user explicitly tapped "Table View"
+  const [wantsTable, setWantsTable] = useState(false);
+
+  // Track previous orientation to detect landscape→portrait transition
+  const wasLandscape = useRef(false);
 
   useEffect(() => {
-    if (typeof window === 'undefined' || !window.matchMedia) return undefined;
-    const mql = window.matchMedia('(orientation: landscape)');
-    const handler = (e: MediaQueryListEvent) => setIsLandscape(e.matches);
-    mql.addEventListener('change', handler);
-    return () => mql.removeEventListener('change', handler);
-  }, []);
+    if (typeof window === 'undefined') return undefined;
 
-  // Auto-detect: mobile-ish width + landscape orientation
-  const autoDetected = isMobile && isLandscape;
+    const check = () => {
+      const landscape = window.innerWidth > window.innerHeight;
+      const portrait = window.innerHeight >= window.innerWidth;
+      setIsLandscape(landscape);
+      setIsPortrait(portrait);
 
-  // Manual override takes precedence; otherwise use auto-detection
-  const excelView = manualOverride !== null ? manualOverride : autoDetected;
+      // If we were in landscape and are now in portrait, and the user had
+      // requested table view, reset the preference — rotating back to
+      // portrait means they want the card UI again.
+      if (wasLandscape.current && portrait && wantsTable) {
+        setWantsTable(false);
+      }
+      wasLandscape.current = landscape;
+    };
+
+    check(); // initial check
+    window.addEventListener('resize', check);
+    window.addEventListener('orientationchange', check);
+
+    return () => {
+      window.removeEventListener('resize', check);
+      window.removeEventListener('orientationchange', check);
+    };
+  }, [wantsTable]);
+
+  // "isMobile" = narrow screen (< md) OR a wider screen in landscape
+  // (a phone rotated to landscape can be 900-1000px wide but is still a phone)
+  const isMobile = isMobileWidth || (isLandscape && window.innerWidth < 1200);
+
+  // excelView = user wants table AND we're in landscape
+  // Auto-detect: also show table when mobile + landscape (no tap needed)
+  const excelView = isLandscape && (wantsTable || isMobile);
+
+  // showRotateHint = user tapped Table View but is still in portrait
+  const showRotateHint = wantsTable && isPortrait && isMobile;
 
   const toggleExcelView = useCallback(() => {
-    setManualOverride((prev) => {
-      const current = prev !== null ? prev : autoDetected;
-      return !current;
-    });
-  }, [autoDetected]);
+    setWantsTable((prev) => !prev);
+  }, []);
 
-  return { excelView, isMobile, toggleExcelView };
+  return { excelView, isMobile, isLandscape, isPortrait, wantsTable, showRotateHint, toggleExcelView };
 }
 
 /**
@@ -71,17 +102,22 @@ export function useMobilePortrait(): boolean {
   const theme = useTheme();
   const isMobileWidth = useMediaQuery(theme.breakpoints.down('md'));
 
-  const [isPortrait, setIsPortrait] = useState<boolean>(() => {
-    if (typeof window === 'undefined' || !window.matchMedia) return false;
-    return window.matchMedia('(orientation: portrait)').matches;
-  });
+  const [isPortrait, setIsPortrait] = useState<boolean>(() =>
+    typeof window !== 'undefined' ? window.innerHeight >= window.innerWidth : false
+  );
 
   useEffect(() => {
-    if (typeof window === 'undefined' || !window.matchMedia) return undefined;
-    const mql = window.matchMedia('(orientation: portrait)');
-    const handler = (e: MediaQueryListEvent) => setIsPortrait(e.matches);
-    mql.addEventListener('change', handler);
-    return () => mql.removeEventListener('change', handler);
+    if (typeof window === 'undefined') return undefined;
+
+    const check = () => setIsPortrait(window.innerHeight >= window.innerWidth);
+    check();
+    window.addEventListener('resize', check);
+    window.addEventListener('orientationchange', check);
+
+    return () => {
+      window.removeEventListener('resize', check);
+      window.removeEventListener('orientationchange', check);
+    };
   }, []);
 
   return isMobileWidth && isPortrait;
