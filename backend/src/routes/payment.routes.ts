@@ -1083,7 +1083,31 @@ router.post(
           }
         }
 
-        // 5. Generate voucher number and post
+        // 5. Over-budget check for EXPENSE payments (actualAmount increases here).
+        //    For INVOICE/ADVANCE payments, actualAmount was already accrued at GRN
+        //    time, so only paidAmount increases — no over-budget check needed.
+        if (pr.budgetHeadId && pr.type === 'EXPENSE') {
+          const head = await tx.budgetHead.findFirst({
+            where: { id: pr.budgetHeadId, projectId, deletedAt: null },
+          });
+          if (head) {
+            const projectedActual = Number(head.actualAmount) + paymentAmount;
+            if (projectedActual > Number(head.allocatedAmount) + 0.01) {
+              throw new Error(
+                `Payment of ₹${paymentAmount.toFixed(2)} would exceed the allocated budget for "${head.particulars}" ` +
+                `(allocated: ₹${Number(head.allocatedAmount).toFixed(2)}, current actual: ₹${Number(head.actualAmount).toFixed(2)})`
+              );
+            }
+          }
+        }
+
+        // 6. Generate voucher number and post.
+        //    budgetHeadId is passed to postVoucher so the bank/cash transaction
+        //    and the debit ledger entry are tagged with the budget head — this
+        //    makes the payment visible in the budget head's expenditure breakdown.
+        //    postVoucher also updates the budget head totals atomically:
+        //      EXPENSE → actualAmount + paidAmount (payment IS the expense event)
+        //      INVOICE/ADVANCE → paidAmount only (actual was accrued at GRN time)
         const jvNumber = await generateVoucherNumber(VoucherType.PAYMENT);
         const voucherResult = await postVoucher({
           projectId,
@@ -1094,7 +1118,7 @@ router.post(
           totalDebit: paymentAmount,
           totalCredit: paymentAmount,
           entries: [
-            { ledgerId: debitLedgerId, debit: paymentAmount, credit: 0, description: `Payment: ${pr.paymentCode}` },
+            { ledgerId: debitLedgerId, debit: paymentAmount, credit: 0, description: `Payment: ${pr.paymentCode}`, budgetHeadId: pr.budgetHeadId ?? undefined },
             { ledgerId: creditLedgerId, debit: 0, credit: paymentAmount, description: `Payment: ${pr.paymentCode}` },
           ],
           ledgerMap,
@@ -1103,6 +1127,8 @@ router.post(
           billSettlements: [],
           userId: req.user!.id,
           tx,
+          budgetHeadId: pr.budgetHeadId ?? null,
+          budgetPaidOnly: pr.type !== 'EXPENSE',
         });
 
         // ── Create Payment record with finance links ──
@@ -1119,44 +1145,6 @@ router.post(
             postedAt: new Date(),
           },
         });
-
-        // ── Update budget head paidAmount (and actualAmount for EXPENSE type) ──
-        // For EXPENSE payments, the payment itself is the actual expense event
-        // (there is no separate accrual step), so both actualAmount and paidAmount
-        // increase. For INVOICE/ADVANCE payments, actualAmount was already posted
-        // at GRN time, so only paidAmount increases here.
-        if (pr.budgetHeadId) {
-          const head = await tx.budgetHead.findFirst({
-            where: { id: pr.budgetHeadId, projectId, deletedAt: null },
-          });
-          if (head) {
-            // ── C27: Prevent overspend beyond allocated budget ──
-            // For EXPENSE payments, actualAmount increases. If the new actual
-            // would exceed allocatedAmount, block the payment rather than
-            // silently driving available budget negative.
-            if (pr.type === 'EXPENSE') {
-              const projectedActual = Number(head.actualAmount) + paymentAmount;
-              if (projectedActual > Number(head.allocatedAmount) + 0.01) {
-                throw new Error(
-                  `Payment of ₹${paymentAmount.toFixed(2)} would exceed the allocated budget for "${head.particulars}" ` +
-                  `(allocated: ₹${Number(head.allocatedAmount).toFixed(2)}, current actual: ₹${Number(head.actualAmount).toFixed(2)})`
-                );
-              }
-            }
-            // Atomic increment — DB applies the delta, preventing lost updates
-            // when multiple payments hit the same budget head concurrently.
-            const budgetData: { paidAmount: { increment: number }; actualAmount?: { increment: number } } = {
-              paidAmount: { increment: paymentAmount },
-            };
-            if (pr.type === 'EXPENSE') {
-              budgetData.actualAmount = { increment: paymentAmount };
-            }
-            await tx.budgetHead.update({
-              where: { id: pr.budgetHeadId },
-              data: budgetData,
-            });
-          }
-        }
 
         // Recalculate invoice payment status inside the transaction
         if (pr.invoiceId) {
