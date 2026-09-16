@@ -278,7 +278,7 @@ export async function streamPurchaseOrderPdf(res: NodeJS.WritableStream, po: any
   const advanceHighlight = '#E65100';
   const drawAdvanceTotal = (lbl: string, val: string, yy: number) => {
     doc.rect(totalsX, yy, totalsW, 22).fill(advanceHighlight);
-    const labelW = 165;
+    const labelW = 140;
     const valueW = totalsW - labelW - 16;
     doc.fillColor('#fff').font('Helvetica-Bold').fontSize(8).text(lbl, totalsX + 8, yy + 6, { width: labelW, lineBreak: false });
     doc.fillColor('#fff').font('Helvetica-Bold').fontSize(8.5).text(val, totalsX + 8 + labelW, yy + 6, { width: valueW, align: 'right', lineBreak: false });
