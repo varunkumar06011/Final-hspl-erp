@@ -437,11 +437,13 @@ function VendorHistoryDialog({ vendorId, open, onClose }: { vendorId: string | n
                         <TableRow key={i} {...clickableRow(row.path)}>
                           <TableCell data-label="Date">{formatDate(row.date)}</TableCell>
                           <TableCell data-label="Type">
-                            <Typography variant="body2" fontWeight={500}>{row.type}</Typography>
-                            {row.status && <Chip label={statusLabel(row.status)} size="small" sx={{ fontSize: '0.65rem', height: 16 }} color={(STATUS_COLORS[row.status] ?? 'default') as never} />}
+                            <Stack spacing={0.25} alignItems={{ xs: 'flex-end', md: 'flex-start' }}>
+                              <Typography variant="body2" fontWeight={500}>{row.type}</Typography>
+                              {row.status && <Chip label={statusLabel(row.status)} size="small" sx={{ fontSize: '0.65rem', height: 16 }} color={(STATUS_COLORS[row.status] ?? 'default') as never} />}
+                            </Stack>
                           </TableCell>
                           <TableCell data-label="Reference">{row.reference}</TableCell>
-                          <TableCell data-label="Description" sx={{ whiteSpace: 'normal', minWidth: 180 }}>{row.description || '—'}</TableCell>
+                          <TableCell data-label="Description" sx={{ whiteSpace: 'normal', minWidth: { md: 180 } }}>{row.description || '—'}</TableCell>
                           <TableCell data-label="Debit" align="right" sx={{ color: row.debit > 0 ? 'error.main' : 'text.disabled' }}>{row.debit > 0 ? formatIndianNumber(row.debit) : '—'}</TableCell>
                           <TableCell data-label="Credit" align="right" sx={{ color: row.credit > 0 ? 'success.main' : 'text.disabled' }}>{row.credit > 0 ? formatIndianNumber(row.credit) : '—'}</TableCell>
                           <TableCell data-label="Balance" align="right" sx={{ fontWeight: 600 }}>{formatIndianNumber(row.runningBalance)}</TableCell>
@@ -469,7 +471,7 @@ function VendorHistoryDialog({ vendorId, open, onClose }: { vendorId: string | n
                         {po.budgetHead && <Typography variant="body2" color="text.secondary">• {po.budgetHead.particulars}</Typography>}
                         <Box sx={{ flexGrow: 1 }} />
                         <Typography variant="body2" fontWeight={600}>{money(po.grandTotal)}</Typography>
-                        <Button size="small" onClick={(e) => { e.stopPropagation(); go(`/pos?id=${po.id}`); }}>Open</Button>
+                        <Button size="small" onClick={(e) => { e.stopPropagation(); go(`/pos?id=${po.id}`); }} onFocus={(e) => e.stopPropagation()}>Open</Button>
                       </Stack>
                     </AccordionSummary>
                     <AccordionDetails>
@@ -483,6 +485,7 @@ function VendorHistoryDialog({ vendorId, open, onClose }: { vendorId: string | n
                           {po.totalDeductions > 0 ? ` • Deductions ₹${po.totalDeductions.toLocaleString('en-IN')} → Net ${money(po.netPayable)}` : ''}
                         </Typography>
                       )}
+                      <TableContainer sx={{ overflowX: 'auto' }}>
                       <Table size="small">
                         <TableHead>
                           <TableRow>
@@ -505,6 +508,7 @@ function VendorHistoryDialog({ vendorId, open, onClose }: { vendorId: string | n
                           ))}
                         </TableBody>
                       </Table>
+                      </TableContainer>
                     </AccordionDetails>
                   </Accordion>
                 ))
@@ -536,14 +540,16 @@ function VendorHistoryDialog({ vendorId, open, onClose }: { vendorId: string | n
                             <TableCell data-label="Date">{formatDate(pr.createdAt)}</TableCell>
                             <TableCell data-label="Reference">{pr.requestNumber}</TableCell>
                             <TableCell data-label="Details">
-                              {pr.type}
-                              {pr.purchaseOrder ? ` · PO ${pr.purchaseOrder.poNumber}` : ''}
-                              {pr.invoice ? ` · ${pr.invoice.invoiceCode ?? pr.invoice.invoiceNumber}` : ''}
-                              {pr.payments.length > 0 && (
-                                <Typography variant="caption" color="text.secondary" display="block">
-                                  {pr.payments.map((p) => `${formatDate(p.date)} ${p.mode} ₹${Number(p.amount).toLocaleString('en-IN')}${p.reference ? ` (${p.reference})` : ''}`).join(' · ')}
-                                </Typography>
-                              )}
+                              <Box>
+                                {pr.type}
+                                {pr.purchaseOrder ? ` · PO ${pr.purchaseOrder.poNumber}` : ''}
+                                {pr.invoice ? ` · ${pr.invoice.invoiceCode ?? pr.invoice.invoiceNumber}` : ''}
+                                {pr.payments.length > 0 && (
+                                  <Typography variant="caption" color="text.secondary" display="block">
+                                    {pr.payments.map((p) => `${formatDate(p.date)} ${p.mode} ₹${Number(p.amount).toLocaleString('en-IN')}${p.reference ? ` (${p.reference})` : ''}`).join(' · ')}
+                                  </Typography>
+                                )}
+                              </Box>
                             </TableCell>
                             <TableCell data-label="Mode">{pr.paymentMode ?? '—'}</TableCell>
                             <TableCell data-label="Status"><Chip label={statusLabel(pr.status)} size="small" color={(STATUS_COLORS[pr.status] ?? 'default') as never} /></TableCell>
@@ -555,8 +561,10 @@ function VendorHistoryDialog({ vendorId, open, onClose }: { vendorId: string | n
                             <TableCell data-label="Date">{formatDate(ps.date)}</TableCell>
                             <TableCell data-label="Reference">Sheet · {ps.purchaseOrder.poNumber}</TableCell>
                             <TableCell data-label="Details">
-                              Payment sheet entry{ps.notes ? ` — ${ps.notes}` : ''}
-                              <Typography variant="caption" color="text.secondary" display="block">by {ps.createdByUser.name}</Typography>
+                              <Box>
+                                Payment sheet entry{ps.notes ? ` — ${ps.notes}` : ''}
+                                <Typography variant="caption" color="text.secondary" display="block">by {ps.createdByUser.name}</Typography>
+                              </Box>
                             </TableCell>
                             <TableCell data-label="Mode">{ps.paymentMode}</TableCell>
                             <TableCell data-label="Status"><Chip label={statusLabel(ps.status)} size="small" color={(STATUS_COLORS[ps.status] ?? 'default') as never} /></TableCell>
@@ -621,10 +629,11 @@ function VendorHistoryDialog({ vendorId, open, onClose }: { vendorId: string | n
                         <Typography variant="body2" color="text.secondary">{formatDate(q.date)}</Typography>
                         <Box sx={{ flexGrow: 1 }} />
                         <Typography variant="body2" fontWeight={600}>{money(q.grandTotal)}</Typography>
-                        <Button size="small" onClick={(e) => { e.stopPropagation(); go(`/quotations?id=${q.id}`); }}>Open</Button>
+                        <Button size="small" onClick={(e) => { e.stopPropagation(); go(`/quotations?id=${q.id}`); }} onFocus={(e) => e.stopPropagation()}>Open</Button>
                       </Stack>
                     </AccordionSummary>
                     <AccordionDetails>
+                      <TableContainer sx={{ overflowX: 'auto' }}>
                       <Table size="small">
                         <TableHead>
                           <TableRow>
@@ -645,6 +654,7 @@ function VendorHistoryDialog({ vendorId, open, onClose }: { vendorId: string | n
                           ))}
                         </TableBody>
                       </Table>
+                      </TableContainer>
                     </AccordionDetails>
                   </Accordion>
                 ))
@@ -669,19 +679,23 @@ function VendorHistoryDialog({ vendorId, open, onClose }: { vendorId: string | n
                   {data.goodsReceipts.length === 0 ? (
                     <Typography variant="body2" color="text.secondary">None.</Typography>
                   ) : (
+                    <ResponsiveTable>
+                    <TableContainer sx={{ overflowX: 'auto' }}>
                     <Table size="small">
                       <TableBody>
                         {data.goodsReceipts.map((gr) => (
                           <TableRow key={gr.id} {...clickableRow('/goods-receipts')}>
-                            <TableCell>{gr.receiptNumber}</TableCell>
-                            <TableCell>PO {gr.purchaseOrder.poNumber}</TableCell>
-                            <TableCell>{formatDate(gr.createdAt)}</TableCell>
-                            <TableCell><Chip label={statusLabel(gr.status)} size="small" color={(STATUS_COLORS[gr.status] ?? 'default') as never} /></TableCell>
-                            <TableCell>{gr.items.length} item(s)</TableCell>
+                            <TableCell data-label="Receipt">{gr.receiptNumber}</TableCell>
+                            <TableCell data-label="PO">PO {gr.purchaseOrder.poNumber}</TableCell>
+                            <TableCell data-label="Date">{formatDate(gr.createdAt)}</TableCell>
+                            <TableCell data-label="Status"><Chip label={statusLabel(gr.status)} size="small" color={(STATUS_COLORS[gr.status] ?? 'default') as never} /></TableCell>
+                            <TableCell data-label="Items">{gr.items.length} item(s)</TableCell>
                           </TableRow>
                         ))}
                       </TableBody>
                     </Table>
+                    </TableContainer>
+                    </ResponsiveTable>
                   )}
                 </Box>
                 <Box>
@@ -689,19 +703,23 @@ function VendorHistoryDialog({ vendorId, open, onClose }: { vendorId: string | n
                   {data.assets.length === 0 ? (
                     <Typography variant="body2" color="text.secondary">None.</Typography>
                   ) : (
+                    <ResponsiveTable>
+                    <TableContainer sx={{ overflowX: 'auto' }}>
                     <Table size="small">
                       <TableBody>
                         {data.assets.map((a) => (
                           <TableRow key={a.id} {...clickableRow(`/scan/${a.assetId}`)}>
-                            <TableCell><strong>{a.assetId}</strong></TableCell>
-                            <TableCell>{a.inventoryItem.name}</TableCell>
-                            <TableCell><Chip label={statusLabel(a.status)} size="small" color={(STATUS_COLORS[a.status] ?? 'default') as never} /></TableCell>
-                            <TableCell>{a.location}</TableCell>
-                            <TableCell align="right">{a.totalCost ? money(a.totalCost) : '—'}</TableCell>
+                            <TableCell data-label="Asset"><strong>{a.assetId}</strong></TableCell>
+                            <TableCell data-label="Item">{a.inventoryItem.name}</TableCell>
+                            <TableCell data-label="Status"><Chip label={statusLabel(a.status)} size="small" color={(STATUS_COLORS[a.status] ?? 'default') as never} /></TableCell>
+                            <TableCell data-label="Location">{a.location}</TableCell>
+                            <TableCell data-label="Cost" align="right">{a.totalCost ? money(a.totalCost) : '—'}</TableCell>
                           </TableRow>
                         ))}
                       </TableBody>
                     </Table>
+                    </TableContainer>
+                    </ResponsiveTable>
                   )}
                 </Box>
               </Stack>
