@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
+  Accordion, AccordionDetails, AccordionSummary,
   Box, Button, Chip, CircularProgress, DialogActions, DialogTitle, DialogContent,
   Tab, Tabs, Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
   Typography, TextField, Stack,
 } from '@mui/material';
-import { Link as LinkIcon, ReceiptLong as StatementIcon } from '@mui/icons-material';
+import { Link as LinkIcon, ReceiptLong as StatementIcon, ExpandMore as ExpandMoreIcon } from '@mui/icons-material';
 import { useQuery } from '@tanstack/react-query';
 import EntityPage from '../components/EntityPage';
 import ResponsiveDialog from '../components/ResponsiveDialog';
@@ -253,6 +254,468 @@ function VendorLinkedDialog({ vendorId, open, onClose }: { vendorId: string | nu
   );
 }
 
+// ── Vendor Full History Dialog — everything linked to the vendor, from creation ──
+interface VendorHistory {
+  vendor: {
+    id: string; vendorCode: string; name: string; contactPersonName: string | null;
+    contactPersonPhone: string | null; phone: string | null; email: string | null;
+    gstNumber: string | null; panNumber: string | null; address: string | null;
+    category: string; status: string; rating: number; referenceBy: string | null;
+    description: string | null; createdAt: string; createdByName: string | null;
+    bankName: string | null; bankAccountNumber: string | null; ifscCode: string | null;
+  };
+  summary: {
+    totalBilled: number; totalPaid: number; advancePaid: number; outstanding: number;
+    paymentSheetPaid: number; paymentSheetPending: number;
+    ledgerId: string | null; ledgerBalance: number | null; weOwe: number; theyOwe: number;
+    counts: {
+      quotations: number; purchaseOrders: number; invoices: number;
+      paymentRequests: number; payments: number; paymentSheets: number;
+      goodsReceipts: number; assets: number;
+    };
+  };
+  timeline: {
+    date: string; type: string; reference: string; description: string;
+    debit: number; credit: number; runningBalance: number; status?: string; path?: string;
+  }[];
+  materials: { id: string; name: string; unit: string | null }[];
+  quotations: {
+    id: string; quotationNumber: string; date: string; status: string; grandTotal: number;
+    items: { materialName: string; quantity: string; unit: string | null; unitPrice: string; amount: string; gstRate: string }[];
+  }[];
+  purchaseOrders: {
+    id: string; poNumber: string; date: string; status: string; paymentType: string;
+    advanceAmount: number | null; grandTotal: number; totalDeductions: number; netPayable: number;
+    items: { materialName: string; quantity: string; unit: string | null; unitPrice: string; amount: string; gstRate: string }[];
+    budgetHead: { id: string; particulars: string } | null;
+    quotation: { id: string; quotationNumber: string } | null;
+  }[];
+  invoices: {
+    id: string; invoiceCode: string; invoiceNumber: string; date: string;
+    amount: string; taxAmount: string; totalAmount: string; advancePaid: string;
+    paymentStatus: string; stockStatus: string; verificationStatus: string;
+    purchaseOrder: { id: string; poNumber: string } | null;
+  }[];
+  paymentRequests: {
+    id: string; requestNumber: string; paymentCode: string; type: string; amount: string;
+    status: string; paymentMode: string | null; description: string | null; createdAt: string;
+    invoice: { id: string; invoiceCode: string; invoiceNumber: string } | null;
+    purchaseOrder: { id: string; poNumber: string } | null;
+    payments: { id: string; amount: string; date: string; mode: string; reference: string | null; status: string }[];
+  }[];
+  paymentSheets: {
+    id: string; date: string; amount: number; status: string; paymentMode: string;
+    reference: string | null; notes: string | null;
+    purchaseOrder: { id: string; poNumber: string };
+    createdByUser: { id: string; name: string };
+  }[];
+  goodsReceipts: {
+    id: string; receiptNumber: string; status: string; createdAt: string;
+    purchaseOrder: { id: string; poNumber: string };
+    items: { materialName: string; deliveredQty: string; acceptedQty: string; rejectedQty: string; unit: string | null }[];
+  }[];
+  assets: {
+    id: string; assetId: string; status: string; location: string; totalCost: string | null;
+    inventoryItem: { id: string; name: string };
+  }[];
+}
+
+function VendorHistoryDialog({ vendorId, open, onClose }: { vendorId: string | null; open: boolean; onClose: () => void }) {
+  const navigate = useNavigate();
+  const [tab, setTab] = useState(0);
+  const { data, isLoading } = useQuery<VendorHistory>({
+    queryKey: ['/vendors', vendorId, 'history'],
+    queryFn: async () => (await api.get(`/vendors/${vendorId}/history`)).data,
+    enabled: !!vendorId && open,
+  });
+
+  const go = (path?: string) => {
+    if (!path) return;
+    navigate(path);
+    onClose();
+  };
+
+  const clickableRow = (path?: string) => ({
+    hover: !!path,
+    onClick: () => go(path),
+    sx: { cursor: path ? 'pointer' : 'default' },
+  });
+
+  const money = (v: string | number | null | undefined) => formatCurrency(Number(v ?? 0));
+  const s = data?.summary;
+
+  return (
+    <ResponsiveDialog open={open} onClose={onClose} maxWidth="lg" fullWidth>
+      <DialogTitle>
+        {isLoading || !data
+          ? 'Vendor History'
+          : `${data.vendor.name} (${data.vendor.vendorCode}) — Full History`}
+      </DialogTitle>
+      <DialogContent>
+        {isLoading ? (
+          <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress /></Box>
+        ) : !data ? (
+          <Typography color="text.secondary">No data available.</Typography>
+        ) : (
+          <>
+            {/* Vendor profile strip */}
+            <Box sx={{ mb: 2 }}>
+              <Typography variant="body2" color="text.secondary">
+                {data.vendor.category?.replace(/_/g, ' ') ?? '—'} • Status:{' '}
+                <Chip size="small" label={statusLabel(data.vendor.status)} color={(STATUS_COLORS[data.vendor.status] ?? 'default') as never} />
+                {' '}• Since {formatDate(data.vendor.createdAt)}
+                {data.vendor.createdByName ? ` • Added by ${data.vendor.createdByName}` : ''}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                {[
+                  data.vendor.phone && `Ph: ${data.vendor.phone}`,
+                  data.vendor.contactPersonName && `Contact: ${data.vendor.contactPersonName}${data.vendor.contactPersonPhone ? ` (${data.vendor.contactPersonPhone})` : ''}`,
+                  data.vendor.gstNumber && `GST: ${data.vendor.gstNumber}`,
+                  data.vendor.referenceBy && `Referred by ${data.vendor.referenceBy}`,
+                ].filter(Boolean).join('  ·  ')}
+              </Typography>
+              {(data.vendor.bankName || data.vendor.bankAccountNumber) && (
+                <Typography variant="body2" color="text.secondary">
+                  Bank: {[data.vendor.bankName, data.vendor.bankAccountNumber && `A/c ${data.vendor.bankAccountNumber}`, data.vendor.ifscCode && `IFSC ${data.vendor.ifscCode}`].filter(Boolean).join(' · ')}
+                </Typography>
+              )}
+            </Box>
+
+            {/* Financial summary */}
+            <Stack direction="row" spacing={1} sx={{ mb: 2, flexWrap: 'wrap', gap: 1 }}>
+              <Chip label={`Total Billed: ${money(s?.totalBilled)}`} color="error" variant="outlined" />
+              <Chip label={`Total Paid: ${money(s?.totalPaid)}`} color="success" variant="outlined" />
+              <Chip label={`Outstanding: ${money(s?.outstanding)}`} color="primary" />
+              {(s?.paymentSheetPaid ?? 0) > 0 && (
+                <Chip label={`Sheet Paid: ${money(s?.paymentSheetPaid)}`} variant="outlined" />
+              )}
+              {(s?.paymentSheetPending ?? 0) > 0 && (
+                <Chip label={`Sheet Payable: ${money(s?.paymentSheetPending)}`} color="warning" variant="outlined" />
+              )}
+              {s?.ledgerId && (
+                <Chip
+                  label={`Ledger: ${s.weOwe > 0 ? `We owe ${money(s.weOwe)}` : s.theyOwe > 0 ? `They owe ${money(s.theyOwe)}` : 'Settled'}`}
+                  variant="outlined"
+                  onClick={() => go(`/ledgers?id=${s.ledgerId}`)}
+                  sx={{ cursor: 'pointer' }}
+                />
+              )}
+            </Stack>
+
+            <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}>
+              <Tabs value={tab} onChange={(_, v) => setTab(v)} variant="scrollable" scrollButtons="auto">
+                <Tab label={`Timeline (${data.timeline.length})`} />
+                <Tab label={`Purchase Orders (${s?.counts.purchaseOrders ?? 0})`} />
+                <Tab label={`Payments (${(s?.counts.paymentRequests ?? 0) + (s?.counts.paymentSheets ?? 0)})`} />
+                <Tab label={`Invoices (${s?.counts.invoices ?? 0})`} />
+                <Tab label={`Quotations (${s?.counts.quotations ?? 0})`} />
+                <Tab label={`More (${(s?.counts.goodsReceipts ?? 0) + (s?.counts.assets ?? 0) + data.materials.length})`} />
+              </Tabs>
+            </Box>
+
+            {/* ── Timeline: every transaction in chronological order ── */}
+            {tab === 0 && (
+              <ResponsiveTable>
+              <TableContainer sx={{ overflowX: 'auto' }}>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow sx={{ bgcolor: 'grey.50' }}>
+                      <TableCell sx={{ fontWeight: 600 }}>Date</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>Type</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>Reference</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>Description</TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 600 }}>Debit</TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 600 }}>Credit</TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 600 }}>Balance</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {data.timeline.length === 0 ? (
+                      <TableRow><TableCell colSpan={7} align="center" sx={{ py: 3 }}><Typography color="text.secondary">No transactions yet</Typography></TableCell></TableRow>
+                    ) : (
+                      data.timeline.map((row, i) => (
+                        <TableRow key={i} {...clickableRow(row.path)}>
+                          <TableCell data-label="Date">{formatDate(row.date)}</TableCell>
+                          <TableCell data-label="Type">
+                            <Typography variant="body2" fontWeight={500}>{row.type}</Typography>
+                            {row.status && <Chip label={statusLabel(row.status)} size="small" sx={{ fontSize: '0.65rem', height: 16 }} color={(STATUS_COLORS[row.status] ?? 'default') as never} />}
+                          </TableCell>
+                          <TableCell data-label="Reference">{row.reference}</TableCell>
+                          <TableCell data-label="Description" sx={{ whiteSpace: 'normal', minWidth: 180 }}>{row.description || '—'}</TableCell>
+                          <TableCell data-label="Debit" align="right" sx={{ color: row.debit > 0 ? 'error.main' : 'text.disabled' }}>{row.debit > 0 ? formatIndianNumber(row.debit) : '—'}</TableCell>
+                          <TableCell data-label="Credit" align="right" sx={{ color: row.credit > 0 ? 'success.main' : 'text.disabled' }}>{row.credit > 0 ? formatIndianNumber(row.credit) : '—'}</TableCell>
+                          <TableCell data-label="Balance" align="right" sx={{ fontWeight: 600 }}>{formatIndianNumber(row.runningBalance)}</TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+              </ResponsiveTable>
+            )}
+
+            {/* ── Purchase Orders with item-level detail ── */}
+            {tab === 1 && (
+              data.purchaseOrders.length === 0 ? (
+                <Typography variant="body2" color="text.secondary">No purchase orders.</Typography>
+              ) : (
+                data.purchaseOrders.map((po) => (
+                  <Accordion key={po.id} disableGutters sx={{ mb: 1, border: '1px solid', borderColor: 'divider' }}>
+                    <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                      <Stack direction="row" spacing={1.5} alignItems="center" sx={{ flexWrap: 'wrap', width: '100%', rowGap: 0.5 }}>
+                        <Typography fontWeight={600}>{po.poNumber}</Typography>
+                        <Chip label={statusLabel(po.status)} size="small" color={(STATUS_COLORS[po.status] ?? 'default') as never} />
+                        <Typography variant="body2" color="text.secondary">{formatDate(po.date)}</Typography>
+                        {po.budgetHead && <Typography variant="body2" color="text.secondary">• {po.budgetHead.particulars}</Typography>}
+                        <Box sx={{ flexGrow: 1 }} />
+                        <Typography variant="body2" fontWeight={600}>{money(po.grandTotal)}</Typography>
+                        <Button size="small" onClick={(e) => { e.stopPropagation(); go(`/pos?id=${po.id}`); }}>Open</Button>
+                      </Stack>
+                    </AccordionSummary>
+                    <AccordionDetails>
+                      {po.quotation && (
+                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+                          From quotation{' '}
+                          <Button size="small" sx={{ p: 0, minWidth: 0, textTransform: 'none' }} onClick={() => go(`/quotations?id=${po.quotation!.id}`)}>
+                            {po.quotation.quotationNumber}
+                          </Button>
+                          {' '}• {po.paymentType?.replace(/_/g, ' ')}{po.advanceAmount ? ` • Advance ₹${Number(po.advanceAmount).toLocaleString('en-IN')}` : ''}
+                          {po.totalDeductions > 0 ? ` • Deductions ₹${po.totalDeductions.toLocaleString('en-IN')} → Net ${money(po.netPayable)}` : ''}
+                        </Typography>
+                      )}
+                      <Table size="small">
+                        <TableHead>
+                          <TableRow>
+                            <TableCell sx={{ fontWeight: 600 }}>Item / Description</TableCell>
+                            <TableCell align="right" sx={{ fontWeight: 600 }}>Qty</TableCell>
+                            <TableCell align="right" sx={{ fontWeight: 600 }}>Rate</TableCell>
+                            <TableCell align="right" sx={{ fontWeight: 600 }}>GST</TableCell>
+                            <TableCell align="right" sx={{ fontWeight: 600 }}>Amount</TableCell>
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          {po.items.map((it, i) => (
+                            <TableRow key={i}>
+                              <TableCell>{it.materialName}</TableCell>
+                              <TableCell align="right">{Number(it.quantity)} {it.unit ?? ''}</TableCell>
+                              <TableCell align="right">{formatIndianNumber(Number(it.unitPrice))}</TableCell>
+                              <TableCell align="right">{Number(it.gstRate) > 0 ? `${Number(it.gstRate)}% (₹${formatIndianNumber(Number(it.amount) * Number(it.gstRate) / 100)})` : '—'}</TableCell>
+                              <TableCell align="right">{formatIndianNumber(Number(it.amount))}</TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </AccordionDetails>
+                  </Accordion>
+                ))
+              )
+            )}
+
+            {/* ── Payments: requests + payments + payment-sheet entries ── */}
+            {tab === 2 && (
+              <>
+                {data.paymentRequests.length === 0 && data.paymentSheets.length === 0 ? (
+                  <Typography variant="body2" color="text.secondary">No payments recorded.</Typography>
+                ) : (
+                  <ResponsiveTable>
+                  <TableContainer sx={{ overflowX: 'auto' }}>
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow sx={{ bgcolor: 'grey.50' }}>
+                          <TableCell sx={{ fontWeight: 600 }}>Date</TableCell>
+                          <TableCell sx={{ fontWeight: 600 }}>Reference</TableCell>
+                          <TableCell sx={{ fontWeight: 600 }}>Details</TableCell>
+                          <TableCell sx={{ fontWeight: 600 }}>Mode</TableCell>
+                          <TableCell sx={{ fontWeight: 600 }}>Status</TableCell>
+                          <TableCell align="right" sx={{ fontWeight: 600 }}>Amount</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {data.paymentRequests.map((pr) => (
+                          <TableRow key={pr.id} {...clickableRow(`/payments?id=${pr.id}`)}>
+                            <TableCell data-label="Date">{formatDate(pr.createdAt)}</TableCell>
+                            <TableCell data-label="Reference">{pr.requestNumber}</TableCell>
+                            <TableCell data-label="Details">
+                              {pr.type}
+                              {pr.purchaseOrder ? ` · PO ${pr.purchaseOrder.poNumber}` : ''}
+                              {pr.invoice ? ` · ${pr.invoice.invoiceCode ?? pr.invoice.invoiceNumber}` : ''}
+                              {pr.payments.length > 0 && (
+                                <Typography variant="caption" color="text.secondary" display="block">
+                                  {pr.payments.map((p) => `${formatDate(p.date)} ${p.mode} ₹${Number(p.amount).toLocaleString('en-IN')}${p.reference ? ` (${p.reference})` : ''}`).join(' · ')}
+                                </Typography>
+                              )}
+                            </TableCell>
+                            <TableCell data-label="Mode">{pr.paymentMode ?? '—'}</TableCell>
+                            <TableCell data-label="Status"><Chip label={statusLabel(pr.status)} size="small" color={(STATUS_COLORS[pr.status] ?? 'default') as never} /></TableCell>
+                            <TableCell data-label="Amount" align="right">{money(pr.amount)}</TableCell>
+                          </TableRow>
+                        ))}
+                        {data.paymentSheets.map((ps) => (
+                          <TableRow key={ps.id} {...clickableRow(`/pos?id=${ps.purchaseOrder.id}`)}>
+                            <TableCell data-label="Date">{formatDate(ps.date)}</TableCell>
+                            <TableCell data-label="Reference">Sheet · {ps.purchaseOrder.poNumber}</TableCell>
+                            <TableCell data-label="Details">
+                              Payment sheet entry{ps.notes ? ` — ${ps.notes}` : ''}
+                              <Typography variant="caption" color="text.secondary" display="block">by {ps.createdByUser.name}</Typography>
+                            </TableCell>
+                            <TableCell data-label="Mode">{ps.paymentMode}</TableCell>
+                            <TableCell data-label="Status"><Chip label={statusLabel(ps.status)} size="small" color={(STATUS_COLORS[ps.status] ?? 'default') as never} /></TableCell>
+                            <TableCell data-label="Amount" align="right">{money(ps.amount)}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                  </ResponsiveTable>
+                )}
+              </>
+            )}
+
+            {/* ── Invoices ── */}
+            {tab === 3 && (
+              <ResponsiveTable>
+              <TableContainer sx={{ overflowX: 'auto' }}>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow sx={{ bgcolor: 'grey.50' }}>
+                      <TableCell sx={{ fontWeight: 600 }}>Invoice #</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>Date</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>PO</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>Payment</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>Stock</TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 600 }}>Total</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {data.invoices.length === 0 ? (
+                      <TableRow><TableCell colSpan={6} align="center" sx={{ py: 3 }}><Typography color="text.secondary">No invoices</Typography></TableCell></TableRow>
+                    ) : (
+                      data.invoices.map((inv) => (
+                        <TableRow key={inv.id} {...clickableRow(`/invoices?id=${inv.id}`)}>
+                          <TableCell data-label="Invoice #">{inv.invoiceCode ?? inv.invoiceNumber}</TableCell>
+                          <TableCell data-label="Date">{formatDate(inv.date)}</TableCell>
+                          <TableCell data-label="PO">{inv.purchaseOrder?.poNumber ?? '—'}</TableCell>
+                          <TableCell data-label="Payment"><Chip label={statusLabel(inv.paymentStatus)} size="small" color={(STATUS_COLORS[inv.paymentStatus] ?? 'default') as never} /></TableCell>
+                          <TableCell data-label="Stock"><Chip label={statusLabel(inv.stockStatus)} size="small" color={(STATUS_COLORS[inv.stockStatus] ?? 'default') as never} /></TableCell>
+                          <TableCell data-label="Total" align="right">{money(inv.totalAmount)}</TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+              </ResponsiveTable>
+            )}
+
+            {/* ── Quotations with items ── */}
+            {tab === 4 && (
+              data.quotations.length === 0 ? (
+                <Typography variant="body2" color="text.secondary">No quotations.</Typography>
+              ) : (
+                data.quotations.map((q) => (
+                  <Accordion key={q.id} disableGutters sx={{ mb: 1, border: '1px solid', borderColor: 'divider' }}>
+                    <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                      <Stack direction="row" spacing={1.5} alignItems="center" sx={{ flexWrap: 'wrap', width: '100%', rowGap: 0.5 }}>
+                        <Typography fontWeight={600}>{q.quotationNumber}</Typography>
+                        <Chip label={statusLabel(q.status)} size="small" color={(STATUS_COLORS[q.status] ?? 'default') as never} />
+                        <Typography variant="body2" color="text.secondary">{formatDate(q.date)}</Typography>
+                        <Box sx={{ flexGrow: 1 }} />
+                        <Typography variant="body2" fontWeight={600}>{money(q.grandTotal)}</Typography>
+                        <Button size="small" onClick={(e) => { e.stopPropagation(); go(`/quotations?id=${q.id}`); }}>Open</Button>
+                      </Stack>
+                    </AccordionSummary>
+                    <AccordionDetails>
+                      <Table size="small">
+                        <TableHead>
+                          <TableRow>
+                            <TableCell sx={{ fontWeight: 600 }}>Item / Description</TableCell>
+                            <TableCell align="right" sx={{ fontWeight: 600 }}>Qty</TableCell>
+                            <TableCell align="right" sx={{ fontWeight: 600 }}>Rate</TableCell>
+                            <TableCell align="right" sx={{ fontWeight: 600 }}>Amount</TableCell>
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          {q.items.map((it, i) => (
+                            <TableRow key={i}>
+                              <TableCell>{it.materialName}</TableCell>
+                              <TableCell align="right">{Number(it.quantity)} {it.unit ?? ''}</TableCell>
+                              <TableCell align="right">{formatIndianNumber(Number(it.unitPrice))}</TableCell>
+                              <TableCell align="right">{formatIndianNumber(Number(it.amount))}</TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </AccordionDetails>
+                  </Accordion>
+                ))
+              )
+            )}
+
+            {/* ── More: declared materials, goods receipts, assets ── */}
+            {tab === 5 && (
+              <Stack spacing={2}>
+                <Box>
+                  <Typography variant="subtitle2" sx={{ mb: 0.5 }}>Materials Supplied (declared)</Typography>
+                  {data.materials.length === 0 ? (
+                    <Typography variant="body2" color="text.secondary">None declared.</Typography>
+                  ) : (
+                    <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
+                      {data.materials.map((m) => <Chip key={m.id} size="small" variant="outlined" label={`${m.name}${m.unit ? ` (${m.unit})` : ''}`} />)}
+                    </Box>
+                  )}
+                </Box>
+                <Box>
+                  <Typography variant="subtitle2" sx={{ mb: 0.5 }}>Goods Receipts</Typography>
+                  {data.goodsReceipts.length === 0 ? (
+                    <Typography variant="body2" color="text.secondary">None.</Typography>
+                  ) : (
+                    <Table size="small">
+                      <TableBody>
+                        {data.goodsReceipts.map((gr) => (
+                          <TableRow key={gr.id} {...clickableRow('/goods-receipts')}>
+                            <TableCell>{gr.receiptNumber}</TableCell>
+                            <TableCell>PO {gr.purchaseOrder.poNumber}</TableCell>
+                            <TableCell>{formatDate(gr.createdAt)}</TableCell>
+                            <TableCell><Chip label={statusLabel(gr.status)} size="small" color={(STATUS_COLORS[gr.status] ?? 'default') as never} /></TableCell>
+                            <TableCell>{gr.items.length} item(s)</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  )}
+                </Box>
+                <Box>
+                  <Typography variant="subtitle2" sx={{ mb: 0.5 }}>Assets Supplied</Typography>
+                  {data.assets.length === 0 ? (
+                    <Typography variant="body2" color="text.secondary">None.</Typography>
+                  ) : (
+                    <Table size="small">
+                      <TableBody>
+                        {data.assets.map((a) => (
+                          <TableRow key={a.id} {...clickableRow(`/scan/${a.assetId}`)}>
+                            <TableCell><strong>{a.assetId}</strong></TableCell>
+                            <TableCell>{a.inventoryItem.name}</TableCell>
+                            <TableCell><Chip label={statusLabel(a.status)} size="small" color={(STATUS_COLORS[a.status] ?? 'default') as never} /></TableCell>
+                            <TableCell>{a.location}</TableCell>
+                            <TableCell align="right">{a.totalCost ? money(a.totalCost) : '—'}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  )}
+                </Box>
+              </Stack>
+            )}
+          </>
+        )}
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose}>Close</Button>
+      </DialogActions>
+    </ResponsiveDialog>
+  );
+}
+
 interface RecordTableColumn {
   key: string;
   label: string;
@@ -311,6 +774,7 @@ function RecordTable({
 export default function VendorsPage() {
   const [linkedId, setLinkedId] = useState<string | null>(null);
   const [statementId, setStatementId] = useState<string | null>(null);
+  const [historyId, setHistoryId] = useState<string | null>(null);
 
   return (
     <>
@@ -320,6 +784,7 @@ export default function VendorsPage() {
         entityName="Vendor"
         entityType="VENDOR"
         deepLinkField="name"
+        onRowClick={(row) => setHistoryId(String(row.id))}
         columns={[
           { key: 'vendorCode', label: 'Vendor ID' },
           { key: 'name', label: 'Vendor Name' },
@@ -402,6 +867,7 @@ export default function VendorsPage() {
           </Stack>
         )}
       />
+      <VendorHistoryDialog vendorId={historyId} open={!!historyId} onClose={() => setHistoryId(null)} />
       <VendorLinkedDialog vendorId={linkedId} open={!!linkedId} onClose={() => setLinkedId(null)} />
       <VendorStatementDialog vendorId={statementId} open={!!statementId} onClose={() => setStatementId(null)} />
     </>

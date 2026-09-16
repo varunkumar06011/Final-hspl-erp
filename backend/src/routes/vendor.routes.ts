@@ -507,4 +507,286 @@ router.get(
   },
 );
 
+// ── GET /:id/history — complete vendor history from creation to today ──────
+// One-shot payload for the vendor card dialog: profile, financial summary,
+// chronological transaction timeline with running balance, POs with items,
+// invoices, payments, payment-sheet entries, receipts, quotations, assets.
+router.get(
+  '/:id/history',
+  authMiddleware,
+  rbacMiddleware(Permission.VIEW_FINANCIALS),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+
+      const vendor = await prisma.vendor.findFirst({
+        where: { id: req.params.id, projectId, deletedAt: null },
+        include: {
+          materials: { orderBy: { name: 'asc' } },
+          createdByUser: { select: { id: true, name: true } },
+        },
+      });
+      if (!vendor) {
+        res.status(404).json({ error: 'Vendor not found' });
+        return;
+      }
+
+      const [
+        quotations,
+        purchaseOrders,
+        invoices,
+        paymentRequests,
+        paymentSheets,
+        goodsReceipts,
+        assets,
+        billSettlements,
+        vendorLedger,
+      ] = await Promise.all([
+        prisma.quotation.findMany({
+          where: { vendorId: vendor.id, projectId, deletedAt: null },
+          select: {
+            id: true, quotationNumber: true, date: true, status: true, grandTotal: true,
+            items: { select: { materialName: true, quantity: true, unit: true, unitPrice: true, amount: true, gstRate: true } },
+          },
+          orderBy: { date: 'desc' },
+        }),
+        prisma.purchaseOrder.findMany({
+          where: { vendorId: vendor.id, projectId, deletedAt: null },
+          select: {
+            id: true, poNumber: true, date: true, status: true, paymentType: true,
+            advanceAmount: true, grandTotal: true, totalDeductions: true, netPayable: true,
+            items: { select: { materialName: true, quantity: true, unit: true, unitPrice: true, amount: true, gstRate: true } },
+            budgetHead: { select: { id: true, particulars: true } },
+            quotation: { select: { id: true, quotationNumber: true } },
+          },
+          orderBy: { date: 'desc' },
+        }),
+        prisma.vendorInvoice.findMany({
+          where: { vendorId: vendor.id, projectId, deletedAt: null },
+          select: {
+            id: true, invoiceCode: true, invoiceNumber: true, date: true,
+            amount: true, taxAmount: true, totalAmount: true, advancePaid: true,
+            paymentStatus: true, stockStatus: true, verificationStatus: true,
+            purchaseOrder: { select: { id: true, poNumber: true } },
+          },
+          orderBy: { date: 'desc' },
+        }),
+        prisma.paymentRequest.findMany({
+          where: { vendorId: vendor.id, projectId, deletedAt: null },
+          select: {
+            id: true, requestNumber: true, paymentCode: true, type: true, amount: true,
+            status: true, paymentMode: true, description: true, createdAt: true,
+            invoice: { select: { id: true, invoiceCode: true, invoiceNumber: true } },
+            purchaseOrder: { select: { id: true, poNumber: true } },
+            payments: { select: { id: true, amount: true, date: true, mode: true, reference: true, status: true }, orderBy: { date: 'asc' } },
+          },
+          orderBy: { createdAt: 'desc' },
+        }),
+        // Payment-sheet entries are linked via PO (no direct vendorId)
+        prisma.paymentSheet.findMany({
+          where: { projectId, deletedAt: null, purchaseOrder: { vendorId: vendor.id } },
+          select: {
+            id: true, date: true, amount: true, status: true, paymentMode: true,
+            reference: true, notes: true,
+            purchaseOrder: { select: { id: true, poNumber: true } },
+            createdByUser: { select: { id: true, name: true } },
+          },
+          orderBy: { date: 'desc' },
+        }),
+        prisma.goodsReceipt.findMany({
+          where: { projectId, deletedAt: null, purchaseOrder: { vendorId: vendor.id } },
+          select: {
+            id: true, receiptNumber: true, status: true, createdAt: true,
+            purchaseOrder: { select: { id: true, poNumber: true } },
+            items: { select: { materialName: true, deliveredQty: true, acceptedQty: true, rejectedQty: true, unit: true } },
+          },
+          orderBy: { createdAt: 'desc' },
+        }),
+        prisma.asset.findMany({
+          where: { vendorId: vendor.id, projectId },
+          select: {
+            id: true, assetId: true, status: true, location: true, totalCost: true,
+            inventoryItem: { select: { id: true, name: true } },
+          },
+          orderBy: { assetId: 'asc' },
+        }),
+        prisma.billSettlement.findMany({
+          where: { vendorId: vendor.id, projectId },
+          select: {
+            id: true, createdAt: true,
+            invoice: { select: { invoiceCode: true, invoiceNumber: true } },
+            journalVoucher: { select: { jvNumber: true, voucherType: true, date: true, status: true } },
+          },
+          orderBy: { createdAt: 'desc' },
+        }),
+        prisma.ledger.findFirst({
+          where: { linkedEntityType: 'VENDOR', linkedEntityId: vendor.id, projectId, deletedAt: null },
+          select: { id: true, name: true, currentBalance: true, openingBalance: true },
+        }),
+      ]);
+
+      // ── Summary (same paid/billed semantics as the vendors list) ──
+      const totalBilled = invoices.reduce((s, inv) => s + Number(inv.totalAmount), 0);
+      const paidInvoiceRequests = paymentRequests.filter((pr) => pr.invoice && pr.status === 'PAID');
+      const paidAdvances = paymentRequests.filter((pr) => pr.type === 'ADVANCE' && pr.status === 'PAID');
+      const totalPaid =
+        paidInvoiceRequests.reduce((s, pr) => s + Number(pr.amount), 0) +
+        paidAdvances.reduce((s, pr) => s + Number(pr.amount), 0);
+      const paymentSheetPaid = paymentSheets
+        .filter((ps) => ps.status !== 'PENDING')
+        .reduce((s, ps) => s + Number(ps.amount), 0);
+      const paymentSheetPending = paymentSheets
+        .filter((ps) => ps.status === 'PENDING')
+        .reduce((s, ps) => s + Number(ps.amount), 0);
+      const ledgerBalance = vendorLedger ? Number(vendorLedger.currentBalance) : null;
+
+      // ── Unified chronological timeline ──
+      interface TimelineRow {
+        date: Date;
+        type: string;
+        reference: string;
+        description: string;
+        debit: number;
+        credit: number;
+        runningBalance: number;
+        status?: string;
+        path?: string;
+      }
+      const timeline: TimelineRow[] = [];
+
+      for (const q of quotations) {
+        timeline.push({
+          date: q.date, type: 'Quotation', reference: q.quotationNumber,
+          description: `${q.items.length} item(s) quoted`, debit: 0, credit: 0,
+          runningBalance: 0, status: q.status, path: `/quotations?id=${q.id}`,
+        });
+      }
+      for (const po of purchaseOrders) {
+        const desc = po.items.map((i) => i.materialName).filter(Boolean).slice(0, 3).join(', ');
+        timeline.push({
+          date: po.date, type: 'Purchase Order', reference: po.poNumber,
+          description: desc ? `${desc}${po.items.length > 3 ? ` +${po.items.length - 3} more` : ''} — ₹${Number(po.grandTotal).toLocaleString('en-IN')}` : `₹${Number(po.grandTotal).toLocaleString('en-IN')}`,
+          debit: 0, credit: 0, runningBalance: 0, status: po.status, path: `/pos?id=${po.id}`,
+        });
+      }
+      for (const inv of invoices) {
+        timeline.push({
+          date: inv.date, type: 'Invoice', reference: inv.invoiceCode ?? inv.invoiceNumber,
+          description: inv.purchaseOrder ? `PO ${inv.purchaseOrder.poNumber}` : 'Direct invoice',
+          debit: Number(inv.totalAmount), credit: 0, runningBalance: 0,
+          status: inv.paymentStatus, path: `/invoices?id=${inv.id}`,
+        });
+      }
+      for (const pr of paymentRequests) {
+        if (pr.payments.length > 0) {
+          for (const p of pr.payments) {
+            timeline.push({
+              date: p.date, type: 'Payment', reference: pr.requestNumber,
+              description: `${pr.type} · ${p.mode}${p.reference ? ' · ' + p.reference : ''}${pr.purchaseOrder ? ' · PO ' + pr.purchaseOrder.poNumber : ''}${pr.invoice ? ' · ' + (pr.invoice.invoiceCode ?? pr.invoice.invoiceNumber) : ''}`,
+              debit: 0, credit: Number(p.amount), runningBalance: 0,
+              status: p.status, path: `/payments?id=${pr.id}`,
+            });
+          }
+        } else if (pr.status === 'PAID') {
+          // PAID request without a Payment row (e.g. advance marked paid) — still real money out
+          timeline.push({
+            date: pr.createdAt, type: pr.type === 'ADVANCE' ? 'Advance Paid' : 'Payment', reference: pr.requestNumber,
+            description: `${pr.type}${pr.purchaseOrder ? ' · PO ' + pr.purchaseOrder.poNumber : ''}${pr.invoice ? ' · ' + (pr.invoice.invoiceCode ?? pr.invoice.invoiceNumber) : ''}`,
+            debit: 0, credit: Number(pr.amount), runningBalance: 0,
+            status: pr.status, path: `/payments?id=${pr.id}`,
+          });
+        } else {
+          timeline.push({
+            date: pr.createdAt, type: 'Payment Request', reference: pr.requestNumber,
+            description: pr.description ?? `${pr.type} request`,
+            debit: 0, credit: 0, runningBalance: 0, status: pr.status, path: `/payments?id=${pr.id}`,
+          });
+        }
+      }
+      for (const bs of billSettlements) {
+        timeline.push({
+          date: bs.journalVoucher.date, type: 'Bill Settlement',
+          reference: `${bs.journalVoucher.jvNumber} → ${bs.invoice.invoiceCode ?? bs.invoice.invoiceNumber}`,
+          description: 'Settlement via voucher', debit: 0, credit: 0, runningBalance: 0,
+          status: bs.journalVoucher.status, path: '/vouchers',
+        });
+      }
+      for (const ps of paymentSheets) {
+        timeline.push({
+          date: ps.date, type: 'Payment Sheet', reference: ps.purchaseOrder.poNumber,
+          description: `Payment sheet · ${ps.paymentMode}${ps.reference ? ' · ' + ps.reference : ''}${ps.notes ? ' — ' + ps.notes : ''} · ₹${Number(ps.amount).toLocaleString('en-IN')}`,
+          debit: 0, credit: 0, runningBalance: 0, status: ps.status, path: `/pos?id=${ps.purchaseOrder.id}`,
+        });
+      }
+      for (const gr of goodsReceipts) {
+        timeline.push({
+          date: gr.createdAt, type: 'Goods Receipt', reference: gr.receiptNumber,
+          description: `PO ${gr.purchaseOrder.poNumber} · ${gr.items.length} item(s) received`,
+          debit: 0, credit: 0, runningBalance: 0, status: gr.status, path: '/goods-receipts',
+        });
+      }
+
+      timeline.sort((a, b) => a.date.getTime() - b.date.getTime());
+      const opening = vendorLedger ? Math.abs(Number(vendorLedger.openingBalance)) : 0;
+      let running = opening;
+      for (const row of timeline) {
+        running += row.debit - row.credit;
+        row.runningBalance = running;
+      }
+
+      res.json({
+        vendor: {
+          id: vendor.id, vendorCode: vendor.vendorCode, name: vendor.name,
+          contactPersonName: vendor.contactPersonName, contactPersonPhone: vendor.contactPersonPhone,
+          phone: vendor.phone, email: vendor.email, gstNumber: vendor.gstNumber,
+          panNumber: vendor.panNumber, address: vendor.address, category: vendor.category,
+          status: vendor.status, rating: vendor.rating, referenceBy: vendor.referenceBy,
+          description: vendor.description, createdAt: vendor.createdAt,
+          createdByName: vendor.createdByUser?.name ?? null,
+          bankName: vendor.bankName, bankAccountNumber: vendor.bankAccountNumber, ifscCode: vendor.ifscCode,
+        },
+        summary: {
+          totalBilled,
+          totalPaid,
+          advancePaid: paidAdvances.reduce((s, pr) => s + Number(pr.amount), 0),
+          outstanding: Math.max(0, totalBilled - totalPaid),
+          paymentSheetPaid,
+          paymentSheetPending,
+          ledgerId: vendorLedger?.id ?? null,
+          ledgerBalance: ledgerBalance !== null ? Math.abs(ledgerBalance) : null,
+          weOwe: ledgerBalance !== null && ledgerBalance < 0 ? Math.abs(ledgerBalance) : 0,
+          theyOwe: ledgerBalance !== null && ledgerBalance > 0 ? ledgerBalance : 0,
+          counts: {
+            quotations: quotations.length,
+            purchaseOrders: purchaseOrders.length,
+            invoices: invoices.length,
+            paymentRequests: paymentRequests.length,
+            payments: paymentRequests.reduce((s, pr) => s + pr.payments.length, 0),
+            paymentSheets: paymentSheets.length,
+            goodsReceipts: goodsReceipts.length,
+            assets: assets.length,
+          },
+        },
+        timeline: timeline.map((r) => ({ ...r, date: r.date.toISOString() })),
+        materials: vendor.materials.map((m) => ({ id: m.id, name: m.name, unit: m.unit })),
+        quotations: quotations.map((q) => ({ ...q, grandTotal: Number(q.grandTotal) })),
+        purchaseOrders: purchaseOrders.map((po) => ({
+          ...po,
+          grandTotal: Number(po.grandTotal),
+          netPayable: Number(po.netPayable),
+          advanceAmount: po.advanceAmount !== null ? Number(po.advanceAmount) : null,
+          totalDeductions: Number(po.totalDeductions),
+        })),
+        invoices,
+        paymentRequests,
+        paymentSheets: paymentSheets.map((ps) => ({ ...ps, amount: Number(ps.amount) })),
+        goodsReceipts,
+        assets,
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
 export default router;

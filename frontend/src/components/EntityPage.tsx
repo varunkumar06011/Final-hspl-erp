@@ -1,4 +1,4 @@
-﻿import { useState, useCallback, type ReactNode } from 'react';
+﻿import { useState, useCallback, useEffect, useRef, type ReactNode } from 'react';
 import {
   Box,
   Typography,
@@ -83,6 +83,8 @@ interface EntityPageProps {
   statusColors?: Record<string, 'default' | 'primary' | 'secondary' | 'error' | 'info' | 'success' | 'warning'>;
   canCreate?: boolean;
   rowActions?: (row: Record<string, unknown>) => ReactNode;
+  /** Called when a row/card is clicked (e.g. open a detail view). */
+  onRowClick?: (row: Record<string, unknown>) => void;
   /** Optional CSV column definitions. When provided, an Export button is shown. */
   csvColumns?: CsvColumn[];
   csvFilename?: string;
@@ -102,6 +104,7 @@ export default function EntityPage({
   statusColors,
   canCreate = true,
   rowActions,
+  onRowClick,
   csvColumns,
   csvFilename,
   deepLinkField,
@@ -109,6 +112,29 @@ export default function EntityPage({
   const [page, setPage] = useUrlState<number>('page', 0, Number);
   const [pageSize, setPageSize] = useUrlState<number>('pageSize', 20, Number);
   const [search, setSearch] = useUrlState<string>('search', '');
+  // Local input state — the field types freely; the URL param (and query) sync
+  // after a short debounce so typing never fights the URL write/re-render.
+  const [searchInput, setSearchInput] = useState(search);
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Keep the input in sync when the URL param changes externally (deep links,
+  // back/forward navigation, global-search handoff).
+  useEffect(() => {
+    setSearchInput(search);
+  }, [search]);
+  const handleSearchChange = useCallback(
+    (value: string) => {
+      setSearchInput(value);
+      if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+      searchDebounceRef.current = setTimeout(() => {
+        setSearch(value);
+        setPage(0);
+      }, 350);
+    },
+    [setSearch, setPage],
+  );
+  useEffect(() => () => {
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+  }, []);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Record<string, unknown> | null>(null);
   const [form, setForm] = useState<Record<string, unknown>>({});
@@ -288,11 +314,8 @@ export default function EntityPage({
           <TextField
             size="small"
             placeholder={`Search ${title.toLowerCase()}...`}
-            value={search}
-            onChange={(e) => {
-              setSearch(e.target.value);
-              setPage(0);
-            }}
+            value={searchInput}
+            onChange={(e) => handleSearchChange(e.target.value)}
             InputProps={{
               startAdornment: (
                 <InputAdornment position="start">
@@ -339,7 +362,16 @@ export default function EntityPage({
                 </TableRow>
               ) : (
                 rows.map((row: Record<string, unknown>) => (
-                  <TableRow key={row.id as string} hover ref={rowRef(row.id as string)} sx={{ ...(highlightId === row.id && { bgcolor: 'warning.light', '&:hover': { bgcolor: 'warning.light' } }) }}>
+                  <TableRow
+                    key={row.id as string}
+                    hover
+                    ref={rowRef(row.id as string)}
+                    onClick={onRowClick ? () => onRowClick(row) : undefined}
+                    sx={{
+                      ...(onRowClick && { cursor: 'pointer' }),
+                      ...(highlightId === row.id && { bgcolor: 'warning.light', '&:hover': { bgcolor: 'warning.light' } }),
+                    }}
+                  >
                     {columns.map((col) => (
                       <TableCell key={col.key} data-label={col.label}>
                         {col.render
@@ -356,7 +388,7 @@ export default function EntityPage({
                       </TableCell>
                     ))}
                     {canCreate && (
-                      <TableCell align="right" data-label="Actions">
+                      <TableCell align="right" data-label="Actions" onClick={(e) => e.stopPropagation()}>
                         {rowActions?.(row)}
                         <IconButton size="small" title="Edit" onClick={() => openEdit(row)}>
                           <EditIcon fontSize="small" />
