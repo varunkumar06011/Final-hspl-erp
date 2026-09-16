@@ -183,6 +183,7 @@ export const editPOSchema = z.object({
   params: z.object({ id: uuid }),
   body: z.object({
     items: z.array(z.object({
+      poItemId: uuid.optional(),
       materialName: z.string().min(1).max(200),
       quantity: qty,
       unit: z.string().min(1).max(20),

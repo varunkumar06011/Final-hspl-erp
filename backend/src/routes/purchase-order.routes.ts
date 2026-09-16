@@ -1352,10 +1352,17 @@ router.post(
       // Compute accepted quantities per material
       const acceptedMap = await getAcceptedQuantitiesByPo(po.id);
 
-      // Validate: each submitted item's quantity must be >= accepted qty for that material
-      const newItems = req.body.items as { materialName: string; quantity: number; unit: string; unitPrice: number; gstRate: number }[];
+      // Validate: each submitted item's quantity must be >= accepted qty for that material.
+      // Items are matched to the original PO line by poItemId when provided (allows
+      // material-name edits), falling back to name matching for older payloads.
+      const newItems = req.body.items as { poItemId?: string; materialName: string; quantity: number; unit: string; unitPrice: number; gstRate: number }[];
+      const matchOrig = (i: { poItemId?: string; materialName: string }) =>
+        i.poItemId
+          ? po.items.find((o) => o.id === i.poItemId)
+          : po.items.find((o) => o.materialName === i.materialName);
       for (const item of newItems) {
-        const accepted = acceptedMap.byName.get(item.materialName.toLowerCase()) ?? 0;
+        const orig = matchOrig(item);
+        const accepted = orig ? acceptedForPoItem(acceptedMap, orig) : 0;
         if (item.quantity < accepted) {
           res.status(400).json({
             error: `Cannot reduce "${item.materialName}" below accepted quantity (${accepted}). Already delivered.`,
@@ -1369,7 +1376,7 @@ router.post(
 
       for (const origItem of po.items) {
         const accepted = acceptedForPoItem(acceptedMap, origItem);
-        const editedItem = newItems.find((i) => i.materialName === origItem.materialName);
+        const editedItem = newItems.find((i) => (i.poItemId ? i.poItemId === origItem.id : i.materialName === origItem.materialName));
 
         if (!editedItem) {
           // Item was deselected — remaining = original ordered - accepted
@@ -1418,23 +1425,57 @@ router.post(
       // Payments already made against this PO are unaffected by the edit.
       const commitmentAdjustment = grandTotal - Number(po.grandTotal);
 
+      // Items being removed must not carry goods-receipt history — those rows
+      // hold GoodsReceiptItem.poItemId references that a delete would orphan.
+      const removedOrig = po.items.filter((o) => !newItems.some((i) => (i.poItemId ? i.poItemId === o.id : i.materialName === o.materialName)));
+      if (removedOrig.length > 0) {
+        const linkedCount = await prisma.goodsReceiptItem.count({ where: { poItemId: { in: removedOrig.map((r) => r.id) } } });
+        if (linkedCount > 0) {
+          const names = removedOrig.map((r) => r.materialName).join(', ');
+          res.status(400).json({ error: `Cannot remove item(s) with delivery records: ${names}` });
+          return;
+        }
+      }
+
       const adminRoles = await getActiveAdminRoles(projectId);
       const result = await prisma.$transaction(async (tx) => {
-        // Delete existing items
-        await tx.pOItem.deleteMany({ where: { poId: po.id } });
-
-        // Create new items
-        await tx.pOItem.createMany({
-          data: newItems.map((i) => ({
-            poId: po.id,
-            materialName: i.materialName,
-            quantity: i.quantity,
-            unit: i.unit,
-            unitPrice: i.unitPrice,
-            amount: i.quantity * i.unitPrice,
-            gstRate: i.gstRate,
-          })),
-        });
+        // Update existing lines in place (keeps POItem ids stable so linked
+        // GoodsReceiptItem rows stay attached), create only genuinely new
+        // lines, and delete deselected ones that passed the guard above.
+        const keptIds = new Set<string>();
+        for (const i of newItems) {
+          const orig = matchOrig(i);
+          if (orig) {
+            keptIds.add(orig.id);
+            await tx.pOItem.update({
+              where: { id: orig.id },
+              data: {
+                materialName: i.materialName,
+                quantity: i.quantity,
+                unit: i.unit,
+                unitPrice: i.unitPrice,
+                amount: i.quantity * i.unitPrice,
+                gstRate: i.gstRate,
+              },
+            });
+          } else {
+            await tx.pOItem.create({
+              data: {
+                poId: po.id,
+                materialName: i.materialName,
+                quantity: i.quantity,
+                unit: i.unit,
+                unitPrice: i.unitPrice,
+                amount: i.quantity * i.unitPrice,
+                gstRate: i.gstRate,
+              },
+            });
+          }
+        }
+        const deleteIds = po.items.filter((o) => !keptIds.has(o.id)).map((o) => o.id);
+        if (deleteIds.length > 0) {
+          await tx.pOItem.deleteMany({ where: { id: { in: deleteIds } } });
+        }
 
         // Store regeneration data for later, set edit metadata, reset status to PENDING_APPROVAL
         const updated = await tx.purchaseOrder.update({

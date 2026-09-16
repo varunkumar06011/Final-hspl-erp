@@ -1682,6 +1682,7 @@ function DeliveryTrailDialog({ poId, poNumber, onClose }: { poId: string | null;
 
 // ─── Edit PO Dialog ─────────────────────────────────
 interface EditItem {
+  id?: string;
   materialName: string;
   quantity: string;
   unit: string;
@@ -1716,6 +1717,7 @@ function EditPODialog({ row, onClose, onSuccess }: { row: PORow | null; onClose:
       }
     }
     setItems(row.items.map((item) => ({
+      id: item.id,
       materialName: item.materialName,
       quantity: String(item.quantity),
       unit: item.unit ?? 'nos',
@@ -1735,6 +1737,7 @@ function EditPODialog({ row, onClose, onSuccess }: { row: PORow | null; onClose:
       if (!editReason.trim()) throw new Error('Edit reason is required');
       await api.post(`/purchase-orders/${row!.id}/edit`, {
         items: selectedItems.map((i) => ({
+          poItemId: i.id,
           materialName: i.materialName,
           quantity: Number(i.quantity),
           unit: i.unit,
@@ -1789,7 +1792,18 @@ function EditPODialog({ row, onClose, onSuccess }: { row: PORow | null; onClose:
                       setItems(next);
                     }} />
                   </TableCell>
-                  <TableCell>{item.materialName}</TableCell>
+                  <TableCell>
+                    <TextField
+                      size="small"
+                      value={item.materialName}
+                      onChange={(e) => {
+                        const next = [...items];
+                        next[idx] = { ...item, materialName: e.target.value };
+                        setItems(next);
+                      }}
+                      sx={{ minWidth: 140 }}
+                    />
+                  </TableCell>
                   <TableCell>
                     <Chip label={item.accepted} size="small" color="success" variant="outlined" />
                   </TableCell>
