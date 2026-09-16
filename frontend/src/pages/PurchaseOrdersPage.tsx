@@ -1172,8 +1172,8 @@ export default function PurchaseOrdersPage() {
                         <TableCell sx={{ fontWeight: 600 }}>Qty</TableCell>
                         <TableCell sx={{ fontWeight: 600 }}>Unit</TableCell>
                         <TableCell sx={{ fontWeight: 600 }}>Unit Price</TableCell>
-                        <TableCell sx={{ fontWeight: 600 }}>GST %</TableCell>
-                        <TableCell sx={{ fontWeight: 600 }}>Amount</TableCell>
+                        <TableCell sx={{ fontWeight: 600 }}>GST</TableCell>
+                        <TableCell sx={{ fontWeight: 600 }}>Amount (Inc. GST)</TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
@@ -1184,8 +1184,8 @@ export default function PurchaseOrdersPage() {
                           <TableCell>{item.quantity}</TableCell>
                           <TableCell>{item.unit ?? '—'}</TableCell>
                           <TableCell>{formatCurrency(item.unitPrice)}</TableCell>
-                          <TableCell>{Number(item.gstRate ?? 0)}%</TableCell>
-                          <TableCell>{formatCurrency(item.amount)}</TableCell>
+                          <TableCell>{Number(item.gstRate ?? 0)}% ({formatCurrency(Number(item.amount) * Number(item.gstRate ?? 0) / 100)})</TableCell>
+                          <TableCell>{formatCurrency(Number(item.amount) * (1 + Number(item.gstRate ?? 0) / 100))}</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
@@ -1199,7 +1199,7 @@ export default function PurchaseOrdersPage() {
                           {idx + 1}. {item.materialName}
                         </Typography>
                         <Typography variant="subtitle2" fontWeight={700} sx={{ flexShrink: 0 }}>
-                          {formatCurrency(item.amount)}
+                          {formatCurrency(Number(item.amount) * (1 + Number(item.gstRate ?? 0) / 100))}
                         </Typography>
                       </Box>
                       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'repeat(2, 1fr)', sm: 'repeat(4, minmax(0, 1fr))' }, gap: 1 }}>
@@ -1216,8 +1216,8 @@ export default function PurchaseOrdersPage() {
                           <Typography variant="body2" fontWeight={600}>{formatCurrency(item.unitPrice)}</Typography>
                         </Box>
                         <Box>
-                          <Typography variant="caption" color="text.secondary">GST %</Typography>
-                          <Typography variant="body2" fontWeight={600}>{Number(item.gstRate ?? 0)}%</Typography>
+                          <Typography variant="caption" color="text.secondary">GST</Typography>
+                          <Typography variant="body2" fontWeight={600}>{Number(item.gstRate ?? 0)}% ({formatCurrency(Number(item.amount) * Number(item.gstRate ?? 0) / 100)})</Typography>
                         </Box>
                       </Box>
                     </Card>
