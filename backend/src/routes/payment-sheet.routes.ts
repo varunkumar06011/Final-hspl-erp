@@ -70,7 +70,7 @@ router.get(
         where.date = { gte: start, lte: end };
       }
 
-      const [data, total] = await Promise.all([
+      const [data, total, totalsByStatus] = await Promise.all([
         prisma.paymentSheet.findMany({
           where,
           include: sheetInclude,
@@ -79,14 +79,20 @@ router.get(
           take: size,
         }),
         prisma.paymentSheet.count({ where }),
+        // Totals must cover the full filtered set, not just the current page
+        prisma.paymentSheet.groupBy({
+          by: ['status'],
+          where,
+          _sum: { amount: true },
+        }),
       ]);
 
-      const totalAmount = data.reduce(
-        (sum, e) => (e.status === PaymentStatus.PENDING ? sum : sum + Number(e.amount)),
+      const totalAmount = totalsByStatus.reduce(
+        (sum, g) => (g.status === PaymentStatus.PENDING ? sum : sum + Number(g._sum.amount ?? 0)),
         0,
       );
-      const payableAmount = data.reduce(
-        (sum, e) => (e.status === PaymentStatus.PENDING ? sum + Number(e.amount) : sum),
+      const payableAmount = totalsByStatus.reduce(
+        (sum, g) => (g.status === PaymentStatus.PENDING ? sum + Number(g._sum.amount ?? 0) : sum),
         0,
       );
 
