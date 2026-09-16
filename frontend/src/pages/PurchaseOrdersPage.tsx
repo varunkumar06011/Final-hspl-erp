@@ -2003,6 +2003,7 @@ function EditUnapprovedPODialog({ row, onClose, onSuccess }: { row: PORow | null
   const [paymentTerms, setPaymentTerms] = useState('');
   const [deliveryDate, setDeliveryDate] = useState('');
   const [budgetHeadId, setBudgetHeadId] = useState('');
+  const [notes, setNotes] = useState('');
   const [error, setError] = useState('');
 
   const { data: budgetHeadsData } = useQuery({
@@ -2028,6 +2029,7 @@ function EditUnapprovedPODialog({ row, onClose, onSuccess }: { row: PORow | null
     setPaymentTerms(row.paymentTerms ?? '');
     setDeliveryDate(row.deliveryDate ? new Date(row.deliveryDate).toISOString().split('T')[0] : '');
     setBudgetHeadId(row.budgetHeadId ?? '');
+    setNotes(row.notes ?? '');
     setError('');
   }, [row]);
 
@@ -2037,6 +2039,7 @@ function EditUnapprovedPODialog({ row, onClose, onSuccess }: { row: PORow | null
         paymentTerms: paymentTerms || undefined,
         deliveryDate: deliveryDate || undefined,
         budgetHeadId,
+        notes,
         items: items.map((i) => ({
           materialName: i.materialName,
           quantity: Number(i.quantity),
@@ -2121,6 +2124,17 @@ function EditUnapprovedPODialog({ row, onClose, onSuccess }: { row: PORow | null
             <MenuItem value="">— Select Budget Head —</MenuItem>
             {budgetHeads.map((h) => <MenuItem key={h.id} value={h.id}>{h.particulars}</MenuItem>)}
           </TextField>
+
+          <TextField
+            label="Item Description"
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            fullWidth
+            size="small"
+            multiline
+            rows={2}
+            placeholder="Item description for this PO (shown in the table and PDF)"
+          />
         </Box>
 
         <Typography variant="subtitle2" sx={{ mb: 1 }}>Items</Typography>

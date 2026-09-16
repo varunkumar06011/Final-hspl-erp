@@ -1151,7 +1151,7 @@ router.post(
         entityId: po.id,
         projectId,
         oldValue,
-        newValue: { paymentTerms, deliveryDate, budgetHeadId, items: newItems, totalAmount, gstAmount, grandTotal },
+        newValue: { paymentTerms, deliveryDate, budgetHeadId, items: newItems, notes, totalAmount, gstAmount, grandTotal },
       });
 
       // Notify approvers
