@@ -1,5 +1,5 @@
 import { Router, Response, NextFunction } from 'express';
-import { Permission, AuditAction, AssetStatus, AssetMovementType, UserRole, InventoryItemType } from '@hospital-erp/shared';
+import { Permission, AuditAction, AssetStatus, AssetMovementType, InventoryItemType, isAdminRole } from '@hospital-erp/shared';
 import {
   listAssetsSchema,
   createAssetSchema,
@@ -31,7 +31,7 @@ const router = Router();
 // (acceptable: worst case is one extra notification per restart).
 const warrantyNotifyLastSent = new Map<string, string>();
 
-const ASSET_ADMIN_ROLES = [UserRole.ADMIN, UserRole.ADMIN_2];
+// Admin roles are checked dynamically via isAdminRole() to support ADMIN_3, ADMIN_4, etc.
 
 const assetInclude = {
   inventoryItem: { select: { id: true, name: true, category: true, unit: true, itemType: true } },
@@ -1369,7 +1369,7 @@ router.post(
   authMiddleware,
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
-      if (!ASSET_ADMIN_ROLES.includes(req.user!.role as UserRole)) {
+      if (!isAdminRole(req.user!.role)) {
         res.status(403).json({ error: 'Only Admin and Admin 2 can retire assets' });
         return;
       }

@@ -259,10 +259,12 @@ export async function notifyApprovers(
 export async function notifyAdmins(
   payload: NotificationPayload
 ): Promise<{ notifiedCount: number; deviceCount: number }> {
+  // Query all users whose role starts with "ADMIN" — this catches
+  // ADMIN, ADMIN_2, ADMIN_3, ADMIN_4, ... (all dynamic admin roles).
   const admins = await prisma.user.findMany({
     where: {
       isActive: true,
-      role: { in: [UserRole.ADMIN, UserRole.ADMIN_2] },
+      role: { startsWith: 'ADMIN' },
     },
     select: { id: true },
   });

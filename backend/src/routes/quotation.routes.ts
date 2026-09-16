@@ -1,5 +1,5 @@
 import { Router, Response, NextFunction } from 'express';
-import { APPROVER_ROLES, Permission, QuotationStatus, AuditAction, UserRole, ApprovalStatus } from '@hospital-erp/shared';
+import { Permission, QuotationStatus, AuditAction, ApprovalStatus, isApproverRole } from '@hospital-erp/shared';
 import { createQuotationSchema, listQuotationsSchema, approvalActionSchema } from '@hospital-erp/shared';
 import { prisma } from '../config/prisma';
 import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middleware/auth';
@@ -218,7 +218,7 @@ router.post(
 
       // Get all admin users to create in-app notifications for each
       const admins = await prisma.user.findMany({
-        where: { isActive: true, role: { in: [UserRole.ADMIN, UserRole.ADMIN_2] } },
+        where: { isActive: true, role: { startsWith: 'ADMIN' } },
         select: { id: true },
       });
 
@@ -639,7 +639,7 @@ router.post(
       }
 
       // Check user is one of the approver roles
-      if (!APPROVER_ROLES.some((role) => role === req.user!.role)) {
+      if (!isApproverRole(req.user!.role)) {
         res.status(403).json({ error: 'Only heads can approve quotations' });
         return;
       }
@@ -718,7 +718,7 @@ router.post(
       }
 
       // Check user is one of the approver roles
-      if (!APPROVER_ROLES.some((role) => role === req.user!.role)) {
+      if (!isApproverRole(req.user!.role)) {
         res.status(403).json({ error: 'Only heads can reject quotations' });
         return;
       }

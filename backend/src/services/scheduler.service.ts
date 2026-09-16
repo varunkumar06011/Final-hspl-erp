@@ -1,5 +1,5 @@
 import { prisma } from '../config/prisma';
-import { QuotationStatus, UserRole, ApprovalStatus } from '@hospital-erp/shared';
+import { QuotationStatus, ApprovalStatus } from '@hospital-erp/shared';
 import { notifyAdmins } from './push.service';
 
 // ─── Quotation Approval Aging Scheduler ─────────────────────────────
@@ -162,9 +162,9 @@ async function checkOverdueQuotations(): Promise<void> {
       return; // all already notified
     }
 
-    // Get all admin users
+    // Get all admin users (including dynamic admin roles ADMIN_3, ADMIN_4, ...)
     const admins = await prisma.user.findMany({
-      where: { isActive: true, role: { in: [UserRole.ADMIN, UserRole.ADMIN_2] } },
+      where: { isActive: true, role: { startsWith: 'ADMIN' } },
       select: { id: true },
     });
 

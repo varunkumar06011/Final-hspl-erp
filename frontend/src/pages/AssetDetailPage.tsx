@@ -39,7 +39,7 @@ import {
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { QRCodeSVG } from 'qrcode.react';
-import { AssetStatus, UserRole } from '@hospital-erp/shared';
+import { AssetStatus, isAdminRole } from '@hospital-erp/shared';
 import { enumToOptions, formatDate } from '../utils/enumOptions';
 import api, { extractErrorMessage } from '../config/api';
 import { useAuthStore } from '../stores/authStore';
@@ -142,7 +142,7 @@ export default function AssetDetailPage() {
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
 
-  const canRetire = user && (user.role === UserRole.ADMIN || user.role === UserRole.ADMIN_2);
+  const canRetire = user && isAdminRole(user.role);
 
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['/assets', itemId, page, pageSize, statusFilter, search],

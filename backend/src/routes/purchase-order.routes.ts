@@ -1,5 +1,5 @@
 import { Router, Response, NextFunction } from 'express';
-import { Permission, POStatus, POPaymentType, AuditAction, UserRole, GoodsReceiptStatus } from '@hospital-erp/shared';
+import { Permission, POStatus, POPaymentType, AuditAction, UserRole, GoodsReceiptStatus, isAdminRole } from '@hospital-erp/shared';
 import { createPOSchema, listPOsSchema, approvalActionSchema, editPOSchema, editUnapprovedPOSchema, regeneratePOSchema, changePOPaymentTypeSchema } from '@hospital-erp/shared';
 import { prisma } from '../config/prisma';
 import { Prisma } from '@prisma/client';
@@ -97,8 +97,32 @@ async function getDeliveredValueForPo(
   return deliveredValue;
 }
 
-const HEAD_ROLES = [UserRole.PROJECT_HEAD, UserRole.HEAD_OF_CONSTRUCTION, UserRole.ACCOUNTS_HEAD, UserRole.ADMIN, UserRole.ADMIN_2];
-const PO_APPROVER_ROLES = [UserRole.ADMIN, UserRole.ADMIN_2];
+const HEAD_ROLES = [UserRole.PROJECT_HEAD, UserRole.HEAD_OF_CONSTRUCTION, UserRole.ACCOUNTS_HEAD];
+// PO approver roles now include all dynamic admin roles (ADMIN_3, ADMIN_4, ...)
+// via isAdminRole(). The fixed array is kept for backward compatibility with
+// approval workflow step creation.
+
+function isPoApprover(role: string): boolean {
+  return isAdminRole(role);
+}
+
+/**
+ * Fetch all active admin roles (ADMIN, ADMIN_2, ADMIN_3, ...) for a project.
+ * Used to create approval workflow steps so dynamic admins can also approve.
+ */
+async function getActiveAdminRoles(projectId: string): Promise<string[]> {
+  const users = await prisma.user.findMany({
+    where: { projectId, isActive: true },
+    select: { role: true },
+  });
+  const adminRoles = users.map((u) => u.role).filter((r) => isAdminRole(r));
+  // Deduplicate and sort: ADMIN, ADMIN_2, ADMIN_3, ...
+  return Array.from(new Set(adminRoles)).sort((a, b) => {
+    const na = a === 'ADMIN' ? 1 : parseInt(a.split('_')[1] ?? '0', 10);
+    const nb = b === 'ADMIN' ? 1 : parseInt(b.split('_')[1] ?? '0', 10);
+    return na - nb;
+  });
+}
 
 async function generatePONumber(projectId: string): Promise<string> {
   return generateSequenceNumber('purchaseOrder', 'poNumber', 'VGH-PO', 3, { projectId });
@@ -477,6 +501,7 @@ router.post(
 
       // Create PO + approval workflow atomically so a rollback can't leave an
       // orphan workflow or a PO without its workflow linkage.
+      const adminRoles = await getActiveAdminRoles(projectId);
       const { po, workflow } = await prisma.$transaction(async (tx) => {
         const po = await tx.purchaseOrder.create({
           data: {
@@ -523,7 +548,7 @@ router.post(
             minApprovers: 1,
             approvalPolicy: 'PO_SINGLE_APPROVER',
             steps: {
-              create: [UserRole.ADMIN, UserRole.ADMIN_2].map((role, idx) => ({
+              create: adminRoles.map((role, idx) => ({
                 stepNumber: idx + 1,
                 approverRole: role,
                 status: 'PENDING',
@@ -550,8 +575,8 @@ router.post(
         newValue: { poNumber, vendorId, quotationId, totalAmount, grandTotal, paymentType, advanceAmount: resolvedAdvanceAmount, acknowledged: true },
       });
 
-      // Notify all approvers via push notification
-      notifyApprovers(projectId, HEAD_ROLES, {
+      // Notify all approvers via push notification (heads + dynamic admin roles)
+      notifyApprovers(projectId, [...HEAD_ROLES, ...adminRoles] as UserRole[], {
         approvalId: workflow.id,
         entityType: 'PURCHASE_ORDER',
         entityId: po.id,
@@ -626,7 +651,7 @@ router.delete(
         res.status(404).json({ error: 'Purchase order not found' });
         return;
       }
-      const isAdmin = req.user!.role === UserRole.ADMIN || req.user!.role === UserRole.ADMIN_2;
+      const isAdmin = isPoApprover(req.user!.role);
       const isCreator = existing.createdBy === req.user!.id;
       if (!isAdmin && !isCreator) {
         res.status(403).json({ error: 'Only the creator or an admin can deactivate this purchase order' });
@@ -686,7 +711,7 @@ router.post(
       }
 
       // Check user is one of the PO approver roles (Admin or Admin 2)
-      if (!PO_APPROVER_ROLES.includes(req.user!.role as UserRole)) {
+      if (!isPoApprover(req.user!.role)) {
         res.status(403).json({ error: 'Only Admin or Admin 2 can approve purchase orders' });
         return;
       }
@@ -809,7 +834,7 @@ router.post(
         return;
       }
 
-      if (!PO_APPROVER_ROLES.includes(req.user!.role as UserRole)) {
+      if (!isPoApprover(req.user!.role)) {
         res.status(403).json({ error: 'Only Admin or Admin 2 can reject purchase orders' });
         return;
       }
@@ -1003,6 +1028,7 @@ router.post(
         grandTotal: Number(po.grandTotal),
       };
 
+      const adminRoles = await getActiveAdminRoles(projectId);
       const result = await prisma.$transaction(async (tx) => {
         // Adjust budget head commitment if budget head or total changed
         if (po.budgetHeadId && po.budgetHeadId !== budgetHeadId) {
@@ -1079,7 +1105,7 @@ router.post(
               status: 'VERIFICATION',
               currentStep: 0,
               steps: {
-                create: [UserRole.ADMIN, UserRole.ADMIN_2].map((role, idx) => ({
+                create: adminRoles.map((role, idx) => ({
                   stepNumber: idx + 1,
                   approverRole: role,
                   status: 'PENDING',
@@ -1103,7 +1129,7 @@ router.post(
       });
 
       // Notify approvers
-      notifyApprovers(projectId, PO_APPROVER_ROLES as UserRole[], {
+      notifyApprovers(projectId, adminRoles as UserRole[], {
         approvalId: po.approvalWorkflowId ?? '',
         entityType: 'PURCHASE_ORDER',
         entityId: po.id,
@@ -1186,6 +1212,7 @@ router.post(
 
       const oldValue = { paymentType: po.paymentType, advanceAmount: po.advanceAmount ? Number(po.advanceAmount) : null };
 
+      const adminRoles = await getActiveAdminRoles(projectId);
       const updated = await prisma.$transaction(async (tx) => {
         const updatedPo = await tx.purchaseOrder.update({
           where: { id: po.id },
@@ -1209,7 +1236,7 @@ router.post(
               status: 'VERIFICATION',
               currentStep: 0,
               steps: {
-                create: PO_APPROVER_ROLES.map((role, idx) => ({
+                create: adminRoles.map((role, idx) => ({
                   stepNumber: idx + 1,
                   approverRole: role,
                   status: 'PENDING',
@@ -1228,7 +1255,7 @@ router.post(
               minApprovers: 1,
               approvalPolicy: 'PO_SINGLE_APPROVER',
               steps: {
-                create: PO_APPROVER_ROLES.map((role, idx) => ({
+                create: adminRoles.map((role, idx) => ({
                   stepNumber: idx + 1,
                   approverRole: role,
                   status: 'PENDING',
@@ -1255,7 +1282,7 @@ router.post(
         newValue: { paymentType, advanceAmount: resolvedAdvanceAmount, reason },
       });
 
-      notifyApprovers(projectId, PO_APPROVER_ROLES as UserRole[], {
+      notifyApprovers(projectId, adminRoles as UserRole[], {
         approvalId: po.approvalWorkflowId ?? '',
         entityType: 'PURCHASE_ORDER',
         entityId: po.id,
@@ -1374,6 +1401,7 @@ router.post(
         commitmentAdjustment = (grandTotal - Number(po.grandTotal)) + deliveredForDeselected;
       }
 
+      const adminRoles = await getActiveAdminRoles(projectId);
       const result = await prisma.$transaction(async (tx) => {
         // Delete existing items
         await tx.pOItem.deleteMany({ where: { poId: po.id } });
@@ -1430,7 +1458,7 @@ router.post(
               status: 'VERIFICATION',
               currentStep: 0,
               steps: {
-                create: [UserRole.ADMIN, UserRole.ADMIN_2].map((role, idx) => ({
+                create: adminRoles.map((role, idx) => ({
                   stepNumber: idx + 1,
                   approverRole: role,
                   status: 'PENDING',
@@ -1454,7 +1482,7 @@ router.post(
       });
 
       // Notify approvers
-      notifyApprovers(projectId, PO_APPROVER_ROLES as UserRole[], {
+      notifyApprovers(projectId, adminRoles as UserRole[], {
         approvalId: po.approvalWorkflowId ?? '',
         entityType: 'PURCHASE_ORDER',
         entityId: po.id,
@@ -1513,6 +1541,7 @@ router.post(
       const gstAmount = remainingItems.reduce((sum, i) => sum + (i.quantity * i.unitPrice) * i.gstRate / 100, 0);
       const grandTotal = totalAmount + gstAmount;
 
+      const adminRoles = await getActiveAdminRoles(projectId);
       const result = await prisma.$transaction(async (tx) => {
         // Create regenerated PO
         const regenPo = await tx.purchaseOrder.create({
@@ -1559,7 +1588,7 @@ router.post(
             minApprovers: 1,
             approvalPolicy: 'PO_SINGLE_APPROVER',
             steps: {
-              create: [UserRole.ADMIN, UserRole.ADMIN_2].map((role, idx) => ({
+              create: adminRoles.map((role, idx) => ({
                 stepNumber: idx + 1,
                 approverRole: role,
                 status: 'PENDING',
@@ -1587,7 +1616,7 @@ router.post(
       });
 
       // Notify approvers
-      notifyApprovers(projectId, PO_APPROVER_ROLES as UserRole[], {
+      notifyApprovers(projectId, adminRoles as UserRole[], {
         approvalId: result!.approvalWorkflowId ?? '',
         entityType: 'PURCHASE_ORDER',
         entityId: result!.id,

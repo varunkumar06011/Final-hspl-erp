@@ -1,5 +1,5 @@
 import { Router, Response, NextFunction } from 'express';
-import { Permission, AuditAction, UserRole } from '@hospital-erp/shared';
+import { Permission, AuditAction, UserRole, isAdminRole } from '@hospital-erp/shared';
 import { z } from 'zod';
 import { prisma } from '../config/prisma';
 import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middleware/auth';
@@ -156,7 +156,7 @@ router.post(
 
       // Only ADMIN or ADMIN_2 can review budget revisions
       const userRole = req.user!.role as UserRole;
-      if (![UserRole.ADMIN, UserRole.ADMIN_2].includes(userRole)) {
+      if (!isAdminRole(userRole)) {
         res.status(403).json({ error: 'Only Admin or Admin 2 can review budget revisions' });
         return;
       }

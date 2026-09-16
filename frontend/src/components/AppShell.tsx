@@ -42,7 +42,7 @@ import {
   RequestQuote as PaymentReportIcon,
 } from '@mui/icons-material';
 import { useAuthStore } from '../stores/authStore';
-import { hasPermission, Permission, UserRole } from '@hospital-erp/shared';
+import { hasPermission, Permission, UserRole, isAdminRole } from '@hospital-erp/shared';
 import { onForegroundMessage, enableNotifications, isPushSupported, getPermissionState } from '../config/notifications';
 import NotificationBell from './NotificationBell';
 import api from '../config/api';
@@ -141,7 +141,7 @@ const ADMIN_NAV_ITEMS = [
   { label: 'Settings', icon: <SettingsIcon />, path: '/settings', section: 'Admin' },
 ];
 
-const ROLE_COLORS: Record<UserRole, string> = {
+const ROLE_COLORS: Record<string, string> = {
   [UserRole.SUPERVISOR]: '#546E7A',
   [UserRole.ACCOUNTANT]: '#00897B',
   [UserRole.SITE_SUPERVISOR]: '#6D4C41',
@@ -152,7 +152,14 @@ const ROLE_COLORS: Record<UserRole, string> = {
   [UserRole.ADMIN_2]: '#9C27B0',
 };
 
-const ROLE_LABELS: Record<UserRole, string> = {
+function getRoleColor(role: string): string {
+  if (ROLE_COLORS[role]) return ROLE_COLORS[role];
+  // Dynamic admin roles (ADMIN_3, ADMIN_4, ...) get the same color as ADMIN
+  if (isAdminRole(role)) return ROLE_COLORS[UserRole.ADMIN];
+  return '#546E7A';
+}
+
+const ROLE_LABELS: Record<string, string> = {
   [UserRole.SUPERVISOR]: 'Supervisor',
   [UserRole.ACCOUNTANT]: 'Accountant',
   [UserRole.SITE_SUPERVISOR]: 'Site Supervisor',
@@ -162,6 +169,16 @@ const ROLE_LABELS: Record<UserRole, string> = {
   [UserRole.ADMIN]: 'Admin 1',
   [UserRole.ADMIN_2]: 'Admin 2',
 };
+
+function getRoleLabelLocal(role: string): string {
+  if (ROLE_LABELS[role]) return ROLE_LABELS[role];
+  // Dynamic admin roles (ADMIN_3, ADMIN_4, ...) → "Admin 3", "Admin 4", etc.
+  if (isAdminRole(role)) {
+    const num = role.split('_')[1];
+    return `Admin ${num}`;
+  }
+  return role;
+}
 
 const DRAWER_WIDTH = 260;
 
@@ -210,7 +227,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const breadcrumbs = useMemo(() => {
     const path = location.pathname;
     // Use the admin nav items for breadcrumb resolution if the user sees the admin dashboard
-    const navSource = (user?.role === UserRole.ADMIN || user?.role === UserRole.ADMIN_2 || user?.role === UserRole.ACCOUNTANT) ? ADMIN_NAV_ITEMS : NAV_ITEMS;
+    const navSource = (isAdminRole(user?.role ?? '') || user?.role === UserRole.ACCOUNTANT) ? ADMIN_NAV_ITEMS : NAV_ITEMS;
     if (path === '/') return [{ label: 'Dashboard', path: '/' }];
     const navItem = navSource.find((item) => item.path === path);
     if (navItem) return [{ label: 'Dashboard', path: '/' }, { label: navItem.label, path }];
@@ -332,7 +349,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         <List>
           {/* Admin roles (ADMIN + ADMIN_2) and ACCOUNTANT use the simplified
               ADMIN_NAV_ITEMS. All other roles use the original NAV_ITEMS. */}
-          {((user?.role === UserRole.ADMIN || user?.role === UserRole.ADMIN_2 || user?.role === UserRole.ACCOUNTANT) ? ADMIN_NAV_ITEMS : NAV_ITEMS)
+          {((isAdminRole(user?.role ?? '') || user?.role === UserRole.ACCOUNTANT) ? ADMIN_NAV_ITEMS : NAV_ITEMS)
             .filter((item) => {
               // Role restriction — if item has `roles`, only show for those roles
               if ('roles' in item && Array.isArray(item.roles) && item.roles.length > 0) {
@@ -427,11 +444,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           {user && (
             <>
               <Chip
-                label={ROLE_LABELS[user.role as UserRole]}
+                label={getRoleLabelLocal(user.role)}
                 size="small"
                 sx={{
                   mr: 1,
-                  bgcolor: ROLE_COLORS[user.role as UserRole],
+                  bgcolor: getRoleColor(user.role),
                   color: 'white',
                   fontWeight: 600,
                   display: { xs: 'none', sm: 'flex' },

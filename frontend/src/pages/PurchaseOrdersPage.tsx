@@ -49,7 +49,7 @@ import {
   TableChart as TableChartIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { POStatus, UserRole, POPaymentType, GST_RATES } from '@hospital-erp/shared';
+import { POStatus, UserRole, POPaymentType, GST_RATES, isAdminRole } from '@hospital-erp/shared';
 import { formatCurrency, formatDate, formatIndianNumber, STATUS_COLORS, QTY_UNIT_OPTIONS } from '../utils/enumOptions';
 import api, { extractErrorMessage } from '../config/api';
 import { useAuthStore } from '../stores/authStore';
@@ -139,7 +139,8 @@ interface PORow {
   } | null;
 }
 
-const HEAD_ROLES = [UserRole.PROJECT_HEAD, UserRole.HEAD_OF_CONSTRUCTION, UserRole.ACCOUNTS_HEAD, UserRole.ADMIN, UserRole.ADMIN_2];
+const HEAD_ROLES = [UserRole.PROJECT_HEAD, UserRole.HEAD_OF_CONSTRUCTION, UserRole.ACCOUNTS_HEAD];
+// Admin roles (ADMIN, ADMIN_2, ADMIN_3, ...) are checked dynamically via isAdminRole().
 
 export default function PurchaseOrdersPage() {
   const [page, setPage] = useState(0);
@@ -493,7 +494,7 @@ export default function PurchaseOrdersPage() {
 
   function canApprove(row: PORow): boolean {
     if (!row.approvalWorkflow) return false;
-    if (!user || !HEAD_ROLES.includes(user.role as UserRole)) return false;
+    if (!user || (!HEAD_ROLES.includes(user.role as UserRole) && !isAdminRole(user.role))) return false;
     if (row.status !== POStatus.PENDING_APPROVAL) return false;
     // Check if this user's role has a pending step and hasn't already approved
     const step = row.approvalWorkflow.steps.find(
@@ -899,7 +900,7 @@ export default function PurchaseOrdersPage() {
                             {(row.status === POStatus.APPROVED || row.status === POStatus.DELIVERED || row.status === POStatus.PARTIALLY_DELIVERED) && (
                               <IconButton size="small" onClick={() => { setNotesEditRow(row); setNotesEditValue(row.notes ?? ''); }} title="Edit Item Description"><EditIcon fontSize="small" /></IconButton>
                             )}
-                            {(row.status === POStatus.APPROVED || row.status === POStatus.DELIVERED || row.status === POStatus.PARTIALLY_DELIVERED) && row.budgetHeadId && user && (user.role === UserRole.ADMIN || user.role === UserRole.ADMIN_2) && (
+                            {(row.status === POStatus.APPROVED || row.status === POStatus.DELIVERED || row.status === POStatus.PARTIALLY_DELIVERED) && row.budgetHeadId && user && isAdminRole(user.role) && (
                               <IconButton size="small" color="info" onClick={() => { setBudgetHeadRow(row); setNewBudgetHeadId(''); setBudgetHeadReason(''); }} title="Change Budget Head"><SwapBudgetIcon fontSize="small" /></IconButton>
                             )}
                             {row.status === POStatus.APPROVED && (
@@ -1368,7 +1369,7 @@ export default function PurchaseOrdersPage() {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => { setNotesEditRow(null); setNotesEditValue(''); }}>Cancel</Button>
-          {user && (user.role === UserRole.ADMIN || user.role === UserRole.ADMIN_2) && notesEditRow && (
+          {user && isAdminRole(user.role) && notesEditRow && (
             <Button
               color="error"
               variant="outlined"

@@ -12,6 +12,61 @@ export enum UserRole {
   ACCOUNTS_HEAD = 'ACCOUNTS_HEAD',
   ADMIN = 'ADMIN',
   ADMIN_2 = 'ADMIN_2',
+  // Dynamic admin roles (ADMIN_3, ADMIN_4, ...) are generated at runtime.
+  // They are NOT in this enum but are valid roles stored in the DB.
+  // Use isAdminRole() to check if a role string is any admin role.
+}
+
+/**
+ * Returns true if the given role string is any admin role —
+ * either the fixed ADMIN / ADMIN_2 enum values, or a dynamic
+ * ADMIN_N (N >= 3) generated at runtime.
+ */
+export function isAdminRole(role: string): boolean {
+  if (!role) return false;
+  if (role === UserRole.ADMIN || role === UserRole.ADMIN_2) return true;
+  // Match ADMIN_3, ADMIN_4, ... ADMIN_99
+  return /^ADMIN_\d+$/.test(role);
+}
+
+/**
+ * Returns a display label for any role, including dynamic admin roles.
+ * ADMIN → "Admin 1", ADMIN_2 → "Admin 2", ADMIN_3 → "Admin 3", etc.
+ */
+export function getRoleLabel(role: string): string {
+  const labels: Record<string, string> = {
+    [UserRole.SUPERVISOR]: 'Supervisor',
+    [UserRole.ACCOUNTANT]: 'Accountant',
+    [UserRole.SITE_SUPERVISOR]: 'Site Supervisor',
+    [UserRole.PROJECT_HEAD]: 'Project Head',
+    [UserRole.HEAD_OF_CONSTRUCTION]: 'Head of Construction',
+    [UserRole.ACCOUNTS_HEAD]: 'Accounts Head',
+    [UserRole.ADMIN]: 'Admin 1',
+    [UserRole.ADMIN_2]: 'Admin 2',
+  };
+  if (labels[role]) return labels[role];
+  if (/^ADMIN_\d+$/.test(role)) {
+    const num = role.split('_')[1];
+    return `Admin ${num}`;
+  }
+  return role;
+}
+
+/**
+ * Given a list of existing role strings, returns the next available
+ * admin role string (ADMIN_3, ADMIN_4, ...).
+ * ADMIN and ADMIN_2 are reserved; dynamic numbering starts at 3.
+ */
+export function getNextAdminRole(existingRoles: string[]): string {
+  const adminNumbers = new Set<number>();
+  for (const r of existingRoles) {
+    if (r === UserRole.ADMIN) adminNumbers.add(1);
+    else if (r === UserRole.ADMIN_2) adminNumbers.add(2);
+    else if (/^ADMIN_(\d+)$/.test(r)) adminNumbers.add(parseInt(r.split('_')[1], 10));
+  }
+  let next = 3;
+  while (adminNumbers.has(next)) next++;
+  return `ADMIN_${next}`;
 }
 
 export const APPROVER_ROLES = [
@@ -21,6 +76,15 @@ export const APPROVER_ROLES = [
   UserRole.ADMIN,
   UserRole.ADMIN_2,
 ] as const;
+
+/**
+ * Returns true if the given role can approve POs, quotations, etc.
+ * Includes all dynamic admin roles (ADMIN_3, ADMIN_4, ...).
+ */
+export function isApproverRole(role: string): boolean {
+  if (APPROVER_ROLES.some((r) => r === role)) return true;
+  return isAdminRole(role);
+}
 
 export enum ProjectStatus {
   PLANNED = 'PLANNED',
@@ -718,6 +782,10 @@ export const PERMISSION_MATRIX: Record<UserRole, Permission[]> = {
   ],
 };
 
-export function hasPermission(role: UserRole, permission: Permission): boolean {
-  return PERMISSION_MATRIX[role]?.includes(permission) ?? false;
+export function hasPermission(role: UserRole | string, permission: Permission): boolean {
+  // Dynamic admin roles (ADMIN_3, ADMIN_4, ...) get the same permissions as ADMIN
+  if (typeof role === 'string' && isAdminRole(role) && !(role in PERMISSION_MATRIX)) {
+    return PERMISSION_MATRIX[UserRole.ADMIN]?.includes(permission) ?? false;
+  }
+  return PERMISSION_MATRIX[role as UserRole]?.includes(permission) ?? false;
 }

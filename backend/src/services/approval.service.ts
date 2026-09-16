@@ -1,5 +1,5 @@
 import { prisma } from '../config/prisma';
-import { APPROVER_ROLES, ApprovalStatus, ApprovalStepStatus, UserRole, APPROVAL_CONFIG, AuditAction } from '@hospital-erp/shared';
+import { APPROVER_ROLES, ApprovalStatus, ApprovalStepStatus, UserRole, APPROVAL_CONFIG, AuditAction, isAdminRole, isApproverRole } from '@hospital-erp/shared';
 import { notifyAllHeads, notifyUser, NotificationPayload } from './push.service';
 import { logAudit } from './audit.service';
 
@@ -21,22 +21,17 @@ function satisfiesApprovalPolicy(policy: string | null | undefined, steps: { sta
   );
 
   if (policy === 'PO_SINGLE_APPROVER' || policy === 'ADMIN_SINGLE_APPROVER') {
-    // A single approval from ADMIN or ADMIN_2 is enough — no need to wait
-    // for other approvers. Other heads can still approve if they want, but
-    // their approval alone is not sufficient.
-    return approvedRoles.has(UserRole.ADMIN) || approvedRoles.has(UserRole.ADMIN_2);
+    // A single approval from any admin role (ADMIN, ADMIN_2, ADMIN_3, ...) is enough.
+    return [...approvedRoles].some((role) => isAdminRole(role));
   }
   if (policy === 'PO_HEAD_APPROVERS' || policy === 'ANY_APPROVERS') {
-    return [...approvedRoles].filter((role) =>
-      [UserRole.PROJECT_HEAD, UserRole.HEAD_OF_CONSTRUCTION, UserRole.ACCOUNTS_HEAD, UserRole.ADMIN, UserRole.ADMIN_2].includes(role as UserRole)
-    ).length >= required;
+    return [...approvedRoles].filter((role) => isApproverRole(role)).length >= required;
   }
   if (policy !== 'HEAD_GROUPS') return approvedRoles.size >= required;
 
   const firstGroupApproved = [UserRole.PROJECT_HEAD, UserRole.HEAD_OF_CONSTRUCTION]
     .some((role) => approvedRoles.has(role));
-  const secondGroupApproved = [UserRole.ADMIN, UserRole.ADMIN_2]
-    .filter((role) => approvedRoles.has(role)).length;
+  const secondGroupApproved = [...approvedRoles].filter((role) => isAdminRole(role)).length;
 
   return firstGroupApproved && secondGroupApproved >= (required >= 3 ? 2 : 1);
 }

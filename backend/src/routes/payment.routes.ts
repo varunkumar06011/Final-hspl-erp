@@ -1,5 +1,5 @@
 import { Router, Response, NextFunction } from 'express';
-import { Permission, AuditAction, PaymentStatus, UserRole, InvoiceVerificationStatus, getRequiredApproverCount, VoucherType } from '@hospital-erp/shared';
+import { Permission, AuditAction, PaymentStatus, UserRole, InvoiceVerificationStatus, getRequiredApproverCount, VoucherType, isAdminRole } from '@hospital-erp/shared';
 import {
   createPaymentRequestSchema,
   listPaymentRequestsSchema,
@@ -28,7 +28,24 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 
 const router = Router();
 router.use(authMiddleware);
 
-const HEAD_ROLES = [UserRole.PROJECT_HEAD, UserRole.HEAD_OF_CONSTRUCTION, UserRole.ADMIN, UserRole.ADMIN_2];
+const HEAD_ROLES = [UserRole.PROJECT_HEAD, UserRole.HEAD_OF_CONSTRUCTION];
+// Admin roles are checked dynamically via isAdminRole() to support ADMIN_3, ADMIN_4, etc.
+
+/**
+ * Fetch all approver roles (heads + dynamic admin roles) for a project.
+ * Used to create approval workflow steps and send notifications.
+ */
+async function getAllApproverRoles(projectId: string): Promise<string[]> {
+  const users = await prisma.user.findMany({
+    where: { projectId, isActive: true },
+    select: { role: true },
+  });
+  const roles = new Set<string>(HEAD_ROLES as string[]);
+  for (const u of users) {
+    if (isAdminRole(u.role)) roles.add(u.role);
+  }
+  return Array.from(roles);
+}
 
 async function generatePaymentCode(): Promise<string> {
   return generateSequenceNumber('paymentRequest', 'paymentCode', 'VGH-PAY', 3);
@@ -366,6 +383,7 @@ router.post(
       const paymentCode = await generatePaymentCode();
       const finalRequestNumber = await resolveUniqueRequestNumber(projectId, String(requestNumber));
 
+      const approverRoles = await getAllApproverRoles(projectId);
       const result = await prisma.$transaction(async (tx) => {
         const created = await tx.paymentRequest.create({
           data: {
@@ -397,7 +415,7 @@ router.post(
             minApprovers: getRequiredApproverCount(Number(amount)),
             approvalPolicy: 'ADMIN_SINGLE_APPROVER',
             steps: {
-              create: HEAD_ROLES.map((role, idx) => ({
+              create: approverRoles.map((role, idx) => ({
                 stepNumber: idx + 1,
                 approverRole: role,
                 status: 'PENDING',
@@ -431,7 +449,7 @@ router.post(
 
       // Notify all approvers via push notification
       if (record?.approvalWorkflow) {
-        notifyApprovers(projectId, HEAD_ROLES, {
+        notifyApprovers(projectId, approverRoles as UserRole[], {
           approvalId: record.approvalWorkflow.id,
           entityType: 'PAYMENT_REQUEST',
           entityId: result.id,
@@ -497,6 +515,7 @@ router.post(
       const paymentCode = await generatePaymentCode();
       const finalRequestNumber = await resolveUniqueRequestNumber(projectId, String(requestNumber));
 
+      const approverRoles = await getAllApproverRoles(projectId);
       const result = await prisma.$transaction(async (tx) => {
         const created = await tx.paymentRequest.create({
           data: {
@@ -525,7 +544,7 @@ router.post(
             minApprovers: getRequiredApproverCount(Number(amount)),
             approvalPolicy: 'ADMIN_SINGLE_APPROVER',
             steps: {
-              create: HEAD_ROLES.map((role, idx) => ({
+              create: approverRoles.map((role, idx) => ({
                 stepNumber: idx + 1,
                 approverRole: role,
                 status: 'PENDING',
@@ -559,7 +578,7 @@ router.post(
 
       // Notify all approvers via push notification
       if (record?.approvalWorkflow) {
-        notifyApprovers(projectId, HEAD_ROLES, {
+        notifyApprovers(projectId, approverRoles as UserRole[], {
           approvalId: record.approvalWorkflow.id,
           entityType: 'PAYMENT_REQUEST',
           entityId: result.id,
@@ -609,6 +628,7 @@ router.post(
         fileMimeType = req.file.mimetype;
       }
 
+      const approverRoles = await getAllApproverRoles(projectId);
       const result = await prisma.$transaction(async (tx) => {
         const created = await tx.paymentRequest.create({
           data: {
@@ -639,7 +659,7 @@ router.post(
             minApprovers: getRequiredApproverCount(Number(amount)),
             approvalPolicy: 'ADMIN_SINGLE_APPROVER',
             steps: {
-              create: HEAD_ROLES.map((role, idx) => ({
+              create: approverRoles.map((role, idx) => ({
                 stepNumber: idx + 1,
                 approverRole: role,
                 status: 'PENDING',
@@ -673,7 +693,7 @@ router.post(
 
       // Notify all approvers via push notification
       if (record?.approvalWorkflow) {
-        notifyApprovers(projectId, HEAD_ROLES, {
+        notifyApprovers(projectId, approverRoles as UserRole[], {
           approvalId: record.approvalWorkflow.id,
           entityType: 'PAYMENT_REQUEST',
           entityId: result.id,
@@ -828,7 +848,7 @@ router.post(
         return;
       }
 
-      if (!HEAD_ROLES.includes(req.user!.role as UserRole)) {
+      if (!HEAD_ROLES.includes(req.user!.role as UserRole) && !isAdminRole(req.user!.role)) {
         res.status(403).json({ error: 'Only heads can approve payment requests' });
         return;
       }
@@ -896,7 +916,7 @@ router.post(
         return;
       }
 
-      if (!HEAD_ROLES.includes(req.user!.role as UserRole)) {
+      if (!HEAD_ROLES.includes(req.user!.role as UserRole) && !isAdminRole(req.user!.role)) {
         res.status(403).json({ error: 'Only heads can reject payment requests' });
         return;
       }

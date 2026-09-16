@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Box, Card, CardContent, Typography, Skeleton, Alert, Chip, useMediaQuery, useTheme } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
-import { UserRole } from '@hospital-erp/shared';
+import { UserRole, isAdminRole } from '@hospital-erp/shared';
 import api from '../config/api';
 import { formatCurrency } from '../utils/enumOptions';
 import { AnimatedNumber } from '../components/AnimatedNumber';
@@ -23,13 +23,12 @@ export default function DashboardPage() {
   const user = useAuthStore((s) => s.user);
 
   // ── Role-based dashboard branch ──
-  // ADMIN, ADMIN_2, and ACCOUNTANT see the dedicated Admin dashboard
-  // (which includes the Expenditure card and other finance summaries).
-  // PROJECT_HEAD and other allowed roles see the existing dashboard.
-  // This branch is driven solely by the logged-in user's role from authStore,
-  // not by user ID, phone number, or any hardcoded allowlist. Any user
-  // assigned ADMIN, ADMIN_2, or ACCOUNTANT will automatically see the admin dashboard.
-  const isAdmin = user?.role === UserRole.ADMIN || user?.role === UserRole.ADMIN_2 || user?.role === UserRole.ACCOUNTANT;
+  // ADMIN, ADMIN_2, ADMIN_3, ... (dynamic admin roles) and ACCOUNTANT see the
+  // dedicated Admin dashboard (which includes the Expenditure card and other
+  // finance summaries). PROJECT_HEAD and other allowed roles see the existing
+  // dashboard. This branch is driven solely by the logged-in user's role from
+  // authStore, not by user ID, phone number, or any hardcoded allowlist.
+  const isAdmin = isAdminRole(user?.role ?? '') || user?.role === UserRole.ACCOUNTANT;
   if (isAdmin) {
     return <AdminDashboardPage />;
   }

@@ -43,7 +43,7 @@ import {
   WhatsApp as WhatsAppIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { InvoiceVerificationStatus, UserRole, STORAGE } from '@hospital-erp/shared';
+import { InvoiceVerificationStatus, UserRole, STORAGE, isAdminRole } from '@hospital-erp/shared';
 import { formatCurrency, formatDate, formatIndianNumber, STATUS_COLORS } from '../utils/enumOptions';
 import api, { extractErrorMessage } from '../config/api';
 import { useAuthStore } from '../stores/authStore';
@@ -115,7 +115,8 @@ interface InvoiceRow {
   } | null;
 }
 
-const HEAD_ROLES = [UserRole.PROJECT_HEAD, UserRole.HEAD_OF_CONSTRUCTION, UserRole.ADMIN, UserRole.ADMIN_2];
+const HEAD_ROLES = [UserRole.PROJECT_HEAD, UserRole.HEAD_OF_CONSTRUCTION];
+// Admin roles (ADMIN, ADMIN_2, ADMIN_3, ...) are checked dynamically via isAdminRole().
 
 const ADVANCE_TYPES = ['Cash', 'Credit Card', 'Debit Card', 'Bank Transfer', 'Cheque', 'Other'];
 
@@ -575,7 +576,7 @@ export default function InvoicesPage() {
 
   function canApprove(row: InvoiceRow): boolean {
     if (!row.approvalWorkflow) return false;
-    if (!user || !HEAD_ROLES.includes(user.role as UserRole)) return false;
+    if (!user || (!HEAD_ROLES.includes(user.role as UserRole) && !isAdminRole(user.role))) return false;
     if (row.verificationStatus !== InvoiceVerificationStatus.PENDING) return false;
     const step = row.approvalWorkflow.steps.find(
       (s) => s.approverRole === user.role && s.status === 'PENDING'

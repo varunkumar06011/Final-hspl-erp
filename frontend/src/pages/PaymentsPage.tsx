@@ -49,7 +49,7 @@ import {
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { PaymentStatus, PaymentMode, UserRole, POPaymentType } from '@hospital-erp/shared';
+import { PaymentStatus, PaymentMode, UserRole, POPaymentType, isAdminRole } from '@hospital-erp/shared';
 import { formatCurrency, formatIndianNumber, STATUS_COLORS, todayLocalDate } from '../utils/enumOptions';
 import api, { extractErrorMessage } from '../config/api';
 import { useAuthStore } from '../stores/authStore';
@@ -145,7 +145,8 @@ interface PendingPO {
   } | null;
 }
 
-const HEAD_ROLES = [UserRole.PROJECT_HEAD, UserRole.HEAD_OF_CONSTRUCTION, UserRole.ADMIN, UserRole.ADMIN_2];
+const HEAD_ROLES = [UserRole.PROJECT_HEAD, UserRole.HEAD_OF_CONSTRUCTION];
+// Admin roles (ADMIN, ADMIN_2, ADMIN_3, ...) are checked dynamically via isAdminRole().
 
 const EXPENSE_CATEGORIES = [
   'Transportation',
@@ -424,7 +425,7 @@ export default function PaymentsPage() {
 
   function canApprove(row: PaymentRequestRow): boolean {
     if (!row.approvalWorkflow) return false;
-    if (!user || !HEAD_ROLES.includes(user.role as UserRole)) return false;
+    if (!user || (!HEAD_ROLES.includes(user.role as UserRole) && !isAdminRole(user.role))) return false;
     if (row.status !== PaymentStatus.PENDING) return false;
     const step = row.approvalWorkflow.steps.find(
       (s) => s.approverRole === user.role && s.status === 'PENDING'

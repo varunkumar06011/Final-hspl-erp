@@ -1,5 +1,5 @@
 import { Router, Response, NextFunction } from 'express';
-import { Permission, AuditAction, InvoiceVerificationStatus, PaymentStatus, StockStatus, UserRole, GoodsReceiptStatus, getRequiredApproverCount } from '@hospital-erp/shared';
+import { Permission, AuditAction, InvoiceVerificationStatus, PaymentStatus, StockStatus, UserRole, GoodsReceiptStatus, getRequiredApproverCount, isAdminRole } from '@hospital-erp/shared';
 import { createInvoiceSchema, listInvoicesSchema, approvalActionSchema, updateInvoiceSchema } from '@hospital-erp/shared';
 import { prisma } from '../config/prisma';
 import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middleware/auth';
@@ -19,7 +19,23 @@ const allowedInvoiceFileTypes = ['application/pdf', 'image/jpeg', 'image/png', '
 const router = Router();
 router.use(authMiddleware);
 
-const HEAD_ROLES = [UserRole.PROJECT_HEAD, UserRole.HEAD_OF_CONSTRUCTION, UserRole.ADMIN, UserRole.ADMIN_2];
+const HEAD_ROLES = [UserRole.PROJECT_HEAD, UserRole.HEAD_OF_CONSTRUCTION];
+// Admin roles (ADMIN, ADMIN_2, ADMIN_3, ...) are checked dynamically via isAdminRole().
+
+/**
+ * Fetch all approver roles (heads + dynamic admin roles) for a project.
+ */
+async function getAllApproverRoles(projectId: string): Promise<string[]> {
+  const users = await prisma.user.findMany({
+    where: { projectId, isActive: true },
+    select: { role: true },
+  });
+  const roles = new Set<string>(HEAD_ROLES as string[]);
+  for (const u of users) {
+    if (isAdminRole(u.role)) roles.add(u.role);
+  }
+  return Array.from(roles);
+}
 
 async function generateInvoiceCode(): Promise<string> {
   return generateSequenceNumber('vendorInvoice', 'invoiceCode', 'VGH-IN', 3);
@@ -335,6 +351,7 @@ router.post(
 
       // Create invoice + approval workflow atomically so a rollback can't leave
       // an orphan workflow or an invoice without its workflow linkage.
+      const approverRoles = await getAllApproverRoles(projectId);
       const { invoice, workflow } = await prisma.$transaction(async (tx) => {
         const invoice = await tx.vendorInvoice.create({
           data: {
@@ -375,7 +392,7 @@ router.post(
             minApprovers: getRequiredApproverCount(Number(totalAmount)),
             approvalPolicy: 'HEAD_GROUPS',
             steps: {
-              create: HEAD_ROLES.map((role, idx) => ({
+              create: approverRoles.map((role, idx) => ({
                 stepNumber: idx + 1,
                 approverRole: role,
                 status: 'PENDING',
@@ -403,7 +420,7 @@ router.post(
       });
 
       // Notify all approvers via push notification
-      notifyApprovers(projectId, HEAD_ROLES, {
+      notifyApprovers(projectId, approverRoles as UserRole[], {
         approvalId: workflow.id,
         entityType: 'VENDOR_INVOICE',
         entityId: invoice.id,
@@ -698,7 +715,7 @@ router.post(
         }
       }
 
-      if (!HEAD_ROLES.includes(req.user!.role as UserRole)) {
+      if (!HEAD_ROLES.includes(req.user!.role as UserRole) && !isAdminRole(req.user!.role)) {
         res.status(403).json({ error: 'Only heads can approve invoices' });
         return;
       }
@@ -766,7 +783,7 @@ router.post(
         return;
       }
 
-      if (!HEAD_ROLES.includes(req.user!.role as UserRole)) {
+      if (!HEAD_ROLES.includes(req.user!.role as UserRole) && !isAdminRole(req.user!.role)) {
         res.status(403).json({ error: 'Only heads can reject invoices' });
         return;
       }

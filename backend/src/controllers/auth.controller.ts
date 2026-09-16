@@ -2,7 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { verifyFirebaseToken } from '../config/firebase';
 import { prisma } from '../config/prisma';
 import { AuthenticatedRequest } from '../middleware/auth';
-import { APPROVER_ROLES, UserRole } from '@hospital-erp/shared';
+import { APPROVER_ROLES, UserRole, getNextAdminRole } from '@hospital-erp/shared';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 
@@ -218,6 +218,10 @@ export async function updateUser(
       }
     }
 
+    // Dynamic admin roles (ADMIN_3, ADMIN_4, ...) — no uniqueness constraint
+    // since each is a distinct role. Only the fixed ADMIN and ADMIN_2 are
+    // limited to one active user each (handled by the APPROVER_ROLES check above).
+
     const updated = await prisma.user.update({
       where: { id },
       data: {
@@ -298,6 +302,32 @@ export async function getMe(
     projectId: req.user!.projectId,
     isActive: req.user!.isActive,
   });
+}
+
+/**
+ * GET /api/auth/next-admin-role
+ * Returns the next available dynamic admin role (ADMIN_3, ADMIN_4, ...).
+ * Queries the DB for all existing admin roles in the project and computes
+ * the next number. Requires MANAGE_USERS permission.
+ */
+export async function getNextAdminRoleEndpoint(
+  req: AuthenticatedRequest,
+  res: Response,
+  _next: NextFunction
+): Promise<void> {
+  try {
+    const projectId = req.user!.projectId;
+    const users = await prisma.user.findMany({
+      where: { projectId, isActive: true },
+      select: { role: true },
+    });
+    const existingRoles = users.map((u) => u.role);
+    const nextRole = getNextAdminRole(existingRoles);
+    const nextLabel = `Admin ${nextRole.split('_')[1]}`;
+    res.json({ role: nextRole, label: nextLabel });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to compute next admin role' });
+  }
 }
 
 export async function devLogin(

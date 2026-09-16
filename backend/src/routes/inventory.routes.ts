@@ -1,5 +1,5 @@
 import { Router, Response, NextFunction } from 'express';
-import { Permission, AuditAction, InventoryTxnType, UserRole, InventoryItemType, AssetStatus, AssetMovementType } from '@hospital-erp/shared';
+import { Permission, AuditAction, InventoryTxnType, InventoryItemType, AssetStatus, AssetMovementType, isAdminRole } from '@hospital-erp/shared';
 import {
   createInventoryItemSchema,
   updateInventoryItemSchema,
@@ -334,7 +334,7 @@ router.post(
         });
         return;
       }
-      if (req.body.type === InventoryTxnType.ADJUST && ![UserRole.ADMIN, UserRole.ADMIN_2].includes(req.user!.role as UserRole)) {
+      if (req.body.type === InventoryTxnType.ADJUST && !isAdminRole(req.user!.role)) {
         res.status(403).json({ error: 'Only inventory administrators can make stock adjustments' });
         return;
       }

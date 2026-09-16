@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { UserRole } from '../enums.js';
+import { UserRole, isAdminRole } from '../enums.js';
 
 // ═══════════════════════════════════════════════════════════
 // Auth schemas — the contract between frontend and backend
@@ -62,6 +62,14 @@ export const userResponseSchema = z.object({
   isActive: z.boolean(),
 });
 
+// Custom role validator — accepts any UserRole enum value OR a dynamic admin role (ADMIN_3, ADMIN_4, ...)
+const roleValidator = z
+  .string()
+  .refine(
+    (val) => Object.values(UserRole).includes(val as UserRole) || isAdminRole(val),
+    { message: 'Invalid role' }
+  );
+
 // POST /auth/users — create a new pre-provisioned user (Project Head only)
 export const createUserSchema = z.object({
   body: z.object({
@@ -70,7 +78,7 @@ export const createUserSchema = z.object({
       .min(10, 'Phone number must be at least 10 digits')
       .regex(/^\+?[0-9]+$/, 'Phone number must contain only digits and optional +'),
     name: z.string().min(1, 'Name is required').max(100),
-    role: z.nativeEnum(UserRole),
+    role: roleValidator,
     projectId: z.string().uuid('Valid project ID is required'),
   }),
 });
@@ -87,7 +95,7 @@ export const updateUserSchema = z.object({
       .min(10, 'Phone number must be at least 10 digits')
       .regex(/^\+?[0-9]+$/, 'Phone number must contain only digits and optional +')
       .optional(),
-    role: z.nativeEnum(UserRole).optional(),
+    role: roleValidator.optional(),
     isActive: z.boolean().optional(),
     projectId: z.string().uuid().optional(),
   }),

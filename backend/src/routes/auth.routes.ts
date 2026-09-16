@@ -4,7 +4,7 @@ import { authMiddleware } from '../middleware/auth';
 import { rbacMiddleware } from '../middleware/rbac';
 import { validateMiddleware } from '../middleware/validate';
 import { Permission, verifyTokenSchema, registerTokenSchema, createUserSchema, updateUserSchema, listUsersSchema, pinLoginSchema, setPinSchema, checkPinSchema, changePinSchema } from '@hospital-erp/shared';
-import { verifyToken, register, createUser, updateUser, listUsers, getMe, devLogin, pinLogin, setPin, checkPin, changePin } from '../controllers/auth.controller';
+import { verifyToken, register, createUser, updateUser, listUsers, getMe, getNextAdminRoleEndpoint, devLogin, pinLogin, setPin, checkPin, changePin } from '../controllers/auth.controller';
 
 const router = Router();
 
@@ -40,6 +40,14 @@ router.get('/me', authMiddleware, getMe);
 
 // POST /api/auth/change-pin — change PIN (requires auth)
 router.post('/change-pin', authMiddleware, validateMiddleware(changePinSchema), changePin);
+
+// GET /api/auth/next-admin-role — get next available dynamic admin role (ADMIN only)
+router.get(
+  '/next-admin-role',
+  authMiddleware,
+  rbacMiddleware(Permission.MANAGE_USERS),
+  getNextAdminRoleEndpoint
+);
 
 // GET /api/auth/users — list users (Project Head only)
 router.get(

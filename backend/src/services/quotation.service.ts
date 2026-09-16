@@ -178,7 +178,15 @@ export async function createQuotation(input: CreateQuotationInput) {
   });
 
   // Notify all approvers via push notification
-  notifyApprovers(projectId, [...APPROVER_ROLES], {
+  // Include dynamic admin roles (ADMIN_3, ADMIN_4, ...) in the notification
+  const adminUsers = await prisma.user.findMany({
+    where: { projectId, isActive: true, role: { startsWith: 'ADMIN' } },
+    select: { role: true },
+  });
+  const allApproverRoles = Array.from(
+    new Set([...APPROVER_ROLES.map((r) => r as string), ...adminUsers.map((u) => u.role)])
+  ) as any;
+  notifyApprovers(projectId, allApproverRoles, {
     approvalId: workflow.id,
     entityType: 'QUOTATION',
     entityId: quotation.id,

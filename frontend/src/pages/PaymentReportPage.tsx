@@ -18,7 +18,7 @@ import {
   Refresh as RefreshIcon,
 } from '@mui/icons-material';
 import { useQuery } from '@tanstack/react-query';
-import { UserRole } from '@hospital-erp/shared';
+import { UserRole, isAdminRole } from '@hospital-erp/shared';
 import api from '../config/api';
 import { useAuthStore } from '../stores/authStore';
 import { formatCurrency, formatDate, STATUS_COLORS } from '../utils/enumOptions';
@@ -85,7 +85,8 @@ const PAYMENT_MODE_LABELS: Record<string, string> = {
 
 export default function PaymentReportPage() {
   const user = useAuthStore((s) => s.user);
-  const allowedRoles = [UserRole.PROJECT_HEAD, UserRole.ADMIN, UserRole.ADMIN_2, UserRole.ACCOUNTANT];
+  const allowedRoles = [UserRole.PROJECT_HEAD, UserRole.ACCOUNTANT];
+  // Admin roles (ADMIN, ADMIN_2, ADMIN_3, ...) are checked dynamically via isAdminRole().
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(50);
   const [search, setSearch] = useState('');
@@ -170,7 +171,7 @@ export default function PaymentReportPage() {
     window.URL.revokeObjectURL(url);
   }
 
-  if (user && !allowedRoles.includes(user.role as UserRole)) {
+  if (user && !allowedRoles.includes(user.role as UserRole) && !isAdminRole(user.role)) {
     return (
       <Box>
         <Alert severity="warning">You do not have access to view the Payment Report.</Alert>

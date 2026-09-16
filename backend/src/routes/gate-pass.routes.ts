@@ -1,5 +1,5 @@
 import { Router, Response, NextFunction } from 'express';
-import { Permission, AuditAction, UserRole } from '@hospital-erp/shared';
+import { Permission, AuditAction, UserRole, isAdminRole } from '@hospital-erp/shared';
 import {
   createGatePassSchema,
   listGatePassesSchema,
@@ -25,9 +25,8 @@ router.use(authMiddleware);
 const HEAD_ROLES = [
   UserRole.PROJECT_HEAD,
   UserRole.HEAD_OF_CONSTRUCTION,
-  UserRole.ADMIN,
-  UserRole.ADMIN_2,
 ];
+// Admin roles (ADMIN, ADMIN_2, ADMIN_3, ...) are checked dynamically via isAdminRole().
 
 function getPassDatePrefix(): string {
   const now = new Date();
@@ -67,7 +66,10 @@ router.get(
     try {
       const users = await prisma.user.findMany({
         where: {
-          role: { in: HEAD_ROLES },
+          OR: [
+            { role: { in: HEAD_ROLES } },
+            { role: { startsWith: 'ADMIN' } },
+          ],
           isActive: true,
         },
         select: { id: true, name: true, role: true, phone: true },
@@ -408,8 +410,8 @@ router.post(
 
       // Validate otpRequestedFor is one of the 4 heads
       const headUser = await prisma.user.findUnique({ where: { id: otpRequestedFor } });
-      if (!headUser || !HEAD_ROLES.includes(headUser.role as UserRole)) {
-        res.status(400).json({ error: 'OTP recipient must be one of the 4 heads' });
+      if (!headUser || (!HEAD_ROLES.includes(headUser.role as UserRole) && !isAdminRole(headUser.role))) {
+        res.status(400).json({ error: 'OTP recipient must be a head or admin' });
         return;
       }
 
