@@ -110,7 +110,9 @@ async function recalculatePoStatus(poId: string): Promise<string> {
   const fullyReceived = poItems.every(
     (item) => acceptedForPoItem(acc, item) >= Number(item.quantity),
   );
-  return fullyReceived ? POStatus.DELIVERED : POStatus.PARTIALLY_DELIVERED;
+  if (fullyReceived) return POStatus.DELIVERED;
+  const anyAccepted = poItems.some((item) => acceptedForPoItem(acc, item) > 0);
+  return anyAccepted ? POStatus.PARTIALLY_DELIVERED : POStatus.APPROVED;
 }
 
 const poInclude = {
@@ -971,9 +973,36 @@ router.post(
         res.status(404).json({ error: 'Purchase order not found' });
         return;
       }
-      if (po.status !== POStatus.PENDING_APPROVAL && po.status !== POStatus.REJECTED) {
-        res.status(400).json({ error: 'Only pending or rejected POs can be edited' });
+      const isApprovedPo = po.status === POStatus.APPROVED;
+      if (po.status !== POStatus.PENDING_APPROVAL && po.status !== POStatus.REJECTED && !isApprovedPo) {
+        res.status(400).json({ error: 'Only pending, rejected, or approved POs can be edited' });
         return;
+      }
+      // Editing an already-approved PO is an admin-only action; the PO returns
+      // to PENDING_APPROVAL and must pass the approval workflow again.
+      if (isApprovedPo && !isPoApprover(req.user!.role)) {
+        res.status(403).json({ error: 'Only an admin can edit an approved purchase order' });
+        return;
+      }
+      // An approved PO with financial links cannot be freely edited — the
+      // linked records would no longer match the PO amounts.
+      if (isApprovedPo) {
+        const [invoiceCount, paymentRequestCount, sheetCount, grCount] = await Promise.all([
+          prisma.vendorInvoice.count({ where: { poId: po.id, deletedAt: null } }),
+          prisma.paymentRequest.count({ where: { poId: po.id, deletedAt: null } }),
+          prisma.paymentSheet.count({ where: { poId: po.id, deletedAt: null } }),
+          prisma.goodsReceipt.count({ where: { poId: po.id, deletedAt: null } }),
+        ]);
+        const blockers = [
+          invoiceCount > 0 && `${invoiceCount} invoice(s)`,
+          paymentRequestCount > 0 && `${paymentRequestCount} payment request(s)`,
+          sheetCount > 0 && `${sheetCount} payment sheet entrie(s)`,
+          grCount > 0 && `${grCount} goods receipt(s)`,
+        ].filter(Boolean);
+        if (blockers.length > 0) {
+          res.status(400).json({ error: `This approved PO has linked ${blockers.join(', ')} and cannot be edited. Resolve the linked records first.` });
+          return;
+        }
       }
 
       const { paymentTerms, deliveryDate, budgetHeadId, items: newItems, deductions, notes } = req.body;
@@ -993,7 +1022,12 @@ router.post(
       const grandTotal = totalAmount + gstAmount;
 
       // ── Compute deductions ──
-      const deductionRows: { amount: number; reason: string }[] = Array.isArray(deductions) ? deductions : [];
+      // When the request omits deductions entirely, keep the PO's existing
+      // deductions rather than silently clearing them.
+      const deductionRows: { amount: number; reason: string }[] =
+        deductions === undefined
+          ? (Array.isArray(po.deductions) ? (po.deductions as { amount: number; reason: string }[]) : [])
+          : (Array.isArray(deductions) ? deductions : []);
       const totalDeductions = deductionRows.reduce((sum, d) => sum + Number(d.amount), 0);
       if (totalDeductions > grandTotal) {
         res.status(400).json({ error: `Total deductions (${totalDeductions}) cannot exceed PO grand total (${grandTotal})` });
@@ -1073,7 +1107,7 @@ router.post(
           data: {
             paymentTerms: paymentTerms ?? null,
             deliveryDate: deliveryDate ? new Date(deliveryDate) : null,
-            notes: notes ?? null,
+            notes: notes === undefined ? po.notes : (notes || null),
             budgetHeadId,
             totalAmount,
             gstAmount,

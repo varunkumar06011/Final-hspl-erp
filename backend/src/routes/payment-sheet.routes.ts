@@ -15,6 +15,10 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 
 const router = Router();
 router.use(authMiddleware);
 
+// PO statuses that can appear on a payment sheet — any state where the order
+// is confirmed and money is legitimately owed (approved or already delivering).
+const SHEETABLE_PO_STATUSES: POStatus[] = [POStatus.APPROVED, POStatus.PARTIALLY_DELIVERED, POStatus.DELIVERED];
+
 // Include for list/detail — joins the full PO (with items + vendor) so the
 // printable sheet carries all PO details without duplicating them.
 const sheetInclude = {
@@ -133,7 +137,7 @@ router.get(
       const where: Record<string, unknown> = {
         projectId,
         deletedAt: null,
-        status: POStatus.APPROVED,
+        status: { in: SHEETABLE_PO_STATUSES },
       };
       if (search) {
         where.OR = [
@@ -364,8 +368,8 @@ router.post(
         res.status(404).json({ error: 'Purchase order not found' });
         return;
       }
-      if (po.status !== POStatus.APPROVED) {
-        res.status(400).json({ error: 'Only approved purchase orders can be added to a payment sheet' });
+      if (!SHEETABLE_PO_STATUSES.includes(po.status as POStatus)) {
+        res.status(400).json({ error: 'Only approved, partially delivered, or delivered purchase orders can be added to a payment sheet' });
         return;
       }
 
@@ -453,8 +457,8 @@ router.patch(
           res.status(404).json({ error: 'Purchase order not found' });
           return;
         }
-        if (po.status !== POStatus.APPROVED) {
-          res.status(400).json({ error: 'Only approved purchase orders can be added to a payment sheet' });
+        if (!SHEETABLE_PO_STATUSES.includes(po.status as POStatus)) {
+          res.status(400).json({ error: 'Only approved, partially delivered, or delivered purchase orders can be added to a payment sheet' });
           return;
         }
       }

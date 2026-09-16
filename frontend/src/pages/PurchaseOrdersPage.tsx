@@ -712,7 +712,7 @@ export default function PurchaseOrdersPage() {
                               {row.status === POStatus.APPROVED && (
                                 <IconButton size="small" color="secondary" onClick={() => setPaymentTypeRow(row)} title="Change Payment Type"><PaymentIcon fontSize="small" /></IconButton>
                               )}
-                              {(row.status === POStatus.PENDING_APPROVAL || row.status === POStatus.REJECTED) && (
+                              {(row.status === POStatus.PENDING_APPROVAL || row.status === POStatus.REJECTED || (row.status === POStatus.APPROVED && !!user && isAdminRole(user.role))) && (
                                 <IconButton size="small" color="primary" onClick={() => setEditUnapprovedRow(row)} title="Edit PO"><EditIcon fontSize="small" /></IconButton>
                               )}
                             </Box>
@@ -894,7 +894,7 @@ export default function PurchaseOrdersPage() {
                             {row.status === POStatus.PARTIALLY_DELIVERED && !row.parentPoId && (
                               <IconButton size="small" color="warning" onClick={() => setEditRow(row)} title="Edit PO to Match Delivered"><EditIcon fontSize="small" /></IconButton>
                             )}
-                            {(row.status === POStatus.PENDING_APPROVAL || row.status === POStatus.REJECTED) && (
+                            {(row.status === POStatus.PENDING_APPROVAL || row.status === POStatus.REJECTED || (row.status === POStatus.APPROVED && !!user && isAdminRole(user.role))) && (
                               <IconButton size="small" color="primary" onClick={() => setEditUnapprovedRow(row)} title="Edit PO"><EditIcon fontSize="small" /></IconButton>
                             )}
                             {(row.status === POStatus.APPROVED || row.status === POStatus.DELIVERED || row.status === POStatus.PARTIALLY_DELIVERED) && (
@@ -2062,9 +2062,10 @@ function EditUnapprovedPODialog({ row, onClose, onSuccess }: { row: PORow | null
       <DialogTitle>Edit PO — {row?.poNumber}</DialogTitle>
       <DialogContent>
         {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
-        <Alert severity="info" sx={{ mb: 2 }}>
-          This PO has not been approved yet. You can edit items, payment terms, delivery date, and budget head.
-          Payment type is fixed at creation and cannot be changed. The PO will remain pending approval after saving.
+        <Alert severity={row?.status === POStatus.APPROVED ? 'warning' : 'info'} sx={{ mb: 2 }}>
+          {row?.status === POStatus.APPROVED
+            ? 'This PO is already approved. Saving changes returns it to Pending Re-Approval — it must be approved again before it counts as approved. Payment type is fixed at creation.'
+            : 'This PO has not been approved yet. You can edit items, payment terms, delivery date, and budget head. Payment type is fixed at creation and cannot be changed. The PO will remain pending approval after saving.'}
         </Alert>
 
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mb: 2 }}>

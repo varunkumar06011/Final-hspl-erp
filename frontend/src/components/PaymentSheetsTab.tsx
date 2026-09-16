@@ -440,12 +440,20 @@ export default function PaymentSheetsTab() {
               onChange={(_, v) => handleSelectPO(v)}
               inputValue={poSearch}
               onInputChange={(_, v) => setPoSearch(v)}
+              renderOption={(props, po) => (
+                <li {...props} key={po.id}>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', width: '100%', gap: 1 }}>
+                    <Typography variant="body2">{po.poNumber} — {po.vendor.name}</Typography>
+                    <Chip size="small" variant="outlined" label={po.status.replace(/_/g, ' ')} />
+                  </Box>
+                </li>
+              )}
               renderInput={(params) => (
-                <TextField {...params} label="Search approved Purchase Order" placeholder="PO number or vendor" required
+                <TextField {...params} label="Search Purchase Order" placeholder="PO number or vendor" required
                   InputProps={{ ...params.InputProps, startAdornment: (<><InputAdornment position="start"><SearchIcon /></InputAdornment>{params.InputProps.startAdornment}</>) }}
                 />
               )}
-              noOptionsText="No approved POs found"
+              noOptionsText="No payable POs found"
             />
 
             {selectedPO && (
@@ -460,6 +468,7 @@ export default function PaymentSheetsTab() {
                     <Box><Typography variant="caption" color="text.secondary">Advance Amount</Typography><Typography>{formatCurrency(Number(selectedPO.advanceAmount))}</Typography></Box>
                   )}
                   <Box><Typography variant="caption" color="text.secondary">Payment Type</Typography><Typography>{selectedPO.paymentType}</Typography></Box>
+                  <Box><Typography variant="caption" color="text.secondary">PO Status</Typography><Typography>{selectedPO.status.replace(/_/g, ' ')}</Typography></Box>
                 </Stack>
               </Card>
             )}
