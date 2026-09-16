@@ -169,9 +169,14 @@ export async function streamPurchaseOrderPdf(res: NodeJS.WritableStream, po: any
 
   // Measure address heights so boxes are tall enough and do not overlap text
   doc.font('Helvetica').fontSize(8.5);
-  const billAddrH = doc.heightOfString(text(po.project?.officeAddress), { width: boxW - 28 });
-  const delAddrH = doc.heightOfString(text(po.project?.hospitalAddress), { width: boxW - 38 });
-  const boxH = Math.max(74, 26 + 16 + Math.max(billAddrH, delAddrH) + 16);
+  const billAddress = text(po.project?.officeAddress);
+  const deliveryAddress = text(po.project?.hospitalAddress);
+  const billAddrH = doc.heightOfString(billAddress, { width: boxW - 28 });
+  const delAddrH = doc.heightOfString(deliveryAddress, { width: boxW - 38 });
+  const billMeta = `GSTIN: ${text(po.project?.gstNumber)}  |  PAN: ${text(po.project?.panNumber)}`;
+  doc.font('Helvetica').fontSize(7.5);
+  const billMetaH = doc.heightOfString(billMeta, { width: boxW - 26 });
+  const boxH = Math.max(74, 46 + billAddrH + 6 + billMetaH + 8, 34 + delAddrH + 16);
 
   // Bill To
   const billBoxX = left;
@@ -179,15 +184,15 @@ export async function streamPurchaseOrderPdf(res: NodeJS.WritableStream, po: any
   doc.rect(billBoxX, y, boxW, 24).fill(primary);
   doc.fillColor('#fff').font('Helvetica-Bold').fontSize(11).text('BILL TO:', billBoxX + 10, y + 6);
   doc.fillColor(dark).font('Helvetica-Bold').fontSize(9.5).text(text(po.project?.name), billBoxX + 10, y + 32);
-  doc.fillColor(dark).font('Helvetica').fontSize(8.5).text(text(po.project?.officeAddress), billBoxX + 10, y + 50, { width: boxW - 28 });
-  doc.fillColor(muted).font('Helvetica').fontSize(7.5).text(`GSTIN: ${text(po.project?.gstNumber)}  |  PAN: ${text(po.project?.panNumber)}`, billBoxX + 10, y + boxH - 15, { width: boxW - 26 });
+  doc.fillColor(dark).font('Helvetica').fontSize(8.5).text(billAddress, billBoxX + 10, y + 46, { width: boxW - 28 });
+  doc.fillColor(muted).font('Helvetica').fontSize(7.5).text(billMeta, billBoxX + 10, y + 46 + billAddrH + 6, { width: boxW - 26 });
 
   // Delivery
   const delBoxX = left + boxW + midGap;
   doc.roundedRect(delBoxX, y, boxW, boxH, 4).stroke(border);
   doc.rect(delBoxX, y, boxW, 24).fill(primary);
   doc.fillColor('#fff').font('Helvetica-Bold').fontSize(11).text('DELIVERY ADDRESS (Hospital Site):', delBoxX + 10, y + 6);
-  doc.fillColor(dark).font('Helvetica').fontSize(8.5).text(text(po.project?.hospitalAddress), delBoxX + 10, y + 34, { width: boxW - 38 });
+  doc.fillColor(dark).font('Helvetica').fontSize(8.5).text(deliveryAddress, delBoxX + 10, y + 34, { width: boxW - 38 });
 
   y += boxH + 10;
 
