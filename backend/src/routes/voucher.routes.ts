@@ -826,7 +826,36 @@ router.patch(
             },
           });
 
-          // 2. Update budget head on existing ledger entries (match by ledgerId+debit+credit)
+          // 2. Sync the new voucher date to the denormalized date fields that reports
+          //    filter/sort on. The shortcut path keeps the existing ledger entries
+          //    and bank/cash transactions in place, so their copied date snapshots
+          //    (LedgerEntry.voucherDate, BankTransaction.date, CashTransaction.date)
+          //    must be updated alongside JournalVoucher.date — otherwise accounting
+          //    reports, ledger statements, and bank/cash statements keep showing
+          //    the old date. Only original postings are updated; reversal txns
+          //    (REVERSAL_IN/OUT) record the moment of edit/cancel and stay as-is.
+          await tx.ledgerEntry.updateMany({
+            where: { journalVoucherId: voucher.id },
+            data: { voucherDate },
+          });
+          await tx.bankTransaction.updateMany({
+            where: {
+              referenceId: voucher.id,
+              status: 'POSTED',
+              type: { notIn: [BankTxnType.REVERSAL_IN, BankTxnType.REVERSAL_OUT] },
+            },
+            data: { date: voucherDate },
+          });
+          await tx.cashTransaction.updateMany({
+            where: {
+              referenceId: voucher.id,
+              status: 'POSTED',
+              type: { notIn: [CashTxnType.REVERSAL_IN, CashTxnType.REVERSAL_OUT] },
+            },
+            data: { date: voucherDate },
+          });
+
+          // 3. Update budget head on existing ledger entries (match by ledgerId+debit+credit)
           for (const newEntry of newEntries) {
             const matchingOld = voucher.ledgerEntries.find(
               (e) =>
@@ -845,7 +874,7 @@ router.patch(
             }
           }
 
-          // 3. Update budget head on existing bank/cash transactions linked to this voucher
+          // 4. Update budget head on existing bank/cash transactions linked to this voucher
           //    Only update the ORIGINAL outflow transactions (WITHDRAWAL/PAYMENT/OUT),
           //    not reversal transactions created by prior edits.
           await tx.bankTransaction.updateMany({
@@ -865,7 +894,7 @@ router.patch(
             data: { budgetHeadId: newBudgetHeadId },
           });
 
-          // 4. Reverse old Budget Head totals and apply new Budget Head totals
+          // 5. Reverse old Budget Head totals and apply new Budget Head totals
           if (oldBudgetHeadId && oldBudgetAmount > 0) {
             await tx.budgetHead.update({
               where: { id: oldBudgetHeadId },
@@ -885,7 +914,7 @@ router.patch(
             });
           }
 
-          // 5. Update bill settlements if changed
+          // 6. Update bill settlements if changed
           if (validatedSettlements.length > 0 || voucher.billSettlements.length > 0) {
             await tx.billSettlement.deleteMany({ where: { journalVoucherId: voucher.id } });
             for (const settlement of validatedSettlements) {
