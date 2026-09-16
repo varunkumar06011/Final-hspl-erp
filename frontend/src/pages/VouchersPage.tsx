@@ -1087,8 +1087,8 @@ export default function VouchersPage() {
                         sx={{ mt: 0.5, fontSize: '0.65rem', height: 18 }}
                       />
                     )}
-                    {/* Budget Head — for PAYMENT vouchers always; for others only expense ledgers */}
-                    {(selectedVoucherType === VoucherType.PAYMENT || ledgerIsExpense(simplePartyLedgerGroup)) && budgetHeads.length > 0 && (
+                    {/* Budget Head — for PAYMENT/RECEIPT vouchers always; for others only expense ledgers */}
+                    {(selectedVoucherType === VoucherType.PAYMENT || selectedVoucherType === VoucherType.RECEIPT || ledgerIsExpense(simplePartyLedgerGroup)) && budgetHeads.length > 0 && (
                       <Box sx={{ mt: 1 }}>
                         {simpleCostCenter ? (
                           <Chip
@@ -1104,7 +1104,7 @@ export default function VouchersPage() {
                             onClick={() => setCostCenterPopup({ entryIndex: -1 })}
                             sx={{ textTransform: 'none', fontSize: '0.75rem' }}
                           >
-                            {selectedVoucherType === VoucherType.PAYMENT ? 'Set Budget Head' : 'Set Cost Center'}
+                            {selectedVoucherType === VoucherType.PAYMENT ? 'Set Budget Head' : selectedVoucherType === VoucherType.RECEIPT ? 'Set Budget Head' : 'Set Cost Center'}
                           </Button>
                         )}
                       </Box>

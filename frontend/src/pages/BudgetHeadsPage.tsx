@@ -94,7 +94,7 @@ export default function BudgetHeadsPage() {
 
   // ── Budget Head usage breakdown (opened on row click) ──
   // Fetches the budget head's allocated/utilized/remaining summary plus the
-  // full list of related expenditures (POs, GRNs, payments, JVs) up to now.
+  // full list of related expenditures (POs, payments, JVs) up to now.
   const { data: usageData, isLoading: usageLoading } = useQuery({
     queryKey: ['/budget-heads', usageHeadId, 'breakdown'],
     queryFn: async () => {
@@ -446,24 +446,24 @@ export default function BudgetHeadsPage() {
               label: 'Committed',
               value: summary.totalCommitted,
               color: 'info.main',
-              hint: 'Money earmarked by approved POs where goods have NOT yet been received. Goes UP when a PO is approved, goes DOWN when goods are received (GRN posted).',
-              short: 'Approved POs, not yet received',
+              hint: 'Money earmarked by approved POs that has not yet been paid. Goes UP when a PO is approved, goes DOWN when a payment is made against the PO.',
+              short: 'Approved POs, not yet paid',
             },
             ...(actualDiffersFromPaid ? [{
               label: 'Actual',
               value: actual,
               color: 'warning.main',
-              hint: 'Money actually spent (goods received or direct expense). Differs from Paid when goods are received but not yet paid for.',
-              short: 'Goods received / expense incurred',
+              hint: 'Money actually spent (payments posted or direct expense).',
+              short: 'Payments / expense incurred',
             }] : []),
             {
               label: 'Paid',
               value: paid,
               color: 'success.main',
               hint: actualDiffersFromPaid
-                ? 'Money actually paid out via bank/cash. When this is less than Actual, the difference is outstanding payables (goods received but not yet paid).'
-                : 'Money paid out via bank/cash. Equals Actual — everything received has been fully paid.',
-              short: actualDiffersFromPaid ? 'Paid out via bank/cash' : 'All received & paid',
+                ? 'Money actually paid out via bank/cash.'
+                : 'Money paid out via bank/cash. Equals Actual — all posted payments are reflected here.',
+              short: 'Paid out via bank/cash',
             },
             {
               label: 'Available',
@@ -930,6 +930,7 @@ export default function BudgetHeadsPage() {
                             <TableCell sx={{ fontWeight: 600 }} align="right">Committed</TableCell>
                             <TableCell sx={{ fontWeight: 600 }} align="right">Actual</TableCell>
                             <TableCell sx={{ fontWeight: 600 }} align="right">Paid</TableCell>
+                            <TableCell sx={{ fontWeight: 600 }} align="right">Received</TableCell>
                           </TableRow>
                         </TableHead>
                         <TableBody>
@@ -942,6 +943,7 @@ export default function BudgetHeadsPage() {
                               <TableCell data-label="Committed" align="right">{Number(txn.committed) !== 0 ? formatCurrency(Number(txn.committed)) : '—'}</TableCell>
                               <TableCell data-label="Actual" align="right">{Number(txn.actual) !== 0 ? formatCurrency(Number(txn.actual)) : '—'}</TableCell>
                               <TableCell data-label="Paid" align="right">{Number(txn.paid) !== 0 ? formatCurrency(Number(txn.paid)) : '—'}</TableCell>
+                              <TableCell data-label="Received" align="right">{Number(txn.allocated) !== 0 ? formatCurrency(Number(txn.allocated)) : '—'}</TableCell>
                             </TableRow>
                           ))}
                         </TableBody>

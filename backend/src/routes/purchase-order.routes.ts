@@ -53,50 +53,6 @@ function acceptedForPoItem(
   return acc.byName.get(item.materialName.toLowerCase()) ?? 0;
 }
 
-// ─── Helper: compute total delivered value from posted GRNs ───
-// Matches GRN items to PO items by poItemId (correct per-line tracking), with a
-// material-name fallback for legacy GR items. Optional materialFilter restricts
-// to a subset of materials (used to separate delivered value for remaining vs
-// deselected items).
-async function getDeliveredValueForPo(
-  poId: string,
-  poItems: { id?: string; materialName: string; unitPrice: { toNumber?: () => number } | number; gstRate: { toNumber?: () => number } | number | null }[],
-  materialFilter?: Set<string>,
-): Promise<number> {
-  const receipts = await prisma.goodsReceipt.findMany({
-    where: { poId, deletedAt: null, status: GoodsReceiptStatus.POSTED },
-    select: { items: { select: { poItemId: true, materialName: true, acceptedQty: true } } },
-  });
-
-  const itemByPoItemId = new Map<string, { unitPrice: number; gstRate: number }>();
-  const itemByName = new Map<string, { unitPrice: number; gstRate: number }>();
-  for (const item of poItems) {
-    const name = item.materialName.toLowerCase();
-    if (materialFilter && !materialFilter.has(name)) continue;
-    const unitPrice = typeof item.unitPrice === 'number' ? item.unitPrice : Number(item.unitPrice);
-    const gstRate = item.gstRate === null ? 0 : (typeof item.gstRate === 'number' ? item.gstRate : Number(item.gstRate));
-    const entry = { unitPrice, gstRate };
-    if (item.id) itemByPoItemId.set(item.id, entry);
-    itemByName.set(name, entry);
-  }
-
-  let deliveredValue = 0;
-  for (const receipt of receipts) {
-    for (const line of receipt.items) {
-      if (Number(line.acceptedQty) <= 0) continue;
-      const item =
-        (line.poItemId ? itemByPoItemId.get(line.poItemId) : undefined) ??
-        itemByName.get(line.materialName.toLowerCase());
-      if (item) {
-        const lineAmount = item.unitPrice * Number(line.acceptedQty);
-        const lineGst = lineAmount * item.gstRate / 100;
-        deliveredValue += lineAmount + lineGst;
-      }
-    }
-  }
-  return deliveredValue;
-}
-
 const HEAD_ROLES = [UserRole.PROJECT_HEAD, UserRole.HEAD_OF_CONSTRUCTION, UserRole.ACCOUNTS_HEAD];
 // PO approver roles now include all dynamic admin roles (ADMIN_3, ADMIN_4, ...)
 // via isAdminRole(). The fixed array is kept for backward compatibility with
@@ -666,10 +622,46 @@ router.delete(
         return;
       }
 
-      await prisma.purchaseOrder.update({
-        where: { id: existing.id },
-        data: { status: POStatus.DELETED },
-      });
+      // ── Release committed budget when a PO is deleted ──
+      // Only genuinely-committed statuses contribute to committedAmount
+      // (APPROVED / PARTIALLY_DELIVERED / DELIVERED). Releasing here keeps the
+      // cached total in sync with the source events and prevents deleted POs
+      // from inflating the committed card on the budget head.
+      const committedStatuses: string[] = [
+        POStatus.APPROVED,
+        POStatus.PARTIALLY_DELIVERED,
+        POStatus.DELIVERED,
+      ];
+      const bhId = existing.budgetHeadId;
+      if (bhId && committedStatuses.includes(existing.status)) {
+        await prisma.$transaction(async (tx) => {
+          await tx.purchaseOrder.update({
+            where: { id: existing.id },
+            data: { status: POStatus.DELETED },
+          });
+          const head = await tx.budgetHead.findUnique({
+            where: { id: bhId },
+            select: { committedAmount: true },
+          });
+          if (head) {
+            const release = Math.min(
+              Number(existing.grandTotal),
+              Number(head.committedAmount)
+            );
+            if (release > 0) {
+              await tx.budgetHead.update({
+                where: { id: bhId },
+                data: { committedAmount: { decrement: release } },
+              });
+            }
+          }
+        });
+      } else {
+        await prisma.purchaseOrder.update({
+          where: { id: existing.id },
+          data: { status: POStatus.DELETED },
+        });
+      }
 
       await logAudit({
         userId: req.user!.id,
@@ -859,17 +851,17 @@ router.post(
         // ── Reverse commitment for edited POs on rejection ──
         // When an edited PO is rejected, the commitment that was adjusted at edit
         // time must be reversed. The remaining commitment for this PO is:
-        //   grandTotal - deliveredValueForRemainingItems
-        // (deliveredValue only includes items still in the edited PO; deselected
-        // items' commitment was already excluded at edit time.)
+        //   grandTotal - paymentsAlreadyMadeAgainstThisPO
+        // (payments already released part of the commitment via postVoucher;
+        // GRNs no longer affect budget — they are inventory only.)
         if (po.budgetHeadId && po.editedAt) {
-          const currentItems = await prisma.pOItem.findMany({
-            where: { poId: po.id },
-            select: { id: true, materialName: true, unitPrice: true, gstRate: true },
+          const paymentsAgg = await prisma.payment.aggregate({
+            where: { budgetHeadId: po.budgetHeadId, paymentRequest: { poId: po.id, deletedAt: null } },
+            _sum: { amount: true },
           });
-          const deliveredForRemaining = await getDeliveredValueForPo(po.id, currentItems);
-          const remainingCommitment = Number(po.grandTotal) - deliveredForRemaining;
-          if (remainingCommitment !== 0) {
+          const paidSoFar = Number(paymentsAgg._sum.amount) || 0;
+          const remainingCommitment = Number(po.grandTotal) - paidSoFar;
+          if (remainingCommitment > 0) {
             // Atomic decrement — DB applies the delta.
             await prisma.budgetHead.update({
               where: { id: po.budgetHeadId },
@@ -1385,21 +1377,12 @@ router.post(
         grandTotal: Number(po.grandTotal),
       };
 
-      // ── Compute delivered values for correct commitment adjustment ──
-      // The delta (newGrandTotal - oldGrandTotal) alone is insufficient when items
-      // are deselected: a deselected item's commitment may have already been
-      // converted to actual via GRN. Subtracting its full value via delta would
-      // over-reduce committed. The correct adjustment is:
-      //   delta + deliveredValueForDeselectedItems
-      // where deliveredValueForDeselectedItems = totalDelivered - deliveredForRemaining.
-      let commitmentAdjustment = grandTotal - Number(po.grandTotal); // base delta
-      if (po.budgetHeadId) {
-        const remainingMaterials = new Set(newItems.map((i) => i.materialName.toLowerCase()));
-        const totalDelivered = await getDeliveredValueForPo(po.id, po.items);
-        const deliveredForRemaining = await getDeliveredValueForPo(po.id, po.items, remainingMaterials);
-        const deliveredForDeselected = totalDelivered - deliveredForRemaining;
-        commitmentAdjustment = (grandTotal - Number(po.grandTotal)) + deliveredForDeselected;
-      }
+      // ── Compute commitment adjustment for the PO edit ──
+      // In the new budget model, GRNs no longer affect budget (inventory only).
+      // Payments reduce committed and increase actual/paid. So the commitment
+      // adjustment for a PO edit is simply the delta: newGrandTotal - oldGrandTotal.
+      // Payments already made against this PO are unaffected by the edit.
+      const commitmentAdjustment = grandTotal - Number(po.grandTotal);
 
       const adminRoles = await getActiveAdminRoles(projectId);
       const result = await prisma.$transaction(async (tx) => {
@@ -1436,8 +1419,7 @@ router.post(
         });
 
         // ── Adjust budget head commitment ──
-        // The adjustment accounts for deselected items whose commitment was
-        // already converted to actual via GRN. See computation above.
+        // The adjustment is the delta (newGrandTotal - oldGrandTotal).
         // This is done at edit time so re-approval does NOT re-add the full total.
         if (po.budgetHeadId && commitmentAdjustment !== 0) {
           // Atomic adjustment — increment handles both directions (negative
@@ -1689,37 +1671,71 @@ router.post(
       }
 
       // Compute how much of this PO's value is still committed vs already
-      // converted to actual via goods receipts (GRN).
+      // paid via payments. GRNs no longer affect budget — they are inventory only.
       const grandTotal = Number(po.grandTotal);
-      const deliveredValue = await getDeliveredValueForPo(po.id, po.items);
-      const remainingCommitted = Math.max(0, grandTotal - deliveredValue);
+      const paymentsAgg = await prisma.payment.aggregate({
+        where: { budgetHeadId: po.budgetHeadId, paymentRequest: { poId: po.id, deletedAt: null } },
+        _sum: { amount: true },
+      });
+      const paidSoFar = Number(paymentsAgg._sum.amount) || 0;
+      const remainingCommitted = Math.max(0, grandTotal - paidSoFar);
 
       const oldBudgetHeadId = po.budgetHeadId;
       const oldParticulars = po.budgetHead?.particulars ?? 'unknown';
       const newParticulars = newBudgetHead.particulars;
 
-      // Atomic transaction: move committed + actual amounts from old head
-      // to new head, and update the PO's budgetHeadId.
+      // Atomic transaction: move committed + actual + paid amounts from old
+      // head to new head, re-tag the linked payments and their bank/cash
+      // transactions + ledger entries, and update the PO's budgetHeadId.
       const updated = await prisma.$transaction(async (tx) => {
         // Old budget head: return the remaining committed amount AND the
-        // actual amount that was already moved via GRN.
+        // actual/paid amount that was already moved via payments.
         await tx.budgetHead.update({
           where: { id: oldBudgetHeadId },
           data: {
             committedAmount: { decrement: remainingCommitted },
-            actualAmount: { decrement: deliveredValue },
+            actualAmount: { decrement: paidSoFar },
+            paidAmount: { decrement: paidSoFar },
           },
         });
 
         // New budget head: add the remaining committed amount AND the
-        // actual amount (so the new head reflects the full PO value).
+        // actual/paid amount (so the new head reflects the full PO value).
         await tx.budgetHead.update({
           where: { id: newBudgetHeadId },
           data: {
             committedAmount: { increment: remainingCommitted },
-            actualAmount: { increment: deliveredValue },
+            actualAmount: { increment: paidSoFar },
+            paidAmount: { increment: paidSoFar },
           },
         });
+
+        // Re-tag linked payments and their bank/cash transactions + ledger
+        // entries so the recompute stays consistent with the cached totals.
+        const poPayments = await tx.payment.findMany({
+          where: { budgetHeadId: oldBudgetHeadId, paymentRequest: { poId: po.id, deletedAt: null } },
+          select: { id: true, journalVoucherId: true },
+        });
+        for (const pmt of poPayments) {
+          await tx.payment.update({
+            where: { id: pmt.id },
+            data: { budgetHeadId: newBudgetHeadId },
+          });
+          if (pmt.journalVoucherId) {
+            await tx.bankTransaction.updateMany({
+              where: { referenceId: pmt.journalVoucherId, budgetHeadId: oldBudgetHeadId },
+              data: { budgetHeadId: newBudgetHeadId },
+            });
+            await tx.cashTransaction.updateMany({
+              where: { referenceId: pmt.journalVoucherId, budgetHeadId: oldBudgetHeadId },
+              data: { budgetHeadId: newBudgetHeadId },
+            });
+            await tx.ledgerEntry.updateMany({
+              where: { journalVoucherId: pmt.journalVoucherId, budgetHeadId: oldBudgetHeadId },
+              data: { budgetHeadId: newBudgetHeadId },
+            });
+          }
+        }
 
         // Update the PO's budget head
         return tx.purchaseOrder.update({
@@ -1740,7 +1756,7 @@ router.post(
           budgetHeadId: newBudgetHeadId,
           budgetHead: newParticulars,
           movedCommitted: remainingCommitted,
-          movedActual: deliveredValue,
+          movedActual: paidSoFar,
           reason: reason ?? 'Admin budget head change',
         },
       });
@@ -1748,7 +1764,7 @@ router.post(
       console.log(
         `[PO] Budget head changed for ${po.poNumber}: ` +
         `"${oldParticulars}" → "${newParticulars}" ` +
-        `(committed: ₹${remainingCommitted}, actual: ₹${deliveredValue})`
+        `(committed: ₹${remainingCommitted}, paid: ₹${paidSoFar})`
       );
 
       res.json(updated);

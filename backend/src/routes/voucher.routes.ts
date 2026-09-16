@@ -324,6 +324,9 @@ router.post(
       // The Budget Head is the cost center selected for the expense/party side.
       // We pass it to postVoucher so the bank/cash transaction gets tagged,
       // and we update the Budget Head's actualAmount + paidAmount after posting.
+      // ── For RECEIPT vouchers, extract from the party (credit) entry ──
+      // A receipt tagged with a budget head adds money INTO that head
+      // (allocatedAmount increases), so the available balance goes up.
       let paymentBudgetHeadId: string | null = null;
       let paymentAmount = 0;
       if (voucherType === VoucherType.PAYMENT) {
@@ -357,6 +360,20 @@ router.post(
             }
           }
         }
+      } else if (voucherType === VoucherType.RECEIPT) {
+        const partyEntry = (entries as Array<{ debit: number; credit: number; budgetHeadId?: string }>)
+          .find((e) => Number(e.credit) > 0 && e.budgetHeadId);
+        if (partyEntry?.budgetHeadId) {
+          const bh = await prisma.budgetHead.findFirst({
+            where: { id: partyEntry.budgetHeadId, projectId, deletedAt: null },
+          });
+          if (!bh) {
+            res.status(400).json({ error: 'Selected Budget Head not found' });
+            return;
+          }
+          paymentBudgetHeadId = partyEntry.budgetHeadId;
+          paymentAmount = Number(partyEntry.credit);
+        }
       }
 
       // Post the voucher atomically: create JV + ledger entries + update ledger
@@ -380,7 +397,6 @@ router.post(
           chequeNumber: req.body.chequeNumber ?? null,
           chequeDate: chequeDateCreate,
           budgetHeadId: paymentBudgetHeadId,
-          budgetPaidOnly: !!linkedPaymentRequest && linkedPaymentRequest.type !== 'EXPENSE',
           tx,
         });
 
@@ -467,6 +483,7 @@ router.post(
       // check both sources.
       let paymentBudgetHeadId: string | null = null;
       let paymentAmount = 0;
+      let isReceiptVoucher = false;
       if (voucher.voucherType === VoucherType.PAYMENT) {
         // 1. Check the party (debit) ledger entry for a budgetHeadId
         const partyEntry = voucher.ledgerEntries.find((e) => Number(e.debit) > 0 && e.budgetHeadId);
@@ -492,6 +509,14 @@ router.post(
               paymentAmount = Number(cashTxn.amount);
             }
           }
+        }
+      } else if (voucher.voucherType === VoucherType.RECEIPT) {
+        // For receipts, the budget head is on the party (credit) entry.
+        const partyEntry = voucher.ledgerEntries.find((e) => Number(e.credit) > 0 && e.budgetHeadId);
+        if (partyEntry) {
+          paymentBudgetHeadId = partyEntry.budgetHeadId!;
+          paymentAmount = Number(partyEntry.credit);
+          isReceiptVoucher = true;
         }
       }
 
@@ -600,15 +625,28 @@ router.post(
           }
         }
 
-        // ── Reverse Budget Head totals for cancelled PAYMENT vouchers ──
+        // ── Reverse Budget Head totals for cancelled PAYMENT/RECEIPT vouchers ──
+        // PAYMENT: actual/paid decrease and committed increases (the released
+        //   commitment is restored).
+        // RECEIPT: allocatedAmount decreases (the receipt augmentation is reversed).
         if (paymentBudgetHeadId && paymentAmount > 0) {
-          await tx.budgetHead.update({
-            where: { id: paymentBudgetHeadId },
-            data: {
-              actualAmount: { decrement: paymentAmount },
-              paidAmount: { decrement: paymentAmount },
-            },
-          });
+          if (isReceiptVoucher) {
+            await tx.budgetHead.update({
+              where: { id: paymentBudgetHeadId },
+              data: {
+                allocatedAmount: { decrement: paymentAmount },
+              },
+            });
+          } else {
+            await tx.budgetHead.update({
+              where: { id: paymentBudgetHeadId },
+              data: {
+                actualAmount: { decrement: paymentAmount },
+                paidAmount: { decrement: paymentAmount },
+                committedAmount: { increment: paymentAmount },
+              },
+            });
+          }
         }
       });
 
@@ -731,11 +769,12 @@ router.patch(
         return;
       }
 
-      // ── For PAYMENT vouchers, extract old and new Budget Head info ──
+      // ── For PAYMENT/RECEIPT vouchers, extract old and new Budget Head info ──
       // The old budget head is reversed (decremented), the new one is applied (incremented).
-      // Over-budget check is done on the new budget head.
+      // Over-budget check is done on the new budget head (PAYMENT only).
       // The old budget head may be on the party ledger entry (VouchersPage flow)
       // or on the bank/cash transaction (cash-out / bank-withdrawal flows).
+      const isReceiptEdit = voucher.voucherType === VoucherType.RECEIPT;
       let oldBudgetHeadId: string | null = null;
       let oldBudgetAmount = 0;
       if (voucher.voucherType === VoucherType.PAYMENT) {
@@ -761,6 +800,12 @@ router.patch(
               oldBudgetAmount = Number(cashTxn.amount);
             }
           }
+        }
+      } else if (isReceiptEdit) {
+        const oldPartyEntry = voucher.ledgerEntries.find((e) => Number(e.credit) > 0 && e.budgetHeadId);
+        if (oldPartyEntry) {
+          oldBudgetHeadId = oldPartyEntry.budgetHeadId!;
+          oldBudgetAmount = Number(oldPartyEntry.credit);
         }
       }
 
@@ -792,6 +837,19 @@ router.patch(
             });
             return;
           }
+        }
+      } else if (isReceiptEdit) {
+        const newPartyEntry = newEntries.find((e) => Number(e.credit) > 0 && e.budgetHeadId);
+        if (newPartyEntry?.budgetHeadId) {
+          const bh = await prisma.budgetHead.findFirst({
+            where: { id: newPartyEntry.budgetHeadId, projectId, deletedAt: null },
+          });
+          if (!bh) {
+            res.status(400).json({ error: 'Selected Budget Head not found' });
+            return;
+          }
+          newBudgetHeadId = newPartyEntry.budgetHeadId;
+          newBudgetAmount = Number(newPartyEntry.credit);
         }
       }
 
@@ -895,23 +953,47 @@ router.patch(
           });
 
           // 5. Reverse old Budget Head totals and apply new Budget Head totals
+          // PAYMENT: reversal restores committed; new application mirrors postVoucher
+          //   (actual+paid increase, committed decreases capped at 0).
+          // RECEIPT: reversal decreases allocated; new application increases allocated.
           if (oldBudgetHeadId && oldBudgetAmount > 0) {
-            await tx.budgetHead.update({
-              where: { id: oldBudgetHeadId },
-              data: {
-                actualAmount: { decrement: oldBudgetAmount },
-                paidAmount: { decrement: oldBudgetAmount },
-              },
-            });
+            if (isReceiptEdit) {
+              await tx.budgetHead.update({
+                where: { id: oldBudgetHeadId },
+                data: { allocatedAmount: { decrement: oldBudgetAmount } },
+              });
+            } else {
+              await tx.budgetHead.update({
+                where: { id: oldBudgetHeadId },
+                data: {
+                  actualAmount: { decrement: oldBudgetAmount },
+                  paidAmount: { decrement: oldBudgetAmount },
+                  committedAmount: { increment: oldBudgetAmount },
+                },
+              });
+            }
           }
           if (newBudgetHeadId && newBudgetAmount > 0) {
-            await tx.budgetHead.update({
-              where: { id: newBudgetHeadId },
-              data: {
-                actualAmount: { increment: newBudgetAmount },
-                paidAmount: { increment: newBudgetAmount },
-              },
-            });
+            if (isReceiptEdit) {
+              await tx.budgetHead.update({
+                where: { id: newBudgetHeadId },
+                data: { allocatedAmount: { increment: newBudgetAmount } },
+              });
+            } else {
+              const head = await tx.budgetHead.findUnique({
+                where: { id: newBudgetHeadId },
+                select: { committedAmount: true },
+              });
+              const committedRelease = Math.min(newBudgetAmount, Number(head?.committedAmount ?? 0));
+              await tx.budgetHead.update({
+                where: { id: newBudgetHeadId },
+                data: {
+                  actualAmount: { increment: newBudgetAmount },
+                  paidAmount: { increment: newBudgetAmount },
+                  committedAmount: { decrement: committedRelease },
+                },
+              });
+            }
           }
 
           // 6. Update bill settlements if changed
@@ -1021,15 +1103,25 @@ router.patch(
         await tx.ledgerEntry.deleteMany({ where: { journalVoucherId: voucher.id } });
         await tx.billSettlement.deleteMany({ where: { journalVoucherId: voucher.id } });
 
-        // ── Reverse old Budget Head totals (PAYMENT vouchers) ──
+        // ── Reverse old Budget Head totals (PAYMENT/RECEIPT vouchers) ──
+        // PAYMENT: restores committed that postVoucher had released.
+        // RECEIPT: decreases allocated (undoes the receipt augmentation).
         if (oldBudgetHeadId && oldBudgetAmount > 0) {
-          await tx.budgetHead.update({
-            where: { id: oldBudgetHeadId },
-            data: {
-              actualAmount: { decrement: oldBudgetAmount },
-              paidAmount: { decrement: oldBudgetAmount },
-            },
-          });
+          if (isReceiptEdit) {
+            await tx.budgetHead.update({
+              where: { id: oldBudgetHeadId },
+              data: { allocatedAmount: { decrement: oldBudgetAmount } },
+            });
+          } else {
+            await tx.budgetHead.update({
+              where: { id: oldBudgetHeadId },
+              data: {
+                actualAmount: { decrement: oldBudgetAmount },
+                paidAmount: { decrement: oldBudgetAmount },
+                committedAmount: { increment: oldBudgetAmount },
+              },
+            });
+          }
         }
 
         // 3. Update voucher header
@@ -1148,15 +1240,30 @@ router.patch(
           });
         }
 
-        // ── Apply new Budget Head totals (PAYMENT vouchers) ──
+        // ── Apply new Budget Head totals (PAYMENT/RECEIPT vouchers) ──
+        // PAYMENT: mirrors postVoucher (actual+paid increase, committed decreases capped at 0).
+        // RECEIPT: increases allocated (budget augmentation).
         if (newBudgetHeadId && newBudgetAmount > 0) {
-          await tx.budgetHead.update({
-            where: { id: newBudgetHeadId },
-            data: {
-              actualAmount: { increment: newBudgetAmount },
-              paidAmount: { increment: newBudgetAmount },
-            },
-          });
+          if (isReceiptEdit) {
+            await tx.budgetHead.update({
+              where: { id: newBudgetHeadId },
+              data: { allocatedAmount: { increment: newBudgetAmount } },
+            });
+          } else {
+            const head = await tx.budgetHead.findUnique({
+              where: { id: newBudgetHeadId },
+              select: { committedAmount: true },
+            });
+            const committedRelease = Math.min(newBudgetAmount, Number(head?.committedAmount ?? 0));
+            await tx.budgetHead.update({
+              where: { id: newBudgetHeadId },
+              data: {
+                actualAmount: { increment: newBudgetAmount },
+                paidAmount: { increment: newBudgetAmount },
+                committedAmount: { decrement: committedRelease },
+              },
+            });
+          }
         }
       });
 
@@ -1199,12 +1306,9 @@ export interface PostVoucherArgs {
   chequeDate?: Date | null;
   tx?: Prisma.TransactionClient; // optional: run inside an existing transaction
   // Optional: when set, the bank/cash transaction created by this voucher will be
-  // tagged with this budget head, and the budget head's actualAmount will be updated.
+  // tagged with this budget head, and the budget head's actualAmount/paidAmount
+  // will increase (and committedAmount will decrease, capped at 0).
   budgetHeadId?: string | null;
-  // Optional: for vouchers linked to a payment request of type INVOICE/ADVANCE —
-  // the actual expense was already accrued (at GRN/invoice time), so only
-  // paidAmount increases here. EXPENSE-type requests keep the default (actual+paid).
-  budgetPaidOnly?: boolean;
 }
 
 export async function postVoucher(args: PostVoucherArgs) {
@@ -1350,23 +1454,46 @@ export async function postVoucher(args: PostVoucherArgs) {
     }
 
     // 5. Update Budget Head totals for PAYMENT vouchers with a budget head.
-    // Both actualAmount and paidAmount increase by the payment amount —
-    // unless budgetPaidOnly is set (payment-request-linked INVOICE/ADVANCE
-    // vouchers, where actual was already accrued at GRN/invoice time).
+    // A payment deducts from the budget: actualAmount + paidAmount increase,
+    // and committedAmount decreases by the same amount (capped at 0) so the
+    // commitment earmarked by the PO is released as money actually leaves.
+    // GRNs no longer affect budget — they are inventory only.
     // This runs inside the same transaction so the voucher and budget
     // update are atomic — if either fails, both roll back.
     if (args.budgetHeadId && args.voucherType === VoucherType.PAYMENT) {
       const partyEntry = args.entries.find((e) => Number(e.debit) > 0);
       const amt = partyEntry ? Number(partyEntry.debit) : 0;
       if (amt > 0) {
+        const head = await tx.budgetHead.findUnique({
+          where: { id: args.budgetHeadId },
+          select: { committedAmount: true },
+        });
+        const committedRelease = Math.min(amt, Number(head?.committedAmount ?? 0));
         await tx.budgetHead.update({
           where: { id: args.budgetHeadId },
-          data: args.budgetPaidOnly
-            ? { paidAmount: { increment: amt } }
-            : {
-                actualAmount: { increment: amt },
-                paidAmount: { increment: amt },
-              },
+          data: {
+            actualAmount: { increment: amt },
+            paidAmount: { increment: amt },
+            committedAmount: { decrement: committedRelease },
+          },
+        });
+      }
+    }
+
+    // 6. Update Budget Head totals for RECEIPT vouchers with a budget head.
+    // A receipt adds money INTO the budget head: allocatedAmount increases so
+    // the available balance goes up. This is a budget augmentation — money
+    // received for this specific budget head (e.g., a refund, grant, or
+    // direct deposit tagged to a cost center).
+    if (args.budgetHeadId && args.voucherType === VoucherType.RECEIPT) {
+      const partyEntry = args.entries.find((e) => Number(e.credit) > 0);
+      const amt = partyEntry ? Number(partyEntry.credit) : 0;
+      if (amt > 0) {
+        await tx.budgetHead.update({
+          where: { id: args.budgetHeadId },
+          data: {
+            allocatedAmount: { increment: amt },
+          },
         });
       }
     }
