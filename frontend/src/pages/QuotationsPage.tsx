@@ -37,7 +37,7 @@ import {
   PictureAsPdf as PdfIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { APPROVER_ROLES, QuotationStatus, GST_RATES, ApprovalStatus } from '@hospital-erp/shared';
+import { QuotationStatus, GST_RATES, ApprovalStatus, isAdminRole, isApproverRole } from '@hospital-erp/shared';
 import { formatCurrency, formatDate, STATUS_COLORS, QTY_UNIT_OPTIONS } from '../utils/enumOptions';
 import api, { extractErrorMessage } from '../config/api';
 import { useAuthStore } from '../stores/authStore';
@@ -129,6 +129,7 @@ export default function QuotationsPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [editing, setEditing] = useState<QuotationRow | null>(null);
+  const [reviseMode, setReviseMode] = useState(false);
   const [error, setError] = useState('');
   const [selectedVendorId, setSelectedVendorId] = useState('');
   const [lineItems, setLineItems] = useState<QuotationItem[]>([]);
@@ -148,6 +149,7 @@ export default function QuotationsPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { user } = useAuthStore();
+  const isAdmin = user ? isAdminRole(user.role) : false;
 
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['/quotations', page, pageSize, search, statusFilter],
@@ -251,6 +253,33 @@ export default function QuotationsPage() {
       queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
       setEditOpen(false);
       setEditing(null);
+      resetForm();
+    },
+    onError: (err: unknown) => setError(extractErrorMessage(err)),
+  });
+
+  // Admin-only: fully re-edit a quotation and resend it for approval with the
+  // same quotation number (POST /quotations/:id/revise). Resets the approval
+  // workflow to VERIFICATION with fresh pending steps.
+  const reviseMutation = useMutation({
+    mutationFn: async () => {
+      const formData = new FormData();
+      formData.append('vendorId', selectedVendorId);
+      formData.append('items', JSON.stringify(lineItems.filter((i) => selectedMaterialNames.has(i.materialName)).map((i) => ({ materialName: i.materialName, quantity: i.quantity, unit: i.unit, unitPrice: i.unitPrice, amount: i.amount, gstRate: i.gstRate }))));
+      if (quotationNotes.trim()) formData.append('notes', quotationNotes.trim());
+      if (selectedFile) formData.append('file', selectedFile);
+      const response = await api.post(`/quotations/${editing!.id}/revise`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/quotations'] });
+      queryClient.invalidateQueries({ queryKey: ['/quotations/approval-aging'] });
+      queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
+      setEditOpen(false);
+      setEditing(null);
+      setReviseMode(false);
       resetForm();
     },
     onError: (err: unknown) => setError(extractErrorMessage(err)),
@@ -387,6 +416,7 @@ export default function QuotationsPage() {
     setAcknowledged(false);
     setSelectedFile(null);
     setQuotationNotes('');
+    setReviseMode(false);
     setError('');
   }
 
@@ -404,8 +434,9 @@ export default function QuotationsPage() {
     createMutation.mutate();
   }
 
-  function openEdit(row: QuotationRow) {
+  function openEdit(row: QuotationRow, forRevise = false) {
     setEditing(row);
+    setReviseMode(forRevise);
     setSelectedVendorId(row.vendorId);
     setLineItems(row.items.map((i) => ({
       id: i.id,
@@ -472,7 +503,7 @@ export default function QuotationsPage() {
   const gstRateOptions = GST_RATES;
 
   function canApprove(row: QuotationRow): ApprovalStep | null {
-    if (!row.approvalWorkflow || !user || !APPROVER_ROLES.some((role) => role === user.role)) return null;
+    if (!row.approvalWorkflow || !user || !isApproverRole(user.role)) return null;
     // If the workflow is already APPROVED/REJECTED, no further approval is possible
     const wfStatus = row.approvalWorkflow.status;
     if (wfStatus === ApprovalStatus.APPROVED || wfStatus === ApprovalStatus.REJECTED) return null;
@@ -840,7 +871,9 @@ export default function QuotationsPage() {
                       <IconButton size="small" onClick={() => setTimelineRow(row)} title="Show Timeline"><TimelineIcon fontSize="small" /></IconButton>
                       {effectiveStatus !== QuotationStatus.DELETED && (
                         <>
-                          {effectiveStatus === QuotationStatus.SUBMITTED || effectiveStatus === QuotationStatus.UNDER_REVIEW ? (
+                          {isAdmin && effectiveStatus !== QuotationStatus.CONVERTED_TO_PO ? (
+                            <IconButton size="small" onClick={() => openEdit(row, true)} title="Re-edit & Resend for Approval"><EditIcon fontSize="small" /></IconButton>
+                          ) : effectiveStatus === QuotationStatus.SUBMITTED || effectiveStatus === QuotationStatus.UNDER_REVIEW ? (
                             <IconButton size="small" onClick={() => openEdit(row)} title="Edit"><EditIcon fontSize="small" /></IconButton>
                           ) : (
                             <IconButton size="small" onClick={() => { setNotesEditRow(row); setNotesEditValue(row.notes ?? ''); }} title="Edit Description"><EditIcon fontSize="small" /></IconButton>
@@ -898,9 +931,14 @@ export default function QuotationsPage() {
 
       {/* Create / Edit Dialog */}
       <ResponsiveDialog open={createOpen || editOpen} onClose={() => { setCreateOpen(false); setEditOpen(false); setEditing(null); }} maxWidth="md" fullWidth sx={{ '& .MuiDialog-paper': { margin: { xs: 1 } } }}>
-        <DialogTitle>{editOpen ? `Edit Quotation ${editing?.quotationNumber ?? ''}` : 'Create Quotation'}</DialogTitle>
+        <DialogTitle>{editOpen ? (reviseMode ? `Re-edit & Resend — ${editing?.quotationNumber ?? ''}` : `Edit Quotation ${editing?.quotationNumber ?? ''}`) : 'Create Quotation'}</DialogTitle>
         <DialogContent>
           {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
+          {editOpen && reviseMode && (
+            <Alert severity="info" sx={{ mb: 2 }}>
+              This quotation will be updated and resent for approval with the same quotation number ({editing?.quotationNumber}). Previous approvals will be reset.
+            </Alert>
+          )}
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1, flexWrap: 'wrap' }}>
             {/* Vendor Selection */}
             <TextField
@@ -910,7 +948,7 @@ export default function QuotationsPage() {
               onChange={(e) => { setSelectedVendorId(e.target.value); setLineItems([]); setSelectedMaterialNames(new Set()); }}
               fullWidth
               size="small"
-              disabled={editOpen}
+              disabled={editOpen && !reviseMode}
               required
             >
               {vendors.map((v) => (
@@ -1098,10 +1136,12 @@ export default function QuotationsPage() {
           <Button onClick={() => { setCreateOpen(false); setEditOpen(false); setEditing(null); resetForm(); }}>Cancel</Button>
           <Button
             variant="contained"
-            onClick={editOpen ? () => { setError(''); if (validateQuotationForm()) updateMutation.mutate(); } : handleCreateQuotation}
-            disabled={createMutation.isPending || updateMutation.isPending || (!editOpen && (!acknowledged || createSubmissionLocked.current))}
+            onClick={editOpen
+              ? () => { setError(''); if (validateQuotationForm()) (reviseMode ? reviseMutation.mutate() : updateMutation.mutate()); }
+              : handleCreateQuotation}
+            disabled={createMutation.isPending || updateMutation.isPending || reviseMutation.isPending || (!editOpen && (!acknowledged || createSubmissionLocked.current))}
           >
-            {(createMutation.isPending || updateMutation.isPending) ? <CircularProgress size={20} /> : editOpen ? 'Update' : 'Create'}
+            {(createMutation.isPending || updateMutation.isPending || reviseMutation.isPending) ? <CircularProgress size={20} /> : editOpen ? (reviseMode ? 'Update & Resend' : 'Update') : 'Create'}
           </Button>
         </DialogActions>
       </ResponsiveDialog>
