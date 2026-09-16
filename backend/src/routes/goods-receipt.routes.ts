@@ -587,50 +587,6 @@ router.post(
           data: { status: GatePassStatus.DELIVERED },
         });
 
-        // ── Finance integration: convert commitment to actual on budget head ──
-        if (receipt.purchaseOrder?.budgetHeadId) {
-          const head = await tx.budgetHead.findFirst({
-            where: { id: receipt.purchaseOrder.budgetHeadId, projectId, deletedAt: null },
-          });
-          if (head) {
-            // Calculate accepted value: sum of acceptedQty * unitPrice (+ GST) per line
-            let grnValue = 0;
-            for (const line of receipt.items) {
-              if (Number(line.acceptedQty) <= 0) continue;
-              const poItem = line.poItem;
-              if (poItem) {
-                const lineAmount = Number(poItem.unitPrice) * Number(line.acceptedQty);
-                const lineGst = lineAmount * Number(poItem.gstRate) / 100;
-                grnValue += lineAmount + lineGst;
-              }
-            }
-            if (grnValue > 0) {
-              // ── A22: Do not silently cap committed at 0 ──
-              // If grnValue > committedAmount (due to PO edits, tax rounding, or
-              // multiple returns), silently capping at 0 makes committed + actual
-              // diverge from the true budget picture. Instead, throw so the
-              // discrepancy is surfaced and investigated.
-              const currentCommitted = Number(head.committedAmount);
-              if (grnValue > currentCommitted + 0.01) {
-                throw new Error(
-                  `GRN value (₹${grnValue.toFixed(2)}) exceeds committed budget (₹${currentCommitted.toFixed(2)}) ` +
-                  `on head "${head.particulars}". This may indicate a PO edit or tax rounding issue. ` +
-                  `Please run budget recompute or adjust the PO before posting.`
-                );
-              }
-              // Atomic deltas — DB applies both, preventing lost updates when
-              // multiple GRNs (or a GRN + JV) hit the same budget head concurrently.
-              await tx.budgetHead.update({
-                where: { id: receipt.purchaseOrder.budgetHeadId },
-                data: {
-                  committedAmount: { decrement: grnValue },
-                  actualAmount: { increment: grnValue },
-                },
-              });
-            }
-          }
-        }
-
         // ── A24: Update PO status inside the same transaction ──
         // Previously this was done after the transaction committed, so a
         // failure left the GRN POSTED but the PO in the wrong state.

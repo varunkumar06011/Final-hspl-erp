@@ -1083,10 +1083,10 @@ router.post(
           }
         }
 
-        // 5. Over-budget check for EXPENSE payments (actualAmount increases here).
-        //    For INVOICE/ADVANCE payments, actualAmount was already accrued at GRN
-        //    time, so only paidAmount increases — no over-budget check needed.
-        if (pr.budgetHeadId && pr.type === 'EXPENSE') {
+        // 5. Over-budget check for payments with a budget head.
+        //    All payment types (EXPENSE/INVOICE/ADVANCE) increase actualAmount
+        //    when posted, so the check applies to all of them.
+        if (pr.budgetHeadId) {
           const head = await tx.budgetHead.findFirst({
             where: { id: pr.budgetHeadId, projectId, deletedAt: null },
           });
@@ -1106,8 +1106,8 @@ router.post(
         //    and the debit ledger entry are tagged with the budget head — this
         //    makes the payment visible in the budget head's expenditure breakdown.
         //    postVoucher also updates the budget head totals atomically:
-        //      EXPENSE → actualAmount + paidAmount (payment IS the expense event)
-        //      INVOICE/ADVANCE → paidAmount only (actual was accrued at GRN time)
+        //      actualAmount + paidAmount increase, committedAmount decreases
+        //      (capped at 0). GRNs no longer affect budget — they are inventory only.
         const jvNumber = await generateVoucherNumber(VoucherType.PAYMENT);
         const voucherResult = await postVoucher({
           projectId,
@@ -1128,7 +1128,6 @@ router.post(
           userId: req.user!.id,
           tx,
           budgetHeadId: pr.budgetHeadId ?? null,
-          budgetPaidOnly: pr.type !== 'EXPENSE',
         });
 
         // ── Create Payment record with finance links ──

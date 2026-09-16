@@ -380,7 +380,6 @@ router.post(
           chequeNumber: req.body.chequeNumber ?? null,
           chequeDate: chequeDateCreate,
           budgetHeadId: paymentBudgetHeadId,
-          budgetPaidOnly: !!linkedPaymentRequest && linkedPaymentRequest.type !== 'EXPENSE',
           tx,
         });
 
@@ -601,12 +600,15 @@ router.post(
         }
 
         // ── Reverse Budget Head totals for cancelled PAYMENT vouchers ──
+        // Reverses the postVoucher budget update: actual/paid decrease and
+        // committed increases (the released commitment is restored).
         if (paymentBudgetHeadId && paymentAmount > 0) {
           await tx.budgetHead.update({
             where: { id: paymentBudgetHeadId },
             data: {
               actualAmount: { decrement: paymentAmount },
               paidAmount: { decrement: paymentAmount },
+              committedAmount: { increment: paymentAmount },
             },
           });
         }
@@ -895,21 +897,31 @@ router.patch(
           });
 
           // 5. Reverse old Budget Head totals and apply new Budget Head totals
+          // Reversal restores committed (postVoucher had released it); the new
+          // application mirrors postVoucher: actual+paid increase, committed
+          // decreases (capped at 0).
           if (oldBudgetHeadId && oldBudgetAmount > 0) {
             await tx.budgetHead.update({
               where: { id: oldBudgetHeadId },
               data: {
                 actualAmount: { decrement: oldBudgetAmount },
                 paidAmount: { decrement: oldBudgetAmount },
+                committedAmount: { increment: oldBudgetAmount },
               },
             });
           }
           if (newBudgetHeadId && newBudgetAmount > 0) {
+            const head = await tx.budgetHead.findUnique({
+              where: { id: newBudgetHeadId },
+              select: { committedAmount: true },
+            });
+            const committedRelease = Math.min(newBudgetAmount, Number(head?.committedAmount ?? 0));
             await tx.budgetHead.update({
               where: { id: newBudgetHeadId },
               data: {
                 actualAmount: { increment: newBudgetAmount },
                 paidAmount: { increment: newBudgetAmount },
+                committedAmount: { decrement: committedRelease },
               },
             });
           }
@@ -1022,12 +1034,14 @@ router.patch(
         await tx.billSettlement.deleteMany({ where: { journalVoucherId: voucher.id } });
 
         // ── Reverse old Budget Head totals (PAYMENT vouchers) ──
+        // Restores committed that postVoucher had released.
         if (oldBudgetHeadId && oldBudgetAmount > 0) {
           await tx.budgetHead.update({
             where: { id: oldBudgetHeadId },
             data: {
               actualAmount: { decrement: oldBudgetAmount },
               paidAmount: { decrement: oldBudgetAmount },
+              committedAmount: { increment: oldBudgetAmount },
             },
           });
         }
@@ -1149,12 +1163,20 @@ router.patch(
         }
 
         // ── Apply new Budget Head totals (PAYMENT vouchers) ──
+        // Mirrors postVoucher: actual+paid increase, committed decreases
+        // (capped at 0).
         if (newBudgetHeadId && newBudgetAmount > 0) {
+          const head = await tx.budgetHead.findUnique({
+            where: { id: newBudgetHeadId },
+            select: { committedAmount: true },
+          });
+          const committedRelease = Math.min(newBudgetAmount, Number(head?.committedAmount ?? 0));
           await tx.budgetHead.update({
             where: { id: newBudgetHeadId },
             data: {
               actualAmount: { increment: newBudgetAmount },
               paidAmount: { increment: newBudgetAmount },
+              committedAmount: { decrement: committedRelease },
             },
           });
         }
@@ -1199,12 +1221,9 @@ export interface PostVoucherArgs {
   chequeDate?: Date | null;
   tx?: Prisma.TransactionClient; // optional: run inside an existing transaction
   // Optional: when set, the bank/cash transaction created by this voucher will be
-  // tagged with this budget head, and the budget head's actualAmount will be updated.
+  // tagged with this budget head, and the budget head's actualAmount/paidAmount
+  // will increase (and committedAmount will decrease, capped at 0).
   budgetHeadId?: string | null;
-  // Optional: for vouchers linked to a payment request of type INVOICE/ADVANCE —
-  // the actual expense was already accrued (at GRN/invoice time), so only
-  // paidAmount increases here. EXPENSE-type requests keep the default (actual+paid).
-  budgetPaidOnly?: boolean;
 }
 
 export async function postVoucher(args: PostVoucherArgs) {
@@ -1350,23 +1369,28 @@ export async function postVoucher(args: PostVoucherArgs) {
     }
 
     // 5. Update Budget Head totals for PAYMENT vouchers with a budget head.
-    // Both actualAmount and paidAmount increase by the payment amount —
-    // unless budgetPaidOnly is set (payment-request-linked INVOICE/ADVANCE
-    // vouchers, where actual was already accrued at GRN/invoice time).
+    // A payment deducts from the budget: actualAmount + paidAmount increase,
+    // and committedAmount decreases by the same amount (capped at 0) so the
+    // commitment earmarked by the PO is released as money actually leaves.
+    // GRNs no longer affect budget — they are inventory only.
     // This runs inside the same transaction so the voucher and budget
     // update are atomic — if either fails, both roll back.
     if (args.budgetHeadId && args.voucherType === VoucherType.PAYMENT) {
       const partyEntry = args.entries.find((e) => Number(e.debit) > 0);
       const amt = partyEntry ? Number(partyEntry.debit) : 0;
       if (amt > 0) {
+        const head = await tx.budgetHead.findUnique({
+          where: { id: args.budgetHeadId },
+          select: { committedAmount: true },
+        });
+        const committedRelease = Math.min(amt, Number(head?.committedAmount ?? 0));
         await tx.budgetHead.update({
           where: { id: args.budgetHeadId },
-          data: args.budgetPaidOnly
-            ? { paidAmount: { increment: amt } }
-            : {
-                actualAmount: { increment: amt },
-                paidAmount: { increment: amt },
-              },
+          data: {
+            actualAmount: { increment: amt },
+            paidAmount: { increment: amt },
+            committedAmount: { decrement: committedRelease },
+          },
         });
       }
     }

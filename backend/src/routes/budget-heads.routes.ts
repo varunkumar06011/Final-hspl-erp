@@ -1,5 +1,5 @@
 import { Router, Response, NextFunction } from 'express';
-import { Permission, AuditAction, GoodsReceiptStatus, JournalAccountType, JVType } from '@hospital-erp/shared';
+import { Permission, AuditAction, JournalAccountType, JVType } from '@hospital-erp/shared';
 import {
   createBudgetHeadSchema,
   updateBudgetHeadSchema,
@@ -198,7 +198,7 @@ router.post(
 
 // ── Recompute cached totals from source events ──
 // Rebuilds committedAmount, actualAmount, paidAmount for all budget heads in
-// the project from the immutable financial events (POs, GRNs, Payments, JVs).
+// the project from the immutable financial events (POs, Payments, JVs).
 // This provides a financial audit trail: if cached totals ever drift due to
 // bugs or manual edits, they can be reconstructed from the source data.
 router.post(
@@ -220,9 +220,10 @@ router.post(
 
         for (const head of heads) {
         // ── Recompute committed ──
-        // For each non-rejected PO with this budget head:
-        //   committed contribution = grandTotal - deliveredValue
-        // (delivered value has been converted from committed to actual via GRN)
+        // committed = sum of grandTotal for genuinely committed POs
+        //           − sum of payments already made against those POs
+        // (a payment releases the PO's commitment and moves the amount into
+        // actual/paid; GRNs no longer affect budget — they are inventory only)
         // ── C22: Only count genuinely committed POs (APPROVED, PARTIALLY_DELIVERED, DELIVERED) ──
         // Previously excluded only REJECTED, so DRAFT/PENDING_APPROVAL/CANCELLED POs
         // inflated committedAmount and hid available budget.
@@ -234,79 +235,55 @@ router.post(
             grandTotal: true,
             status: true,
             editedAt: true,
-            items: { select: { materialName: true, unitPrice: true, gstRate: true } },
           },
         });
 
         let committed = 0;
         for (const po of pos) {
-          // Compute delivered value for this PO from posted GRNs
-          const receipts = await tx.goodsReceipt.findMany({
-            where: { poId: po.id, deletedAt: null, status: GoodsReceiptStatus.POSTED },
-            select: { items: { select: { materialName: true, acceptedQty: true } } },
+          committed += Number(po.grandTotal);
+          // Subtract payments already made against this PO (advance/invoice
+          // payments release the commitment as money leaves the bank).
+          const poPayments = await tx.payment.aggregate({
+            where: { budgetHeadId: head.id, paymentRequest: { poId: po.id, deletedAt: null } },
+            _sum: { amount: true },
           });
-          const itemMap = new Map<string, { unitPrice: number; gstRate: number }>();
-          for (const item of po.items) {
-            itemMap.set(item.materialName.toLowerCase(), { unitPrice: Number(item.unitPrice), gstRate: Number(item.gstRate ?? 0) });
-          }
-          let deliveredValue = 0;
-          for (const receipt of receipts) {
-            for (const line of receipt.items) {
-              if (Number(line.acceptedQty) <= 0) continue;
-              const item = itemMap.get(line.materialName.toLowerCase());
-              if (item) {
-                const lineAmount = item.unitPrice * Number(line.acceptedQty);
-                const lineGst = lineAmount * item.gstRate / 100;
-                deliveredValue += lineAmount + lineGst;
-              }
-            }
-          }
-          committed += Math.max(0, Number(po.grandTotal) - deliveredValue);
+          committed -= Number(poPayments._sum.amount) || 0;
         }
+        committed = Math.max(0, committed);
 
         // ── Recompute actual ──
-        // actual = GRN values + EXPENSE payment amounts + JV budget head debits
-        //        + cash/bank outflows from vouchers tagged with this budget head
+        // actual = cash/bank outflows from vouchers tagged with this budget head
+        //        + JV budget head debits (− credits)
+        // Every payment (payment-module or manual voucher) creates a bank/cash
+        // outflow tagged with the budget head, so counting outflows captures all
+        // payments without double-counting. Payment records are NOT counted
+        // separately because they would duplicate the outflow. GRNs no longer
+        // contribute — they are inventory only.
         let actual = 0;
 
-        // GRN values (committed → actual conversion)
-        const grns = await tx.goodsReceipt.findMany({
-          where: {
-            projectId,
-            deletedAt: null,
-            status: GoodsReceiptStatus.POSTED,
-            purchaseOrder: { budgetHeadId: head.id },
-          },
-          select: {
-            items: {
-              select: {
-                acceptedQty: true,
-                poItem: { select: { unitPrice: true, gstRate: true } },
-              },
-            },
-          },
-        });
-        for (const grn of grns) {
-          for (const line of grn.items) {
-            if (Number(line.acceptedQty) <= 0) continue;
-            const poItem = line.poItem;
-            if (poItem) {
-              const lineAmount = Number(poItem.unitPrice) * Number(line.acceptedQty);
-              const lineGst = lineAmount * Number(poItem.gstRate) / 100;
-              actual += lineAmount + lineGst;
-            }
-          }
-        }
-
-        // EXPENSE payments (payment IS the actual expense event)
-        const expensePayments = await tx.payment.aggregate({
-          where: {
-            budgetHeadId: head.id,
-            paymentRequest: { type: 'EXPENSE', deletedAt: null },
-          },
-          _sum: { amount: true },
-        });
-        actual += Number(expensePayments._sum.amount) || 0;
+        // Cash/bank outflows from vouchers tagged with this budget head.
+        const [cashOutAgg, cashReversalInAgg, bankOutAgg, bankReversalInAgg] = await Promise.all([
+          tx.cashTransaction.aggregate({
+            where: { status: 'POSTED', type: 'OUT', budgetHeadId: head.id, cashAccount: { projectId, deletedAt: null } },
+            _sum: { amount: true },
+          }),
+          tx.cashTransaction.aggregate({
+            where: { status: 'POSTED', type: 'REVERSAL_IN', budgetHeadId: head.id, cashAccount: { projectId, deletedAt: null } },
+            _sum: { amount: true },
+          }),
+          tx.bankTransaction.aggregate({
+            where: { status: 'POSTED', type: 'WITHDRAWAL', budgetHeadId: head.id, bankAccount: { projectId, deletedAt: null } },
+            _sum: { amount: true },
+          }),
+          tx.bankTransaction.aggregate({
+            where: { status: 'POSTED', type: 'REVERSAL_IN', budgetHeadId: head.id, bankAccount: { projectId, deletedAt: null } },
+            _sum: { amount: true },
+          }),
+        ]);
+        const cashBankOut =
+          (Number(cashOutAgg._sum.amount) || 0) - (Number(cashReversalInAgg._sum.amount) || 0) +
+          (Number(bankOutAgg._sum.amount) || 0) - (Number(bankReversalInAgg._sum.amount) || 0);
+        actual += cashBankOut;
 
         // JV budget head debits (increase actual) and credits (decrease actual)
         const [jvDebits, jvCredits] = await Promise.all([
@@ -330,52 +307,11 @@ router.post(
         actual += Number(jvDebits._sum.debit) || 0;
         actual -= Number(jvCredits._sum.credit) || 0;
 
-        // Cash/bank outflows from vouchers tagged with this budget head.
-        // These are created by the Voucher POST/PATCH flows when a budget head
-        // is assigned to a payment voucher. They must be counted here so the
-        // recompute matches the actual expenditure shown in the dashboard.
-        const [cashOutAgg, cashReversalInAgg, bankOutAgg, bankReversalInAgg] = await Promise.all([
-          tx.cashTransaction.aggregate({
-            where: { status: 'POSTED', type: 'OUT', budgetHeadId: head.id, cashAccount: { projectId, deletedAt: null } },
-            _sum: { amount: true },
-          }),
-          tx.cashTransaction.aggregate({
-            where: { status: 'POSTED', type: 'REVERSAL_IN', budgetHeadId: head.id, cashAccount: { projectId, deletedAt: null } },
-            _sum: { amount: true },
-          }),
-          tx.bankTransaction.aggregate({
-            where: { status: 'POSTED', type: 'WITHDRAWAL', budgetHeadId: head.id, bankAccount: { projectId, deletedAt: null } },
-            _sum: { amount: true },
-          }),
-          tx.bankTransaction.aggregate({
-            where: { status: 'POSTED', type: 'REVERSAL_IN', budgetHeadId: head.id, bankAccount: { projectId, deletedAt: null } },
-            _sum: { amount: true },
-          }),
-        ]);
-        actual +=
-          (Number(cashOutAgg._sum.amount) || 0) - (Number(cashReversalInAgg._sum.amount) || 0) +
-          (Number(bankOutAgg._sum.amount) || 0) - (Number(bankReversalInAgg._sum.amount) || 0);
-
         // ── Recompute paid ──
-        // paid = all payment amounts + JV debits where cash moved
-        //      + cash/bank outflows from vouchers tagged with this budget head
+        // paid = cash/bank outflows (same as actual's outflow component)
+        //       + JV entries where cash moved (proportionally allocated)
         let paid = 0;
-
-        // All payments (regardless of type — INVOICE, EXPENSE, ADVANCE)
-        const allPayments = await tx.payment.aggregate({
-          where: {
-            budgetHeadId: head.id,
-            paymentRequest: { deletedAt: null },
-          },
-          _sum: { amount: true },
-        });
-        paid += Number(allPayments._sum.amount) || 0;
-
-        // Cash/bank outflows from vouchers (same as actual — the voucher flow
-        // increments both actual and paid by the same amount)
-        paid +=
-          (Number(cashOutAgg._sum.amount) || 0) - (Number(cashReversalInAgg._sum.amount) || 0) +
-          (Number(bankOutAgg._sum.amount) || 0) - (Number(bankReversalInAgg._sum.amount) || 0);
+        paid += cashBankOut;
 
         // JV entries where cash moved: debits increase paid, credits decrease paid
         const jvEntriesAll = await tx.journalEntry.findMany({
@@ -572,49 +508,10 @@ router.get(
         });
       }
 
-      // 2. Posted GRNs against POs with this budget head → committed→actual conversion
-      const grns = await prisma.goodsReceipt.findMany({
-        where: {
-          projectId,
-          deletedAt: null,
-          status: GoodsReceiptStatus.POSTED,
-          purchaseOrder: { budgetHeadId },
-        },
-        select: {
-          id: true,
-          receiptNumber: true,
-          createdAt: true,
-          items: {
-            select: { acceptedQty: true, poItem: { select: { unitPrice: true, gstRate: true } } },
-          },
-        },
-        orderBy: { createdAt: 'asc' },
-      });
-      for (const grn of grns) {
-        let grnValue = 0;
-        for (const line of grn.items) {
-          if (Number(line.acceptedQty) <= 0) continue;
-          const poItem = line.poItem;
-          if (poItem) {
-            const lineAmount = Number(poItem.unitPrice) * Number(line.acceptedQty);
-            const lineGst = lineAmount * Number(poItem.gstRate) / 100;
-            grnValue += lineAmount + lineGst;
-          }
-        }
-        if (grnValue > 0) {
-          transactions.push({
-            date: grn.createdAt.toISOString(),
-            type: 'GRN',
-            reference: grn.receiptNumber,
-            description: `Goods received — commitment converted to actual`,
-            committed: -grnValue,
-            actual: grnValue,
-            paid: 0,
-          });
-        }
-      }
-
-      // 3. Payments linked to this budget head → paid events
+      // 2. Payments linked to this budget head → paid + actual events
+      //    A payment releases the PO's commitment (committed −= amount) and
+      //    moves the amount into actual/paid. GRNs no longer appear here —
+      //    they are inventory only.
       const payments = await prisma.payment.findMany({
         where: {
           budgetHeadId,
@@ -636,21 +533,19 @@ router.get(
         orderBy: { date: 'asc' },
       });
       for (const pmt of payments) {
-        const isExpense = pmt.paymentRequest.type === 'EXPENSE';
+        const amt = Number(pmt.amount);
         transactions.push({
           date: pmt.date.toISOString(),
           type: 'Payment',
           reference: pmt.paymentRequest.paymentCode,
           description: pmt.paymentRequest.description ?? `Payment (${pmt.paymentRequest.type})`,
-          committed: 0,
-          actual: isExpense ? Number(pmt.amount) : 0,
-          paid: Number(pmt.amount),
+          committed: -amt,
+          actual: amt,
+          paid: amt,
         });
       }
 
-      // 4. Posted JV entries affecting this budget head → actual/paid events
-      //    Debits increase actual (and paid if cash moved out)
-      //    Credits decrease actual (and paid if cash moved back in)
+      // 3. Posted JV entries affecting this budget head → actual/paid events
       const jvEntries = await prisma.journalEntry.findMany({
         where: {
           budgetHeadId,
@@ -723,96 +618,6 @@ router.get(
             paid: -reversedPortion,
           });
         }
-      }
-
-      // 5. Posted cash/bank outflow transactions with this budget head → actual/paid events
-      //    These are created by voucher posting when a budget head is assigned to a
-      //    payment voucher. REVERSAL_IN transactions net against the original outflow.
-      const [cashOutTxns, cashReversalInTxns, bankOutTxns, bankReversalInTxns] = await Promise.all([
-        prisma.cashTransaction.findMany({
-          where: {
-            status: 'POSTED',
-            type: 'OUT',
-            budgetHeadId,
-            cashAccount: { projectId, deletedAt: null },
-          },
-          include: { cashAccount: { select: { name: true } } },
-          orderBy: { date: 'asc' },
-        }),
-        prisma.cashTransaction.findMany({
-          where: {
-            status: 'POSTED',
-            type: 'REVERSAL_IN',
-            budgetHeadId,
-            cashAccount: { projectId, deletedAt: null },
-          },
-          include: { cashAccount: { select: { name: true } } },
-          orderBy: { date: 'asc' },
-        }),
-        prisma.bankTransaction.findMany({
-          where: {
-            status: 'POSTED',
-            type: 'WITHDRAWAL',
-            budgetHeadId,
-            bankAccount: { projectId, deletedAt: null },
-          },
-          include: { bankAccount: { select: { accountName: true } } },
-          orderBy: { date: 'asc' },
-        }),
-        prisma.bankTransaction.findMany({
-          where: {
-            status: 'POSTED',
-            type: 'REVERSAL_IN',
-            budgetHeadId,
-            bankAccount: { projectId, deletedAt: null },
-          },
-          include: { bankAccount: { select: { accountName: true } } },
-          orderBy: { date: 'asc' },
-        }),
-      ]);
-      for (const t of cashOutTxns) {
-        transactions.push({
-          date: t.date.toISOString(),
-          type: 'Cash Payment',
-          reference: t.cashAccount?.name ?? 'Cash',
-          description: t.description ?? 'Cash outflow (voucher)',
-          committed: 0,
-          actual: Number(t.amount),
-          paid: Number(t.amount),
-        });
-      }
-      for (const t of cashReversalInTxns) {
-        transactions.push({
-          date: t.date.toISOString(),
-          type: 'Cash Reversal',
-          reference: t.cashAccount?.name ?? 'Cash',
-          description: t.description ?? 'Reversal of cash outflow',
-          committed: 0,
-          actual: -Number(t.amount),
-          paid: -Number(t.amount),
-        });
-      }
-      for (const t of bankOutTxns) {
-        transactions.push({
-          date: t.date.toISOString(),
-          type: 'Bank Payment',
-          reference: t.bankAccount?.accountName ?? 'Bank',
-          description: t.description ?? 'Bank withdrawal (voucher)',
-          committed: 0,
-          actual: Number(t.amount),
-          paid: Number(t.amount),
-        });
-      }
-      for (const t of bankReversalInTxns) {
-        transactions.push({
-          date: t.date.toISOString(),
-          type: 'Bank Reversal',
-          reference: t.bankAccount?.accountName ?? 'Bank',
-          description: t.description ?? 'Reversal of bank withdrawal',
-          committed: 0,
-          actual: -Number(t.amount),
-          paid: -Number(t.amount),
-        });
       }
 
       // Sort all transactions by date
