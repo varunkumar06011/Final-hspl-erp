@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Box,
   Typography,
@@ -136,7 +136,7 @@ export default function PaymentSheetsTab() {
     queryKey,
     queryFn: async () => {
       const res = await api.get('/payment-sheets', { params: { date } });
-      return res.data as { data: PaymentSheetRow[]; totalAmount: number; payableAmount: number; grandTotal: number };
+      return res.data as { data: PaymentSheetRow[]; totalAmount: number; payableAmount: number; grandTotal: number; narration: string };
     },
   });
 
@@ -211,6 +211,16 @@ export default function PaymentSheetsTab() {
     onError: (err) => setError(extractErrorMessage(err)),
   });
 
+  const narrationMutation = useMutation({
+    mutationFn: async (narration: string) =>
+      api.put('/payment-sheets/narration', { date, narration }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey });
+      setSuccessMsg('Narration saved.');
+    },
+    onError: (err) => setError(extractErrorMessage(err)),
+  });
+
   const openEdit = (r: PaymentSheetRow) => {
     setEditRow(r);
     setEditForm({
@@ -226,6 +236,14 @@ export default function PaymentSheetsTab() {
   const totalAmount = data?.totalAmount ?? 0;
   const payableAmount = data?.payableAmount ?? 0;
   const grandTotal = data?.grandTotal ?? 0;
+
+  // Day-level narration — synced from the server, edited locally, saved via PUT.
+  const [narrationText, setNarrationText] = useState('');
+  useEffect(() => {
+    setNarrationText(data?.narration ?? '');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data?.narration, date]);
+  const narrationDirty = narrationText !== (data?.narration ?? '');
 
   const handleSelectPO = (po: POOption | null) => {
     setSelectedPO(po);
@@ -315,6 +333,30 @@ export default function PaymentSheetsTab() {
               <Typography variant="caption" color="text.secondary">Total Payable</Typography>
               <Typography variant="h6">{formatCurrency(payableAmount)}</Typography>
             </Box>
+          </Stack>
+          <Divider sx={{ my: 1.5 }} />
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} alignItems="flex-start" className="no-print">
+            <TextField
+              label="Narration"
+              placeholder="e.g. reason for pending payments on this date"
+              size="small"
+              multiline
+              minRows={1}
+              maxRows={4}
+              fullWidth
+              value={narrationText}
+              onChange={(e) => setNarrationText(e.target.value)}
+              inputProps={{ maxLength: 2000 }}
+            />
+            <Button
+              variant="contained"
+              size="small"
+              sx={{ whiteSpace: 'nowrap', mt: { xs: 0, sm: 0.5 } }}
+              disabled={!narrationDirty || narrationMutation.isPending}
+              onClick={() => narrationMutation.mutate(narrationText.trim())}
+            >
+              {narrationMutation.isPending ? 'Saving…' : 'Save Narration'}
+            </Button>
           </Stack>
         </CardContent>
       </Card>

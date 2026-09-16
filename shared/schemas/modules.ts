@@ -419,6 +419,13 @@ export const listPaymentSheetsSchema = z.object({
     status: z.string().optional(),
   }),
 });
+export const upsertPaymentSheetNarrationSchema = z.object({
+  body: z.object({
+    // ISO date string (YYYY-MM-DD) the narration belongs to.
+    date: z.string().trim().min(8).max(20),
+    narration: z.string().trim().max(2000),
+  }),
+});
 
 // ═══ Gate Passes ═══
 const gatePassItem = z.object({

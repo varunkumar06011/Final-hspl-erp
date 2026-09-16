@@ -295,6 +295,24 @@ function drawSummaryTable(doc: PDFKit.PDFDocument, entries: any[], date: Date, s
   return y;
 }
 
+/** Draws the day-level narration box (label + wrapped text). Returns the y below it. */
+function drawNarration(doc: PDFKit.PDFDocument, narration: string, y: number): number {
+  const body = String(narration ?? '').trim();
+  const innerW = WIDTH - 16;
+  const textH = body ? doc.heightOfString(body, { width: innerW }) : 12;
+  const boxH = 16 + Math.max(textH, 12) + 8;
+  if (y + boxH > PAGE_H - 110) {
+    doc.addPage();
+    y = 40;
+  }
+  doc.rect(LEFT, y, WIDTH, boxH).stroke(BORDER);
+  doc.fillColor(MUTED).font('Helvetica-Bold').fontSize(7)
+    .text('NARRATION', LEFT + 8, y + 5);
+  doc.fillColor(DARK).font('Helvetica').fontSize(9)
+    .text(body, LEFT + 8, y + 16, { width: innerW });
+  return y + boxH;
+}
+
 /**
  * Streams the Payment Sheet PDF.
  * - summaryOnly (day sheet): one page — header, all entries as rows with a
@@ -307,7 +325,7 @@ export async function streamPaymentSheetPdf(
   date: Date,
   entries: any[],
   project: any,
-  options: { summaryOnly?: boolean } = {},
+  options: { summaryOnly?: boolean; narration?: string } = {},
 ) {
   const doc = new PDFDocument({ margin: 0, size: 'A4', bufferPages: true });
   doc.pipe(res as unknown as any);
@@ -341,7 +359,10 @@ export async function streamPaymentSheetPdf(
   y = drawSummaryTable(doc, entries, date, y, options.summaryOnly);
 
   if (options.summaryOnly) {
-    // Day sheet — entries only, signature at the bottom.
+    // Day sheet — narration box (if any), then signature at the bottom.
+    if (options.narration !== undefined && options.narration !== null) {
+      y = drawNarration(doc, options.narration, y + 10);
+    }
     drawSignature(doc, y);
   } else {
     for (const e of entries) {

@@ -1,6 +1,6 @@
 import { Router, Response, NextFunction } from 'express';
 import { Permission, AuditAction, PaymentStatus, POStatus } from '@hospital-erp/shared';
-import { createPaymentSheetSchema, listPaymentSheetsSchema, updatePaymentSheetSchema } from '@hospital-erp/shared';
+import { createPaymentSheetSchema, listPaymentSheetsSchema, updatePaymentSheetSchema, upsertPaymentSheetNarrationSchema } from '@hospital-erp/shared';
 import { prisma } from '../config/prisma';
 import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middleware/auth';
 import { rbacMiddleware } from '../middleware/rbac';
@@ -45,6 +45,9 @@ router.get(
       if (poId) where.poId = poId;
       if (status) where.status = status;
 
+      // narrationDate is the calendar day at UTC midnight — the narration
+      // column is @db.Date, so local-midnight boundaries would shift the day.
+      let narrationDate: Date | null = null;
       if (startDate || endDate) {
         const range: Record<string, Date> = {};
         if (startDate) range.gte = new Date(String(startDate));
@@ -60,6 +63,7 @@ router.get(
         const end = new Date(String(date));
         end.setHours(23, 59, 59, 999);
         where.date = { gte: start, lte: end };
+        narrationDate = new Date(String(date));
       } else {
         // Default to today
         const now = new Date();
@@ -68,9 +72,10 @@ router.get(
         const end = new Date(now);
         end.setHours(23, 59, 59, 999);
         where.date = { gte: start, lte: end };
+        narrationDate = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
       }
 
-      const [data, total, totalsByStatus] = await Promise.all([
+      const [data, total, totalsByStatus, narrationRow] = await Promise.all([
         prisma.paymentSheet.findMany({
           where,
           include: sheetInclude,
@@ -85,6 +90,12 @@ router.get(
           where,
           _sum: { amount: true },
         }),
+        // Day-level narration only applies to single-date queries
+        narrationDate
+          ? prisma.paymentSheetNarration.findUnique({
+              where: { projectId_date: { projectId, date: narrationDate } },
+            })
+          : Promise.resolve(null),
       ]);
 
       const totalAmount = totalsByStatus.reduce(
@@ -101,6 +112,7 @@ router.get(
         totalAmount,
         payableAmount,
         grandTotal: totalAmount + payableAmount,
+        narration: narrationRow?.narration ?? '',
         pagination: { page: pageNum, pageSize: size, total, totalPages: Math.ceil(total / size) },
       });
     } catch (error) {
@@ -171,7 +183,7 @@ router.get(
       const end = new Date(day);
       end.setHours(23, 59, 59, 999);
 
-      const [entries, project] = await Promise.all([
+      const [entries, project, narrationRow] = await Promise.all([
         prisma.paymentSheet.findMany({
           where: { projectId, deletedAt: null, date: { gte: start, lte: end } },
           include: {
@@ -189,12 +201,60 @@ router.get(
           where: { id: projectId },
           select: { name: true, officeAddress: true, hospitalAddress: true, gstNumber: true, panNumber: true, logoUrl: true },
         }),
+        // Keyed the same way as the list endpoint: the requested YYYY-MM-DD
+        // parsed as UTC midnight (the narration column is @db.Date).
+        prisma.paymentSheetNarration.findUnique({
+          where: {
+            projectId_date: {
+              projectId,
+              date: date
+                ? new Date(String(date))
+                : new Date(Date.UTC(day.getFullYear(), day.getMonth(), day.getDate())),
+            },
+          },
+        }),
       ]);
 
       const dateStr = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`;
       res.setHeader('Content-Type', 'application/pdf');
       res.setHeader('Content-Disposition', `attachment; filename="payment-sheet-${dateStr}.pdf"`);
-      await streamPaymentSheetPdf(res as unknown as NodeJS.WritableStream, day, entries, project, { summaryOnly: true });
+      await streamPaymentSheetPdf(res as unknown as NodeJS.WritableStream, day, entries, project, {
+        summaryOnly: true,
+        narration: narrationRow?.narration ?? '',
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// PUT /narration — upsert the day-level narration shown on the exported sheet
+router.put(
+  '/narration',
+  rbacMiddleware(Permission.VIEW_FINANCIALS),
+  validateMiddleware(upsertPaymentSheetNarrationSchema),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      const { date, narration } = req.body as { date: string; narration: string };
+      const day = new Date(String(date)); // YYYY-MM-DD → UTC midnight (column is @db.Date)
+
+      const row = await prisma.paymentSheetNarration.upsert({
+        where: { projectId_date: { projectId, date: day } },
+        create: { projectId, date: day, narration, updatedBy: req.user!.id },
+        update: { narration, updatedBy: req.user!.id },
+      });
+
+      await logAudit({
+        userId: req.user!.id,
+        action: AuditAction.UPDATE,
+        entityType: 'PAYMENT_SHEET_NARRATION',
+        entityId: row.id,
+        projectId,
+        newValue: { date: day.toISOString().slice(0, 10), narration },
+      });
+
+      res.json({ narration: row.narration });
     } catch (error) {
       next(error);
     }

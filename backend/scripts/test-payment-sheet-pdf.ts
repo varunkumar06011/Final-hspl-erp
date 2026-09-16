@@ -48,11 +48,14 @@ async function main() {
   ];
   const res2 = new PassThrough();
   const p2 = collect(res2);
-  await streamPaymentSheetPdf(res2, new Date('2026-09-15'), entries, project, { summaryOnly: true });
+  await streamPaymentSheetPdf(res2, new Date('2026-09-15'), entries, project, {
+    summaryOnly: true,
+    narration: 'Payment to Vendor C is pending — awaiting cheque clearance from head office. Will be released tomorrow.',
+  });
   const buf2 = await p2;
   writeFileSync('mixed-sheet.pdf', buf2);
   console.log('MIXED DAY PDF:', buf2.length, 'bytes, header:', buf2.slice(0, 8).toString());
-  console.log('Expected: GRAND=2356152, PAID=2156152, PAYABLE=200000');
+  console.log('Expected: GRAND=2356152, PAID=2156152, PAYABLE=200000 + NARRATION box');
 }
 
 main().catch((e) => { console.error('FAILED:', e); process.exit(1); });
