@@ -22,6 +22,14 @@ const fmtDate = (d: unknown) =>
 const fmtDateTime = (d: unknown) =>
   d ? new Date(d as string).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) : '—';
 
+/** Truncate a value to fit a column width with ellipsis — PDFKit does not clip overflow. */
+const fitCell = (doc: PDFKit.PDFDocument, v: string, w: number): string => {
+  if (doc.widthOfString(v) <= w) return v;
+  let t = v;
+  while (t.length > 0 && doc.widthOfString(t + '…') > w) t = t.slice(0, -1);
+  return t.length > 0 ? t + '…' : '…';
+};
+
 /** Draws the branded top header box (logo + project + date box). Returns the y below it. */
 function drawHeader(doc: PDFKit.PDFDocument, logoBuffer: Buffer | null, project: any, date: Date): number {
   const headerTop = 24;
@@ -163,7 +171,7 @@ function drawEntryDetails(doc: PDFKit.PDFDocument, e: any, startY: number): numb
       ];
       iCols.forEach((c, ci) => {
         const align = c.label === 'S.No' ? 'center' : c.label === 'Unit Price' || c.label === 'Amount' ? 'right' : 'left';
-        doc.text(vals[ci], iX[ci] + 4, y + 3, { width: c.w - 8, align });
+        doc.text(fitCell(doc, vals[ci], c.w - 8), iX[ci] + 4, y + 3, { width: c.w - 8, align, lineBreak: false });
       });
       y += iRowH;
     });
@@ -206,7 +214,7 @@ function drawSignature(doc: PDFKit.PDFDocument, y: number): number {
 }
 
 /** Entries summary table + day total row. Returns new y. */
-function drawSummaryTable(doc: PDFKit.PDFDocument, entries: any[], date: Date, startY: number, showDescription = false): number {
+function drawSummaryTable(doc: PDFKit.PDFDocument, entries: any[], _date: Date, startY: number, showDescription = false): number {
   let y = startY;
 
   const cols = [
@@ -239,8 +247,8 @@ function drawSummaryTable(doc: PDFKit.PDFDocument, entries: any[], date: Date, s
   }
   entries.forEach((e, i) => {
     // Description (notes) gets its own full-width line under the entry row.
-    const descX = colX[2] + 4;
-    const descW = RIGHT - descX - 8;
+    const descX = LEFT + 8;
+    const descW = WIDTH - 16;
     const desc = showDescription ? String(e.notes ?? '').trim() : '';
     const descH = desc ? doc.heightOfString(desc, { width: descW }) + 6 : 0;
     const entryH = sumRowH + descH;
@@ -258,7 +266,7 @@ function drawSummaryTable(doc: PDFKit.PDFDocument, entries: any[], date: Date, s
     ];
     cols.forEach((c, ci) => {
       doc.font(c.label === 'Amount' ? 'Helvetica-Bold' : 'Helvetica').fontSize(c.label === 'Amount' ? 9.5 : 8);
-      doc.text(vals[ci], colX[ci] + 4, y + 4, { width: c.w - 8, align: c.align, lineBreak: false });
+      doc.text(fitCell(doc, vals[ci], c.w - 8), colX[ci] + 4, y + 4, { width: c.w - 8, align: c.align, lineBreak: false });
     });
     if (desc) {
       doc.fillColor(MUTED).font('Helvetica-Oblique').fontSize(7.5)
@@ -278,17 +286,17 @@ function drawSummaryTable(doc: PDFKit.PDFDocument, entries: any[], date: Date, s
   const grandTotal = totalAmount + payableAmount;
   doc.rect(LEFT, y, WIDTH, 22).fill(PRIMARY);
   doc.fillColor('#fff').font('Helvetica-Bold').fontSize(9)
-    .text(`GRAND TOTAL — ${fmtDate(date)}`, LEFT + 8, y + 6, { width: WIDTH - 110 });
+    .text('GRAND TOTAL', LEFT + 8, y + 6, { width: WIDTH - 110 });
   doc.text(fmtMoney(grandTotal), LEFT + 8, y + 6, { width: WIDTH - 16, align: 'right' });
   y += 22;
   doc.rect(LEFT, y, WIDTH, 22).fill(PRIMARY);
   doc.fillColor('#fff').font('Helvetica-Bold').fontSize(9)
-    .text(`TOTAL PAID — ${fmtDate(date)}`, LEFT + 8, y + 6, { width: WIDTH - 110 });
+    .text('TOTAL PAID', LEFT + 8, y + 6, { width: WIDTH - 110 });
   doc.text(fmtMoney(totalAmount), LEFT + 8, y + 6, { width: WIDTH - 16, align: 'right' });
   y += 22;
   doc.rect(LEFT, y, WIDTH, 22).fill(PRIMARY);
   doc.fillColor('#fff').font('Helvetica-Bold').fontSize(9)
-    .text(`TOTAL PAYABLE — ${fmtDate(date)}`, LEFT + 8, y + 6, { width: WIDTH - 110 });
+    .text('TOTAL PAYABLE', LEFT + 8, y + 6, { width: WIDTH - 110 });
   doc.text(fmtMoney(payableAmount), LEFT + 8, y + 6, { width: WIDTH - 16, align: 'right' });
   y += 22;
 

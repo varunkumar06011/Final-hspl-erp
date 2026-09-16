@@ -29,8 +29,8 @@ async function main() {
   const entries = [
     {
       status: 'PAID', amount: '2106152', paymentMode: 'NEFT',
-      notes: 'paid entry', reference: 'ref1',
-      purchaseOrder: { poNumber: 'VGH-PO001', vendor: { name: 'Vendor A' } },
+      notes: '100mm dia bore and conducting yield test including incidental and operational charges including supply of materials in triplicate etc.', reference: 'ref1',
+      purchaseOrder: { poNumber: 'VGH-PO001', vendor: { name: 'Lakshmi Anjana Tube well Works - 140' } },
       createdByUser: { name: 'User X' },
     },
     {
