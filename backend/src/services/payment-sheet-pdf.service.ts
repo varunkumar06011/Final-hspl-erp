@@ -229,6 +229,14 @@ function drawSummaryTable(doc: PDFKit.PDFDocument, entries: any[], date: Date, s
   y += 20;
 
   const sumRowH = 16;
+  if (entries.length === 0) {
+    // Empty-day sheet — still render a clear "no payments" row so the
+    // exported PDF isn't just a bare header.
+    doc.rect(LEFT, y, WIDTH, sumRowH).stroke(BORDER);
+    doc.fillColor(MUTED).font('Helvetica-Oblique').fontSize(8)
+      .text('No payments recorded on this date', LEFT + 4, y + 4, { width: WIDTH - 8, align: 'center' });
+    y += sumRowH;
+  }
   entries.forEach((e, i) => {
     // Description (notes) gets its own full-width line under the entry row.
     const descX = colX[2] + 4;
@@ -267,6 +275,12 @@ function drawSummaryTable(doc: PDFKit.PDFDocument, entries: any[], date: Date, s
     (sum, e) => (e.status === 'PENDING' ? sum + Number(e.amount) : sum),
     0,
   );
+  const grandTotal = totalAmount + payableAmount;
+  doc.rect(LEFT, y, WIDTH, 22).fill(PRIMARY);
+  doc.fillColor('#fff').font('Helvetica-Bold').fontSize(9)
+    .text(`GRAND TOTAL — ${fmtDate(date)}`, LEFT + 8, y + 6, { width: WIDTH - 110 });
+  doc.text(fmtMoney(grandTotal), LEFT + 8, y + 6, { width: WIDTH - 16, align: 'right' });
+  y += 22;
   doc.rect(LEFT, y, WIDTH, 22).fill(PRIMARY);
   doc.fillColor('#fff').font('Helvetica-Bold').fontSize(9)
     .text(`TOTAL PAID — ${fmtDate(date)}`, LEFT + 8, y + 6, { width: WIDTH - 110 });

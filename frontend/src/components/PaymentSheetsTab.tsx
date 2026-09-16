@@ -136,7 +136,7 @@ export default function PaymentSheetsTab() {
     queryKey,
     queryFn: async () => {
       const res = await api.get('/payment-sheets', { params: { date } });
-      return res.data as { data: PaymentSheetRow[]; totalAmount: number; payableAmount: number };
+      return res.data as { data: PaymentSheetRow[]; totalAmount: number; payableAmount: number; grandTotal: number };
     },
   });
 
@@ -225,6 +225,7 @@ export default function PaymentSheetsTab() {
   const rows = data?.data ?? [];
   const totalAmount = data?.totalAmount ?? 0;
   const payableAmount = data?.payableAmount ?? 0;
+  const grandTotal = data?.grandTotal ?? 0;
 
   const handleSelectPO = (po: POOption | null) => {
     setSelectedPO(po);
@@ -284,8 +285,8 @@ export default function PaymentSheetsTab() {
         />
         <Box sx={{ flex: 1 }} />
         <RefreshButton onClick={() => queryClient.invalidateQueries({ queryKey })} />
-        <Button variant="outlined" startIcon={<DownloadIcon />} onClick={handleExportPDF} disabled={rows.length === 0}>Export PDF</Button>
-        <Button variant="outlined" startIcon={<PrintIcon />} onClick={handlePrint} disabled={rows.length === 0}>Print</Button>
+        <Button variant="outlined" startIcon={<DownloadIcon />} onClick={handleExportPDF}>Export PDF</Button>
+        <Button variant="outlined" startIcon={<PrintIcon />} onClick={handlePrint}>Print</Button>
         <Button variant="contained" startIcon={<AddIcon />} onClick={() => { setAddOpen(true); setSelectedPO(null); setPoSearch(''); }}>Add Entry</Button>
       </Box>
 
@@ -301,6 +302,10 @@ export default function PaymentSheetsTab() {
             <Box>
               <Typography variant="caption" color="text.secondary">Entries</Typography>
               <Typography variant="h6">{rows.length}</Typography>
+            </Box>
+            <Box>
+              <Typography variant="caption" color="text.secondary">Total Amount</Typography>
+              <Typography variant="h6">{formatCurrency(grandTotal)}</Typography>
             </Box>
             <Box>
               <Typography variant="caption" color="text.secondary">Total Paid Today</Typography>

@@ -94,6 +94,7 @@ router.get(
         data,
         totalAmount,
         payableAmount,
+        grandTotal: totalAmount + payableAmount,
         pagination: { page: pageNum, pageSize: size, total, totalPages: Math.ceil(total / size) },
       });
     } catch (error) {
