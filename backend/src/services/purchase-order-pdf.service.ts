@@ -55,8 +55,8 @@ export async function streamPurchaseOrderPdf(res: NodeJS.WritableStream, po: any
   }
 
   // ── Top header box ──
-  const headerTop = 28;
-  const headerH = 100;
+  const headerTop = 22;
+  const headerH = 82;
   const poBoxW = 130;
   const poBoxX = right - poBoxW - 16;
 
@@ -67,11 +67,11 @@ export async function streamPurchaseOrderPdf(res: NodeJS.WritableStream, po: any
   doc.moveTo(sepX, headerTop + 15).lineTo(sepX, headerTop + headerH - 15).stroke(border);
 
   // Logo on the left
-  const logoW = 80;
-  const logoH = 75;
+  const logoW = 66;
+  const logoH = 60;
   if (logoBuffer) {
     try {
-      doc.image(logoBuffer, left + 14, 36, { fit: [logoW, logoH] });
+      doc.image(logoBuffer, left + 12, 30, { fit: [logoW, logoH] });
     } catch (err: any) {
       console.error('[PO PDF] PNG logo failed to render, falling back to JPEG:', err?.message ?? err);
       try {
@@ -83,28 +83,28 @@ export async function streamPurchaseOrderPdf(res: NodeJS.WritableStream, po: any
     }
   }
 
-  const titleX = left + (logoBuffer ? 110 : 18);
-  const titleWidth = 235;
+  const titleX = left + (logoBuffer ? 92 : 18);
+  const titleWidth = 250;
   const title = text(po.project?.name ?? 'Hospital Construction ERP');
 
   // Title block
-  doc.fillColor(dark).font('Helvetica-Bold').fontSize(20);
+  doc.fillColor(dark).font('Helvetica-Bold').fontSize(16);
   const titleH = doc.heightOfString(title, { width: titleWidth });
-  doc.text(title, titleX, 38, { width: titleWidth });
+  doc.text(title, titleX, 30, { width: titleWidth });
 
-  const addrY = 40 + titleH + 6;
-  doc.font('Helvetica').fontSize(9).fillColor(muted).text(text(po.project?.officeAddress ?? 'V Grand Health Care Pvt. Ltd.'), titleX, addrY, { width: titleWidth });
+  const addrY = 32 + titleH + 4;
+  doc.font('Helvetica').fontSize(7.5).fillColor(muted).text(text(po.project?.officeAddress ?? 'V Grand Health Care Pvt. Ltd.'), titleX, addrY, { width: titleWidth });
 
   // PO number box on the right
-  doc.roundedRect(poBoxX, headerTop + 14, poBoxW, 70, 4).fill('#ffffff').stroke(border);
-  doc.fillColor(primary).font('Helvetica-Bold').fontSize(10).text('PO NUMBER', poBoxX, headerTop + 30, { width: poBoxW, align: 'center' });
-  doc.fillColor(dark).font('Helvetica-Bold').fontSize(15).text(po.poNumber, poBoxX, headerTop + 52, { width: poBoxW, align: 'center' });
+  doc.roundedRect(poBoxX, headerTop + 8, poBoxW, 66, 4).fill('#ffffff').stroke(border);
+  doc.fillColor(primary).font('Helvetica-Bold').fontSize(9).text('PO NUMBER', poBoxX, headerTop + 20, { width: poBoxW, align: 'center' });
+  doc.fillColor(dark).font('Helvetica-Bold').fontSize(13).text(po.poNumber, poBoxX, headerTop + 40, { width: poBoxW, align: 'center' });
 
-  let y = 145;
+  let y = 116;
 
   // ── Subtitle header ──
-  doc.fillColor(dark).font('Helvetica-Bold').fontSize(18).text('PURCHASE ORDER', left, y);
-  y += 30;
+  doc.fillColor(dark).font('Helvetica-Bold').fontSize(14).text('PURCHASE ORDER', left, y);
+  y += 22;
 
   // ── Left info column ──
   const leftW = 235;
@@ -114,12 +114,12 @@ export async function streamPurchaseOrderPdf(res: NodeJS.WritableStream, po: any
   const rightCol = left + leftW + gap;
 
   const drawLabel = (labelText: string, value: string, xx: number, yy: number, ww: number) => {
-    doc.fillColor(muted).font('Helvetica').fontSize(8.5).text(`${labelText}:`, xx, yy, { width: 88 });
+    doc.fillColor(muted).font('Helvetica').fontSize(7.5).text(`${labelText}:`, xx, yy, { width: 88 });
     const valueW = ww - 96;
-    doc.font('Helvetica-Bold').fontSize(9);
+    doc.font('Helvetica-Bold').fontSize(8);
     const valueH = doc.heightOfString(value, { width: valueW });
-    doc.fillColor(dark).font('Helvetica-Bold').fontSize(9).text(value, xx + 92, yy, { width: valueW });
-    return yy + Math.max(18, valueH + 6);
+    doc.fillColor(dark).font('Helvetica-Bold').fontSize(8).text(value, xx + 92, yy, { width: valueW });
+    return yy + Math.max(14, valueH + 3);
   };
 
   const paymentTerms = po.paymentTerms || 'After Delivery & Inspection';
@@ -138,10 +138,10 @@ export async function streamPurchaseOrderPdf(res: NodeJS.WritableStream, po: any
   y = drawLabel('Project Head', text(head?.name), leftCol, y, leftW);
 
   // ── Vendor Details box on the right ──
-  const vBoxH = 120;
+  const vBoxH = 96;
   doc.roundedRect(rightCol, vBoxTop, rightW, vBoxH, 4).stroke(border);
   doc.rect(rightCol, vBoxTop, rightW, 24).fill(primary);
-  doc.fillColor('#fff').font('Helvetica-Bold').fontSize(11).text('VENDOR DETAILS:', rightCol + 10, vBoxTop + 6);
+  doc.fillColor('#fff').font('Helvetica-Bold').fontSize(9.5).text('VENDOR DETAILS:', rightCol + 8, vBoxTop + 5);
 
   const vData = [
     ['Name', text(po.vendor?.name)],
@@ -150,18 +150,18 @@ export async function streamPurchaseOrderPdf(res: NodeJS.WritableStream, po: any
     ['PAN', text(po.vendor?.panNumber)],
   ];
 
-  let vy = vBoxTop + 34;
+  let vy = vBoxTop + 29;
   for (const [k, v] of vData) {
     const vLabelW = 60;
     const vValueW = rightW - vLabelW - 22;
-    doc.font('Helvetica-Bold').fontSize(8.5);
+    doc.font('Helvetica-Bold').fontSize(7.5);
     const vh = doc.heightOfString(v, { width: vValueW });
-    doc.fillColor(muted).font('Helvetica').fontSize(8.5).text(`${k}:`, rightCol + 10, vy, { width: vLabelW });
-    doc.fillColor(dark).font('Helvetica-Bold').fontSize(8.5).text(v, rightCol + 10 + vLabelW, vy, { width: vValueW });
-    vy += Math.max(15, vh + 4);
+    doc.fillColor(muted).font('Helvetica').fontSize(7.5).text(`${k}:`, rightCol + 8, vy, { width: vLabelW });
+    doc.fillColor(dark).font('Helvetica-Bold').fontSize(7.5).text(v, rightCol + 8 + vLabelW, vy, { width: vValueW });
+    vy += Math.max(13, vh + 2);
   }
 
-  y = Math.max(y, vBoxTop + vBoxH + 22);
+  y = Math.max(y, vBoxTop + vBoxH + 10);
 
   // ── Bill To & Delivery address boxes ──
   const midGap = 10;
@@ -171,7 +171,7 @@ export async function streamPurchaseOrderPdf(res: NodeJS.WritableStream, po: any
   doc.font('Helvetica').fontSize(8.5);
   const billAddrH = doc.heightOfString(text(po.project?.officeAddress), { width: boxW - 28 });
   const delAddrH = doc.heightOfString(text(po.project?.hospitalAddress), { width: boxW - 38 });
-  const boxH = Math.max(100, 30 + 18 + Math.max(billAddrH, delAddrH) + 24);
+  const boxH = Math.max(74, 26 + 16 + Math.max(billAddrH, delAddrH) + 16);
 
   // Bill To
   const billBoxX = left;
@@ -189,7 +189,7 @@ export async function streamPurchaseOrderPdf(res: NodeJS.WritableStream, po: any
   doc.fillColor('#fff').font('Helvetica-Bold').fontSize(11).text('DELIVERY ADDRESS (Hospital Site):', delBoxX + 10, y + 6);
   doc.fillColor(dark).font('Helvetica').fontSize(8.5).text(text(po.project?.hospitalAddress), delBoxX + 10, y + 34, { width: boxW - 38 });
 
-  y += boxH + 22;
+  y += boxH + 10;
 
   // ── Items table ──
   const colGap = 4;
@@ -217,28 +217,36 @@ export async function streamPurchaseOrderPdf(res: NodeJS.WritableStream, po: any
   doc.text('Total', colTotal + 4, y + 7, { width: wTotal - 8, align: 'right' });
   y += 26;
 
-  const rowH = 24;
+  // Reserve room for notes, totals, signatures and the footer before sizing rows.
+  const poNotes = (po as { notes?: string | null }).notes;
+  const bottomReserve = 154 + (poNotes && poNotes.trim().length > 0 ? 58 : 0);
+  const rowH = Math.max(10, Math.min(21, (pageH - y - bottomReserve) / Math.max(1, po.items.length)));
+  const rowFontSize = rowH < 14 ? 6.5 : rowH < 17 ? 7 : 8;
+  const rowTextOffset = Math.max(2, (rowH - rowFontSize) / 2 - 1);
+
   for (let i = 0; i < po.items.length; i++) {
     const item = po.items[i];
     if (i % 2 === 0) doc.rect(left, y, width, rowH).fill(primaryLight);
     doc.rect(left, y, width, rowH).stroke(border);
 
-    doc.fillColor(dark).font('Helvetica').fontSize(8.5);
-    doc.text(String(i + 1), colSno, y + 6, { width: wSno, align: 'center' });
-    doc.text(item.materialName, colDesc + 4, y + 6, { width: wDesc - 8 });
-    doc.text(String(item.quantity), colQty, y + 6, { width: wQty, align: 'center' });
-    doc.text(text(item.unit), colUnit, y + 6, { width: wUnit, align: 'center' });
-    doc.fillColor(dark).font('Helvetica-Bold').fontSize(8.5);
-    doc.text(fmtMoney(Number(item.unitPrice)), colPrice + 4, y + 6, { width: wPrice - 8, align: 'right' });
-    doc.text(fmtMoney(Number(item.amount)), colTotal + 4, y + 6, { width: wTotal - 8, align: 'right' });
+    doc.fillColor(dark).font('Helvetica').fontSize(rowFontSize);
+    doc.text(String(i + 1), colSno, y + rowTextOffset, { width: wSno, align: 'center', lineBreak: false });
+    let description = text(item.materialName);
+    while (description.length > 3 && doc.widthOfString(description) > wDesc - 8) {
+      description = `${description.slice(0, -4).trimEnd()}...`;
+    }
+    doc.text(description, colDesc + 4, y + rowTextOffset, { width: wDesc - 8, lineBreak: false });
+    doc.text(String(item.quantity), colQty, y + rowTextOffset, { width: wQty, align: 'center', lineBreak: false });
+    doc.text(text(item.unit), colUnit, y + rowTextOffset, { width: wUnit, align: 'center', lineBreak: false });
+    doc.fillColor(dark).font('Helvetica-Bold').fontSize(rowFontSize);
+    doc.text(fmtMoney(Number(item.unitPrice)), colPrice + 4, y + rowTextOffset, { width: wPrice - 8, align: 'right', lineBreak: false });
+    doc.text(fmtMoney(Number(item.amount)), colTotal + 4, y + rowTextOffset, { width: wTotal - 8, align: 'right', lineBreak: false });
     y += rowH;
   }
 
   // ── PO Description / Notes (highlighted) ──
-  const poNotes = (po as { notes?: string | null }).notes;
   if (poNotes && poNotes.trim().length > 0) {
-    if (y > pageH - 80) { doc.addPage(); y = 40; }
-    y += 8;
+    y += 5;
     const notesW = width;
     const notesLabel = 'PO Description / Notes';
     doc.font('Helvetica-Bold').fontSize(8.5);
@@ -256,27 +264,28 @@ export async function streamPurchaseOrderPdf(res: NodeJS.WritableStream, po: any
   const totalsX = right - totalsW;
 
   const drawTotal = (lbl: string, val: string, yy: number, bg = false) => {
-    if (bg) doc.rect(totalsX, yy, totalsW, 26).fill(primary);
-    else doc.rect(totalsX, yy, totalsW, 24).fill(primaryLight).stroke(border);
-    const labelW = 145;
-    const valueW = 85;
-    doc.fillColor(bg ? '#fff' : muted).font('Helvetica').fontSize(9).text(lbl, totalsX + 8, yy + 6, { width: labelW });
-    doc.fillColor(bg ? '#fff' : dark).font('Helvetica-Bold').fontSize(9).text(val, totalsX + 8 + labelW, yy + 6, { width: valueW, align: 'right' });
-    return yy + (bg ? 26 : 24);
+    const rowHeight = bg ? 22 : 20;
+    if (bg) doc.rect(totalsX, yy, totalsW, rowHeight).fill(primary);
+    else doc.rect(totalsX, yy, totalsW, rowHeight).fill(primaryLight).stroke(border);
+    const labelW = 165;
+    const valueW = totalsW - labelW - 16;
+    doc.fillColor(bg ? '#fff' : muted).font('Helvetica').fontSize(7.5).text(lbl, totalsX + 8, yy + 5, { width: labelW, lineBreak: false });
+    doc.fillColor(bg ? '#fff' : dark).font('Helvetica-Bold').fontSize(8).text(val, totalsX + 8 + labelW, yy + 5, { width: valueW, align: 'right', lineBreak: false });
+    return yy + rowHeight;
   };
 
   // Highlighted advance row — amber background to draw attention to the amount payable now
   const advanceHighlight = '#E65100';
   const drawAdvanceTotal = (lbl: string, val: string, yy: number) => {
-    doc.rect(totalsX, yy, totalsW, 28).fill(advanceHighlight);
-    const labelW = 145;
-    const valueW = 85;
-    doc.fillColor('#fff').font('Helvetica-Bold').fontSize(9.5).text(lbl, totalsX + 8, yy + 7, { width: labelW });
-    doc.fillColor('#fff').font('Helvetica-Bold').fontSize(10).text(val, totalsX + 8 + labelW, yy + 7, { width: valueW, align: 'right' });
-    return yy + 28;
+    doc.rect(totalsX, yy, totalsW, 22).fill(advanceHighlight);
+    const labelW = 165;
+    const valueW = totalsW - labelW - 16;
+    doc.fillColor('#fff').font('Helvetica-Bold').fontSize(8).text(lbl, totalsX + 8, yy + 6, { width: labelW, lineBreak: false });
+    doc.fillColor('#fff').font('Helvetica-Bold').fontSize(8.5).text(val, totalsX + 8 + labelW, yy + 6, { width: valueW, align: 'right', lineBreak: false });
+    return yy + 22;
   };
 
-  y += 12;
+  y += 6;
   y = drawTotal('Subtotal:', fmtMoney(Number(po.totalAmount)), y);
   const gstRate = po.items.length > 0 ? Number(po.items[0]?.gstRate ?? 0) : 0;
   const gstLabel = Number(po.gstAmount) > 0 ? `GST (${gstRate}%):` : 'GST (No Gst Applicable):';
@@ -299,30 +308,18 @@ export async function streamPurchaseOrderPdf(res: NodeJS.WritableStream, po: any
   if (deductionRows.length === 0 && po.advanceAmount !== null && po.advanceAmount !== undefined && Number(po.advanceAmount) > 0) {
     const advanceVal = Number(po.advanceAmount);
     const outstandingVal = Math.max(0, Number(po.grandTotal) - advanceVal);
-    y += 8;
+    y += 5;
     y = drawAdvanceTotal('ADVANCE NOW PAY:', fmtMoney(advanceVal), y);
     y = drawTotal('Outstanding (after advance):', fmtMoney(outstandingVal), y);
   }
-  y += 20;
+  y += 10;
 
   // ── Approval & Authorization boxes ──
-  // Ensure the approval section fits on the same page (single-page PDF).
-  // Reserve space for: heading (26) + signature row (sigH=65) + footer (~40) = ~131
-  // If not enough room, the layout below compacts spacing to make it fit.
   const sigW = (width - 24) / 3;
-  const sigH = 60;
-  const approvalHeadingH = 24;
-  const footerH = 40;
-  const minSpaceNeeded = approvalHeadingH + sigH + footerH + 8;
+  const sigH = 48;
+  const approvalHeadingH = 20;
 
-  // If the approval section would overflow the page, compact the spacing
-  // above (reduce the gap after totals) rather than adding a new page.
-  if (y + minSpaceNeeded > pageH - 20) {
-    // Clamp y so the approval section + footer fit on the current page
-    y = Math.min(y, pageH - minSpaceNeeded - 20);
-  }
-
-  doc.fillColor(primary).font('Helvetica-Bold').fontSize(12).text('APPROVAL & AUTHORIZATION:', left, y);
+  doc.fillColor(primary).font('Helvetica-Bold').fontSize(10.5).text('APPROVAL & AUTHORIZATION:', left, y);
   y += approvalHeadingH;
 
   // Order: Managing Director, Director, Construction Project Head
@@ -340,14 +337,14 @@ export async function streamPurchaseOrderPdf(res: NodeJS.WritableStream, po: any
     const displayName = u?.name ?? approved?.name ?? '—';
 
     doc.roundedRect(sx, y, sigW, sigH, 4).stroke(border);
-    doc.fillColor(dark).font('Helvetica-Bold').fontSize(10).text(displayName, sx + 8, y + 14, { width: sigW - 16, align: 'center' });
-    doc.fillColor(muted).font('Helvetica').fontSize(8).text(`(${title})`, sx + 8, y + 38, { width: sigW - 16, align: 'center' });
+    doc.fillColor(dark).font('Helvetica-Bold').fontSize(8.5).text(displayName, sx + 6, y + 10, { width: sigW - 12, align: 'center', lineBreak: false });
+    doc.fillColor(muted).font('Helvetica').fontSize(7).text(`(${title})`, sx + 6, y + 30, { width: sigW - 12, align: 'center' });
   }
 
   // ── Footer ──
-  y += sigH + 16;
+  y += sigH + 8;
   doc.moveTo(left, y).lineTo(right, y).stroke(primary);
-  doc.fillColor(muted).font('Helvetica').fontSize(7).text(`Generated from Hospital Construction ERP — ${new Date().toLocaleDateString('en-IN')}`, left, y + 6, { width, align: 'center' });
+  doc.fillColor(muted).font('Helvetica').fontSize(6.5).text(`Generated from Hospital Construction ERP — ${new Date().toLocaleDateString('en-IN')}`, left, y + 4, { width, align: 'center' });
 
   doc.end();
 }
