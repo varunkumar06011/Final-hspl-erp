@@ -478,6 +478,7 @@ router.get(
         committed: number;
         actual: number;
         paid: number;
+        allocated?: number;
       };
       const transactions: Txn[] = [];
 
@@ -542,6 +543,54 @@ router.get(
           committed: -amt,
           actual: amt,
           paid: amt,
+        });
+      }
+
+      // 2b. Receipt vouchers tagged with this budget head → allocated augmentation
+      //     A receipt increases allocatedAmount (more budget available to spend).
+      //     These are bank/cash DEPOSITS tagged with the budget head from RECEIPT vouchers.
+      const receiptBankTxns = await prisma.bankTransaction.findMany({
+        where: {
+          status: 'POSTED',
+          type: 'DEPOSIT',
+          budgetHeadId,
+          bankAccount: { projectId, deletedAt: null },
+        },
+        include: { bankAccount: { select: { accountName: true } } },
+        orderBy: { date: 'asc' },
+      });
+      for (const t of receiptBankTxns) {
+        transactions.push({
+          date: t.date.toISOString(),
+          type: 'Receipt (Bank)',
+          reference: t.bankAccount?.accountName ?? 'Bank',
+          description: t.description ?? 'Bank receipt (budget augmentation)',
+          committed: 0,
+          actual: 0,
+          paid: 0,
+          allocated: Number(t.amount),
+        });
+      }
+      const receiptCashTxns = await prisma.cashTransaction.findMany({
+        where: {
+          status: 'POSTED',
+          type: 'IN',
+          budgetHeadId,
+          cashAccount: { projectId, deletedAt: null },
+        },
+        include: { cashAccount: { select: { name: true } } },
+        orderBy: { date: 'asc' },
+      });
+      for (const t of receiptCashTxns) {
+        transactions.push({
+          date: t.date.toISOString(),
+          type: 'Receipt (Cash)',
+          reference: t.cashAccount?.name ?? 'Cash',
+          description: t.description ?? 'Cash receipt (budget augmentation)',
+          committed: 0,
+          actual: 0,
+          paid: 0,
+          allocated: Number(t.amount),
         });
       }
 

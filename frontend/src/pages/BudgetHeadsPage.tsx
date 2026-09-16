@@ -930,6 +930,7 @@ export default function BudgetHeadsPage() {
                             <TableCell sx={{ fontWeight: 600 }} align="right">Committed</TableCell>
                             <TableCell sx={{ fontWeight: 600 }} align="right">Actual</TableCell>
                             <TableCell sx={{ fontWeight: 600 }} align="right">Paid</TableCell>
+                            <TableCell sx={{ fontWeight: 600 }} align="right">Received</TableCell>
                           </TableRow>
                         </TableHead>
                         <TableBody>
@@ -942,6 +943,7 @@ export default function BudgetHeadsPage() {
                               <TableCell data-label="Committed" align="right">{Number(txn.committed) !== 0 ? formatCurrency(Number(txn.committed)) : '—'}</TableCell>
                               <TableCell data-label="Actual" align="right">{Number(txn.actual) !== 0 ? formatCurrency(Number(txn.actual)) : '—'}</TableCell>
                               <TableCell data-label="Paid" align="right">{Number(txn.paid) !== 0 ? formatCurrency(Number(txn.paid)) : '—'}</TableCell>
+                              <TableCell data-label="Received" align="right">{Number(txn.allocated) !== 0 ? formatCurrency(Number(txn.allocated)) : '—'}</TableCell>
                             </TableRow>
                           ))}
                         </TableBody>
