@@ -112,6 +112,7 @@ const ADMIN_NAV_ITEMS = [
   { label: 'Payments', icon: <PaymentIcon />, path: '/payments', permission: Permission.VIEW_FINANCIALS, section: 'Accounting' },
   { label: 'Vouchers', icon: <VouchersIcon />, path: '/vouchers', permission: Permission.VIEW_FINANCIALS, section: 'Accounting' },
   { label: 'GST Records', icon: <ReceiptIcon />, path: '/gst-records', permission: Permission.VIEW_FINANCIALS, section: 'Accounting' },
+  { label: 'Chart of Accounts', icon: <LedgersIcon />, path: '/ledgers', permission: Permission.VIEW_FINANCIALS, section: 'Accounting', roles: [UserRole.ACCOUNTANT] },
   // ── Budget ──
   { label: 'Budget Heads', icon: <BudgetIcon />, path: '/budget-heads', permission: Permission.VIEW_FINANCIALS, section: 'Budget' },
   { label: 'Owner Account', icon: <OwnerIcon />, path: '/owner-accounts', permission: Permission.VIEW_FINANCIALS, section: 'Budget' },
