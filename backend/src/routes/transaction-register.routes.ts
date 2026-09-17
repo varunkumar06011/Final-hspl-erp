@@ -80,11 +80,11 @@ router.get(
         const contains = { contains: s, mode: 'insensitive' as const };
         const [vendors, qs, pos, invs, prs, sheets] = await Promise.all([
           prisma.vendor.findMany({ where: { projectId, deletedAt: null, OR: [{ name: contains }, { vendorCode: contains }] }, select: { id: true } }),
-          prisma.quotation.findMany({ where: { projectId, deletedAt: null, quotationNumber: contains }, select: { vendorId: true } }),
-          prisma.purchaseOrder.findMany({ where: { projectId, deletedAt: null, poNumber: contains }, select: { vendorId: true } }),
+          prisma.quotation.findMany({ where: { projectId, deletedAt: null, status: { not: 'DELETED' }, quotationNumber: contains }, select: { vendorId: true } }),
+          prisma.purchaseOrder.findMany({ where: { projectId, deletedAt: null, status: { not: 'DELETED' }, poNumber: contains }, select: { vendorId: true } }),
           prisma.vendorInvoice.findMany({ where: { projectId, deletedAt: null, OR: [{ invoiceNumber: contains }, { invoiceCode: contains }] }, select: { vendorId: true } }),
-          prisma.paymentRequest.findMany({ where: { projectId, deletedAt: null, OR: [{ requestNumber: contains }, { paymentCode: contains }] }, select: { vendorId: true } }),
-          prisma.paymentSheet.findMany({ where: { projectId, deletedAt: null, purchaseOrder: { poNumber: contains } }, select: { purchaseOrder: { select: { vendorId: true } } } }),
+          prisma.paymentRequest.findMany({ where: { projectId, deletedAt: null, status: { not: 'DELETED' }, OR: [{ requestNumber: contains }, { paymentCode: contains }] }, select: { vendorId: true } }),
+          prisma.paymentSheet.findMany({ where: { projectId, deletedAt: null, status: { not: 'DELETED' }, purchaseOrder: { poNumber: contains, status: { not: 'DELETED' } } }, select: { purchaseOrder: { select: { vendorId: true } } } }),
         ]);
         searchVendorIds = new Set<string>([
           ...vendors.map((v) => v.id),
@@ -111,17 +111,20 @@ router.get(
         (!budgetHeadId || e.budgetHeadId === budgetHeadId);
 
       // ── Pull year-scoped rows from every vendor-linked module ──
+      // Soft-deleted records (status DELETED) are excluded — same semantics as
+      // every count/total elsewhere in the app (deleted POs stay visible but
+      // don't count financially).
       const [vendorsCreated, quotations, pos, invoices, payReqs, payments, sheets, settlements, receipts] = await Promise.all([
         prisma.vendor.findMany({
           where: { projectId, deletedAt: null, createdAt: inYear },
           select: { id: true, createdAt: true, status: true },
         }),
         prisma.quotation.findMany({
-          where: { projectId, deletedAt: null, date: inYear },
+          where: { projectId, deletedAt: null, status: { not: 'DELETED' }, date: inYear },
           select: { vendorId: true, date: true, grandTotal: true, status: true },
         }),
         prisma.purchaseOrder.findMany({
-          where: { projectId, deletedAt: null, date: inYear },
+          where: { projectId, deletedAt: null, status: { not: 'DELETED' }, date: inYear },
           select: { vendorId: true, date: true, grandTotal: true, status: true, budgetHeadId: true, budgetHead: { select: { particulars: true } } },
         }),
         prisma.vendorInvoice.findMany({
@@ -129,16 +132,16 @@ router.get(
           select: { vendorId: true, date: true, totalAmount: true, paymentStatus: true, purchaseOrder: { select: { budgetHeadId: true, budgetHead: { select: { particulars: true } } } } },
         }),
         prisma.paymentRequest.findMany({
-          where: { projectId, deletedAt: null, createdAt: inYear, vendorId: { not: null } },
+          where: { projectId, deletedAt: null, status: { not: 'DELETED' }, createdAt: inYear, vendorId: { not: null } },
           select: { vendorId: true, createdAt: true, amount: true, status: true, type: true, budgetHeadId: true, budgetHead: { select: { particulars: true } }, payments: { select: { id: true } } },
         }),
         // Payments reach the vendor through the payment request (Payment has no projectId)
         prisma.payment.findMany({
-          where: { date: inYear, paymentRequest: { projectId, vendorId: { not: null }, deletedAt: null } },
+          where: { date: inYear, paymentRequest: { projectId, vendorId: { not: null }, deletedAt: null, status: { not: 'DELETED' } } },
           select: { date: true, amount: true, status: true, budgetHeadId: true, budgetHead: { select: { particulars: true } }, paymentRequest: { select: { vendorId: true } } },
         }),
         prisma.paymentSheet.findMany({
-          where: { projectId, deletedAt: null, date: inYear },
+          where: { projectId, deletedAt: null, status: { not: 'DELETED' }, date: inYear, purchaseOrder: { status: { not: 'DELETED' } } },
           select: { date: true, amount: true, status: true, purchaseOrder: { select: { vendorId: true, budgetHeadId: true, budgetHead: { select: { particulars: true } } } } },
         }),
         prisma.billSettlement.findMany({
@@ -146,7 +149,7 @@ router.get(
           select: { vendorId: true, createdAt: true, amount: true },
         }),
         prisma.goodsReceipt.findMany({
-          where: { projectId, deletedAt: null, createdAt: inYear },
+          where: { projectId, deletedAt: null, createdAt: inYear, purchaseOrder: { status: { not: 'DELETED' } } },
           select: { status: true, createdAt: true, postedAt: true, purchaseOrder: { select: { vendorId: true } } },
         }),
       ]);
