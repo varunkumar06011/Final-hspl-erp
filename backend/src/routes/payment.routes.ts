@@ -4,6 +4,7 @@ import {
   createPaymentRequestSchema,
   listPaymentRequestsSchema,
   recordPaymentSchema,
+  linkPaymentVoucherSchema,
   createExpenseSchema,
   createAdvancePaymentSchema,
   approvalActionSchema,
@@ -1181,6 +1182,150 @@ router.post(
         projectId,
         oldValue: { status: PaymentStatus.APPROVED },
         newValue: { status: PaymentStatus.PAID, paymentAmount: String(req.body.amount) },
+      });
+
+      res.status(201).json(payment);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// POST /:id/link-voucher — mark an approved request as PAID by linking an
+// already-posted PAYMENT voucher. Used when the payment was recorded on the
+// Vouchers page before/without going through this request — posting a new
+// voucher here would double-book the expense and deduct the account again.
+router.post(
+  '/:id/link-voucher',
+  rbacMiddleware(Permission.VIEW_FINANCIALS),
+  validateMiddleware(linkPaymentVoucherSchema),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      const pr = await prisma.paymentRequest.findFirst({
+        where: { id: req.params.id, projectId, deletedAt: null },
+        include: { payments: { select: { id: true } } },
+      });
+      if (!pr) {
+        res.status(404).json({ error: 'Payment request not found' });
+        return;
+      }
+      if (pr.status !== PaymentStatus.APPROVED) {
+        res.status(400).json({ error: `Payment request must be APPROVED. Current status: ${pr.status}` });
+        return;
+      }
+      if (pr.payments.length > 0) {
+        res.status(409).json({ error: 'Payment has already been recorded' });
+        return;
+      }
+
+      const voucher = await prisma.journalVoucher.findFirst({
+        where: { id: String(req.body.journalVoucherId), projectId, deletedAt: null },
+        include: {
+          payments: { select: { id: true } },
+          ledgerEntries: {
+            where: { credit: { gt: 0 } },
+            include: { ledger: { select: { linkedEntityType: true, linkedEntityId: true } } },
+          },
+        },
+      });
+      if (!voucher) {
+        res.status(404).json({ error: 'Voucher not found' });
+        return;
+      }
+      if (voucher.status !== 'POSTED') {
+        res.status(400).json({ error: `Voucher must be POSTED. Current status: ${voucher.status}` });
+        return;
+      }
+      if (voucher.voucherType !== VoucherType.PAYMENT) {
+        res.status(400).json({ error: 'Only PAYMENT vouchers can be linked to a payment request' });
+        return;
+      }
+      if (voucher.payments.length > 0) {
+        res.status(409).json({ error: 'This voucher is already linked to a payment' });
+        return;
+      }
+      if (Math.abs(Number(voucher.totalDebit) - Number(pr.amount)) > 0.01) {
+        res.status(400).json({ error: `Voucher amount must equal the approved amount of ${Number(pr.amount)}` });
+        return;
+      }
+
+      // The voucher's credit side must hit a bank/cash ledger linked to a real
+      // account — otherwise it never moved money and linking it would mark the
+      // request paid against a phantom payment.
+      let bankAccountId: string | null = null;
+      let cashAccountId: string | null = null;
+      for (const entry of voucher.ledgerEntries) {
+        if (entry.ledger.linkedEntityType === 'BANK_ACCOUNT' && entry.ledger.linkedEntityId) bankAccountId = entry.ledger.linkedEntityId;
+        if (entry.ledger.linkedEntityType === 'CASH_ACCOUNT' && entry.ledger.linkedEntityId) cashAccountId = entry.ledger.linkedEntityId;
+      }
+      if (!bankAccountId && !cashAccountId) {
+        res.status(400).json({ error: 'The voucher does not credit a bank or cash account ledger' });
+        return;
+      }
+
+      const payment = await prisma.$transaction(async (tx) => {
+        // Serialize with other payments against the same invoice (same as /pay):
+        // lock the invoice row and verify the approved amount still fits the
+        // outstanding before this request is counted as paid.
+        if (pr.invoiceId) {
+          await tx.$queryRaw`SELECT id FROM "vendor_invoices" WHERE id = ${pr.invoiceId}::uuid FOR UPDATE`;
+          const { outstanding } = await getInvoicePaymentSummary(pr.invoiceId, tx);
+          if (Number(pr.amount) > outstanding + 0.01) {
+            const err = new Error(`Approved amount ${Number(pr.amount)} exceeds current invoice outstanding ${outstanding.toFixed(2)}`);
+            (err as Error & { status: number }).status = 400;
+            throw err;
+          }
+        }
+
+        const claimed = await tx.paymentRequest.updateMany({
+          where: { id: pr.id, status: PaymentStatus.APPROVED },
+          data: { status: PaymentStatus.PAID },
+        });
+        if (claimed.count !== 1) {
+          throw new Error('Payment has already been recorded by another request');
+        }
+
+        // Re-check inside the transaction — two requests can't link the same voucher
+        const existingLink = await tx.payment.findFirst({
+          where: { journalVoucherId: voucher.id },
+          select: { id: true },
+        });
+        if (existingLink) {
+          const err = new Error('This voucher is already linked to a payment');
+          (err as Error & { status: number }).status = 409;
+          throw err;
+        }
+
+        const created = await tx.payment.create({
+          data: {
+            paymentRequestId: pr.id,
+            amount: Number(pr.amount),
+            mode: bankAccountId ? 'BANK_TRANSFER' : 'CASH',
+            reference: voucher.chequeNumber ?? null,
+            bankAccountId,
+            cashAccountId,
+            budgetHeadId: pr.budgetHeadId ?? null,
+            journalVoucherId: voucher.id,
+            postedAt: voucher.postedAt ?? new Date(),
+          },
+        });
+
+        if (pr.invoiceId) {
+          await recalcInvoicePaymentStatus(pr.invoiceId, tx);
+        }
+
+        return created;
+      });
+
+      await logAudit({
+        userId: req.user!.id,
+        action: AuditAction.UPDATE,
+        entityType: 'PAYMENT_REQUEST',
+        entityId: pr.id,
+        projectId,
+        oldValue: { status: PaymentStatus.APPROVED },
+        newValue: { status: PaymentStatus.PAID, linkedVoucher: voucher.jvNumber },
       });
 
       res.status(201).json(payment);

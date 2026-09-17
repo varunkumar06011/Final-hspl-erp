@@ -46,6 +46,7 @@ import {
   Receipt as ReceiptIcon,
   Delete as DeleteIcon,
   WhatsApp as WhatsAppIcon,
+  Link as LinkIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
@@ -125,6 +126,17 @@ interface PendingInvoice {
   createdAt: string;
 }
 
+// A posted PAYMENT voucher that can be linked to a payment request
+// (payment already recorded on the Vouchers page — no new posting needed).
+interface LinkableVoucher {
+  id: string;
+  jvNumber: string;
+  date: string;
+  description: string | null;
+  totalDebit: number;
+  payments: { id: string }[];
+}
+
 interface PendingPO {
   id: string;
   poNumber: string;
@@ -184,6 +196,8 @@ export default function PaymentsPage() {
   const advanceFileRef = useRef<HTMLInputElement>(null);
   const [advanceAcknowledged, setAdvanceAcknowledged] = useState(false);
   const [approvalAction, setApprovalAction] = useState<{ row: PaymentRequestRow; action: 'approve' | 'reject' } | null>(null);
+  const [linkVoucherRow, setLinkVoucherRow] = useState<PaymentRequestRow | null>(null);
+  const [selectedVoucherId, setSelectedVoucherId] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
   const { user } = useAuthStore();
@@ -408,6 +422,45 @@ export default function PaymentsPage() {
       queryClient.invalidateQueries({ queryKey: ['/payments'] });
       queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
       setDeleteRow(null);
+    },
+    onError: (err: unknown) => setError(extractErrorMessage(err)),
+  });
+
+  // Posted PAYMENT vouchers matching this request's amount, for the
+  // "Link Voucher" dialog (payment already recorded outside the request flow).
+  const { data: linkVouchersData, isLoading: linkVouchersLoading } = useQuery({
+    queryKey: ['/vouchers', 'linkable', linkVoucherRow?.id],
+    enabled: !!linkVoucherRow,
+    queryFn: async () => {
+      const response = await api.get('/vouchers', {
+        params: {
+          voucherType: 'PAYMENT',
+          status: 'POSTED',
+          minAmount: linkVoucherRow!.amount,
+          maxAmount: linkVoucherRow!.amount,
+          pageSize: 100,
+        },
+      });
+      return response.data;
+    },
+  });
+  const linkableVouchers: LinkableVoucher[] = (linkVouchersData?.data ?? []).filter(
+    (v: LinkableVoucher) => (v.payments?.length ?? 0) === 0,
+  );
+
+  const linkVoucherMutation = useMutation({
+    mutationFn: async () => {
+      const response = await api.post(`/payments/${linkVoucherRow!.id}/link-voucher`, { journalVoucherId: selectedVoucherId });
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/payments'] });
+      queryClient.invalidateQueries({ queryKey: ['/invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
+      setLinkVoucherRow(null);
+      setSelectedVoucherId('');
+      setSuccessMsg('Marked as paid — linked to the existing voucher.');
+      setTimeout(() => setSuccessMsg(''), 3000);
     },
     onError: (err: unknown) => setError(extractErrorMessage(err)),
   });
@@ -758,10 +811,16 @@ export default function PaymentsPage() {
                             </>
                           )}
                           {row.status === PaymentStatus.APPROVED && row.payments.length === 0 && (
-                            <Button size="small" variant="outlined" startIcon={<PaymentsIcon />}
-                              onClick={() => navigate(`/vouchers?paymentRequest=${row.id}`)}>
-                              Post to Ledgers
-                            </Button>
+                            <>
+                              <Button size="small" variant="outlined" startIcon={<PaymentsIcon />}
+                                onClick={() => navigate(`/vouchers?paymentRequest=${row.id}`)}>
+                                Post to Ledgers
+                              </Button>
+                              <Button size="small" variant="outlined" startIcon={<LinkIcon />}
+                                onClick={() => { setLinkVoucherRow(row); setSelectedVoucherId(''); }}>
+                                Link Voucher
+                              </Button>
+                            </>
                           )}
                           {row.payments.length > 0 && (
                             <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -1255,6 +1314,51 @@ export default function PaymentsPage() {
           }
         }}
       />
+
+      {/* Link Existing Voucher Dialog — payment already posted to ledgers */}
+      <ResponsiveDialog open={!!linkVoucherRow} onClose={() => { setLinkVoucherRow(null); setSelectedVoucherId(''); }} maxWidth="sm" fullWidth>
+        <DialogTitle>Link Existing Voucher — {linkVoucherRow?.paymentCode}</DialogTitle>
+        <DialogContent>
+          {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
+            <Typography variant="body2" color="text.secondary">
+              The payment of <strong>{formatCurrency(Number(linkVoucherRow?.amount ?? 0))}</strong> was already posted
+              to the ledgers. Select the posted voucher that recorded it — this request will be marked as paid
+              without posting a new voucher (avoids double-entry).
+            </Typography>
+            {linkVouchersLoading ? (
+              <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}><CircularProgress size={28} /></Box>
+            ) : (
+              <TextField
+                select
+                label="Posted Payment Voucher"
+                value={selectedVoucherId}
+                onChange={(e) => setSelectedVoucherId(e.target.value)}
+                fullWidth
+                size="small"
+                required
+                helperText={linkableVouchers.length === 0 ? 'No unlinked posted vouchers found for this amount' : `${linkableVouchers.length} voucher(s) found for this amount`}
+              >
+                {linkableVouchers.map((v) => (
+                  <MenuItem key={v.id} value={v.id}>
+                    {v.jvNumber} — {new Date(v.date).toLocaleDateString('en-IN')}{v.description ? ` — ${v.description}` : ''}
+                  </MenuItem>
+                ))}
+              </TextField>
+            )}
+          </Box>
+        </DialogContent>
+        <DialogActions sx={{ flexWrap: "wrap", gap: 1 }}>
+          <Button onClick={() => { setLinkVoucherRow(null); setSelectedVoucherId(''); }}>Cancel</Button>
+          <Button
+            variant="contained"
+            disabled={!selectedVoucherId || linkVoucherMutation.isPending}
+            onClick={() => { setError(''); linkVoucherMutation.mutate(); }}
+          >
+            {linkVoucherMutation.isPending ? <CircularProgress size={20} /> : 'Mark as Paid'}
+          </Button>
+        </DialogActions>
+      </ResponsiveDialog>
 
       <ResponsiveDialog open={deleteRow !== null} onClose={() => setDeleteRow(null)} maxWidth="xs" fullWidth>
         <DialogTitle>Delete Payment Request</DialogTitle>

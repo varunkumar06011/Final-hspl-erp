@@ -41,6 +41,9 @@ const voucherInclude = {
       invoice: { select: { id: true, invoiceNumber: true, invoiceCode: true, totalAmount: true } },
     },
   },
+  // Non-empty when a payment request already claims this voucher — used by the
+  // "Link Voucher" picker to hide vouchers that are already spoken for.
+  payments: { select: { id: true } },
   createdByUser: { select: { id: true, name: true } },
   postedByUser: { select: { id: true, name: true } },
   updatedByUser: { select: { id: true, name: true } },

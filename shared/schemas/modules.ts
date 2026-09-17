@@ -77,7 +77,7 @@ const pagination = z.object({
 const vendorMaterial = z.object({
   id: uuid.optional(),
   name: z.string().min(1).max(200),
-  unit: z.string().max(20).optional(),
+  unit: z.string().max(20).nullish(),
 });
 export const createVendorSchema = z.object({
   body: z.object({
@@ -375,6 +375,14 @@ export const recordPaymentSchema = z.object({
   (data) => !!data.body.bankAccountId || !!data.body.cashAccountId,
   { message: 'Either bankAccountId or cashAccountId is required to record a payment', path: ['body'] },
 );
+// Link an already-posted voucher to an approved payment request — used when
+// the payment was recorded on the Vouchers page outside the request flow.
+export const linkPaymentVoucherSchema = z.object({
+  params: z.object({ id: uuid }),
+  body: z.object({
+    journalVoucherId: uuid,
+  }),
+});
 export const approvalActionSchema = z.object({
   params: z.object({ id: uuid, stepId: uuid.optional() }),
   body: z.object({
