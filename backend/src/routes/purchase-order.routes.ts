@@ -1915,16 +1915,17 @@ router.post(
         return;
       }
 
-      // The credit side is always the vendor ledger (or the generic Purchase
-      // ledger when the item was already booked), so the debit must go to a
-      // nominal account — an expense, asset, or other standalone ledger.
-      // Posting to an entity-linked ledger would corrupt the books:
-      //   - the vendor's own ledger → a self-cancelling Dr/Cr pair
-      //   - a bank/cash ledger     → a phantom deposit (fake money in)
-      //   - another vendor/owner   → debits someone else's account
-      if (ledger.linkedEntityType && ledger.linkedEntityType !== 'NONE') {
+      // Linked ledgers are rejected — posting an item to a bank/cash ledger
+      // would fake a deposit, and to another vendor/owner would debit someone
+      // else's account. The one exception is THIS PO's own vendor ledger:
+      // selecting it means "mark this amount as utilised in the vendor
+      // account" — handled below by debiting the generic Purchase pool
+      // instead of the ledger itself (avoids a self-cancelling Dr/Cr pair).
+      const isLinked = !!ledger.linkedEntityType && ledger.linkedEntityType !== 'NONE';
+      const isOwnVendorLedger = ledger.linkedEntityType === 'VENDOR' && ledger.linkedEntityId === po.vendorId;
+      if (isLinked && !isOwnVendorLedger) {
         res.status(400).json({
-          error: 'Items can only be posted to expense/asset ledgers — not to vendor, bank, cash, or owner accounts. Create a ledger (e.g. "Office Rent") if needed.',
+          error: 'Items can only be posted to expense/asset ledgers — not to bank, cash, owner, or other vendor accounts. Create a ledger (e.g. "Office Rent") if needed.',
         });
         return;
       }
@@ -1975,35 +1976,67 @@ router.post(
       ]);
       const alreadyBooked = !!grnBooking || !!invoiceVoucher;
 
+      // Resolve the generic "Purchase" pool — needed as the debit target when
+      // the user posts into the vendor's own ledger, and as the credit target
+      // when the item was already booked via GRN/invoice.
+      const getPurchaseLedgerId = async (): Promise<string> => {
+        const existing = await findLedgerByName('Purchase', projectId);
+        if (existing) return existing;
+        const created = await prisma.ledger.create({
+          data: {
+            projectId,
+            name: 'Purchase',
+            group: 'PURCHASE',
+            linkedEntityType: 'NONE',
+            openingBalance: 0,
+            currentBalance: 0,
+            isActive: true,
+          },
+        });
+        return created.id;
+      };
+
+      // Debit target: normally the selected ledger. When the user picks the
+      // vendor's own ledger, the item must land as a Credit (usage) inside
+      // that account — the debit therefore goes to the generic Purchase pool
+      // instead, so the vendor ledger never shows a self-cancelling pair.
+      // (Only valid when the payable isn't already booked — posting into the
+      // vendor ledger would then need Cr Purchase AND Dr Purchase.)
+      let debitLedgerId = ledger.id;
+      if (isOwnVendorLedger) {
+        if (alreadyBooked) {
+          res.status(400).json({
+            error: `"${item.materialName}" is already booked via a posted GRN/invoice — post it to an expense ledger to reclassify.`,
+          });
+          return;
+        }
+        debitLedgerId = await getPurchaseLedgerId();
+      }
+
       let creditLedgerId: string;
       let creditDesc: string;
       if (alreadyBooked) {
-        let purchaseLedgerId = await findLedgerByName('Purchase', projectId);
-        if (!purchaseLedgerId) {
-          const purchaseLedger = await prisma.ledger.create({
-            data: {
-              projectId,
-              name: 'Purchase',
-              group: 'PURCHASE',
-              linkedEntityType: 'NONE',
-              openingBalance: 0,
-              currentBalance: 0,
-              isActive: true,
-            },
-          });
-          purchaseLedgerId = purchaseLedger.id;
-        }
-        creditLedgerId = purchaseLedgerId;
+        creditLedgerId = await getPurchaseLedgerId();
         creditDesc = `Reclassify ${item.materialName} - PO ${po.poNumber}`;
       } else {
         creditLedgerId = await ensureVendorLedger(po.vendorId, projectId);
         // Reads like Tally: in the vendor's statement this credit row shows
         // the contra account ("By Office Rent - First floor rent - PO ...").
-        creditDesc = `By ${ledger.name} - ${item.materialName} - PO ${po.poNumber}`;
+        creditDesc = `By ${isOwnVendorLedger ? 'Purchase' : ledger.name} - ${item.materialName} - PO ${po.poNumber}`;
+      }
+
+      // Safety net: a posting whose debit and credit land on the same ledger
+      // would show a self-cancelling pair — e.g. selecting "Purchase" while
+      // the item is already booked (Cr Purchase) — always reject it.
+      if (debitLedgerId === creditLedgerId) {
+        res.status(400).json({
+          error: `Cannot post "${item.materialName}" to "${ledger.name}" — the credit side resolves to the same ledger.`,
+        });
+        return;
       }
 
       const entries: Array<{ ledgerId: string; debit: number; credit: number; description: string }> = [
-        { ledgerId: ledger.id, debit: taxable, credit: 0, description: `${item.materialName} - PO ${po.poNumber}` },
+        { ledgerId: debitLedgerId, debit: taxable, credit: 0, description: `${item.materialName} - PO ${po.poNumber}` },
       ];
       if (gst > 0) {
         const cgstLedgerId = await findLedgerByName(GST_LEDGER_NAMES.INPUT_CGST, projectId);

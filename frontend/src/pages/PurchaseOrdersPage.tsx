@@ -1499,11 +1499,15 @@ function PostToLedgerDialog({ row, onClose }: { row: PORow | null; onClose: () =
     },
     enabled: !!row,
   });
-  // Only nominal (standalone) ledgers can receive item postings — the credit
-  // side is always the vendor, so vendor/bank/cash/owner-linked ledgers would
-  // produce self-cancelling or phantom entries.
+  // Only nominal (standalone) ledgers can receive item postings — posting to
+  // a bank/cash/owner/other-vendor ledger would create phantom entries. The
+  // PO's own vendor ledger IS allowed: selecting it marks the amount as
+  // utilised inside the vendor account (debit goes to the Purchase pool).
   const ledgers: LedgerOption[] = (ledgersData?.data ?? []).filter(
-    (l: LedgerOption) => !l.linkedEntityType || l.linkedEntityType === 'NONE',
+    (l: LedgerOption & { linkedEntityId?: string | null }) =>
+      !l.linkedEntityType ||
+      l.linkedEntityType === 'NONE' ||
+      (l.linkedEntityType === 'VENDOR' && l.linkedEntityId === po?.vendor?.id),
   );
 
   const postMutation = useMutation({
