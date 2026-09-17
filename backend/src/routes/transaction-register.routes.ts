@@ -133,16 +133,16 @@ router.get(
         }),
         prisma.paymentRequest.findMany({
           where: { projectId, deletedAt: null, status: { not: 'DELETED' }, createdAt: inYear, vendorId: { not: null } },
-          select: { vendorId: true, createdAt: true, amount: true, status: true, type: true, budgetHeadId: true, budgetHead: { select: { particulars: true } }, payments: { select: { id: true } } },
+          select: { vendorId: true, poId: true, createdAt: true, amount: true, status: true, type: true, budgetHeadId: true, budgetHead: { select: { particulars: true } }, payments: { select: { id: true } } },
         }),
         // Payments reach the vendor through the payment request (Payment has no projectId)
         prisma.payment.findMany({
           where: { date: inYear, paymentRequest: { projectId, vendorId: { not: null }, deletedAt: null, status: { not: 'DELETED' } } },
-          select: { date: true, amount: true, status: true, budgetHeadId: true, budgetHead: { select: { particulars: true } }, paymentRequest: { select: { vendorId: true } } },
+          select: { date: true, amount: true, status: true, budgetHeadId: true, budgetHead: { select: { particulars: true } }, paymentRequest: { select: { vendorId: true, poId: true } } },
         }),
         prisma.paymentSheet.findMany({
           where: { projectId, deletedAt: null, status: { not: 'DELETED' }, date: inYear, purchaseOrder: { status: { not: 'DELETED' } } },
-          select: { date: true, amount: true, status: true, purchaseOrder: { select: { vendorId: true, budgetHeadId: true, budgetHead: { select: { particulars: true } } } } },
+          select: { date: true, amount: true, status: true, poId: true, purchaseOrder: { select: { vendorId: true, budgetHeadId: true, budgetHead: { select: { particulars: true } } } } },
         }),
         prisma.billSettlement.findMany({
           where: { projectId, createdAt: inYear },
@@ -172,10 +172,35 @@ router.get(
         if (!vendorScope(i.vendorId)) continue;
         events.push({ vendorId: i.vendorId, date: i.date, kind: 'invoice', amount: Number(i.totalAmount), paid: 0, status: i.paymentStatus, budgetHeadId: i.purchaseOrder?.budgetHeadId, budgetHead: i.purchaseOrder?.budgetHead?.particulars });
       }
+      // ── Paid dedup coverage ──
+      // The same disbursement is often recorded in BOTH instruments: a payment
+      // request's Payment row AND a paid payment-sheet entry for the same PO +
+      // amount. Counting both would double the money out. Build a multiset of
+      // "PO|amount" keys owned by payments/requests; a paid sheet that matches
+      // one is still an activity event but contributes ₹0 to paid totals.
+      const coverage = new Map<string, number>();
+      const cover = (poId: string | null | undefined, amount: number) => {
+        if (!poId) return;
+        const k = `${poId}|${amount}`;
+        coverage.set(k, (coverage.get(k) ?? 0) + 1);
+      };
+      const consumeCoverage = (poId: string | null | undefined, amount: number) => {
+        if (!poId) return false;
+        const k = `${poId}|${amount}`;
+        const n = coverage.get(k) ?? 0;
+        if (n <= 0) return false;
+        coverage.set(k, n - 1);
+        return true;
+      };
+      for (const p of payments) {
+        if (p.status === 'PAID') cover(p.paymentRequest.poId, Number(p.amount));
+      }
+
       for (const pr of payReqs) {
         if (!pr.vendorId || !vendorScope(pr.vendorId)) continue;
         // A PAID request with no Payment rows still represents money out (e.g. advance marked paid)
         const paid = pr.status === 'PAID' && pr.payments.length === 0 ? Number(pr.amount) : 0;
+        if (paid > 0) cover(pr.poId, paid);
         events.push({ vendorId: pr.vendorId, date: pr.createdAt, kind: 'request', amount: Number(pr.amount), paid, status: pr.status, budgetHeadId: pr.budgetHeadId, budgetHead: pr.budgetHead?.particulars });
       }
       for (const p of payments) {
@@ -188,7 +213,10 @@ router.get(
         const vid = s.purchaseOrder.vendorId;
         if (!vendorScope(vid)) continue;
         const isPaid = s.status !== 'PENDING';
-        events.push({ vendorId: vid, date: s.date, kind: 'sheet', amount: Number(s.amount), paid: isPaid ? Number(s.amount) : 0, status: s.status, budgetHeadId: s.purchaseOrder.budgetHeadId, budgetHead: s.purchaseOrder.budgetHead?.particulars });
+        // Skip the paid contribution when a payment/request already covers this
+        // exact PO+amount — it's the same money recorded in two instruments.
+        const paid = isPaid && !consumeCoverage(s.poId, Number(s.amount)) ? Number(s.amount) : 0;
+        events.push({ vendorId: vid, date: s.date, kind: 'sheet', amount: Number(s.amount), paid, status: s.status, budgetHeadId: s.purchaseOrder.budgetHeadId, budgetHead: s.purchaseOrder.budgetHead?.particulars });
       }
       for (const st of settlements) {
         if (!vendorScope(st.vendorId)) continue;
