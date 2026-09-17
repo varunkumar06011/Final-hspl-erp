@@ -46,6 +46,7 @@ import UsersPage from './pages/UsersPage';
 import InwardFundsPage from './pages/InwardFundsPage';
 import ExpenditurePage from './pages/ExpenditurePage';
 import MaterialPurchaseRequestsPage from './pages/MaterialPurchaseRequestsPage';
+import TransactionRegisterPage from './pages/TransactionRegisterPage';
 import ErrorBoundary from './components/ErrorBoundary';
 
 const queryClient = new QueryClient({
@@ -99,6 +100,7 @@ const ROUTES = [
   { path: '/inward-funds', element: <InwardFundsPage /> },
   { path: '/expenditure', element: <ExpenditurePage /> },
   { path: '/material-purchase-requests', element: <MaterialPurchaseRequestsPage /> },
+  { path: '/transaction-register', element: <TransactionRegisterPage /> },
 ];
 
 export default function App() {

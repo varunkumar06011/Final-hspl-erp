@@ -66,6 +66,7 @@ const NAV_ITEMS = [
   { label: 'Gate Passes', icon: <GatePassIcon />, path: '/gate-passes', permission: Permission.VIEW_GATE_PASSES, section: 'Procurement' },
   { label: 'Goods Receipts', icon: <ReceiptIcon />, path: '/goods-receipts', permission: Permission.MANAGE_INVENTORY, section: 'Procurement' },
   { label: 'GST Records', icon: <ReceiptIcon />, path: '/gst-records', permission: Permission.VIEW_FINANCIALS, section: 'Procurement' },
+  { label: 'Transaction Register', icon: <ReportsIcon />, path: '/transaction-register', permission: Permission.VIEW_FINANCIALS, section: 'Procurement' },
   // ── Masters (Tally: Accounts Info) ──
   { label: 'Chart of Accounts', icon: <LedgersIcon />, path: '/ledgers', permission: Permission.VIEW_FINANCIALS, section: 'Masters' },
   { label: 'Bank Ledgers', icon: <BankIcon />, path: '/bank-accounts', permission: Permission.VIEW_FINANCIALS, section: 'Masters' },
@@ -132,6 +133,7 @@ const ADMIN_NAV_ITEMS = [
   { label: 'Documents', icon: <DocumentIcon />, path: '/documents', permission: Permission.MANAGE_DOCUMENTS, section: 'Project' },
   { label: 'Contracts', icon: <ContractIcon />, path: '/contracts', permission: Permission.MANAGE_CONTRACTS, section: 'Project' },
   // ── Reports ──
+  { label: 'Transaction Register', icon: <ReportsIcon />, path: '/transaction-register', permission: Permission.VIEW_FINANCIALS, section: 'Reports' },
   { label: 'Finance Dashboard', icon: <FinanceDashboardIcon />, path: '/finance-dashboard', permission: Permission.VIEW_FINANCIALS, section: 'Reports' },
   { label: 'Accounting Reports', icon: <AccountingReportsIcon />, path: '/accounting-reports', permission: Permission.VIEW_FINANCIALS, section: 'Reports' },
   { label: 'Finance Reports', icon: <ReportsIcon />, path: '/finance-reports', permission: Permission.VIEW_FINANCIALS, section: 'Reports' },

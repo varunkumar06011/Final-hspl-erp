@@ -237,6 +237,11 @@ function drawSummaryTable(doc: PDFKit.PDFDocument, entries: any[], _date: Date, 
   y += 20;
 
   const sumRowH = 16;
+  // The description secondary row spans from the PO Number column's left edge
+  // to the Amount column's right edge — the S.No column stays outside it.
+  // +4 / -4 match the standard text inset used by every cell.
+  const descX = colX[1] + 4;
+  const descW = RIGHT - 4 - descX;
   if (entries.length === 0) {
     // Empty-day sheet — still render a clear "no payments" row so the
     // exported PDF isn't just a bare header.
@@ -246,11 +251,9 @@ function drawSummaryTable(doc: PDFKit.PDFDocument, entries: any[], _date: Date, 
     y += sumRowH;
   }
   entries.forEach((e, i) => {
-    // Description (notes) gets its own full-width line under the entry row.
-    const descX = LEFT + 8;
-    const descW = WIDTH - 16;
+    // Description (notes) gets its own secondary line under the entry row.
     const desc = showDescription ? String(e.notes ?? '').trim() : '';
-    const descH = desc ? doc.heightOfString(desc, { width: descW }) + 6 : 0;
+    const descH = desc ? doc.heightOfString(desc, { width: descW, align: 'justify' }) + 6 : 0;
     const entryH = sumRowH + descH;
 
     if (i % 2 === 0) doc.rect(LEFT, y, WIDTH, entryH).fill(PRIMARY_LIGHT);
@@ -270,7 +273,7 @@ function drawSummaryTable(doc: PDFKit.PDFDocument, entries: any[], _date: Date, 
     });
     if (desc) {
       doc.fillColor(MUTED).font('Helvetica-Oblique').fontSize(7.5)
-        .text(desc, descX, y + sumRowH, { width: descW });
+        .text(desc, descX, y + sumRowH, { width: descW, align: 'justify' });
     }
     y += entryH;
   });

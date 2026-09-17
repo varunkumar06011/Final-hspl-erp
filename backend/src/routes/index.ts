@@ -38,6 +38,7 @@ import voucherRoutes from './voucher.routes';
 import accountingReportRoutes from './accounting-reports.routes';
 import paymentReportRoutes from './payment-reports.routes';
 import mprRoutes from './mpr.routes';
+import transactionRegisterRoutes from './transaction-register.routes';
 
 const router = Router();
 
@@ -80,5 +81,6 @@ router.use('/vouchers', voucherRoutes);
 router.use('/accounting-reports', accountingReportRoutes);
 router.use('/payment-reports', paymentReportRoutes);
 router.use('/material-purchase-requests', mprRoutes);
+router.use('/transaction-register', transactionRegisterRoutes);
 
 export default router;

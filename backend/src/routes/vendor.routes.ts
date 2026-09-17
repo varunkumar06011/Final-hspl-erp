@@ -1,4 +1,4 @@
-import { Permission } from '@hospital-erp/shared';
+import { Permission, hasPermission } from '@hospital-erp/shared';
 import { createVendorSchema, updateVendorSchema, listVendorsSchema } from '@hospital-erp/shared';
 import { Response, NextFunction } from 'express';
 import { prisma } from '../config/prisma';
@@ -547,6 +547,7 @@ router.get(
           select: {
             id: true, quotationNumber: true, date: true, status: true, grandTotal: true,
             items: { select: { materialName: true, quantity: true, unit: true, unitPrice: true, amount: true, gstRate: true } },
+            createdByUser: { select: { id: true, name: true } },
           },
           orderBy: { date: 'desc' },
         }),
@@ -558,6 +559,8 @@ router.get(
             items: { select: { materialName: true, quantity: true, unit: true, unitPrice: true, amount: true, gstRate: true } },
             budgetHead: { select: { id: true, particulars: true } },
             quotation: { select: { id: true, quotationNumber: true } },
+            createdByUser: { select: { id: true, name: true } },
+            approvalWorkflow: { select: { status: true, steps: { select: { status: true, decidedAt: true, approverUser: { select: { name: true } } }, orderBy: { stepNumber: 'asc' as const } } } },
           },
           orderBy: { date: 'desc' },
         }),
@@ -568,6 +571,7 @@ router.get(
             amount: true, taxAmount: true, totalAmount: true, advancePaid: true,
             paymentStatus: true, stockStatus: true, verificationStatus: true,
             purchaseOrder: { select: { id: true, poNumber: true } },
+            createdByUser: { select: { id: true, name: true } },
           },
           orderBy: { date: 'desc' },
         }),
@@ -578,6 +582,8 @@ router.get(
             status: true, paymentMode: true, description: true, createdAt: true,
             invoice: { select: { id: true, invoiceCode: true, invoiceNumber: true } },
             purchaseOrder: { select: { id: true, poNumber: true } },
+            budgetHead: { select: { id: true, particulars: true } },
+            createdByUser: { select: { id: true, name: true } },
             payments: { select: { id: true, amount: true, date: true, mode: true, reference: true, status: true }, orderBy: { date: 'asc' } },
           },
           orderBy: { createdAt: 'desc' },
@@ -651,23 +657,49 @@ router.get(
         runningBalance: number;
         status?: string;
         path?: string;
+        actor?: string | null;
+        budgetHead?: string | null;
+        amount?: number;
       }
       const timeline: TimelineRow[] = [];
 
+      // Vendor onboarding is itself an activity event
+      timeline.push({
+        date: vendor.createdAt, type: 'Vendor Created', reference: vendor.vendorCode,
+        description: `Vendor onboarded${vendor.createdByUser ? ` by ${vendor.createdByUser.name}` : ''}`,
+        debit: 0, credit: 0, runningBalance: 0, status: vendor.status, path: '/vendors',
+        actor: vendor.createdByUser?.name ?? null,
+      });
       for (const q of quotations) {
         timeline.push({
           date: q.date, type: 'Quotation', reference: q.quotationNumber,
           description: `${q.items.length} item(s) quoted`, debit: 0, credit: 0,
           runningBalance: 0, status: q.status, path: `/quotations?id=${q.id}`,
+          actor: q.createdByUser?.name ?? null, amount: Number(q.grandTotal),
         });
       }
       for (const po of purchaseOrders) {
         const desc = po.items.map((i) => i.materialName).filter(Boolean).slice(0, 3).join(', ');
+        const lastApprover = po.approvalWorkflow?.steps?.filter((s) => s.status === 'APPROVED').pop();
         timeline.push({
           date: po.date, type: 'Purchase Order', reference: po.poNumber,
           description: desc ? `${desc}${po.items.length > 3 ? ` +${po.items.length - 3} more` : ''} — ₹${Number(po.grandTotal).toLocaleString('en-IN')}` : `₹${Number(po.grandTotal).toLocaleString('en-IN')}`,
           debit: 0, credit: 0, runningBalance: 0, status: po.status, path: `/pos?id=${po.id}`,
+          actor: po.createdByUser?.name ?? null, budgetHead: po.budgetHead?.particulars ?? null,
+          amount: Number(po.grandTotal),
         });
+        // Approval is a distinct event at its decision time
+        for (const st of po.approvalWorkflow?.steps ?? []) {
+          if (st.status === 'APPROVED' && st.decidedAt) {
+            timeline.push({
+              date: st.decidedAt, type: 'PO Approved', reference: po.poNumber,
+              description: `Approved${lastApprover?.approverUser ? ' by ' + lastApprover.approverUser.name : ''}`,
+              debit: 0, credit: 0, runningBalance: 0, status: 'APPROVED', path: `/pos?id=${po.id}`,
+              actor: st.approverUser?.name ?? null, budgetHead: po.budgetHead?.particulars ?? null,
+              amount: Number(po.grandTotal),
+            });
+          }
+        }
       }
       for (const inv of invoices) {
         timeline.push({
@@ -675,6 +707,7 @@ router.get(
           description: inv.purchaseOrder ? `PO ${inv.purchaseOrder.poNumber}` : 'Direct invoice',
           debit: Number(inv.totalAmount), credit: 0, runningBalance: 0,
           status: inv.paymentStatus, path: `/invoices?id=${inv.id}`,
+          actor: inv.createdByUser?.name ?? null, amount: Number(inv.totalAmount),
         });
       }
       for (const pr of paymentRequests) {
@@ -685,6 +718,8 @@ router.get(
               description: `${pr.type} · ${p.mode}${p.reference ? ' · ' + p.reference : ''}${pr.purchaseOrder ? ' · PO ' + pr.purchaseOrder.poNumber : ''}${pr.invoice ? ' · ' + (pr.invoice.invoiceCode ?? pr.invoice.invoiceNumber) : ''}`,
               debit: 0, credit: Number(p.amount), runningBalance: 0,
               status: p.status, path: `/payments?id=${pr.id}`,
+              actor: pr.createdByUser?.name ?? null, budgetHead: pr.budgetHead?.particulars ?? null,
+              amount: Number(p.amount),
             });
           }
         } else if (pr.status === 'PAID') {
@@ -694,12 +729,16 @@ router.get(
             description: `${pr.type}${pr.purchaseOrder ? ' · PO ' + pr.purchaseOrder.poNumber : ''}${pr.invoice ? ' · ' + (pr.invoice.invoiceCode ?? pr.invoice.invoiceNumber) : ''}`,
             debit: 0, credit: Number(pr.amount), runningBalance: 0,
             status: pr.status, path: `/payments?id=${pr.id}`,
+            actor: pr.createdByUser?.name ?? null, budgetHead: pr.budgetHead?.particulars ?? null,
+            amount: Number(pr.amount),
           });
         } else {
           timeline.push({
             date: pr.createdAt, type: 'Payment Request', reference: pr.requestNumber,
             description: pr.description ?? `${pr.type} request`,
             debit: 0, credit: 0, runningBalance: 0, status: pr.status, path: `/payments?id=${pr.id}`,
+            actor: pr.createdByUser?.name ?? null, budgetHead: pr.budgetHead?.particulars ?? null,
+            amount: Number(pr.amount),
           });
         }
       }
@@ -708,7 +747,7 @@ router.get(
           date: bs.journalVoucher.date, type: 'Bill Settlement',
           reference: `${bs.journalVoucher.jvNumber} → ${bs.invoice.invoiceCode ?? bs.invoice.invoiceNumber}`,
           description: 'Settlement via voucher', debit: 0, credit: 0, runningBalance: 0,
-          status: bs.journalVoucher.status, path: '/vouchers',
+          status: bs.journalVoucher.status, path: '/vouchers', amount: 0,
         });
       }
       for (const ps of paymentSheets) {
@@ -716,6 +755,7 @@ router.get(
           date: ps.date, type: 'Payment Sheet', reference: ps.purchaseOrder.poNumber,
           description: `Payment sheet · ${ps.paymentMode}${ps.reference ? ' · ' + ps.reference : ''}${ps.notes ? ' — ' + ps.notes : ''} · ₹${Number(ps.amount).toLocaleString('en-IN')}`,
           debit: 0, credit: 0, runningBalance: 0, status: ps.status, path: `/pos?id=${ps.purchaseOrder.id}`,
+          actor: ps.createdByUser?.name ?? null, amount: Number(ps.amount),
         });
       }
       for (const gr of goodsReceipts) {
@@ -732,6 +772,29 @@ router.get(
       for (const row of timeline) {
         running += row.debit - row.credit;
         row.runningBalance = running;
+      }
+
+      // ── Audit trail — every change against this vendor's records ──
+      // Only surfaced to roles with VIEW_AUDIT_LOG; everyone else gets null
+      // (the dialog hides the tab). Read-only, latest 200 entries.
+      let audit: unknown[] | null = null;
+      if (hasPermission(req.user!.role, Permission.VIEW_AUDIT_LOG)) {
+        const entityIds = [
+          vendor.id,
+          ...quotations.map((q) => q.id),
+          ...purchaseOrders.map((p) => p.id),
+          ...invoices.map((i) => i.id),
+          ...paymentRequests.map((p) => p.id),
+          ...paymentSheets.map((p) => p.id),
+          ...goodsReceipts.map((g) => g.id),
+          ...assets.map((a) => a.id),
+        ];
+        audit = await prisma.auditLog.findMany({
+          where: { projectId, entityId: { in: entityIds } },
+          include: { user: { select: { id: true, name: true, role: true } } },
+          orderBy: { timestamp: 'desc' },
+          take: 200,
+        });
       }
 
       res.json({
@@ -782,6 +845,7 @@ router.get(
         paymentSheets: paymentSheets.map((ps) => ({ ...ps, amount: Number(ps.amount) })),
         goodsReceipts,
         assets,
+        audit,
       });
     } catch (error) {
       next(error);
