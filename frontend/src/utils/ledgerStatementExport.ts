@@ -11,7 +11,7 @@
  * Print — opens a hidden print-only iframe with print-specific CSS
  */
 
-import jsPDF from 'jspdf';
+import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { formatCurrency, formatDate } from './enumOptions';
 
@@ -101,34 +101,68 @@ export function exportLedgerStatementPdf(
   doc.text(`Closing Balance: ${formatBalanceWithSuffix(data.closingBalance, isDebit)}`, 14, 40);
 
   // ── Table ──
-  const tableBody = data.data.map((entry) => [
-    formatDate(entry.voucherDate),
-    entry.voucherNumber,
-    entry.voucherType.replace(/_/g, ' '),
-    entry.description ?? '—',
-    entry.debit > 0 ? formatCurrency(entry.debit) : '—',
-    entry.credit > 0 ? formatCurrency(entry.credit) : '—',
-    formatBalanceWithSuffix(entry.balance, isDebit),
-  ]);
+  // Each transaction is a compact main row (Date | Voucher | Type | Debit |
+  // Credit | Balance) followed by an optional description row that starts at
+  // the Voucher column and spans the remaining width — matching the print
+  // layout. `txnOfRow` tracks which transaction each body row belongs to so
+  // both rows of a transaction share the same alternating shade.
+  const tableBody: object[] = [];
+  const txnOfRow: number[] = [];
 
-  // Add opening balance row at the top
-  tableBody.unshift(['', '', '', 'Opening Balance', '', '', formatBalanceWithSuffix(data.openingBalance, isDebit)]);
+  // Opening balance row
+  tableBody.push([
+    { content: 'Opening Balance', colSpan: 3, styles: { fontStyle: 'bold' } },
+    '', '',
+    { content: formatBalanceWithSuffix(data.openingBalance, isDebit), styles: { halign: 'right', fontStyle: 'bold' } },
+  ]);
+  txnOfRow.push(-1);
+
+  data.data.forEach((entry, i) => {
+    tableBody.push([
+      formatDate(entry.voucherDate),
+      entry.voucherNumber,
+      entry.voucherType.replace(/_/g, ' '),
+      entry.debit > 0 ? formatCurrency(entry.debit) : '—',
+      entry.credit > 0 ? formatCurrency(entry.credit) : '—',
+      formatBalanceWithSuffix(entry.balance, isDebit),
+    ]);
+    txnOfRow.push(i);
+    const desc = entry.description?.trim();
+    if (desc) {
+      tableBody.push([
+        '',
+        {
+          content: desc,
+          colSpan: 5,
+          styles: { halign: 'justify', fontSize: 7.5, textColor: [70, 70, 70], cellPadding: { top: 0.5, right: 2, bottom: 2.5, left: 2 } },
+        },
+      ]);
+      txnOfRow.push(i);
+    }
+  });
 
   autoTable(doc, {
-    head: [['Date', 'Voucher', 'Type', 'Description', 'Debit', 'Credit', 'Balance']],
-    body: tableBody,
+    head: [['Date', 'Voucher', 'Type', 'Debit', 'Credit', 'Balance']],
+    body: tableBody as never,
     startY: 44,
-    theme: 'striped',
+    theme: 'plain',
     headStyles: { fillColor: [66, 66, 66], fontSize: 9, halign: 'left' },
     bodyStyles: { fontSize: 8 },
+    rowPageBreak: 'avoid',
     columnStyles: {
       0: { cellWidth: 28 },
-      1: { cellWidth: 32 },
-      2: { cellWidth: 28 },
-      3: { cellWidth: 'auto' },
-      4: { cellWidth: 32, halign: 'right' },
-      5: { cellWidth: 32, halign: 'right' },
-      6: { cellWidth: 36, halign: 'right' },
+      1: { cellWidth: 34 },
+      2: { cellWidth: 30 },
+      3: { cellWidth: 34, halign: 'right' },
+      4: { cellWidth: 34, halign: 'right' },
+      5: { cellWidth: 38, halign: 'right' },
+    },
+    didParseCell: (hookData) => {
+      // Alternate shading per transaction block so a main row and its
+      // description row share one fill.
+      if (hookData.section === 'body' && txnOfRow[hookData.row.index] > 0 && txnOfRow[hookData.row.index] % 2 === 1) {
+        hookData.cell.styles.fillColor = [250, 250, 250];
+      }
     },
     didDrawPage: (hookData) => {
       // Footer page number
@@ -215,17 +249,25 @@ export function printLedgerStatement(
 ): void {
   const isDebit = data.ledger.isDebitNature;
 
-  const rowsHtml = data.data.map((entry) => `
-    <tr>
-      <td>${escapeHtml(formatDate(entry.voucherDate))}</td>
-      <td>${escapeHtml(entry.voucherNumber)}</td>
-      <td>${escapeHtml(entry.voucherType.replace(/_/g, ' '))}</td>
-      <td>${escapeHtml(entry.description ?? '—')}</td>
-      <td class="num">${entry.debit > 0 ? escapeHtml(formatCurrency(entry.debit)) : '—'}</td>
-      <td class="num">${entry.credit > 0 ? escapeHtml(formatCurrency(entry.credit)) : '—'}</td>
-      <td class="num">${escapeHtml(formatBalanceWithSuffix(entry.balance, isDebit))}</td>
-    </tr>
-  `).join('');
+  // Each transaction is one <tbody> block: a compact main row followed by an
+  // optional description row. The description cell starts at the Voucher
+  // column (first cell is the empty Date column) and spans the remaining
+  // table width, so every wrapped line aligns under the Voucher column.
+  const rowsHtml = data.data.map((entry) => {
+    const desc = entry.description?.trim();
+    return `
+    <tbody class="txn">
+      <tr class="main">
+        <td>${escapeHtml(formatDate(entry.voucherDate))}</td>
+        <td>${escapeHtml(entry.voucherNumber)}</td>
+        <td>${escapeHtml(entry.voucherType.replace(/_/g, ' '))}</td>
+        <td class="num">${entry.debit > 0 ? escapeHtml(formatCurrency(entry.debit)) : '—'}</td>
+        <td class="num">${entry.credit > 0 ? escapeHtml(formatCurrency(entry.credit)) : '—'}</td>
+        <td class="num">${escapeHtml(formatBalanceWithSuffix(entry.balance, isDebit))}</td>
+      </tr>
+      ${desc ? `<tr class="desc"><td></td><td colspan="5" class="desc-cell">${escapeHtml(desc)}</td></tr>` : ''}
+    </tbody>`;
+  }).join('');
 
   const html = `<!DOCTYPE html>
 <html lang="en">
@@ -249,7 +291,12 @@ export function printLedgerStatement(
   .balance-box { border: 1px solid #ddd; padding: 8px 12px; border-radius: 4px; }
   .balance-box .label { font-size: 11px; color: #666; }
   .balance-box .value { font-size: 14px; font-weight: 600; }
-  table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+  table { width: 100%; border-collapse: collapse; margin-top: 8px; table-layout: fixed; }
+  col.c-date { width: 12%; }
+  col.c-vch { width: 18%; }
+  col.c-type { width: 14%; }
+  col.c-amt { width: 16%; }
+  col.c-bal { width: 24%; }
   thead th {
     background: #424242;
     color: #fff;
@@ -259,14 +306,21 @@ export function printLedgerStatement(
     font-weight: 600;
   }
   thead th.num { text-align: right; }
-  tbody td { padding: 5px 8px; border-bottom: 1px solid #eee; }
-  tbody td.num { text-align: right; white-space: nowrap; }
-  tbody tr:nth-child(even) { background: #fafafa; }
-  .opening-row td { font-weight: 600; color: #555; }
+  tbody.txn td { padding: 5px 8px 2px; border-bottom: none; }
+  tbody.txn tr:last-child td { padding-bottom: 5px; border-bottom: 1px solid #eee; }
+  tbody.txn td.num { text-align: right; white-space: nowrap; }
+  tbody.txn td.desc-cell {
+    padding: 1px 8px 5px 8px;
+    text-align: justify;
+    color: #333;
+    word-wrap: break-word;
+  }
+  tbody.txn:nth-child(even) { background: #fafafa; }
+  tbody.opening td { padding: 5px 8px; border-bottom: 1px solid #eee; font-weight: 600; color: #555; }
   @page { margin: 12mm; }
   @media print {
     thead { display: table-header-group; }
-    tbody { page-break-inside: auto; }
+    tbody { page-break-inside: avoid; }
     tr { page-break-inside: avoid; }
   }
 </style>
@@ -288,20 +342,24 @@ export function printLedgerStatement(
     </div>
   </div>
   <table>
+    <colgroup>
+      <col class="c-date" /><col class="c-vch" /><col class="c-type" />
+      <col class="c-amt" /><col class="c-amt" /><col class="c-bal" />
+    </colgroup>
     <thead>
       <tr>
-        <th>Date</th><th>Voucher</th><th>Type</th><th>Description</th>
+        <th>Date</th><th>Voucher</th><th>Type</th>
         <th class="num">Debit</th><th class="num">Credit</th><th class="num">Balance</th>
       </tr>
     </thead>
-    <tbody>
-      <tr class="opening-row">
-        <td colspan="4">Opening Balance</td>
+    <tbody class="opening">
+      <tr>
+        <td colspan="3">Opening Balance</td>
         <td class="num">—</td><td class="num">—</td>
         <td class="num">${escapeHtml(formatBalanceWithSuffix(data.openingBalance, isDebit))}</td>
       </tr>
-      ${rowsHtml}
     </tbody>
+    ${rowsHtml}
   </table>
 </body>
 </html>`;
