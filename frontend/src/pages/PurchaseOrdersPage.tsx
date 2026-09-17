@@ -47,7 +47,9 @@ import {
   SwapHoriz as SwapBudgetIcon,
   Payment as PaymentIcon,
   TableChart as TableChartIcon,
+  MenuBook as PostLedgerIcon,
 } from '@mui/icons-material';
+import LedgerAutocomplete, { LedgerOption } from '../components/LedgerAutocomplete';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { POStatus, UserRole, POPaymentType, GST_RATES, isAdminRole } from '@hospital-erp/shared';
 import { formatCurrency, formatDate, formatIndianNumber, STATUS_COLORS, QTY_UNIT_OPTIONS } from '../utils/enumOptions';
@@ -65,6 +67,15 @@ import { useDeepLinkRow } from '../hooks/useDeepLinkRow';
 import { useUrlFilters } from '../hooks/useUrlFilters';
 import { shareOnWhatsApp, buildPOShareMessage } from '../utils/whatsappShare';
 
+interface POItemLedgerPost {
+  id: string;
+  ledgerId: string;
+  taxableAmount: number;
+  gstAmount: number;
+  ledger?: { id: string; name: string } | null;
+  journalVoucher?: { jvNumber: string } | null;
+}
+
 interface POItem {
   id?: string;
   materialName: string;
@@ -73,6 +84,7 @@ interface POItem {
   unitPrice: number;
   amount: number;
   gstRate?: number;
+  ledgerPosts?: POItemLedgerPost[];
 }
 
 interface Quotation {
@@ -176,6 +188,7 @@ export default function PurchaseOrdersPage() {
   const [budgetHeadRow, setBudgetHeadRow] = useState<PORow | null>(null);
   const [newBudgetHeadId, setNewBudgetHeadId] = useState('');
   const [budgetHeadReason, setBudgetHeadReason] = useState('');
+  const [postLedgerRow, setPostLedgerRow] = useState<PORow | null>(null);
   const queryClient = useQueryClient();
   const { user } = useAuthStore();
   const navigate = useNavigate();
@@ -709,6 +722,9 @@ export default function PurchaseOrdersPage() {
                               {(row.status === POStatus.APPROVED || row.status === POStatus.DELIVERED || row.status === POStatus.PARTIALLY_DELIVERED) && (
                                 <IconButton size="small" onClick={() => { setNotesEditRow(row); setNotesEditValue(row.notes ?? ''); }} title="Edit Item Description"><EditIcon fontSize="small" /></IconButton>
                               )}
+                              {(row.status === POStatus.APPROVED || row.status === POStatus.DELIVERED || row.status === POStatus.PARTIALLY_DELIVERED) && user && (isAdminRole(user.role) || user.role === UserRole.ACCOUNTANT) && (
+                                <IconButton size="small" color="secondary" onClick={() => setPostLedgerRow(row)} title="Post to Ledger"><PostLedgerIcon fontSize="small" /></IconButton>
+                              )}
                               {row.status === POStatus.APPROVED && (
                                 <IconButton size="small" color="secondary" onClick={() => setPaymentTypeRow(row)} title="Change Payment Type"><PaymentIcon fontSize="small" /></IconButton>
                               )}
@@ -899,6 +915,9 @@ export default function PurchaseOrdersPage() {
                             )}
                             {(row.status === POStatus.APPROVED || row.status === POStatus.DELIVERED || row.status === POStatus.PARTIALLY_DELIVERED) && (
                               <IconButton size="small" onClick={() => { setNotesEditRow(row); setNotesEditValue(row.notes ?? ''); }} title="Edit Item Description"><EditIcon fontSize="small" /></IconButton>
+                            )}
+                            {(row.status === POStatus.APPROVED || row.status === POStatus.DELIVERED || row.status === POStatus.PARTIALLY_DELIVERED) && user && (isAdminRole(user.role) || user.role === UserRole.ACCOUNTANT) && (
+                              <IconButton size="small" color="secondary" onClick={() => setPostLedgerRow(row)} title="Post to Ledger"><PostLedgerIcon fontSize="small" /></IconButton>
                             )}
                             {(row.status === POStatus.APPROVED || row.status === POStatus.DELIVERED || row.status === POStatus.PARTIALLY_DELIVERED) && row.budgetHeadId && user && isAdminRole(user.role) && (
                               <IconButton size="small" color="info" onClick={() => { setBudgetHeadRow(row); setNewBudgetHeadId(''); setBudgetHeadReason(''); }} title="Change Budget Head"><SwapBudgetIcon fontSize="small" /></IconButton>
@@ -1442,7 +1461,185 @@ export default function PurchaseOrdersPage() {
           </Button>
         </DialogActions>
       </ResponsiveDialog>
+
+      {/* Post to Ledger — post individual PO items to chosen ledgers */}
+      <PostToLedgerDialog row={postLedgerRow} onClose={() => setPostLedgerRow(null)} />
     </Box>
+  );
+}
+
+// ─── Post to Ledger Dialog ─────────────────────────────────
+// Two-step flow per the request: pick a PO item → search & pick a ledger →
+// the item's amount is posted immediately (Dr ledger / Cr vendor). The dialog
+// refetches the PO so posted items show their voucher + ledger chips live.
+function PostToLedgerDialog({ row, onClose }: { row: PORow | null; onClose: () => void }) {
+  const queryClient = useQueryClient();
+  const [selectedItem, setSelectedItem] = useState<POItem | null>(null);
+  const [selectedLedgerId, setSelectedLedgerId] = useState('');
+  const [selectedLedger, setSelectedLedger] = useState<LedgerOption | null>(null);
+  const [dialogError, setDialogError] = useState('');
+  const [successMsg, setSuccessMsg] = useState('');
+
+  // Live PO data — refreshed after each posting so posted chips appear.
+  const { data: freshPo } = useQuery<PORow>({
+    queryKey: ['/pos', row?.id, 'ledger-posts'],
+    queryFn: async () => {
+      const response = await api.get(`/purchase-orders/${row!.id}`);
+      return response.data;
+    },
+    enabled: !!row,
+  });
+  const po = freshPo ?? row;
+
+  const { data: ledgersData } = useQuery({
+    queryKey: ['/ledgers', 'all-active'],
+    queryFn: async () => {
+      const response = await api.get('/ledgers', { params: { pageSize: 500, isActive: 'true' } });
+      return response.data;
+    },
+    enabled: !!row,
+  });
+  const ledgers: LedgerOption[] = ledgersData?.data ?? [];
+
+  const postMutation = useMutation({
+    mutationFn: async ({ itemId, ledgerId }: { itemId: string; ledgerId: string }) => {
+      const response = await api.post(`/purchase-orders/${po!.id}/items/${itemId}/post-ledger`, { ledgerId });
+      return response.data;
+    },
+    onSuccess: (data) => {
+      setSuccessMsg(data.message ?? 'Item posted to ledger');
+      setDialogError('');
+      setSelectedItem(null);
+      setSelectedLedgerId('');
+      setSelectedLedger(null);
+      queryClient.invalidateQueries({ queryKey: ['/pos'] });
+      queryClient.invalidateQueries({ queryKey: ['/ledgers'] });
+      queryClient.invalidateQueries({ queryKey: ['/vouchers'] });
+    },
+    onError: (err: unknown) => setDialogError(extractErrorMessage(err)),
+  });
+
+  function postedInfo(item: POItem) {
+    const posted = (item.ledgerPosts ?? []).reduce((s, p) => s + Number(p.taxableAmount), 0);
+    const remaining = Math.round((Number(item.amount) - posted) * 100) / 100;
+    return { posted, remaining, fully: remaining <= 0 };
+  }
+
+  function resetAndClose() {
+    setSelectedItem(null);
+    setSelectedLedgerId('');
+    setSelectedLedger(null);
+    setDialogError('');
+    setSuccessMsg('');
+    onClose();
+  }
+
+  return (
+    <ResponsiveDialog open={row !== null} onClose={resetAndClose} maxWidth="sm" fullWidth>
+      <DialogTitle>Post to Ledger — {po?.poNumber}</DialogTitle>
+      <DialogContent>
+        {dialogError && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setDialogError('')}>{dialogError}</Alert>}
+        {successMsg && <Alert severity="success" sx={{ mb: 2 }} onClose={() => setSuccessMsg('')}>{successMsg}</Alert>}
+
+        {!selectedItem ? (
+          <>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+              Select the item to post to a ledger.
+            </Typography>
+            {(po?.items ?? []).map((item, idx) => {
+              const info = postedInfo(item);
+              return (
+                <Card
+                  key={item.id ?? idx}
+                  variant="outlined"
+                  sx={{ mb: 1, cursor: info.fully ? 'default' : 'pointer', opacity: info.fully ? 0.75 : 1, '&:hover': info.fully ? undefined : { borderColor: 'primary.main' } }}
+                  onClick={() => {
+                    if (!info.fully) {
+                      setSelectedItem(item);
+                      setSelectedLedgerId('');
+                      setSelectedLedger(null);
+                      setDialogError('');
+                      setSuccessMsg('');
+                    }
+                  }}
+                >
+                  <Box sx={{ p: 1.5 }}>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 1 }}>
+                      <Typography fontWeight={600}>{item.materialName}</Typography>
+                      <Typography fontWeight={600} noWrap>{formatCurrency(item.amount)}</Typography>
+                    </Box>
+                    <Typography variant="caption" color="text.secondary">
+                      {Number(item.quantity)} {item.unit ?? ''} × {formatCurrency(item.unitPrice)}
+                      {Number(item.gstRate ?? 0) > 0 ? ` + ${item.gstRate}% GST` : ''}
+                    </Typography>
+                    {(item.ledgerPosts ?? []).length > 0 && (
+                      <Box sx={{ mt: 0.5, display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
+                        {item.ledgerPosts!.map((p) => (
+                          <Chip
+                            key={p.id}
+                            size="small"
+                            color="success"
+                            variant="outlined"
+                            label={`${p.ledger?.name ?? 'Ledger'} · ${formatCurrency(Number(p.taxableAmount) + Number(p.gstAmount))} · ${p.journalVoucher?.jvNumber ?? ''}`}
+                          />
+                        ))}
+                      </Box>
+                    )}
+                    {info.fully ? (
+                      <Chip size="small" color="success" label="Fully posted" sx={{ mt: 0.5 }} />
+                    ) : info.posted > 0 ? (
+                      <Typography variant="caption" color="warning.dark" sx={{ display: 'block', mt: 0.5 }}>
+                        Remaining to post: {formatCurrency(info.remaining)}
+                      </Typography>
+                    ) : null}
+                  </Box>
+                </Card>
+              );
+            })}
+          </>
+        ) : (
+          <>
+            <Card variant="outlined" sx={{ p: 1.5, mb: 2, bgcolor: 'action.hover' }}>
+              <Typography fontWeight={600}>{selectedItem.materialName}</Typography>
+              <Typography variant="caption" color="text.secondary">
+                Amount to post: {formatCurrency(postedInfo(selectedItem).remaining)}
+                {Number(selectedItem.gstRate ?? 0) > 0 ? ` (+ ${selectedItem.gstRate}% GST → Input GST ledger)` : ''}
+              </Typography>
+            </Card>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+              Search and select the ledger:
+            </Typography>
+            <LedgerAutocomplete
+              label="Ledger"
+              value={selectedLedgerId}
+              onChange={(id, ledger) => { setSelectedLedgerId(id); setSelectedLedger(ledger); }}
+              ledgers={ledgers}
+              autoFocus
+            />
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1.5 }}>
+              Posting: Dr {selectedLedger?.name ?? 'selected ledger'} / Cr {po?.vendor?.name ?? 'Vendor'} (sundry creditor).
+            </Typography>
+          </>
+        )}
+      </DialogContent>
+      <DialogActions>
+        {selectedItem && (
+          <Button onClick={() => { setSelectedItem(null); setSelectedLedgerId(''); setSelectedLedger(null); }}>Back</Button>
+        )}
+        <Button onClick={resetAndClose}>Close</Button>
+        {selectedItem && (
+          <Button
+            variant="contained"
+            disabled={!selectedLedgerId || !selectedItem.id || postMutation.isPending}
+            onClick={() => postMutation.mutate({ itemId: selectedItem.id!, ledgerId: selectedLedgerId })}
+          >
+            {postMutation.isPending
+              ? <CircularProgress size={20} />
+              : `Post ${formatCurrency(postedInfo(selectedItem).remaining)} to ${selectedLedger?.name ?? 'Ledger'}`}
+          </Button>
+        )}
+      </DialogActions>
+    </ResponsiveDialog>
   );
 }
 

@@ -625,8 +625,18 @@ router.post(
         // Dr Purchase (consumables) / Dr Fixed Assets (asset items) + Dr Input GST, Cr Sundry Creditor
         // This posts the GRN to the general ledger so the books reflect the
         // inventory increase and the corresponding liability to the vendor.
+        // Skipped when this PO's items were already posted to ledgers
+        // individually via the PO "Post to Ledger" action — the payable and
+        // expense are already booked, so an auto voucher would double-book.
+        const itemLedgerPost = await tx.pOItemLedgerPost.findFirst({
+          where: { poItem: { poId: receipt.poId } },
+          select: { id: true },
+        });
         const vendor = receipt.purchaseOrder?.vendor;
-        if (vendor) {
+        if (vendor && itemLedgerPost) {
+          console.warn(`[GRN] Skipping auto purchase voucher for GRN ${receipt.receiptNumber}: PO items were already posted to ledgers individually`);
+        }
+        if (vendor && !itemLedgerPost) {
           const vendorLedgerId = await ensureVendorLedger(vendor.id, projectId);
 
           // Find or create Purchase ledger

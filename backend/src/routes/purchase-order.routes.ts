@@ -1,5 +1,5 @@
 import { Router, Response, NextFunction } from 'express';
-import { Permission, POStatus, POPaymentType, AuditAction, UserRole, GoodsReceiptStatus, isAdminRole } from '@hospital-erp/shared';
+import { Permission, POStatus, POPaymentType, AuditAction, UserRole, GoodsReceiptStatus, isAdminRole, VoucherType, GST_LEDGER_NAMES } from '@hospital-erp/shared';
 import { createPOSchema, listPOsSchema, approvalActionSchema, editPOSchema, editUnapprovedPOSchema, regeneratePOSchema, changePOPaymentTypeSchema } from '@hospital-erp/shared';
 import { prisma } from '../config/prisma';
 import { Prisma } from '@prisma/client';
@@ -11,6 +11,8 @@ import { generateSequenceNumber } from '../services/sequence.service';
 import * as approvalService from '../services/approval.service';
 import { notifyApprovers } from '../services/push.service';
 import { streamPurchaseOrderPdf } from '../services/purchase-order-pdf.service';
+import { ensureVendorLedger, findLedgerByName } from './ledger.routes';
+import { postVoucher, generateVoucherNumber } from './voucher.routes';
 
 const router = Router();
 router.use(authMiddleware);
@@ -118,7 +120,16 @@ async function recalculatePoStatus(poId: string): Promise<string> {
 const poInclude = {
   vendor: { select: { id: true, name: true, vendorCode: true, phone: true, address: true, contactPersonName: true, contactPersonPhone: true } },
   quotation: { select: { id: true, quotationNumber: true, date: true, createdAt: true } },
-  items: true,
+  items: {
+    include: {
+      ledgerPosts: {
+        include: {
+          ledger: { select: { id: true, name: true } },
+          journalVoucher: { select: { jvNumber: true } },
+        },
+      },
+    },
+  },
   createdByUser: { select: { id: true, name: true } },
   editedByUser: { select: { id: true, name: true } },
   parentPo: { select: { id: true, poNumber: true } },
@@ -1843,6 +1854,238 @@ router.post(
       );
 
       res.json(updated);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// POST /:id/items/:itemId/post-ledger — post a single PO item to a chosen
+// ledger (Tally-style item-wise expense booking). Creates a PURCHASE voucher:
+//   Dr <selected ledger>          (item taxable amount)
+//   Dr Input CGST/SGST or IGST    (item GST portion, when gstRate > 0)
+//   Cr Vendor ledger              (item total incl. GST) — when the payable
+//                                 isn't booked yet; consumes a paid advance
+//                                 or books the payable to the vendor
+//   Cr Purchase ledger            (reclassification) — when the item's value
+//                                 was already booked via a posted GRN or an
+//                                 invoice posted to books
+// Every posting is recorded in POItemLedgerPost so an item can never be
+// posted for more than its amount.
+router.post(
+  '/:id/items/:itemId/post-ledger',
+  rbacMiddleware(Permission.MANAGE_FINANCE),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      const { ledgerId, amount: reqAmount } = req.body as { ledgerId?: string; amount?: number };
+
+      if (!ledgerId || typeof ledgerId !== 'string') {
+        res.status(400).json({ error: 'Ledger is required' });
+        return;
+      }
+
+      const po = await prisma.purchaseOrder.findFirst({
+        where: { id: req.params.id, projectId, deletedAt: null },
+        include: {
+          vendor: { select: { id: true, name: true } },
+          invoices: { select: { id: true } },
+          items: { where: { id: req.params.itemId }, include: { ledgerPosts: true } },
+        },
+      });
+      if (!po) {
+        res.status(404).json({ error: 'Purchase order not found' });
+        return;
+      }
+      if (![POStatus.APPROVED, POStatus.PARTIALLY_DELIVERED, POStatus.DELIVERED].includes(po.status as POStatus)) {
+        res.status(400).json({ error: 'Items can only be posted to ledgers after the PO is approved' });
+        return;
+      }
+      const item = po.items[0];
+      if (!item) {
+        res.status(404).json({ error: 'PO item not found' });
+        return;
+      }
+
+      const ledger = await prisma.ledger.findFirst({
+        where: { id: ledgerId, projectId, deletedAt: null, isActive: true },
+      });
+      if (!ledger) {
+        res.status(400).json({ error: 'Ledger not found or inactive' });
+        return;
+      }
+
+      const postedSoFar = item.ledgerPosts.reduce((s, p) => s + Number(p.taxableAmount), 0);
+      const remaining = Math.round((Number(item.amount) - postedSoFar) * 100) / 100;
+      if (remaining <= 0) {
+        res.status(400).json({ error: `"${item.materialName}" is already fully posted to ledgers` });
+        return;
+      }
+      const taxable = reqAmount !== undefined ? Math.round(Number(reqAmount) * 100) / 100 : remaining;
+      if (!Number.isFinite(taxable) || taxable <= 0) {
+        res.status(400).json({ error: 'Amount must be greater than 0' });
+        return;
+      }
+      if (taxable > remaining + 0.01) {
+        res.status(400).json({ error: `Amount exceeds the unposted balance of ₹${remaining.toFixed(2)} for "${item.materialName}"` });
+        return;
+      }
+
+      const gstRate = Number(item.gstRate ?? 0);
+      const gst = Math.round(taxable * gstRate) / 100;
+      const total = Math.round((taxable + gst) * 100) / 100;
+
+      // ── Credit side ──
+      // If this item's value is already booked in the generic "Purchase"
+      // ledger (a posted GRN containing this item, or a linked invoice that
+      // was posted to books), the payable was already recorded — so this
+      // posting reclassifies it: Cr Purchase → Dr <selected ledger>.
+      // Otherwise the payable isn't booked yet: Cr the vendor ledger, which
+      // consumes an advance already paid to the vendor or books the payable.
+      const invoiceIds = po.invoices.map((i) => i.id);
+      const [grnBooking, invoiceVoucher] = await Promise.all([
+        prisma.goodsReceiptItem.findFirst({
+          where: {
+            poItemId: item.id,
+            acceptedQty: { gt: 0 },
+            goodsReceipt: { status: GoodsReceiptStatus.POSTED, deletedAt: null },
+          },
+          select: { id: true },
+        }),
+        invoiceIds.length > 0
+          ? prisma.journalVoucher.findFirst({
+              where: { sourceInvoiceId: { in: invoiceIds }, status: 'POSTED', deletedAt: null },
+              select: { id: true },
+            })
+          : Promise.resolve(null),
+      ]);
+      const alreadyBooked = !!grnBooking || !!invoiceVoucher;
+
+      let creditLedgerId: string;
+      let creditDesc: string;
+      if (alreadyBooked) {
+        let purchaseLedgerId = await findLedgerByName('Purchase', projectId);
+        if (!purchaseLedgerId) {
+          const purchaseLedger = await prisma.ledger.create({
+            data: {
+              projectId,
+              name: 'Purchase',
+              group: 'PURCHASE',
+              linkedEntityType: 'NONE',
+              openingBalance: 0,
+              currentBalance: 0,
+              isActive: true,
+            },
+          });
+          purchaseLedgerId = purchaseLedger.id;
+        }
+        creditLedgerId = purchaseLedgerId;
+        creditDesc = `Reclassify ${item.materialName} - PO ${po.poNumber}`;
+      } else {
+        creditLedgerId = await ensureVendorLedger(po.vendorId, projectId);
+        creditDesc = `${item.materialName} - ${po.vendor.name} - PO ${po.poNumber}`;
+      }
+
+      const entries: Array<{ ledgerId: string; debit: number; credit: number; description: string }> = [
+        { ledgerId: ledger.id, debit: taxable, credit: 0, description: `${item.materialName} - PO ${po.poNumber}` },
+      ];
+      if (gst > 0) {
+        const cgstLedgerId = await findLedgerByName(GST_LEDGER_NAMES.INPUT_CGST, projectId);
+        const sgstLedgerId = await findLedgerByName(GST_LEDGER_NAMES.INPUT_SGST, projectId);
+        const igstLedgerId = await findLedgerByName(GST_LEDGER_NAMES.INPUT_IGST, projectId);
+        if (cgstLedgerId && sgstLedgerId) {
+          const half = Math.round(gst / 2 * 100) / 100;
+          entries.push({ ledgerId: cgstLedgerId, debit: half, credit: 0, description: `Input CGST - PO ${po.poNumber}` });
+          entries.push({ ledgerId: sgstLedgerId, debit: Math.round((gst - half) * 100) / 100, credit: 0, description: `Input SGST - PO ${po.poNumber}` });
+        } else if (igstLedgerId) {
+          entries.push({ ledgerId: igstLedgerId, debit: gst, credit: 0, description: `Input IGST - PO ${po.poNumber}` });
+        } else {
+          entries[0].debit += gst; // no GST ledgers seeded — keep the voucher balanced
+        }
+      }
+      entries.push({
+        ledgerId: creditLedgerId,
+        debit: 0,
+        credit: total,
+        description: creditDesc,
+      });
+
+      const ledgerIds = entries.map((e) => e.ledgerId);
+      const ledgers = await prisma.ledger.findMany({
+        where: { id: { in: ledgerIds }, projectId, deletedAt: null, isActive: true },
+      });
+      if (ledgers.length !== new Set(ledgerIds).size) {
+        res.status(400).json({ error: 'One or more required ledgers not found. Run ledger sync first.' });
+        return;
+      }
+      const ledgerMap = new Map(ledgers.map((l) => [l.id, { id: l.id, name: l.name, group: l.group, linkedEntityType: l.linkedEntityType, linkedEntityId: l.linkedEntityId }]));
+
+      const jvNumber = await generateVoucherNumber(VoucherType.PURCHASE);
+
+      const result = await prisma.$transaction(async (tx) => {
+        // Re-check the unposted balance inside the transaction so two
+        // concurrent posts cannot exceed the item amount.
+        const posted = await tx.pOItemLedgerPost.aggregate({
+          where: { poItemId: item.id },
+          _sum: { taxableAmount: true },
+        });
+        const inTxRemaining = Math.round((Number(item.amount) - Number(posted._sum.taxableAmount ?? 0)) * 100) / 100;
+        if (taxable > inTxRemaining + 0.01) {
+          throw new Error(`Amount exceeds the unposted balance of ₹${inTxRemaining.toFixed(2)} for "${item.materialName}"`);
+        }
+
+        const voucherResult = await postVoucher({
+          projectId,
+          jvNumber,
+          voucherType: VoucherType.PURCHASE,
+          voucherDate: new Date(),
+          description: `PO ${po.poNumber} - ${item.materialName}`,
+          totalDebit: total,
+          totalCredit: total,
+          entries,
+          ledgerMap,
+          budgetHeadMap: new Map(),
+          sourceInvoiceId: null,
+          billSettlements: [],
+          userId: req.user!.id,
+          tx,
+        });
+
+        await tx.pOItemLedgerPost.create({
+          data: {
+            poItemId: item.id,
+            journalVoucherId: voucherResult.voucherId,
+            ledgerId: ledger.id,
+            taxableAmount: taxable,
+            gstAmount: gst,
+            createdBy: req.user!.id,
+          },
+        });
+
+        return voucherResult;
+      });
+
+      await logAudit({
+        userId: req.user!.id,
+        action: AuditAction.CREATE,
+        entityType: 'PURCHASE_ORDER',
+        entityId: po.id,
+        projectId,
+        newValue: {
+          action: 'POST_ITEM_TO_LEDGER',
+          poNumber: po.poNumber,
+          itemId: item.id,
+          materialName: item.materialName,
+          ledgerId: ledger.id,
+          ledgerName: ledger.name,
+          creditLedgerId,
+          taxableAmount: taxable,
+          gstAmount: gst,
+          jvNumber,
+        },
+      });
+
+      res.json({ message: `"${item.materialName}" posted to ${ledger.name}`, jvNumber, voucherId: result.voucherId });
     } catch (error) {
       next(error);
     }

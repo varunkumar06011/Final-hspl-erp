@@ -76,6 +76,7 @@ model User {
   raisedMPRs               MaterialPurchaseRequest[] @relation("MPRRaisedBy")
   createdPaymentSheets     PaymentSheet[]            @relation("PaymentSheetCreatedBy")
   paymentSheetNarrations   PaymentSheetNarration[]   @relation("PaymentSheetNarrationUpdatedBy")
+  poItemLedgerPosts        POItemLedgerPost[]        @relation("POItemLedgerPostCreatedBy")
 
   @@map("users")
 }
@@ -323,8 +324,33 @@ model POItem {
 
   purchaseOrder     PurchaseOrder      @relation(fields: [poId], references: [id], onDelete: Cascade)
   goodsReceiptItems GoodsReceiptItem[]
+  ledgerPosts       POItemLedgerPost[]
 
   @@map("po_items")
+}
+
+// Item-wise ledger posting: tracks each PO item's postings to a chosen ledger
+// so an item can only be posted once (no double-posting) and the posting
+// is traceable back to its voucher.
+model POItemLedgerPost {
+  id               String   @id @default(uuid()) @db.Uuid
+  poItemId         String   @db.Uuid
+  journalVoucherId String   @db.Uuid
+  ledgerId         String   @db.Uuid
+  taxableAmount    Decimal  @db.Decimal(15, 2) // amount debited to the chosen ledger
+  gstAmount        Decimal  @default(0) @db.Decimal(15, 2) // GST portion debited to Input GST ledgers
+  createdBy        String   @db.Uuid
+  createdAt        DateTime @default(now())
+
+  poItem         POItem         @relation(fields: [poItemId], references: [id], onDelete: Cascade)
+  journalVoucher JournalVoucher @relation(fields: [journalVoucherId], references: [id], onDelete: Cascade)
+  ledger         Ledger         @relation(fields: [ledgerId], references: [id])
+  createdByUser  User           @relation("POItemLedgerPostCreatedBy", fields: [createdBy], references: [id])
+
+  @@index([poItemId])
+  @@index([journalVoucherId])
+  @@index([ledgerId])
+  @@map("po_item_ledger_posts")
 }
 
 model VendorInvoice {
@@ -1497,6 +1523,7 @@ model JournalVoucher {
   ledgerEntries    LedgerEntry[]
   billSettlements  BillSettlement[]
   payments         Payment[]
+  poItemLedgerPosts POItemLedgerPost[]
 
   @@index([projectId])
   @@index([voucherType])
@@ -1553,8 +1580,9 @@ model Ledger {
   updatedAt       DateTime @updatedAt
   deletedAt       DateTime?
 
-  project       Project        @relation(fields: [projectId], references: [id])
-  ledgerEntries LedgerEntry[]
+  project          Project           @relation(fields: [projectId], references: [id])
+  ledgerEntries    LedgerEntry[]
+  poItemLedgerPosts POItemLedgerPost[]
 
   @@unique([projectId, name])
   @@index([projectId, group])

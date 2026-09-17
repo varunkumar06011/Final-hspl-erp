@@ -1528,6 +1528,18 @@ export async function postInvoiceToBooks(invoiceId: string, projectId: string, u
     throw new Error('Invoice must be verified before posting to books');
   }
 
+  // Guard: if this PO's items were already posted to ledgers individually
+  // (PO "Post to Ledger" action), posting the whole invoice would double-book.
+  if (invoice.poId) {
+    const itemPost = await prisma.pOItemLedgerPost.findFirst({
+      where: { poItem: { poId: invoice.poId } },
+      select: { id: true },
+    });
+    if (itemPost) {
+      throw new Error('Items of this PO were already posted to ledgers individually — posting the invoice to books would double-book the amounts');
+    }
+  }
+
   // Check if already posted
   const existing = await prisma.journalVoucher.findFirst({
     where: { sourceInvoiceId: invoiceId, projectId, status: 'POSTED', deletedAt: null },
