@@ -86,6 +86,11 @@ export function exportLedgerStatementPdf(
   const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
   const isDebit = data.ledger.isDebitNature;
 
+  // jsPDF's built-in fonts lack the ₹ glyph (it renders as "¹") — use "Rs."
+  // in PDF output. The browser print path keeps ₹ (it renders correctly).
+  const pdfAmt = (n: number) => formatCurrency(n).replace('₹', 'Rs.');
+  const pdfBal = (n: number) => formatBalanceWithSuffix(n, isDebit).replace('₹', 'Rs.');
+
   // ── Header ──
   doc.setFontSize(16);
   doc.setFont('helvetica', 'bold');
@@ -97,8 +102,8 @@ export function exportLedgerStatementPdf(
   doc.text(`From: ${formatDisplayDate(meta.startDate)}    To: ${formatDisplayDate(meta.endDate)}`, 14, 28);
 
   // ── Opening / Closing balances ──
-  doc.text(`Opening Balance: ${formatBalanceWithSuffix(data.openingBalance, isDebit)}`, 14, 34);
-  doc.text(`Closing Balance: ${formatBalanceWithSuffix(data.closingBalance, isDebit)}`, 14, 40);
+  doc.text(`Opening Balance: ${pdfBal(data.openingBalance)}`, 14, 34);
+  doc.text(`Closing Balance: ${pdfBal(data.closingBalance)}`, 14, 40);
 
   // ── Table ──
   // Each transaction is a compact main row (Date | Voucher | Type | Debit |
@@ -113,7 +118,7 @@ export function exportLedgerStatementPdf(
   tableBody.push([
     { content: 'Opening Balance', colSpan: 3, styles: { fontStyle: 'bold' } },
     '', '',
-    { content: formatBalanceWithSuffix(data.openingBalance, isDebit), styles: { halign: 'right', fontStyle: 'bold' } },
+    { content: pdfBal(data.openingBalance), styles: { halign: 'right', fontStyle: 'bold' } },
   ]);
   txnOfRow.push(-1);
 
@@ -122,9 +127,9 @@ export function exportLedgerStatementPdf(
       formatDate(entry.voucherDate),
       entry.voucherNumber,
       entry.voucherType.replace(/_/g, ' '),
-      entry.debit > 0 ? formatCurrency(entry.debit) : '—',
-      entry.credit > 0 ? formatCurrency(entry.credit) : '—',
-      formatBalanceWithSuffix(entry.balance, isDebit),
+      entry.debit > 0 ? pdfAmt(entry.debit) : '—',
+      entry.credit > 0 ? pdfAmt(entry.credit) : '—',
+      pdfBal(entry.balance),
     ]);
     txnOfRow.push(i);
     const desc = entry.description?.trim();
@@ -132,7 +137,7 @@ export function exportLedgerStatementPdf(
       tableBody.push([
         '',
         {
-          content: desc,
+          content: desc.replace(/₹/g, 'Rs.'),
           colSpan: 5,
           styles: { halign: 'justify', fontSize: 7.5, textColor: [70, 70, 70], cellPadding: { top: 0.5, right: 2, bottom: 2.5, left: 2 } },
         },
@@ -146,16 +151,17 @@ export function exportLedgerStatementPdf(
     body: tableBody as never,
     startY: 44,
     theme: 'plain',
+    tableWidth: 'wrap',
     headStyles: { fillColor: [66, 66, 66], fontSize: 9, halign: 'left' },
     bodyStyles: { fontSize: 8 },
     rowPageBreak: 'avoid',
     columnStyles: {
-      0: { cellWidth: 28 },
+      0: { cellWidth: 26 },
       1: { cellWidth: 34 },
-      2: { cellWidth: 30 },
-      3: { cellWidth: 34, halign: 'right' },
-      4: { cellWidth: 34, halign: 'right' },
-      5: { cellWidth: 38, halign: 'right' },
+      2: { cellWidth: 26 },
+      3: { cellWidth: 40, halign: 'right' },
+      4: { cellWidth: 40, halign: 'right' },
+      5: { cellWidth: 46, halign: 'right' },
     },
     didParseCell: (hookData) => {
       // Alternate shading per transaction block so a main row and its
