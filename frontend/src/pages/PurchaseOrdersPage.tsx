@@ -1499,7 +1499,12 @@ function PostToLedgerDialog({ row, onClose }: { row: PORow | null; onClose: () =
     },
     enabled: !!row,
   });
-  const ledgers: LedgerOption[] = ledgersData?.data ?? [];
+  // Only nominal (standalone) ledgers can receive item postings — the credit
+  // side is always the vendor, so vendor/bank/cash/owner-linked ledgers would
+  // produce self-cancelling or phantom entries.
+  const ledgers: LedgerOption[] = (ledgersData?.data ?? []).filter(
+    (l: LedgerOption) => !l.linkedEntityType || l.linkedEntityType === 'NONE',
+  );
 
   const postMutation = useMutation({
     mutationFn: async ({ itemId, ledgerId }: { itemId: string; ledgerId: string }) => {

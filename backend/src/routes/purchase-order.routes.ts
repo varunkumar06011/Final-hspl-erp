@@ -1915,6 +1915,20 @@ router.post(
         return;
       }
 
+      // The credit side is always the vendor ledger (or the generic Purchase
+      // ledger when the item was already booked), so the debit must go to a
+      // nominal account — an expense, asset, or other standalone ledger.
+      // Posting to an entity-linked ledger would corrupt the books:
+      //   - the vendor's own ledger → a self-cancelling Dr/Cr pair
+      //   - a bank/cash ledger     → a phantom deposit (fake money in)
+      //   - another vendor/owner   → debits someone else's account
+      if (ledger.linkedEntityType && ledger.linkedEntityType !== 'NONE') {
+        res.status(400).json({
+          error: 'Items can only be posted to expense/asset ledgers — not to vendor, bank, cash, or owner accounts. Create a ledger (e.g. "Office Rent") if needed.',
+        });
+        return;
+      }
+
       const postedSoFar = item.ledgerPosts.reduce((s, p) => s + Number(p.taxableAmount), 0);
       const remaining = Math.round((Number(item.amount) - postedSoFar) * 100) / 100;
       if (remaining <= 0) {
@@ -1983,7 +1997,9 @@ router.post(
         creditDesc = `Reclassify ${item.materialName} - PO ${po.poNumber}`;
       } else {
         creditLedgerId = await ensureVendorLedger(po.vendorId, projectId);
-        creditDesc = `${item.materialName} - ${po.vendor.name} - PO ${po.poNumber}`;
+        // Reads like Tally: in the vendor's statement this credit row shows
+        // the contra account ("By Office Rent - First floor rent - PO ...").
+        creditDesc = `By ${ledger.name} - ${item.materialName} - PO ${po.poNumber}`;
       }
 
       const entries: Array<{ ledgerId: string; debit: number; credit: number; description: string }> = [
