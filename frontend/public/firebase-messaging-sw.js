@@ -1,57 +1,25 @@
 // ═══════════════════════════════════════════════════════════
 // Firebase Cloud Messaging Service Worker
 // Handles push events, notification display, and click actions
-// Must be at the root scope (public/) so it controls the entire origin
+// Must be at root scope (public/) so it controls the entire origin
 // ═══════════════════════════════════════════════════════════
+//
+// NOTE: This service worker intentionally does NOT use importScripts() to load
+// the Firebase compat SDK from www.gstatic.com. On iOS Safari, when a PWA is
+// added to the home screen and launched in standalone mode, cross-origin
+// importScripts() fails to install, leaving the SW in a broken state and
+// causing iOS Safari to render a blank white screen.
+//
+// FCM delivers push payloads via the standard Web Push API 'push' event, which
+// fires regardless of whether the Firebase SDK is present in the SW. The
+// backend (push.service.ts) sends messages with both `notification` and
+// `data` fields, both of which the raw push handler below processes correctly.
+// No Firebase SDK is needed in the SW.
 
-// Firebase imports — version must match the firebase package in package.json
-importScripts(
-  'https://www.gstatic.com/firebasejs/10.12.1/firebase-app-compat.js'
-);
-importScripts(
-  'https://www.gstatic.com/firebasejs/10.12.1/firebase-messaging-compat.js'
-);
-
-// Minimal config — only projectId + messagingSenderId needed for background messaging
-firebase.initializeApp({
-  apiKey: 'AIzaSyDdEO_xFR9HYdw7xM6FeOjk0zi8ck24gtM',
-  authDomain: 'meditrust-erp.firebaseapp.com',
-  projectId: 'meditrust-erp',
-  storageBucket: 'meditrust-erp.firebasestorage.app',
-  messagingSenderId: '963993986351',
-  appId: '1:963993986351:web:5d303afcee2376a68d2dda',
-});
-
-const messaging = firebase.messaging();
-
-// ─── Background message handler ───────────────────────────
+// ─── Push event handler ───────────────────────────────────
 // FCM calls this when a push arrives and the page is not focused (or closed).
 // The payload is sent from the backend via firebase-admin messaging.send()
 // with the notification + data fields.
-messaging.onBackgroundMessage((payload) => {
-  const data = payload.data || {};
-  const notification = payload.notification || {};
-
-  const title = notification.title || data.title || 'Hospital ERP';
-  const body = notification.body || data.body || '';
-  const approvalId = data.approvalId || '';
-  const url = data.url || '/';
-
-  const notificationOptions = {
-    body,
-    icon: '/icon.svg',
-    badge: '/icon.svg',
-    tag: approvalId || `approval-${Date.now()}`,
-    renotify: true,
-    data: { url, approvalId },
-    requireInteraction: false,
-  };
-
-  return self.registration.showNotification(title, notificationOptions);
-});
-
-// ─── Push event fallback ──────────────────────────────────
-// If onBackgroundMessage doesn't fire (edge cases), handle raw push event.
 self.addEventListener('push', (event) => {
   if (event.data) {
     try {
@@ -69,7 +37,9 @@ self.addEventListener('push', (event) => {
         icon: '/icon.svg',
         badge: '/icon.svg',
         tag: approvalId || `approval-${Date.now()}`,
+        renotify: true,
         data: { url, approvalId },
+        requireInteraction: false,
       };
 
       event.waitUntil(self.registration.showNotification(title, options));
