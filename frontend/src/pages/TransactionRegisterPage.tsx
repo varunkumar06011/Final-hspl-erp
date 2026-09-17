@@ -226,7 +226,7 @@ export default function TransactionRegisterPage() {
                         <TableCell sx={{ fontWeight: 600 }}>Vendor</TableCell>
                         <TableCell sx={{ fontWeight: 600 }}>Status</TableCell>
                         <TableCell align="right" sx={{ fontWeight: 600 }}>Quotations</TableCell>
-                        <TableCell align="right" sx={{ fontWeight: 600 }}>POs</TableCell>
+                        <TableCell align="right" sx={{ fontWeight: 600 }}>PO Payable</TableCell>
                         <TableCell align="right" sx={{ fontWeight: 600 }}>Invoiced</TableCell>
                         <TableCell align="right" sx={{ fontWeight: 600 }}>Paid</TableCell>
                         <TableCell align="right" sx={{ fontWeight: 600 }}>Outstanding</TableCell>
@@ -252,7 +252,7 @@ export default function TransactionRegisterPage() {
                             <Chip size="small" label={v.status} color={STATUS_CHIP_COLOR[v.status] ?? 'default'} />
                           </TableCell>
                           <TableCell data-label="Quotations" align="right">{v.quotationAmount ? formatIndianNumber(v.quotationAmount) : '₹0'}</TableCell>
-                          <TableCell data-label="POs" align="right">{v.poAmount ? formatIndianNumber(v.poAmount) : '₹0'}</TableCell>
+                          <TableCell data-label="PO Payable" align="right">{v.poAmount ? formatIndianNumber(v.poAmount) : '₹0'}</TableCell>
                           <TableCell data-label="Invoiced" align="right">{v.invoiceAmount ? formatIndianNumber(v.invoiceAmount) : '₹0'}</TableCell>
                           <TableCell data-label="Paid" align="right" sx={{ color: v.paidAmount ? 'success.main' : 'text.disabled' }}>{v.paidAmount ? formatIndianNumber(v.paidAmount) : 'Not Paid'}</TableCell>
                           <TableCell data-label="Outstanding" align="right" sx={{ color: v.outstandingAmount ? 'error.main' : 'text.disabled', fontWeight: 600 }}>{formatIndianNumber(v.outstandingAmount)}</TableCell>

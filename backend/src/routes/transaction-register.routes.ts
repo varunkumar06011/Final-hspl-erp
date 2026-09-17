@@ -125,7 +125,7 @@ router.get(
         }),
         prisma.purchaseOrder.findMany({
           where: { projectId, deletedAt: null, status: { not: 'DELETED' }, date: inYear },
-          select: { vendorId: true, date: true, grandTotal: true, status: true, budgetHeadId: true, budgetHead: { select: { particulars: true } } },
+          select: { vendorId: true, date: true, grandTotal: true, netPayable: true, status: true, budgetHeadId: true, budgetHead: { select: { particulars: true } } },
         }),
         prisma.vendorInvoice.findMany({
           where: { projectId, deletedAt: null, date: inYear },
@@ -166,7 +166,10 @@ router.get(
       }
       for (const p of pos) {
         if (!vendorScope(p.vendorId)) continue;
-        events.push({ vendorId: p.vendorId, date: p.date, kind: 'po', amount: Number(p.grandTotal), paid: 0, status: p.status, budgetHeadId: p.budgetHeadId, budgetHead: p.budgetHead?.particulars });
+        // netPayable is the actual obligation (grandTotal − deductions); older
+        // POs never populated it (0), so fall back to grandTotal there.
+        const payable = Number(p.netPayable) > 0 ? Number(p.netPayable) : Number(p.grandTotal);
+        events.push({ vendorId: p.vendorId, date: p.date, kind: 'po', amount: payable, paid: 0, status: p.status, budgetHeadId: p.budgetHeadId, budgetHead: p.budgetHead?.particulars });
       }
       for (const i of invoices) {
         if (!vendorScope(i.vendorId)) continue;
@@ -277,7 +280,10 @@ router.get(
           summary.invoiceAmount += agg.invoiceAmount;
           summary.paidAmount += agg.paidAmount;
           summary.payableAmount += agg.payableAmount;
-          summary.outstandingAmount += Math.max(0, agg.invoiceAmount - agg.paidAmount);
+          // Outstanding = obligation − paid. Obligation is the invoice total
+          // when invoiced; otherwise the PO net-payable (payments here are
+          // made directly against POs before invoices exist).
+          summary.outstandingAmount += Math.max(0, (agg.invoiceAmount > 0 ? agg.invoiceAmount : agg.poAmount) - agg.paidAmount);
           summary.counts.quotations += agg.counts.quotation ?? 0;
           summary.counts.pos += agg.counts.po ?? 0;
           summary.counts.invoices += agg.counts.invoice ?? 0;
@@ -307,9 +313,10 @@ router.get(
           vendorPageSize,
           vendors: pageRows.map((agg) => {
             const v = vendorInfo.get(agg.vendorId);
-            const outstanding = Math.max(0, agg.invoiceAmount - agg.paidAmount);
+            const obligation = agg.invoiceAmount > 0 ? agg.invoiceAmount : agg.poAmount;
+            const outstanding = Math.max(0, obligation - agg.paidAmount);
             const derivedStatus =
-              agg.invoiceAmount > 0
+              obligation > 0
                 ? outstanding <= 0 ? 'Paid' : agg.paidAmount > 0 ? 'Partially Paid' : 'Not Paid'
                 : 'Active';
             return {
@@ -344,7 +351,7 @@ router.get(
         grandSummary.invoiceAmount += g.invoiceAmount;
         grandSummary.paidAmount += g.paidAmount;
         grandSummary.payableAmount += g.payableAmount;
-        grandSummary.outstandingAmount += Math.max(0, g.invoiceAmount - g.paidAmount);
+        grandSummary.outstandingAmount += Math.max(0, (g.invoiceAmount > 0 ? g.invoiceAmount : g.poAmount) - g.paidAmount);
         grandSummary.counts.quotations += g.counts.quotation ?? 0;
         grandSummary.counts.pos += g.counts.po ?? 0;
         grandSummary.counts.invoices += g.counts.invoice ?? 0;
