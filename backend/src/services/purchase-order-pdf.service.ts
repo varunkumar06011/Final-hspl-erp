@@ -338,22 +338,21 @@ export async function streamPurchaseOrderPdf(res: NodeJS.WritableStream, po: any
   y += approvalHeadingH;
 
   // Order: Managing Director, Director, Construction Project Head
-  // Show just the person's name — no "Admin 1/2" or "Approver X" labels.
+  // Show just the person's name — no role/designation labels.
   const roles = [
-    { role: 'ADMIN_2', title: 'Managing Director', user: admin2 },
-    { role: 'ADMIN', title: 'Director', user: admin1 },
-    { role: 'PROJECT_HEAD', title: 'Construction Project Head', user: head },
+    { role: 'ADMIN_2', user: admin2 },
+    { role: 'ADMIN', user: admin1 },
+    { role: 'PROJECT_HEAD', user: head },
   ];
 
   for (let i = 0; i < roles.length; i++) {
     const sx = left + i * (sigW + 12);
-    const { role, title, user: u } = roles[i];
+    const { role, user: u } = roles[i];
     const approved = approvedByRole[role];
     const displayName = u?.name ?? approved?.name ?? '—';
 
     doc.roundedRect(sx, y, sigW, sigH, 4).stroke(border);
-    doc.fillColor(dark).font('Helvetica-Bold').fontSize(8.5).text(displayName, sx + 6, y + 10, { width: sigW - 12, align: 'center', lineBreak: false });
-    doc.fillColor(muted).font('Helvetica').fontSize(7).text(`(${title})`, sx + 6, y + 30, { width: sigW - 12, align: 'center' });
+    doc.fillColor(dark).font('Helvetica-Bold').fontSize(8.5).text(displayName, sx + 6, y + (sigH - 10) / 2, { width: sigW - 12, align: 'center', lineBreak: false });
   }
 
   // ── Footer ──
