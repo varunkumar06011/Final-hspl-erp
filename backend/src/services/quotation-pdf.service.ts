@@ -188,19 +188,21 @@ export async function streamQuotationPdf(res: NodeJS.WritableStream, quotation: 
 
   // ── Items table ──
   const colGap = 4;
-  const wSno = 27;
-  const wDesc = 170;
-  const wQty = 42;
-  const wUnit = 52;
-  const wPrice = 95;
-  const wTotal = 105;
+  const wSno = 24;
+  const wDesc = 120;
+  const wQty = 34;
+  const wUnit = 44;
+  const wPrice = 85;
+  const wGst = 84;
+  const wTotal = 96;
 
   const colSno = left;
   const colDesc = left + wSno + colGap;
   const colQty = colDesc + wDesc + colGap;
   const colUnit = colQty + wQty + colGap;
   const colPrice = colUnit + wUnit + colGap;
-  const colTotal = colPrice + wPrice + colGap;
+  const colGst = colPrice + wPrice + colGap;
+  const colTotal = colGst + wGst + colGap;
 
   doc.rect(left, y, width, 26).fill(primary);
   doc.fillColor('#fff').font('Helvetica-Bold').fontSize(9);
@@ -209,7 +211,8 @@ export async function streamQuotationPdf(res: NodeJS.WritableStream, quotation: 
   doc.text('Qty', colQty, y + 7, { width: wQty, align: 'center' });
   doc.text('Unit', colUnit, y + 7, { width: wUnit, align: 'center' });
   doc.text('Unit Price', colPrice + 4, y + 7, { width: wPrice - 8, align: 'right' });
-  doc.text('Total', colTotal + 4, y + 7, { width: wTotal - 8, align: 'right' });
+  doc.text('GST', colGst + 4, y + 7, { width: wGst - 8, align: 'right' });
+  doc.text('Total (Inc. GST)', colTotal + 4, y + 7, { width: wTotal - 8, align: 'right' });
   y += 26;
 
   const rowH = 24;
@@ -219,6 +222,10 @@ export async function streamQuotationPdf(res: NodeJS.WritableStream, quotation: 
     if (i % 2 === 0) doc.rect(left, y, width, rowH).fill(primaryLight);
     doc.rect(left, y, width, rowH).stroke(border);
 
+    const itemGstRate = Number(item.gstRate ?? 0);
+    const itemTax = Number(item.amount) * itemGstRate / 100;
+    const itemIncTotal = Number(item.amount) + itemTax;
+
     doc.fillColor(dark).font('Helvetica').fontSize(8.5);
     doc.text(String(i + 1), colSno, y + 6, { width: wSno, align: 'center' });
     doc.text(item.materialName, colDesc + 4, y + 6, { width: wDesc - 8 });
@@ -226,7 +233,10 @@ export async function streamQuotationPdf(res: NodeJS.WritableStream, quotation: 
     doc.text(text(item.unit), colUnit, y + 6, { width: wUnit, align: 'center' });
     doc.fillColor(dark).font('Helvetica-Bold').fontSize(8.5);
     doc.text(fmtMoney(Number(item.unitPrice)), colPrice + 4, y + 6, { width: wPrice - 8, align: 'right' });
-    doc.text(fmtMoney(Number(item.amount)), colTotal + 4, y + 6, { width: wTotal - 8, align: 'right' });
+    doc.fillColor(dark).font('Helvetica').fontSize(8);
+    doc.text(`${itemGstRate}% (Rs. ${itemTax.toLocaleString('en-IN', { maximumFractionDigits: 2 })})`, colGst + 4, y + 6, { width: wGst - 8, align: 'right' });
+    doc.fillColor(dark).font('Helvetica-Bold').fontSize(8.5);
+    doc.text(fmtMoney(itemIncTotal), colTotal + 4, y + 6, { width: wTotal - 8, align: 'right' });
     y += rowH;
   }
 
@@ -261,7 +271,7 @@ export async function streamQuotationPdf(res: NodeJS.WritableStream, quotation: 
   };
 
   y += 12;
-  y = drawTotal('Subtotal:', fmtMoney(Number(quotation.totalAmount)), y);
+  y = drawTotal('Subtotal (Excl. GST):', fmtMoney(Number(quotation.totalAmount)), y);
   const gstRate = quotation.items.length > 0 ? Number(quotation.items[0]?.gstRate ?? 0) : 0;
   const gstLabel = Number(quotation.gstAmount) > 0 ? `GST (${gstRate}%):` : 'GST (Not Applicable):';
   y = drawTotal(gstLabel, Number(quotation.gstAmount) > 0 ? fmtMoney(Number(quotation.gstAmount)) : 'Rs. 0.00', y);

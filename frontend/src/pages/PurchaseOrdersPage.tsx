@@ -712,7 +712,7 @@ export default function PurchaseOrdersPage() {
                               {row.status === POStatus.APPROVED && (
                                 <IconButton size="small" color="secondary" onClick={() => setPaymentTypeRow(row)} title="Change Payment Type"><PaymentIcon fontSize="small" /></IconButton>
                               )}
-                              {(row.status === POStatus.PENDING_APPROVAL || row.status === POStatus.REJECTED) && (
+                              {(row.status === POStatus.PENDING_APPROVAL || row.status === POStatus.REJECTED || (row.status === POStatus.APPROVED && !!user && isAdminRole(user.role))) && (
                                 <IconButton size="small" color="primary" onClick={() => setEditUnapprovedRow(row)} title="Edit PO"><EditIcon fontSize="small" /></IconButton>
                               )}
                             </Box>
@@ -894,7 +894,7 @@ export default function PurchaseOrdersPage() {
                             {row.status === POStatus.PARTIALLY_DELIVERED && !row.parentPoId && (
                               <IconButton size="small" color="warning" onClick={() => setEditRow(row)} title="Edit PO to Match Delivered"><EditIcon fontSize="small" /></IconButton>
                             )}
-                            {(row.status === POStatus.PENDING_APPROVAL || row.status === POStatus.REJECTED) && (
+                            {(row.status === POStatus.PENDING_APPROVAL || row.status === POStatus.REJECTED || (row.status === POStatus.APPROVED && !!user && isAdminRole(user.role))) && (
                               <IconButton size="small" color="primary" onClick={() => setEditUnapprovedRow(row)} title="Edit PO"><EditIcon fontSize="small" /></IconButton>
                             )}
                             {(row.status === POStatus.APPROVED || row.status === POStatus.DELIVERED || row.status === POStatus.PARTIALLY_DELIVERED) && (
@@ -1172,8 +1172,8 @@ export default function PurchaseOrdersPage() {
                         <TableCell sx={{ fontWeight: 600 }}>Qty</TableCell>
                         <TableCell sx={{ fontWeight: 600 }}>Unit</TableCell>
                         <TableCell sx={{ fontWeight: 600 }}>Unit Price</TableCell>
-                        <TableCell sx={{ fontWeight: 600 }}>GST %</TableCell>
-                        <TableCell sx={{ fontWeight: 600 }}>Amount</TableCell>
+                        <TableCell sx={{ fontWeight: 600 }}>GST</TableCell>
+                        <TableCell sx={{ fontWeight: 600 }}>Amount (Inc. GST)</TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
@@ -1184,8 +1184,8 @@ export default function PurchaseOrdersPage() {
                           <TableCell>{item.quantity}</TableCell>
                           <TableCell>{item.unit ?? '—'}</TableCell>
                           <TableCell>{formatCurrency(item.unitPrice)}</TableCell>
-                          <TableCell>{Number(item.gstRate ?? 0)}%</TableCell>
-                          <TableCell>{formatCurrency(item.amount)}</TableCell>
+                          <TableCell>{Number(item.gstRate ?? 0)}% ({formatCurrency(Number(item.amount) * Number(item.gstRate ?? 0) / 100)})</TableCell>
+                          <TableCell>{formatCurrency(Number(item.amount) * (1 + Number(item.gstRate ?? 0) / 100))}</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
@@ -1199,7 +1199,7 @@ export default function PurchaseOrdersPage() {
                           {idx + 1}. {item.materialName}
                         </Typography>
                         <Typography variant="subtitle2" fontWeight={700} sx={{ flexShrink: 0 }}>
-                          {formatCurrency(item.amount)}
+                          {formatCurrency(Number(item.amount) * (1 + Number(item.gstRate ?? 0) / 100))}
                         </Typography>
                       </Box>
                       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'repeat(2, 1fr)', sm: 'repeat(4, minmax(0, 1fr))' }, gap: 1 }}>
@@ -1216,8 +1216,8 @@ export default function PurchaseOrdersPage() {
                           <Typography variant="body2" fontWeight={600}>{formatCurrency(item.unitPrice)}</Typography>
                         </Box>
                         <Box>
-                          <Typography variant="caption" color="text.secondary">GST %</Typography>
-                          <Typography variant="body2" fontWeight={600}>{Number(item.gstRate ?? 0)}%</Typography>
+                          <Typography variant="caption" color="text.secondary">GST</Typography>
+                          <Typography variant="body2" fontWeight={600}>{Number(item.gstRate ?? 0)}% ({formatCurrency(Number(item.amount) * Number(item.gstRate ?? 0) / 100)})</Typography>
                         </Box>
                       </Box>
                     </Card>
@@ -1682,6 +1682,7 @@ function DeliveryTrailDialog({ poId, poNumber, onClose }: { poId: string | null;
 
 // ─── Edit PO Dialog ─────────────────────────────────
 interface EditItem {
+  id?: string;
   materialName: string;
   quantity: string;
   unit: string;
@@ -1716,6 +1717,7 @@ function EditPODialog({ row, onClose, onSuccess }: { row: PORow | null; onClose:
       }
     }
     setItems(row.items.map((item) => ({
+      id: item.id,
       materialName: item.materialName,
       quantity: String(item.quantity),
       unit: item.unit ?? 'nos',
@@ -1735,6 +1737,7 @@ function EditPODialog({ row, onClose, onSuccess }: { row: PORow | null; onClose:
       if (!editReason.trim()) throw new Error('Edit reason is required');
       await api.post(`/purchase-orders/${row!.id}/edit`, {
         items: selectedItems.map((i) => ({
+          poItemId: i.id,
           materialName: i.materialName,
           quantity: Number(i.quantity),
           unit: i.unit,
@@ -1789,7 +1792,18 @@ function EditPODialog({ row, onClose, onSuccess }: { row: PORow | null; onClose:
                       setItems(next);
                     }} />
                   </TableCell>
-                  <TableCell>{item.materialName}</TableCell>
+                  <TableCell>
+                    <TextField
+                      size="small"
+                      value={item.materialName}
+                      onChange={(e) => {
+                        const next = [...items];
+                        next[idx] = { ...item, materialName: e.target.value };
+                        setItems(next);
+                      }}
+                      sx={{ minWidth: 140 }}
+                    />
+                  </TableCell>
                   <TableCell>
                     <Chip label={item.accepted} size="small" color="success" variant="outlined" />
                   </TableCell>
@@ -2003,6 +2017,7 @@ function EditUnapprovedPODialog({ row, onClose, onSuccess }: { row: PORow | null
   const [paymentTerms, setPaymentTerms] = useState('');
   const [deliveryDate, setDeliveryDate] = useState('');
   const [budgetHeadId, setBudgetHeadId] = useState('');
+  const [notes, setNotes] = useState('');
   const [error, setError] = useState('');
 
   const { data: budgetHeadsData } = useQuery({
@@ -2028,6 +2043,7 @@ function EditUnapprovedPODialog({ row, onClose, onSuccess }: { row: PORow | null
     setPaymentTerms(row.paymentTerms ?? '');
     setDeliveryDate(row.deliveryDate ? new Date(row.deliveryDate).toISOString().split('T')[0] : '');
     setBudgetHeadId(row.budgetHeadId ?? '');
+    setNotes(row.notes ?? '');
     setError('');
   }, [row]);
 
@@ -2037,6 +2053,7 @@ function EditUnapprovedPODialog({ row, onClose, onSuccess }: { row: PORow | null
         paymentTerms: paymentTerms || undefined,
         deliveryDate: deliveryDate || undefined,
         budgetHeadId,
+        notes,
         items: items.map((i) => ({
           materialName: i.materialName,
           quantity: Number(i.quantity),
@@ -2062,9 +2079,10 @@ function EditUnapprovedPODialog({ row, onClose, onSuccess }: { row: PORow | null
       <DialogTitle>Edit PO — {row?.poNumber}</DialogTitle>
       <DialogContent>
         {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
-        <Alert severity="info" sx={{ mb: 2 }}>
-          This PO has not been approved yet. You can edit items, payment terms, delivery date, and budget head.
-          Payment type is fixed at creation and cannot be changed. The PO will remain pending approval after saving.
+        <Alert severity={row?.status === POStatus.APPROVED ? 'warning' : 'info'} sx={{ mb: 2 }}>
+          {row?.status === POStatus.APPROVED
+            ? 'This PO is already approved. Saving changes returns it to Pending Re-Approval — it must be approved again before it counts as approved. Payment type is fixed at creation.'
+            : 'This PO has not been approved yet. You can edit items, payment terms, delivery date, and budget head. Payment type is fixed at creation and cannot be changed. The PO will remain pending approval after saving.'}
         </Alert>
 
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mb: 2 }}>
@@ -2120,6 +2138,17 @@ function EditUnapprovedPODialog({ row, onClose, onSuccess }: { row: PORow | null
             <MenuItem value="">— Select Budget Head —</MenuItem>
             {budgetHeads.map((h) => <MenuItem key={h.id} value={h.id}>{h.particulars}</MenuItem>)}
           </TextField>
+
+          <TextField
+            label="Item Description"
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            fullWidth
+            size="small"
+            multiline
+            rows={2}
+            placeholder="Item description for this PO (shown in the table and PDF)"
+          />
         </Box>
 
         <Typography variant="subtitle2" sx={{ mb: 1 }}>Items</Typography>

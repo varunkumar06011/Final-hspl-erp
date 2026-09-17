@@ -132,6 +132,7 @@ const ADMIN_NAV_ITEMS = [
   { label: 'Documents', icon: <DocumentIcon />, path: '/documents', permission: Permission.MANAGE_DOCUMENTS, section: 'Project' },
   { label: 'Contracts', icon: <ContractIcon />, path: '/contracts', permission: Permission.MANAGE_CONTRACTS, section: 'Project' },
   // ── Reports ──
+  { label: 'Transaction Register', icon: <ReportsIcon />, path: '/transaction-register', permission: Permission.VIEW_FINANCIALS, section: 'Reports' },
   { label: 'Finance Dashboard', icon: <FinanceDashboardIcon />, path: '/finance-dashboard', permission: Permission.VIEW_FINANCIALS, section: 'Reports' },
   { label: 'Accounting Reports', icon: <AccountingReportsIcon />, path: '/accounting-reports', permission: Permission.VIEW_FINANCIALS, section: 'Reports' },
   { label: 'Finance Reports', icon: <ReportsIcon />, path: '/finance-reports', permission: Permission.VIEW_FINANCIALS, section: 'Reports' },

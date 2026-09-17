@@ -10,6 +10,7 @@ import { useQuery } from '@tanstack/react-query';
 import EntityPage from '../components/EntityPage';
 import ResponsiveDialog from '../components/ResponsiveDialog';
 import ResponsiveTable from '../components/ResponsiveTable';
+import VendorHistoryDialog from '../components/VendorHistoryDialog';
 import api from '../config/api';
 import { formatDate, formatCurrency, formatIndianNumber, STATUS_COLORS } from '../utils/enumOptions';
 
@@ -311,6 +312,7 @@ function RecordTable({
 export default function VendorsPage() {
   const [linkedId, setLinkedId] = useState<string | null>(null);
   const [statementId, setStatementId] = useState<string | null>(null);
+  const [historyId, setHistoryId] = useState<string | null>(null);
 
   return (
     <>
@@ -320,6 +322,7 @@ export default function VendorsPage() {
         entityName="Vendor"
         entityType="VENDOR"
         deepLinkField="name"
+        onRowClick={(row) => setHistoryId(String(row.id))}
         columns={[
           { key: 'vendorCode', label: 'Vendor ID' },
           { key: 'name', label: 'Vendor Name' },
@@ -402,6 +405,7 @@ export default function VendorsPage() {
           </Stack>
         )}
       />
+      <VendorHistoryDialog vendorId={historyId} open={!!historyId} onClose={() => setHistoryId(null)} />
       <VendorLinkedDialog vendorId={linkedId} open={!!linkedId} onClose={() => setLinkedId(null)} />
       <VendorStatementDialog vendorId={statementId} open={!!statementId} onClose={() => setStatementId(null)} />
     </>

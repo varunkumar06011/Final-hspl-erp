@@ -198,19 +198,21 @@ export async function streamPurchaseOrderPdf(res: NodeJS.WritableStream, po: any
 
   // ── Items table ──
   const colGap = 4;
-  const wSno = 27;
-  const wDesc = 170;
-  const wQty = 42;
-  const wUnit = 52;
-  const wPrice = 95;
-  const wTotal = 105;
+  const wSno = 24;
+  const wDesc = 120;
+  const wQty = 34;
+  const wUnit = 44;
+  const wPrice = 85;
+  const wGst = 84;
+  const wTotal = 96;
 
   const colSno = left;
   const colDesc = left + wSno + colGap;
   const colQty = colDesc + wDesc + colGap;
   const colUnit = colQty + wQty + colGap;
   const colPrice = colUnit + wUnit + colGap;
-  const colTotal = colPrice + wPrice + colGap;
+  const colGst = colPrice + wPrice + colGap;
+  const colTotal = colGst + wGst + colGap;
 
   doc.rect(left, y, width, 26).fill(primary);
   doc.fillColor('#fff').font('Helvetica-Bold').fontSize(9);
@@ -219,7 +221,8 @@ export async function streamPurchaseOrderPdf(res: NodeJS.WritableStream, po: any
   doc.text('Qty', colQty, y + 7, { width: wQty, align: 'center' });
   doc.text('Unit', colUnit, y + 7, { width: wUnit, align: 'center' });
   doc.text('Unit Price', colPrice + 4, y + 7, { width: wPrice - 8, align: 'right' });
-  doc.text('Total', colTotal + 4, y + 7, { width: wTotal - 8, align: 'right' });
+  doc.text('GST', colGst + 4, y + 7, { width: wGst - 8, align: 'right' });
+  doc.text('Total (Inc. GST)', colTotal + 4, y + 7, { width: wTotal - 8, align: 'right' });
   y += 26;
 
   // Reserve room for notes, totals, signatures and the footer before sizing rows.
@@ -234,6 +237,10 @@ export async function streamPurchaseOrderPdf(res: NodeJS.WritableStream, po: any
     if (i % 2 === 0) doc.rect(left, y, width, rowH).fill(primaryLight);
     doc.rect(left, y, width, rowH).stroke(border);
 
+    const itemGstRate = Number(item.gstRate ?? 0);
+    const itemTax = Number(item.amount) * itemGstRate / 100;
+    const itemIncTotal = Number(item.amount) + itemTax;
+
     doc.fillColor(dark).font('Helvetica').fontSize(rowFontSize);
     doc.text(String(i + 1), colSno, y + rowTextOffset, { width: wSno, align: 'center', lineBreak: false });
     let description = text(item.materialName);
@@ -245,7 +252,10 @@ export async function streamPurchaseOrderPdf(res: NodeJS.WritableStream, po: any
     doc.text(text(item.unit), colUnit, y + rowTextOffset, { width: wUnit, align: 'center', lineBreak: false });
     doc.fillColor(dark).font('Helvetica-Bold').fontSize(rowFontSize);
     doc.text(fmtMoney(Number(item.unitPrice)), colPrice + 4, y + rowTextOffset, { width: wPrice - 8, align: 'right', lineBreak: false });
-    doc.text(fmtMoney(Number(item.amount)), colTotal + 4, y + rowTextOffset, { width: wTotal - 8, align: 'right', lineBreak: false });
+    doc.fillColor(dark).font('Helvetica').fontSize(Math.max(6, rowFontSize - 0.5));
+    doc.text(`${itemGstRate}% (Rs. ${itemTax.toLocaleString('en-IN', { maximumFractionDigits: 2 })})`, colGst + 4, y + rowTextOffset, { width: wGst - 8, align: 'right', lineBreak: false });
+    doc.fillColor(dark).font('Helvetica-Bold').fontSize(rowFontSize);
+    doc.text(fmtMoney(itemIncTotal), colTotal + 4, y + rowTextOffset, { width: wTotal - 8, align: 'right', lineBreak: false });
     y += rowH;
   }
 
@@ -291,7 +301,7 @@ export async function streamPurchaseOrderPdf(res: NodeJS.WritableStream, po: any
   };
 
   y += 6;
-  y = drawTotal('Subtotal:', fmtMoney(Number(po.totalAmount)), y);
+  y = drawTotal('Subtotal (Excl. GST):', fmtMoney(Number(po.totalAmount)), y);
   const gstRate = po.items.length > 0 ? Number(po.items[0]?.gstRate ?? 0) : 0;
   const gstLabel = Number(po.gstAmount) > 0 ? `GST (${gstRate}%):` : 'GST (No Gst Applicable):';
   y = drawTotal(gstLabel, Number(po.gstAmount) > 0 ? fmtMoney(Number(po.gstAmount)) : 'Rs. 0.00', y);

@@ -183,6 +183,7 @@ export const editPOSchema = z.object({
   params: z.object({ id: uuid }),
   body: z.object({
     items: z.array(z.object({
+      poItemId: uuid.optional(),
       materialName: z.string().min(1).max(200),
       quantity: qty,
       unit: z.string().min(1).max(20),
@@ -425,6 +426,13 @@ export const listPaymentSheetsSchema = z.object({
     endDate: z.string().trim().max(20).optional(),
     poId: uuid.optional(),
     status: z.string().optional(),
+  }),
+});
+export const upsertPaymentSheetNarrationSchema = z.object({
+  body: z.object({
+    // ISO date string (YYYY-MM-DD) the narration belongs to.
+    date: z.string().trim().min(8).max(20),
+    narration: z.string().trim().max(2000),
   }),
 });
 

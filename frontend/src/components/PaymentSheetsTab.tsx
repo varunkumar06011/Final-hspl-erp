@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Box,
   Typography,
@@ -136,7 +136,7 @@ export default function PaymentSheetsTab() {
     queryKey,
     queryFn: async () => {
       const res = await api.get('/payment-sheets', { params: { date } });
-      return res.data as { data: PaymentSheetRow[]; totalAmount: number; payableAmount: number };
+      return res.data as { data: PaymentSheetRow[]; totalAmount: number; payableAmount: number; grandTotal: number; narration: string };
     },
   });
 
@@ -164,6 +164,7 @@ export default function PaymentSheetsTab() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey });
+      queryClient.invalidateQueries({ queryKey: ['/transaction-register'] });
       setAddOpen(false);
       setSelectedPO(null);
       setPoSearch('');
@@ -178,6 +179,8 @@ export default function PaymentSheetsTab() {
     mutationFn: async (id: string) => api.patch(`/payment-sheets/${id}/approve`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey });
+      // A paid entry must leave the register's payable totals immediately
+      queryClient.invalidateQueries({ queryKey: ['/transaction-register'] });
       setConfirmApproveId(null);
       setSuccessMsg('Entry marked done.');
     },
@@ -188,6 +191,7 @@ export default function PaymentSheetsTab() {
     mutationFn: async (id: string) => api.delete(`/payment-sheets/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey });
+      queryClient.invalidateQueries({ queryKey: ['/transaction-register'] });
       setConfirmDeleteId(null);
       setSuccessMsg('Entry deleted.');
     },
@@ -205,8 +209,19 @@ export default function PaymentSheetsTab() {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey });
+      queryClient.invalidateQueries({ queryKey: ['/transaction-register'] });
       setEditRow(null);
       setSuccessMsg('Entry updated.');
+    },
+    onError: (err) => setError(extractErrorMessage(err)),
+  });
+
+  const narrationMutation = useMutation({
+    mutationFn: async (narration: string) =>
+      api.put('/payment-sheets/narration', { date, narration }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey });
+      setSuccessMsg('Narration saved.');
     },
     onError: (err) => setError(extractErrorMessage(err)),
   });
@@ -225,6 +240,15 @@ export default function PaymentSheetsTab() {
   const rows = data?.data ?? [];
   const totalAmount = data?.totalAmount ?? 0;
   const payableAmount = data?.payableAmount ?? 0;
+  const grandTotal = data?.grandTotal ?? 0;
+
+  // Day-level narration — synced from the server, edited locally, saved via PUT.
+  const [narrationText, setNarrationText] = useState('');
+  useEffect(() => {
+    setNarrationText(data?.narration ?? '');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data?.narration, date]);
+  const narrationDirty = narrationText !== (data?.narration ?? '');
 
   const handleSelectPO = (po: POOption | null) => {
     setSelectedPO(po);
@@ -284,8 +308,8 @@ export default function PaymentSheetsTab() {
         />
         <Box sx={{ flex: 1 }} />
         <RefreshButton onClick={() => queryClient.invalidateQueries({ queryKey })} />
-        <Button variant="outlined" startIcon={<DownloadIcon />} onClick={handleExportPDF} disabled={rows.length === 0}>Export PDF</Button>
-        <Button variant="outlined" startIcon={<PrintIcon />} onClick={handlePrint} disabled={rows.length === 0}>Print</Button>
+        <Button variant="outlined" startIcon={<DownloadIcon />} onClick={handleExportPDF}>Export PDF</Button>
+        <Button variant="outlined" startIcon={<PrintIcon />} onClick={handlePrint}>Print</Button>
         <Button variant="contained" startIcon={<AddIcon />} onClick={() => { setAddOpen(true); setSelectedPO(null); setPoSearch(''); }}>Add Entry</Button>
       </Box>
 
@@ -303,6 +327,10 @@ export default function PaymentSheetsTab() {
               <Typography variant="h6">{rows.length}</Typography>
             </Box>
             <Box>
+              <Typography variant="caption" color="text.secondary">Total Amount</Typography>
+              <Typography variant="h6">{formatCurrency(grandTotal)}</Typography>
+            </Box>
+            <Box>
               <Typography variant="caption" color="text.secondary">Total Paid Today</Typography>
               <Typography variant="h6">{formatCurrency(totalAmount)}</Typography>
             </Box>
@@ -310,6 +338,30 @@ export default function PaymentSheetsTab() {
               <Typography variant="caption" color="text.secondary">Total Payable</Typography>
               <Typography variant="h6">{formatCurrency(payableAmount)}</Typography>
             </Box>
+          </Stack>
+          <Divider sx={{ my: 1.5 }} />
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} alignItems="flex-start" className="no-print">
+            <TextField
+              label="Narration"
+              placeholder="e.g. reason for pending payments on this date"
+              size="small"
+              multiline
+              minRows={1}
+              maxRows={4}
+              fullWidth
+              value={narrationText}
+              onChange={(e) => setNarrationText(e.target.value)}
+              inputProps={{ maxLength: 2000 }}
+            />
+            <Button
+              variant="contained"
+              size="small"
+              sx={{ whiteSpace: 'nowrap', mt: { xs: 0, sm: 0.5 } }}
+              disabled={!narrationDirty || narrationMutation.isPending}
+              onClick={() => narrationMutation.mutate(narrationText.trim())}
+            >
+              {narrationMutation.isPending ? 'Saving…' : 'Save Narration'}
+            </Button>
           </Stack>
         </CardContent>
       </Card>
@@ -393,12 +445,20 @@ export default function PaymentSheetsTab() {
               onChange={(_, v) => handleSelectPO(v)}
               inputValue={poSearch}
               onInputChange={(_, v) => setPoSearch(v)}
+              renderOption={(props, po) => (
+                <li {...props} key={po.id}>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', width: '100%', gap: 1 }}>
+                    <Typography variant="body2">{po.poNumber} — {po.vendor.name}</Typography>
+                    <Chip size="small" variant="outlined" label={po.status.replace(/_/g, ' ')} />
+                  </Box>
+                </li>
+              )}
               renderInput={(params) => (
-                <TextField {...params} label="Search approved Purchase Order" placeholder="PO number or vendor" required
+                <TextField {...params} label="Search Purchase Order" placeholder="PO number or vendor" required
                   InputProps={{ ...params.InputProps, startAdornment: (<><InputAdornment position="start"><SearchIcon /></InputAdornment>{params.InputProps.startAdornment}</>) }}
                 />
               )}
-              noOptionsText="No approved POs found"
+              noOptionsText="No payable POs found"
             />
 
             {selectedPO && (
@@ -413,6 +473,7 @@ export default function PaymentSheetsTab() {
                     <Box><Typography variant="caption" color="text.secondary">Advance Amount</Typography><Typography>{formatCurrency(Number(selectedPO.advanceAmount))}</Typography></Box>
                   )}
                   <Box><Typography variant="caption" color="text.secondary">Payment Type</Typography><Typography>{selectedPO.paymentType}</Typography></Box>
+                  <Box><Typography variant="caption" color="text.secondary">PO Status</Typography><Typography>{selectedPO.status.replace(/_/g, ' ')}</Typography></Box>
                 </Stack>
               </Card>
             )}

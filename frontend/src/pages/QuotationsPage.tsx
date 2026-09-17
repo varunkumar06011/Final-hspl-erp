@@ -37,8 +37,9 @@ import {
   PictureAsPdf as PdfIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { APPROVER_ROLES, QuotationStatus, GST_RATES, ApprovalStatus } from '@hospital-erp/shared';
+import { QuotationStatus, GST_RATES, ApprovalStatus, isAdminRole, isApproverRole } from '@hospital-erp/shared';
 import { formatCurrency, formatDate, STATUS_COLORS, QTY_UNIT_OPTIONS } from '../utils/enumOptions';
+import { num, gstMult, toIncGst, toPreTax, round2 } from '../utils/taxCalc';
 import api, { extractErrorMessage } from '../config/api';
 import { useAuthStore } from '../stores/authStore';
 import { downloadFile } from '../utils/file';
@@ -129,6 +130,7 @@ export default function QuotationsPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [editing, setEditing] = useState<QuotationRow | null>(null);
+  const [reviseMode, setReviseMode] = useState(false);
   const [error, setError] = useState('');
   const [selectedVendorId, setSelectedVendorId] = useState('');
   const [lineItems, setLineItems] = useState<QuotationItem[]>([]);
@@ -148,6 +150,7 @@ export default function QuotationsPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { user } = useAuthStore();
+  const isAdmin = user ? isAdminRole(user.role) : false;
 
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['/quotations', page, pageSize, search, statusFilter],
@@ -203,7 +206,7 @@ export default function QuotationsPage() {
     mutationFn: async () => {
       const filteredItems = lineItems
         .filter((i) => selectedMaterialNames.has(i.materialName))
-        .map((i) => ({ materialName: i.materialName, quantity: i.quantity, unit: i.unit, unitPrice: i.unitPrice, amount: i.amount, gstRate: i.gstRate }));
+        .map((i) => ({ materialName: i.materialName, quantity: i.quantity, unit: i.unit, unitPrice: i.unitPrice, amount: round2(toPreTax(i.amount, i.gstRate)), gstRate: i.gstRate }));
       const formData = new FormData();
       formData.append('vendorId', selectedVendorId);
       formData.append('items', JSON.stringify(filteredItems));
@@ -238,7 +241,7 @@ export default function QuotationsPage() {
   const updateMutation = useMutation({
     mutationFn: async () => {
       const formData = new FormData();
-      formData.append('items', JSON.stringify(lineItems.filter((i) => selectedMaterialNames.has(i.materialName)).map((i) => ({ materialName: i.materialName, quantity: i.quantity, unit: i.unit, unitPrice: i.unitPrice, amount: i.amount, gstRate: i.gstRate }))));
+      formData.append('items', JSON.stringify(lineItems.filter((i) => selectedMaterialNames.has(i.materialName)).map((i) => ({ materialName: i.materialName, quantity: i.quantity, unit: i.unit, unitPrice: i.unitPrice, amount: round2(toPreTax(i.amount, i.gstRate)), gstRate: i.gstRate }))));
       if (quotationNotes.trim()) formData.append('notes', quotationNotes.trim());
       if (selectedFile) formData.append('file', selectedFile);
       const response = await api.patch(`/quotations/${editing!.id}`, formData, {
@@ -251,6 +254,33 @@ export default function QuotationsPage() {
       queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
       setEditOpen(false);
       setEditing(null);
+      resetForm();
+    },
+    onError: (err: unknown) => setError(extractErrorMessage(err)),
+  });
+
+  // Admin-only: fully re-edit a quotation and resend it for approval with the
+  // same quotation number (POST /quotations/:id/revise). Resets the approval
+  // workflow to VERIFICATION with fresh pending steps.
+  const reviseMutation = useMutation({
+    mutationFn: async () => {
+      const formData = new FormData();
+      formData.append('vendorId', selectedVendorId);
+      formData.append('items', JSON.stringify(lineItems.filter((i) => selectedMaterialNames.has(i.materialName)).map((i) => ({ materialName: i.materialName, quantity: i.quantity, unit: i.unit, unitPrice: i.unitPrice, amount: round2(toPreTax(i.amount, i.gstRate)), gstRate: i.gstRate }))));
+      if (quotationNotes.trim()) formData.append('notes', quotationNotes.trim());
+      if (selectedFile) formData.append('file', selectedFile);
+      const response = await api.post(`/quotations/${editing!.id}/revise`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/quotations'] });
+      queryClient.invalidateQueries({ queryKey: ['/quotations/approval-aging'] });
+      queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
+      setEditOpen(false);
+      setEditing(null);
+      setReviseMode(false);
       resetForm();
     },
     onError: (err: unknown) => setError(extractErrorMessage(err)),
@@ -369,13 +399,13 @@ export default function QuotationsPage() {
   }, [searchParams]);
 
   const totalAmount = useMemo(
-    () => lineItems.filter((i) => selectedMaterialNames.has(i.materialName)).reduce((sum, i) => sum + Number(i.amount), 0),
+    () => lineItems.filter((i) => selectedMaterialNames.has(i.materialName)).reduce((sum, i) => sum + toPreTax(i.amount, i.gstRate), 0),
     [lineItems, selectedMaterialNames]
   );
   const gstAmount = useMemo(
     () => lineItems
       .filter((i) => selectedMaterialNames.has(i.materialName))
-      .reduce((sum, i) => sum + Number(i.amount) * Number(i.gstRate) / 100, 0),
+      .reduce((sum, i) => sum + (num(i.amount) - toPreTax(i.amount, i.gstRate)), 0),
     [lineItems, selectedMaterialNames]
   );
   const grandTotal = totalAmount + gstAmount;
@@ -387,6 +417,7 @@ export default function QuotationsPage() {
     setAcknowledged(false);
     setSelectedFile(null);
     setQuotationNotes('');
+    setReviseMode(false);
     setError('');
   }
 
@@ -404,15 +435,17 @@ export default function QuotationsPage() {
     createMutation.mutate();
   }
 
-  function openEdit(row: QuotationRow) {
+  function openEdit(row: QuotationRow, forRevise = false) {
     setEditing(row);
+    setReviseMode(forRevise);
     setSelectedVendorId(row.vendorId);
     setLineItems(row.items.map((i) => ({
       id: i.id,
       materialName: i.materialName,
       quantity: Number(i.quantity),
+      unit: i.unit ?? 'nos',
       unitPrice: Number(i.unitPrice),
-      amount: Number(i.amount),
+      amount: round2(toIncGst(i.amount, i.gstRate)),
       gstRate: Number(i.gstRate) || 0,
     })));
     setSelectedMaterialNames(new Set(row.items.map((item) => item.materialName)));
@@ -461,9 +494,15 @@ export default function QuotationsPage() {
 
   function updateLineItem(index: number, field: keyof QuotationItem, value: string | number) {
     const updated = [...lineItems];
-    updated[index] = { ...updated[index], [field]: value };
+    const prev = updated[index];
+    updated[index] = { ...prev, [field]: value };
+    // item.amount is tax-INCLUSIVE in this dialog (preTax × (1 + gst%)).
+    // qty/price change → recompute inc-GST amount; gstRate change → keep the
+    // pre-tax base fixed and re-derive the inc-GST amount at the new rate.
     if (field === 'quantity' || field === 'unitPrice') {
-      updated[index].amount = Number(updated[index].quantity) * Number(updated[index].unitPrice);
+      updated[index].amount = round2(num(updated[index].quantity) * num(updated[index].unitPrice) * gstMult(updated[index].gstRate));
+    } else if (field === 'gstRate') {
+      updated[index].amount = round2(toPreTax(prev.amount, prev.gstRate) * gstMult(value));
     }
     setLineItems(updated);
   }
@@ -472,7 +511,7 @@ export default function QuotationsPage() {
   const gstRateOptions = GST_RATES;
 
   function canApprove(row: QuotationRow): ApprovalStep | null {
-    if (!row.approvalWorkflow || !user || !APPROVER_ROLES.some((role) => role === user.role)) return null;
+    if (!row.approvalWorkflow || !user || !isApproverRole(user.role)) return null;
     // If the workflow is already APPROVED/REJECTED, no further approval is possible
     const wfStatus = row.approvalWorkflow.status;
     if (wfStatus === ApprovalStatus.APPROVED || wfStatus === ApprovalStatus.REJECTED) return null;
@@ -534,7 +573,7 @@ export default function QuotationsPage() {
 
   async function handleShareWhatsApp(row: QuotationRow) {
     // Build a text summary of the quotation
-    const materials = row.items?.map((i) => `  • ${i.materialName} — ${i.quantity}${i.unit ? ` ${i.unit}` : ''} @ ${formatCurrency(Number(i.unitPrice))} = ${formatCurrency(Number(i.amount))}`).join('\n') ?? '';
+    const materials = row.items?.map((i) => `  • ${i.materialName} — ${i.quantity}${i.unit ? ` ${i.unit}` : ''} @ ${formatCurrency(Number(i.unitPrice))} + GST ${num(i.gstRate)}% (${formatCurrency(Number(i.amount) * num(i.gstRate) / 100)}) = ${formatCurrency(toIncGst(i.amount, i.gstRate))}`).join('\n') ?? '';
     const text = [
       `*Quotation ${row.quotationNumber}*`,
       `Vendor: ${row.vendor?.vendorCode} - ${row.vendor?.name ?? '—'}`,
@@ -808,7 +847,8 @@ export default function QuotationsPage() {
                             <Box component="th" sx={{ textAlign: 'left', py: 0.25, px: 0.5, fontWeight: 600, fontSize: '0.7rem', color: 'text.secondary', textTransform: 'uppercase' }}>Material</Box>
                             <Box component="th" sx={{ textAlign: 'right', py: 0.25, px: 0.5, fontWeight: 600, fontSize: '0.7rem', color: 'text.secondary', textTransform: 'uppercase' }}>Qty</Box>
                             <Box component="th" sx={{ textAlign: 'right', py: 0.25, px: 0.5, fontWeight: 600, fontSize: '0.7rem', color: 'text.secondary', textTransform: 'uppercase' }}>Unit Price</Box>
-                            <Box component="th" sx={{ textAlign: 'right', py: 0.25, px: 0.5, fontWeight: 600, fontSize: '0.7rem', color: 'text.secondary', textTransform: 'uppercase' }}>Amount</Box>
+                            <Box component="th" sx={{ textAlign: 'right', py: 0.25, px: 0.5, fontWeight: 600, fontSize: '0.7rem', color: 'text.secondary', textTransform: 'uppercase' }}>GST</Box>
+                            <Box component="th" sx={{ textAlign: 'right', py: 0.25, px: 0.5, fontWeight: 600, fontSize: '0.7rem', color: 'text.secondary', textTransform: 'uppercase' }}>Amount (Inc. GST)</Box>
                           </Box>
                         </Box>
                         <Box component="tbody">
@@ -817,7 +857,8 @@ export default function QuotationsPage() {
                               <Box component="td" sx={{ py: 0.25, px: 0.5, fontWeight: 600, fontSize: '0.8rem' }}>{item.materialName}</Box>
                               <Box component="td" sx={{ py: 0.25, px: 0.5, textAlign: 'right', fontSize: '0.8rem', whiteSpace: 'nowrap' }}>{item.quantity}{item.unit ? ` ${item.unit}` : ''}</Box>
                               <Box component="td" sx={{ py: 0.25, px: 0.5, textAlign: 'right', fontSize: '0.8rem', whiteSpace: 'nowrap' }}>{formatCurrency(Number(item.unitPrice))}</Box>
-                              <Box component="td" sx={{ py: 0.25, px: 0.5, textAlign: 'right', fontWeight: 600, fontSize: '0.8rem', whiteSpace: 'nowrap' }}>{formatCurrency(Number(item.amount))}</Box>
+                              <Box component="td" sx={{ py: 0.25, px: 0.5, textAlign: 'right', fontSize: '0.8rem', whiteSpace: 'nowrap' }}>{num(item.gstRate)}% ({formatCurrency(Number(item.amount) * num(item.gstRate) / 100)})</Box>
+                              <Box component="td" sx={{ py: 0.25, px: 0.5, textAlign: 'right', fontWeight: 600, fontSize: '0.8rem', whiteSpace: 'nowrap' }}>{formatCurrency(toIncGst(item.amount, item.gstRate))}</Box>
                             </Box>
                           ))}
                         </Box>
@@ -840,7 +881,9 @@ export default function QuotationsPage() {
                       <IconButton size="small" onClick={() => setTimelineRow(row)} title="Show Timeline"><TimelineIcon fontSize="small" /></IconButton>
                       {effectiveStatus !== QuotationStatus.DELETED && (
                         <>
-                          {effectiveStatus === QuotationStatus.SUBMITTED || effectiveStatus === QuotationStatus.UNDER_REVIEW ? (
+                          {isAdmin && effectiveStatus !== QuotationStatus.CONVERTED_TO_PO ? (
+                            <IconButton size="small" onClick={() => openEdit(row, true)} title="Re-edit & Resend for Approval"><EditIcon fontSize="small" /></IconButton>
+                          ) : effectiveStatus === QuotationStatus.SUBMITTED || effectiveStatus === QuotationStatus.UNDER_REVIEW ? (
                             <IconButton size="small" onClick={() => openEdit(row)} title="Edit"><EditIcon fontSize="small" /></IconButton>
                           ) : (
                             <IconButton size="small" onClick={() => { setNotesEditRow(row); setNotesEditValue(row.notes ?? ''); }} title="Edit Description"><EditIcon fontSize="small" /></IconButton>
@@ -898,9 +941,14 @@ export default function QuotationsPage() {
 
       {/* Create / Edit Dialog */}
       <ResponsiveDialog open={createOpen || editOpen} onClose={() => { setCreateOpen(false); setEditOpen(false); setEditing(null); }} maxWidth="md" fullWidth sx={{ '& .MuiDialog-paper': { margin: { xs: 1 } } }}>
-        <DialogTitle>{editOpen ? `Edit Quotation ${editing?.quotationNumber ?? ''}` : 'Create Quotation'}</DialogTitle>
+        <DialogTitle>{editOpen ? (reviseMode ? `Re-edit & Resend — ${editing?.quotationNumber ?? ''}` : `Edit Quotation ${editing?.quotationNumber ?? ''}`) : 'Create Quotation'}</DialogTitle>
         <DialogContent>
           {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
+          {editOpen && reviseMode && (
+            <Alert severity="info" sx={{ mb: 2 }}>
+              This quotation will be updated and resent for approval with the same quotation number ({editing?.quotationNumber}). Previous approvals will be reset.
+            </Alert>
+          )}
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1, flexWrap: 'wrap' }}>
             {/* Vendor Selection */}
             <TextField
@@ -910,7 +958,7 @@ export default function QuotationsPage() {
               onChange={(e) => { setSelectedVendorId(e.target.value); setLineItems([]); setSelectedMaterialNames(new Set()); }}
               fullWidth
               size="small"
-              disabled={editOpen}
+              disabled={editOpen && !reviseMode}
               required
             >
               {vendors.map((v) => (
@@ -1019,14 +1067,14 @@ export default function QuotationsPage() {
                           value={item.gstRate}
                           onChange={(e) => updateLineItem(index, 'gstRate', Number(e.target.value))}
                           size="small"
-                          sx={{ flex: { xs: '1 1 80px', sm: '0 0 90px' }, minWidth: 80 }}
+                          sx={{ flex: { xs: '1 1 80px', sm: '0 0 150px' }, minWidth: 130 }}
                         >
                           {gstRateOptions.map((rate) => (
-                            <MenuItem key={rate} value={rate}>{rate}%</MenuItem>
+                            <MenuItem key={rate} value={rate}>{rate}% ({formatCurrency(toPreTax(item.amount, item.gstRate) * num(rate) / 100)})</MenuItem>
                           ))}
                         </TextField>
                         <TextField
-                          label="Amount"
+                          label="Amount (Inc. GST)"
                           type="text"
                           value={item.amount}
                           onChange={(e) => updateLineItem(index, 'amount', e.target.value.replace(/,/g, ''))}
@@ -1098,10 +1146,12 @@ export default function QuotationsPage() {
           <Button onClick={() => { setCreateOpen(false); setEditOpen(false); setEditing(null); resetForm(); }}>Cancel</Button>
           <Button
             variant="contained"
-            onClick={editOpen ? () => { setError(''); if (validateQuotationForm()) updateMutation.mutate(); } : handleCreateQuotation}
-            disabled={createMutation.isPending || updateMutation.isPending || (!editOpen && (!acknowledged || createSubmissionLocked.current))}
+            onClick={editOpen
+              ? () => { setError(''); if (validateQuotationForm()) (reviseMode ? reviseMutation.mutate() : updateMutation.mutate()); }
+              : handleCreateQuotation}
+            disabled={createMutation.isPending || updateMutation.isPending || reviseMutation.isPending || (!editOpen && (!acknowledged || createSubmissionLocked.current))}
           >
-            {(createMutation.isPending || updateMutation.isPending) ? <CircularProgress size={20} /> : editOpen ? 'Update' : 'Create'}
+            {(createMutation.isPending || updateMutation.isPending || reviseMutation.isPending) ? <CircularProgress size={20} /> : editOpen ? (reviseMode ? 'Update & Resend' : 'Update') : 'Create'}
           </Button>
         </DialogActions>
       </ResponsiveDialog>

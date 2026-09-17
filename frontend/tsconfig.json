@@ -10,7 +10,6 @@
     "declaration": false,
     "declarationMap": false,
     "types": ["vite/client"],
-    "baseUrl": ".",
     "paths": {
       "@hospital-erp/shared": ["../shared/index.ts"],
       "@hospital-erp/shared/*": ["../shared/*"],

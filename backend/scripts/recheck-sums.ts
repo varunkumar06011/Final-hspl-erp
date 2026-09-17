@@ -1,0 +1,22 @@
+import { prisma } from '../src/config/prisma';
+const IST = 'Asia/Kolkata';
+const monthFmt = new Intl.DateTimeFormat('en-US', { timeZone: IST, month: 'numeric' });
+const inM = (d: Date) => Number(monthFmt.format(d)) - 1 === 8;
+const fmt = (n: number) => '₹' + n.toLocaleString('en-IN', { minimumFractionDigits: 2 });
+(async () => {
+  const p = await prisma.project.findFirst({ where: { name: { contains: 'V Grand' } } });
+  const pid = p!.id;
+  const allQ = await prisma.quotation.findMany({ where: { projectId: pid, deletedAt: null }, select: { grandTotal: true, date: true, status: true, quotationNumber: true } });
+  const allPO = await prisma.purchaseOrder.findMany({ where: { projectId: pid, deletedAt: null }, select: { grandTotal: true, date: true, status: true, poNumber: true } });
+  const sepQ = allQ.filter((x) => inM(x.date));
+  const sepPO = allPO.filter((x) => inM(x.date));
+  const liveQ = sepQ.filter((x) => x.status !== 'DELETED');
+  const livePO = sepPO.filter((x) => x.status !== 'DELETED');
+  const delQ = sepQ.filter((x) => x.status === 'DELETED');
+  const delPO = sepPO.filter((x) => x.status === 'DELETED');
+  console.log(`Sept quotations incl DELETED: ${sepQ.length} @ ${fmt(sepQ.reduce((s, x) => s + Number(x.grandTotal), 0))}`);
+  console.log(`Sept quotations excl DELETED: ${liveQ.length} @ ${fmt(liveQ.reduce((s, x) => s + Number(x.grandTotal), 0))}  (deleted: ${delQ.map(d => `${d.quotationNumber}=${d.grandTotal}`).join(', ')})`);
+  console.log(`Sept POs incl DELETED: ${sepPO.length} @ ${fmt(sepPO.reduce((s, x) => s + Number(x.grandTotal), 0))}`);
+  console.log(`Sept POs excl DELETED: ${livePO.length} @ ${fmt(livePO.reduce((s, x) => s + Number(x.grandTotal), 0))}  (deleted: ${delPO.map(d => `${d.poNumber}=${d.grandTotal}`).join(', ')})`);
+  await prisma.$disconnect();
+})();

@@ -22,6 +22,14 @@ const fmtDate = (d: unknown) =>
 const fmtDateTime = (d: unknown) =>
   d ? new Date(d as string).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) : '—';
 
+/** Truncate a value to fit a column width with ellipsis — PDFKit does not clip overflow. */
+const fitCell = (doc: PDFKit.PDFDocument, v: string, w: number): string => {
+  if (doc.widthOfString(v) <= w) return v;
+  let t = v;
+  while (t.length > 0 && doc.widthOfString(t + '…') > w) t = t.slice(0, -1);
+  return t.length > 0 ? t + '…' : '…';
+};
+
 /** Draws the branded top header box (logo + project + date box). Returns the y below it. */
 function drawHeader(doc: PDFKit.PDFDocument, logoBuffer: Buffer | null, project: any, date: Date): number {
   const headerTop = 24;
@@ -163,7 +171,7 @@ function drawEntryDetails(doc: PDFKit.PDFDocument, e: any, startY: number): numb
       ];
       iCols.forEach((c, ci) => {
         const align = c.label === 'S.No' ? 'center' : c.label === 'Unit Price' || c.label === 'Amount' ? 'right' : 'left';
-        doc.text(vals[ci], iX[ci] + 4, y + 3, { width: c.w - 8, align });
+        doc.text(fitCell(doc, vals[ci], c.w - 8), iX[ci] + 4, y + 3, { width: c.w - 8, align, lineBreak: false });
       });
       y += iRowH;
     });
@@ -206,7 +214,7 @@ function drawSignature(doc: PDFKit.PDFDocument, y: number): number {
 }
 
 /** Entries summary table + day total row. Returns new y. */
-function drawSummaryTable(doc: PDFKit.PDFDocument, entries: any[], date: Date, startY: number, showDescription = false): number {
+function drawSummaryTable(doc: PDFKit.PDFDocument, entries: any[], _date: Date, startY: number, showDescription = false): number {
   let y = startY;
 
   const cols = [
@@ -229,12 +237,23 @@ function drawSummaryTable(doc: PDFKit.PDFDocument, entries: any[], date: Date, s
   y += 20;
 
   const sumRowH = 16;
+  // The description secondary row spans from the PO Number column's left edge
+  // to the Amount column's right edge — the S.No column stays outside it.
+  // +4 / -4 match the standard text inset used by every cell.
+  const descX = colX[1] + 4;
+  const descW = RIGHT - 4 - descX;
+  if (entries.length === 0) {
+    // Empty-day sheet — still render a clear "no payments" row so the
+    // exported PDF isn't just a bare header.
+    doc.rect(LEFT, y, WIDTH, sumRowH).stroke(BORDER);
+    doc.fillColor(MUTED).font('Helvetica-Oblique').fontSize(8)
+      .text('No payments recorded on this date', LEFT + 4, y + 4, { width: WIDTH - 8, align: 'center' });
+    y += sumRowH;
+  }
   entries.forEach((e, i) => {
-    // Description (notes) gets its own full-width line under the entry row.
-    const descX = colX[2] + 4;
-    const descW = RIGHT - descX - 8;
+    // Description (notes) gets its own secondary line under the entry row.
     const desc = showDescription ? String(e.notes ?? '').trim() : '';
-    const descH = desc ? doc.heightOfString(desc, { width: descW }) + 6 : 0;
+    const descH = desc ? doc.heightOfString(desc, { width: descW, align: 'justify' }) + 6 : 0;
     const entryH = sumRowH + descH;
 
     if (i % 2 === 0) doc.rect(LEFT, y, WIDTH, entryH).fill(PRIMARY_LIGHT);
@@ -250,11 +269,11 @@ function drawSummaryTable(doc: PDFKit.PDFDocument, entries: any[], date: Date, s
     ];
     cols.forEach((c, ci) => {
       doc.font(c.label === 'Amount' ? 'Helvetica-Bold' : 'Helvetica').fontSize(c.label === 'Amount' ? 9.5 : 8);
-      doc.text(vals[ci], colX[ci] + 4, y + 4, { width: c.w - 8, align: c.align, lineBreak: false });
+      doc.text(fitCell(doc, vals[ci], c.w - 8), colX[ci] + 4, y + 4, { width: c.w - 8, align: c.align, lineBreak: false });
     });
     if (desc) {
       doc.fillColor(MUTED).font('Helvetica-Oblique').fontSize(7.5)
-        .text(desc, descX, y + sumRowH, { width: descW });
+        .text(desc, descX, y + sumRowH, { width: descW, align: 'justify' });
     }
     y += entryH;
   });
@@ -267,18 +286,42 @@ function drawSummaryTable(doc: PDFKit.PDFDocument, entries: any[], date: Date, s
     (sum, e) => (e.status === 'PENDING' ? sum + Number(e.amount) : sum),
     0,
   );
+  const grandTotal = totalAmount + payableAmount;
   doc.rect(LEFT, y, WIDTH, 22).fill(PRIMARY);
   doc.fillColor('#fff').font('Helvetica-Bold').fontSize(9)
-    .text(`TOTAL PAID — ${fmtDate(date)}`, LEFT + 8, y + 6, { width: WIDTH - 110 });
+    .text('GRAND TOTAL', LEFT + 8, y + 6, { width: WIDTH - 110 });
+  doc.text(fmtMoney(grandTotal), LEFT + 8, y + 6, { width: WIDTH - 16, align: 'right' });
+  y += 22;
+  doc.rect(LEFT, y, WIDTH, 22).fill(PRIMARY);
+  doc.fillColor('#fff').font('Helvetica-Bold').fontSize(9)
+    .text('TOTAL PAID', LEFT + 8, y + 6, { width: WIDTH - 110 });
   doc.text(fmtMoney(totalAmount), LEFT + 8, y + 6, { width: WIDTH - 16, align: 'right' });
   y += 22;
   doc.rect(LEFT, y, WIDTH, 22).fill(PRIMARY);
   doc.fillColor('#fff').font('Helvetica-Bold').fontSize(9)
-    .text(`TOTAL PAYABLE — ${fmtDate(date)}`, LEFT + 8, y + 6, { width: WIDTH - 110 });
+    .text('TOTAL PAYABLE', LEFT + 8, y + 6, { width: WIDTH - 110 });
   doc.text(fmtMoney(payableAmount), LEFT + 8, y + 6, { width: WIDTH - 16, align: 'right' });
   y += 22;
 
   return y;
+}
+
+/** Draws the day-level narration box (label + wrapped text). Returns the y below it. */
+function drawNarration(doc: PDFKit.PDFDocument, narration: string, y: number): number {
+  const body = String(narration ?? '').trim();
+  const innerW = WIDTH - 16;
+  const textH = body ? doc.heightOfString(body, { width: innerW }) : 12;
+  const boxH = 16 + Math.max(textH, 12) + 8;
+  if (y + boxH > PAGE_H - 110) {
+    doc.addPage();
+    y = 40;
+  }
+  doc.rect(LEFT, y, WIDTH, boxH).stroke(BORDER);
+  doc.fillColor(MUTED).font('Helvetica-Bold').fontSize(7)
+    .text('NARRATION', LEFT + 8, y + 5);
+  doc.fillColor(DARK).font('Helvetica').fontSize(9)
+    .text(body, LEFT + 8, y + 16, { width: innerW });
+  return y + boxH;
 }
 
 /**
@@ -293,7 +336,7 @@ export async function streamPaymentSheetPdf(
   date: Date,
   entries: any[],
   project: any,
-  options: { summaryOnly?: boolean } = {},
+  options: { summaryOnly?: boolean; narration?: string } = {},
 ) {
   const doc = new PDFDocument({ margin: 0, size: 'A4', bufferPages: true });
   doc.pipe(res as unknown as any);
@@ -327,7 +370,10 @@ export async function streamPaymentSheetPdf(
   y = drawSummaryTable(doc, entries, date, y, options.summaryOnly);
 
   if (options.summaryOnly) {
-    // Day sheet — entries only, signature at the bottom.
+    // Day sheet — narration box (if any), then signature at the bottom.
+    if (options.narration !== undefined && options.narration !== null) {
+      y = drawNarration(doc, options.narration, y + 10);
+    }
     drawSignature(doc, y);
   } else {
     for (const e of entries) {

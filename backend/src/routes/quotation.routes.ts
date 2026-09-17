@@ -1,5 +1,5 @@
 import { Router, Response, NextFunction } from 'express';
-import { Permission, QuotationStatus, AuditAction, ApprovalStatus, isApproverRole } from '@hospital-erp/shared';
+import { Permission, QuotationStatus, AuditAction, ApprovalStatus, ApprovalStepStatus, UserRole, isApproverRole, isAdminRole } from '@hospital-erp/shared';
 import { createQuotationSchema, listQuotationsSchema, approvalActionSchema } from '@hospital-erp/shared';
 import { prisma } from '../config/prisma';
 import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middleware/auth';
@@ -8,7 +8,7 @@ import { validateMiddleware } from '../middleware/validate';
 import { logAudit } from '../services/audit.service';
 import * as approvalService from '../services/approval.service';
 import { getStorageService, serveFile } from '../services/storage.service';
-import { notifyAdmins } from '../services/push.service';
+import { notifyAdmins, notifyApprovers } from '../services/push.service';
 import {
   createQuotation,
   generateQuotationNumber,
@@ -67,6 +67,29 @@ async function reconcileQuotationStatuses(
       if (toReject.includes(q.id)) q.status = QuotationStatus.REJECTED;
     }
   }
+}
+
+/**
+ * Fetch all approver roles for quotation workflows — head roles plus every
+ * active admin role in the project (ADMIN, ADMIN_2, ADMIN_3, ...). Used when
+ * (re)building approval workflow steps so dynamic admins can also approve.
+ */
+async function getQuotationApproverRoles(projectId: string): Promise<string[]> {
+  const users = await prisma.user.findMany({
+    where: { projectId, isActive: true },
+    select: { role: true },
+  });
+  const roles = new Set<string>([
+    UserRole.PROJECT_HEAD,
+    UserRole.HEAD_OF_CONSTRUCTION,
+    UserRole.ACCOUNTS_HEAD,
+    UserRole.ADMIN,
+    UserRole.ADMIN_2,
+  ]);
+  for (const u of users) {
+    if (isAdminRole(u.role)) roles.add(u.role);
+  }
+  return Array.from(roles);
 }
 
 // ── Quotation Approval Aging (additive, read-only) ──────────────────
@@ -609,6 +632,236 @@ router.delete(
       });
 
       res.json({ message: 'Quotation marked as deleted' });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// POST /:id/revise — admin-only: fully re-edit a quotation (items, vendor,
+// notes, file) and resend it to approval with the SAME quotation number.
+// No duplicate is created — the existing record is updated in place and its
+// approval workflow is reset to VERIFICATION with fresh PENDING steps for
+// all approvers (including dynamic admin roles like ADMIN_3, ADMIN_4, ...).
+// Blocked for CONVERTED_TO_PO and DELETED quotations, and when a live PO
+// already references the quotation.
+router.post(
+  '/:id/revise',
+  rbacMiddleware(Permission.CREATE_QUOTATION),
+  upload.single('file'),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+
+      // Only admins may fully re-edit + resend a quotation
+      if (!isAdminRole(req.user!.role)) {
+        res.status(403).json({ error: 'Only admins can re-edit and resend quotations' });
+        return;
+      }
+
+      const existing = await prisma.quotation.findFirst({
+        where: { id: req.params.id, projectId, deletedAt: null },
+        include: { approvalWorkflow: { include: { steps: true } } },
+      });
+      if (!existing) {
+        res.status(404).json({ error: 'Quotation not found' });
+        return;
+      }
+      if (existing.status === QuotationStatus.CONVERTED_TO_PO) {
+        res.status(400).json({ error: 'Cannot re-edit a quotation that has been converted to a purchase order' });
+        return;
+      }
+      if (existing.status === QuotationStatus.DELETED) {
+        res.status(400).json({ error: 'Cannot re-edit a deleted quotation' });
+        return;
+      }
+
+      // Safety: block if a live PO already references this quotation
+      const linkedPo = await prisma.purchaseOrder.findFirst({
+        where: {
+          quotationId: existing.id,
+          deletedAt: null,
+          status: { notIn: ['DELETED', 'CANCELLED', 'REJECTED'] },
+        },
+        select: { id: true, poNumber: true },
+      });
+      if (linkedPo) {
+        res.status(400).json({ error: `Cannot re-edit — purchase order ${linkedPo.poNumber} already exists for this quotation` });
+        return;
+      }
+
+      const updateData: Record<string, unknown> = {};
+
+      // Vendor change — complete re-edit allows switching vendor
+      if (req.body.vendorId && req.body.vendorId !== existing.vendorId) {
+        const vendor = await prisma.vendor.findFirst({
+          where: { id: String(req.body.vendorId), projectId, deletedAt: null },
+        });
+        if (!vendor) {
+          res.status(400).json({ error: 'Vendor not found' });
+          return;
+        }
+        updateData.vendorId = String(req.body.vendorId);
+      }
+
+      if (req.body.notes !== undefined) {
+        updateData.notes = req.body.notes || null;
+      }
+
+      // Items replacement — recalculate totals
+      let itemsWithAmounts: { materialName: string; quantity: number; unit: string | null; unitPrice: number; amount: number; gstRate: number }[] | null = null;
+      if (req.body.items) {
+        const items = typeof req.body.items === 'string'
+          ? JSON.parse(req.body.items) as QuotationLineItem[]
+          : req.body.items as QuotationLineItem[];
+        if (!Array.isArray(items) || items.length === 0) {
+          res.status(400).json({ error: 'At least one item is required' });
+          return;
+        }
+        const effectiveVendorId = (updateData.vendorId as string) ?? existing.vendorId;
+        const vendor = await prisma.vendor.findFirst({
+          where: { id: effectiveVendorId, projectId },
+          include: { materials: true },
+        });
+        // Auto-register any new materials from the quotation to the vendor
+        const vendorMaterialNames = vendor?.materials.map((m) => m.name.toLowerCase()) ?? [];
+        const newMaterials = items
+          .filter((item) => !vendorMaterialNames.includes(item.materialName.toLowerCase()))
+          .map((item) => ({ name: item.materialName, unit: item.unit || null }));
+        if (newMaterials.length > 0 && vendor) {
+          await prisma.vendorMaterial.createMany({
+            data: newMaterials.map((m) => ({
+              vendorId: vendor.id,
+              name: m.name,
+              unit: m.unit,
+            })),
+          });
+        }
+        itemsWithAmounts = items.map((item) => {
+          const amount = item.amount !== undefined && Number(item.amount) > 0
+            ? Number(item.amount)
+            : item.quantity * item.unitPrice;
+          const rate = Number(item.gstRate) || 0;
+          return {
+            materialName: item.materialName,
+            quantity: item.quantity,
+            unit: item.unit || null,
+            unitPrice: item.unitPrice,
+            amount,
+            gstRate: rate,
+          };
+        });
+        const totalAmount = itemsWithAmounts.reduce((sum, i) => sum + Number(i.amount), 0);
+        const gstAmount = itemsWithAmounts.reduce((sum, i) => sum + Number(i.amount) * Number(i.gstRate) / 100, 0);
+        updateData.totalAmount = totalAmount;
+        updateData.gstAmount = gstAmount;
+        updateData.grandTotal = totalAmount + gstAmount;
+      }
+
+      // Handle file upload
+      if (req.file) {
+        if (!allowedQuotationFileTypes.includes(req.file.mimetype)) {
+          res.status(400).json({ error: 'Quotation file must be a PDF or supported image' });
+          return;
+        }
+        const isImage = req.file.mimetype.startsWith('image/');
+        const subPath = isImage ? 'images' : 'documents';
+        const prefixedFileName = `quotations/${subPath}/${existing.quotationNumber}-${req.file.originalname}`;
+        const storage = getStorageService();
+        if (existing.filePath) {
+          await storage.deleteFile(existing.filePath).catch(() => {});
+        }
+        const uploadResult = await storage.upload(req.file.buffer, prefixedFileName, req.file.mimetype, 'documents');
+        updateData.filePath = uploadResult.filePath;
+        updateData.fileName = req.file.originalname;
+        updateData.fileMimeType = req.file.mimetype;
+      }
+
+      // Build the approver step roles — heads + every active admin role
+      const approverRoles = await getQuotationApproverRoles(projectId);
+
+      // Update quotation + reset approval workflow atomically.
+      const updated = await prisma.$transaction(async (tx) => {
+        const q = await tx.quotation.update({
+          where: { id: existing.id },
+          data: {
+            ...updateData,
+            status: QuotationStatus.SUBMITTED,
+            ...(itemsWithAmounts
+              ? { items: { deleteMany: {}, create: itemsWithAmounts } }
+              : {}),
+          },
+        });
+
+        const stepCreates = approverRoles.map((role, idx) => ({
+          stepNumber: idx + 1,
+          approverRole: role,
+          status: ApprovalStepStatus.PENDING,
+        }));
+
+        if (existing.approvalWorkflowId) {
+          await tx.approvalStep.deleteMany({ where: { workflowId: existing.approvalWorkflowId } });
+          await tx.approvalWorkflow.update({
+            where: { id: existing.approvalWorkflowId },
+            data: {
+              status: ApprovalStatus.VERIFICATION,
+              currentStep: 0,
+              minApprovers: 2,
+              approvalPolicy: 'ADMIN_SINGLE_APPROVER',
+              steps: { create: stepCreates },
+            },
+          });
+        } else {
+          const workflow = await tx.approvalWorkflow.create({
+            data: {
+              entityType: 'QUOTATION',
+              entityId: existing.id,
+              projectId,
+              status: ApprovalStatus.VERIFICATION,
+              currentStep: 0,
+              minApprovers: 2,
+              approvalPolicy: 'ADMIN_SINGLE_APPROVER',
+              steps: { create: stepCreates },
+            },
+          });
+          await tx.quotation.update({
+            where: { id: existing.id },
+            data: { approvalWorkflowId: workflow.id },
+          });
+        }
+
+        return q;
+      });
+
+      await logAudit({
+        userId: req.user!.id,
+        action: AuditAction.UPDATE,
+        entityType: 'QUOTATION',
+        entityId: existing.id,
+        projectId,
+        newValue: {
+          ...updateData,
+          resentForApproval: true,
+          previousStatus: existing.status,
+          acknowledged: true,
+        },
+      });
+
+      // Notify approvers via push notification
+      notifyApprovers(projectId, approverRoles as UserRole[], {
+        approvalId: existing.approvalWorkflowId ?? '',
+        entityType: 'QUOTATION',
+        entityId: existing.id,
+        title: 'Quotation Resent for Approval',
+        body: `Quotation ${existing.quotationNumber} was re-edited and resent for approval`,
+        url: `/quotations?approval=${existing.approvalWorkflowId ?? ''}`,
+      }).catch((err) => console.error('[Push] Quotation revise notification error:', err));
+
+      const result = await prisma.quotation.findUnique({
+        where: { id: updated.id },
+        include: quotationInclude,
+      });
+      res.json(result);
     } catch (error) {
       next(error);
     }

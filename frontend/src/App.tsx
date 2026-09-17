@@ -1,6 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { Permission } from '@hospital-erp/shared';
+import { Permission, UserRole } from '@hospital-erp/shared';
 import { ColorModeProvider } from './config/ColorModeContext';
 import { ToastProvider } from './components/ToastProvider';
 import AppShell from './components/AppShell';
@@ -46,6 +46,7 @@ import UsersPage from './pages/UsersPage';
 import InwardFundsPage from './pages/InwardFundsPage';
 import ExpenditurePage from './pages/ExpenditurePage';
 import MaterialPurchaseRequestsPage from './pages/MaterialPurchaseRequestsPage';
+import TransactionRegisterPage from './pages/TransactionRegisterPage';
 import ErrorBoundary from './components/ErrorBoundary';
 
 const queryClient = new QueryClient({
@@ -141,6 +142,17 @@ export default function App() {
                       }
                     />
                   ))}
+                  {/* Transaction Register — Accountant + all Admin roles only (backend also enforces) */}
+                  <Route
+                    path="/transaction-register"
+                    element={
+                      <ProtectedRoute roles={[UserRole.ACCOUNTANT, UserRole.ADMIN]}>
+                        <AppShell>
+                          <TransactionRegisterPage />
+                        </AppShell>
+                      </ProtectedRoute>
+                    }
+                  />
                   <Route path="/vendor" element={<ProtectedRoute><AppShell><Navigate to="/vendors" replace /></AppShell></ProtectedRoute>} />
                   <Route path="*" element={<ErrorScreen variant="404" />} />
                 </Routes>
