@@ -49,7 +49,7 @@ const router = createCrudRouter({
   createSchema: createVendorSchema,
   updateSchema: updateVendorSchema,
   listSchema: listVendorsSchema,
-  searchFields: ['name', 'vendorCode', 'gstNumber', 'phone', 'contactPersonName', 'contactPersonPhone', 'referenceBy'],
+  searchFields: ['name', 'vendorCode', 'category', 'description', 'gstNumber', 'panNumber', 'phone', 'email', 'address', 'contactPersonName', 'contactPersonPhone', 'referenceBy'],
   include: {
     createdByUser: { select: { id: true, name: true } },
     materials: { orderBy: { name: 'asc' } },
