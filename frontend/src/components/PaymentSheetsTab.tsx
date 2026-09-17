@@ -164,6 +164,7 @@ export default function PaymentSheetsTab() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey });
+      queryClient.invalidateQueries({ queryKey: ['/transaction-register'] });
       setAddOpen(false);
       setSelectedPO(null);
       setPoSearch('');
@@ -178,6 +179,8 @@ export default function PaymentSheetsTab() {
     mutationFn: async (id: string) => api.patch(`/payment-sheets/${id}/approve`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey });
+      // A paid entry must leave the register's payable totals immediately
+      queryClient.invalidateQueries({ queryKey: ['/transaction-register'] });
       setConfirmApproveId(null);
       setSuccessMsg('Entry marked done.');
     },
@@ -188,6 +191,7 @@ export default function PaymentSheetsTab() {
     mutationFn: async (id: string) => api.delete(`/payment-sheets/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey });
+      queryClient.invalidateQueries({ queryKey: ['/transaction-register'] });
       setConfirmDeleteId(null);
       setSuccessMsg('Entry deleted.');
     },
@@ -205,6 +209,7 @@ export default function PaymentSheetsTab() {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey });
+      queryClient.invalidateQueries({ queryKey: ['/transaction-register'] });
       setEditRow(null);
       setSuccessMsg('Entry updated.');
     },
