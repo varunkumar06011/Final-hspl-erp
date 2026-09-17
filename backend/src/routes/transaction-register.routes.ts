@@ -92,7 +92,7 @@ router.get(
           ...pos.map((p) => p.vendorId),
           ...invs.map((i) => i.vendorId),
           ...prs.map((p) => p.vendorId).filter((v): v is string => !!v),
-          ...sheets.map((s2) => s2.purchaseOrder.vendorId),
+          ...sheets.map((s2) => s2.purchaseOrder?.vendorId).filter((v): v is string => !!v),
         ]);
         if (searchVendorIds.size === 0) {
           res.json({ year, months: [], grandSummary: null });
@@ -213,13 +213,13 @@ router.get(
         events.push({ vendorId: vid, date: p.date, kind: 'payment', amount: Number(p.amount), paid: isPaid ? Number(p.amount) : 0, status: p.status, budgetHeadId: p.budgetHeadId, budgetHead: p.budgetHead?.particulars });
       }
       for (const s of sheets) {
-        const vid = s.purchaseOrder.vendorId;
-        if (!vendorScope(vid)) continue;
+        const vid = s.purchaseOrder?.vendorId;
+        if (!vid || !vendorScope(vid)) continue;
         const isPaid = s.status !== 'PENDING';
         // Skip the paid contribution when a payment/request already covers this
         // exact PO+amount — it's the same money recorded in two instruments.
         const paid = isPaid && !consumeCoverage(s.poId, Number(s.amount)) ? Number(s.amount) : 0;
-        events.push({ vendorId: vid, date: s.date, kind: 'sheet', amount: Number(s.amount), paid, status: s.status, budgetHeadId: s.purchaseOrder.budgetHeadId, budgetHead: s.purchaseOrder.budgetHead?.particulars });
+        events.push({ vendorId: vid, date: s.date, kind: 'sheet', amount: Number(s.amount), paid, status: s.status, budgetHeadId: s.purchaseOrder?.budgetHeadId, budgetHead: s.purchaseOrder?.budgetHead?.particulars });
       }
       for (const st of settlements) {
         if (!vendorScope(st.vendorId)) continue;

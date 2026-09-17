@@ -475,7 +475,9 @@ model Payment {
 model PaymentSheet {
   id            String    @id @default(uuid()) @db.Uuid
   projectId     String    @db.Uuid
-  poId          String    @db.Uuid
+  poId          String?   @db.Uuid
+  // Voucher-linked entries: exactly one of poId / voucherId is set.
+  voucherId     String?   @db.Uuid
   date          DateTime  @default(now()) // the day this payment was made
   amount        Decimal   @db.Decimal(15, 2)
   paymentMode   String // PaymentMode enum
@@ -492,12 +494,14 @@ model PaymentSheet {
   updatedAt     DateTime  @updatedAt
   deletedAt     DateTime?
 
-  project       Project       @relation(fields: [projectId], references: [id])
-  purchaseOrder PurchaseOrder @relation(fields: [poId], references: [id])
-  createdByUser User          @relation("PaymentSheetCreatedBy", fields: [createdBy], references: [id])
+  project       Project         @relation(fields: [projectId], references: [id])
+  purchaseOrder PurchaseOrder?  @relation(fields: [poId], references: [id])
+  voucher       JournalVoucher? @relation(fields: [voucherId], references: [id])
+  createdByUser User            @relation("PaymentSheetCreatedBy", fields: [createdBy], references: [id])
 
   @@index([projectId, date])
   @@index([projectId, deletedAt])
+  @@index([projectId, voucherId])
   @@map("payment_sheets")
 }
 
@@ -1523,6 +1527,7 @@ model JournalVoucher {
   ledgerEntries    LedgerEntry[]
   billSettlements  BillSettlement[]
   payments         Payment[]
+  paymentSheets    PaymentSheet[]
   poItemLedgerPosts POItemLedgerPost[]
 
   @@index([projectId])

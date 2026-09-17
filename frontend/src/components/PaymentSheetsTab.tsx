@@ -71,9 +71,35 @@ interface POItem {
   gstRate: string;
 }
 
+interface VoucherLedgerLine {
+  debit: number;
+  credit: number;
+  ledger: { id: string; name: string; group: string } | null;
+}
+
+interface VoucherOption {
+  id: string;
+  jvNumber: string;
+  voucherType: string;
+  date: string;
+  description: string | null;
+  totalDebit: number;
+  totalCredit: number;
+  status: string;
+  chequeNumber: string | null;
+  ledgerEntries: VoucherLedgerLine[];
+}
+
+interface SheetVoucher extends VoucherOption {
+  chequeDate: string | null;
+  ledgerEntries: (VoucherLedgerLine & { budgetHead: { id: string; particulars: string } | null })[];
+  createdByUser: { id: string; name: string } | null;
+}
+
 interface PaymentSheetRow {
   id: string;
-  poId: string;
+  poId: string | null;
+  voucherId: string | null;
   date: string;
   amount: number;
   paymentMode: string;
@@ -101,9 +127,21 @@ interface PaymentSheetRow {
     items: POItem[];
     budgetHead: { id: string; particulars: string } | null;
     createdByUser: { id: string; name: string };
-  };
+  } | null;
+  voucher: SheetVoucher | null;
   createdByUser: { id: string; name: string };
 }
+
+// Ledger groups that represent money accounts — not the "party" side of a voucher.
+const ACCOUNT_GROUPS = new Set(['BANK', 'CASH']);
+
+/** Display name for a voucher's party side — non-bank/cash ledger names, else the description. */
+const voucherParty = (v: VoucherOption | null | undefined): string => {
+  const les = v?.ledgerEntries ?? [];
+  const party = les.filter((l) => !ACCOUNT_GROUPS.has(l.ledger?.group ?? '')).map((l) => l.ledger?.name).filter((n): n is string => Boolean(n));
+  const names = party.length ? party : les.map((l) => l.ledger?.name).filter((n): n is string => Boolean(n));
+  return names.length ? [...new Set(names)].join(', ') : (v?.description ?? '—');
+};
 
 export default function PaymentSheetsTab() {
   const queryClient = useQueryClient();
@@ -117,8 +155,11 @@ export default function PaymentSheetsTab() {
 
   // Add-entry dialog state
   const [addOpen, setAddOpen] = useState(false);
+  const [sourceType, setSourceType] = useState<'PO' | 'VOUCHER'>('PO');
   const [poSearch, setPoSearch] = useState('');
   const [selectedPO, setSelectedPO] = useState<POOption | null>(null);
+  const [voucherSearch, setVoucherSearch] = useState('');
+  const [selectedVoucher, setSelectedVoucher] = useState<VoucherOption | null>(null);
   const [form, setForm] = useState({ amount: '', paymentMode: PaymentMode.BANK_TRANSFER, reference: '', notes: '', status: PaymentStatus.PENDING });
   const [file, setFile] = useState<File | null>(null);
 
@@ -148,11 +189,29 @@ export default function PaymentSheetsTab() {
     },
   });
 
+  // Voucher picker — defaults to vouchers dated on the sheet's day; typing a
+  // search term widens the search across all dates.
+  const { data: voucherOptions } = useQuery({
+    queryKey: ['/payment-sheets/vouchers', date, voucherSearch],
+    queryFn: async () => {
+      const res = await api.get('/payment-sheets/vouchers', {
+        params: { date: voucherSearch ? undefined : date, search: voucherSearch || undefined },
+      });
+      return res.data as { data: VoucherOption[] };
+    },
+  });
+
   const createMutation = useMutation({
     mutationFn: async () => {
-      if (!selectedPO) throw new Error('Select a purchase order first');
       const fd = new FormData();
-      fd.append('poId', selectedPO.id);
+      if (sourceType === 'PO') {
+        if (!selectedPO) throw new Error('Select a purchase order first');
+        fd.append('poId', selectedPO.id);
+      } else {
+        if (!selectedVoucher) throw new Error('Select a voucher first');
+        fd.append('voucherId', selectedVoucher.id);
+      }
+      fd.append('date', date); // land the entry on the sheet's viewed day
       fd.append('amount', form.amount);
       fd.append('paymentMode', form.paymentMode);
       if (form.reference) fd.append('reference', form.reference);
@@ -168,6 +227,9 @@ export default function PaymentSheetsTab() {
       setAddOpen(false);
       setSelectedPO(null);
       setPoSearch('');
+      setSelectedVoucher(null);
+      setVoucherSearch('');
+      setSourceType('PO');
       setForm({ amount: '', paymentMode: PaymentMode.BANK_TRANSFER, reference: '', notes: '', status: PaymentStatus.PENDING });
       setFile(null);
       setSuccessMsg('Payment sheet entry added.');
@@ -263,6 +325,22 @@ export default function PaymentSheetsTab() {
     setForm((f) => ({ ...f, amount: String(suggested), notes: desc }));
   };
 
+  const handleSelectVoucher = (v: VoucherOption | null) => {
+    setSelectedVoucher(v);
+    if (!v) return;
+    // Auto-fill amount from the voucher total; mode from the money-account
+    // ledger line (CASH → cash, BANK → bank transfer); reference from cheque no.
+    const accountLine = v.ledgerEntries.find((l) => ACCOUNT_GROUPS.has(l.ledger?.group ?? ''));
+    const mode = accountLine?.ledger?.group === 'CASH' ? PaymentMode.CASH : PaymentMode.BANK_TRANSFER;
+    setForm((f) => ({
+      ...f,
+      amount: String(Number(v.totalDebit) || Number(v.totalCredit)),
+      paymentMode: mode,
+      reference: v.chequeNumber ?? f.reference,
+      notes: v.description ?? '',
+    }));
+  };
+
   const fetchPdfBlob = async (path: string): Promise<Blob> => {
     const token = localStorage.getItem('firebaseToken');
     const r = await fetch(`${api.defaults.baseURL}${path}`, {
@@ -310,7 +388,7 @@ export default function PaymentSheetsTab() {
         <RefreshButton onClick={() => queryClient.invalidateQueries({ queryKey })} />
         <Button variant="outlined" startIcon={<DownloadIcon />} onClick={handleExportPDF}>Export PDF</Button>
         <Button variant="outlined" startIcon={<PrintIcon />} onClick={handlePrint}>Print</Button>
-        <Button variant="contained" startIcon={<AddIcon />} onClick={() => { setAddOpen(true); setSelectedPO(null); setPoSearch(''); }}>Add Entry</Button>
+        <Button variant="contained" startIcon={<AddIcon />} onClick={() => { setAddOpen(true); setSourceType('PO'); setSelectedPO(null); setPoSearch(''); setSelectedVoucher(null); setVoucherSearch(''); }}>Add Entry</Button>
       </Box>
 
       {/* Day summary — visible on print */}
@@ -318,7 +396,7 @@ export default function PaymentSheetsTab() {
         <CardContent>
           <Typography variant="h6">Payment Sheet — {formatDate(date)}</Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-            Daily register of payments made against approved purchase orders.
+            Daily register of payments made against approved purchase orders and vouchers.
           </Typography>
           <Divider sx={{ my: 1 }} />
           <Stack direction="row" spacing={4} flexWrap="wrap">
@@ -372,8 +450,8 @@ export default function PaymentSheetsTab() {
           <Table size="small">
             <TableHead>
               <TableRow>
-                <TableCell sx={{ fontWeight: 600 }}>PO Number</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Vendor</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>PO / Voucher</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>Vendor / Particulars</TableCell>
                 <TableCell sx={{ fontWeight: 600 }}>Amount</TableCell>
                 <TableCell sx={{ fontWeight: 600 }}>Mode</TableCell>
                 <TableCell sx={{ fontWeight: 600 }}>Reference</TableCell>
@@ -386,11 +464,18 @@ export default function PaymentSheetsTab() {
               {isLoading ? (
                 <TableRow><TableCell colSpan={8} align="center" sx={{ py: 3 }}><CircularProgress size={24} /></TableCell></TableRow>
               ) : rows.length === 0 ? (
-                <TableRow><TableCell colSpan={8} align="center" sx={{ py: 3, color: 'text.secondary' }}>No payment sheet entries for this date. Click "Add Entry" to record a payment.</TableCell></TableRow>
+                <TableRow><TableCell colSpan={8} align="center" sx={{ py: 3, color: 'text.secondary' }}>No payment sheet entries for this date. Click "Add Entry" to record a payment against a purchase order or voucher.</TableCell></TableRow>
               ) : rows.map((r) => (
                 <TableRow key={r.id}>
-                  <TableCell>{r.purchaseOrder.poNumber}</TableCell>
-                  <TableCell>{r.purchaseOrder.vendor.name}</TableCell>
+                  <TableCell>
+                    {r.purchaseOrder ? r.purchaseOrder.poNumber : (
+                      <Stack direction="row" spacing={0.5} alignItems="center">
+                        <span>{r.voucher?.jvNumber ?? '—'}</span>
+                        {r.voucher && <Chip size="small" variant="outlined" label={r.voucher.voucherType} />}
+                      </Stack>
+                    )}
+                  </TableCell>
+                  <TableCell>{r.purchaseOrder ? r.purchaseOrder.vendor.name : voucherParty(r.voucher)}</TableCell>
                   <TableCell>{formatCurrency(r.amount)}</TableCell>
                   <TableCell>{r.paymentMode}</TableCell>
                   <TableCell>{r.reference ?? '—'}</TableCell>
@@ -403,7 +488,7 @@ export default function PaymentSheetsTab() {
                           <AttachFileIcon fontSize="small" />
                         </IconButton>
                       )}
-                      <IconButton size="small" title="Download PDF" onClick={() => downloadPdf(entryPdfPath(r.id), `payment-sheet-${r.purchaseOrder.poNumber}.pdf`)}>
+                      <IconButton size="small" title="Download PDF" onClick={() => downloadPdf(entryPdfPath(r.id), `payment-sheet-${r.purchaseOrder?.poNumber ?? r.voucher?.jvNumber ?? r.id}.pdf`)}>
                         <DownloadIcon fontSize="small" />
                       </IconButton>
                       <IconButton size="small" title="Print" onClick={() => openPdf(entryPdfPath(r.id))}>
@@ -433,11 +518,25 @@ export default function PaymentSheetsTab() {
         </TableContainer>
       </Card>
 
-      {/* Add Entry dialog — PO-first flow */}
+      {/* Add Entry dialog — pick a purchase order or a voucher as the source */}
       <ResponsiveDialog open={addOpen} onClose={() => setAddOpen(false)} maxWidth="md" fullWidth>
         <DialogTitle>Add Payment Sheet Entry</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
+            <TextField
+              select
+              label="Entry For"
+              size="small"
+              value={sourceType}
+              onChange={(e) => setSourceType(e.target.value as 'PO' | 'VOUCHER')}
+              sx={{ maxWidth: 280 }}
+            >
+              <MenuItem value="PO">Purchase Order</MenuItem>
+              <MenuItem value="VOUCHER">Voucher</MenuItem>
+            </TextField>
+
+            {sourceType === 'PO' ? (
+            <>
             <Autocomplete
               options={poOptions?.data ?? []}
               getOptionLabel={(po) => `${po.poNumber} — ${po.vendor.name}`}
@@ -477,6 +576,47 @@ export default function PaymentSheetsTab() {
                 </Stack>
               </Card>
             )}
+            </>
+            ) : (
+            <>
+            <Autocomplete
+              options={voucherOptions?.data ?? []}
+              getOptionLabel={(v) => `${v.jvNumber} — ${voucherParty(v)}`}
+              value={selectedVoucher}
+              onChange={(_, v) => handleSelectVoucher(v)}
+              inputValue={voucherSearch}
+              onInputChange={(_, v) => setVoucherSearch(v)}
+              renderOption={(props, v) => (
+                <li {...props} key={v.id}>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', width: '100%', gap: 1 }}>
+                    <Typography variant="body2">{v.jvNumber} — {voucherParty(v)}</Typography>
+                    <Chip size="small" variant="outlined" label={v.voucherType.replace(/_/g, ' ')} />
+                  </Box>
+                </li>
+              )}
+              renderInput={(params) => (
+                <TextField {...params} label="Search Voucher" placeholder={`Voucher no. or description — showing ${formatDate(date)}`} required
+                  InputProps={{ ...params.InputProps, startAdornment: (<><InputAdornment position="start"><SearchIcon /></InputAdornment>{params.InputProps.startAdornment}</>) }}
+                />
+              )}
+              noOptionsText="No vouchers found for this date — type to search all dates"
+            />
+
+            {selectedVoucher && (
+              <Card variant="outlined" sx={{ p: 2 }}>
+                <Typography variant="subtitle2" gutterBottom>Voucher Details</Typography>
+                <Stack direction="row" spacing={3} flexWrap="wrap">
+                  <Box><Typography variant="caption" color="text.secondary">Voucher No.</Typography><Typography>{selectedVoucher.jvNumber}</Typography></Box>
+                  <Box><Typography variant="caption" color="text.secondary">Type</Typography><Typography>{selectedVoucher.voucherType.replace(/_/g, ' ')}</Typography></Box>
+                  <Box><Typography variant="caption" color="text.secondary">Date</Typography><Typography>{formatDate(selectedVoucher.date)}</Typography></Box>
+                  <Box><Typography variant="caption" color="text.secondary">Particulars</Typography><Typography>{voucherParty(selectedVoucher)}</Typography></Box>
+                  <Box><Typography variant="caption" color="text.secondary">Amount</Typography><Typography>{formatCurrency(Number(selectedVoucher.totalDebit) || Number(selectedVoucher.totalCredit))}</Typography></Box>
+                  <Box><Typography variant="caption" color="text.secondary">Status</Typography><Typography>{selectedVoucher.status.replace(/_/g, ' ')}</Typography></Box>
+                </Stack>
+              </Card>
+            )}
+            </>
+            )}
 
             <TextField label="Amount" type="number" size="small" required value={form.amount}
               onChange={(e) => setForm({ ...form, amount: e.target.value })} />
@@ -507,7 +647,7 @@ export default function PaymentSheetsTab() {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setAddOpen(false)}>Cancel</Button>
-          <Button variant="contained" startIcon={<ReceiptIcon />} disabled={!selectedPO || !form.amount || createMutation.isPending}
+          <Button variant="contained" startIcon={<ReceiptIcon />} disabled={!(sourceType === 'PO' ? selectedPO : selectedVoucher) || !form.amount || createMutation.isPending}
             onClick={() => createMutation.mutate()}>
             {createMutation.isPending ? <CircularProgress size={20} /> : 'Save Entry'}
           </Button>
@@ -521,7 +661,11 @@ export default function PaymentSheetsTab() {
           <Stack spacing={2} sx={{ mt: 1 }}>
             {editRow && (
               <Card variant="outlined" sx={{ p: 2 }}>
-                <Typography variant="subtitle2" gutterBottom>PO: {editRow.purchaseOrder.poNumber} — {editRow.purchaseOrder.vendor.name}</Typography>
+                <Typography variant="subtitle2" gutterBottom>
+                  {editRow.purchaseOrder
+                    ? `PO: ${editRow.purchaseOrder.poNumber} — ${editRow.purchaseOrder.vendor.name}`
+                    : `Voucher: ${editRow.voucher?.jvNumber ?? '—'} — ${voucherParty(editRow.voucher)}`}
+                </Typography>
               </Card>
             )}
             <TextField label="Amount" type="number" size="small" required value={editForm.amount}

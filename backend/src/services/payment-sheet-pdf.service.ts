@@ -30,6 +30,23 @@ const fitCell = (doc: PDFKit.PDFDocument, v: string, w: number): string => {
   return t.length > 0 ? t + '…' : '…';
 };
 
+/** Ledger groups that represent money accounts — not the "party" side of a voucher. */
+const ACCOUNT_GROUPS = new Set(['BANK', 'CASH']);
+
+/**
+ * Display label for a voucher-linked entry: the non-bank/cash ledger names
+ * (the party/expense side), falling back to the voucher description.
+ */
+const voucherParty = (v: any): string => {
+  const les: any[] = v?.ledgerEntries ?? [];
+  const partyNames = les
+    .filter((l) => !ACCOUNT_GROUPS.has(l.ledger?.group))
+    .map((l) => l.ledger?.name)
+    .filter(Boolean);
+  const names = partyNames.length ? partyNames : les.map((l) => l.ledger?.name).filter(Boolean);
+  return names.length ? [...new Set<string>(names)].join(', ') : text(v?.description);
+};
+
 /** Draws the branded top header box (logo + project + date box). Returns the y below it. */
 function drawHeader(doc: PDFKit.PDFDocument, logoBuffer: Buffer | null, project: any, date: Date): number {
   const headerTop = 24;
@@ -70,8 +87,23 @@ function drawHeader(doc: PDFKit.PDFDocument, logoBuffer: Buffer | null, project:
   return headerTop + headerH + 12;
 }
 
-/** Draws one entry's full detail block: PO meta + vendor box + items table + payment box. Returns new y. */
+/** Label: value pair used on the left column of a detail block. Returns new y. */
+function drawLabelPair(doc: PDFKit.PDFDocument, labelText: string, value: string, xx: number, yy: number, ww: number): number {
+  doc.fillColor(MUTED).font('Helvetica').fontSize(8).text(`${labelText}:`, xx, yy, { width: 82 });
+  const valueW = ww - 90;
+  const valueH = doc.heightOfString(value, { width: valueW });
+  doc.fillColor(DARK).font('Helvetica-Bold').fontSize(8).text(value, xx + 86, yy, { width: valueW });
+  return yy + Math.max(13, valueH + 3);
+}
+
+/** Draws one entry's full detail block: source-doc details + payment box. Returns new y. */
 function drawEntryDetails(doc: PDFKit.PDFDocument, e: any, startY: number): number {
+  let y = e.voucher ? drawVoucherDetails(doc, e, startY) : drawPoDetails(doc, e, startY);
+  return drawPaymentBox(doc, e, y);
+}
+
+/** PO detail block: PO meta + vendor box + items table. Returns new y. */
+function drawPoDetails(doc: PDFKit.PDFDocument, e: any, startY: number): number {
   const po = e.purchaseOrder;
   let y = startY;
 
@@ -178,7 +210,93 @@ function drawEntryDetails(doc: PDFKit.PDFDocument, e: any, startY: number): numb
     y += 8;
   }
 
-  // Payment made box (highlighted)
+  return y;
+}
+
+/** Voucher detail block: voucher meta + ledger lines table. Returns new y. */
+function drawVoucherDetails(doc: PDFKit.PDFDocument, e: any, startY: number): number {
+  const v = e.voucher;
+  let y = startY;
+
+  doc.moveTo(LEFT, y).lineTo(RIGHT, y).stroke(BORDER);
+  y += 8;
+  doc.fillColor(PRIMARY).font('Helvetica-Bold').fontSize(11)
+    .text(`VOUCHER DETAILS — ${text(v?.jvNumber)}`, LEFT, y);
+  y += 16;
+
+  const leftW = 240;
+  const gap = 10;
+  const rightW = WIDTH - leftW - gap;
+  const rightCol = LEFT + leftW + gap;
+  const blockTop = y;
+
+  y = drawLabelPair(doc, 'Voucher Date', fmtDate(v?.date), LEFT, y, leftW);
+  y = drawLabelPair(doc, 'Voucher Type', text(v?.voucherType), LEFT, y, leftW);
+  y = drawLabelPair(doc, 'Voucher Status', text(v?.status), LEFT, y, leftW);
+  y = drawLabelPair(doc, 'Cheque No.', text(v?.chequeNumber), LEFT, y, leftW);
+  y = drawLabelPair(doc, 'Cheque Date', fmtDate(v?.chequeDate), LEFT, y, leftW);
+  y = drawLabelPair(doc, 'Created By', text(v?.createdByUser?.name), LEFT, y, leftW);
+  y = drawLabelPair(doc, 'Total Debit', fmtMoney(Number(v?.totalDebit)), LEFT, y, leftW);
+  y = drawLabelPair(doc, 'Total Credit', fmtMoney(Number(v?.totalCredit)), LEFT, y, leftW);
+
+  // Particulars box — mirrors the PO block's vendor box position.
+  const pBoxH = 80;
+  doc.roundedRect(rightCol, blockTop, rightW, pBoxH, 4).stroke(BORDER);
+  doc.rect(rightCol, blockTop, rightW, 20).fill(PRIMARY);
+  doc.fillColor('#fff').font('Helvetica-Bold').fontSize(9.5)
+    .text('PARTICULARS:', rightCol + 8, blockTop + 5);
+  doc.fillColor(DARK).font('Helvetica').fontSize(8.5)
+    .text(text(v?.description), rightCol + 8, blockTop + 26, { width: rightW - 16, height: pBoxH - 30 });
+
+  y = Math.max(y, blockTop + pBoxH + 10);
+
+  // Ledger lines table
+  const lines = v?.ledgerEntries ?? [];
+  if (lines.length > 0) {
+    const lCols = [
+      { label: 'S.No', w: 24 },
+      { label: 'Ledger', w: 0 },
+      { label: 'Cost Center', w: 110 },
+      { label: 'Debit', w: 80 },
+      { label: 'Credit', w: 85 },
+    ];
+    lCols[1].w = WIDTH - lCols.filter((_, i2) => i2 !== 1).reduce((s, c) => s + c.w + COL_GAP, 0);
+    const lX = lCols.map((_, i2) => LEFT + lCols.slice(0, i2).reduce((s, c2) => s + c2.w + COL_GAP, 0));
+
+    doc.rect(LEFT, y, WIDTH, 18).fill(PRIMARY);
+    doc.fillColor('#fff').font('Helvetica-Bold').fontSize(8);
+    lCols.forEach((c, i2) => {
+      const align = c.label === 'S.No' ? 'center' : c.label === 'Debit' || c.label === 'Credit' ? 'right' : 'left';
+      doc.text(c.label, lX[i2] + 4, y + 5, { width: c.w - 8, align });
+    });
+    y += 18;
+
+    const lRowH = 15;
+    lines.forEach((l: any, i2: number) => {
+      if (i2 % 2 === 0) doc.rect(LEFT, y, WIDTH, lRowH).fill(PRIMARY_LIGHT);
+      doc.rect(LEFT, y, WIDTH, lRowH).stroke(BORDER);
+      doc.fillColor(DARK).font('Helvetica').fontSize(8);
+      const vals = [
+        String(i2 + 1),
+        text(l.ledger?.name),
+        text(l.budgetHead?.particulars),
+        Number(l.debit) > 0 ? fmtMoney(Number(l.debit)) : '—',
+        Number(l.credit) > 0 ? fmtMoney(Number(l.credit)) : '—',
+      ];
+      lCols.forEach((c, ci) => {
+        const align = c.label === 'S.No' ? 'center' : c.label === 'Debit' || c.label === 'Credit' ? 'right' : 'left';
+        doc.text(fitCell(doc, vals[ci], c.w - 8), lX[ci] + 4, y + 3, { width: c.w - 8, align, lineBreak: false });
+      });
+      y += lRowH;
+    });
+    y += 8;
+  }
+
+  return y;
+}
+
+/** Payment made box (highlighted) — shared by PO and voucher entries. Returns new y. */
+function drawPaymentBox(doc: PDFKit.PDFDocument, e: any, y: number): number {
   const payBoxH = e.notes ? 62 : 50;
   doc.roundedRect(LEFT, y, WIDTH, payBoxH, 4).fill('#FFF8E1').stroke('#FFB300');
   doc.fillColor('#E65100').font('Helvetica-Bold').fontSize(9)
@@ -193,9 +311,7 @@ function drawEntryDetails(doc: PDFKit.PDFDocument, e: any, startY: number): numb
     doc.fillColor(DARK).font('Helvetica').fontSize(7.5)
       .text(`Notes: ${text(e.notes)}`, LEFT + 10, y + 46, { width: WIDTH - 20 });
   }
-  y += payBoxH + 16;
-
-  return y;
+  return y + payBoxH + 16;
 }
 
 /** Signature block — Signature / T.Vinod Kumar, bottom-right. */
@@ -219,8 +335,8 @@ function drawSummaryTable(doc: PDFKit.PDFDocument, entries: any[], _date: Date, 
 
   const cols = [
     { label: 'S.No', w: 36, align: 'center' as const },
-    { label: 'PO Number', w: 88, align: 'left' as const },
-    { label: 'Vendor', w: 115, align: 'left' as const },
+    { label: 'PO / Voucher', w: 88, align: 'left' as const },
+    { label: 'Vendor / Particulars', w: 115, align: 'left' as const },
     { label: 'Mode', w: 85, align: 'left' as const },
     { label: 'Status', w: 72, align: 'left' as const },
     { label: 'Amount', w: 0, align: 'right' as const }, // remainder
@@ -261,8 +377,8 @@ function drawSummaryTable(doc: PDFKit.PDFDocument, entries: any[], _date: Date, 
     doc.fillColor(DARK).font('Helvetica').fontSize(8);
     const vals = [
       String(i + 1),
-      text(e.purchaseOrder?.poNumber),
-      text(e.purchaseOrder?.vendor?.name),
+      text(e.purchaseOrder?.poNumber ?? e.voucher?.jvNumber),
+      e.purchaseOrder ? text(e.purchaseOrder.vendor?.name) : voucherParty(e.voucher),
       text(e.paymentMode),
       text(e.status),
       fmtMoney(Number(e.amount)),

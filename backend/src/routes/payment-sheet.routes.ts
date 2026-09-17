@@ -19,14 +19,27 @@ router.use(authMiddleware);
 // is confirmed and money is legitimately owed (approved or already delivering).
 const SHEETABLE_PO_STATUSES: POStatus[] = [POStatus.APPROVED, POStatus.PARTIALLY_DELIVERED, POStatus.DELIVERED];
 
-// Include for list/detail — joins the full PO (with items + vendor) so the
-// printable sheet carries all PO details without duplicating them.
+// Include for list/detail — joins the full PO (with items + vendor) or the
+// voucher (with ledger lines) so the printable sheet carries all source
+// document details without duplicating them.
 const sheetInclude = {
   purchaseOrder: {
     include: {
       vendor: { select: { id: true, name: true, vendorCode: true, phone: true, address: true, contactPersonName: true, contactPersonPhone: true } },
       items: true,
       budgetHead: { select: { id: true, particulars: true } },
+      createdByUser: { select: { id: true, name: true } },
+    },
+  },
+  voucher: {
+    include: {
+      ledgerEntries: {
+        include: {
+          ledger: { select: { id: true, name: true, group: true } },
+          budgetHead: { select: { id: true, particulars: true } },
+        },
+        orderBy: { createdAt: 'asc' as const },
+      },
       createdByUser: { select: { id: true, name: true } },
     },
   },
@@ -166,6 +179,71 @@ router.get(
       });
 
       res.json({ data: pos });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// GET /vouchers — list vouchers for the picker (voucher entry flow).
+// With `date` (YYYY-MM-DD) only that day's vouchers are returned; a `search`
+// term matches voucher number or description. Ledger lines ride along so the
+// client can show the party and pre-fill amount/mode.
+router.get(
+  '/vouchers',
+  rbacMiddleware(Permission.VIEW_FINANCIALS),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      const { search, date } = req.query as Record<string, string | undefined>;
+
+      const where: Record<string, unknown> = {
+        projectId,
+        deletedAt: null,
+        // Same scope as the Vouchers page — only new-style vouchers (which
+        // carry ledger entries), not legacy journal vouchers.
+        ledgerEntries: { some: {} },
+      };
+      if (date) {
+        const start = new Date(String(date));
+        start.setHours(0, 0, 0, 0);
+        const end = new Date(String(date));
+        end.setHours(23, 59, 59, 999);
+        where.date = { gte: start, lte: end };
+      }
+      if (search) {
+        where.OR = [
+          { jvNumber: { contains: String(search), mode: 'insensitive' } },
+          { description: { contains: String(search), mode: 'insensitive' } },
+        ];
+      }
+
+      const vouchers = await prisma.journalVoucher.findMany({
+        where,
+        select: {
+          id: true,
+          jvNumber: true,
+          voucherType: true,
+          date: true,
+          description: true,
+          totalDebit: true,
+          totalCredit: true,
+          status: true,
+          chequeNumber: true,
+          ledgerEntries: {
+            select: {
+              debit: true,
+              credit: true,
+              ledger: { select: { id: true, name: true, group: true } },
+            },
+            orderBy: { createdAt: 'asc' },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 100,
+      });
+
+      res.json({ data: vouchers });
     } catch (error) {
       next(error);
     }
@@ -341,8 +419,9 @@ router.get(
         select: { name: true, officeAddress: true, hospitalAddress: true, gstNumber: true, panNumber: true, logoUrl: true },
       });
 
+      const docLabel = entry.purchaseOrder?.poNumber ?? entry.voucher?.jvNumber ?? 'entry';
       res.setHeader('Content-Type', 'application/pdf');
-      res.setHeader('Content-Disposition', `attachment; filename="payment-sheet-${entry.purchaseOrder.poNumber}-${entry.id.slice(0, 8)}.pdf"`);
+      res.setHeader('Content-Disposition', `attachment; filename="payment-sheet-${docLabel}-${entry.id.slice(0, 8)}.pdf"`);
       await streamPaymentSheetPdf(res as unknown as NodeJS.WritableStream, new Date(entry.date), [entry], project);
     } catch (error) {
       next(error);
@@ -350,7 +429,7 @@ router.get(
   }
 );
 
-// POST / — create a payment sheet entry (PO must be approved)
+// POST / — create a payment sheet entry against a PO (must be approved) or a voucher
 router.post(
   '/',
   rbacMiddleware(Permission.VIEW_FINANCIALS),
@@ -359,18 +438,33 @@ router.post(
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const projectId = requireProjectId(req);
-      const { poId, date, amount, paymentMode, reference, notes, status } = req.body;
+      const { poId, voucherId, date, amount, paymentMode, reference, notes, status } = req.body;
 
-      const po = await prisma.purchaseOrder.findFirst({
-        where: { id: poId, projectId, deletedAt: null },
-      });
-      if (!po) {
-        res.status(404).json({ error: 'Purchase order not found' });
-        return;
-      }
-      if (!SHEETABLE_PO_STATUSES.includes(po.status as POStatus)) {
-        res.status(400).json({ error: 'Only approved, partially delivered, or delivered purchase orders can be added to a payment sheet' });
-        return;
+      // Validate the source document — exactly one of poId / voucherId is set
+      // (enforced by the schema). docLabel feeds the uploaded file's prefix.
+      let docLabel: string;
+      if (poId) {
+        const po = await prisma.purchaseOrder.findFirst({
+          where: { id: poId, projectId, deletedAt: null },
+        });
+        if (!po) {
+          res.status(404).json({ error: 'Purchase order not found' });
+          return;
+        }
+        if (!SHEETABLE_PO_STATUSES.includes(po.status as POStatus)) {
+          res.status(400).json({ error: 'Only approved, partially delivered, or delivered purchase orders can be added to a payment sheet' });
+          return;
+        }
+        docLabel = po.poNumber;
+      } else {
+        const voucher = await prisma.journalVoucher.findFirst({
+          where: { id: voucherId, projectId, deletedAt: null },
+        });
+        if (!voucher) {
+          res.status(404).json({ error: 'Voucher not found' });
+          return;
+        }
+        docLabel = voucher.jvNumber;
       }
 
       // Handle file upload (bill / receipt)
@@ -380,7 +474,7 @@ router.post(
       if (req.file) {
         const isImage = req.file.mimetype.startsWith('image/');
         const subPath = isImage ? 'images' : 'documents';
-        const prefixedFileName = `payment-sheets/${subPath}/${po.poNumber}-${req.file.originalname}`;
+        const prefixedFileName = `payment-sheets/${subPath}/${docLabel}-${req.file.originalname}`;
         const storage = getStorageService();
         const uploadResult = await storage.upload(req.file.buffer, prefixedFileName, req.file.mimetype, 'documents');
         filePath = uploadResult.filePath;
@@ -391,7 +485,8 @@ router.post(
       const created = await prisma.paymentSheet.create({
         data: {
           projectId,
-          poId,
+          poId: poId ?? null,
+          voucherId: voucherId ?? null,
           date: date ? new Date(date) : new Date(),
           amount: Number(amount),
           paymentMode,
@@ -412,7 +507,7 @@ router.post(
         entityType: 'PAYMENT_SHEET',
         entityId: created.id,
         projectId,
-        newValue: { poId, amount: String(amount), paymentMode, date: String(created.date) },
+        newValue: { poId: poId ?? null, voucherId: voucherId ?? null, amount: String(amount), paymentMode, date: String(created.date) },
       });
 
       res.status(201).json(created);
@@ -446,9 +541,11 @@ router.patch(
         return;
       }
 
-      const { poId, date, amount, paymentMode, reference, notes, status } = req.body;
+      const { poId, voucherId, date, amount, paymentMode, reference, notes, status } = req.body;
 
-      // If PO is being changed, re-validate it
+      // Relinking the source document clears the other link — exactly one of
+      // poId / voucherId stays set. Re-validate whichever target is provided.
+      let relink: { poId: string | null; voucherId: string | null } | null = null;
       if (poId && poId !== existing.poId) {
         const po = await prisma.purchaseOrder.findFirst({
           where: { id: poId, projectId, deletedAt: null },
@@ -461,12 +558,22 @@ router.patch(
           res.status(400).json({ error: 'Only approved, partially delivered, or delivered purchase orders can be added to a payment sheet' });
           return;
         }
+        relink = { poId, voucherId: null };
+      } else if (voucherId && voucherId !== existing.voucherId) {
+        const voucher = await prisma.journalVoucher.findFirst({
+          where: { id: voucherId, projectId, deletedAt: null },
+        });
+        if (!voucher) {
+          res.status(404).json({ error: 'Voucher not found' });
+          return;
+        }
+        relink = { poId: null, voucherId };
       }
 
       const updated = await prisma.paymentSheet.update({
         where: { id: existing.id },
         data: {
-          ...(poId && { poId }),
+          ...(relink && relink),
           ...(date && { date: new Date(date) }),
           ...(amount !== undefined && { amount: Number(amount) }),
           ...(paymentMode && { paymentMode }),
@@ -483,8 +590,8 @@ router.patch(
         entityType: 'PAYMENT_SHEET',
         entityId: existing.id,
         projectId,
-        oldValue: { amount: String(existing.amount), poId: existing.poId, status: existing.status },
-        newValue: { amount: String(updated.amount), poId: updated.poId, status: updated.status },
+        oldValue: { amount: String(existing.amount), poId: existing.poId, voucherId: existing.voucherId, status: existing.status },
+        newValue: { amount: String(updated.amount), poId: updated.poId, voucherId: updated.voucherId, status: updated.status },
       });
 
       res.json(updated);

@@ -752,9 +752,9 @@ router.get(
       }
       for (const ps of paymentSheets) {
         timeline.push({
-          date: ps.date, type: 'Payment Sheet', reference: ps.purchaseOrder.poNumber,
+          date: ps.date, type: 'Payment Sheet', reference: ps.purchaseOrder?.poNumber ?? '—',
           description: `Payment sheet · ${ps.paymentMode}${ps.reference ? ' · ' + ps.reference : ''}${ps.notes ? ' — ' + ps.notes : ''} · ₹${Number(ps.amount).toLocaleString('en-IN')}`,
-          debit: 0, credit: 0, runningBalance: 0, status: ps.status, path: `/pos?id=${ps.purchaseOrder.id}`,
+          debit: 0, credit: 0, runningBalance: 0, status: ps.status, path: ps.purchaseOrder ? `/pos?id=${ps.purchaseOrder.id}` : undefined,
           actor: ps.createdByUser?.name ?? null, amount: Number(ps.amount),
         });
       }

@@ -396,20 +396,27 @@ export const approvalActionSchema = z.object({
 // ═══ Payment Sheets (daily printable register — standalone log) ═══
 const paymentSheetStatus = z.enum(['PENDING', 'PAID', 'ADVANCE_PAID']);
 export const createPaymentSheetSchema = z.object({
-  body: z.object({
-    poId: uuid,
-    date: dateStr.optional(),
-    amount: positiveMoney,
-    paymentMode: z.nativeEnum(PaymentMode),
-    reference: z.string().trim().max(100).optional(),
-    notes: z.string().trim().max(1000).optional(),
-    status: paymentSheetStatus.optional(),
-  }),
+  body: z
+    .object({
+      // Exactly one source document per entry — a purchase order or a voucher.
+      poId: uuid.optional(),
+      voucherId: uuid.optional(),
+      date: dateStr.optional(),
+      amount: positiveMoney,
+      paymentMode: z.nativeEnum(PaymentMode),
+      reference: z.string().trim().max(100).optional(),
+      notes: z.string().trim().max(1000).optional(),
+      status: paymentSheetStatus.optional(),
+    })
+    .refine((b) => Boolean(b.poId) !== Boolean(b.voucherId), {
+      message: 'Provide exactly one of poId or voucherId',
+    }),
 });
 export const updatePaymentSheetSchema = z.object({
   params: z.object({ id: uuid }),
   body: z.object({
     poId: uuid.optional(),
+    voucherId: uuid.optional(),
     date: dateStr.optional(),
     amount: positiveMoney.optional(),
     paymentMode: z.nativeEnum(PaymentMode).optional(),
