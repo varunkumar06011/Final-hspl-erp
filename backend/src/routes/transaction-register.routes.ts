@@ -1,5 +1,5 @@
 import { Router, Response, NextFunction } from 'express';
-import { Permission } from '@hospital-erp/shared';
+import { Permission, UserRole, isAdminRole } from '@hospital-erp/shared';
 import { prisma } from '../config/prisma';
 import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middleware/auth';
 import { rbacMiddleware } from '../middleware/rbac';
@@ -45,11 +45,17 @@ const emptyAgg = (vendorId: string): VendorMonthAgg => ({
 });
 
 // GET / — month-wise vendor transaction register for a year
+// Restricted to ACCOUNTANT and all admin roles (ADMIN, ADMIN_2, ADMIN_3...).
 router.get(
   '/',
   rbacMiddleware(Permission.VIEW_FINANCIALS),
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
+      const role = req.user!.role;
+      if (role !== UserRole.ACCOUNTANT && !isAdminRole(role)) {
+        res.status(403).json({ error: 'Transaction Register is restricted to Accountant and Admin roles' });
+        return;
+      }
       const projectId = requireProjectId(req);
       const {
         year: yearQ, month: monthQ, search, vendorId, budgetHeadId, type, status,
