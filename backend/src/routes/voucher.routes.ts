@@ -811,7 +811,7 @@ router.patch(
       let requestedSequence = Number(String(voucher.jvNumber).match(/(\d+)$/)?.[1] ?? 0);
       if (requestedJvNumber !== undefined) {
         const requested = String(requestedJvNumber).trim();
-        if (!new RegExp(`^${expectedPrefix}(\\d+)$`).test(requested) && !/^\\d+$/.test(requested)) {
+        if (!new RegExp(`^${expectedPrefix}(\\d+)$`).test(requested) && !/^\d+$/.test(requested)) {
           res.status(400).json({ error: `Voucher number must be a number or start with ${expectedPrefix}` });
           return;
         }
