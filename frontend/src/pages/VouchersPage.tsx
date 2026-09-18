@@ -35,6 +35,7 @@ import {
   Visibility as ViewIcon,
   Edit as EditIcon,
   Cancel as CancelIcon,
+  Delete as DeleteIcon,
   ArrowDownward as ReceiptIcon,
   ArrowUpward as PaymentIcon,
   SwapHoriz as ContraIcon,
@@ -399,6 +400,21 @@ export default function VouchersPage() {
       queryClient.invalidateQueries({ queryKey: ['/audit-logs'] });
       setDetailVoucher(null);
       setSuccessMsg('Voucher cancelled and reversed');
+      setTimeout(() => setSuccessMsg(''), 4000);
+    },
+    onError: (err: unknown) => setError(extractErrorMessage(err)),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const response = await api.delete(`/vouchers/${id}`);
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/vouchers'] });
+      queryClient.invalidateQueries({ queryKey: ['/audit-logs'] });
+      setDetailVoucher(null);
+      setSuccessMsg('Voucher deleted and number series resequenced');
       setTimeout(() => setSuccessMsg(''), 4000);
     },
     onError: (err: unknown) => setError(extractErrorMessage(err)),
@@ -948,6 +964,17 @@ export default function VouchersPage() {
                           <Tooltip title="Edit">
                             <IconButton size="small" color="primary" onClick={() => editVoucher(v)}>
                               <EditIcon fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                        )}
+                        {v.status === 'CANCELLED' && canReverseVoucher && (
+                          <Tooltip title="Delete voucher">
+                            <IconButton size="small" color="error" onClick={() => {
+                              if (confirm(`Delete voucher ${v.jvNumber}? The remaining ${v.voucherType} vouchers will be renumbered.`)) {
+                                deleteMutation.mutate(v.id);
+                              }
+                            }}>
+                              <DeleteIcon fontSize="small" />
                             </IconButton>
                           </Tooltip>
                         )}
@@ -1660,6 +1687,19 @@ export default function VouchersPage() {
                   }}
                 >
                   Cancel & Reverse
+                </Button>
+              )}
+              {detailVoucher.status === 'CANCELLED' && canReverseVoucher && (
+                <Button
+                  color="error"
+                  startIcon={<DeleteIcon />}
+                  onClick={() => {
+                    if (confirm(`Delete voucher ${detailVoucher.jvNumber}? The remaining ${detailVoucher.voucherType} vouchers will be renumbered.`)) {
+                      deleteMutation.mutate(detailVoucher.id);
+                    }
+                  }}
+                >
+                  Delete
                 </Button>
               )}
               {detailVoucher.status === 'POSTED' && canReverseVoucher && (

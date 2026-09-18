@@ -91,8 +91,8 @@ async function resequenceVoucherSeries(
   tx: Prisma.TransactionClient,
   projectId: string,
   voucherType: string,
-  selectedVoucherId: string,
-  requestedSequence: number,
+  selectedVoucherId: string | null,
+  requestedSequence?: number,
 ): Promise<string> {
   const prefix = VOUCHER_PREFIXES[voucherType] ?? 'VGH-JV';
   const vouchers = await tx.journalVoucher.findMany({
@@ -100,16 +100,18 @@ async function resequenceVoucherSeries(
     select: { id: true, date: true, createdAt: true },
     orderBy: [{ date: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
   });
-  const selectedIndex = vouchers.findIndex((voucher) => voucher.id === selectedVoucherId);
-  if (selectedIndex < 0) throw new Error('Voucher not found in its number series');
-  if (!Number.isInteger(requestedSequence) || requestedSequence < 1 || requestedSequence > vouchers.length) {
-    throw new Error(`Voucher number must be between 1 and ${vouchers.length}`);
-  }
-
   // Keep the existing date order for every other voucher, but move the edited
   // voucher to the requested position and shift the affected vouchers.
-  const orderedVouchers = vouchers.filter((voucher) => voucher.id !== selectedVoucherId);
-  orderedVouchers.splice(requestedSequence - 1, 0, vouchers[selectedIndex]);
+  let orderedVouchers = vouchers;
+  if (selectedVoucherId) {
+    const selectedIndex = vouchers.findIndex((voucher) => voucher.id === selectedVoucherId);
+    if (selectedIndex < 0) throw new Error('Voucher not found in its number series');
+    if (!Number.isInteger(requestedSequence) || requestedSequence! < 1 || requestedSequence! > vouchers.length) {
+      throw new Error(`Voucher number must be between 1 and ${vouchers.length}`);
+    }
+    orderedVouchers = vouchers.filter((voucher) => voucher.id !== selectedVoucherId);
+    orderedVouchers.splice(requestedSequence! - 1, 0, vouchers[selectedIndex]);
+  }
 
   // Move every number out of the way first because jvNumber is globally unique.
   for (const voucher of orderedVouchers) {
@@ -717,6 +719,57 @@ router.post(
       });
 
       res.json({ message: 'Voucher cancelled and reversed', jvNumber: voucher.jvNumber });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+// ── Delete a cancelled voucher and close the number-series gap ──
+router.delete(
+  '/:id',
+  rbacMiddleware(Permission.REVERSE_VOUCHER),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      const voucher = await prisma.journalVoucher.findFirst({
+        where: { id: req.params.id, projectId, deletedAt: null },
+        select: { id: true, jvNumber: true, voucherType: true, status: true },
+      });
+      if (!voucher) {
+        res.status(404).json({ error: 'Voucher not found' });
+        return;
+      }
+      if (voucher.status !== 'CANCELLED') {
+        res.status(400).json({ error: 'Only cancelled vouchers can be deleted. Cancel and reverse the voucher first.' });
+        return;
+      }
+
+      await prisma.$transaction(async (tx) => {
+        await tx.journalVoucher.update({
+          where: { id: voucher.id },
+          data: {
+            // jvNumber is globally unique, so move the deleted record out of
+            // the active series before resequencing the remaining vouchers.
+            jvNumber: `DELETED-${voucher.id}`,
+            deletedAt: new Date(),
+            updatedBy: req.user!.id,
+          },
+        });
+        await resequenceVoucherSeries(tx, projectId, voucher.voucherType, null);
+      });
+
+      await logAudit({
+        userId: req.user!.id,
+        action: AuditAction.DELETE,
+        entityType: 'VOUCHER',
+        entityId: voucher.id,
+        projectId,
+        oldValue: { jvNumber: voucher.jvNumber, status: voucher.status },
+        newValue: { deleted: true },
+      });
+
+      res.json({ message: 'Voucher deleted and number series resequenced' });
     } catch (error) {
       next(error);
     }
