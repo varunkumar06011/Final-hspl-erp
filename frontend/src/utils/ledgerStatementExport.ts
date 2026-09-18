@@ -14,6 +14,7 @@
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { formatCurrency, formatDate } from './enumOptions';
+import api from '../config/api';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -77,12 +78,48 @@ function buildFilename(meta: LedgerStatementMeta, extension: string): string {
   return `Ledger_Statement_${name}_${from}_to_${to}.${extension}`;
 }
 
+// ─── Company logo ───────────────────────────────────────────────────────────
+
+let logoDataUrlCache: string | null | undefined;
+
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
+
+/**
+ * Company logo for the statement letterhead. Prefers the logo uploaded in
+ * Settings (GET /settings/logo), falls back to the bundled /logo.png.
+ * Fetched once per session and cached.
+ */
+async function fetchLogoDataUrl(): Promise<string | null> {
+  if (logoDataUrlCache !== undefined) return logoDataUrlCache;
+  logoDataUrlCache = null;
+  try {
+    const res = await api.get('/settings/logo', { responseType: 'blob' });
+    if (res.data instanceof Blob && res.data.size > 0) {
+      logoDataUrlCache = await blobToDataUrl(res.data);
+    }
+  } catch { /* no uploaded logo — fall through to the bundled one */ }
+  if (!logoDataUrlCache) {
+    try {
+      const res = await fetch('/logo.png');
+      if (res.ok) logoDataUrlCache = await blobToDataUrl(await res.blob());
+    } catch { /* no logo available */ }
+  }
+  return logoDataUrlCache;
+}
+
 // ─── PDF Export ─────────────────────────────────────────────────────────────
 
-export function exportLedgerStatementPdf(
+export async function exportLedgerStatementPdf(
   data: LedgerStatementData,
   meta: LedgerStatementMeta,
-): void {
+): Promise<void> {
   const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
   const isDebit = data.ledger.isDebitNature;
 
@@ -92,9 +129,21 @@ export function exportLedgerStatementPdf(
   const pdfBal = (n: number) => formatBalanceWithSuffix(n, isDebit).replace('₹', 'Rs.');
 
   // ── Header ──
+  // Company logo top-left; the title sits beside it (or at x=14 when no logo).
+  const logoDataUrl = await fetchLogoDataUrl();
+  let titleX = 14;
+  if (logoDataUrl) {
+    try {
+      const props = doc.getImageProperties(logoDataUrl);
+      const logoH = 12;
+      const logoW = Math.min(45, (props.width / props.height) * logoH);
+      doc.addImage(logoDataUrl, props.fileType || 'PNG', 14, 8, logoW, logoH);
+      titleX = 14 + logoW + 5;
+    } catch { /* logo unavailable — keep plain header */ }
+  }
   doc.setFontSize(16);
   doc.setFont('helvetica', 'bold');
-  doc.text(`Ledger Statement — ${meta.ledgerName}`, 14, 15);
+  doc.text(`Ledger Statement — ${meta.ledgerName}`, titleX, 15);
 
   doc.setFontSize(10);
   doc.setFont('helvetica', 'normal');
@@ -249,11 +298,12 @@ function escapeCsv(value: string): string {
 // Opens a hidden iframe with print-specific CSS so only the ledger statement
 // is printed — no app navigation, modal overlay, or buttons.
 
-export function printLedgerStatement(
+export async function printLedgerStatement(
   data: LedgerStatementData,
   meta: LedgerStatementMeta,
-): void {
+): Promise<void> {
   const isDebit = data.ledger.isDebitNature;
+  const logoDataUrl = await fetchLogoDataUrl();
 
   // Each transaction is one <tbody> block: a compact main row followed by an
   // optional description row. The description cell starts at the Voucher
@@ -291,6 +341,8 @@ export function printLedgerStatement(
     font-size: 12px;
   }
   h1 { font-size: 18px; margin: 0 0 4px; }
+  .letterhead { display: flex; align-items: center; gap: 14px; margin-bottom: 10px; }
+  .letterhead img { height: 52px; max-width: 180px; object-fit: contain; display: block; }
   .meta { margin-bottom: 12px; color: #555; }
   .meta div { margin: 2px 0; }
   .balances { display: flex; gap: 24px; margin: 12px 0; }
@@ -332,10 +384,15 @@ export function printLedgerStatement(
 </style>
 </head>
 <body>
-  <h1>Ledger Statement — ${escapeHtml(meta.ledgerName)}</h1>
-  <div class="meta">
-    <div>Group: ${escapeHtml(meta.ledgerGroup)}</div>
-    <div>From: ${escapeHtml(formatDisplayDate(meta.startDate))} &nbsp;&nbsp; To: ${escapeHtml(formatDisplayDate(meta.endDate))}</div>
+  <div class="letterhead">
+    ${logoDataUrl ? `<img src="${logoDataUrl}" alt="Company logo" />` : ''}
+    <div>
+      <h1>Ledger Statement — ${escapeHtml(meta.ledgerName)}</h1>
+      <div class="meta" style="margin-bottom:0">
+        <div>Group: ${escapeHtml(meta.ledgerGroup)}</div>
+        <div>From: ${escapeHtml(formatDisplayDate(meta.startDate))} &nbsp;&nbsp; To: ${escapeHtml(formatDisplayDate(meta.endDate))}</div>
+      </div>
+    </div>
   </div>
   <div class="balances">
     <div class="balance-box">

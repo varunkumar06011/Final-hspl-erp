@@ -204,12 +204,12 @@ export default function LedgersPage() {
     endDate: stmtEndDate,
   });
 
-  const handleExportPdf = () => {
+  const handleExportPdf = async () => {
     if (!statementData) return;
     setExportBusy(true);
     setExportError('');
     try {
-      exportLedgerStatementPdf(statementData as LedgerStatementData, buildStatementMeta());
+      await exportLedgerStatementPdf(statementData as LedgerStatementData, buildStatementMeta());
       setExportFormatOpen(false);
     } catch (err: unknown) {
       setExportError(err instanceof Error ? err.message : 'Failed to generate PDF');
@@ -232,11 +232,11 @@ export default function LedgersPage() {
     }
   };
 
-  const handlePrint = () => {
+  const handlePrint = async () => {
     if (!statementData) return;
     setExportError('');
     try {
-      printLedgerStatement(statementData as LedgerStatementData, buildStatementMeta());
+      await printLedgerStatement(statementData as LedgerStatementData, buildStatementMeta());
     } catch (err: unknown) {
       setExportError(err instanceof Error ? err.message : 'Failed to initiate printing');
     }
