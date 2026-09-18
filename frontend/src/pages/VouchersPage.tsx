@@ -1833,7 +1833,7 @@ function ReceiptVoucherPrintPreview({ voucher, template }: { voucher: PrintableV
 
   return (
     <VoucherPrintSheet template={template} alt="Receipt voucher template" aspect="1600 / 1035">
-      <Typography sx={{ ...voucherFieldSx, left: '18.6%', top: '34.7%', maxWidth: '12%' }}>{voucher.jvNumber}</Typography>
+      <Typography sx={{ ...voucherFieldSx, left: '18.6%', top: '34.7%', maxWidth: '50%' }}>{voucher.jvNumber}</Typography>
       <Typography sx={{ ...voucherLineFieldSx, left: '76.2%', top: '34.7%', maxWidth: '17.5%' }}>{formatDate(voucher.date)}</Typography>
       <Typography sx={{ ...voucherLineFieldSx, left: '25.2%', top: '42.1%', width: '68%' }}>{partyEntry?.ledgerName || ''}</Typography>
       <Typography sx={{ ...voucherLineFieldSx, left: '23.6%', top: '49.5%', width: '41%' }}>{receiptMode}</Typography>
@@ -1854,13 +1854,13 @@ function JournalVoucherPrintPreview({ voucher, template }: { voucher: PrintableV
   const createdBy = voucher.createdByUser?.name || voucher.createdBy || '';
   const entries = voucher.entries;
 
-  // The template has 8 ruled rows between the header (~36.7%) and the Total row
-  // (~63.5%). When a voucher has more than 8 entries, compress the row spacing so
+  // The template has 8 ruled rows between the header (~34.5%) and the Total row
+  // (~64.4%). When a voucher has more than 8 entries, compress the row spacing so
   // every entry still prints inside the table without overlapping the Total line.
   const cellSx = { ...voucherFieldSx, fontSize: 'clamp(9px, 1.15vw, 16px)' };
-  const firstRowCenterY = 38.6;
-  const templateRowStep = 3.25;
-  const lastRowCenterY = 62.6;
+  const firstRowCenterY = 38.2;
+  const templateRowStep = 3.27;
+  const lastRowCenterY = 61.2;
   const rowStep = entries.length <= 8
     ? templateRowStep
     : (lastRowCenterY - firstRowCenterY) / Math.max(entries.length - 1, 1);
@@ -1868,26 +1868,27 @@ function JournalVoucherPrintPreview({ voucher, template }: { voucher: PrintableV
 
   return (
     <VoucherPrintSheet template={template} alt="Journal voucher template" aspect="1559 / 1009">
-      <Typography sx={{ ...voucherLineFieldSx, left: '9%', top: '29.5%', maxWidth: '19%' }}>{voucher.jvNumber}</Typography>
-      <Typography sx={{ ...voucherLineFieldSx, left: '83.2%', top: '29.5%', maxWidth: '11%' }}>{formatDate(voucher.date)}</Typography>
+      <Typography sx={{ ...voucherLineFieldSx, left: '9%', top: '29.3%', maxWidth: '19%' }}>{voucher.jvNumber}</Typography>
+      <Typography sx={{ ...voucherLineFieldSx, left: '83.5%', top: '29.3%', maxWidth: '11%' }}>{formatDate(voucher.date)}</Typography>
 
       {entries.map((entry, index) => (
         <Box key={entry.ledgerId + '-' + index}>
-          <Typography sx={{ ...cellSx, left: '5.5%', width: '5.2%', top: rowCenterY(index), textAlign: 'center' }}>{index + 1}</Typography>
-          <Typography sx={{ ...cellSx, left: '11.2%', width: '21.9%', top: rowCenterY(index) }}>{entry.ledgerName}</Typography>
-          <Typography sx={{ ...cellSx, left: '34.1%', width: '32.7%', top: rowCenterY(index) }}>{entry.description || ''}</Typography>
-          <Typography sx={{ ...cellSx, left: '67.9%', width: '12.8%', top: rowCenterY(index), textAlign: 'right' }}>{entry.debit > 0 ? formatIndianNumber(entry.debit.toFixed(2)) : ''}</Typography>
-          <Typography sx={{ ...cellSx, left: '81.9%', width: '12.1%', top: rowCenterY(index), textAlign: 'right' }}>{entry.credit > 0 ? formatIndianNumber(entry.credit.toFixed(2)) : ''}</Typography>
+          <Typography sx={{ ...cellSx, left: '5.6%', width: '5.1%', top: rowCenterY(index), textAlign: 'center' }}>{index + 1}</Typography>
+          <Typography sx={{ ...cellSx, left: '11.2%', width: '50.5%', top: rowCenterY(index) }}>
+            {entry.ledgerName}{entry.description ? ` — ${entry.description}` : ''}
+          </Typography>
+          <Typography sx={{ ...cellSx, left: '63%', width: '14.5%', top: rowCenterY(index), textAlign: 'right' }}>{entry.debit > 0 ? formatIndianNumber(entry.debit.toFixed(2)) : ''}</Typography>
+          <Typography sx={{ ...cellSx, left: '78.5%', width: '15%', top: rowCenterY(index), textAlign: 'right' }}>{entry.credit > 0 ? formatIndianNumber(entry.credit.toFixed(2)) : ''}</Typography>
         </Box>
       ))}
 
-      <Typography sx={{ ...cellSx, left: '67.9%', width: '12.8%', top: '65.4%', textAlign: 'right', fontWeight: 700 }}>{formatIndianNumber(totalDebit.toFixed(2))}</Typography>
-      <Typography sx={{ ...cellSx, left: '81.9%', width: '12.1%', top: '65.4%', textAlign: 'right', fontWeight: 700 }}>{formatIndianNumber(totalCredit.toFixed(2))}</Typography>
+      <Typography sx={{ ...cellSx, left: '63%', width: '14.5%', top: '64.4%', textAlign: 'right', fontWeight: 700 }}>{formatIndianNumber(totalDebit.toFixed(2))}</Typography>
+      <Typography sx={{ ...cellSx, left: '78.5%', width: '15%', top: '64.4%', textAlign: 'right', fontWeight: 700 }}>{formatIndianNumber(totalCredit.toFixed(2))}</Typography>
 
       <Typography sx={{ ...voucherLineFieldSx, left: '18%', top: '71%', width: '75%' }}>{voucher.description || ''}</Typography>
-      <Typography sx={{ ...voucherFieldSx, left: '10.4%', top: '81.1%', width: '22.8%', fontWeight: 700 }}>{formatIndianNumber(amount.toFixed(2))}</Typography>
-      <Typography sx={{ ...voucherFieldSx, left: '43.4%', top: '81.1%', width: '50%', whiteSpace: 'normal', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{amountText}</Typography>
-      <Typography sx={{ ...voucherLineFieldSx, left: '9%', top: '91%', maxWidth: '15.5%' }}>{createdBy}</Typography>
+      <Typography sx={{ ...voucherFieldSx, left: '10.4%', top: '81%', width: '22.8%', fontWeight: 700 }}>{formatIndianNumber(amount.toFixed(2))}</Typography>
+      <Typography sx={{ ...voucherFieldSx, left: '43.4%', top: '81%', width: '50%', whiteSpace: 'normal', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{amountText}</Typography>
+      <Typography sx={{ ...voucherLineFieldSx, left: '9%', top: '90.5%', maxWidth: '15.5%' }}>{createdBy}</Typography>
     </VoucherPrintSheet>
   );
 }
