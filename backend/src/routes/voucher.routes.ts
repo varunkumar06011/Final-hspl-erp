@@ -187,7 +187,9 @@ router.get(
         prisma.journalVoucher.findMany({
           where,
           include: voucherInclude,
-          orderBy: { createdAt: 'desc' },
+          // Voucher numbers are zero-padded, so lexicographic ordering keeps
+          // the visible list in numeric sequence (latest/highest at the top).
+          orderBy: { jvNumber: 'desc' },
           skip: (Number(page) - 1) * Number(pageSize),
           take: Number(pageSize),
         }),
