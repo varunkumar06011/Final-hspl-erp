@@ -762,7 +762,7 @@ router.delete(
           },
         });
         await resequenceVoucherSeries(tx, projectId, voucher.voucherType, null);
-      });
+      }, { timeout: 60000 });
 
       await logAudit({
         userId: req.user!.id,
@@ -1139,7 +1139,7 @@ router.patch(
           }
 
           currentJvNumber = await resequenceVoucherSeries(tx, projectId, voucher.voucherType, voucher.id, requestedSequence);
-        });
+        }, { timeout: 60000 });
 
         await logAudit({
           userId: req.user!.id,
@@ -1395,7 +1395,7 @@ router.patch(
         }
 
         currentJvNumber = await resequenceVoucherSeries(tx, projectId, voucher.voucherType, voucher.id, requestedSequence);
-      });
+      }, { timeout: 60000 });
 
       await logAudit({
         userId: req.user!.id,
