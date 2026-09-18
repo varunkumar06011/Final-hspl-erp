@@ -1673,7 +1673,7 @@ export default function VouchersPage() {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setPrintVoucherId(null)}>Close</Button>
-          <Button variant="contained" startIcon={<PrintIcon />} disabled={!printVoucher} onClick={() => window.print()}>Print Voucher</Button>
+          <Button variant="contained" startIcon={<PrintIcon />} disabled={!printVoucher} onClick={printVoucherSheet}>Print Voucher</Button>
         </DialogActions>
       </Dialog>
     </Box>
@@ -1693,6 +1693,81 @@ const VOUCHER_PRINT_CSS = `
         .voucher-preview-controls { display: none !important; }
       }
     `;
+
+/**
+ * Print ONLY the rendered voucher through a hidden iframe.
+ *
+ * window.print() on the main document paginates the entire (hidden) app DOM,
+ * so the page count depended on device/screen size — the 8/11-page bug. The
+ * iframe document contains just the voucher markup plus the same stylesheets,
+ * so the output is always exactly one page on every device and browser.
+ */
+function printVoucherSheet() {
+  const root = document.querySelector<HTMLElement>('.voucher-print-root');
+  if (!root) return;
+
+  const iframe = document.createElement('iframe');
+  iframe.style.position = 'fixed';
+  // A real, fixed viewport so vw/clamp() units in the sheet resolve to the
+  // same pixel values on every device — identical print size everywhere.
+  iframe.style.left = '-10000px';
+  iframe.style.width = '1100px';
+  iframe.style.height = '800px';
+  iframe.style.border = '0';
+  document.body.appendChild(iframe);
+
+  const win = iframe.contentWindow;
+  const doc = win?.document;
+  if (!doc) {
+    document.body.removeChild(iframe);
+    return;
+  }
+
+  // Carry over every stylesheet (MUI emotion styles, fonts, voucher CSS) so
+  // the cloned markup renders identically inside the iframe.
+  document.querySelectorAll('style, link[rel="stylesheet"]').forEach((el) => {
+    doc.head.appendChild(el.cloneNode(true));
+  });
+
+  // One voucher = one page: tight page margins, sheet fills printable width.
+  const printCss = doc.createElement('style');
+  printCss.textContent = `
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; background: #fff; }
+    @page { size: auto; margin: 8mm; }
+    .voucher-print-root { display: flex; justify-content: center; width: 100%; }
+    .voucher-print-sheet { width: 100% !important; max-width: none !important; box-shadow: none !important; }
+    .voucher-preview-controls { display: none !important; }
+  `;
+  doc.head.appendChild(printCss);
+
+  doc.body.appendChild(root.cloneNode(true));
+
+  const cleanup = () => {
+    win?.removeEventListener?.('afterprint', cleanup);
+    if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
+  };
+  win?.addEventListener?.('afterprint', cleanup);
+
+  const doPrint = () => {
+    try {
+      win?.focus();
+      win?.print();
+    } finally {
+      setTimeout(cleanup, 2000);
+    }
+  };
+
+  // Wait for the template image + web font so nothing prints blank/shifted.
+  const img = doc.querySelector('img');
+  const imgReady = !img || img.complete
+    ? Promise.resolve()
+    : new Promise<void>((resolve) => {
+        img.addEventListener('load', () => resolve(), { once: true });
+        img.addEventListener('error', () => resolve(), { once: true });
+      });
+  Promise.all([imgReady, doc.fonts?.ready ?? Promise.resolve()]).then(doPrint);
+}
 
 // Fields vertically centered on their position (boxes / blank areas).
 const voucherFieldSx = {
