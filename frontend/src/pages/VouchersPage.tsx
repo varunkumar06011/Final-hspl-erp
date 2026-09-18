@@ -1726,13 +1726,18 @@ function printVoucherSheet() {
   // Serialize every accessible stylesheet into real CSS text. MUI/Emotion
   // inserts rules via sheet.insertRule(), so cloning <style> elements copies
   // EMPTY tags — the cloned markup would render unstyled (fields detached
-  // below the image). document.styleSheets exposes the live rules.
+  // below the image). document.styleSheets exposes the live rules; the
+  // textContent pass below additionally covers any text-based <style> tags.
   const cssChunks: string[] = [];
   for (const sheet of Array.from(document.styleSheets)) {
     try {
       cssChunks.push(Array.from(sheet.cssRules).map((rule) => rule.cssText).join('\n'));
     } catch { /* cross-origin stylesheet — skip */ }
   }
+  document.querySelectorAll('style').forEach((el) => {
+    const text = el.textContent?.trim();
+    if (text) cssChunks.push(text);
+  });
 
   // One voucher = one page: tight page margins, sheet fills printable width.
   const styleEl = doc.createElement('style');
@@ -1747,7 +1752,28 @@ function printVoucherSheet() {
   doc.head.appendChild(styleEl);
   doc.title = 'Voucher';
 
-  doc.body.appendChild(root.cloneNode(true));
+  const clone = root.cloneNode(true) as HTMLElement;
+  // Inline the sheet/img geometry as a safety net — even if a class rule is
+  // somehow missing, the template image fills the sheet and can't detach.
+  const sheetEl = clone.querySelector<HTMLElement>('.voucher-print-sheet');
+  const imgEl = clone.querySelector<HTMLImageElement>('img');
+  if (sheetEl) {
+    const origSheet = root.querySelector<HTMLElement>('.voucher-print-sheet');
+    const aspect = origSheet ? getComputedStyle(origSheet).aspectRatio : 'auto';
+    sheetEl.style.position = 'relative';
+    sheetEl.style.width = '100%';
+    sheetEl.style.aspectRatio = aspect !== 'auto' ? aspect : '1568 / 1014';
+    sheetEl.style.overflow = 'hidden';
+    sheetEl.style.boxShadow = 'none';
+  }
+  if (imgEl) {
+    imgEl.style.position = 'absolute';
+    imgEl.style.inset = '0';
+    imgEl.style.width = '100%';
+    imgEl.style.height = '100%';
+    imgEl.style.objectFit = 'contain';
+  }
+  doc.body.appendChild(clone);
 
   const cleanup = () => {
     win?.removeEventListener?.('afterprint', cleanup);
