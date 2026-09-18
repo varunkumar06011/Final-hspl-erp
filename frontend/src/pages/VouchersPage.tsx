@@ -171,6 +171,7 @@ export default function VouchersPage() {
   const [pageSize, setPageSize] = useState(20);
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
+  const [dateFilter, setDateFilter] = useState('');
   const [minAmount, setMinAmount] = useState('');
   const [maxAmount, setMaxAmount] = useState('');
   const [error, setError] = useState('');
@@ -179,6 +180,7 @@ export default function VouchersPage() {
   // Create dialog
   const [createOpen, setCreateOpen] = useState(false);
   const [selectedVoucherType, setSelectedVoucherType] = useState<VoucherType>(VoucherType.RECEIPT);
+  const [voucherNumberSuffix, setVoucherNumberSuffix] = useState('');
   const [voucherDate, setVoucherDate] = useState('');
   const [voucherDescription, setVoucherDescription] = useState('');
   const [entries, setEntries] = useState<EntryForm[]>([]);
@@ -221,11 +223,12 @@ export default function VouchersPage() {
   const [searchParams, setSearchParams] = useSearchParams();
 
   const { data, isLoading, isError, refetch } = useQuery({
-    queryKey: ['/vouchers', page, pageSize, search, typeFilter, minAmount, maxAmount],
+    queryKey: ['/vouchers', page, pageSize, search, typeFilter, dateFilter, minAmount, maxAmount],
     queryFn: async () => {
       const params: Record<string, unknown> = { page: page + 1, pageSize };
       if (search) params.search = search;
       if (typeFilter) params.voucherType = typeFilter;
+      if (dateFilter) params.date = dateFilter;
       if (minAmount) params.minAmount = minAmount;
       if (maxAmount) params.maxAmount = maxAmount;
       const response = await api.get('/vouchers', { params });
@@ -511,6 +514,7 @@ export default function VouchersPage() {
   const editVoucher = (voucher: Voucher) => {
     setEditingVoucherId(voucher.id);
     setSelectedVoucherType(voucher.voucherType as VoucherType);
+    setVoucherNumberSuffix(voucher.jvNumber.match(/(\d+)$/)?.[1] ?? '');
     setVoucherDate(voucher.date ? new Date(voucher.date).toISOString().split('T')[0] : '');
     setVoucherDescription(voucher.description ?? '');
     setBillSettlements([]);
@@ -646,7 +650,7 @@ export default function VouchersPage() {
 
   const submitVoucher = (payload: Record<string, unknown>) => {
     if (editingVoucherId) {
-      updateMutation.mutate({ id: editingVoucherId, data: payload });
+      updateMutation.mutate({ id: editingVoucherId, data: { ...payload, jvNumber: voucherNumberSuffix } });
     } else {
       createMutation.mutate(payload);
     }
@@ -868,6 +872,15 @@ export default function VouchersPage() {
           </TextField>
           <TextField
             size="small"
+            type="date"
+            label="Date"
+            value={dateFilter}
+            onChange={(e) => { setDateFilter(e.target.value); setPage(0); }}
+            InputLabelProps={{ shrink: true }}
+            sx={{ width: 160 }}
+          />
+          <TextField
+            size="small"
             label="Min Amount"
             type="text"
             value={minAmount}
@@ -995,6 +1008,17 @@ export default function VouchersPage() {
 
           {/* Date — Tally shows date at top */}
           <Box sx={{ display: 'flex', gap: 2, mb: 2, mt: 1 }}>
+            {editingVoucherId && (
+              <TextField
+                size="small"
+                label="Voucher No."
+                value={voucherNumberSuffix}
+                onChange={(e) => setVoucherNumberSuffix(e.target.value.replace(/\D/g, ''))}
+                inputProps={{ inputMode: 'numeric' }}
+                helperText="Saving resequences this voucher type by voucher date"
+                sx={{ width: 220 }}
+              />
+            )}
             <TextField
               size="small"
               type="date"

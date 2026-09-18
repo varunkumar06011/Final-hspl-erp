@@ -84,6 +84,54 @@ export async function generateVoucherNumber(voucherType: string): Promise<string
   return `${prefix}${String(maxNum + 1).padStart(4, '0')}`;
 }
 
+// Keep the visible number sequence contiguous when a voucher is moved to a
+// requested position. The internal voucher IDs never change; only the
+// human-readable number and its denormalized ledger snapshot are resequenced.
+async function resequenceVoucherSeries(
+  tx: Prisma.TransactionClient,
+  projectId: string,
+  voucherType: string,
+  selectedVoucherId: string,
+  requestedSequence: number,
+): Promise<string> {
+  const prefix = VOUCHER_PREFIXES[voucherType] ?? 'VGH-JV';
+  const vouchers = await tx.journalVoucher.findMany({
+    where: { projectId, voucherType, deletedAt: null },
+    select: { id: true, date: true, createdAt: true },
+    orderBy: [{ date: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
+  });
+  const selectedIndex = vouchers.findIndex((voucher) => voucher.id === selectedVoucherId);
+  if (selectedIndex < 0) throw new Error('Voucher not found in its number series');
+  if (!Number.isInteger(requestedSequence) || requestedSequence < 1 || requestedSequence > vouchers.length) {
+    throw new Error(`Voucher number must be between 1 and ${vouchers.length}`);
+  }
+
+  // Keep the existing date order for every other voucher, but move the edited
+  // voucher to the requested position and shift the affected vouchers.
+  const orderedVouchers = vouchers.filter((voucher) => voucher.id !== selectedVoucherId);
+  orderedVouchers.splice(requestedSequence - 1, 0, vouchers[selectedIndex]);
+
+  // Move every number out of the way first because jvNumber is globally unique.
+  for (const voucher of orderedVouchers) {
+    await tx.journalVoucher.update({
+      where: { id: voucher.id },
+      data: { jvNumber: `${prefix}TMP${voucher.id.replace(/-/g, '')}` },
+    });
+  }
+
+  let selectedNumber = `${prefix}0001`;
+  for (const [index, voucher] of orderedVouchers.entries()) {
+    const jvNumber = `${prefix}${String(index + 1).padStart(4, '0')}`;
+    await tx.journalVoucher.update({ where: { id: voucher.id }, data: { jvNumber } });
+    await tx.ledgerEntry.updateMany({
+      where: { journalVoucherId: voucher.id },
+      data: { voucherNumber: jvNumber },
+    });
+    if (voucher.id === selectedVoucherId) selectedNumber = jvNumber;
+  }
+  return selectedNumber;
+}
+
 // ── List vouchers (with type filter, date range) ──
 router.get(
   '/',
@@ -92,7 +140,7 @@ router.get(
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const projectId = requireProjectId(req);
-      const { page = 1, pageSize = 20, search, voucherType, status, startDate, endDate, ids, minAmount, maxAmount } = req.query as Record<string, unknown>;
+      const { page = 1, pageSize = 20, search, voucherType, status, date, startDate, endDate, ids, minAmount, maxAmount } = req.query as Record<string, unknown>;
 
       const where: Prisma.JournalVoucherWhereInput = {
         projectId,
@@ -105,7 +153,13 @@ router.get(
         ...(voucherType ? { voucherType: String(voucherType) } : {}),
         ...(status ? { status: String(status) } : {}),
         ...(search ? { jvNumber: { contains: String(search), mode: 'insensitive' } } : {}),
-        ...(startDate || endDate ? {
+        ...(date ? (() => {
+          const dayStart = new Date(String(date));
+          dayStart.setHours(0, 0, 0, 0);
+          const dayEnd = new Date(String(date));
+          dayEnd.setHours(23, 59, 59, 999);
+          return { date: { gte: dayStart, lte: dayEnd } };
+        })() : startDate || endDate ? {
           date: {
             ...(startDate ? { gte: new Date(String(startDate)) } : {}),
             ...(endDate ? { lte: new Date(String(endDate)) } : {}),
@@ -694,7 +748,18 @@ router.patch(
         return;
       }
 
-      const { date, description, entries, billSettlements } = req.body;
+      const { date, description, entries, billSettlements, jvNumber: requestedJvNumber } = req.body;
+      const expectedPrefix = VOUCHER_PREFIXES[voucher.voucherType] ?? 'VGH-JV';
+      let requestedSequence = Number(String(voucher.jvNumber).match(/(\d+)$/)?.[1] ?? 0);
+      if (requestedJvNumber !== undefined) {
+        const requested = String(requestedJvNumber).trim();
+        if (!new RegExp(`^${expectedPrefix}(\\d+)$`).test(requested) && !/^\\d+$/.test(requested)) {
+          res.status(400).json({ error: `Voucher number must be a number or start with ${expectedPrefix}` });
+          return;
+        }
+        requestedSequence = Number(requested.match(/(\d+)$/)?.[1] ?? 0);
+      }
+      let currentJvNumber = voucher.jvNumber;
 
       // Validate new entries
       const newEntries = entries as Array<{ ledgerId: string; debit: number; credit: number; description?: string; budgetHeadId?: string }>;
@@ -1014,6 +1079,8 @@ router.patch(
               });
             }
           }
+
+          currentJvNumber = await resequenceVoucherSeries(tx, projectId, voucher.voucherType, voucher.id, requestedSequence);
         });
 
         await logAudit({
@@ -1026,7 +1093,7 @@ router.patch(
           newValue: { date: voucherDate, description, budgetHeadOnly: true, newBudgetHeadId },
         });
 
-        res.json({ message: 'Voucher updated successfully', jvNumber: voucher.jvNumber });
+        res.json({ message: 'Voucher updated successfully', jvNumber: currentJvNumber });
         return;
       }
 
@@ -1268,6 +1335,8 @@ router.patch(
             });
           }
         }
+
+        currentJvNumber = await resequenceVoucherSeries(tx, projectId, voucher.voucherType, voucher.id, requestedSequence);
       });
 
       await logAudit({
@@ -1280,7 +1349,7 @@ router.patch(
         newValue: { date: voucherDate, description, totalDebit, totalCredit, edited: true },
       });
 
-      res.json({ message: 'Voucher updated successfully', jvNumber: voucher.jvNumber });
+      res.json({ message: 'Voucher updated successfully', jvNumber: currentJvNumber });
     } catch (error) {
       next(error);
     }

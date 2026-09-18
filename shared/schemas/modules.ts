@@ -1457,6 +1457,7 @@ export const listVouchersSchema = z.object({
     search: z.string().optional(),
     voucherType: z.nativeEnum(VoucherType).optional(),
     status: z.string().optional(),
+    date: dateStr.optional(),
     startDate: dateStr.optional(),
     endDate: dateStr.optional(),
     minAmount: z.coerce.number().optional(),
