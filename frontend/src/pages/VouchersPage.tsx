@@ -1735,8 +1735,8 @@ function printVoucherSheet() {
     * { box-sizing: border-box; }
     html, body { margin: 0; padding: 0; background: #fff; }
     @page { size: auto; margin: 8mm; }
-    .voucher-print-root { display: flex; justify-content: center; width: 100%; }
-    .voucher-print-sheet { width: 100% !important; max-width: none !important; box-shadow: none !important; }
+    .voucher-print-root { display: flex; justify-content: center; width: 100%; break-inside: avoid; page-break-inside: avoid; }
+    .voucher-print-sheet { width: 100% !important; max-width: none !important; box-shadow: none !important; break-inside: avoid; page-break-inside: avoid; }
     .voucher-preview-controls { display: none !important; }
   `;
   doc.head.appendChild(printCss);
@@ -1874,9 +1874,7 @@ function JournalVoucherPrintPreview({ voucher, template }: { voucher: PrintableV
       {entries.map((entry, index) => (
         <Box key={entry.ledgerId + '-' + index}>
           <Typography sx={{ ...cellSx, left: '5.6%', width: '5.1%', top: rowCenterY(index), textAlign: 'center' }}>{index + 1}</Typography>
-          <Typography sx={{ ...cellSx, left: '11.2%', width: '50.5%', top: rowCenterY(index) }}>
-            {entry.ledgerName}{entry.description ? ` — ${entry.description}` : ''}
-          </Typography>
+          <Typography sx={{ ...cellSx, left: '11.2%', width: '50.5%', top: rowCenterY(index) }}>{entry.ledgerName}</Typography>
           <Typography sx={{ ...cellSx, left: '63%', width: '14.5%', top: rowCenterY(index), textAlign: 'right' }}>{entry.debit > 0 ? formatIndianNumber(entry.debit.toFixed(2)) : ''}</Typography>
           <Typography sx={{ ...cellSx, left: '78.5%', width: '15%', top: rowCenterY(index), textAlign: 'right' }}>{entry.credit > 0 ? formatIndianNumber(entry.credit.toFixed(2)) : ''}</Typography>
         </Box>
