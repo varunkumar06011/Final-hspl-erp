@@ -1723,15 +1723,20 @@ function printVoucherSheet() {
     return;
   }
 
-  // Carry over every stylesheet (MUI emotion styles, fonts, voucher CSS) so
-  // the cloned markup renders identically inside the iframe.
-  document.querySelectorAll('style, link[rel="stylesheet"]').forEach((el) => {
-    doc.head.appendChild(el.cloneNode(true));
-  });
+  // Serialize every accessible stylesheet into real CSS text. MUI/Emotion
+  // inserts rules via sheet.insertRule(), so cloning <style> elements copies
+  // EMPTY tags — the cloned markup would render unstyled (fields detached
+  // below the image). document.styleSheets exposes the live rules.
+  const cssChunks: string[] = [];
+  for (const sheet of Array.from(document.styleSheets)) {
+    try {
+      cssChunks.push(Array.from(sheet.cssRules).map((rule) => rule.cssText).join('\n'));
+    } catch { /* cross-origin stylesheet — skip */ }
+  }
 
   // One voucher = one page: tight page margins, sheet fills printable width.
-  const printCss = doc.createElement('style');
-  printCss.textContent = `
+  const styleEl = doc.createElement('style');
+  styleEl.textContent = `${cssChunks.join('\n')}
     * { box-sizing: border-box; }
     html, body { margin: 0; padding: 0; background: #fff; }
     @page { size: auto; margin: 8mm; }
@@ -1739,7 +1744,8 @@ function printVoucherSheet() {
     .voucher-print-sheet { width: 100% !important; max-width: none !important; box-shadow: none !important; break-inside: avoid; page-break-inside: avoid; }
     .voucher-preview-controls { display: none !important; }
   `;
-  doc.head.appendChild(printCss);
+  doc.head.appendChild(styleEl);
+  doc.title = 'Voucher';
 
   doc.body.appendChild(root.cloneNode(true));
 
