@@ -97,8 +97,13 @@ async function resequenceVoucherSeries(
   const prefix = VOUCHER_PREFIXES[voucherType] ?? 'VGH-JV';
   const vouchers = await tx.journalVoucher.findMany({
     where: { projectId, voucherType, deletedAt: null },
-    select: { id: true, date: true, createdAt: true },
-    orderBy: [{ date: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
+    select: { id: true, jvNumber: true, date: true, createdAt: true },
+    orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+  });
+  vouchers.sort((a, b) => {
+    const aNumber = Number(a.jvNumber.match(/(\d+)$/)?.[1] ?? Number.MAX_SAFE_INTEGER);
+    const bNumber = Number(b.jvNumber.match(/(\d+)$/)?.[1] ?? Number.MAX_SAFE_INTEGER);
+    return aNumber - bNumber || a.date.getTime() - b.date.getTime() || a.createdAt.getTime() - b.createdAt.getTime() || a.id.localeCompare(b.id);
   });
   // Keep the existing date order for every other voucher, but move the edited
   // voucher to the requested position and shift the affected vouchers.
