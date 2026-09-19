@@ -15,6 +15,42 @@ if (typeof screen !== 'undefined' && screen.orientation && typeof screen.orienta
   }
 }
 
+// Suppress the native browser/PWA pull-to-refresh gesture without breaking
+// scrolling: preventDefault() only a downward drag while the document is at
+// scroll-top (the pull gesture). Normal scrolls move up or start below the
+// top, so they are never cancelled. Touches inside an inner scroller that
+// can still scroll up (dialogs, lists) are left alone. CSS
+// overscroll-behavior was avoided — it freezes scrolling entirely in iOS
+// standalone (WebKit bug) and some Android WebViews.
+{
+  let pullStartY = 0;
+  const ancestorCanScrollUp = (target: EventTarget | null): boolean => {
+    let node = target instanceof HTMLElement ? target : null;
+    while (node && node !== document.body) {
+      if (node.scrollTop > 0) {
+        const overflowY = getComputedStyle(node).overflowY;
+        if (overflowY === 'auto' || overflowY === 'scroll') return true;
+      }
+      node = node.parentElement;
+    }
+    return false;
+  };
+  document.addEventListener('touchstart', (e) => {
+    pullStartY = e.touches[0].clientY;
+  }, { passive: true });
+  document.addEventListener('touchmove', (e) => {
+    const scroller = document.scrollingElement ?? document.documentElement;
+    if (
+      scroller.scrollTop <= 0
+      && e.touches[0].clientY > pullStartY
+      && !ancestorCanScrollUp(e.target)
+      && e.cancelable
+    ) {
+      e.preventDefault();
+    }
+  }, { passive: false });
+}
+
 // Register the FCM service worker
 // Works in both dev (localhost) and production (HTTPS)
 if ('serviceWorker' in navigator) {
