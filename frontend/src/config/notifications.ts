@@ -1,6 +1,10 @@
-import { getMessaging, getToken, onMessage, deleteToken, isSupported } from 'firebase/messaging';
 import { app, isConfigured } from './firebase';
 import api from './api';
+
+// firebase/messaging is lazy-imported inside each function — it adds ~150KB
+// to the bundle and is only needed when notifications are actually used, not
+// on every app boot (important for slow iOS Home Screen cold starts).
+const loadMessaging = () => import('firebase/messaging');
 
 const VAPID_KEY = import.meta.env.VITE_FIREBASE_VAPID_KEY as string;
 
@@ -20,6 +24,7 @@ export async function isPushSupported(): Promise<boolean> {
     if (!isConfigured || !VAPID_KEY) {
       return false;
     }
+    const { isSupported } = await loadMessaging();
     return await isSupported();
   } catch {
     return false;
@@ -64,6 +69,7 @@ export async function enableNotifications(): Promise<{ success: boolean; error?:
     if (!app) {
       return { success: false, error: 'Firebase is not configured' };
     }
+    const { getMessaging, getToken } = await loadMessaging();
     const messaging = getMessaging(app);
     const token = await getToken(messaging, {
       vapidKey: VAPID_KEY,
@@ -91,6 +97,7 @@ export async function disableNotifications(): Promise<{ success: boolean; error?
     if (!app) {
       return { success: false, error: 'Firebase is not configured' };
     }
+    const { getMessaging, getToken, deleteToken } = await loadMessaging();
     const messaging = getMessaging(app);
     const token = await getToken(messaging, { vapidKey: VAPID_KEY }).catch(() => null);
 
@@ -126,10 +133,16 @@ export async function getSubscriptionStatus(): Promise<{
 
 export function onForegroundMessage(callback: (payload: { notification?: { title?: string; body?: string }; data?: Record<string, string> }) => void): () => void {
   if (!isConfigured || !app) return () => {};
-  try {
-    const messaging = getMessaging(app);
-    return onMessage(messaging, callback);
-  } catch {
-    return () => {};
-  }
+  let unsubscribe: (() => void) | undefined;
+  let cancelled = false;
+  loadMessaging().then(({ getMessaging, onMessage }) => {
+    if (cancelled) return;
+    try {
+      unsubscribe = onMessage(getMessaging(app!), callback);
+    } catch { /* messaging unavailable */ }
+  }).catch(() => {});
+  return () => {
+    cancelled = true;
+    unsubscribe?.();
+  };
 }

@@ -1,5 +1,7 @@
+import { Suspense, lazy } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { Box, CircularProgress } from '@mui/material';
 import { Permission, UserRole } from '@hospital-erp/shared';
 import { ColorModeProvider } from './config/ColorModeContext';
 import { ToastProvider } from './components/ToastProvider';
@@ -8,46 +10,60 @@ import ProtectedRoute from './components/ProtectedRoute';
 import ErrorScreen from './components/ErrorScreen';
 import OfflineBanner from './components/OfflineBanner';
 import { useOnlineStatus } from './hooks/useOnlineStatus';
-import LoginPage from './pages/LoginPage';
-import DashboardPage from './pages/DashboardPage';
-import VendorsPage from './pages/VendorsPage';
-import QuotationsPage from './pages/QuotationsPage';
-import WorkCalendarPage from './pages/WorkCalendarPage';
-import WorkListPage from './pages/WorkListPage';
-import PurchaseOrdersPage from './pages/PurchaseOrdersPage';
-import InvoicesPage from './pages/InvoicesPage';
-import PaymentsPage from './pages/PaymentsPage';
-import GatePassesPage from './pages/GatePassesPage';
-import GoodsReceiptsPage from './pages/GoodsReceiptsPage';
-import GSTRecordsPage from './pages/GSTRecordsPage';
-import BudgetHeadsPage from './pages/BudgetHeadsPage';
-import BankAccountsPage from './pages/BankAccountsPage';
-import CashAccountsPage from './pages/CashAccountsPage';
-import OwnerAccountPage from './pages/OwnerAccountPage';
-import FinanceDashboardPage from './pages/FinanceDashboardPage';
-import FinanceReportsPage from './pages/FinanceReportsPage';
-import LedgersPage from './pages/LedgersPage';
-import VouchersPage from './pages/VouchersPage';
-import AccountingReportsPage from './pages/AccountingReportsPage';
-import PaymentReportPage from './pages/PaymentReportPage';
-import InventoryPage from './pages/InventoryPage';
-import AssetsPage from './pages/AssetsPage';
-import AssetDetailPage from './pages/AssetDetailPage';
-import AssetScanPage from './pages/AssetScanPage';
-import PhotosPage from './pages/PhotosPage';
-import IssuesPage from './pages/IssuesPage';
-import InspectionsPage from './pages/InspectionsPage';
-import DocumentsPage from './pages/DocumentsPage';
-import ContractsPage from './pages/ContractsPage';
-import LabourPage from './pages/LabourPage';
-import AuditLogPage from './pages/AuditLogPage';
-import SettingsPage from './pages/SettingsPage';
-import UsersPage from './pages/UsersPage';
-import InwardFundsPage from './pages/InwardFundsPage';
-import ExpenditurePage from './pages/ExpenditurePage';
-import MaterialPurchaseRequestsPage from './pages/MaterialPurchaseRequestsPage';
-import TransactionRegisterPage from './pages/TransactionRegisterPage';
 import ErrorBoundary from './components/ErrorBoundary';
+import LoginPage from './pages/LoginPage';
+
+// Pages are lazy-loaded so the boot bundle only contains the app shell +
+// login. Previously all ~45 pages (and their heavy deps — jsPDF, charts,
+// firebase/messaging) were in one 3.8MB chunk that had to download+parse
+// before ANYTHING rendered — the cause of the slow/blank iOS Home Screen
+// launches. Each page now streams on first navigation instead.
+const DashboardPage = lazy(() => import('./pages/DashboardPage'));
+const VendorsPage = lazy(() => import('./pages/VendorsPage'));
+const QuotationsPage = lazy(() => import('./pages/QuotationsPage'));
+const WorkCalendarPage = lazy(() => import('./pages/WorkCalendarPage'));
+const WorkListPage = lazy(() => import('./pages/WorkListPage'));
+const PurchaseOrdersPage = lazy(() => import('./pages/PurchaseOrdersPage'));
+const InvoicesPage = lazy(() => import('./pages/InvoicesPage'));
+const PaymentsPage = lazy(() => import('./pages/PaymentsPage'));
+const GatePassesPage = lazy(() => import('./pages/GatePassesPage'));
+const GoodsReceiptsPage = lazy(() => import('./pages/GoodsReceiptsPage'));
+const GSTRecordsPage = lazy(() => import('./pages/GSTRecordsPage'));
+const BudgetHeadsPage = lazy(() => import('./pages/BudgetHeadsPage'));
+const BankAccountsPage = lazy(() => import('./pages/BankAccountsPage'));
+const CashAccountsPage = lazy(() => import('./pages/CashAccountsPage'));
+const OwnerAccountPage = lazy(() => import('./pages/OwnerAccountPage'));
+const FinanceDashboardPage = lazy(() => import('./pages/FinanceDashboardPage'));
+const FinanceReportsPage = lazy(() => import('./pages/FinanceReportsPage'));
+const LedgersPage = lazy(() => import('./pages/LedgersPage'));
+const VouchersPage = lazy(() => import('./pages/VouchersPage'));
+const AccountingReportsPage = lazy(() => import('./pages/AccountingReportsPage'));
+const PaymentReportPage = lazy(() => import('./pages/PaymentReportPage'));
+const InventoryPage = lazy(() => import('./pages/InventoryPage'));
+const AssetsPage = lazy(() => import('./pages/AssetsPage'));
+const AssetDetailPage = lazy(() => import('./pages/AssetDetailPage'));
+const AssetScanPage = lazy(() => import('./pages/AssetScanPage'));
+const PhotosPage = lazy(() => import('./pages/PhotosPage'));
+const IssuesPage = lazy(() => import('./pages/IssuesPage'));
+const InspectionsPage = lazy(() => import('./pages/InspectionsPage'));
+const DocumentsPage = lazy(() => import('./pages/DocumentsPage'));
+const ContractsPage = lazy(() => import('./pages/ContractsPage'));
+const LabourPage = lazy(() => import('./pages/LabourPage'));
+const AuditLogPage = lazy(() => import('./pages/AuditLogPage'));
+const SettingsPage = lazy(() => import('./pages/SettingsPage'));
+const UsersPage = lazy(() => import('./pages/UsersPage'));
+const InwardFundsPage = lazy(() => import('./pages/InwardFundsPage'));
+const ExpenditurePage = lazy(() => import('./pages/ExpenditurePage'));
+const MaterialPurchaseRequestsPage = lazy(() => import('./pages/MaterialPurchaseRequestsPage'));
+const TransactionRegisterPage = lazy(() => import('./pages/TransactionRegisterPage'));
+
+function PageLoader() {
+  return (
+    <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', py: 10 }}>
+      <CircularProgress />
+    </Box>
+  );
+}
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -118,13 +134,15 @@ export default function App() {
                 <Routes>
                   <Route path="/login" element={<LoginPage />} />
                   {/* Public route — asset QR scan, no auth required */}
-                  <Route path="/scan/:assetId" element={<AssetScanPage />} />
+                  <Route path="/scan/:assetId" element={<Suspense fallback={<PageLoader />}><AssetScanPage /></Suspense>} />
                   <Route
                     path="/"
                     element={
                       <ProtectedRoute permission={Permission.VIEW_DASHBOARD}>
                         <AppShell>
-                          <DashboardPage />
+                          <Suspense fallback={<PageLoader />}>
+                            <DashboardPage />
+                          </Suspense>
                         </AppShell>
                       </ProtectedRoute>
                     }
@@ -136,7 +154,9 @@ export default function App() {
                       element={
                         <ProtectedRoute>
                           <AppShell>
-                            {route.element}
+                            <Suspense fallback={<PageLoader />}>
+                              {route.element}
+                            </Suspense>
                           </AppShell>
                         </ProtectedRoute>
                       }
@@ -148,7 +168,9 @@ export default function App() {
                     element={
                       <ProtectedRoute roles={[UserRole.ACCOUNTANT, UserRole.ADMIN]}>
                         <AppShell>
-                          <TransactionRegisterPage />
+                          <Suspense fallback={<PageLoader />}>
+                            <TransactionRegisterPage />
+                          </Suspense>
                         </AppShell>
                       </ProtectedRoute>
                     }

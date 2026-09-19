@@ -22,7 +22,10 @@ const STORAGE_KEY = 'hspl-color-mode';
 
 function getInitialMode(): Mode {
   if (typeof window === 'undefined') return 'light';
-  const stored = localStorage.getItem(STORAGE_KEY);
+  let stored: string | null = null;
+  try {
+    stored = localStorage.getItem(STORAGE_KEY);
+  } catch { /* storage unavailable (e.g. iOS standalone blocked storage) */ }
   if (stored === 'light' || stored === 'dark') return stored;
   // Respect system preference on first visit
   return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
@@ -34,7 +37,9 @@ export function ColorModeProvider({ children }: { children: ReactNode }) {
   const toggle = useCallback(() => {
     setMode((prev) => {
       const next = prev === 'light' ? 'dark' : 'light';
-      localStorage.setItem(STORAGE_KEY, next);
+      try {
+        localStorage.setItem(STORAGE_KEY, next);
+      } catch { /* storage unavailable */ }
       return next;
     });
   }, []);

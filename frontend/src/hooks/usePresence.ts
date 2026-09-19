@@ -26,7 +26,12 @@ function getSocket(): Socket | null {
     // apiUrl is not a full URL (e.g. "/api") — fall back to current origin.
     socketUrl = window.location.origin;
   }
-  const token = localStorage.getItem('firebaseToken');
+  let token: string | null = null;
+  try {
+    token = localStorage.getItem('firebaseToken');
+  } catch {
+    return null;
+  }
   if (!token) return null;
   socket = io(socketUrl, {
     auth: { token },

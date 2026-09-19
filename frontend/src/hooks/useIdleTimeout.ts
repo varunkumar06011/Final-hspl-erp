@@ -23,19 +23,29 @@ export function useIdleTimeout(): void {
   const lastActivity = useRef<number>(Date.now());
 
   useEffect(() => {
+    // localStorage can throw on iOS standalone (blocked storage) — degrade to
+    // per-tab activity tracking instead of crashing the effect.
+    const store = {
+      get(): string | null {
+        try { return localStorage.getItem('lastActivity'); } catch { return null; }
+      },
+      set(v: number) {
+        try { localStorage.setItem('lastActivity', String(v)); } catch { /* ignore */ }
+      },
+    };
     const recordActivity = () => {
       lastActivity.current = Date.now();
-      localStorage.setItem('lastActivity', String(lastActivity.current));
+      store.set(lastActivity.current);
     };
 
     // Initialise from shared timestamp (in case another tab is already active).
-    const shared = localStorage.getItem('lastActivity');
+    const shared = store.get();
     lastActivity.current = shared ? Number(shared) : Date.now();
 
     ACTIVITY_EVENTS.forEach((evt) => window.addEventListener(evt, recordActivity, { passive: true }));
 
     const interval = window.setInterval(() => {
-      const sharedNow = Number(localStorage.getItem('lastActivity') ?? lastActivity.current);
+      const sharedNow = Number(store.get() ?? lastActivity.current);
       const idleFor = Date.now() - sharedNow;
       if (idleFor >= IDLE_MS) {
         window.clearInterval(interval);

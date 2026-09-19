@@ -11,7 +11,12 @@ const api = axios.create({
 
 api.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('firebaseToken');
+    // localStorage can throw on iOS standalone WebKit (blocked storage) —
+    // proceed without a token rather than crashing the request.
+    let token: string | null = null;
+    try {
+      token = localStorage.getItem('firebaseToken');
+    } catch { /* storage unavailable */ }
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }

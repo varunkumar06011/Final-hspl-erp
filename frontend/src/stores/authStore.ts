@@ -10,35 +10,50 @@ interface AuthState {
   isAuthenticated: () => boolean;
 }
 
+// localStorage can THROW (iOS standalone WebKit with blocked cookies/storage,
+// storage pressure, etc.). A throw during store init kills the whole module
+// graph → blank white screen. Every access is wrapped.
+const storage = {
+  get(key: string): string | null {
+    try { return localStorage.getItem(key); } catch { return null; }
+  },
+  set(key: string, value: string) {
+    try { localStorage.setItem(key, value); } catch { /* storage unavailable */ }
+  },
+  remove(key: string) {
+    try { localStorage.removeItem(key); } catch { /* storage unavailable */ }
+  },
+};
+
 export const useAuthStore = create<AuthState>((set, get) => ({
   user: (() => {
     try {
-      const stored = localStorage.getItem('user');
+      const stored = storage.get('user');
       return stored ? JSON.parse(stored) as UserResponse : null;
     } catch {
       return null;
     }
   })(),
-  token: localStorage.getItem('firebaseToken'),
+  token: storage.get('firebaseToken'),
   setUser: (user) => {
     if (user) {
-      localStorage.setItem('user', JSON.stringify(user));
+      storage.set('user', JSON.stringify(user));
     } else {
-      localStorage.removeItem('user');
+      storage.remove('user');
     }
     set({ user });
   },
   setToken: (token) => {
     if (token) {
-      localStorage.setItem('firebaseToken', token);
+      storage.set('firebaseToken', token);
     } else {
-      localStorage.removeItem('firebaseToken');
+      storage.remove('firebaseToken');
     }
     set({ token });
   },
   logout: () => {
-    localStorage.removeItem('firebaseToken');
-    localStorage.removeItem('user');
+    storage.remove('firebaseToken');
+    storage.remove('user');
     set({ user: null, token: null });
   },
   isAuthenticated: () => {
