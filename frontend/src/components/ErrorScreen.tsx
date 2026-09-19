@@ -1,8 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Box, Typography, Button, Alert } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
-import lottie from 'lottie-web';
-import errorAnimation from '../assets/lottie-error.json';
 
 export type ErrorVariant = '404' | 'offline' | 'generic';
 
@@ -50,14 +48,26 @@ export default function ErrorScreen({
 
   useEffect(() => {
     if (!containerRef.current) return;
-    const anim = lottie.loadAnimation({
-      container: containerRef.current,
-      renderer: 'svg',
-      loop: true,
-      autoplay: true,
-      animationData: errorAnimation,
-    });
-    return () => anim.destroy();
+    // lottie-web is ~300KB — lazy-import it so it isn't in the boot bundle
+    // just for an error screen that rarely renders.
+    let anim: { destroy: () => void } | undefined;
+    let cancelled = false;
+    void Promise.all([import('lottie-web'), import('../assets/lottie-error.json')]).then(
+      ([{ default: lottie }, { default: animationData }]) => {
+        if (cancelled || !containerRef.current) return;
+        anim = lottie.loadAnimation({
+          container: containerRef.current,
+          renderer: 'svg',
+          loop: true,
+          autoplay: true,
+          animationData,
+        });
+      },
+    );
+    return () => {
+      cancelled = true;
+      anim?.destroy();
+    };
   }, []);
 
   return (
