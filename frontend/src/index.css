@@ -3,6 +3,9 @@ html, body {
   padding: 0;
   max-width: 100%;
   overflow-x: hidden;
+  /* Block the browser/PWA native pull-to-refresh gesture — refresh happens
+     only via the app Refresh button or a full app relaunch. */
+  overscroll-behavior-y: none;
 }
 
 #root {

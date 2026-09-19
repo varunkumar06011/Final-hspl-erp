@@ -52,7 +52,7 @@ import GlobalSearch from './GlobalSearch';
 import NLQueryBar from './NLQueryBar';
 import PresenceBar from './PresenceBar';
 import { useTrackPageView } from '../hooks/useTrackPageView';
-import { usePullToRefresh } from '../hooks/usePullToRefresh';
+
 
 const NAV_ITEMS = [
   { label: 'Dashboard', icon: <DashboardIcon />, path: '/', permission: Permission.VIEW_DASHBOARD, section: '' },
@@ -195,7 +195,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   useIdleTimeout();
 
   // Pull-to-refresh (mobile) + manual refresh (desktop)
-  const { state: pullState, scrollContainer, bind: pullBind } = usePullToRefresh();
   const [manualRefreshing, setManualRefreshing] = useState(false);
   const handleManualRefresh = useCallback(() => {
     setManualRefreshing(true);
@@ -504,32 +503,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         </Drawer>
       )}
 
-      <Box component="main" ref={scrollContainer} {...pullBind} sx={{ flexGrow: 1, p: { xs: 1.5, sm: 2, md: 3 }, mt: 8, width: { xs: '100%', md: 'auto' }, minWidth: 0, overflow: 'hidden', position: 'relative' }}>
-        {/* Pull-to-refresh indicator (mobile) */}
-        {(pullState.pulling || pullState.refreshing) && (
-          <Box sx={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            right: 0,
-            display: 'flex',
-            justifyContent: 'center',
-            alignItems: 'center',
-            height: `${pullState.pullDistance}px`,
-            transition: pullState.pulling ? 'none' : 'height 0.3s ease',
-            zIndex: 10,
-            pointerEvents: 'none',
-          }}>
-            <CircularProgress
-              size={28}
-              sx={{
-                opacity: pullState.refreshing || pullState.pullDistance > 30 ? 1 : 0.3,
-                transform: pullState.refreshing ? 'rotate(360deg)' : `rotate(${pullState.pullDistance * 2}deg)`,
-                transition: pullState.pulling ? 'none' : 'transform 0.3s ease, opacity 0.3s ease',
-              }}
-            />
-          </Box>
-        )}
+      {/* Pull-to-refresh disabled by request — drag-down must not reload or
+          reset page state; only the header Refresh button (or app relaunch)
+          reloads. overscroll-behavior-y in index.css also suppresses the
+          native browser/PWA pull-refresh gesture. */}
+      <Box component="main" sx={{ flexGrow: 1, p: { xs: 1.5, sm: 2, md: 3 }, mt: 8, width: { xs: '100%', md: 'auto' }, minWidth: 0, overflow: 'hidden', position: 'relative' }}>
         {/* Mobile back button — iPhones have no hardware back gesture.
             React Router sets location.key='default' on the first entry only,
             which reliably detects in-app history (unlike window.history.length,

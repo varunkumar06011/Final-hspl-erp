@@ -58,6 +58,12 @@
         <div class="boot-spinner"></div>
       </div>
     </div>
+    <script>
+      // Wake the API while the JS bundle downloads+parses. The backend sleeps
+      // when idle (Railway) — pinging /health here overlaps the server wake-up
+      // with the client boot instead of making dashboard queries wait for it.
+      try { fetch('/health', { cache: 'no-store' }).catch(function () {}); } catch (e) {}
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
