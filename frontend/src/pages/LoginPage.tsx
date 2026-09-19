@@ -15,9 +15,8 @@ import {
   InputAdornment as MuiInputAdornment,
 } from '@mui/material';
 import { Visibility, VisibilityOff } from '@mui/icons-material';
-import { RecaptchaVerifier, signInWithPhoneNumber } from 'firebase/auth';
 import { useNavigate, Navigate } from 'react-router-dom';
-import { auth, isConfigured } from '../config/firebase';
+import { isConfigured, getFirebase, type FirebaseHandles } from '../config/firebase';
 import api, { extractErrorMessage } from '../config/api';
 import { useAuthStore } from '../stores/authStore';
 import loginBg from '../login screen.png';
@@ -112,12 +111,12 @@ export default function LoginPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const setupRecaptcha = useCallback(() => {
+  const setupRecaptcha = useCallback((fb: FirebaseHandles) => {
     // Reuse the existing verifier — creating a second RecaptchaVerifier on
     // the same container throws "reCAPTCHA has already been rendered".
     if (!(window as any).recaptchaVerifier) {
-      (window as any).recaptchaVerifier = new RecaptchaVerifier(
-        auth!,
+      (window as any).recaptchaVerifier = new fb.RecaptchaVerifier(
+        fb.auth,
         'recaptcha-container',
         { size: 'invisible' }
       );
@@ -142,13 +141,14 @@ export default function LoginPage() {
   const sendOtp = useCallback(async () => {
     setLoading(true);
     try {
-      if (!isConfigured || !auth) {
+      const fb = await getFirebase();
+      if (!fb) {
         // Dev mode — skip OTP, go straight to setPin
         setStep('setPin');
         return;
       }
-      const appVerifier = setupRecaptcha();
-      const result = await signInWithPhoneNumber(auth!, formatPhone(phone), appVerifier);
+      const appVerifier = setupRecaptcha(fb);
+      const result = await fb.signInWithPhoneNumber(fb.auth, formatPhone(phone), appVerifier);
       setConfirmationResult(result);
       setStep('otp');
     } catch (err: unknown) {
@@ -213,7 +213,7 @@ export default function LoginPage() {
       const formattedPhone = formatPhone(phone);
 
       // Dev mode fallback
-      if (!isConfigured || !auth || otp === '1234') {
+      if (!isConfigured || otp === '1234') {
         if (otp === '1234') {
           if (mode === 'signup') {
             // Dev signup: create user via register endpoint (won't have real Firebase token,
@@ -275,7 +275,7 @@ export default function LoginPage() {
     return <Navigate to="/" replace />;
   }
 
-  const isDevMode = !isConfigured || !auth;
+  const isDevMode = !isConfigured;
 
   const fadeAnim = `${fadeInUp} 0.6s ease-out`;
   const stepFadeAnim = `${fadeInUp} 0.4s ease-out`;

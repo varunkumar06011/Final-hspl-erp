@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
-import { io, type Socket } from 'socket.io-client';
+import type { Socket } from 'socket.io-client';
 import { useAuthStore } from '../stores/authStore';
 
 export interface PresenceUser {
@@ -12,8 +12,22 @@ export interface PresenceUser {
 }
 
 let socket: Socket | null = null;
+let socketPromise: Promise<Socket | null> | null = null;
 
-function getSocket(): Socket | null {
+// socket.io-client is lazy-imported — presence is non-critical and the
+// ~60KB module shouldn't block app boot (iOS Home Screen cold starts).
+async function getSocket(): Promise<Socket | null> {
+  if (socket) return socket;
+  if (socketPromise) return socketPromise;
+  socketPromise = (async () => {
+    if (socket) return socket;
+    const { io } = await import('socket.io-client');
+    return createSocket(io);
+  })();
+  return socketPromise;
+}
+
+function createSocket(io: typeof import('socket.io-client').io): Socket | null {
   if (socket) return socket;
   const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
   // Socket.io connects to the default namespace ("/"), so strip any path
@@ -54,46 +68,58 @@ export function usePresence() {
   const currentPageRef = useRef<string>('');
 
   useEffect(() => {
-    const s = getSocket();
-    if (!s || !user) return;
+    let s: Socket | null = null;
+    let cancelled = false;
+    let cleanup: (() => void) | undefined;
 
     const page = location.pathname;
+    if (!user) return;
 
-    const emitJoin = () => {
-      // Leave previous page
-      if (currentPageRef.current && currentPageRef.current !== page) {
-        s.emit('presence:leave', { page: currentPageRef.current });
+    void getSocket().then((resolved) => {
+      if (cancelled || !resolved) return;
+      s = resolved;
+
+      const emitJoin = () => {
+        // Leave previous page
+        if (currentPageRef.current && currentPageRef.current !== page) {
+          s!.emit('presence:leave', { page: currentPageRef.current });
+        }
+        // Join new page
+        currentPageRef.current = page;
+        s!.emit('presence:join', {
+          page,
+          userName: user.name,
+          userRole: user.role,
+        });
+      };
+
+      // If socket is already connected, emit immediately.
+      // Otherwise wait for the 'connect' event.
+      if (s.connected) {
+        emitJoin();
+      } else {
+        s.once('connect', emitJoin);
       }
-      // Join new page
-      currentPageRef.current = page;
-      s.emit('presence:join', {
-        page,
-        userName: user.name,
-        userRole: user.role,
-      });
-    };
 
-    // If socket is already connected, emit immediately.
-    // Otherwise wait for the 'connect' event.
-    if (s.connected) {
-      emitJoin();
-    } else {
-      s.once('connect', emitJoin);
-    }
+      // Listen for presence updates
+      const handleUpdate = (data: { page: string; viewers: PresenceUser[] }) => {
+        if (data.page === page) {
+          // Filter out self
+          setViewers(data.viewers.filter((v) => v.userId !== user.id));
+        }
+      };
 
-    // Listen for presence updates
-    const handleUpdate = (data: { page: string; viewers: PresenceUser[] }) => {
-      if (data.page === page) {
-        // Filter out self
-        setViewers(data.viewers.filter((v) => v.userId !== user.id));
-      }
-    };
+      s.on('presence:update', handleUpdate);
 
-    s.on('presence:update', handleUpdate);
+      cleanup = () => {
+        s!.off('presence:update', handleUpdate);
+        s!.off('connect', emitJoin);
+      };
+    });
 
     return () => {
-      s.off('presence:update', handleUpdate);
-      s.off('connect', emitJoin);
+      cancelled = true;
+      cleanup?.();
     };
   }, [location.pathname, user]);
 

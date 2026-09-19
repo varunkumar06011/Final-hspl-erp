@@ -33,8 +33,7 @@ import {
   PhotoCamera as PhotoCameraIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { RecaptchaVerifier, signInWithPhoneNumber } from 'firebase/auth';
-import { auth, isConfigured } from '../config/firebase';
+import { isConfigured, getFirebase, type FirebaseHandles } from '../config/firebase';
 import { formatDate } from '../utils/enumOptions';
 import api, { extractErrorMessage } from '../config/api';
 import ResponsiveTable from '../components/ResponsiveTable';
@@ -166,7 +165,7 @@ export default function GatePassesPage() {
     },
   });
 
-  const setupRecaptcha = useCallback(() => {
+  const setupRecaptcha = useCallback((fb: FirebaseHandles) => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     if ((window as any).recaptchaVerifier) {
       try {
@@ -179,8 +178,8 @@ export default function GatePassesPage() {
       (window as any).recaptchaVerifier = null;
     }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (window as any).recaptchaVerifier = new RecaptchaVerifier(
-      auth!,
+    (window as any).recaptchaVerifier = new fb.RecaptchaVerifier(
+      fb.auth,
       'recaptcha-container-gatepass',
       { size: 'invisible' },
     );
@@ -190,14 +189,19 @@ export default function GatePassesPage() {
 
   const sendFirebaseOtp = useCallback(
     async (phone: string, gatePassId?: string): Promise<boolean> => {
-      if (!isConfigured || !auth) {
+      if (!isConfigured) {
         setError('Firebase is not configured. Cannot send OTP.');
         return false;
       }
       setSendingOtp(true);
       try {
-        const appVerifier = setupRecaptcha();
-        confirmationResult = await signInWithPhoneNumber(auth, phone, appVerifier);
+        const fb = await getFirebase();
+        if (!fb) {
+          setError('Firebase is not configured. Cannot send OTP.');
+          return false;
+        }
+        const appVerifier = setupRecaptcha(fb);
+        confirmationResult = await fb.signInWithPhoneNumber(fb.auth, phone, appVerifier);
         if (gatePassId) confirmationGatePassId = gatePassId;
         return true;
       } catch (err: unknown) {

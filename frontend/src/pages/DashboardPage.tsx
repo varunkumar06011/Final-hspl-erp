@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Box, Card, CardContent, Typography, Skeleton, Alert, Chip, useMediaQuery, useTheme } from '@mui/material';
+import { useState, lazy, Suspense } from 'react';
+import { Box, Card, CardContent, Typography, Skeleton, Alert, Chip, useMediaQuery, useTheme, CircularProgress } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { UserRole, isAdminRole } from '@hospital-erp/shared';
 import api from '../config/api';
@@ -12,7 +12,9 @@ import AmountUsedTodayWidget from '../components/AmountUsedTodayWidget';
 import DocumentSummaryCard from '../components/DocumentSummaryCard';
 import FinanceSummaryCard from '../components/FinanceSummaryCard';
 import { useAuthStore } from '../stores/authStore';
-import AdminDashboardPage from './AdminDashboardPage';
+// Admin dashboard pulls in recharts (~300KB) — lazy-load it so non-admin
+// dashboards don't pay the chart-library cost on every load.
+const AdminDashboardPage = lazy(() => import('./AdminDashboardPage'));
 
 type PendingType = 'payments' | 'quotations' | 'pos' | 'invoices';
 
@@ -30,7 +32,11 @@ export default function DashboardPage() {
   // authStore, not by user ID, phone number, or any hardcoded allowlist.
   const isAdmin = isAdminRole(user?.role ?? '') || user?.role === UserRole.ACCOUNTANT;
   if (isAdmin) {
-    return <AdminDashboardPage />;
+    return (
+      <Suspense fallback={<Box sx={{ display: 'flex', justifyContent: 'center', py: 10 }}><CircularProgress /></Box>}>
+        <AdminDashboardPage />
+      </Suspense>
+    );
   }
 
   // ── Existing dashboard for all non-admin roles (unchanged) ──

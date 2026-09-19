@@ -1,4 +1,4 @@
-import { app, isConfigured } from './firebase';
+import { isConfigured, getFirebase } from './firebase';
 import api from './api';
 
 // firebase/messaging is lazy-imported inside each function — it adds ~150KB
@@ -66,11 +66,12 @@ export async function enableNotifications(): Promise<{ success: boolean; error?:
     const registration = await registerServiceWorker();
 
     // Get FCM token
-    if (!app) {
+    const fb = await getFirebase();
+    if (!fb) {
       return { success: false, error: 'Firebase is not configured' };
     }
     const { getMessaging, getToken } = await loadMessaging();
-    const messaging = getMessaging(app);
+    const messaging = getMessaging(fb.app);
     const token = await getToken(messaging, {
       vapidKey: VAPID_KEY,
       serviceWorkerRegistration: registration,
@@ -94,11 +95,12 @@ export async function enableNotifications(): Promise<{ success: boolean; error?:
 
 export async function disableNotifications(): Promise<{ success: boolean; error?: string }> {
   try {
-    if (!app) {
+    const fb = await getFirebase();
+    if (!fb) {
       return { success: false, error: 'Firebase is not configured' };
     }
     const { getMessaging, getToken, deleteToken } = await loadMessaging();
-    const messaging = getMessaging(app);
+    const messaging = getMessaging(fb.app);
     const token = await getToken(messaging, { vapidKey: VAPID_KEY }).catch(() => null);
 
     if (token) {
@@ -132,13 +134,13 @@ export async function getSubscriptionStatus(): Promise<{
 // We can show an in-app toast/snackbar here if desired.
 
 export function onForegroundMessage(callback: (payload: { notification?: { title?: string; body?: string }; data?: Record<string, string> }) => void): () => void {
-  if (!isConfigured || !app) return () => {};
+  if (!isConfigured) return () => {};
   let unsubscribe: (() => void) | undefined;
   let cancelled = false;
-  loadMessaging().then(({ getMessaging, onMessage }) => {
-    if (cancelled) return;
+  Promise.all([getFirebase(), loadMessaging()]).then(([fb, { getMessaging, onMessage }]) => {
+    if (cancelled || !fb) return;
     try {
-      unsubscribe = onMessage(getMessaging(app!), callback);
+      unsubscribe = onMessage(getMessaging(fb.app), callback);
     } catch { /* messaging unavailable */ }
   }).catch(() => {});
   return () => {
