@@ -996,7 +996,7 @@ router.get(
           where: {
             projectId,
             deletedAt: null,
-            status: { notIn: ['APPROVED', 'REJECTED', 'CONVERTED_TO_PO'] },
+            status: { notIn: ['APPROVED', 'REJECTED', 'CONVERTED_TO_PO', 'DELETED'] },
             // Also exclude quotations where any approval step has been rejected —
             // the top-level status may not have been updated for older records.
             approvalWorkflow: {

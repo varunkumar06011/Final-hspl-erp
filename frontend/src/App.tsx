@@ -13,49 +13,64 @@ import { useOnlineStatus } from './hooks/useOnlineStatus';
 import ErrorBoundary from './components/ErrorBoundary';
 import LoginPage from './pages/LoginPage';
 
+// Retry a failed lazy chunk once — a flaky mobile fetch or a mid-deploy
+// window can drop a chunk request; retrying recovers instead of crashing
+// into the error boundary.
+function lazyWithRetry<T extends React.ComponentType<unknown>>(
+  factory: () => Promise<{ default: T }>,
+) {
+  return lazy(async () => {
+    try {
+      return await factory();
+    } catch {
+      return factory();
+    }
+  });
+}
+
 // Pages are lazy-loaded so the boot bundle only contains the app shell +
 // login. Previously all ~45 pages (and their heavy deps — jsPDF, charts,
 // firebase/messaging) were in one 3.8MB chunk that had to download+parse
 // before ANYTHING rendered — the cause of the slow/blank iOS Home Screen
 // launches. Each page now streams on first navigation instead.
-const DashboardPage = lazy(() => import('./pages/DashboardPage'));
-const VendorsPage = lazy(() => import('./pages/VendorsPage'));
-const QuotationsPage = lazy(() => import('./pages/QuotationsPage'));
-const WorkCalendarPage = lazy(() => import('./pages/WorkCalendarPage'));
-const WorkListPage = lazy(() => import('./pages/WorkListPage'));
-const PurchaseOrdersPage = lazy(() => import('./pages/PurchaseOrdersPage'));
-const InvoicesPage = lazy(() => import('./pages/InvoicesPage'));
-const PaymentsPage = lazy(() => import('./pages/PaymentsPage'));
-const GatePassesPage = lazy(() => import('./pages/GatePassesPage'));
-const GoodsReceiptsPage = lazy(() => import('./pages/GoodsReceiptsPage'));
-const GSTRecordsPage = lazy(() => import('./pages/GSTRecordsPage'));
-const BudgetHeadsPage = lazy(() => import('./pages/BudgetHeadsPage'));
-const BankAccountsPage = lazy(() => import('./pages/BankAccountsPage'));
-const CashAccountsPage = lazy(() => import('./pages/CashAccountsPage'));
-const OwnerAccountPage = lazy(() => import('./pages/OwnerAccountPage'));
-const FinanceDashboardPage = lazy(() => import('./pages/FinanceDashboardPage'));
-const FinanceReportsPage = lazy(() => import('./pages/FinanceReportsPage'));
-const LedgersPage = lazy(() => import('./pages/LedgersPage'));
-const VouchersPage = lazy(() => import('./pages/VouchersPage'));
-const AccountingReportsPage = lazy(() => import('./pages/AccountingReportsPage'));
-const PaymentReportPage = lazy(() => import('./pages/PaymentReportPage'));
-const InventoryPage = lazy(() => import('./pages/InventoryPage'));
-const AssetsPage = lazy(() => import('./pages/AssetsPage'));
-const AssetDetailPage = lazy(() => import('./pages/AssetDetailPage'));
-const AssetScanPage = lazy(() => import('./pages/AssetScanPage'));
-const PhotosPage = lazy(() => import('./pages/PhotosPage'));
-const IssuesPage = lazy(() => import('./pages/IssuesPage'));
-const InspectionsPage = lazy(() => import('./pages/InspectionsPage'));
-const DocumentsPage = lazy(() => import('./pages/DocumentsPage'));
-const ContractsPage = lazy(() => import('./pages/ContractsPage'));
-const LabourPage = lazy(() => import('./pages/LabourPage'));
-const AuditLogPage = lazy(() => import('./pages/AuditLogPage'));
-const SettingsPage = lazy(() => import('./pages/SettingsPage'));
-const UsersPage = lazy(() => import('./pages/UsersPage'));
-const InwardFundsPage = lazy(() => import('./pages/InwardFundsPage'));
-const ExpenditurePage = lazy(() => import('./pages/ExpenditurePage'));
-const MaterialPurchaseRequestsPage = lazy(() => import('./pages/MaterialPurchaseRequestsPage'));
-const TransactionRegisterPage = lazy(() => import('./pages/TransactionRegisterPage'));
+const DashboardPage = lazyWithRetry(() => import('./pages/DashboardPage'));
+const VendorsPage = lazyWithRetry(() => import('./pages/VendorsPage'));
+const QuotationsPage = lazyWithRetry(() => import('./pages/QuotationsPage'));
+const WorkCalendarPage = lazyWithRetry(() => import('./pages/WorkCalendarPage'));
+const WorkListPage = lazyWithRetry(() => import('./pages/WorkListPage'));
+const PurchaseOrdersPage = lazyWithRetry(() => import('./pages/PurchaseOrdersPage'));
+const InvoicesPage = lazyWithRetry(() => import('./pages/InvoicesPage'));
+const PaymentsPage = lazyWithRetry(() => import('./pages/PaymentsPage'));
+const GatePassesPage = lazyWithRetry(() => import('./pages/GatePassesPage'));
+const GoodsReceiptsPage = lazyWithRetry(() => import('./pages/GoodsReceiptsPage'));
+const GSTRecordsPage = lazyWithRetry(() => import('./pages/GSTRecordsPage'));
+const BudgetHeadsPage = lazyWithRetry(() => import('./pages/BudgetHeadsPage'));
+const BankAccountsPage = lazyWithRetry(() => import('./pages/BankAccountsPage'));
+const CashAccountsPage = lazyWithRetry(() => import('./pages/CashAccountsPage'));
+const OwnerAccountPage = lazyWithRetry(() => import('./pages/OwnerAccountPage'));
+const FinanceDashboardPage = lazyWithRetry(() => import('./pages/FinanceDashboardPage'));
+const FinanceReportsPage = lazyWithRetry(() => import('./pages/FinanceReportsPage'));
+const LedgersPage = lazyWithRetry(() => import('./pages/LedgersPage'));
+const VouchersPage = lazyWithRetry(() => import('./pages/VouchersPage'));
+const AccountingReportsPage = lazyWithRetry(() => import('./pages/AccountingReportsPage'));
+const PaymentReportPage = lazyWithRetry(() => import('./pages/PaymentReportPage'));
+const InventoryPage = lazyWithRetry(() => import('./pages/InventoryPage'));
+const AssetsPage = lazyWithRetry(() => import('./pages/AssetsPage'));
+const AssetDetailPage = lazyWithRetry(() => import('./pages/AssetDetailPage'));
+const AssetScanPage = lazyWithRetry(() => import('./pages/AssetScanPage'));
+const PhotosPage = lazyWithRetry(() => import('./pages/PhotosPage'));
+const IssuesPage = lazyWithRetry(() => import('./pages/IssuesPage'));
+const InspectionsPage = lazyWithRetry(() => import('./pages/InspectionsPage'));
+const DocumentsPage = lazyWithRetry(() => import('./pages/DocumentsPage'));
+const ContractsPage = lazyWithRetry(() => import('./pages/ContractsPage'));
+const LabourPage = lazyWithRetry(() => import('./pages/LabourPage'));
+const AuditLogPage = lazyWithRetry(() => import('./pages/AuditLogPage'));
+const SettingsPage = lazyWithRetry(() => import('./pages/SettingsPage'));
+const UsersPage = lazyWithRetry(() => import('./pages/UsersPage'));
+const InwardFundsPage = lazyWithRetry(() => import('./pages/InwardFundsPage'));
+const ExpenditurePage = lazyWithRetry(() => import('./pages/ExpenditurePage'));
+const MaterialPurchaseRequestsPage = lazyWithRetry(() => import('./pages/MaterialPurchaseRequestsPage'));
+const TransactionRegisterPage = lazyWithRetry(() => import('./pages/TransactionRegisterPage'));
 
 function PageLoader() {
   return (

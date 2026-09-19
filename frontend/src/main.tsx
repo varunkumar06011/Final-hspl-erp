@@ -30,6 +30,20 @@ if ('serviceWorker' in navigator) {
   });
 }
 
+// If a lazy chunk/preload fails (stale deploy, flaky mobile network), Vite
+// fires 'vite:preloadError'. Reload once to pick up the fresh build — the
+// sessionStorage flag prevents a reload loop if the failure persists.
+window.addEventListener('vite:preloadError', () => {
+  try {
+    if (!sessionStorage.getItem('chunk-reload')) {
+      sessionStorage.setItem('chunk-reload', '1');
+      window.location.reload();
+    }
+  } catch {
+    window.location.reload();
+  }
+});
+
 // Listen for notification click messages from the service worker
 // When a user taps a notification, the SW posts a message to focus the tab
 // and we navigate to the approval URL
