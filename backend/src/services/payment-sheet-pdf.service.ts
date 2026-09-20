@@ -8,8 +8,6 @@ const LEFT = 42;
 const RIGHT = PAGE_W - LEFT;
 const WIDTH = RIGHT - LEFT;
 
-const PRIMARY = '#0F4C4C';
-const PRIMARY_LIGHT = '#E8F5F5';
 const DARK = '#263238';
 const MUTED = '#78909C';
 const BORDER = '#B0BEC5';
@@ -79,7 +77,7 @@ function drawHeader(doc: PDFKit.PDFDocument, logoBuffer: Buffer | null, project:
     .text(text(project?.officeAddress), titleX, headerTop + 14 + titleH + 4, { width: titleWidth });
 
   doc.roundedRect(dateBoxX, headerTop + 10, dateBoxW, 58, 4).fill('#ffffff').stroke(BORDER);
-  doc.fillColor(PRIMARY).font('Helvetica-Bold').fontSize(9)
+  doc.fillColor(MUTED).font('Helvetica-Bold').fontSize(9)
     .text('SHEET DATE', dateBoxX, headerTop + 22, { width: dateBoxW, align: 'center' });
   doc.fillColor(DARK).font('Helvetica-Bold').fontSize(13)
     .text(fmtDate(date), dateBoxX, headerTop + 40, { width: dateBoxW, align: 'center' });
@@ -109,7 +107,7 @@ function drawPoDetails(doc: PDFKit.PDFDocument, e: any, startY: number): number 
 
   doc.moveTo(LEFT, y).lineTo(RIGHT, y).stroke(BORDER);
   y += 8;
-  doc.fillColor(PRIMARY).font('Helvetica-Bold').fontSize(11)
+  doc.fillColor(DARK).font('Helvetica-Bold').fontSize(11)
     .text(`PO DETAILS — ${text(po?.poNumber)}`, LEFT, y);
   y += 16;
 
@@ -144,8 +142,8 @@ function drawPoDetails(doc: PDFKit.PDFDocument, e: any, startY: number): number 
   // Vendor box
   const vBoxH = 80;
   doc.roundedRect(rightCol, blockTop, rightW, vBoxH, 4).stroke(BORDER);
-  doc.rect(rightCol, blockTop, rightW, 20).fill(PRIMARY);
-  doc.fillColor('#fff').font('Helvetica-Bold').fontSize(9.5)
+  doc.rect(rightCol, blockTop, rightW, 20).fill('#ffffff').stroke(BORDER);
+  doc.fillColor(DARK).font('Helvetica-Bold').fontSize(9.5)
     .text('VENDOR DETAILS:', rightCol + 8, blockTop + 5);
 
   const vData = [
@@ -180,8 +178,8 @@ function drawPoDetails(doc: PDFKit.PDFDocument, e: any, startY: number): number 
     iCols[1].w = WIDTH - iCols.filter((_, i2) => i2 !== 1).reduce((s, c) => s + c.w + COL_GAP, 0);
     const iX = iCols.map((_, i2) => LEFT + iCols.slice(0, i2).reduce((s, c2) => s + c2.w + COL_GAP, 0));
 
-    doc.rect(LEFT, y, WIDTH, 18).fill(PRIMARY);
-    doc.fillColor('#fff').font('Helvetica-Bold').fontSize(8);
+    doc.rect(LEFT, y, WIDTH, 18).fill('#ffffff').stroke(BORDER);
+    doc.fillColor(DARK).font('Helvetica-Bold').fontSize(8);
     iCols.forEach((c, i2) => {
       const align = c.label === 'S.No' ? 'center' : c.label === 'Unit Price' || c.label === 'Amount' ? 'right' : 'left';
       doc.text(c.label, iX[i2] + 4, y + 5, { width: c.w - 8, align });
@@ -190,7 +188,6 @@ function drawPoDetails(doc: PDFKit.PDFDocument, e: any, startY: number): number 
 
     const iRowH = 15;
     items.forEach((it: any, i2: number) => {
-      if (i2 % 2 === 0) doc.rect(LEFT, y, WIDTH, iRowH).fill(PRIMARY_LIGHT);
       doc.rect(LEFT, y, WIDTH, iRowH).stroke(BORDER);
       doc.fillColor(DARK).font('Helvetica').fontSize(8);
       const vals = [
@@ -220,7 +217,7 @@ function drawVoucherDetails(doc: PDFKit.PDFDocument, e: any, startY: number): nu
 
   doc.moveTo(LEFT, y).lineTo(RIGHT, y).stroke(BORDER);
   y += 8;
-  doc.fillColor(PRIMARY).font('Helvetica-Bold').fontSize(11)
+  doc.fillColor(DARK).font('Helvetica-Bold').fontSize(11)
     .text(`VOUCHER DETAILS — ${text(v?.jvNumber)}`, LEFT, y);
   y += 16;
 
@@ -242,8 +239,8 @@ function drawVoucherDetails(doc: PDFKit.PDFDocument, e: any, startY: number): nu
   // Particulars box — mirrors the PO block's vendor box position.
   const pBoxH = 80;
   doc.roundedRect(rightCol, blockTop, rightW, pBoxH, 4).stroke(BORDER);
-  doc.rect(rightCol, blockTop, rightW, 20).fill(PRIMARY);
-  doc.fillColor('#fff').font('Helvetica-Bold').fontSize(9.5)
+  doc.rect(rightCol, blockTop, rightW, 20).fill('#ffffff').stroke(BORDER);
+  doc.fillColor(DARK).font('Helvetica-Bold').fontSize(9.5)
     .text('PARTICULARS:', rightCol + 8, blockTop + 5);
   doc.fillColor(DARK).font('Helvetica').fontSize(8.5)
     .text(text(v?.description), rightCol + 8, blockTop + 26, { width: rightW - 16, height: pBoxH - 30 });
@@ -263,8 +260,8 @@ function drawVoucherDetails(doc: PDFKit.PDFDocument, e: any, startY: number): nu
     lCols[1].w = WIDTH - lCols.filter((_, i2) => i2 !== 1).reduce((s, c) => s + c.w + COL_GAP, 0);
     const lX = lCols.map((_, i2) => LEFT + lCols.slice(0, i2).reduce((s, c2) => s + c2.w + COL_GAP, 0));
 
-    doc.rect(LEFT, y, WIDTH, 18).fill(PRIMARY);
-    doc.fillColor('#fff').font('Helvetica-Bold').fontSize(8);
+    doc.rect(LEFT, y, WIDTH, 18).fill('#ffffff').stroke(BORDER);
+    doc.fillColor(DARK).font('Helvetica-Bold').fontSize(8);
     lCols.forEach((c, i2) => {
       const align = c.label === 'S.No' ? 'center' : c.label === 'Debit' || c.label === 'Credit' ? 'right' : 'left';
       doc.text(c.label, lX[i2] + 4, y + 5, { width: c.w - 8, align });
@@ -273,7 +270,6 @@ function drawVoucherDetails(doc: PDFKit.PDFDocument, e: any, startY: number): nu
 
     const lRowH = 15;
     lines.forEach((l: any, i2: number) => {
-      if (i2 % 2 === 0) doc.rect(LEFT, y, WIDTH, lRowH).fill(PRIMARY_LIGHT);
       doc.rect(LEFT, y, WIDTH, lRowH).stroke(BORDER);
       doc.fillColor(DARK).font('Helvetica').fontSize(8);
       const vals = [
@@ -298,8 +294,8 @@ function drawVoucherDetails(doc: PDFKit.PDFDocument, e: any, startY: number): nu
 /** Payment made box (highlighted) — shared by PO and voucher entries. Returns new y. */
 function drawPaymentBox(doc: PDFKit.PDFDocument, e: any, y: number): number {
   const payBoxH = e.notes ? 62 : 50;
-  doc.roundedRect(LEFT, y, WIDTH, payBoxH, 4).fill('#FFF8E1').stroke('#FFB300');
-  doc.fillColor('#E65100').font('Helvetica-Bold').fontSize(9)
+  doc.roundedRect(LEFT, y, WIDTH, payBoxH, 4).fill('#ffffff').stroke(BORDER);
+  doc.fillColor(DARK).font('Helvetica-Bold').fontSize(9)
     .text('PAYMENT MADE:', LEFT + 10, y + 6);
   doc.fillColor(DARK).font('Helvetica-Bold').fontSize(9)
     .text(`Amount: ${fmtMoney(Number(e.amount))}    Mode: ${text(e.paymentMode)}`,
@@ -345,8 +341,8 @@ function drawSummaryTable(doc: PDFKit.PDFDocument, entries: any[], _date: Date, 
   cols[descIdx].w = WIDTH - cols.filter((_, i) => i !== descIdx).reduce((s, c) => s + c.w + COL_GAP, 0);
   const colX = cols.map((_, i) => LEFT + cols.slice(0, i).reduce((s, c2) => s + c2.w + COL_GAP, 0));
 
-  doc.rect(LEFT, y, WIDTH, 20).fill(PRIMARY);
-  doc.fillColor('#fff').font('Helvetica-Bold').fontSize(8.5);
+  doc.rect(LEFT, y, WIDTH, 20).fill('#ffffff').stroke(BORDER);
+  doc.fillColor(DARK).font('Helvetica-Bold').fontSize(8.5);
   cols.forEach((c, i) => {
     doc.text(c.label, colX[i] + 4, y + 6, { width: c.w - 8, align: c.align, lineBreak: false });
   });
@@ -372,7 +368,6 @@ function drawSummaryTable(doc: PDFKit.PDFDocument, entries: any[], _date: Date, 
     const descH = desc ? doc.heightOfString(desc, { width: descW, align: 'justify' }) + 6 : 0;
     const entryH = sumRowH + descH;
 
-    if (i % 2 === 0) doc.rect(LEFT, y, WIDTH, entryH).fill(PRIMARY_LIGHT);
     doc.rect(LEFT, y, WIDTH, entryH).stroke(BORDER);
     doc.fillColor(DARK).font('Helvetica').fontSize(8);
     const vals = [
@@ -403,18 +398,18 @@ function drawSummaryTable(doc: PDFKit.PDFDocument, entries: any[], _date: Date, 
     0,
   );
   const grandTotal = totalAmount + payableAmount;
-  doc.rect(LEFT, y, WIDTH, 22).fill(PRIMARY);
-  doc.fillColor('#fff').font('Helvetica-Bold').fontSize(9)
+  doc.rect(LEFT, y, WIDTH, 22).fill('#ffffff').stroke(BORDER);
+  doc.fillColor(DARK).font('Helvetica-Bold').fontSize(9)
     .text('GRAND TOTAL', LEFT + 8, y + 6, { width: WIDTH - 110 });
   doc.text(fmtMoney(grandTotal), LEFT + 8, y + 6, { width: WIDTH - 16, align: 'right' });
   y += 22;
-  doc.rect(LEFT, y, WIDTH, 22).fill(PRIMARY);
-  doc.fillColor('#fff').font('Helvetica-Bold').fontSize(9)
+  doc.rect(LEFT, y, WIDTH, 22).fill('#ffffff').stroke(BORDER);
+  doc.fillColor(DARK).font('Helvetica-Bold').fontSize(9)
     .text('TOTAL PAID', LEFT + 8, y + 6, { width: WIDTH - 110 });
   doc.text(fmtMoney(totalAmount), LEFT + 8, y + 6, { width: WIDTH - 16, align: 'right' });
   y += 22;
-  doc.rect(LEFT, y, WIDTH, 22).fill(PRIMARY);
-  doc.fillColor('#fff').font('Helvetica-Bold').fontSize(9)
+  doc.rect(LEFT, y, WIDTH, 22).fill('#ffffff').stroke(BORDER);
+  doc.fillColor(DARK).font('Helvetica-Bold').fontSize(9)
     .text('TOTAL PAYABLE', LEFT + 8, y + 6, { width: WIDTH - 110 });
   doc.text(fmtMoney(payableAmount), LEFT + 8, y + 6, { width: WIDTH - 16, align: 'right' });
   y += 22;
@@ -503,7 +498,7 @@ export async function streamPaymentSheetPdf(
   const pageRange = doc.bufferedPageRange();
   for (let i = pageRange.start; i < pageRange.start + pageRange.count; i++) {
     doc.switchToPage(i);
-    doc.moveTo(LEFT, PAGE_H - 42).lineTo(RIGHT, PAGE_H - 42).stroke(PRIMARY);
+    doc.moveTo(LEFT, PAGE_H - 42).lineTo(RIGHT, PAGE_H - 42).stroke(BORDER);
     doc.fillColor(MUTED).font('Helvetica').fontSize(7)
       .text(`Generated from Hospital Construction ERP — ${new Date().toLocaleDateString('en-IN')}`,
         LEFT, PAGE_H - 34, { width: WIDTH, align: 'center' });
