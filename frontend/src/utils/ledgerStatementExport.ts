@@ -55,7 +55,7 @@ function sanitizeFilename(text: string): string {
 
 /** Format a YYYY-MM-DD date string as DD-MM-YYYY for display in the document. */
 function formatDisplayDate(isoDate: string): string {
-  if (!isoDate) return '—';
+  if (!isoDate) return 'All';
   const parts = isoDate.split('-');
   if (parts.length !== 3) return isoDate;
   return `${parts[2]}-${parts[1]}-${parts[0]}`;
@@ -132,27 +132,53 @@ export async function exportLedgerStatementPdf(
   // Company logo top-left; the title sits beside it (or at x=14 when no logo).
   const logoDataUrl = await fetchLogoDataUrl();
   let titleX = 14;
+  let logoBottom = 8;
   if (logoDataUrl) {
     try {
       const props = doc.getImageProperties(logoDataUrl);
       const logoH = 12;
       const logoW = Math.min(45, (props.width / props.height) * logoH);
       doc.addImage(logoDataUrl, props.fileType || 'PNG', 14, 8, logoW, logoH);
-      titleX = 14 + logoW + 5;
+      titleX = 14 + logoW + 6;
+      logoBottom = 8 + logoH;
     } catch { /* logo unavailable — keep plain header */ }
   }
   doc.setFontSize(16);
   doc.setFont('helvetica', 'bold');
-  doc.text(`Ledger Statement — ${meta.ledgerName}`, titleX, 15);
+  doc.text(`Ledger Statement — ${meta.ledgerName}`, titleX, 16);
 
-  doc.setFontSize(10);
+  // ── Meta line + boxed balances ──
+  // One line: "Group: X   From: …   To: …" on the left, Opening/Closing
+  // balances in boxed sections on the right. metaY sits a clear ~9mm below
+  // the logo so the letterhead never crowds the content.
+  const metaY = logoBottom + 10;
+  doc.setFontSize(9);
   doc.setFont('helvetica', 'normal');
-  doc.text(`Group: ${meta.ledgerGroup}`, 14, 22);
-  doc.text(`From: ${formatDisplayDate(meta.startDate)}    To: ${formatDisplayDate(meta.endDate)}`, 14, 28);
+  doc.text(`Group: ${meta.ledgerGroup}`, 14, metaY);
+  doc.text(`From: ${formatDisplayDate(meta.startDate)}`, 95, metaY);
+  doc.text(`To: ${formatDisplayDate(meta.endDate)}`, 135, metaY);
 
-  // ── Opening / Closing balances ──
-  doc.text(`Opening Balance: ${pdfBal(data.openingBalance)}`, 14, 34);
-  doc.text(`Closing Balance: ${pdfBal(data.closingBalance)}`, 14, 40);
+  const pageW = doc.internal.pageSize.getWidth();
+  const boxW = 56;
+  const boxH = 11;
+  const boxY = metaY - 7.5;
+  const box2X = pageW - 14 - boxW;
+  const box1X = box2X - 5 - boxW;
+  const drawBalBox = (x: number, label: string, value: string) => {
+    doc.setDrawColor(120);
+    doc.setLineWidth(0.3);
+    doc.rect(x, boxY, boxW, boxH);
+    doc.setFontSize(7);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(90);
+    doc.text(label, x + 3, boxY + 4);
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(0);
+    doc.text(value, x + boxW - 3, boxY + 8.5, { align: 'right' });
+  };
+  drawBalBox(box1X, 'Opening Balance', pdfBal(data.openingBalance));
+  drawBalBox(box2X, 'Closing Balance', pdfBal(data.closingBalance));
 
   // ── Table ──
   // Each transaction is a compact main row (Date | Voucher | Type | Debit |
@@ -183,13 +209,18 @@ export async function exportLedgerStatementPdf(
     txnOfRow.push(i);
     const desc = entry.description?.trim();
     if (desc) {
+      // Description block starts under Voucher and spans through the Type
+      // column — a narrow block that wraps to ~2 lines, semi-bold.
       tableBody.push([
         '',
         {
           content: desc.replace(/₹/g, 'Rs.'),
-          colSpan: 5,
-          styles: { halign: 'justify', fontSize: 7.5, textColor: [70, 70, 70], cellPadding: { top: 0.5, right: 2, bottom: 2.5, left: 2 } },
+          colSpan: 2,
+          styles: { halign: 'justify', fontSize: 8, fontStyle: 'bold', textColor: [40, 40, 40], cellPadding: { top: 0.5, right: 2, bottom: 2.5, left: 2 } },
         },
+        '',
+        '',
+        '',
       ]);
       txnOfRow.push(i);
     }
@@ -198,10 +229,10 @@ export async function exportLedgerStatementPdf(
   autoTable(doc, {
     head: [['Date', 'Voucher', 'Type', 'Debit', 'Credit', 'Balance']],
     body: tableBody as never,
-    startY: 44,
+    startY: metaY + 10,
     theme: 'plain',
     tableWidth: 'wrap',
-    headStyles: { fillColor: [66, 66, 66], fontSize: 9, halign: 'left' },
+    headStyles: { fillColor: [66, 66, 66], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 9, halign: 'left' },
     bodyStyles: { fontSize: 8 },
     rowPageBreak: 'avoid',
     columnStyles: {
@@ -321,7 +352,7 @@ export async function printLedgerStatement(
         <td class="num">${entry.credit > 0 ? escapeHtml(formatCurrency(entry.credit)) : '—'}</td>
         <td class="num">${escapeHtml(formatBalanceWithSuffix(entry.balance, isDebit))}</td>
       </tr>
-      ${desc ? `<tr class="desc"><td></td><td colspan="5" class="desc-cell">${escapeHtml(desc)}</td></tr>` : ''}
+      ${desc ? `<tr class="desc"><td></td><td colspan="2" class="desc-cell">${escapeHtml(desc)}</td><td></td><td></td><td></td></tr>` : ''}
     </tbody>`;
   }).join('');
 
@@ -341,14 +372,13 @@ export async function printLedgerStatement(
     font-size: 12px;
   }
   h1 { font-size: 18px; margin: 0 0 4px; }
-  .letterhead { display: flex; align-items: center; gap: 14px; margin-bottom: 10px; }
+  .letterhead { display: flex; align-items: center; gap: 20px; padding-bottom: 14px; border-bottom: 1.5px solid #e0e0e0; margin-bottom: 14px; }
   .letterhead img { height: 52px; max-width: 180px; object-fit: contain; display: block; }
-  .meta { margin-bottom: 12px; color: #555; }
-  .meta div { margin: 2px 0; }
-  .balances { display: flex; gap: 24px; margin: 12px 0; }
-  .balance-box { border: 1px solid #ddd; padding: 8px 12px; border-radius: 4px; }
-  .balance-box .label { font-size: 11px; color: #666; }
-  .balance-box .value { font-size: 14px; font-weight: 600; }
+  .meta-row { display: flex; align-items: center; gap: 22px; flex-wrap: wrap; margin: 2px 0 14px; font-size: 12px; color: #333; }
+  .meta-row b { color: #111; }
+  .balance-box { border: 1.5px solid #555; padding: 4px 12px; display: inline-flex; align-items: baseline; gap: 8px; background: #fff; }
+  .balance-box .label { font-size: 11px; color: #555; }
+  .balance-box .value { font-size: 13px; font-weight: 700; }
   table { width: 100%; border-collapse: collapse; margin-top: 8px; table-layout: fixed; }
   col.c-date { width: 12%; }
   col.c-vch { width: 18%; }
@@ -370,7 +400,8 @@ export async function printLedgerStatement(
   tbody.txn td.desc-cell {
     padding: 1px 8px 5px 8px;
     text-align: justify;
-    color: #333;
+    font-weight: 600;
+    color: #222;
     word-wrap: break-word;
   }
   tbody.txn:nth-child(even) { background: #fafafa; }
@@ -388,21 +419,20 @@ export async function printLedgerStatement(
     ${logoDataUrl ? `<img src="${logoDataUrl}" alt="Company logo" />` : ''}
     <div>
       <h1>Ledger Statement — ${escapeHtml(meta.ledgerName)}</h1>
-      <div class="meta" style="margin-bottom:0">
-        <div>Group: ${escapeHtml(meta.ledgerGroup)}</div>
-        <div>From: ${escapeHtml(formatDisplayDate(meta.startDate))} &nbsp;&nbsp; To: ${escapeHtml(formatDisplayDate(meta.endDate))}</div>
-      </div>
     </div>
   </div>
-  <div class="balances">
-    <div class="balance-box">
-      <div class="label">Opening Balance</div>
-      <div class="value">${escapeHtml(formatBalanceWithSuffix(data.openingBalance, isDebit))}</div>
-    </div>
-    <div class="balance-box">
-      <div class="label">Closing Balance</div>
-      <div class="value">${escapeHtml(formatBalanceWithSuffix(data.closingBalance, isDebit))}</div>
-    </div>
+  <div class="meta-row">
+    <span><b>Group:</b> ${escapeHtml(meta.ledgerGroup)}</span>
+    <span><b>From:</b> ${escapeHtml(formatDisplayDate(meta.startDate))}</span>
+    <span><b>To:</b> ${escapeHtml(formatDisplayDate(meta.endDate))}</span>
+    <span class="balance-box">
+      <span class="label">Opening Balance</span>
+      <span class="value">${escapeHtml(formatBalanceWithSuffix(data.openingBalance, isDebit))}</span>
+    </span>
+    <span class="balance-box">
+      <span class="label">Closing Balance</span>
+      <span class="value">${escapeHtml(formatBalanceWithSuffix(data.closingBalance, isDebit))}</span>
+    </span>
   </div>
   <table>
     <colgroup>
