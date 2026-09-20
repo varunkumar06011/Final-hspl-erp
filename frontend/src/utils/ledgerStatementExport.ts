@@ -386,12 +386,18 @@ export async function printLedgerStatement(
   col.c-amt { width: 16%; }
   col.c-bal { width: 24%; }
   thead th {
-    background: #424242;
-    color: #fff;
+    /* Light header — browsers strip background colors when printing, so a
+       dark fill would leave white text on white. A bottom rule is always
+       visible regardless of the "background graphics" print setting. */
+    background: #f5f5f5;
+    color: #1a1a1a;
+    border-bottom: 2px solid #424242;
     text-align: left;
     padding: 6px 8px;
     font-size: 11px;
-    font-weight: 600;
+    font-weight: 700;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
   }
   thead th.num { text-align: right; }
   tbody.txn td { padding: 5px 8px 2px; border-bottom: none; }
@@ -400,11 +406,15 @@ export async function printLedgerStatement(
   tbody.txn td.desc-cell {
     padding: 1px 8px 5px 8px;
     text-align: justify;
+    /* Narrow columns justify poorly without hyphenation — 'auto' lets long
+       words break so lines fill evenly instead of stretching with gaps. */
+    hyphens: auto;
+    -webkit-hyphens: auto;
     font-weight: 600;
     color: #222;
-    word-wrap: break-word;
+    overflow-wrap: break-word;
   }
-  tbody.txn:nth-child(even) { background: #fafafa; }
+  tbody.txn:nth-child(even) { background: #fafafa; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   tbody.opening td { padding: 5px 8px; border-bottom: 1px solid #eee; font-weight: 600; color: #555; }
   @page { margin: 12mm; }
   @media print {
