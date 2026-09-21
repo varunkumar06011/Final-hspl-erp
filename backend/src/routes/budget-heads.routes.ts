@@ -741,6 +741,71 @@ router.get(
   },
 );
 
+// ── Delete + resequence Sl. Nos (budget heads only) ──
+// Mounted before the CRUD router so DELETE /:id resolves here instead of the
+// generic soft-delete. After a head is removed, every higher Sl. No. shifts
+// down by one so the visible sequence stays contiguous (deleting #28 turns
+// the old #29 into #28). Only slNo changes — all foreign references use the
+// immutable id, so linked POs/payments/JVs are unaffected.
+router.delete(
+  '/:id',
+  rbacMiddleware(Permission.MANAGE_FINANCE),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      const existing = await prisma.budgetHead.findFirst({
+        where: { id: req.params.id, projectId, deletedAt: null },
+      });
+      if (!existing) {
+        res.status(404).json({ error: 'BUDGET_HEAD not found' });
+        return;
+      }
+
+      await prisma.$transaction(
+        async (tx) => {
+          // The unique index (projectId, slNo) also covers soft-deleted rows —
+          // move the deleted head to a unique negative sentinel first so its
+          // number is free for the shift.
+          const minNeg = await tx.budgetHead.aggregate({
+            where: { projectId, slNo: { lt: 0 } },
+            _min: { slNo: true },
+          });
+          const sentinel = (minNeg._min.slNo ?? 0) - 1;
+          await tx.budgetHead.update({
+            where: { id: existing.id },
+            data: { slNo: sentinel, deletedAt: new Date() },
+          });
+
+          // Shift every higher Sl. No. down by one. Ascending order keeps each
+          // target slot free because the previous row already moved down.
+          const higher = await tx.budgetHead.findMany({
+            where: { projectId, deletedAt: null, slNo: { gt: existing.slNo } },
+            orderBy: { slNo: 'asc' },
+            select: { id: true, slNo: true },
+          });
+          for (const h of higher) {
+            await tx.budgetHead.update({ where: { id: h.id }, data: { slNo: h.slNo - 1 } });
+          }
+        },
+        { timeout: 15000 },
+      );
+
+      await logAudit({
+        userId: req.user!.id,
+        action: AuditAction.DELETE,
+        entityType: 'BUDGET_HEAD',
+        entityId: req.params.id,
+        projectId,
+        oldValue: { slNo: existing.slNo, particulars: existing.particulars, allocatedAmount: existing.allocatedAmount },
+      });
+
+      res.json({ message: 'BUDGET_HEAD deleted' });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
 // ── Base CRUD (mounted AFTER custom routes so /:id does not shadow
 //    /import, /recompute, /summary, or /:id/breakdown) ──
 router.use(crudRouter);
