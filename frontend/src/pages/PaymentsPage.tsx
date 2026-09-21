@@ -695,7 +695,7 @@ export default function PaymentsPage() {
                                 setAdvanceFile(null);
                               }}
                             >
-                              Create Advance Payment
+                              Record Payment
                             </Button>
                           )}
                         </TableCell>
@@ -1029,7 +1029,7 @@ export default function PaymentsPage() {
 
       {/* Create Advance Payment Dialog */}
       <ResponsiveDialog open={!!advancePayOpen} onClose={() => { setAdvancePayOpen(null); setAdvanceFile(null); setAdvanceAcknowledged(false); if (advanceFileRef.current) advanceFileRef.current.value = ''; }} maxWidth="sm" fullWidth>
-        <DialogTitle>Create Advance Payment for {advancePayOpen?.poNumber}</DialogTitle>
+        <DialogTitle>Record Payment for {advancePayOpen?.poNumber}</DialogTitle>
         <DialogContent>
           {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
@@ -1131,7 +1131,7 @@ export default function PaymentsPage() {
               rows={2}
             />
             <Box>
-              <Typography variant="body2" sx={{ mb: 1 }}>Proof of Advance Payment (bank transfer receipt, cheque, etc.)</Typography>
+              <Typography variant="body2" sx={{ mb: 1 }}>Proof of Payment (bank transfer receipt, cheque, etc.)</Typography>
               <input
                 ref={advanceFileRef}
                 type="file"
@@ -1165,7 +1165,7 @@ export default function PaymentsPage() {
             }}
             disabled={createAdvancePaymentMutation.isPending || !advancePayForm.amount || Number(advancePayForm.amount) <= 0 || !advanceAcknowledged}
           >
-            {createAdvancePaymentMutation.isPending ? <CircularProgress size={20} /> : 'Create Advance Payment Request'}
+            {createAdvancePaymentMutation.isPending ? <CircularProgress size={20} /> : 'Record Payment'}
           </Button>
         </DialogActions>
       </ResponsiveDialog>

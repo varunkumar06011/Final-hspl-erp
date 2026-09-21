@@ -21,6 +21,13 @@ export default function ResponsiveTable({ children }: { children: React.ReactNod
         // Desktop: no changes at all
         // Mobile: transform table rows into stacked cards
         '@media (max-width: 899.95px)': {
+          // The table element keeps display:table on mobile — its intrinsic
+          // min-width comes from cell content, so wide cells push the whole
+          // card row past the viewport and the page slides horizontally.
+          // Force block layout so rows always fit the container width.
+          '& .MuiTableContainer-root': { overflowX: 'hidden' },
+          '& .MuiTable-root': { display: 'block', width: '100%' },
+          '& .MuiTableBody-root': { display: 'block', width: '100%' },
           '& .MuiTableHead-root': { display: 'none' },
           '& .MuiTableBody-root .MuiTableRow-root': {
             display: 'flex',
@@ -40,6 +47,8 @@ export default function ResponsiveTable({ children }: { children: React.ReactNod
             gap: 1,
             py: 0.75,
             px: 1.5,
+            minWidth: 0,
+            overflowWrap: 'break-word',
             borderBottom: '1px solid',
             borderColor: 'action.hover',
             '&:last-child': { borderBottom: 'none' },
@@ -62,12 +71,15 @@ export default function ResponsiveTable({ children }: { children: React.ReactNod
               overflowWrap: 'break-word',
             },
           },
-          // Action buttons stay in a horizontal row, pushed to the right
+          // Action buttons stay in a horizontal row, pushed to the right,
+          // wrapping onto a second line on very narrow screens.
           '& .MuiTableBody-root .MuiTableCell-root[data-label="Actions"]': {
             '& > *': {
               display: 'flex',
               gap: 0.5,
               maxWidth: 'none',
+              flexWrap: 'wrap',
+              justifyContent: 'flex-end',
             },
           },
           // Loading / empty-state rows: center the spinner/message
