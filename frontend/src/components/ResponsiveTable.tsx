@@ -43,7 +43,10 @@ export default function ResponsiveTable({ children }: { children: React.ReactNod
           '& .MuiTableBody-root .MuiTableCell-root': {
             display: 'flex',
             justifyContent: 'space-between',
-            alignItems: 'center',
+            // flex-start so a multi-line value keeps its first line on the
+            // label's line — 'center' left the label floating mid-cell and
+            // looked detached from its value on mobile cards.
+            alignItems: 'flex-start',
             gap: 1,
             py: 0.75,
             px: 1.5,
