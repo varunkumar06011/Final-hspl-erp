@@ -214,6 +214,7 @@ export default function LedgerAutocomplete({
         }}
         options={filteredLedgers}
         loading={false}
+        getOptionDisabled={(option) => option.isActive === false}
         isOptionEqualToValue={(option, val) => option.id === val.id}
         getOptionLabel={(option) => {
           if (typeof option === 'string') return option;

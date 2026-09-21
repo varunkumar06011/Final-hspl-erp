@@ -380,6 +380,80 @@ router.get(
 // ═══════════════════════════════════════════════════════════
 
 /**
+ * Create a ledger row, or reuse an existing row that already holds the
+ * (projectId, name) unique slot. The unique index covers soft-deleted rows,
+ * so a plain create() fails with a duplicate-name error when a deleted ledger
+ * (or a manually created unlinked ledger) already occupies the name.
+ * - live row already linked to the same entity  → reuse it
+ * - live row with no entity link                → adopt it (attach the link)
+ * - soft-deleted row for the same/no entity     → revive it (clears deletedAt)
+ * - soft-deleted row for a different entity     → free the name, create fresh
+ * - live row linked to a different entity       → genuine name conflict, throw
+ */
+async function createOrAdoptLedger(data: {
+  projectId: string;
+  name: string;
+  group: string;
+  linkedEntityType: LedgerLinkType;
+  linkedEntityId: string | null;
+  openingBalance?: number;
+  currentBalance?: number;
+  isActive?: boolean;
+  isSystem?: boolean;
+}): Promise<string> {
+  const clash = await prisma.ledger.findFirst({
+    where: { name: data.name, projectId: data.projectId },
+  });
+  if (clash) {
+    const sameLink =
+      clash.linkedEntityType === data.linkedEntityType && clash.linkedEntityId === data.linkedEntityId;
+    if (clash.deletedAt) {
+      if (sameLink || !clash.linkedEntityId) {
+        const revived = await prisma.ledger.update({
+          where: { id: clash.id },
+          data: {
+            deletedAt: null,
+            isActive: data.isActive ?? true,
+            group: data.group,
+            linkedEntityType: data.linkedEntityType,
+            linkedEntityId: data.linkedEntityId,
+          },
+        });
+        return revived.id;
+      }
+      // Dead row belongs to a different entity — free up the name, then create fresh
+      await prisma.ledger.update({
+        where: { id: clash.id },
+        data: { name: `${clash.name} (deleted ${clash.id.slice(0, 8)})` },
+      });
+    } else {
+      if (clash.linkedEntityId && !sameLink) {
+        throw new Error(`Ledger "${data.name}" is already linked to another account`);
+      }
+      const adopted = await prisma.ledger.update({
+        where: { id: clash.id },
+        data: { linkedEntityType: data.linkedEntityType, linkedEntityId: data.linkedEntityId },
+      });
+      return adopted.id;
+    }
+  }
+  const ledger = await prisma.ledger.create({
+    data: {
+      projectId: data.projectId,
+      name: data.name,
+      group: data.group,
+      linkedEntityType: data.linkedEntityType,
+      linkedEntityId: data.linkedEntityId,
+      openingBalance: data.openingBalance ?? 0,
+      currentBalance: data.currentBalance ?? 0,
+      isActive: data.isActive ?? true,
+      isSystem: data.isSystem ?? false,
+    },
+  });
+  return ledger.id;
+}
+
+/**
  * Ensure a ledger exists for a given vendor. Creates if missing.
  * Returns the ledger. Used by the purchase-posting flow.
  */
@@ -394,19 +468,13 @@ export async function ensureVendorLedger(vendorId: string, projectId: string): P
   });
   if (existing) return existing.id;
 
-  const ledger = await prisma.ledger.create({
-    data: {
-      projectId,
-      name: vendor.name,
-      group: LedgerGroup.SUNDRY_CREDITORS,
-      linkedEntityType: LedgerLinkType.VENDOR,
-      linkedEntityId: vendorId,
-      openingBalance: 0,
-      currentBalance: 0,
-      isActive: true,
-    },
+  return createOrAdoptLedger({
+    projectId,
+    name: vendor.name,
+    group: LedgerGroup.SUNDRY_CREDITORS,
+    linkedEntityType: LedgerLinkType.VENDOR,
+    linkedEntityId: vendorId,
   });
-  return ledger.id;
 }
 
 /**
@@ -442,19 +510,16 @@ export async function ensureBankLedger(bankAccountId: string, projectId: string)
     return existing.id;
   }
 
-  const ledger = await prisma.ledger.create({
-    data: {
-      projectId,
-      name: bankLedgerName(account),
-      group: LedgerGroup.BANK,
-      linkedEntityType: LedgerLinkType.BANK_ACCOUNT,
-      linkedEntityId: bankAccountId,
-      openingBalance: Number(account.openingBalance),
-      currentBalance: Number(account.currentBalance),
-      isActive: account.isActive,
-    },
+  return createOrAdoptLedger({
+    projectId,
+    name: bankLedgerName(account),
+    group: LedgerGroup.BANK,
+    linkedEntityType: LedgerLinkType.BANK_ACCOUNT,
+    linkedEntityId: bankAccountId,
+    openingBalance: Number(account.openingBalance),
+    currentBalance: Number(account.currentBalance),
+    isActive: account.isActive,
   });
-  return ledger.id;
 }
 
 /**
@@ -471,19 +536,16 @@ export async function ensureCashLedger(cashAccountId: string, projectId: string)
   });
   if (existing) return existing.id;
 
-  const ledger = await prisma.ledger.create({
-    data: {
-      projectId,
-      name: account.name,
-      group: LedgerGroup.CASH,
-      linkedEntityType: LedgerLinkType.CASH_ACCOUNT,
-      linkedEntityId: cashAccountId,
-      openingBalance: Number(account.openingBalance),
-      currentBalance: Number(account.currentBalance),
-      isActive: account.isActive,
-    },
+  return createOrAdoptLedger({
+    projectId,
+    name: account.name,
+    group: LedgerGroup.CASH,
+    linkedEntityType: LedgerLinkType.CASH_ACCOUNT,
+    linkedEntityId: cashAccountId,
+    openingBalance: Number(account.openingBalance),
+    currentBalance: Number(account.currentBalance),
+    isActive: account.isActive,
   });
-  return ledger.id;
 }
 
 /**
@@ -501,19 +563,15 @@ export async function ensureOwnerLedger(ownerAccountId: string, projectId: strin
   if (existing) return existing.id;
 
   // Owner = capital account (credit nature). Positive balance = company owes owner = credit balance.
-  const ledger = await prisma.ledger.create({
-    data: {
-      projectId,
-      name: account.ownerName,
-      group: LedgerGroup.CAPITAL_ACCOUNT,
-      linkedEntityType: LedgerLinkType.OWNER_ACCOUNT,
-      linkedEntityId: ownerAccountId,
-      openingBalance: Number(account.openingBalance),
-      currentBalance: -Number(account.currentBalance), // credit nature → negative stored
-      isActive: true,
-    },
+  return createOrAdoptLedger({
+    projectId,
+    name: account.ownerName,
+    group: LedgerGroup.CAPITAL_ACCOUNT,
+    linkedEntityType: LedgerLinkType.OWNER_ACCOUNT,
+    linkedEntityId: ownerAccountId,
+    openingBalance: Number(account.openingBalance),
+    currentBalance: -Number(account.currentBalance), // credit nature → negative stored
   });
-  return ledger.id;
 }
 
 /**
@@ -575,17 +633,13 @@ async function syncProjectLedgers(projectId: string, userId: string) {
       where: { name: g.name, projectId, deletedAt: null },
     });
     if (!existing) {
-      await prisma.ledger.create({
-        data: {
-          projectId,
-          name: g.name,
-          group: g.group,
-          linkedEntityType: LedgerLinkType.NONE,
-          openingBalance: 0,
-          currentBalance: 0,
-          isActive: true,
-          isSystem: true,
-        },
+      await createOrAdoptLedger({
+        projectId,
+        name: g.name,
+        group: g.group,
+        linkedEntityType: LedgerLinkType.NONE,
+        linkedEntityId: null,
+        isSystem: true,
       });
       created.push(g.name);
     } else {
@@ -599,17 +653,12 @@ async function syncProjectLedgers(projectId: string, userId: string) {
       where: { name: e.name, projectId, deletedAt: null },
     });
     if (!existing) {
-      await prisma.ledger.create({
-        data: {
-          projectId,
-          name: e.name,
-          group: e.group as LedgerGroup,
-          linkedEntityType: LedgerLinkType.NONE,
-          openingBalance: 0,
-          currentBalance: 0,
-          isActive: true,
-          isSystem: false,
-        },
+      await createOrAdoptLedger({
+        projectId,
+        name: e.name,
+        group: e.group as LedgerGroup,
+        linkedEntityType: LedgerLinkType.NONE,
+        linkedEntityId: null,
       });
       created.push(e.name);
     } else {
@@ -622,17 +671,12 @@ async function syncProjectLedgers(projectId: string, userId: string) {
     where: { name: 'Purchase', projectId, deletedAt: null },
   });
   if (!purchaseLedger) {
-    await prisma.ledger.create({
-      data: {
-        projectId,
-        name: 'Purchase',
-        group: LedgerGroup.PURCHASE,
-        linkedEntityType: LedgerLinkType.NONE,
-        openingBalance: 0,
-        currentBalance: 0,
-        isActive: true,
-        isSystem: false,
-      },
+    await createOrAdoptLedger({
+      projectId,
+      name: 'Purchase',
+      group: LedgerGroup.PURCHASE,
+      linkedEntityType: LedgerLinkType.NONE,
+      linkedEntityId: null,
     });
     created.push('Purchase');
   } else {
@@ -645,17 +689,12 @@ async function syncProjectLedgers(projectId: string, userId: string) {
       where: { name: inc.name, projectId, deletedAt: null },
     });
     if (!existing) {
-      await prisma.ledger.create({
-        data: {
-          projectId,
-          name: inc.name,
-          group: inc.group as LedgerGroup,
-          linkedEntityType: LedgerLinkType.NONE,
-          openingBalance: 0,
-          currentBalance: 0,
-          isActive: true,
-          isSystem: false,
-        },
+      await createOrAdoptLedger({
+        projectId,
+        name: inc.name,
+        group: inc.group as LedgerGroup,
+        linkedEntityType: LedgerLinkType.NONE,
+        linkedEntityId: null,
       });
       created.push(inc.name);
     } else {
@@ -668,17 +707,13 @@ async function syncProjectLedgers(projectId: string, userId: string) {
     where: { group: LedgerGroup.CASH, projectId, deletedAt: null },
   });
   if (!cashLedger) {
-    await prisma.ledger.create({
-      data: {
-        projectId,
-        name: DEFAULT_CASH_LEDGER_NAME,
-        group: LedgerGroup.CASH,
-        linkedEntityType: LedgerLinkType.NONE,
-        openingBalance: 0,
-        currentBalance: 0,
-        isActive: true,
-        isSystem: true,
-      },
+    await createOrAdoptLedger({
+      projectId,
+      name: DEFAULT_CASH_LEDGER_NAME,
+      group: LedgerGroup.CASH,
+      linkedEntityType: LedgerLinkType.NONE,
+      linkedEntityId: null,
+      isSystem: true,
     });
     created.push(DEFAULT_CASH_LEDGER_NAME);
   } else {

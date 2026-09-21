@@ -246,7 +246,7 @@ router.post(
       const totalCredit = (entries as Array<{ credit: number }>).reduce((s, e) => s + Number(e.credit), 0);
 
       // Validate all ledgers exist and belong to project
-      const ledgerIds = (entries as Array<{ ledgerId: string }>).map((e) => e.ledgerId);
+      const ledgerIds = [...new Set((entries as Array<{ ledgerId: string }>).map((e) => e.ledgerId))];
       const ledgers = await prisma.ledger.findMany({
         where: { id: { in: ledgerIds }, projectId, deletedAt: null, isActive: true },
       });
@@ -753,6 +753,76 @@ router.delete(
       }
 
       await prisma.$transaction(async (tx) => {
+        // Remove every posting artifact so the deleted voucher stops appearing
+        // in ledger statements, account registers and accounting reports.
+        // Only CANCELLED vouchers can be deleted, so original + reversal rows
+        // already net to zero; the balance adjustments below are defensive
+        // for any legacy rows left without a matching reversal.
+        const ledgerNets = await tx.ledgerEntry.groupBy({
+          by: ['ledgerId'],
+          where: { journalVoucherId: voucher.id },
+          _sum: { debit: true, credit: true },
+        });
+        for (const row of ledgerNets) {
+          const net = Number(row._sum.debit ?? 0) - Number(row._sum.credit ?? 0);
+          if (net !== 0) {
+            await tx.ledger.update({
+              where: { id: row.ledgerId },
+              data: { currentBalance: { decrement: net } },
+            });
+          }
+        }
+
+        const BANK_IN_TYPES: string[] = [BankTxnType.DEPOSIT, BankTxnType.TRANSFER_IN, BankTxnType.REVERSAL_IN];
+        const bankTxns = await tx.bankTransaction.findMany({
+          where: { referenceId: voucher.id, status: 'POSTED' },
+          select: { bankAccountId: true, type: true, amount: true },
+        });
+        const bankNets = new Map<string, number>();
+        for (const t of bankTxns) {
+          const signed = (BANK_IN_TYPES.includes(t.type) ? 1 : -1) * Number(t.amount);
+          bankNets.set(t.bankAccountId, (bankNets.get(t.bankAccountId) ?? 0) + signed);
+        }
+        for (const [accountId, net] of bankNets) {
+          if (net !== 0) {
+            await tx.bankAccount.update({
+              where: { id: accountId },
+              data: { currentBalance: { decrement: net } },
+            });
+          }
+        }
+
+        const CASH_IN_TYPES: string[] = [CashTxnType.IN, CashTxnType.TRANSFER_IN, CashTxnType.REVERSAL_IN];
+        const cashTxns = await tx.cashTransaction.findMany({
+          where: { referenceId: voucher.id, status: 'POSTED' },
+          select: { cashAccountId: true, type: true, amount: true },
+        });
+        const cashNets = new Map<string, number>();
+        for (const t of cashTxns) {
+          const signed = (CASH_IN_TYPES.includes(t.type) ? 1 : -1) * Number(t.amount);
+          cashNets.set(t.cashAccountId, (cashNets.get(t.cashAccountId) ?? 0) + signed);
+        }
+        for (const [accountId, net] of cashNets) {
+          if (net !== 0) {
+            await tx.cashAccount.update({
+              where: { id: accountId },
+              data: { currentBalance: { decrement: net } },
+            });
+          }
+        }
+
+        await tx.ledgerEntry.deleteMany({ where: { journalVoucherId: voucher.id } });
+        await tx.journalEntry.deleteMany({ where: { journalVoucherId: voucher.id } });
+        await tx.billSettlement.deleteMany({ where: { journalVoucherId: voucher.id } });
+        await tx.pOItemLedgerPost.deleteMany({ where: { journalVoucherId: voucher.id } });
+        await tx.bankTransaction.deleteMany({ where: { referenceId: voucher.id } });
+        await tx.cashTransaction.deleteMany({ where: { referenceId: voucher.id } });
+        await tx.payment.updateMany({
+          where: { journalVoucherId: voucher.id },
+          data: { journalVoucherId: null },
+        });
+        await tx.paymentSheet.deleteMany({ where: { voucherId: voucher.id } });
+
         await tx.journalVoucher.update({
           where: { id: voucher.id },
           data: {
@@ -835,7 +905,7 @@ router.patch(
       }
 
       // Validate all ledgers exist and belong to project
-      const ledgerIds = newEntries.map((e) => e.ledgerId);
+      const ledgerIds = [...new Set(newEntries.map((e) => e.ledgerId))];
       const ledgers = await prisma.ledger.findMany({
         where: { id: { in: ledgerIds }, projectId, deletedAt: null, isActive: true },
       });
@@ -1750,7 +1820,7 @@ export async function postInvoiceToBooks(invoiceId: string, projectId: string, u
   }
 
   // Fetch all ledgers
-  const ledgerIds = entries.map((e) => e.ledgerId);
+  const ledgerIds = [...new Set(entries.map((e) => e.ledgerId))];
   const ledgers = await prisma.ledger.findMany({ where: { id: { in: ledgerIds }, projectId, deletedAt: null, isActive: true } });
   if (ledgers.length !== ledgerIds.length) {
     throw new Error('One or more required ledgers (Purchase / Input GST) not found. Run ledger sync first.');
@@ -1882,7 +1952,7 @@ async function postCreditOrDebitNote(
   }
 
   // Fetch all ledgers for the ledgerMap
-  const ledgerIds = entries.map((e) => e.ledgerId);
+  const ledgerIds = [...new Set(entries.map((e) => e.ledgerId))];
   const ledgers = await prisma.ledger.findMany({ where: { id: { in: ledgerIds }, projectId, deletedAt: null, isActive: true } });
   if (ledgers.length !== ledgerIds.length) {
     throw new Error('One or more required ledgers not found. Run ledger sync first.');
