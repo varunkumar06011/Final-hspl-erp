@@ -195,12 +195,18 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   // Auto-logout disabled — user stays logged in until manual logout.
   useIdleTimeout();
 
-  // Pull-to-refresh (mobile) + manual refresh (desktop)
+  // Pull-to-refresh (mobile) + manual refresh (desktop). Refetches the data
+  // in place instead of reloading the whole app — the page stays put and
+  // fresh numbers swap in. Falls back to a full reload if refetch fails.
+  const queryClient = useQueryClient();
   const [manualRefreshing, setManualRefreshing] = useState(false);
   const handleManualRefresh = useCallback(() => {
     setManualRefreshing(true);
-    window.location.reload();
-  }, []);
+    queryClient
+      .invalidateQueries()
+      .catch(() => window.location.reload())
+      .finally(() => setManualRefreshing(false));
+  }, [queryClient]);
 
   // Cmd+K / Ctrl+K opens global search, Cmd+J / Ctrl+J opens NL query
   useEffect(() => {
@@ -287,7 +293,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   // Prefetch the dashboard summary the moment the shell mounts — the request
   // overlaps the lazy dashboard chunk download instead of starting after it.
-  const queryClient = useQueryClient();
   useEffect(() => {
     if (!user) return;
     const admin = isAdminRole(user.role ?? '') || user.role === UserRole.ACCOUNTANT;
