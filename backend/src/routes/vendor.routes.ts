@@ -1,4 +1,4 @@
-import { Permission, hasPermission } from '@hospital-erp/shared';
+import { Permission, hasPermission, POStatus } from '@hospital-erp/shared';
 import { createVendorSchema, updateVendorSchema, listVendorsSchema } from '@hospital-erp/shared';
 import { Response, NextFunction } from 'express';
 import { prisma } from '../config/prisma';
@@ -59,7 +59,7 @@ const router = createCrudRouter({
     const vendorIds = records.map((vendor) => String(vendor.id));
     if (vendorIds.length === 0) return records;
 
-    const [invoices, paidRequests, paidAdvances, vendorLedgers] = await Promise.all([
+    const [invoices, paidRequests, paidAdvances, vendorLedgers, posForBilling] = await Promise.all([
       prisma.vendorInvoice.findMany({
         where: { projectId, vendorId: { in: vendorIds }, deletedAt: null },
         select: { vendorId: true, totalAmount: true, advancePaid: true },
@@ -99,6 +99,19 @@ const router = createCrudRouter({
         },
         select: { linkedEntityId: true, currentBalance: true, id: true },
       }),
+      // POs without a linked invoice — the PO's payable IS the vendor's bill
+      // even before an invoice/payment exists, so Total Bill shows it for all
+      // vendors instead of only invoiced ones. POs that DO have invoices are
+      // already counted via the invoice amounts (avoids double counting).
+      prisma.purchaseOrder.findMany({
+        where: { projectId, vendorId: { in: vendorIds }, deletedAt: null, status: { not: POStatus.DELETED } },
+        select: {
+          vendorId: true,
+          netPayable: true,
+          grandTotal: true,
+          invoices: { where: { deletedAt: null }, select: { id: true }, take: 1 },
+        },
+      }),
     ]);
 
     const totals = new Map(vendorIds.map((vendorId) => [vendorId, { billed: 0, paid: 0 }]));
@@ -112,6 +125,11 @@ const router = createCrudRouter({
         // PAID PO advance payments. Adding advancePaid here double-counts the
         // same physical advance (once as a claim, once as the actual payment).
       }
+    }
+    for (const po of posForBilling) {
+      if (po.invoices.length > 0) continue; // invoiced POs are counted via the invoice
+      const total = totals.get(po.vendorId);
+      if (total) total.billed += Number(po.netPayable) > 0 ? Number(po.netPayable) : Number(po.grandTotal);
     }
     for (const request of paidRequests) {
       const total = request.invoice ? totals.get(request.invoice.vendorId) : undefined;
