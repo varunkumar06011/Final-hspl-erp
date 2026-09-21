@@ -290,19 +290,18 @@ export async function streamQuotationPdf(res: NodeJS.WritableStream, quotation: 
   const sigW = (width - 24) / 3;
   const sigH = 65;
   const roles = [
-    { label: 'Approver 1', role: 'PROJECT_HEAD', title: 'Construction Project Head', user: head },
-    { label: 'Approver 2', role: 'HEAD_OF_CONSTRUCTION', title: 'Head of Construction', user: constructionHead },
-    { label: 'Approver 3', role: 'ACCOUNTS_HEAD', title: 'Accounts Head', user: accountsHead },
+    { label: 'Approver 1', role: 'PROJECT_HEAD', user: head },
+    { label: 'Approver 2', role: 'HEAD_OF_CONSTRUCTION', user: constructionHead },
+    { label: 'Approver 3', role: 'ACCOUNTS_HEAD', user: accountsHead },
   ];
 
   for (let i = 0; i < roles.length; i++) {
     const sx = left + i * (sigW + 12);
-    const { label, role, title, user: u } = roles[i];
+    const { label, role, user: u } = roles[i];
     const approved = approvedByRole[role];
 
     doc.roundedRect(sx, y, sigW, sigH, 4).stroke(border);
-    doc.fillColor(dark).font('Helvetica-Bold').fontSize(9).text(`${label}: ${u?.name ?? approved?.name ?? '—'}`, sx + 8, y + 18, { width: sigW - 16, align: 'center' });
-    doc.fillColor(muted).font('Helvetica').fontSize(8).text(`(${title})`, sx + 8, y + 38, { width: sigW - 16, align: 'center' });
+    doc.fillColor(dark).font('Helvetica-Bold').fontSize(9).text(`${label}: ${u?.name ?? approved?.name ?? '—'}`, sx + 8, y + 28, { width: sigW - 16, align: 'center' });
   }
 
   // ── Footer ──
