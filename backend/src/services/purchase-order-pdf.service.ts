@@ -37,22 +37,11 @@ export async function streamPurchaseOrderPdf(res: NodeJS.WritableStream, po: any
     }
   }
 
-  // ── Find project users in named approver roles ──
-  const approvers = await prisma.user.findMany({
-    where: { projectId: po.projectId, isActive: true, role: { in: ['PROJECT_HEAD', 'ADMIN', 'ADMIN_2'] } },
-    select: { name: true, role: true },
+  // ── Find the project head (shown in the meta block) ──
+  const head = await prisma.user.findFirst({
+    where: { projectId: po.projectId, isActive: true, role: 'PROJECT_HEAD' },
+    select: { name: true },
   });
-
-  const head = approvers.find((u) => u.role === 'PROJECT_HEAD');
-  const admin1 = approvers.find((u) => u.role === 'ADMIN');
-  const admin2 = approvers.find((u) => u.role === 'ADMIN_2');
-
-  const approvedByRole: Record<string, { name: string | null; at?: Date | null }> = {};
-  for (const step of po.approvalWorkflow?.steps ?? []) {
-    if (step.status === 'APPROVED' && step.approverUser) {
-      approvedByRole[step.approverRole] = { name: step.approverUser.name, at: step.decidedAt };
-    }
-  }
 
   // ── Top header box ──
   const headerTop = 22;
@@ -330,29 +319,20 @@ export async function streamPurchaseOrderPdf(res: NodeJS.WritableStream, po: any
   y += 10;
 
   // ── Approval & Authorization boxes ──
-  const sigW = (width - 24) / 3;
+  // Fixed signatories only: Vinod Sir and Kaushal Sir — names only, no
+  // role/designation labels.
+  const signatories = ['Vinod Sir', 'Kaushal Sir'];
+  const sigW = (width - 12) / signatories.length;
   const sigH = 48;
   const approvalHeadingH = 20;
 
   doc.fillColor(primary).font('Helvetica-Bold').fontSize(10.5).text('APPROVAL & AUTHORIZATION:', left, y);
   y += approvalHeadingH;
 
-  // Order: Managing Director, Director, Construction Project Head
-  // Show just the person's name — no role/designation labels.
-  const roles = [
-    { role: 'ADMIN_2', user: admin2 },
-    { role: 'ADMIN', user: admin1 },
-    { role: 'PROJECT_HEAD', user: head },
-  ];
-
-  for (let i = 0; i < roles.length; i++) {
+  for (let i = 0; i < signatories.length; i++) {
     const sx = left + i * (sigW + 12);
-    const { role, user: u } = roles[i];
-    const approved = approvedByRole[role];
-    const displayName = u?.name ?? approved?.name ?? '—';
-
     doc.roundedRect(sx, y, sigW, sigH, 4).stroke(border);
-    doc.fillColor(dark).font('Helvetica-Bold').fontSize(8.5).text(displayName, sx + 6, y + (sigH - 10) / 2, { width: sigW - 12, align: 'center', lineBreak: false });
+    doc.fillColor(dark).font('Helvetica-Bold').fontSize(8.5).text(signatories[i], sx + 6, y + (sigH - 10) / 2, { width: sigW - 12, align: 'center', lineBreak: false });
   }
 
   // ── Footer ──
