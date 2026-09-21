@@ -40,49 +40,51 @@ export default function ResponsiveTable({ children }: { children: React.ReactNod
             backgroundColor: 'background.paper',
             '&:last-child': { mb: 0 },
           },
+          // Stacked label-over-value cells: the label sits small-caps on top
+          // and the value gets the full row width underneath — side-by-side
+          // squeezed values into a 65% column and looked detached/cramped.
           '& .MuiTableBody-root .MuiTableCell-root': {
             display: 'flex',
-            justifyContent: 'space-between',
-            // flex-start so a multi-line value keeps its first line on the
-            // label's line — 'center' left the label floating mid-cell and
-            // looked detached from its value on mobile cards.
+            flexDirection: 'column',
             alignItems: 'flex-start',
-            gap: 1,
+            gap: 0.25,
             py: 0.75,
             px: 1.5,
             minWidth: 0,
+            // cells like Item Description carry sx={{ maxWidth: 220 }} which
+            // would narrow the stacked row — this selector outranks sx.
+            maxWidth: 'none',
             overflowWrap: 'break-word',
             borderBottom: '1px solid',
             borderColor: 'action.hover',
             '&:last-child': { borderBottom: 'none' },
-            // Label on the left
+            // Label on top
             '&::before': {
               content: 'attr(data-label)',
               fontWeight: 600,
-              fontSize: '0.75rem',
+              fontSize: '0.7rem',
               color: 'text.secondary',
-              flexShrink: 0,
               textTransform: 'uppercase',
               letterSpacing: '0.04em',
             },
-            // Value text wraps instead of sticking to right wall.
+            // Value fills the row and wraps cleanly.
             // overflowWrap (not wordBreak) so normal words stay intact and only
             // genuinely-long unbreakable strings wrap.
             '& > *': {
-              textAlign: 'right',
-              maxWidth: '65%',
+              textAlign: 'left',
+              maxWidth: '100%',
               overflowWrap: 'break-word',
             },
           },
-          // Action buttons stay in a horizontal row, pushed to the right,
-          // wrapping onto a second line on very narrow screens.
+          // Action buttons flow left-aligned under the label, wrapping onto
+          // a second line on narrow screens.
           '& .MuiTableBody-root .MuiTableCell-root[data-label="Actions"]': {
             '& > *': {
               display: 'flex',
               gap: 0.5,
-              maxWidth: 'none',
+              maxWidth: '100%',
               flexWrap: 'wrap',
-              justifyContent: 'flex-end',
+              justifyContent: 'flex-start',
             },
           },
           // Loading / empty-state rows: center the spinner/message
