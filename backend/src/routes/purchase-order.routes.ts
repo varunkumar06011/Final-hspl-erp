@@ -415,7 +415,7 @@ router.post(
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const projectId = requireProjectId(req);
-      const { vendorId, quotationId, paymentType, paymentTerms, deliveryDate, budgetHeadId, advanceAmount, deductions, notes } = req.body;
+      const { vendorId, quotationId, paymentType, paymentTerms, deliveryDate, budgetHeadId, advanceAmount, deductions, notes, referredBy } = req.body;
 
       // Validate quotation exists, belongs to project, is approved, and matches vendor
       const quotation = await prisma.quotation.findFirst({
@@ -484,6 +484,7 @@ router.post(
             paymentTerms: paymentTerms ?? null,
             deliveryDate: deliveryDate ? new Date(deliveryDate) : null,
             notes: notes ?? null,
+            referredBy: typeof referredBy === 'string' && referredBy.trim() ? referredBy.trim() : null,
             totalAmount,
             gstAmount: gst,
             grandTotal,
@@ -587,15 +588,20 @@ router.patch(
         return;
       }
 
-      // Only notes/description can be edited — allowed for ALL other statuses
-      if (req.body.notes === undefined) {
-        res.status(400).json({ error: 'Only description/notes can be updated' });
+      // Only notes/description and Referred By can be edited — allowed for ALL other statuses
+      const data: Record<string, unknown> = {};
+      if (req.body.notes !== undefined) data.notes = req.body.notes || null;
+      if (req.body.referredBy !== undefined) {
+        data.referredBy = typeof req.body.referredBy === 'string' && req.body.referredBy.trim() ? req.body.referredBy.trim() : null;
+      }
+      if (Object.keys(data).length === 0) {
+        res.status(400).json({ error: 'Only description/notes and Referred By can be updated' });
         return;
       }
 
       const updated = await prisma.purchaseOrder.update({
         where: { id: existing.id },
-        data: { notes: req.body.notes || null },
+        data,
         include: poInclude,
       });
 
@@ -1016,7 +1022,7 @@ router.post(
         }
       }
 
-      const { paymentTerms, deliveryDate, budgetHeadId, items: newItems, deductions, notes } = req.body;
+      const { paymentTerms, deliveryDate, budgetHeadId, items: newItems, deductions, notes, referredBy } = req.body;
 
       // Validate budget head exists and belongs to project
       const budgetHead = await prisma.budgetHead.findFirst({
@@ -1119,6 +1125,7 @@ router.post(
             paymentTerms: paymentTerms ?? null,
             deliveryDate: deliveryDate ? new Date(deliveryDate) : null,
             notes: notes === undefined ? po.notes : (notes || null),
+            referredBy: referredBy === undefined ? po.referredBy : (typeof referredBy === 'string' && referredBy.trim() ? referredBy.trim() : null),
             budgetHeadId,
             totalAmount,
             gstAmount,
@@ -1625,6 +1632,7 @@ router.post(
             gstAmount,
             grandTotal,
             budgetHeadId: po.budgetHeadId,
+            referredBy: po.referredBy,
             createdBy: req.user!.id,
             parentPoId: po.id,
             regenerationNumber: 1,

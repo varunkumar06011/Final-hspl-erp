@@ -58,6 +58,7 @@ import { useAuthStore } from '../stores/authStore';
 import AcknowledgementCheckbox from '../components/AcknowledgementCheckbox';
 import ApprovalActionDialog from '../components/ApprovalActionDialog';
 import ResponsiveTable from '../components/ResponsiveTable';
+import CreatableSelect from '../components/CreatableSelect';
 import TruncatedText from '../components/TruncatedText';
 import LandscapeExcelTable from '../components/LandscapeExcelTable';
 import PortraitRotateHint from '../components/PortraitRotateHint';
@@ -143,6 +144,7 @@ interface PORow {
   regenerationData?: unknown;
   budgetHeadId?: string | null;
   budgetHead?: { id: string; particulars: string } | null;
+  referredBy?: string | null;
   approvalWorkflow?: {
     id: string;
     status: string;
@@ -176,6 +178,7 @@ export default function PurchaseOrdersPage() {
   const [acknowledged, setAcknowledged] = useState(false);
   const [deductions, setDeductions] = useState<{ amount: string; reason: string }[]>([]);
   const [poNotes, setPoNotes] = useState('');
+  const [referredBy, setReferredBy] = useState('');
   const [approvalAction, setApprovalAction] = useState<{ row: PORow; action: 'approve' | 'reject' } | null>(null);
   const [approvalPopup, setApprovalPopup] = useState<PORow | null>(null);
   const [trailRow, setTrailRow] = useState<PORow | null>(null);
@@ -184,6 +187,7 @@ export default function PurchaseOrdersPage() {
   const [regenRow, setRegenRow] = useState<PORow | null>(null);
   const [notesEditRow, setNotesEditRow] = useState<PORow | null>(null);
   const [notesEditValue, setNotesEditValue] = useState('');
+  const [referredByEditValue, setReferredByEditValue] = useState('');
   const [paymentTypeRow, setPaymentTypeRow] = useState<PORow | null>(null);
   const [budgetHeadRow, setBudgetHeadRow] = useState<PORow | null>(null);
   const [newBudgetHeadId, setNewBudgetHeadId] = useState('');
@@ -297,6 +301,7 @@ export default function PurchaseOrdersPage() {
         acknowledged,
         budgetHeadId: selectedBudgetHeadId,
         notes: poNotes.trim() || undefined,
+        referredBy: referredBy.trim() || undefined,
         deductions: deductions
           .filter((d) => d.amount && Number(d.amount) > 0 && d.reason.trim())
           .map((d) => ({ amount: Number(d.amount), reason: d.reason.trim() })),
@@ -430,7 +435,7 @@ export default function PurchaseOrdersPage() {
 
   const updateNotesMutation = useMutation({
     mutationFn: async () => {
-      const response = await api.patch(`/purchase-orders/${notesEditRow!.id}`, { notes: notesEditValue.trim() });
+      const response = await api.patch(`/purchase-orders/${notesEditRow!.id}`, { notes: notesEditValue.trim(), referredBy: referredByEditValue.trim() });
       return response.data;
     },
     onSuccess: () => {
@@ -502,6 +507,7 @@ export default function PurchaseOrdersPage() {
     setAcknowledged(false);
     setDeductions([]);
     setPoNotes('');
+    setReferredBy('');
     setError('');
   }
 
@@ -720,7 +726,7 @@ export default function PurchaseOrdersPage() {
                                 </>
                               )}
                               {(row.status === POStatus.APPROVED || row.status === POStatus.DELIVERED || row.status === POStatus.PARTIALLY_DELIVERED) && (
-                                <IconButton size="small" onClick={() => { setNotesEditRow(row); setNotesEditValue(row.notes ?? ''); }} title="Edit Item Description"><EditIcon fontSize="small" /></IconButton>
+                                <IconButton size="small" onClick={() => { setNotesEditRow(row); setNotesEditValue(row.notes ?? ''); setReferredByEditValue(row.referredBy ?? ''); }} title="Edit PO Details"><EditIcon fontSize="small" /></IconButton>
                               )}
                               {(row.status === POStatus.APPROVED || row.status === POStatus.DELIVERED || row.status === POStatus.PARTIALLY_DELIVERED) && user && (isAdminRole(user.role) || user.role === UserRole.ACCOUNTANT) && (
                                 <IconButton size="small" color="secondary" onClick={() => setPostLedgerRow(row)} title="Post to Ledger"><PostLedgerIcon fontSize="small" /></IconButton>
@@ -765,15 +771,16 @@ export default function PurchaseOrdersPage() {
                 <TableCell sx={{ fontWeight: 600 }}>Budget Head</TableCell>
                 <TableCell sx={{ fontWeight: 600 }}>Created By</TableCell>
                 <TableCell sx={{ fontWeight: 600 }}>Approved By</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>Referred By</TableCell>
                 <TableCell sx={{ fontWeight: 600 }}>Status</TableCell>
                 <TableCell sx={{ fontWeight: 600 }}>Actions</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {isLoading ? (
-                <TableRow><TableCell colSpan={18} align="center" sx={{ py: 4 }}><CircularProgress size={32} /></TableCell></TableRow>
+                <TableRow><TableCell colSpan={19} align="center" sx={{ py: 4 }}><CircularProgress size={32} /></TableCell></TableRow>
               ) : rows.length === 0 ? (
-                <TableRow><TableCell colSpan={18} align="center" sx={{ py: 4 }}><Typography color="text.secondary">No purchase orders found</Typography></TableCell></TableRow>
+                <TableRow><TableCell colSpan={19} align="center" sx={{ py: 4 }}><Typography color="text.secondary">No purchase orders found</Typography></TableCell></TableRow>
               ) : (
                 rows.map((row) => (
                   <TableRow key={row.id} hover ref={rowRef(row.id)} sx={{ ...(highlightId === row.id && { bgcolor: 'warning.light', '&:hover': { bgcolor: 'warning.light' } }) }}>
@@ -887,6 +894,7 @@ export default function PurchaseOrdersPage() {
                             .join(', ')
                         : '—'}
                     </TableCell>
+                    <TableCell data-label="Referred By">{row.referredBy ?? '—'}</TableCell>
                     <TableCell data-label="Status"><Chip label={row.status.replace(/_/g, ' ')} size="small" color={row.status === POStatus.DELETED ? 'error' : (STATUS_COLORS[row.status] ?? 'default')} sx={row.status === POStatus.DELETED ? { bgcolor: '#d32f2f', color: '#fff', textDecoration: 'line-through' } : undefined} /></TableCell>
                     <TableCell data-label="Actions">
                       <Box sx={{ display: 'flex', gap: 0.5 }}>
@@ -914,7 +922,7 @@ export default function PurchaseOrdersPage() {
                               <IconButton size="small" color="primary" onClick={() => setEditUnapprovedRow(row)} title="Edit PO"><EditIcon fontSize="small" /></IconButton>
                             )}
                             {(row.status === POStatus.APPROVED || row.status === POStatus.DELIVERED || row.status === POStatus.PARTIALLY_DELIVERED) && (
-                              <IconButton size="small" onClick={() => { setNotesEditRow(row); setNotesEditValue(row.notes ?? ''); }} title="Edit Item Description"><EditIcon fontSize="small" /></IconButton>
+                              <IconButton size="small" onClick={() => { setNotesEditRow(row); setNotesEditValue(row.notes ?? ''); setReferredByEditValue(row.referredBy ?? ''); }} title="Edit PO Details"><EditIcon fontSize="small" /></IconButton>
                             )}
                             {(row.status === POStatus.APPROVED || row.status === POStatus.DELIVERED || row.status === POStatus.PARTIALLY_DELIVERED) && user && (isAdminRole(user.role) || user.role === UserRole.ACCOUNTANT) && (
                               <IconButton size="small" color="secondary" onClick={() => setPostLedgerRow(row)} title="Post to Ledger"><PostLedgerIcon fontSize="small" /></IconButton>
@@ -1114,6 +1122,9 @@ export default function PurchaseOrdersPage() {
               maxRows={4}
               placeholder="Optional item description for this PO (shown highlighted in PDF)"
             />
+
+            {/* Referred By — existing user names + creatable custom names */}
+            <ReferredBySelect value={referredBy} onChange={setReferredBy} />
 
             {/* Deductions Section */}
             {selectedQuotation && (
@@ -1366,9 +1377,9 @@ export default function PurchaseOrdersPage() {
         </DialogActions>
       </ResponsiveDialog>
 
-      {/* Edit Item Description only (for approved/delivered POs) */}
-      <ResponsiveDialog open={notesEditRow !== null} onClose={() => { setNotesEditRow(null); setNotesEditValue(''); }} maxWidth="sm" fullWidth>
-        <DialogTitle>Edit Item Description — {notesEditRow?.poNumber}</DialogTitle>
+      {/* Edit Item Description + Referred By (for approved/delivered POs) */}
+      <ResponsiveDialog open={notesEditRow !== null} onClose={() => { setNotesEditRow(null); setNotesEditValue(''); setReferredByEditValue(''); }} maxWidth="sm" fullWidth>
+        <DialogTitle>Edit PO Details — {notesEditRow?.poNumber}</DialogTitle>
         <DialogContent>
           {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
           <TextField
@@ -1382,12 +1393,15 @@ export default function PurchaseOrdersPage() {
             placeholder="Item description for this PO"
             sx={{ mt: 1 }}
           />
+          <Box sx={{ mt: 2 }}>
+            <ReferredBySelect value={referredByEditValue} onChange={setReferredByEditValue} />
+          </Box>
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
-            Only the Item Description can be edited after approval. Financial details cannot be modified.
+            Only the Item Description and Referred By can be edited after approval. Financial details cannot be modified.
           </Typography>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => { setNotesEditRow(null); setNotesEditValue(''); }}>Cancel</Button>
+          <Button onClick={() => { setNotesEditRow(null); setNotesEditValue(''); setReferredByEditValue(''); }}>Cancel</Button>
           {user && isAdminRole(user.role) && notesEditRow && (
             <Button
               color="error"
@@ -2224,6 +2238,7 @@ function EditUnapprovedPODialog({ row, onClose, onSuccess }: { row: PORow | null
   const [deliveryDate, setDeliveryDate] = useState('');
   const [budgetHeadId, setBudgetHeadId] = useState('');
   const [notes, setNotes] = useState('');
+  const [referredBy, setReferredBy] = useState('');
   const [error, setError] = useState('');
 
   const { data: budgetHeadsData } = useQuery({
@@ -2250,6 +2265,7 @@ function EditUnapprovedPODialog({ row, onClose, onSuccess }: { row: PORow | null
     setDeliveryDate(row.deliveryDate ? new Date(row.deliveryDate).toISOString().split('T')[0] : '');
     setBudgetHeadId(row.budgetHeadId ?? '');
     setNotes(row.notes ?? '');
+    setReferredBy(row.referredBy ?? '');
     setError('');
   }, [row]);
 
@@ -2260,6 +2276,7 @@ function EditUnapprovedPODialog({ row, onClose, onSuccess }: { row: PORow | null
         deliveryDate: deliveryDate || undefined,
         budgetHeadId,
         notes,
+        referredBy: referredBy.trim() || undefined,
         items: items.map((i) => ({
           materialName: i.materialName,
           quantity: Number(i.quantity),
@@ -2355,6 +2372,8 @@ function EditUnapprovedPODialog({ row, onClose, onSuccess }: { row: PORow | null
             rows={2}
             placeholder="Item description for this PO (shown in the table and PDF)"
           />
+
+          <ReferredBySelect value={referredBy} onChange={setReferredBy} />
         </Box>
 
         <Typography variant="subtitle2" sx={{ mb: 1 }}>Items</Typography>
@@ -2545,5 +2564,28 @@ function RegeneratePODialog({ row, onClose, onSuccess }: { row: PORow | null; on
         </Button>
       </DialogActions>
     </ResponsiveDialog>
+  );
+}
+
+/** "Referred By" picker for POs — suggests active user names plus any names
+ * previously created via the PO_REFERRED_BY dropdown options, and lets the
+ * user create a new custom name inline (persisted for next time). */
+function ReferredBySelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const { data } = useQuery<{ data: string[] }>({
+    queryKey: ['/auth/users/names'],
+    queryFn: async () => (await api.get('/auth/users/names')).data,
+    staleTime: 60_000,
+  });
+  const staticOptions = (data?.data ?? []).map((n) => ({ value: n, label: n }));
+  return (
+    <CreatableSelect
+      label="Referred By"
+      value={value}
+      onChange={onChange}
+      dropdownType="PO_REFERRED_BY"
+      staticOptions={staticOptions}
+      placeholder="Select a user or type a new name"
+      createButtonLabel="New Name"
+    />
   );
 }

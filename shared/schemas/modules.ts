@@ -168,6 +168,8 @@ export const createPOSchema = z.object({
     budgetHeadId: uuid,
     // Optional PO-level description / notes
     notes: z.string().trim().max(1000).optional(),
+    // Optional referrer — existing user name or a newly created custom name
+    referredBy: z.string().trim().max(200).optional(),
     // Deductions applied at PO creation (TDS, retention, advance adjustment, etc.)
     deductions: z.array(z.object({
       amount: money,
@@ -203,6 +205,7 @@ export const editUnapprovedPOSchema = z.object({
     deliveryDate: z.coerce.date().optional().or(z.literal('').transform(() => undefined)),
     budgetHeadId: uuid,
     notes: z.string().trim().max(1000).optional(),
+    referredBy: z.string().trim().max(200).optional(),
     items: z.array(z.object({
       materialName: z.string().min(1).max(200),
       quantity: qty,

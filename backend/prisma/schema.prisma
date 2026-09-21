@@ -272,6 +272,7 @@ model PurchaseOrder {
   totalDeductions    Decimal   @default(0) @db.Decimal(15, 2)
   netPayable         Decimal   @default(0) @db.Decimal(15, 2) // grandTotal - totalDeductions
   notes              String?
+  referredBy         String?   // free-text referrer name (existing user or custom)
   createdBy          String    @db.Uuid
   approvalWorkflowId String?   @unique @db.Uuid
   // Regenerated PO support

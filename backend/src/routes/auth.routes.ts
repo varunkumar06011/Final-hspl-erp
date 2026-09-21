@@ -1,6 +1,7 @@
-import { Router } from 'express';
+import { Router, Response, NextFunction } from 'express';
 import rateLimit from 'express-rate-limit';
-import { authMiddleware } from '../middleware/auth';
+import { authMiddleware, AuthenticatedRequest } from '../middleware/auth';
+import { prisma } from '../config/prisma';
 import { rbacMiddleware } from '../middleware/rbac';
 import { validateMiddleware } from '../middleware/validate';
 import { Permission, verifyTokenSchema, registerTokenSchema, createUserSchema, updateUserSchema, listUsersSchema, pinLoginSchema, setPinSchema, checkPinSchema, changePinSchema } from '@hospital-erp/shared';
@@ -48,6 +49,21 @@ router.get(
   rbacMiddleware(Permission.MANAGE_USERS),
   getNextAdminRoleEndpoint
 );
+
+// GET /api/auth/users/names — active user names only, for suggestion dropdowns
+// (e.g. PO "Referred By"). Any authenticated user — no MANAGE_USERS needed.
+router.get('/users/names', authMiddleware, async (_req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  try {
+    const users = await prisma.user.findMany({
+      where: { isActive: true },
+      select: { name: true },
+      orderBy: { name: 'asc' },
+    });
+    res.json({ data: users.map((u) => u.name) });
+  } catch (error) {
+    next(error);
+  }
+});
 
 // GET /api/auth/users — list users (Project Head only)
 router.get(

@@ -334,9 +334,17 @@ export async function streamPurchaseOrderPdf(res: NodeJS.WritableStream, po: any
     doc.roundedRect(sx, y, sigW, sigH, 4).stroke(border);
     doc.fillColor(dark).font('Helvetica-Bold').fontSize(8.5).text(signatories[i], sx + 6, y + (sigH - 10) / 2, { width: sigW - 12, align: 'center', lineBreak: false });
   }
+  y += sigH + 6;
+
+  // ── Referred By — a separate field below the signature boxes, not part of
+  // the approval/authorization section. ──
+  const refName = po.referredBy?.trim();
+  doc.fillColor(muted).font('Helvetica-Bold').fontSize(8.5).text('Referred By:', left, y + 10, { width: 90 });
+  doc.fillColor(dark).font('Helvetica-Bold').fontSize(9.5).text(text(refName || '—'), left + 92, y + 10, { width: width - 92, lineBreak: false });
+  y += 26;
 
   // ── Footer ──
-  y += sigH + 8;
+  y += 2;
   doc.moveTo(left, y).lineTo(right, y).stroke(primary);
   doc.fillColor(muted).font('Helvetica').fontSize(6.5).text(`Generated from Hospital Construction ERP — ${new Date().toLocaleDateString('en-IN')}`, left, y + 4, { width, align: 'center' });
 
