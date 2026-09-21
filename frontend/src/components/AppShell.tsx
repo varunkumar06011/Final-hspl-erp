@@ -1,6 +1,7 @@
 import { Box, AppBar, Toolbar, Typography, IconButton, Avatar, Chip, Menu, MenuItem, Drawer, List, ListItem, ListItemIcon, ListItemText, useTheme, useMediaQuery, Snackbar, Alert, Breadcrumbs, Link, CircularProgress } from '@mui/material';
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate, useLocation, Link as RouterLink } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   Menu as MenuIcon,
   Dashboard as DashboardIcon,
@@ -283,6 +284,20 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     autoEnable();
     return () => { cancelled = true; };
   }, [user]);
+
+  // Prefetch the dashboard summary the moment the shell mounts — the request
+  // overlaps the lazy dashboard chunk download instead of starting after it.
+  const queryClient = useQueryClient();
+  useEffect(() => {
+    if (!user) return;
+    const admin = isAdminRole(user.role ?? '') || user.role === UserRole.ACCOUNTANT;
+    const path = admin ? '/dashboard/admin-summary' : '/dashboard/summary';
+    void queryClient.prefetchQuery({
+      queryKey: ['/dashboard', admin ? 'admin-summary' : 'summary'],
+      queryFn: async () => (await api.get(path)).data,
+      staleTime: 30_000,
+    });
+  }, [queryClient, user]);
 
   // Update favicon to the project logo when it changes
   useEffect(() => {

@@ -1,6 +1,7 @@
 import { Suspense, lazy } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { hydrateDashboardCache, watchDashboardCache } from './utils/dashboardCache';
 import { Box, CircularProgress } from '@mui/material';
 import { Permission, UserRole } from '@hospital-erp/shared';
 import { ColorModeProvider } from './config/ColorModeContext';
@@ -93,6 +94,12 @@ const queryClient = new QueryClient({
     },
   },
 });
+
+// Restore the last dashboard snapshot so relaunches render instantly instead
+// of skeletoning while the (possibly sleeping) backend responds. Entries are
+// seeded as stale → they refetch in the background and swap in fresh data.
+hydrateDashboardCache(queryClient);
+watchDashboardCache(queryClient);
 
 const ROUTES = [
   { path: '/vendors', element: <VendorsPage /> },
