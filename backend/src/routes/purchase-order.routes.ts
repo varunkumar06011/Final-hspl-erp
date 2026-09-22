@@ -435,6 +435,22 @@ router.post(
         return;
       }
 
+      // One live PO per quotation — after a re-edit/resend the quotation may
+      // become APPROVED again while an earlier PO still references it; a
+      // second conversion would create a duplicate PO for the same document.
+      const existingPo = await prisma.purchaseOrder.findFirst({
+        where: {
+          quotationId: quotation.id,
+          deletedAt: null,
+          status: { notIn: ['DELETED', 'CANCELLED', 'REJECTED'] },
+        },
+        select: { poNumber: true },
+      });
+      if (existingPo) {
+        res.status(400).json({ error: `Purchase Order ${existingPo.poNumber} already exists for this quotation` });
+        return;
+      }
+
       const poNumber = await generatePONumber(projectId);
       const totalAmount = Number(quotation.totalAmount);
       // Auto-calculate GST from per-item gstRate (copied from quotation items)

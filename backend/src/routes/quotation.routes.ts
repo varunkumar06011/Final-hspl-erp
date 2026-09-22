@@ -643,8 +643,9 @@ router.delete(
 // No duplicate is created — the existing record is updated in place and its
 // approval workflow is reset to VERIFICATION with fresh PENDING steps for
 // all approvers (including dynamic admin roles like ADMIN_3, ADMIN_4, ...).
-// Blocked for CONVERTED_TO_PO and DELETED quotations, and when a live PO
-// already references the quotation.
+// Blocked for CONVERTED_TO_PO and DELETED quotations. A linked purchase
+// order does NOT block re-editing: the PO keeps its own data and the link is
+// preserved — only the quotation record is updated in place.
 router.post(
   '/:id/revise',
   rbacMiddleware(Permission.CREATE_QUOTATION),
@@ -676,19 +677,10 @@ router.post(
         return;
       }
 
-      // Safety: block if a live PO already references this quotation
-      const linkedPo = await prisma.purchaseOrder.findFirst({
-        where: {
-          quotationId: existing.id,
-          deletedAt: null,
-          status: { notIn: ['DELETED', 'CANCELLED', 'REJECTED'] },
-        },
-        select: { id: true, poNumber: true },
-      });
-      if (linkedPo) {
-        res.status(400).json({ error: `Cannot re-edit — purchase order ${linkedPo.poNumber} already exists for this quotation` });
-        return;
-      }
+      // A live PO referencing this quotation does NOT block re-editing —
+      // the PO is left untouched (its items/totals were copied at creation),
+      // the quotation↔PO link stays intact, and the quotation is updated in
+      // place under the same quotation number. No duplicate PO is created.
 
       const updateData: Record<string, unknown> = {};
 
