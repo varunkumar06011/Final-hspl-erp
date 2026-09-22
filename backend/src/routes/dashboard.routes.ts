@@ -1400,15 +1400,35 @@ router.get(
         ...cashOutTxns.filter((t) => !t.budgetHeadId).map((t) => t.referenceId),
       ].filter((id): id is string => !!id);
 
-      const payments = jvIds.length > 0
-        ? await prisma.payment.findMany({
-            where: { journalVoucherId: { in: jvIds } },
-            select: {
-              journalVoucherId: true,
-              budgetHead: { select: { id: true, particulars: true } },
-            },
-          })
-        : [];
+      // Every referenceId on the listed txns — the voucher check covers all
+      // rows, not just the ones needing budget-head resolution.
+      const allRefIds = [
+        ...bankOutTxns.map((t) => t.referenceId),
+        ...cashOutTxns.map((t) => t.referenceId),
+      ].filter((id): id is string => !!id);
+
+      const [payments, liveVouchers] = allRefIds.length > 0
+        ? await Promise.all([
+            jvIds.length > 0
+              ? prisma.payment.findMany({
+                  where: { journalVoucherId: { in: jvIds } },
+                  select: {
+                    journalVoucherId: true,
+                    budgetHead: { select: { id: true, particulars: true } },
+                  },
+                })
+              : Promise.resolve([]),
+            // Only expose voucherId when the reference actually resolves to a
+            // live journal voucher — referenceId can also point at deleted or
+            // non-voucher records, which made the preview fetch 404.
+            prisma.journalVoucher.findMany({
+              where: { id: { in: allRefIds }, deletedAt: null },
+              select: { id: true },
+            }),
+          ])
+        : [[], []];
+
+      const liveVoucherIds = new Set(liveVouchers.map((v) => v.id));
 
       // Map: JV id → { id, particulars }
       const jvToBudgetHead = new Map<string, { id: string; particulars: string } | null>();
@@ -1433,7 +1453,7 @@ router.get(
           amount: Number(t.amount),
           description: t.description ?? '',
           date: t.date.toISOString(),
-          voucherId: t.referenceId ?? null,
+          voucherId: t.referenceId && liveVoucherIds.has(t.referenceId) ? t.referenceId : null,
           budgetHead: t.budgetHead ?? (t.referenceId ? (jvToBudgetHead.get(t.referenceId) ?? null) : null),
         })),
         ...cashOutTxns.map((t) => ({
@@ -1443,7 +1463,7 @@ router.get(
           amount: Number(t.amount),
           description: t.description ?? '',
           date: t.date.toISOString(),
-          voucherId: t.referenceId ?? null,
+          voucherId: t.referenceId && liveVoucherIds.has(t.referenceId) ? t.referenceId : null,
           budgetHead: t.budgetHead ?? (t.referenceId ? (jvToBudgetHead.get(t.referenceId) ?? null) : null),
         })),
       ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
@@ -1788,7 +1808,10 @@ router.get(
         description: t.description ?? '',
         type: t.type,
         ledger: loanLedgerByVoucher.get(t.referenceId ?? '') ?? 'Loan',
-        voucherId: t.referenceId ?? null,
+        // loanVoucherIds only contains live, posted journal vouchers — rows
+        // whose referenceId doesn't resolve keep voucherId null so the click
+        // never fires a guaranteed-404 fetch.
+        voucherId: loanVoucherIds.has(t.referenceId ?? '') ? t.referenceId : null,
         date: t.date.toISOString(),
       })).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 

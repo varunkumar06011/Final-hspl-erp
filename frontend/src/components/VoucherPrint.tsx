@@ -1,6 +1,6 @@
 import { Box, Typography, Dialog, DialogTitle, DialogContent, DialogActions, Button, CircularProgress, Alert } from '@mui/material';
 import { Print as PrintIcon } from '@mui/icons-material';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '../config/api';
 import { formatIndianNumber, formatDate, amountToWords } from '../utils/enumOptions';
 import { VoucherType, LedgerGroup } from '@hospital-erp/shared';
@@ -337,6 +337,22 @@ export function JournalVoucherPrintPreview({ voucher, template }: { voucher: Pri
   );
 }
 
+const voucherQueryOptions = (voucherId: string) => ({
+  queryKey: ['/vouchers', 'print', voucherId] as const,
+  queryFn: async () => mapVoucher((await api.get(`/vouchers/${voucherId}`)).data),
+});
+
+/**
+ * Prefetch a voucher so the preview can render instantly when the row is
+ * clicked — call from onMouseEnter/onTouchStart on voucher-linked rows.
+ */
+export function usePrefetchVoucher() {
+  const queryClient = useQueryClient();
+  return (voucherId?: string | null) => {
+    if (voucherId) void queryClient.prefetchQuery(voucherQueryOptions(voucherId));
+  };
+}
+
 /**
  * Opens the persisted voucher for a given voucher/journal-voucher id —
  * landscape sheet, horizontally scrollable on narrow screens, printable.
@@ -344,8 +360,7 @@ export function JournalVoucherPrintPreview({ voucher, template }: { voucher: Pri
  */
 export function VoucherPreviewDialog({ voucherId, onClose }: { voucherId: string | null; onClose: () => void }) {
   const { data: voucher, isLoading, isError } = useQuery<Voucher>({
-    queryKey: ['/vouchers', 'print', voucherId],
-    queryFn: async () => mapVoucher((await api.get(`/vouchers/${voucherId}`)).data),
+    ...voucherQueryOptions(voucherId ?? ''),
     enabled: !!voucherId,
   });
 
