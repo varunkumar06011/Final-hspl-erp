@@ -36,19 +36,38 @@
         justify-content: center;
         height: 100vh;
         margin: 0;
-        background: #E3F2FD;
+        background: #0d1524;
         font-family: -apple-system, Roboto, Helvetica, Arial, sans-serif;
       }
       .boot-splash img { width: 96px; height: 96px; margin-bottom: 18px; }
       .boot-spinner {
         width: 30px;
         height: 30px;
-        border: 3px solid #448AFF;
+        border: 3px solid #4f9cf9;
         border-top-color: transparent;
         border-radius: 50%;
         animation: boot-spin 0.8s linear infinite;
       }
       @keyframes boot-spin { to { transform: rotate(360deg); } }
+      /* Opening video overlay — plays straight from HTML, independent of
+         React, so it starts instantly and can never hang the app. */
+      #opening-splash {
+        position: fixed;
+        inset: 0;
+        z-index: 99999;
+        background: #0d1524;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        opacity: 1;
+        transition: opacity 0.25s ease;
+        cursor: pointer;
+      }
+      #opening-splash video {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+      }
     </style>
   </head>
   <body>
@@ -58,6 +77,62 @@
         <div class="boot-spinner"></div>
       </div>
     </div>
+    <script>
+      (function () {
+        var KEY = 'hspl-opening-shown';
+        var loggedIn = false, shown = false;
+        try {
+          loggedIn = !!localStorage.getItem('firebaseToken');
+          shown = sessionStorage.getItem(KEY) === '1';
+        } catch (e) { /* storage blocked — treat as logged out */ }
+        // Only logged-in fresh opens get the intro; logged-out boots go
+        // straight to the login screen (the post-login overlay replays it).
+        if (!loggedIn || shown) return;
+        try { sessionStorage.setItem(KEY, '1'); } catch (e) {}
+        var mobile = matchMedia('(max-width: 599px)').matches ||
+          (matchMedia('(pointer: coarse)').matches && matchMedia('(orientation: portrait)').matches);
+        var splash = document.createElement('div');
+        splash.id = 'opening-splash';
+        var v = document.createElement('video');
+        v.src = mobile ? '/opening-mobile.mp4' : '/opening-desktop.mp4';
+        v.muted = true;
+        v.defaultMuted = true;
+        v.autoplay = true;
+        v.playsInline = true;
+        v.setAttribute('playsinline', '');
+        v.setAttribute('webkit-playsinline', '');
+        var finished = false, videoDone = false, appReady = false;
+        var done = function () {
+          if (finished) return;
+          finished = true;
+          splash.style.opacity = '0';
+          setTimeout(function () { splash.remove(); }, 260);
+        };
+        var tryDone = function () { if (videoDone && appReady) done(); };
+        // React's OpeningVideo calls this once the dashboard queries settle —
+        // the splash holds until the data is actually there, not just the video.
+        window.__openingAppReady = function () { appReady = true; tryDone(); };
+        var videoDoneFn = function () {
+          if (videoDone) return;
+          videoDone = true;
+          window.__hsplVideoDone = true;
+          window.dispatchEvent(new Event('hspl-video-done'));
+          tryDone();
+          // If React never signals readiness (slow mount), don't hold forever.
+          setTimeout(done, 6000);
+        };
+        v.addEventListener('ended', videoDoneFn);
+        v.addEventListener('error', done); // broken video → straight to the app
+        v.addEventListener('loadedmetadata', function () {
+          if (v.duration > 0) setTimeout(videoDoneFn, Math.min(v.duration * 1000 + 400, 9000));
+        });
+        setTimeout(done, 9000); // hard cap — never stuck
+        splash.addEventListener('click', done);
+        splash.appendChild(v);
+        document.body.appendChild(splash);
+        v.play().catch(done); // autoplay blocked → straight to the app
+      })();
+    </script>
     <script>
       // Wake the API while the JS bundle downloads+parses. The backend sleeps
       // when idle (Railway) — pinging /health here overlaps the server wake-up

@@ -14,6 +14,7 @@ import { useOnlineStatus } from './hooks/useOnlineStatus';
 import ErrorBoundary from './components/ErrorBoundary';
 import LoginPage from './pages/LoginPage';
 import { isNative } from './config/appConfig';
+import OpeningVideo from './components/OpeningVideo';
 
 // Retry a failed lazy chunk once — a flaky mobile fetch or a mid-deploy
 // window can drop a chunk request; retrying recovers instead of crashing
@@ -159,7 +160,11 @@ export default function App() {
               {!online ? (
                 <ErrorScreen variant="offline" />
               ) : (
-                <Routes>
+                <>
+                  {/* Opening video overlay — plays once per app session after
+                      login while the app renders/queries underneath it. */}
+                  <OpeningVideo />
+                  <Routes>
                   <Route path="/login" element={<LoginPage />} />
                   {/* Public route — asset QR scan, no auth required */}
                   <Route path="/scan/:assetId" element={<Suspense fallback={<PageLoader />}><AssetScanPage /></Suspense>} />
@@ -205,7 +210,8 @@ export default function App() {
                   />
                   <Route path="/vendor" element={<ProtectedRoute><AppShell><Navigate to="/vendors" replace /></AppShell></ProtectedRoute>} />
                   <Route path="*" element={<ErrorScreen variant="404" />} />
-                </Routes>
+                  </Routes>
+                </>
               )}
             </ErrorBoundary>
           </Router>
