@@ -61,6 +61,20 @@ function docRoute(docType: string): string | null {
   return null;
 }
 
+// Dark palette — this widget renders only inside the dark dashboard theme.
+const D = {
+  card: '#141f31',
+  border: 'rgba(148, 163, 184, 0.12)',
+  text: '#e8edf7',
+  dim: '#8b98ad',
+  teal: '#2fd9a4',
+  red: '#ff5c7a',
+};
+const tCell = { py: 0.5, fontSize: '0.7rem', color: D.text, borderBottom: `1px solid ${D.border}`, whiteSpace: 'nowrap' as const };
+// SF Pro on Apple devices for numeric cells.
+const NUM_FONT = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", Roboto, "Helvetica Neue", Arial, sans-serif';
+const numCell = { ...tCell, fontFamily: NUM_FONT };
+
 /**
  * Material Rate Tracker widget — compact version.
  * Shows the previous cost vs the latest cost for every material that has
@@ -84,18 +98,18 @@ export default function RateTrackerWidget() {
   const summary = data?.summary;
 
   return (
-    <Card sx={{ overflow: 'hidden', height: '100%', display: 'flex', flexDirection: 'column' }}>
+    <Card sx={{ overflow: 'hidden', height: '100%', display: 'flex', flexDirection: 'column', bgcolor: D.card, border: `1px solid ${D.border}`, borderRadius: 2.5, boxShadow: 'none' }}>
       <CardContent sx={{ py: 1.5, px: 2, '&:last-child': { pb: 1.5 }, height: '100%', display: 'flex', flexDirection: 'column' }}>
         {/* Compact header — title + summary chips inline */}
         <Stack direction="row" alignItems="center" justifyContent="space-between" flexWrap="wrap" gap={1} sx={{ mb: 1 }}>
-          <Typography variant="subtitle2" fontWeight={600}>
+          <Typography sx={{ fontSize: '0.78rem', fontWeight: 700, color: D.text }}>
             Material Rate Tracker
           </Typography>
           {!isLoading && summary && (
             <Stack direction="row" spacing={0.5} flexWrap="wrap" sx={{ gap: 0.5 }}>
-              <Chip size="small" color="error" variant="outlined" icon={<TrendingUp sx={{ fontSize: 14 }} />} label={`${summary.increased} up`} sx={{ height: 20, fontSize: '0.65rem' }} />
-              <Chip size="small" color="success" variant="outlined" icon={<TrendingDown sx={{ fontSize: 14 }} />} label={`${summary.decreased} down`} sx={{ height: 20, fontSize: '0.65rem' }} />
-              <Chip size="small" color="default" variant="outlined" label={`${summary.totalWithChange} tracked`} sx={{ height: 20, fontSize: '0.65rem' }} />
+              <Chip size="small" variant="outlined" icon={<TrendingUp sx={{ fontSize: 14, color: D.red }} />} label={`${summary.increased} up`} sx={{ height: 20, fontSize: '0.65rem', color: D.red, borderColor: 'rgba(255,92,122,.4)' }} />
+              <Chip size="small" variant="outlined" icon={<TrendingDown sx={{ fontSize: 14, color: D.teal }} />} label={`${summary.decreased} down`} sx={{ height: 20, fontSize: '0.65rem', color: D.teal, borderColor: 'rgba(47,217,164,.4)' }} />
+              <Chip size="small" variant="outlined" label={`${summary.totalWithChange} tracked`} sx={{ height: 20, fontSize: '0.65rem', color: D.dim, borderColor: D.border }} />
             </Stack>
           )}
         </Stack>
@@ -109,72 +123,66 @@ export default function RateTrackerWidget() {
         {isLoading ? (
           <Box>
             {[0, 1, 2].map((i) => (
-              <Skeleton key={i} variant="rectangular" height={28} sx={{ mb: 0.5 }} />
+              <Skeleton key={i} variant="rectangular" height={28} sx={{ mb: 0.5, bgcolor: 'rgba(148,163,184,.12)' }} />
             ))}
           </Box>
         ) : materials.length === 0 ? (
-          <Typography variant="caption" color="text.secondary">
+          <Typography variant="caption" sx={{ color: D.dim }}>
             No rate changes yet. Materials appear here once they show up on more than one Quotation or PO.
           </Typography>
         ) : (
-          <TableContainer sx={{ maxHeight: 140, overflowX: 'auto', flex: 1 }}>
+          <TableContainer sx={{ maxHeight: 140, overflowX: 'auto', flex: 1, '&::-webkit-scrollbar': { height: 5, width: 5 }, '&::-webkit-scrollbar-thumb': { bgcolor: 'rgba(148,163,184,.3)', borderRadius: 3 } }}>
             <Table size="small" stickyHeader>
               <TableHead>
                 <TableRow>
-                  <TableCell sx={{ py: 0.75, fontWeight: 600, fontSize: '0.7rem' }}>Material</TableCell>
-                  <TableCell align="right" sx={{ py: 0.75, fontWeight: 600, fontSize: '0.7rem' }}>Previous</TableCell>
-                  <TableCell align="right" sx={{ py: 0.75, fontWeight: 600, fontSize: '0.7rem' }}>Latest</TableCell>
-                  <TableCell align="right" sx={{ py: 0.75, fontWeight: 600, fontSize: '0.7rem' }}>Change</TableCell>
-                  <TableCell align="right" sx={{ py: 0.75, fontWeight: 600, fontSize: '0.7rem' }}>%</TableCell>
-                  <TableCell sx={{ py: 0.75, fontWeight: 600, fontSize: '0.7rem' }}>Vendor</TableCell>
-                  <TableCell sx={{ py: 0.75, fontWeight: 600, fontSize: '0.7rem' }}>Doc</TableCell>
-                  <TableCell sx={{ py: 0.75, fontWeight: 600, fontSize: '0.7rem' }}>Date</TableCell>
+                  {['Material', 'Previous', 'Latest', 'Change', '%', 'Vendor', 'Doc', 'Date'].map((h, i) => (
+                    <TableCell key={h} align={i === 0 || i > 4 ? 'left' : 'right'} sx={{ py: 0.75, fontWeight: 700, fontSize: '0.62rem', color: D.dim, bgcolor: D.card, borderBottom: `1px solid ${D.border}`, textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>{h}</TableCell>
+                  ))}
                 </TableRow>
               </TableHead>
               <TableBody>
                 {materials.map((m, idx) => {
                   const increased = m.difference > 0;
                   const decreased = m.difference < 0;
-                  const pctColor = increased ? 'error' : decreased ? 'success' : 'default';
+                  const pctColor = increased ? D.red : decreased ? D.teal : D.dim;
                   const TrendIcon = increased ? TrendingUp : decreased ? TrendingDown : TrendingFlat;
                   const latestDocRoute = docRoute(m.latestDocType);
                   return (
-                    <TableRow key={`${m.materialName}-${idx}`} hover>
-                      <TableCell sx={{ py: 0.5, fontSize: '0.75rem' }}>
-                        <Typography variant="caption" fontWeight={600} noWrap>
+                    <TableRow key={`${m.materialName}-${idx}`} hover sx={{ '&:hover': { bgcolor: 'rgba(148,163,184,.06)' } }}>
+                      <TableCell sx={tCell}>
+                        <Typography sx={{ fontSize: '0.72rem', fontWeight: 600, color: D.text }} noWrap>
                           {m.materialName}
                         </Typography>
                         {m.unit && (
-                          <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.6rem', display: 'block' }}>
+                          <Typography sx={{ fontSize: '0.6rem', display: 'block', color: D.dim }}>
                             per {m.unit}
                           </Typography>
                         )}
                       </TableCell>
-                      <TableCell align="right" sx={{ py: 0.5, fontSize: '0.7rem', whiteSpace: 'nowrap' }}>{formatCurrency(m.previousRate)}</TableCell>
-                      <TableCell align="right" sx={{ py: 0.5, fontSize: '0.7rem', whiteSpace: 'nowrap' }}>{formatCurrency(m.latestRate)}</TableCell>
-                      <TableCell align="right" sx={{ py: 0.5, fontSize: '0.7rem', color: increased ? 'error.main' : decreased ? 'success.main' : 'text.secondary', whiteSpace: 'nowrap' }}>
+                      <TableCell align="right" sx={numCell}>{formatCurrency(m.previousRate)}</TableCell>
+                      <TableCell align="right" sx={numCell}>{formatCurrency(m.latestRate)}</TableCell>
+                      <TableCell align="right" sx={{ ...numCell, color: pctColor }}>
                         {m.difference > 0 ? '+' : ''}{formatCurrency(m.difference)}
                       </TableCell>
-                      <TableCell align="right" sx={{ py: 0.5 }}>
+                      <TableCell align="right" sx={tCell}>
                         <Chip
                           size="small"
-                          color={pctColor as 'error' | 'success' | 'default'}
-                          icon={<TrendIcon sx={{ fontSize: 12 }} />}
+                          icon={<TrendIcon sx={{ fontSize: 12, color: pctColor }} />}
                           label={`${m.percentChange > 0 ? '+' : ''}${m.percentChange.toFixed(1)}%`}
-                          sx={{ height: 18, fontSize: '0.6rem' }}
+                          sx={{ height: 18, fontSize: '0.6rem', fontWeight: 700, color: pctColor, fontFamily: NUM_FONT, bgcolor: increased ? 'rgba(255,92,122,.12)' : decreased ? 'rgba(47,217,164,.12)' : 'rgba(148,163,184,.12)' }}
                         />
                       </TableCell>
-                      <TableCell sx={{ py: 0.5, fontSize: '0.7rem' }}><Typography variant="caption" noWrap>{m.latestVendor}</Typography></TableCell>
-                      <TableCell sx={{ py: 0.5, fontSize: '0.7rem' }}>
+                      <TableCell sx={tCell}><Typography sx={{ fontSize: '0.68rem', color: D.dim }} noWrap>{m.latestVendor}</Typography></TableCell>
+                      <TableCell sx={tCell}>
                         {latestDocRoute ? (
-                          <Link href={`${latestDocRoute}`} underline="hover" sx={{ fontSize: '0.7rem' }}>
+                          <Link href={`${latestDocRoute}`} underline="hover" sx={{ fontSize: '0.7rem', color: '#4f9cf9' }}>
                             {m.latestDocType} {m.latestDocNumber}
                           </Link>
                         ) : (
-                          <Typography variant="caption" sx={{ fontSize: '0.7rem' }}>{m.latestDocType} {m.latestDocNumber}</Typography>
+                          <Typography sx={{ fontSize: '0.7rem', color: D.dim }}>{m.latestDocType} {m.latestDocNumber}</Typography>
                         )}
                       </TableCell>
-                      <TableCell sx={{ py: 0.5, fontSize: '0.7rem', whiteSpace: 'nowrap' }}>{formatDate(m.latestDate)}</TableCell>
+                      <TableCell sx={tCell}>{formatDate(m.latestDate)}</TableCell>
                     </TableRow>
                   );
                 })}
