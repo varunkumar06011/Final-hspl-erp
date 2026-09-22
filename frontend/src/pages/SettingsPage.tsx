@@ -46,6 +46,7 @@ export default function SettingsPage() {
   const [gstNumber, setGstNumber] = useState('');
   const [panNumber, setPanNumber] = useState('');
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [updating, setUpdating] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [profileName, setProfileName] = useState('');
   const [profilePhone, setProfilePhone] = useState('');
@@ -55,6 +56,26 @@ export default function SettingsPage() {
   const [showPins, setShowPins] = useState(false);
   const [success, setSuccess] = useState('');
   const [error, setError] = useState('');
+
+  // Force-update: pull fresh service worker + drop cached assets, then reload.
+  // The reload fetches the newest bundle/manifest/icons — no uninstall needed.
+  const runAppUpdate = async () => {
+    setUpdating(true);
+    try {
+      if ('serviceWorker' in navigator) {
+        const regs = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(regs.map((r) => r.update().catch(() => undefined)));
+      }
+      if ('caches' in window) {
+        const keys = await caches.keys();
+        await Promise.all(keys.map((k) => caches.delete(k)));
+      }
+      // Replay the opening video on the post-update fresh load.
+      try { sessionStorage.removeItem('hspl-opening-shown'); } catch { /* ignore */ }
+    } finally {
+      window.location.reload();
+    }
+  };
 
   const { data, isLoading } = useQuery({
     queryKey: ['/settings'],
@@ -424,6 +445,25 @@ export default function SettingsPage() {
               {updateMutation.isPending ? <CircularProgress size={20} /> : 'Save Settings'}
             </Button>
           </Box>
+        </CardContent>
+      </Card>
+
+      {/* App Update */}
+      <Card sx={{ mb: 3 }}>
+        <CardContent>
+          <Typography variant="h6" gutterBottom>App Update</Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Fetch the latest version — new features, fixes and updated app icons. The app reloads automatically after updating.
+          </Typography>
+          <Button
+            variant="contained"
+            color="success"
+            onClick={runAppUpdate}
+            disabled={updating}
+            sx={{ alignSelf: 'flex-start' }}
+          >
+            {updating ? <CircularProgress size={20} /> : 'Update App'}
+          </Button>
         </CardContent>
       </Card>
     </Box>

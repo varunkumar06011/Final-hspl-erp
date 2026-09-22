@@ -134,7 +134,7 @@ export default function OpeningVideo() {
         position: 'fixed',
         inset: 0,
         zIndex: 9999,
-        bgcolor: '#0d1524',
+        bgcolor: '#000',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
