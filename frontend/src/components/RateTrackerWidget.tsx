@@ -3,12 +3,6 @@ import {
   Card,
   CardContent,
   Typography,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
   Chip,
   Skeleton,
   Alert,
@@ -70,10 +64,8 @@ const D = {
   teal: '#2fd9a4',
   red: '#ff5c7a',
 };
-const tCell = { py: 0.5, fontSize: '0.7rem', color: D.text, borderBottom: `1px solid ${D.border}`, whiteSpace: 'nowrap' as const };
 // SF Pro on Apple devices for numeric cells.
 const NUM_FONT = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", Roboto, "Helvetica Neue", Arial, sans-serif';
-const numCell = { ...tCell, fontFamily: NUM_FONT };
 
 /**
  * Material Rate Tracker widget — compact version.
@@ -100,11 +92,19 @@ export default function RateTrackerWidget() {
   return (
     <Card sx={{ overflow: 'hidden', height: '100%', display: 'flex', flexDirection: 'column', bgcolor: D.card, border: `1px solid ${D.border}`, borderRadius: 2.5, boxShadow: 'none' }}>
       <CardContent sx={{ py: 1.5, px: 2, '&:last-child': { pb: 1.5 }, height: '100%', display: 'flex', flexDirection: 'column' }}>
-        {/* Compact header — title + summary chips inline */}
+        {/* Compact header — icon square + title + summary chips inline */}
         <Stack direction="row" alignItems="center" justifyContent="space-between" flexWrap="wrap" gap={1} sx={{ mb: 1 }}>
-          <Typography sx={{ fontSize: '0.78rem', fontWeight: 700, color: D.text }}>
-            Material Rate Tracker
-          </Typography>
+          <Stack direction="row" spacing={1} alignItems="center">
+            <Box sx={{ width: 34, height: 34, borderRadius: 2, bgcolor: '#f7b955', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <TrendingUp sx={{ fontSize: 18, color: '#fff' }} />
+            </Box>
+            <Box>
+              <Typography sx={{ fontSize: '0.82rem', fontWeight: 800, color: D.text, lineHeight: 1.15 }}>
+                Material Rate Tracker
+              </Typography>
+              <Typography sx={{ fontSize: '0.62rem', color: D.dim }}>Track material price changes</Typography>
+            </Box>
+          </Stack>
           {!isLoading && summary && (
             <Stack direction="row" spacing={0.5} flexWrap="wrap" sx={{ gap: 0.5 }}>
               <Chip size="small" variant="outlined" icon={<TrendingUp sx={{ fontSize: 14, color: D.red }} />} label={`${summary.increased} up`} sx={{ height: 20, fontSize: '0.65rem', color: D.red, borderColor: 'rgba(255,92,122,.4)' }} />
@@ -131,64 +131,50 @@ export default function RateTrackerWidget() {
             No rate changes yet. Materials appear here once they show up on more than one Quotation or PO.
           </Typography>
         ) : (
-          <TableContainer sx={{ maxHeight: 140, overflowX: 'auto', flex: 1, '&::-webkit-scrollbar': { height: 5, width: 5 }, '&::-webkit-scrollbar-thumb': { bgcolor: 'rgba(148,163,184,.3)', borderRadius: 3 } }}>
-            <Table size="small" stickyHeader>
-              <TableHead>
-                <TableRow>
-                  {['Material', 'Previous', 'Latest', 'Change', '%', 'Vendor', 'Doc', 'Date'].map((h, i) => (
-                    <TableCell key={h} align={i === 0 || i > 4 ? 'left' : 'right'} sx={{ py: 0.75, fontWeight: 700, fontSize: '0.62rem', color: D.dim, bgcolor: D.card, borderBottom: `1px solid ${D.border}`, textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>{h}</TableCell>
-                  ))}
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {materials.map((m, idx) => {
-                  const increased = m.difference > 0;
-                  const decreased = m.difference < 0;
-                  const pctColor = increased ? D.red : decreased ? D.teal : D.dim;
-                  const TrendIcon = increased ? TrendingUp : decreased ? TrendingDown : TrendingFlat;
-                  const latestDocRoute = docRoute(m.latestDocType);
-                  return (
-                    <TableRow key={`${m.materialName}-${idx}`} hover sx={{ '&:hover': { bgcolor: 'rgba(148,163,184,.06)' } }}>
-                      <TableCell sx={tCell}>
-                        <Typography sx={{ fontSize: '0.72rem', fontWeight: 600, color: D.text }} noWrap>
+          // Stacked material rows — the whole record fits the card width; the
+          // list scrolls vertically instead of sliding the table sideways.
+          <Box sx={{ flex: 1, maxHeight: 200, overflowY: 'auto', pr: 0.3, '&::-webkit-scrollbar': { width: 5 }, '&::-webkit-scrollbar-thumb': { bgcolor: 'rgba(148,163,184,.3)', borderRadius: 3 } }}>
+            <Stack spacing={0.7}>
+              {materials.map((m, idx) => {
+                const increased = m.difference > 0;
+                const decreased = m.difference < 0;
+                const pctColor = increased ? D.red : decreased ? D.teal : D.dim;
+                const TrendIcon = increased ? TrendingUp : decreased ? TrendingDown : TrendingFlat;
+                const latestDocRoute = docRoute(m.latestDocType);
+                return (
+                  <Box key={`${m.materialName}-${idx}`} sx={{ px: 1, py: 0.8, borderRadius: 1.6, bgcolor: 'rgba(148,163,184,.05)', border: `1px solid ${D.border}` }}>
+                    <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1} sx={{ minWidth: 0 }}>
+                      <Box sx={{ minWidth: 0, flex: 1 }}>
+                        <Typography sx={{ fontSize: '0.72rem', fontWeight: 700, color: D.text }} noWrap title={m.materialName}>
                           {m.materialName}
                         </Typography>
-                        {m.unit && (
-                          <Typography sx={{ fontSize: '0.6rem', display: 'block', color: D.dim }}>
-                            per {m.unit}
-                          </Typography>
-                        )}
-                      </TableCell>
-                      <TableCell align="right" sx={numCell}>{formatCurrency(m.previousRate)}</TableCell>
-                      <TableCell align="right" sx={numCell}>{formatCurrency(m.latestRate)}</TableCell>
-                      <TableCell align="right" sx={{ ...numCell, color: pctColor }}>
+                        {m.unit && <Typography sx={{ fontSize: '0.58rem', color: D.dim }}>per {m.unit}</Typography>}
+                      </Box>
+                      <Chip
+                        size="small"
+                        icon={<TrendIcon sx={{ fontSize: 12, color: pctColor }} />}
+                        label={`${m.percentChange > 0 ? '+' : ''}${m.percentChange.toFixed(1)}%`}
+                        sx={{ height: 18, fontSize: '0.6rem', fontWeight: 700, color: pctColor, fontFamily: NUM_FONT, bgcolor: increased ? 'rgba(255,92,122,.12)' : decreased ? 'rgba(47,217,164,.12)' : 'rgba(148,163,184,.12)', flexShrink: 0 }}
+                      />
+                    </Stack>
+                    <Stack direction="row" alignItems="center" spacing={0.7} sx={{ mt: 0.5, minWidth: 0 }}>
+                      <Typography sx={{ fontSize: '0.7rem', color: D.dim, fontFamily: NUM_FONT }} noWrap>{formatCurrency(m.previousRate)}</Typography>
+                      <Typography sx={{ fontSize: '0.7rem', color: pctColor, fontWeight: 800 }}>→</Typography>
+                      <Typography sx={{ fontSize: '0.74rem', fontWeight: 800, color: pctColor, fontFamily: NUM_FONT }} noWrap>{formatCurrency(m.latestRate)}</Typography>
+                      <Typography sx={{ fontSize: '0.62rem', color: pctColor, fontFamily: NUM_FONT, ml: 'auto' }} noWrap>
                         {m.difference > 0 ? '+' : ''}{formatCurrency(m.difference)}
-                      </TableCell>
-                      <TableCell align="right" sx={tCell}>
-                        <Chip
-                          size="small"
-                          icon={<TrendIcon sx={{ fontSize: 12, color: pctColor }} />}
-                          label={`${m.percentChange > 0 ? '+' : ''}${m.percentChange.toFixed(1)}%`}
-                          sx={{ height: 18, fontSize: '0.6rem', fontWeight: 700, color: pctColor, fontFamily: NUM_FONT, bgcolor: increased ? 'rgba(255,92,122,.12)' : decreased ? 'rgba(47,217,164,.12)' : 'rgba(148,163,184,.12)' }}
-                        />
-                      </TableCell>
-                      <TableCell sx={tCell}><Typography sx={{ fontSize: '0.68rem', color: D.dim }} noWrap>{m.latestVendor}</Typography></TableCell>
-                      <TableCell sx={tCell}>
-                        {latestDocRoute ? (
-                          <Link href={`${latestDocRoute}`} underline="hover" sx={{ fontSize: '0.7rem', color: '#4f9cf9' }}>
-                            {m.latestDocType} {m.latestDocNumber}
-                          </Link>
-                        ) : (
-                          <Typography sx={{ fontSize: '0.7rem', color: D.dim }}>{m.latestDocType} {m.latestDocNumber}</Typography>
-                        )}
-                      </TableCell>
-                      <TableCell sx={tCell}>{formatDate(m.latestDate)}</TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </TableContainer>
+                      </Typography>
+                    </Stack>
+                    <Typography sx={{ fontSize: '0.6rem', color: D.dim, mt: 0.4 }} noWrap title={`${m.latestVendor} · ${m.latestDocType} ${m.latestDocNumber} · ${formatDate(m.latestDate)}`}>
+                      {m.latestVendor} · {latestDocRoute ? (
+                        <Link href={latestDocRoute} underline="hover" sx={{ color: '#4f9cf9', fontSize: '0.6rem' }}>{m.latestDocType} {m.latestDocNumber}</Link>
+                      ) : `${m.latestDocType} ${m.latestDocNumber}`} · {formatDate(m.latestDate)}
+                    </Typography>
+                  </Box>
+                );
+              })}
+            </Stack>
+          </Box>
         )}
       </CardContent>
     </Card>

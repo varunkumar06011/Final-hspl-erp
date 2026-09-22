@@ -420,7 +420,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                   selected={location.pathname === item.path}
                   sx={{
                     '&.Mui-selected': {
-                      bgcolor: 'primary.light',
+                      // Navy-tinted selection in dark mode, light-blue in light.
+                      bgcolor: (theme) => theme.palette.mode === 'dark' ? 'rgba(79,156,249,.16)' : 'primary.light',
                       borderRight: '4px solid',
                       borderColor: 'primary.main',
                     },
@@ -441,6 +442,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     <Box sx={{ display: 'flex' }}>
       <AppBar
         position="fixed"
+        // Admins get the navy dark theme — 'default' makes the bar use the
+        // dark paper color instead of the light-blue primary bar.
+        color={isAdminRole(user?.role ?? '') ? 'default' : 'primary'}
+        enableColorOnDark
         sx={{ zIndex: (theme) => theme.zIndex.drawer + 1 }}
       >
         <Toolbar>
@@ -464,9 +469,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           <IconButton color="inherit" onClick={() => setNlQueryOpen(true)} title="Ask ERP (Ctrl+J)" sx={{ display: { xs: 'none', sm: 'inline-flex' } }}>
             <AutoAwesomeIcon />
           </IconButton>
-          <IconButton color="inherit" onClick={toggleColorMode} title={mode === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}>
-            {mode === 'dark' ? <LightModeIcon /> : <DarkModeIcon />}
-          </IconButton>
+          {!isAdminRole(user?.role ?? '') && (
+            <IconButton color="inherit" onClick={toggleColorMode} title={mode === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}>
+              {mode === 'dark' ? <LightModeIcon /> : <DarkModeIcon />}
+            </IconButton>
+          )}
           <IconButton color="inherit" onClick={handleManualRefresh} title="Refresh" disabled={manualRefreshing}>
             {manualRefreshing ? <CircularProgress size={20} color="inherit" /> : <RefreshIcon />}
           </IconButton>

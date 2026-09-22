@@ -80,7 +80,9 @@ export function createAppTheme(mode: 'light' | 'dark') {
         success: { main: '#66BB6A', light: '#81C784', dark: '#2E7D32' },
         error: { main: '#EF5350', light: '#E57373', dark: '#D32F2F' },
         warning: { main: '#FFCA28' },
-        background: { default: '#121212', paper: '#1E1E1E' },
+        // Navy palette matching the admin dashboard theme.
+        background: { default: '#0d1524', paper: '#141f31' },
+        divider: 'rgba(148, 163, 184, 0.12)',
       },
       ...sharedOverrides,
     });
