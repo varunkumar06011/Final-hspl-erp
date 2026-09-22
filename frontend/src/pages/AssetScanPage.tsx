@@ -14,6 +14,7 @@ import {
 import { Lock as LockIcon, Login as LoginIcon } from '@mui/icons-material';
 import { QRCodeSVG } from 'qrcode.react';
 import api from '../config/api';
+import { QR_BASE_URL } from '../config/appConfig';
 import TraceabilityChain, { TraceData } from '../components/TraceabilityChain';
 
 const STATUS_COLORS: Record<string, 'success' | 'warning' | 'info' | 'error' | 'default'> = {
@@ -60,7 +61,7 @@ export default function AssetScanPage() {
       .finally(() => setLoading(false));
   }, [assetId]);
 
-  const qrBaseUrl = import.meta.env.VITE_QR_BASE_URL || window.location.origin;
+  const qrBaseUrl = QR_BASE_URL;
 
   if (loading) {
     return (

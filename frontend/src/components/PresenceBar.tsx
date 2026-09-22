@@ -46,8 +46,8 @@ export default function PresenceBar() {
       <Box
         sx={{
           position: 'fixed',
-          bottom: 16,
-          right: 16,
+          bottom: 'calc(16px + env(safe-area-inset-bottom))',
+          right: 'calc(16px + env(safe-area-inset-right))',
           zIndex: 1000,
           display: 'flex',
           alignItems: 'center',

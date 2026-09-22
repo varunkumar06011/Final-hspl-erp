@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useAuthStore } from '../stores/authStore';
+import { isNative } from '../config/appConfig';
 
 const IDLE_MS = Infinity; // Auto-logout disabled
 const CHECK_INTERVAL_MS = 30 * 1000; // check every 30s
@@ -50,7 +51,11 @@ export function useIdleTimeout(): void {
       if (idleFor >= IDLE_MS) {
         window.clearInterval(interval);
         logout();
-        if (window.location.pathname !== '/login') {
+        if (isNative) {
+          // HashRouter is used natively — a path write would hit a
+          // non-existent bundled file. '#/login' routes correctly.
+          window.location.hash = '#/login';
+        } else if (window.location.pathname !== '/login') {
           window.location.href = '/login';
         }
       }

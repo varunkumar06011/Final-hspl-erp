@@ -2,6 +2,9 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 import './index.css';
+import { isNative } from './config/appConfig';
+import { installNativeOpenShim } from './utils/native';
+import { initNativePushRouting } from './config/notifications';
 
 // Unlock screen orientation — allow both portrait and landscape.
 // The manifest no longer specifies an orientation, but if the PWA was
@@ -51,9 +54,24 @@ if (typeof screen !== 'undefined' && screen.orientation && typeof screen.orienta
   }, { passive: false });
 }
 
-// Register the FCM service worker
-// Works in both dev (localhost) and production (HTTPS)
-if ('serviceWorker' in navigator) {
+// Native shell setup — status bar styling and a window.open/download shim
+// so PDF previews, external links and file exports keep working inside
+// WKWebView (they no-op there otherwise).
+if (isNative) {
+  installNativeOpenShim();
+  initNativePushRouting();
+  import('@capacitor/status-bar')
+    .then(({ StatusBar, Style }) => {
+      StatusBar.setStyle({ style: Style.Light }).catch(() => {});
+      StatusBar.setBackgroundColor({ color: '#1565C0' }).catch(() => {});
+    })
+    .catch(() => {});
+}
+
+// Register the FCM service worker — web/PWA only. WKWebView has no PushManager
+// so Firebase web push is unavailable in the native shell (isPushSupported()
+// already reports that to the UI).
+if (!isNative && 'serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker
       .register('/firebase-messaging-sw.js', { scope: '/' })
@@ -83,7 +101,7 @@ window.addEventListener('vite:preloadError', () => {
 // Listen for notification click messages from the service worker
 // When a user taps a notification, the SW posts a message to focus the tab
 // and we navigate to the approval URL
-if ('serviceWorker' in navigator) {
+if (!isNative && 'serviceWorker' in navigator) {
   navigator.serviceWorker.addEventListener('message', (event) => {
     if (event.data?.type === 'NOTIFICATION_CLICK' && event.data?.url) {
       window.location.href = event.data.url;

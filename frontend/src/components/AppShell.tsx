@@ -44,7 +44,7 @@ import {
 } from '@mui/icons-material';
 import { useAuthStore } from '../stores/authStore';
 import { hasPermission, Permission, UserRole, isAdminRole } from '@hospital-erp/shared';
-import { onForegroundMessage, enableNotifications, isPushSupported, getPermissionState } from '../config/notifications';
+import { onForegroundMessage, enableNotifications, isPushSupported, getPermissionState, PUSH_DEEP_LINK_KEY } from '../config/notifications';
 import NotificationBell from './NotificationBell';
 import api from '../config/api';
 import { useIdleTimeout } from '../hooks/useIdleTimeout';
@@ -291,6 +291,20 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     return () => { cancelled = true; };
   }, [user]);
 
+  // Consume a pending notification deep link — a push tapped while the app
+  // was closed stores its target before the router (and possibly the login
+  // flow) is ready. Once the user is authenticated, navigate to it.
+  useEffect(() => {
+    if (!user) return;
+    try {
+      const pending = sessionStorage.getItem(PUSH_DEEP_LINK_KEY);
+      if (pending && pending.startsWith('/')) {
+        sessionStorage.removeItem(PUSH_DEEP_LINK_KEY);
+        navigate(pending);
+      }
+    } catch { /* storage unavailable */ }
+  }, [user, navigate]);
+
   // Prefetch the dashboard summary the moment the shell mounts — the request
   // overlaps the lazy dashboard chunk download instead of starting after it.
   useEffect(() => {
@@ -527,7 +541,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           reset page state; only the header Refresh button (or app relaunch)
           reloads. overscroll-behavior-y in index.css also suppresses the
           native browser/PWA pull-refresh gesture. */}
-      <Box component="main" sx={{ flexGrow: 1, p: { xs: 1.5, sm: 2, md: 3 }, mt: 8, width: { xs: '100%', md: 'auto' }, minWidth: 0, overflow: 'hidden', position: 'relative' }}>
+      <Box component="main" sx={{ flexGrow: 1, p: { xs: 1.5, sm: 2, md: 3 }, mt: 'calc(64px + env(safe-area-inset-top))', pb: 'max(12px, env(safe-area-inset-bottom))', pl: 'max(12px, env(safe-area-inset-left))', pr: 'max(12px, env(safe-area-inset-right))', width: { xs: '100%', md: 'auto' }, minWidth: 0, overflow: 'hidden', position: 'relative' }}>
         {/* Mobile back button — iPhones have no hardware back gesture.
             React Router sets location.key='default' on the first entry only,
             which reliably detects in-app history (unlike window.history.length,
@@ -587,7 +601,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         autoHideDuration={10000}
         onClose={() => setFgNotification({ open: false, title: '', body: '', url: undefined })}
         anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
-        sx={{ mt: 8 }}
+        sx={{ mt: 'calc(64px + env(safe-area-inset-top))' }}
       >
         <Alert
           severity="info"

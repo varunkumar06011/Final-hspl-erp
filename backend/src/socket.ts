@@ -12,7 +12,14 @@ export let io: SocketServer | null = null;
 export function initSocketServer(httpServer: HttpServer): SocketServer {
   io = new SocketServer(httpServer, {
     cors: {
-      origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+      // The Capacitor iOS app serves the UI from https://localhost inside
+      // WKWebView — allow it alongside the web frontend origin.
+      origin: [
+        process.env.FRONTEND_URL || 'http://localhost:5173',
+        'https://localhost',
+        'capacitor://localhost',
+        'http://localhost',
+      ],
       methods: ['GET', 'POST'],
     },
   });

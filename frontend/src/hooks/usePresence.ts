@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import type { Socket } from 'socket.io-client';
 import { useAuthStore } from '../stores/authStore';
+import { API_BASE_URL } from '../config/appConfig';
 
 export interface PresenceUser {
   userId: string;
@@ -29,7 +30,7 @@ async function getSocket(): Promise<Socket | null> {
 
 function createSocket(io: typeof import('socket.io-client').io): Socket | null {
   if (socket) return socket;
-  const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+  const apiUrl = API_BASE_URL;
   // Socket.io connects to the default namespace ("/"), so strip any path
   // (e.g. the "/api" suffix used by the REST client) and keep only the origin.
   let socketUrl = apiUrl;

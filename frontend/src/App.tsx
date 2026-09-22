@@ -1,5 +1,5 @@
 import { Suspense, lazy } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { hydrateDashboardCache, watchDashboardCache } from './utils/dashboardCache';
 import { Box, CircularProgress } from '@mui/material';
@@ -13,6 +13,7 @@ import OfflineBanner from './components/OfflineBanner';
 import { useOnlineStatus } from './hooks/useOnlineStatus';
 import ErrorBoundary from './components/ErrorBoundary';
 import LoginPage from './pages/LoginPage';
+import { isNative } from './config/appConfig';
 
 // Retry a failed lazy chunk once — a flaky mobile fetch or a mid-deploy
 // window can drop a chunk request; retrying recovers instead of crashing
@@ -140,6 +141,11 @@ const ROUTES = [
   { path: '/material-purchase-requests', element: <MaterialPurchaseRequestsPage /> },
 ];
 
+// Inside the native shell the app is served from a bundled origin — there is
+// no server to resolve deep paths, so a page like /payments would 404 if the
+// webview ever reloaded. Hash routing keeps every route under '/' locally.
+const Router = isNative ? HashRouter : BrowserRouter;
+
 export default function App() {
   const online = useOnlineStatus();
 
@@ -147,7 +153,7 @@ export default function App() {
     <ColorModeProvider>
       <ToastProvider>
         <QueryClientProvider client={queryClient}>
-          <BrowserRouter>
+          <Router>
             <ErrorBoundary>
               <OfflineBanner />
               {!online ? (
@@ -202,7 +208,7 @@ export default function App() {
                 </Routes>
               )}
             </ErrorBoundary>
-          </BrowserRouter>
+          </Router>
         </QueryClientProvider>
       </ToastProvider>
     </ColorModeProvider>

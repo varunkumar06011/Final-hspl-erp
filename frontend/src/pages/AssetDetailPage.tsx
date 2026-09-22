@@ -42,6 +42,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import { AssetStatus, isAdminRole } from '@hospital-erp/shared';
 import { enumToOptions, formatDate } from '../utils/enumOptions';
 import api, { extractErrorMessage } from '../config/api';
+import { QR_BASE_URL } from '../config/appConfig';
 import { useAuthStore } from '../stores/authStore';
 import AttachmentUpload from '../components/AttachmentUpload';
 import RefreshButton from '../components/RefreshButton';
@@ -313,7 +314,7 @@ export default function AssetDetailPage() {
     api.post(`/assets/${assetId}/print-log`).catch(() => {});
   };
 
-  const qrBaseUrl = import.meta.env.VITE_QR_BASE_URL || window.location.origin;
+  const qrBaseUrl = QR_BASE_URL;
 
   // Depreciation calculation
   const calcDepreciation = (asset: AssetRow | undefined) => {

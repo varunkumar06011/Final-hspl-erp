@@ -1,8 +1,9 @@
 import axios from 'axios';
 import { useNetworkStore } from '../stores/networkStore';
+import { API_BASE_URL } from './appConfig';
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || '/api',
+  baseURL: API_BASE_URL,
   timeout: 30_000,
   headers: {
     'Content-Type': 'application/json',

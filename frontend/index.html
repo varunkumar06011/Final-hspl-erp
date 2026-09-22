@@ -62,7 +62,19 @@
       // Wake the API while the JS bundle downloads+parses. The backend sleeps
       // when idle (Railway) — pinging /health here overlaps the server wake-up
       // with the client boot instead of making dashboard queries wait for it.
-      try { fetch('/health', { cache: 'no-store' }).catch(function () {}); } catch (e) {}
+      // On the native shell a relative '/health' would hit the bundled origin,
+      // so resolve the absolute backend URL the same way appConfig does.
+      try {
+        var isNativeShell = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+        var apiBase = '%VITE_API_URL%';
+        if (!apiBase || apiBase.charAt(0) === '%' || apiBase.charAt(0) === '/') {
+          apiBase = isNativeShell
+            ? 'https://hospital-erpbackend-production.up.railway.app/api'
+            : '';
+        }
+        var healthUrl = apiBase ? apiBase.replace(/\/api\/?$/, '') + '/health' : '/health';
+        fetch(healthUrl, { cache: 'no-store' }).catch(function () {});
+      } catch (e) {}
     </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
