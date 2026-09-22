@@ -24,6 +24,10 @@ const config: CapacitorConfig = {
         // Required by @capacitor-firebase/messaging under SwiftPM to avoid a
         // package identity collision with its bundled Firebase dependency.
         packageOptions: {
+          // Both @capacitor-firebase packages end in /app and /messaging —
+          // without symlinks their last path component collides with
+          // @capacitor/app's SPM package identity.
+          '@capacitor-firebase/app': { symlink: true },
           '@capacitor-firebase/messaging': { symlink: true },
         },
       },
