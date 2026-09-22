@@ -142,7 +142,7 @@ jobs:
       - name: Set version and build number
         working-directory: frontend/ios/App
         run: |
-          agvtool new-marketing-version -all "${{ github.event.inputs.app_version || '1.0' }}"
+          agvtool new-marketing-version "${{ github.event.inputs.app_version || '1.0' }}"
           agvtool new-version -all "${{ github.run_number }}"
 
       - name: Import signing certificate and provisioning profile
