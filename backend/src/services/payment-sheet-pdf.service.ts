@@ -417,11 +417,28 @@ function drawSummaryTable(doc: PDFKit.PDFDocument, entries: any[], _date: Date, 
   return y;
 }
 
-/** Draws the day-level narration box (label + wrapped text). Returns the y below it. */
+/** Draws the day-level narration box (label + wrapped text). Returns the y below it.
+ *  Narration is visually capped at 2 lines so a long note never stretches the
+ *  voucher — the stored value is untouched; overflow is clipped with "…". */
 function drawNarration(doc: PDFKit.PDFDocument, narration: string, y: number): number {
   const body = String(narration ?? '').trim();
   const innerW = WIDTH - 16;
-  const textH = body ? doc.heightOfString(body, { width: innerW }) : 12;
+  doc.font('Helvetica').fontSize(9);
+  const lineH = Math.max(doc.currentLineHeight(true), 10);
+  const maxTextH = lineH * 2;
+  let shown = body;
+  if (body && doc.heightOfString(body, { width: innerW }) > maxTextH) {
+    // Longest prefix that still fits two lines, then an ellipsis marker.
+    let lo = 0;
+    let hi = body.length;
+    while (lo < hi) {
+      const mid = Math.ceil((lo + hi) / 2);
+      if (doc.heightOfString(body.slice(0, mid) + '…', { width: innerW }) <= maxTextH) lo = mid;
+      else hi = mid - 1;
+    }
+    shown = `${body.slice(0, lo).trimEnd()}…`;
+  }
+  const textH = shown ? Math.min(doc.heightOfString(shown, { width: innerW }), maxTextH) : 12;
   const boxH = 16 + Math.max(textH, 12) + 8;
   if (y + boxH > PAGE_H - 110) {
     doc.addPage();
@@ -431,7 +448,7 @@ function drawNarration(doc: PDFKit.PDFDocument, narration: string, y: number): n
   doc.fillColor(MUTED).font('Helvetica-Bold').fontSize(7)
     .text('NARRATION', LEFT + 8, y + 5);
   doc.fillColor(DARK).font('Helvetica').fontSize(9)
-    .text(body, LEFT + 8, y + 16, { width: innerW });
+    .text(shown, LEFT + 8, y + 16, { width: innerW, height: maxTextH, ellipsis: true });
   return y + boxH;
 }
 

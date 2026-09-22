@@ -634,6 +634,28 @@ export default function PurchaseOrdersPage() {
               <MenuItem value="">All</MenuItem>
               {Object.values(POStatus).map((s) => <MenuItem key={s} value={s}>{s.replace(/_/g, ' ')}</MenuItem>)}
             </TextField>
+            <TextField
+              size="small"
+              label="Amount"
+              placeholder="Exact grand total"
+              value={minAmount}
+              onChange={(e) => {
+                const v = e.target.value;
+                setMinAmount(v);
+                setMaxAmount(v);
+                setPage(0);
+              }}
+              inputMode="decimal"
+              InputProps={{
+                startAdornment: <InputAdornment position="start">₹</InputAdornment>,
+                endAdornment: minAmount ? (
+                  <InputAdornment position="end">
+                    <IconButton size="small" onClick={() => { setMinAmount(''); setMaxAmount(''); setPage(0); }} edge="end"><CloseIcon fontSize="small" /></IconButton>
+                  </InputAdornment>
+                ) : undefined,
+              }}
+              sx={{ width: { xs: '100%', sm: 170 } }}
+            />
           </Box>
         )}
 

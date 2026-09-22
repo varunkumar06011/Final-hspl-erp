@@ -1433,6 +1433,7 @@ router.get(
           amount: Number(t.amount),
           description: t.description ?? '',
           date: t.date.toISOString(),
+          voucherId: t.referenceId ?? null,
           budgetHead: t.budgetHead ?? (t.referenceId ? (jvToBudgetHead.get(t.referenceId) ?? null) : null),
         })),
         ...cashOutTxns.map((t) => ({
@@ -1442,6 +1443,7 @@ router.get(
           amount: Number(t.amount),
           description: t.description ?? '',
           date: t.date.toISOString(),
+          voucherId: t.referenceId ?? null,
           budgetHead: t.budgetHead ?? (t.referenceId ? (jvToBudgetHead.get(t.referenceId) ?? null) : null),
         })),
       ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
@@ -1786,6 +1788,7 @@ router.get(
         description: t.description ?? '',
         type: t.type,
         ledger: loanLedgerByVoucher.get(t.referenceId ?? '') ?? 'Loan',
+        voucherId: t.referenceId ?? null,
         date: t.date.toISOString(),
       })).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 

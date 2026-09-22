@@ -841,7 +841,11 @@ export default function QuotationsPage() {
                   {row.items && row.items.length > 0 && (
                     <Box sx={{ mt: 0.5 }}>
                       <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem', display: 'block', mb: 0.5 }}>Materials</Typography>
-                      <Box component="table" sx={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+                      {/* On narrow phones the fixed-width money columns can't shrink below
+                          their content — give the table a floor and let it scroll sideways
+                          instead of clipping Material/Unit Price/GST/Amount. */}
+                      <Box sx={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', mx: -0.5, px: 0.5 }}>
+                      <Box component="table" sx={{ width: '100%', minWidth: 430, borderCollapse: 'collapse', fontSize: '0.8rem' }}>
                         <Box component="thead">
                           <Box component="tr" sx={{ borderBottom: '1px solid', borderColor: 'divider' }}>
                             <Box component="th" sx={{ textAlign: 'left', py: 0.25, px: 0.5, fontWeight: 600, fontSize: '0.7rem', color: 'text.secondary', textTransform: 'uppercase' }}>Material</Box>
@@ -862,6 +866,7 @@ export default function QuotationsPage() {
                             </Box>
                           ))}
                         </Box>
+                      </Box>
                       </Box>
                     </Box>
                   )}
