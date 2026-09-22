@@ -1517,6 +1517,9 @@ model JournalVoucher {
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
   updatedBy        String?   @db.Uuid // who last edited the voucher (null if never edited)
+  // Admin's captured signature (PNG data URL) drawn on the voucher preview —
+  // metadata only: it never affects the number, status, or accounting entries.
+  signatureData    String?   @db.Text
   deletedAt        DateTime?
 
   project          Project           @relation(fields: [projectId], references: [id])

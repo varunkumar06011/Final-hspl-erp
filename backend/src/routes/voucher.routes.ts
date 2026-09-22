@@ -9,6 +9,7 @@ import {
   AccountTxnRefType,
   GST_LEDGER_NAMES,
   PaymentStatus,
+  isAdminRole,
 } from '@hospital-erp/shared';
 import { recalcInvoicePaymentStatus } from '../services/invoice-payment.service';
 import {
@@ -226,6 +227,53 @@ router.get(
         return;
       }
       res.json(voucher);
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+// ── Attach a drawn signature to a voucher (admin only) ──────────────────
+// Metadata-only update: the signature is stored on the voucher but never
+// changes its number, status, entries, or approval state.
+const SIGNATURE_RE = /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=\s]+$/;
+const SIGNATURE_MAX_CHARS = 1_500_000; // ~1.1MB binary — plenty for a signature
+
+router.post(
+  '/:id/signature',
+  rbacMiddleware(Permission.VIEW_FINANCIALS),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      if (!isAdminRole(req.user!.role)) {
+        res.status(403).json({ error: 'Only admins can sign vouchers' });
+        return;
+      }
+      const { signatureData } = req.body ?? {};
+      if (typeof signatureData !== 'string' || !SIGNATURE_RE.test(signatureData) || signatureData.length > SIGNATURE_MAX_CHARS) {
+        res.status(400).json({ error: 'Invalid signature image' });
+        return;
+      }
+      const voucher = await prisma.journalVoucher.findFirst({
+        where: { id: req.params.id, projectId: requireProjectId(req), deletedAt: null },
+        select: { id: true },
+      });
+      if (!voucher) {
+        res.status(404).json({ error: 'Voucher not found' });
+        return;
+      }
+      await prisma.journalVoucher.update({
+        where: { id: voucher.id },
+        data: { signatureData },
+      });
+      await logAudit({
+        userId: req.user!.id,
+        action: AuditAction.UPDATE,
+        entityType: 'VOUCHER',
+        entityId: voucher.id,
+        projectId: requireProjectId(req),
+        newValue: { signatureAttached: true },
+      }).catch(() => {});
+      res.json({ ok: true });
     } catch (error) {
       next(error);
     }

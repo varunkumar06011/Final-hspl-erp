@@ -38,20 +38,30 @@ if (typeof screen !== 'undefined' && screen.orientation && typeof screen.orienta
     }
     return false;
   };
-  document.addEventListener('touchstart', (e) => {
-    pullStartY = e.touches[0].clientY;
-  }, { passive: true });
-  document.addEventListener('touchmove', (e) => {
-    const scroller = document.scrollingElement ?? document.documentElement;
+  // A permanently-attached non-passive touchmove forces the browser to wait on
+  // JS for EVERY swipe — the whole page feels hung. Instead, the blocking
+  // listener exists only while a gesture that started at page-top is active.
+  const onMove = (e: TouchEvent) => {
     if (
-      scroller.scrollTop <= 0
-      && e.touches[0].clientY > pullStartY
+      e.touches[0].clientY > pullStartY
       && !ancestorCanScrollUp(e.target)
       && e.cancelable
     ) {
       e.preventDefault();
     }
-  }, { passive: false });
+  };
+  const removeMove = () => document.removeEventListener('touchmove', onMove);
+  document.addEventListener('touchstart', (e) => {
+    pullStartY = e.touches[0].clientY;
+    const scroller = document.scrollingElement ?? document.documentElement;
+    if (scroller.scrollTop <= 0) {
+      document.addEventListener('touchmove', onMove, { passive: false });
+    } else {
+      removeMove();
+    }
+  }, { passive: true });
+  document.addEventListener('touchend', removeMove, { passive: true });
+  document.addEventListener('touchcancel', removeMove, { passive: true });
 }
 
 // Native shell setup — status bar styling and a window.open/download shim

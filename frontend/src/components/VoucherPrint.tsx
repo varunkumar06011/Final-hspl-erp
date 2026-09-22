@@ -1,9 +1,13 @@
+import { useState } from 'react';
 import { Box, Typography, Dialog, DialogTitle, DialogContent, DialogActions, Button, CircularProgress, Alert } from '@mui/material';
-import { Print as PrintIcon } from '@mui/icons-material';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import api from '../config/api';
+import { Print as PrintIcon, Draw as DrawIcon } from '@mui/icons-material';
+import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
+import api, { extractErrorMessage } from '../config/api';
+import { useAuthStore } from '../stores/authStore';
+import { isAdminRole } from '@hospital-erp/shared';
 import { formatIndianNumber, formatDate, amountToWords } from '../utils/enumOptions';
 import { VoucherType, LedgerGroup } from '@hospital-erp/shared';
+import SignaturePad from './SignaturePad';
 import voucherTemplate from '../vochuer.png';
 import receiptVoucherTemplate from '../Receipt.png';
 import journalVoucherTemplate from '../Journal voucher.png';
@@ -38,6 +42,7 @@ export interface Voucher {
   updatedAt: string | null;
   chequeNumber: string | null;
   chequeDate: string | null;
+  signatureData?: string | null;
   entries: VoucherEntry[];
   billSettlements?: BillSettlement[];
 }
@@ -58,6 +63,7 @@ export const mapVoucher = (v: any): Voucher => ({
   updatedAt: v.updatedAt ?? null,
   chequeNumber: v.chequeNumber ?? null,
   chequeDate: v.chequeDate ?? null,
+  signatureData: v.signatureData ?? null,
   entries: (v.ledgerEntries ?? []).map((le: any) => ({
     ledgerId: le.ledger?.id ?? le.ledgerId ?? '',
     ledgerName: le.ledger?.name ?? '',
@@ -229,7 +235,7 @@ const voucherNarrationFieldSx = {
 // Landscape-first: the sheet keeps its wide aspect on every screen; on narrow
 // phones the parent scrolls horizontally instead of squeezing the voucher into
 // a portrait-width layout where the printed text would become unreadable.
-export function VoucherPrintSheet({ template, alt, aspect, children }: { template: string; alt: string; aspect: string; children: React.ReactNode }) {
+export function VoucherPrintSheet({ template, alt, aspect, signature, children }: { template: string; alt: string; aspect: string; signature?: string | null; children: React.ReactNode }) {
   return <>
     <style>{VOUCHER_PRINT_CSS}</style>
     {/* xs: flex-start is REQUIRED — with justifyContent:center a child wider
@@ -240,6 +246,14 @@ export function VoucherPrintSheet({ template, alt, aspect, children }: { templat
       <Box className="voucher-print-sheet" sx={{ position: 'relative', width: '100%', minWidth: { xs: 640, sm: 0 }, maxWidth: 1100, aspectRatio: aspect, bgcolor: '#fff', boxShadow: 3, overflow: 'hidden', flexShrink: 0 }}>
         <Box component="img" src={template} alt={alt} sx={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain' }} />
         {children}
+        {signature && (
+          <Box
+            component="img"
+            src={signature}
+            alt="Authorized signature"
+            sx={{ position: 'absolute', right: '7%', bottom: '6.5%', width: '19%', height: '10%', objectFit: 'contain', mixBlendMode: 'multiply' }}
+          />
+        )}
       </Box>
     </Box>
   </>;
@@ -254,7 +268,7 @@ export function PaymentVoucherPrintPreview({ voucher, template }: { voucher: Pri
   const createdBy = voucher.createdByUser?.name || voucher.createdBy || '';
 
   return (
-    <VoucherPrintSheet template={template} alt="Payment voucher template" aspect="1568 / 1014">
+    <VoucherPrintSheet template={template} alt="Payment voucher template" aspect="1568 / 1014" signature={voucher.signatureData}>
       <Typography sx={{ ...voucherFieldSx, left: '20.4%', top: '34.7%', maxWidth: '40%' }}>{voucher.jvNumber}</Typography>
       <Typography sx={{ ...voucherLineFieldSx, left: '76.2%', top: '34.7%', maxWidth: '18%' }}>{formatDate(voucher.date)}</Typography>
       <Typography sx={{ ...voucherLineFieldSx, left: '19%', top: '42.1%', width: '75%' }}>{partyEntry?.ledgerName || ''}</Typography>
@@ -279,7 +293,7 @@ export function ReceiptVoucherPrintPreview({ voucher, template }: { voucher: Pri
   const createdBy = voucher.createdByUser?.name || voucher.createdBy || '';
 
   return (
-    <VoucherPrintSheet template={template} alt="Receipt voucher template" aspect="1600 / 1035">
+    <VoucherPrintSheet template={template} alt="Receipt voucher template" aspect="1600 / 1035" signature={voucher.signatureData}>
       <Typography sx={{ ...voucherFieldSx, left: '18.6%', top: '34.7%', maxWidth: '50%' }}>{voucher.jvNumber}</Typography>
       <Typography sx={{ ...voucherLineFieldSx, left: '76.2%', top: '34.7%', maxWidth: '17.5%' }}>{formatDate(voucher.date)}</Typography>
       <Typography sx={{ ...voucherLineFieldSx, left: '25.2%', top: '42.1%', width: '68%' }}>{partyEntry?.ledgerName || ''}</Typography>
@@ -314,7 +328,7 @@ export function JournalVoucherPrintPreview({ voucher, template }: { voucher: Pri
   const rowCenterY = (index: number) => `${firstRowCenterY + index * rowStep}%`;
 
   return (
-    <VoucherPrintSheet template={template} alt="Journal voucher template" aspect="1559 / 1009">
+    <VoucherPrintSheet template={template} alt="Journal voucher template" aspect="1559 / 1009" signature={voucher.signatureData}>
       <Typography sx={{ ...voucherLineFieldSx, left: '9%', top: '29.3%', maxWidth: '19%' }}>{voucher.jvNumber}</Typography>
       <Typography sx={{ ...voucherLineFieldSx, left: '83.5%', top: '29.3%', maxWidth: '11%' }}>{formatDate(voucher.date)}</Typography>
 
@@ -364,6 +378,18 @@ export function VoucherPreviewDialog({ voucherId, onClose }: { voucherId: string
     ...voucherQueryOptions(voucherId ?? ''),
     enabled: !!voucherId,
   });
+  const queryClient = useQueryClient();
+  const user = useAuthStore((s) => s.user);
+  const canSign = isAdminRole(user?.role ?? '');
+  const [signOpen, setSignOpen] = useState(false);
+  const signMutation = useMutation({
+    mutationFn: async (signatureData: string) =>
+      api.post(`/vouchers/${voucherId}/signature`, { signatureData }),
+    onSuccess: () => {
+      setSignOpen(false);
+      void queryClient.invalidateQueries({ queryKey: ['/vouchers', 'print', voucherId] });
+    },
+  });
 
   return (
     <Dialog open={!!voucherId} onClose={onClose} maxWidth="lg" fullWidth
@@ -381,9 +407,22 @@ export function VoucherPreviewDialog({ voucherId, onClose }: { voucherId: string
         )}
       </DialogContent>
       <DialogActions>
+        {signMutation.isError && <Alert severity="error" sx={{ mr: 'auto', py: 0.2 }}>{extractErrorMessage(signMutation.error)}</Alert>}
         <Button onClick={onClose}>Close</Button>
+        {canSign && voucher && (
+          <Button variant="outlined" startIcon={<DrawIcon />} onClick={() => setSignOpen(true)}>
+            {voucher.signatureData ? 'Re-sign' : 'Sign'}
+          </Button>
+        )}
         <Button variant="contained" startIcon={<PrintIcon />} disabled={!voucher} onClick={printVoucherSheet}>Print Voucher</Button>
       </DialogActions>
+      <SignaturePad
+        open={signOpen}
+        saving={signMutation.isPending}
+        onClose={() => setSignOpen(false)}
+        onSave={(dataUrl) => signMutation.mutate(dataUrl)}
+        title={`Sign ${voucher?.jvNumber ?? 'Voucher'}`}
+      />
     </Dialog>
   );
 }
