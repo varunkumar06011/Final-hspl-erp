@@ -27,6 +27,7 @@
   },
   "dependencies": {
     "@types/bcryptjs": "^2.4.6",
-    "bcryptjs": "^3.0.3"
+    "bcryptjs": "^3.0.3",
+    "firebase": "^12.19.0"
   }
 }
