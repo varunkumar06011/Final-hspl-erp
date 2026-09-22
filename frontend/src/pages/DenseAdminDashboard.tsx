@@ -361,8 +361,8 @@ export default function DenseAdminDashboard() {
           )}
         </Section>
 
-        {/* Action Required — white alert card (reference layout) */}
-        <Card sx={{ ...darkCard, bgcolor: '#ffffff', border: '1px solid rgba(255,92,122,.3)', animation: `${sirenPulse} 1.8s infinite`, display: 'flex', flexDirection: 'column' }}>
+        {/* Action Required — red gradient card matching the other cards */}
+        <Card sx={{ ...darkCard, borderColor: 'rgba(255,92,122,.35)', background: `linear-gradient(165deg, rgba(255,92,122,.15), rgba(255,92,122,.03) 65%), ${D.card}`, animation: `${sirenPulse} 1.8s infinite`, display: 'flex', flexDirection: 'column' }}>
           <CardContent sx={{ p: 1.5, '&:last-child': { pb: 1.5 }, height: '100%', display: 'flex', flexDirection: 'column' }}>
             <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
               <Stack direction="row" spacing={1} alignItems="center">
@@ -370,17 +370,17 @@ export default function DenseAdminDashboard() {
                   <SirenIcon sx={{ fontSize: 19, color: '#fff', animation: `${sirenIconPulse} 1s infinite` }} />
                 </Box>
                 <Box>
-                  <Typography sx={{ fontSize: '0.82rem', fontWeight: 800, color: '#1e293b', lineHeight: 1.15 }}>Action Required</Typography>
-                  <Typography sx={{ fontSize: '0.62rem', color: '#64748b' }}>Pending items need your attention</Typography>
+                  <Typography sx={{ fontSize: '0.82rem', fontWeight: 800, color: D.text, lineHeight: 1.15 }}>Action Required</Typography>
+                  <Typography sx={{ fontSize: '0.62rem', color: D.textDim }}>Pending items need your attention</Typography>
                 </Box>
               </Stack>
               {(data?.actionItems ?? []).length > 0 && (
-                <Chip size="small" clickable onClick={() => navigate(data!.actionItems[0].path)} label="View All →" sx={{ height: 20, fontSize: '0.6rem', fontWeight: 700, color: D.red, borderColor: 'rgba(255,92,122,.45)', bgcolor: 'rgba(255,92,122,.08)' }} variant="outlined" />
+                <Chip size="small" clickable onClick={() => navigate(data!.actionItems[0].path)} label="View All →" sx={{ height: 20, fontSize: '0.6rem', fontWeight: 700, color: D.red, borderColor: 'rgba(255,92,122,.45)', bgcolor: 'rgba(255,92,122,.1)' }} variant="outlined" />
               )}
             </Stack>
-            <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', mt: 1, overflow: 'auto', '&::-webkit-scrollbar': { width: 4 }, '&::-webkit-scrollbar-thumb': { bgcolor: 'rgba(100,116,139,.3)', borderRadius: 2 } }}>
+            <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', mt: 1, overflow: 'auto', '&::-webkit-scrollbar': { width: 4 }, '&::-webkit-scrollbar-thumb': { bgcolor: 'rgba(148,163,184,.2)', borderRadius: 2 } }}>
               {loading ? <Skeleton variant="rectangular" height={60} /> : (data?.actionItems ?? []).length === 0 ? (
-                <Typography variant="caption" sx={{ textAlign: 'center', py: 1, color: '#64748b' }}>No pending action</Typography>
+                <Typography variant="caption" sx={{ textAlign: 'center', py: 1, color: D.textDim }}>No pending action</Typography>
               ) : (
                 <>
                   <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 0.8 }}>
@@ -392,11 +392,11 @@ export default function DenseAdminDashboard() {
                       <Typography sx={{ fontSize: '1.3rem', fontWeight: 900, color: D.red, lineHeight: 1 }}>!</Typography>
                     </Box>
                   </Stack>
-                  <Stack spacing={0.5} sx={{ maxHeight: 130, overflowY: 'auto', '&::-webkit-scrollbar': { width: 4 }, '&::-webkit-scrollbar-thumb': { bgcolor: 'rgba(100,116,139,.3)', borderRadius: 2 } }}>
+                  <Stack spacing={0.5} sx={{ maxHeight: 130, overflowY: 'auto', '&::-webkit-scrollbar': { width: 4 }, '&::-webkit-scrollbar-thumb': { bgcolor: 'rgba(148,163,184,.2)', borderRadius: 2 } }}>
                     {data!.actionItems.map((item) => (
-                      <Stack key={`${item.type}-${item.id}`} direction="row" alignItems="center" spacing={0.8} onClick={() => navigate(item.path)} sx={{ cursor: 'pointer', px: 0.9, py: 0.7, borderRadius: 1.5, bgcolor: 'rgba(255,92,122,.05)', border: '1px solid rgba(255,92,122,.2)', '&:hover': { bgcolor: 'rgba(255,92,122,.1)' }, minWidth: 0 }}>
+                      <Stack key={`${item.type}-${item.id}`} direction="row" alignItems="center" spacing={0.8} onClick={() => navigate(item.path)} sx={{ cursor: 'pointer', px: 0.9, py: 0.7, borderRadius: 1.5, bgcolor: 'rgba(255,92,122,.1)', border: '1px solid rgba(255,92,122,.22)', '&:hover': { bgcolor: 'rgba(255,92,122,.16)' }, minWidth: 0 }}>
                         <ReceiptIcon sx={{ fontSize: 14, color: D.red, flexShrink: 0 }} />
-                        <Typography sx={{ fontSize: '0.68rem', fontWeight: 600, color: '#1e293b', flex: 1 }} noWrap>{item.type === 'purchase-order' ? 'PO' : item.type === 'quotation' ? 'Quotation' : item.type === 'invoice' ? 'Invoice' : 'Payment'} {item.code}</Typography>
+                        <Typography sx={{ fontSize: '0.68rem', fontWeight: 600, color: D.text, flex: 1 }} noWrap>{item.type === 'purchase-order' ? 'PO' : item.type === 'quotation' ? 'Quotation' : item.type === 'invoice' ? 'Invoice' : 'Payment'} {item.code}</Typography>
                         <Typography sx={{ fontSize: '0.85rem', color: D.red, fontWeight: 700 }}>›</Typography>
                       </Stack>
                     ))}

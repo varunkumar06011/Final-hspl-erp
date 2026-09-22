@@ -442,11 +442,14 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     <Box sx={{ display: 'flex' }}>
       <AppBar
         position="fixed"
-        // Admins get the navy dark theme — 'default' makes the bar use the
-        // dark paper color instead of the light-blue primary bar.
+        // Admins get a pure-black navbar matching the dark dashboard theme;
+        // other roles keep the standard primary bar.
         color={isAdminRole(user?.role ?? '') ? 'default' : 'primary'}
         enableColorOnDark
-        sx={{ zIndex: (theme) => theme.zIndex.drawer + 1 }}
+        sx={{
+          zIndex: (theme) => theme.zIndex.drawer + 1,
+          ...(isAdminRole(user?.role ?? '') && { bgcolor: '#000', backgroundImage: 'none' }),
+        }}
       >
         <Toolbar>
           {isMobile && (

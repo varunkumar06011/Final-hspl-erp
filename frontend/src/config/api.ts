@@ -29,9 +29,20 @@ api.interceptors.request.use(
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    // Auto-logout is completely disabled per user request.
-    // The user stays logged in until they manually click Logout.
-    // 401 errors are surfaced to the calling component for handling.
+    // A 401 with a stored token means the token is expired/invalid — every
+    // request will keep failing, so staying "logged in" just hangs the app on
+    // dead data. Clear it and send the user to login once.
+    if (error.response?.status === 401) {
+      try {
+        if (localStorage.getItem('firebaseToken')) {
+          localStorage.removeItem('firebaseToken');
+          localStorage.removeItem('user');
+          if (window.location.pathname !== '/login') {
+            window.location.href = '/login';
+          }
+        }
+      } catch { /* storage unavailable — ProtectedRoute handles it */ }
+    }
 
     if (error.code === 'ECONNABORTED') {
       error.message = 'Request timed out. Please try again.';
