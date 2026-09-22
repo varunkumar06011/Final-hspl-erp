@@ -366,7 +366,7 @@ export function VoucherPreviewDialog({ voucherId, onClose }: { voucherId: string
 
   return (
     <Dialog open={!!voucherId} onClose={onClose} maxWidth="lg" fullWidth
-      sx={{ '& .MuiDialog-paper': { m: { xs: 0.5, sm: 4 }, width: { xs: 'calc(100% - 8px)', sm: 'auto' }, maxHeight: { xs: 'calc(100% - 16px)' } } }}>
+      sx={{ '& .MuiDialog-paper': { m: { xs: 0.5, sm: 4 }, width: { xs: 'calc(100% - 8px)' }, maxHeight: { xs: 'calc(100% - 16px)' } } }}>
       <DialogTitle sx={{ py: { xs: 1, sm: 2 } }}>{voucher?.voucherType === VoucherType.RECEIPT ? 'Receipt Voucher Preview' : voucher?.voucherType === VoucherType.JOURNAL ? 'Journal Voucher Preview' : 'Payment Voucher Preview'}</DialogTitle>
       <DialogContent sx={{ bgcolor: '#eef1f5', p: { xs: 0.5, sm: 2 } }}>
         {isLoading && <Box sx={{ py: 8, textAlign: 'center' }}><CircularProgress /></Box>}
