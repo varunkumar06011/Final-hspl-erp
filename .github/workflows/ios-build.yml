@@ -198,17 +198,18 @@ jobs:
         env:
           ARCHIVE_PATH: ${{ runner.temp }}/HospitalERP.xcarchive
         run: |
+          # Signing settings live on the App target's Release config and read
+          # the custom vars below — passing CODE_SIGN_STYLE/PROVISIONING_* on
+          # the command line would apply them to SPM package targets too,
+          # which cannot be provisioned and fail the archive.
           xcodebuild archive \
             -project "$XCODE_PROJECT" \
             -scheme "$SCHEME" \
             -configuration Release \
             -destination 'generic/platform=iOS' \
             -archivePath "$ARCHIVE_PATH" \
-            CODE_SIGN_STYLE=Manual \
-            CODE_SIGN_IDENTITY="Apple Distribution" \
-            DEVELOPMENT_TEAM="$TEAM_ID" \
-            PROVISIONING_PROFILE_SPECIFIER="$PROFILE_NAME" \
-            PRODUCT_BUNDLE_IDENTIFIER="$BUNDLE_ID"
+            IOS_TEAM_ID="$TEAM_ID" \
+            IOS_PROFILE_NAME="$PROFILE_NAME"
 
       - name: Export .ipa
         env:
