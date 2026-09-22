@@ -60,7 +60,7 @@ interface ExpenditureDetailData {
   transactions: Array<{ id: string; account: string; accountType: 'BANK' | 'CASH'; amount: number; description: string; date: string; voucherId?: string | null; budgetHead: { particulars: string } | null }>;
 }
 interface InwardDetailData {
-  transactions: Array<{ id: string; account: string; accountType: 'BANK' | 'CASH'; amount: number; description: string; type: string; date: string }>;
+  transactions: Array<{ id: string; account: string; accountType: 'BANK' | 'CASH'; amount: number; description: string; type: string; voucherId?: string | null; date: string }>;
 }
 interface ShortAdvanceDetailData {
   totalAmount: number;
@@ -212,6 +212,7 @@ export default function DenseAdminDashboard() {
   });
   const [expenditureOpen, setExpenditureOpen] = useState(false);
   const [inwardOpen, setInwardOpen] = useState(false);
+  const [balanceOpen, setBalanceOpen] = useState(false);
   const [shortAdvanceOpen, setShortAdvanceOpen] = useState(false);
   const [voucherPreviewId, setVoucherPreviewId] = useState<string | null>(null);
   const [noVoucherHint, setNoVoucherHint] = useState(false);
@@ -320,7 +321,7 @@ export default function DenseAdminDashboard() {
         <KpiCard title="Inward Funds" value={data?.pureBankInward ?? 0} subtitle="All funds received" color={D.teal} spark={inwardSpark} onClick={() => setInwardOpen(true)} />
         <KpiCard title="Total Expenditure" value={data?.totalExpenditure ?? 0} subtitle="All posted spend" color={D.red} delta={expenditureDelta} spark={expenditureSpark} onClick={() => setExpenditureOpen(true)} />
         <KpiCard title="Short Advance / Loan" value={data?.shortAdvance ?? 0} subtitle="Cash loans received" color={D.violet} onClick={() => setShortAdvanceOpen(true)} />
-        <KpiCard title="Balance" value={data?.balance ?? 0} subtitle="Inward + loans − spend" color={D.blue} />
+        <KpiCard title="Balance" value={data?.balance ?? 0} subtitle="Inward + loans − spend" color={D.blue} onClick={() => setBalanceOpen(true)} />
       </Box>
 
       {/* ── Overview row: donut + action + work + spend range ── */}
@@ -665,12 +666,50 @@ export default function DenseAdminDashboard() {
             const bankReceipts = (inwardDetails?.transactions ?? []).filter((transaction) => transaction.accountType === 'BANK' && ['DEPOSIT', 'MANUAL_DEPOSIT', 'REVERSAL_OUT'].includes(transaction.type));
             return <Box sx={{ overflowX: 'auto' }}>
               <Stack direction="row" spacing={2} sx={{ px: 2, py: 1, bgcolor: 'rgba(148,163,184,.06)', borderBottom: `1px solid ${D.cardBorder}` }}><Typography variant="caption" fontWeight={700}>Net Inward: {formatCurrency(data?.pureBankInward ?? 0)}</Typography><Typography variant="caption" sx={{ color: D.textDim }}>Records: {bankReceipts.length}</Typography></Stack>
-              <Table size="small" sx={{ minWidth: 620, '& td': { color: D.text, borderColor: D.cardBorder }, '& th': { color: D.textDim, borderColor: D.cardBorder } }}><TableHead><TableRow><TableCell sx={{ py: 0.35, px: 0.8, fontSize: '0.68rem', whiteSpace: 'nowrap' }}>Date</TableCell><TableCell sx={{ py: 0.35, px: 0.8, fontSize: '0.68rem', whiteSpace: 'nowrap' }}>Type</TableCell><TableCell sx={{ py: 0.35, px: 0.8, fontSize: '0.68rem', whiteSpace: 'nowrap' }}>Bank Account</TableCell><TableCell sx={{ py: 0.35, px: 0.8, fontSize: '0.68rem', whiteSpace: 'nowrap' }}>Description</TableCell><TableCell align="right" sx={{ py: 0.35, px: 0.8, fontSize: '0.68rem', whiteSpace: 'nowrap' }}>Amount</TableCell></TableRow></TableHead><TableBody>{bankReceipts.map((transaction) => <TableRow key={transaction.id} hover><TableCell sx={{ py: 0.35, px: 0.8, fontSize: '0.68rem', whiteSpace: 'nowrap' }}>{formatDate(transaction.date)}</TableCell><TableCell sx={{ py: 0.35, px: 0.8, fontSize: '0.68rem', whiteSpace: 'nowrap' }}><Chip size="small" label={transaction.type === 'REVERSAL_OUT' ? 'Reversed Receipt' : 'Bank Receipt'} color={transaction.type === 'REVERSAL_OUT' ? 'error' : 'success'} sx={{ height: 18, fontSize: '0.6rem' }} /></TableCell><TableCell sx={{ py: 0.35, px: 0.8, fontSize: '0.68rem', whiteSpace: 'nowrap' }}>{transaction.account}</TableCell><TableCell sx={{ py: 0.35, px: 0.8, fontSize: '0.68rem', whiteSpace: 'nowrap', maxWidth: 280, overflow: 'hidden', textOverflow: 'ellipsis' }} title={transaction.description}>{transaction.description || '—'}</TableCell><TableCell align="right" sx={{ py: 0.35, px: 0.8, fontSize: '0.68rem', whiteSpace: 'nowrap', fontWeight: 700, color: transaction.type === 'REVERSAL_OUT' ? 'error.main' : 'success.main' }}>{transaction.type === 'REVERSAL_OUT' ? '−' : '+'}{formatCurrency(Math.abs(transaction.amount))}</TableCell></TableRow>)}</TableBody></Table>
+              <Table size="small" sx={{ minWidth: 620, '& td': { color: D.text, borderColor: D.cardBorder }, '& th': { color: D.textDim, borderColor: D.cardBorder } }}><TableHead><TableRow><TableCell sx={{ py: 0.35, px: 0.8, fontSize: '0.68rem', whiteSpace: 'nowrap' }}>Date</TableCell><TableCell sx={{ py: 0.35, px: 0.8, fontSize: '0.68rem', whiteSpace: 'nowrap' }}>Type</TableCell><TableCell sx={{ py: 0.35, px: 0.8, fontSize: '0.68rem', whiteSpace: 'nowrap' }}>Bank Account</TableCell><TableCell sx={{ py: 0.35, px: 0.8, fontSize: '0.68rem', whiteSpace: 'nowrap' }}>Description</TableCell><TableCell align="right" sx={{ py: 0.35, px: 0.8, fontSize: '0.68rem', whiteSpace: 'nowrap' }}>Amount</TableCell></TableRow></TableHead><TableBody>{bankReceipts.map((transaction) => <TableRow key={transaction.id} hover onClick={() => transaction.voucherId ? setVoucherPreviewId(transaction.voucherId) : setNoVoucherHint(true)} onMouseEnter={() => prefetchVoucher(transaction.voucherId)} onTouchStart={() => prefetchVoucher(transaction.voucherId)} sx={{ cursor: 'pointer' }} title={transaction.voucherId ? 'Tap to view voucher' : 'No voucher linked'}><TableCell sx={{ py: 0.35, px: 0.8, fontSize: '0.68rem', whiteSpace: 'nowrap' }}><Stack direction="row" alignItems="center" spacing={0.5}>{transaction.voucherId && <ReceiptIcon sx={{ fontSize: 13, color: 'primary.main' }} />}<span>{formatDate(transaction.date)}</span></Stack></TableCell><TableCell sx={{ py: 0.35, px: 0.8, fontSize: '0.68rem', whiteSpace: 'nowrap' }}><Chip size="small" label={transaction.type === 'REVERSAL_OUT' ? 'Reversed Receipt' : 'Bank Receipt'} color={transaction.type === 'REVERSAL_OUT' ? 'error' : 'success'} sx={{ height: 18, fontSize: '0.6rem' }} /></TableCell><TableCell sx={{ py: 0.35, px: 0.8, fontSize: '0.68rem', whiteSpace: 'nowrap' }}>{transaction.account}</TableCell><TableCell sx={{ py: 0.35, px: 0.8, fontSize: '0.68rem', whiteSpace: 'nowrap', maxWidth: 280, overflow: 'hidden', textOverflow: 'ellipsis' }} title={transaction.description}>{transaction.description || '—'}</TableCell><TableCell align="right" sx={{ py: 0.35, px: 0.8, fontSize: '0.68rem', whiteSpace: 'nowrap', fontWeight: 700, color: transaction.type === 'REVERSAL_OUT' ? 'error.main' : 'success.main' }}>{transaction.type === 'REVERSAL_OUT' ? '−' : '+'}{formatCurrency(Math.abs(transaction.amount))}</TableCell></TableRow>)}</TableBody></Table>
               {!bankReceipts.length && <Typography sx={{ p: 3, textAlign: 'center', color: D.textDim }}>No bank receipts found.</Typography>}
             </Box>;
           })()}
         </DialogContent>
         <DialogActions><Button onClick={() => setInwardOpen(false)}>Close</Button></DialogActions>
+      </Dialog>
+
+      {/* Balance — composition breakdown of the available balance figure */}
+      <Dialog open={balanceOpen} onClose={() => setBalanceOpen(false)} maxWidth="sm" fullWidth PaperProps={{ sx: { bgcolor: D.card, color: D.text, border: `1px solid ${D.cardBorder}` } }}>
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', pb: 1 }}>
+          <Box><Typography sx={{ fontWeight: 800 }}>Balance Breakdown</Typography><Typography variant="caption" sx={{ color: D.textDim }}>How the available balance is composed</Typography></Box>
+          <Button aria-label="Close balance breakdown" onClick={() => setBalanceOpen(false)} sx={{ minWidth: 36, p: 0.5 }}><CloseIcon fontSize="small" /></Button>
+        </DialogTitle>
+        <DialogContent dividers sx={{ p: 0, borderColor: D.cardBorder }}>
+          <Table size="small" sx={{ '& td': { color: D.text, borderColor: D.cardBorder }, '& th': { color: D.textDim, borderColor: D.cardBorder } }}>
+            <TableBody>
+              {[
+                { label: 'Inward Funds (bank receipts)', value: data?.pureBankInward ?? 0, sign: '+', color: 'success.main' },
+                { label: 'Short Advance / Loan receipts', value: data?.shortAdvance ?? 0, sign: '+', color: 'warning.main' },
+                { label: 'Bank expenditure', value: data?.bankExpenditure ?? 0, sign: '−', color: 'error.main' },
+                { label: 'Cash expenditure', value: data?.cashExpenditure ?? 0, sign: '−', color: 'error.main' },
+              ].map((r) => (
+                <TableRow key={r.label} hover>
+                  <TableCell sx={{ py: 0.8, px: 1.6, fontSize: '0.74rem' }}>{r.label}</TableCell>
+                  <TableCell align="right" sx={{ py: 0.8, px: 1.6, fontSize: '0.74rem', fontWeight: 700, color: r.color, fontFamily: NUM_FONT }}>{r.sign}{formatCurrency(r.value)}</TableCell>
+                </TableRow>
+              ))}
+              <TableRow sx={{ bgcolor: 'rgba(148,163,184,.06)' }}>
+                <TableCell sx={{ py: 0.9, px: 1.6, fontSize: '0.78rem', fontWeight: 800 }}>Available Balance</TableCell>
+                <TableCell align="right" sx={{ py: 0.9, px: 1.6, fontSize: '0.78rem', fontWeight: 800, color: D.blue, fontFamily: NUM_FONT }}>{formatCurrency(data?.balance ?? 0)}</TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell sx={{ py: 0.6, px: 1.6, fontSize: '0.7rem', color: D.textDim }}>Bank accounts balance</TableCell>
+                <TableCell align="right" sx={{ py: 0.6, px: 1.6, fontSize: '0.7rem', color: D.textDim, fontFamily: NUM_FONT }}>{formatCurrency(data?.bankBalance ?? 0)}</TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell sx={{ py: 0.6, px: 1.6, fontSize: '0.7rem', color: D.textDim }}>Cash accounts balance</TableCell>
+                <TableCell align="right" sx={{ py: 0.6, px: 1.6, fontSize: '0.7rem', color: D.textDim, fontFamily: NUM_FONT }}>{formatCurrency(data?.cashBalance ?? 0)}</TableCell>
+              </TableRow>
+            </TableBody>
+          </Table>
+        </DialogContent>
+        <DialogActions><Button onClick={() => setBalanceOpen(false)}>Close</Button></DialogActions>
       </Dialog>
 
       <Dialog open={expenditureOpen} onClose={() => setExpenditureOpen(false)} maxWidth="md" fullWidth PaperProps={{ sx: { bgcolor: D.card, color: D.text, border: `1px solid ${D.cardBorder}` } }}>

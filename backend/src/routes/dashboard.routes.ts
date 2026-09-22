@@ -1699,6 +1699,19 @@ router.get(
         (bankBaseInflowAgg._count ?? 0) + (cashBaseInflowAgg._count ?? 0) +
         (bankReversalOutAgg._count ?? 0) + (cashReversalOutAgg._count ?? 0);
 
+      // Only expose voucherId when the reference actually resolves to a live
+      // journal voucher — a dangling referenceId would 404 the preview.
+      const refIds = [...bankBaseInTxns, ...bankReversalOutTxns, ...cashBaseInTxns, ...cashReversalOutTxns]
+        .map((t) => t.referenceId)
+        .filter((v): v is string => Boolean(v));
+      const liveVoucherIds = new Set(
+        refIds.length
+          ? (await prisma.journalVoucher.findMany({ where: { id: { in: refIds } }, select: { id: true } })).map((v) => v.id)
+          : []
+      );
+      const resolveVoucher = (refId: string | null) =>
+        refId && liveVoucherIds.has(refId) ? refId : null;
+
       const transactions = [
         ...bankBaseInTxns.map((t) => ({
           id: t.id,
@@ -1707,6 +1720,7 @@ router.get(
           amount: Number(t.amount),
           description: t.description ?? '',
           type: t.type,
+          voucherId: resolveVoucher(t.referenceId),
           date: t.date.toISOString(),
         })),
         ...bankReversalOutTxns.map((t) => ({
@@ -1716,6 +1730,7 @@ router.get(
           amount: -Number(t.amount),
           description: t.description ?? '',
           type: t.type,
+          voucherId: resolveVoucher(t.referenceId),
           date: t.date.toISOString(),
         })),
         ...cashBaseInTxns.map((t) => ({
@@ -1725,6 +1740,7 @@ router.get(
           amount: Number(t.amount),
           description: t.description ?? '',
           type: t.type,
+          voucherId: resolveVoucher(t.referenceId),
           date: t.date.toISOString(),
         })),
         ...cashReversalOutTxns.map((t) => ({
@@ -1734,6 +1750,7 @@ router.get(
           amount: -Number(t.amount),
           description: t.description ?? '',
           type: t.type,
+          voucherId: resolveVoucher(t.referenceId),
           date: t.date.toISOString(),
         })),
       ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
