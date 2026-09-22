@@ -46,8 +46,8 @@ env:
   BUNDLE_ID: com.vgrand.hospitalerp
   SCHEME: App
   XCODE_PROJECT: frontend/ios/App/App.xcodeproj
-  ARCHIVE_PATH: ${{ runner.temp }}/HospitalERP.xcarchive
-  EXPORT_DIR: ${{ runner.temp }}/export
+  # ARCHIVE_PATH / EXPORT_DIR are set per-step — the `runner` context is not
+  # available in workflow-level env.
 
 jobs:
   build:
@@ -195,6 +195,8 @@ jobs:
         run: xcodebuild -resolvePackageDependencies -project "$XCODE_PROJECT" -scheme "$SCHEME"
 
       - name: Archive
+        env:
+          ARCHIVE_PATH: ${{ runner.temp }}/HospitalERP.xcarchive
         run: |
           xcodebuild archive \
             -project "$XCODE_PROJECT" \
@@ -209,6 +211,9 @@ jobs:
             PRODUCT_BUNDLE_IDENTIFIER="$BUNDLE_ID"
 
       - name: Export .ipa
+        env:
+          ARCHIVE_PATH: ${{ runner.temp }}/HospitalERP.xcarchive
+          EXPORT_DIR: ${{ runner.temp }}/export
         run: |
           cat > "$RUNNER_TEMP/ExportOptions.plist" <<EOF
           <?xml version="1.0" encoding="UTF-8"?>
@@ -243,11 +248,12 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: hospital-erp-ios-${{ github.run_number }}
-          path: ${{ env.EXPORT_DIR }}/*.ipa
+          path: ${{ runner.temp }}/export/*.ipa
           retention-days: 30
 
       - name: Upload to App Store Connect (TestFlight)
         env:
+          EXPORT_DIR: ${{ runner.temp }}/export
           ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
           ASC_ISSUER: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
           ASC_KEY: ${{ secrets.APP_STORE_CONNECT_KEY }}
