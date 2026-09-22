@@ -6,9 +6,12 @@
   "scope": "/",
   "display": "standalone",
   "orientation": "any",
-  "background_color": "#E3F2FD",
-  "theme_color": "#448AFF",
-  "categories": ["business", "productivity"],
+  "background_color": "#0d1524",
+  "theme_color": "#0d1524",
+  "categories": [
+    "business",
+    "productivity"
+  ],
   "icons": [
     {
       "src": "/icon-192.png",
@@ -33,12 +36,6 @@
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
-    },
-    {
-      "src": "/icon.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
-      "purpose": "any"
     }
   ]
 }
