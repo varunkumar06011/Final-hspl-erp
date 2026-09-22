@@ -207,11 +207,16 @@ const voucherFieldSx = {
 } as const;
 // Fields whose text sits on a printed line — bottom edge rests on the line.
 const voucherLineFieldSx = { ...voucherFieldSx, transform: 'translateY(-100%)' };
-// Narration/description — wraps to a second printed line when long, then clamps
-// at 2 lines with an ellipsis so the voucher height never grows. The stored
-// narration is untouched; the full text is still available via the title attr.
+// Narration/description — the templates have a dedicated SECOND ruled line
+// below the narration line, so text must flow DOWNWARD (top-anchored) across
+// both lines: line 1 rests on the narration rule, line 2 on the continuation
+// rule. `top` is positioned one line-gap above the narration rule and
+// lineHeight matches the ruled-line spacing, so each printed line lands on
+// its own rule; clamps at 2 lines so it never grows the voucher. Stored
+// narration is untouched; full text remains available via the title attr.
 const voucherNarrationFieldSx = {
-  ...voucherLineFieldSx,
+  ...voucherFieldSx,
+  transform: 'none',
   whiteSpace: 'normal',
   display: '-webkit-box',
   WebkitLineClamp: 2,
@@ -254,7 +259,7 @@ export function PaymentVoucherPrintPreview({ voucher, template }: { voucher: Pri
       <Typography sx={{ ...voucherLineFieldSx, left: '19%', top: '42.1%', width: '75%' }}>{partyEntry?.ledgerName || ''}</Typography>
       <Typography sx={{ ...voucherLineFieldSx, left: '24.3%', top: '49.5%', width: '41%' }}>{paymentMode}</Typography>
       <Typography sx={{ ...voucherLineFieldSx, left: '75.3%', top: '49.5%', width: '18%' }}>{paymentMode === 'Bank' ? (voucher.chequeNumber || '') : ''}</Typography>
-      <Typography title={voucher.description || ''} sx={{ ...voucherNarrationFieldSx, left: '23.2%', top: '57.1%', width: '70%' }}>{voucher.description || ''}</Typography>
+      <Typography title={voucher.description || ''} sx={{ ...voucherNarrationFieldSx, left: '23.2%', top: '52.9%', width: '70%', lineHeight: 2.4 }}>{voucher.description || ''}</Typography>
       <Typography sx={{ ...voucherFieldSx, left: '16.8%', top: '72.7%', width: '20%', fontWeight: 700 }}>{formatIndianNumber(amount.toFixed(2))}</Typography>
       <Typography sx={{ ...voucherFieldSx, left: '46.4%', top: '72.7%', width: '44%', whiteSpace: 'normal', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{amountText}</Typography>
       <Typography sx={{ ...voucherFieldSx, left: '30.5%', top: '90.3%', maxWidth: '25%' }}>{createdBy}</Typography>
@@ -279,7 +284,7 @@ export function ReceiptVoucherPrintPreview({ voucher, template }: { voucher: Pri
       <Typography sx={{ ...voucherLineFieldSx, left: '25.2%', top: '42.1%', width: '68%' }}>{partyEntry?.ledgerName || ''}</Typography>
       <Typography sx={{ ...voucherLineFieldSx, left: '23.6%', top: '49.5%', width: '41%' }}>{receiptMode}</Typography>
       <Typography sx={{ ...voucherLineFieldSx, left: '77.4%', top: '49.5%', width: '16%' }}>{receiptMode === 'Bank' ? (voucher.chequeNumber || '') : ''}</Typography>
-      <Typography title={voucher.description || ''} sx={{ ...voucherNarrationFieldSx, left: '21.8%', top: '57.1%', width: '71.5%' }}>{voucher.description || ''}</Typography>
+      <Typography title={voucher.description || ''} sx={{ ...voucherNarrationFieldSx, left: '21.8%', top: '52.9%', width: '71.5%', lineHeight: 2.4 }}>{voucher.description || ''}</Typography>
       <Typography sx={{ ...voucherFieldSx, left: '17.2%', top: '73.2%', width: '19.5%', fontWeight: 700 }}>{formatIndianNumber(amount.toFixed(2))}</Typography>
       <Typography sx={{ ...voucherFieldSx, left: '46.6%', top: '73.2%', width: '46%', whiteSpace: 'normal', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{amountText}</Typography>
       <Typography sx={{ ...voucherFieldSx, left: '30.5%', top: '90.3%', maxWidth: '14%' }}>{createdBy}</Typography>
@@ -324,7 +329,7 @@ export function JournalVoucherPrintPreview({ voucher, template }: { voucher: Pri
       <Typography sx={{ ...cellSx, left: '63%', width: '14.5%', top: '64.4%', textAlign: 'right', fontWeight: 700 }}>{formatIndianNumber(totalDebit.toFixed(2))}</Typography>
       <Typography sx={{ ...cellSx, left: '78.5%', width: '15%', top: '64.4%', textAlign: 'right', fontWeight: 700 }}>{formatIndianNumber(totalCredit.toFixed(2))}</Typography>
 
-      <Typography title={voucher.description || ''} sx={{ ...voucherNarrationFieldSx, left: '18%', top: '71%', width: '75%' }}>{voucher.description || ''}</Typography>
+      <Typography title={voucher.description || ''} sx={{ ...voucherNarrationFieldSx, left: '18%', top: '68.2%', width: '75%', lineHeight: 1.75 }}>{voucher.description || ''}</Typography>
       <Typography sx={{ ...voucherFieldSx, left: '10.4%', top: '81%', width: '22.8%', fontWeight: 700 }}>{formatIndianNumber(amount.toFixed(2))}</Typography>
       <Typography sx={{ ...voucherFieldSx, left: '43.4%', top: '81%', width: '50%', whiteSpace: 'normal', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{amountText}</Typography>
       <Typography sx={{ ...voucherLineFieldSx, left: '9%', top: '90.5%', maxWidth: '15.5%' }}>{createdBy}</Typography>
