@@ -226,8 +226,12 @@ const voucherNarrationFieldSx = {
 export function VoucherPrintSheet({ template, alt, aspect, children }: { template: string; alt: string; aspect: string; children: React.ReactNode }) {
   return <>
     <style>{VOUCHER_PRINT_CSS}</style>
-    <Box className="voucher-print-root" sx={{ width: '100%', display: 'flex', justifyContent: 'center', p: { xs: 0, sm: 1 }, overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-      <Box className="voucher-print-sheet" sx={{ position: 'relative', width: '100%', minWidth: { xs: 620, sm: 0 }, maxWidth: 1100, aspectRatio: aspect, bgcolor: '#fff', boxShadow: 3, overflow: 'hidden', flexShrink: 0 }}>
+    {/* xs: flex-start is REQUIRED — with justifyContent:center a child wider
+        than the container overflows BOTH edges and the left side becomes
+        permanently unreachable by scrolling. flex-start puts the sheet's left
+        edge at the scroll origin so the whole voucher is reachable. */}
+    <Box className="voucher-print-root" sx={{ width: '100%', display: 'flex', justifyContent: { xs: 'flex-start', sm: 'center' }, p: { xs: 0, sm: 1 }, overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+      <Box className="voucher-print-sheet" sx={{ position: 'relative', width: '100%', minWidth: { xs: 640, sm: 0 }, maxWidth: 1100, aspectRatio: aspect, bgcolor: '#fff', boxShadow: 3, overflow: 'hidden', flexShrink: 0 }}>
         <Box component="img" src={template} alt={alt} sx={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain' }} />
         {children}
       </Box>
@@ -341,9 +345,10 @@ export function VoucherPreviewDialog({ voucherId, onClose }: { voucherId: string
   });
 
   return (
-    <Dialog open={!!voucherId} onClose={onClose} maxWidth="lg" fullWidth>
-      <DialogTitle>{voucher?.voucherType === VoucherType.RECEIPT ? 'Receipt Voucher Preview' : voucher?.voucherType === VoucherType.JOURNAL ? 'Journal Voucher Preview' : 'Payment Voucher Preview'}</DialogTitle>
-      <DialogContent sx={{ bgcolor: '#eef1f5', p: { xs: 1, sm: 2 } }}>
+    <Dialog open={!!voucherId} onClose={onClose} maxWidth="lg" fullWidth
+      sx={{ '& .MuiDialog-paper': { m: { xs: 0.5, sm: 4 }, width: { xs: 'calc(100% - 8px)', sm: 'auto' }, maxHeight: { xs: 'calc(100% - 16px)' } } }}>
+      <DialogTitle sx={{ py: { xs: 1, sm: 2 } }}>{voucher?.voucherType === VoucherType.RECEIPT ? 'Receipt Voucher Preview' : voucher?.voucherType === VoucherType.JOURNAL ? 'Journal Voucher Preview' : 'Payment Voucher Preview'}</DialogTitle>
+      <DialogContent sx={{ bgcolor: '#eef1f5', p: { xs: 0.5, sm: 2 } }}>
         {isLoading && <Box sx={{ py: 8, textAlign: 'center' }}><CircularProgress /></Box>}
         {isError && <Alert severity="error">Unable to load the saved voucher for printing.</Alert>}
         {voucher && (

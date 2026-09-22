@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { keyframes } from '@emotion/react';
 import {
   Box, Button, Card, CardContent, Chip, Dialog, DialogActions, DialogContent,
-  DialogTitle, LinearProgress, Stack, Table, TableBody, TableCell, TableHead,
+  DialogTitle, LinearProgress, Snackbar, Stack, Table, TableBody, TableCell, TableHead,
   TableRow, TextField, Typography, Skeleton,
 } from '@mui/material';
 import {
@@ -116,6 +116,7 @@ export default function DenseAdminDashboard() {
   const [inwardOpen, setInwardOpen] = useState(false);
   const [shortAdvanceOpen, setShortAdvanceOpen] = useState(false);
   const [voucherPreviewId, setVoucherPreviewId] = useState<string | null>(null);
+  const [noVoucherHint, setNoVoucherHint] = useState(false);
   const [expDateStart, setExpDateStart] = useState('');
   const [expDateEnd, setExpDateEnd] = useState('');
   const { data: expenditureDetails, isLoading: expenditureDetailsLoading } = useQuery<ExpenditureDetailData>({
@@ -313,7 +314,7 @@ export default function DenseAdminDashboard() {
               </Stack>
               <Table size="small" sx={{ minWidth: 650 }}>
                 <TableHead><TableRow><TableCell sx={cellSx}>Date</TableCell><TableCell sx={cellSx}>Source</TableCell><TableCell sx={cellSx}>Account</TableCell><TableCell sx={cellSx}>Description</TableCell><TableCell sx={cellSx}>Budget Head</TableCell><TableCell align="right" sx={cellSx}>Amount</TableCell></TableRow></TableHead>
-                <TableBody>{(expenditureDetails?.transactions ?? []).map((transaction) => <TableRow key={`${transaction.accountType}-${transaction.id}`} hover onClick={() => transaction.voucherId && setVoucherPreviewId(transaction.voucherId)} sx={{ cursor: transaction.voucherId ? 'pointer' : 'default' }} title={transaction.voucherId ? 'View voucher' : undefined}><TableCell sx={cellSx}>{formatDate(transaction.date)}</TableCell><TableCell sx={cellSx}><Chip size="small" label={transaction.accountType === 'BANK' ? 'Bank' : 'Cash'} color={transaction.accountType === 'BANK' ? 'primary' : 'warning'} sx={{ height: 18, fontSize: '0.6rem' }} /></TableCell><TableCell sx={cellSx}>{transaction.account}</TableCell><TableCell sx={{ ...cellSx, maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis' }} title={transaction.description}>{transaction.description || '—'}</TableCell><TableCell sx={cellSx}>{transaction.budgetHead?.particulars ?? '—'}</TableCell><TableCell align="right" sx={{ ...cellSx, fontWeight: 700, color: 'error.main' }}>{formatCurrency(transaction.amount)}</TableCell></TableRow>)}</TableBody>
+                <TableBody>{(expenditureDetails?.transactions ?? []).map((transaction) => <TableRow key={`${transaction.accountType}-${transaction.id}`} hover onClick={() => transaction.voucherId ? setVoucherPreviewId(transaction.voucherId) : setNoVoucherHint(true)} sx={{ cursor: transaction.voucherId ? 'pointer' : 'default' }} title={transaction.voucherId ? 'Tap to view voucher' : 'No voucher linked'}><TableCell sx={cellSx}><Stack direction="row" alignItems="center" spacing={0.5}>{transaction.voucherId && <ReceiptIcon sx={{ fontSize: 13, color: 'primary.main' }} />}<span>{formatDate(transaction.date)}</span></Stack></TableCell><TableCell sx={cellSx}><Chip size="small" label={transaction.accountType === 'BANK' ? 'Bank' : 'Cash'} color={transaction.accountType === 'BANK' ? 'primary' : 'warning'} sx={{ height: 18, fontSize: '0.6rem' }} /></TableCell><TableCell sx={cellSx}>{transaction.account}</TableCell><TableCell sx={{ ...cellSx, maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis' }} title={transaction.description}>{transaction.description || '—'}</TableCell><TableCell sx={cellSx}>{transaction.budgetHead?.particulars ?? '—'}</TableCell><TableCell align="right" sx={{ ...cellSx, fontWeight: 700, color: 'error.main' }}>{formatCurrency(transaction.amount)}</TableCell></TableRow>)}</TableBody>
               </Table>
               {!expenditureDetails?.transactions.length && <Typography sx={{ p: 3, textAlign: 'center' }} color="text.secondary">No expenditure records found.</Typography>}
             </Box>
@@ -336,7 +337,7 @@ export default function DenseAdminDashboard() {
               </Stack>
               <Table size="small" sx={{ minWidth: 620 }}>
                 <TableHead><TableRow><TableCell sx={cellSx}>Date</TableCell><TableCell sx={cellSx}>Type</TableCell><TableCell sx={cellSx}>Cash Account</TableCell><TableCell sx={cellSx}>Loan Ledger</TableCell><TableCell sx={cellSx}>Description</TableCell><TableCell align="right" sx={cellSx}>Amount</TableCell></TableRow></TableHead>
-                <TableBody>{(shortAdvanceDetails?.transactions ?? []).map((tx) => <TableRow key={tx.id} hover onClick={() => tx.voucherId && setVoucherPreviewId(tx.voucherId)} sx={{ cursor: tx.voucherId ? 'pointer' : 'default' }} title={tx.voucherId ? 'View voucher' : undefined}><TableCell sx={cellSx}>{formatDate(tx.date)}</TableCell><TableCell sx={cellSx}><Chip size="small" label={tx.type === 'REVERSAL_OUT' ? 'Reversed Loan' : 'Loan Receipt'} color={tx.type === 'REVERSAL_OUT' ? 'error' : 'warning'} sx={{ height: 18, fontSize: '0.6rem' }} /></TableCell><TableCell sx={cellSx}>{tx.account}</TableCell><TableCell sx={cellSx}>{tx.ledger}</TableCell><TableCell sx={{ ...cellSx, maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis' }} title={tx.description}>{tx.description || '—'}</TableCell><TableCell align="right" sx={{ ...cellSx, fontWeight: 700, color: tx.type === 'REVERSAL_OUT' ? 'error.main' : 'warning.dark' }}>{tx.type === 'REVERSAL_OUT' ? '−' : '+'}{formatCurrency(Math.abs(tx.amount))}</TableCell></TableRow>)}</TableBody>
+                <TableBody>{(shortAdvanceDetails?.transactions ?? []).map((tx) => <TableRow key={tx.id} hover onClick={() => tx.voucherId ? setVoucherPreviewId(tx.voucherId) : setNoVoucherHint(true)} sx={{ cursor: tx.voucherId ? 'pointer' : 'default' }} title={tx.voucherId ? 'Tap to view voucher' : 'No voucher linked'}><TableCell sx={cellSx}><Stack direction="row" alignItems="center" spacing={0.5}>{tx.voucherId && <ReceiptIcon sx={{ fontSize: 13, color: 'primary.main' }} />}<span>{formatDate(tx.date)}</span></Stack></TableCell><TableCell sx={cellSx}><Chip size="small" label={tx.type === 'REVERSAL_OUT' ? 'Reversed Loan' : 'Loan Receipt'} color={tx.type === 'REVERSAL_OUT' ? 'error' : 'warning'} sx={{ height: 18, fontSize: '0.6rem' }} /></TableCell><TableCell sx={cellSx}>{tx.account}</TableCell><TableCell sx={cellSx}>{tx.ledger}</TableCell><TableCell sx={{ ...cellSx, maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis' }} title={tx.description}>{tx.description || '—'}</TableCell><TableCell align="right" sx={{ ...cellSx, fontWeight: 700, color: tx.type === 'REVERSAL_OUT' ? 'error.main' : 'warning.dark' }}>{tx.type === 'REVERSAL_OUT' ? '−' : '+'}{formatCurrency(Math.abs(tx.amount))}</TableCell></TableRow>)}</TableBody>
               </Table>
               {!shortAdvanceDetails?.transactions.length && <Typography sx={{ p: 3, textAlign: 'center' }} color="text.secondary">No cash loan receipts found.</Typography>}
             </Box>
@@ -347,6 +348,13 @@ export default function DenseAdminDashboard() {
 
       {/* Related voucher — landscape sheet, horizontally scrollable on mobile */}
       <VoucherPreviewDialog voucherId={voucherPreviewId} onClose={() => setVoucherPreviewId(null)} />
+      <Snackbar
+        open={noVoucherHint}
+        autoHideDuration={2500}
+        onClose={() => setNoVoucherHint(false)}
+        message="No voucher is linked to this payment"
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      />
     </Box>
   );
 }
