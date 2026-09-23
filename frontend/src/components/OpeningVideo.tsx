@@ -1,13 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
-import { Box } from '@mui/material';
+import { Box, Typography } from '@mui/material';
 import { useIsFetching } from '@tanstack/react-query';
 import { useAuthStore } from '../stores/authStore';
+import { getDailyQuote } from '../utils/dailyQuote';
 
 const SHOWN_KEY = 'hspl-opening-shown';
 // Absolute failsafe — the app is never held hostage by the video or the network.
 const HARD_CAP_MS = 9000;
 // Queries must have spun up before we consider "no fetches" meaningful.
 const QUERY_GRACE_MS = 1500;
+// Minimum time the Thought of the Day stays on screen before auto-advancing.
+const QUOTE_MIN_MS = 2300;
 
 declare global {
   interface Window {
@@ -40,6 +43,7 @@ export default function OpeningVideo() {
   const [showOverlay, setShowOverlay] = useState(false);
   const [fading, setFading] = useState(false);
   const [videoDone, setVideoDone] = useState(false);
+  const [quoteDone, setQuoteDone] = useState(false);
   const [dataReady, setDataReady] = useState(false);
   const timers = useRef<number[]>([]);
   const doneRef = useRef(false);
@@ -82,6 +86,7 @@ export default function OpeningVideo() {
       try { sessionStorage.removeItem(SHOWN_KEY); } catch { /* storage unavailable */ }
       doneRef.current = false;
       setVideoDone(false);
+      setQuoteDone(false);
       setDataReady(false);
       seenFetch.current = false;
       return;
@@ -111,7 +116,16 @@ export default function OpeningVideo() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authed]);
 
-  // Reveal only when BOTH the video finished and the app's data has settled.
+  // Overlay mode: video end → swap to the Thought of the Day, hold it briefly,
+  // then reveal once the app's data has settled.
+  useEffect(() => {
+    if (videoDone && showOverlay && !quoteDone) {
+      timers.current.push(window.setTimeout(() => setQuoteDone(true), QUOTE_MIN_MS));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [videoDone, showOverlay]);
+
+  // Reveal only when video finished, the quote flashed, AND data settled.
   useEffect(() => {
     if (!videoDone || !dataReady) return;
     if (bootRef.current) {
@@ -119,9 +133,9 @@ export default function OpeningVideo() {
       bootRef.current = false;
       return;
     }
-    if (showOverlay) finish();
+    if (showOverlay && quoteDone) finish();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [videoDone, dataReady, showOverlay]);
+  }, [videoDone, dataReady, quoteDone, showOverlay]);
 
   useEffect(() => () => timers.current.forEach((t) => window.clearTimeout(t)), []);
 
@@ -129,7 +143,7 @@ export default function OpeningVideo() {
 
   return (
     <Box
-      onClick={() => setVideoDone(true)}
+      onClick={() => (videoDone ? setQuoteDone(true) : setVideoDone(true))}
       sx={{
         position: 'fixed',
         inset: 0,
@@ -144,40 +158,98 @@ export default function OpeningVideo() {
         pointerEvents: 'auto',
       }}
     >
-      <Box
-        component="video"
-        key={src}
-        src={src}
-        autoPlay
-        muted
-        playsInline
-        preload="auto"
-        ref={(el: HTMLVideoElement | null) => {
-          if (!el) return;
-          // React only sets the muted *attribute* — the DOM property is what
-          // autoplay policies check. Set both, then play() explicitly so any
-          // rejection (iOS Low Power Mode etc.) skips straight to the app
-          // instead of freezing on the first frame.
-          el.muted = true;
-          el.defaultMuted = true;
-          const p = el.play();
-          if (p) p.catch(() => setVideoDone(true));
-        }}
-        onEnded={() => setVideoDone(true)}
-        onError={() => setVideoDone(true)}
-        onLoadedMetadata={(e: React.SyntheticEvent<HTMLVideoElement>) => {
-          const dur = e.currentTarget.duration;
-          if (Number.isFinite(dur) && dur > 0) {
-            timers.current.push(window.setTimeout(() => setVideoDone(true), Math.min(dur * 1000 + 400, HARD_CAP_MS)));
-          }
-        }}
-        sx={{
-          width: '100%',
-          height: '100%',
-          objectFit: 'contain',
-          display: 'block',
-        }}
-      />
+      {videoDone ? (
+        <Box
+          sx={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            textAlign: 'center',
+            px: 4,
+            width: '100%',
+            boxSizing: 'border-box',
+            maxWidth: 620,
+            lineHeight: 1.4,
+            '@keyframes tqIn': {
+              from: { opacity: 0, transform: 'translateY(10px)' },
+              to: { opacity: 1, transform: 'none' },
+            },
+            animation: 'tqIn 0.5s ease-out both',
+          }}
+        >
+          <Box sx={{ fontSize: 56, lineHeight: 1, height: 30, color: '#4f9cf9', fontFamily: 'Georgia, serif' }}>&ldquo;</Box>
+          <Typography sx={{ mt: 1.75, mb: 1.5, fontSize: '0.66rem', fontWeight: 700, letterSpacing: '0.3em', lineHeight: 1.4, color: '#8b98ad' }}>
+            THOUGHT OF THE DAY
+          </Typography>
+          <Typography
+            component="div"
+            sx={{
+              fontSize: { xs: '1.2rem', sm: '1.4rem' },
+              fontWeight: 600,
+              fontStyle: 'italic',
+              lineHeight: 1.6,
+              color: '#e8edf7',
+            }}
+          >
+            {getDailyQuote()}
+          </Typography>
+          <Box
+            sx={{
+              width: 58,
+              height: 2,
+              mt: 2.75,
+              borderRadius: 2,
+              background: 'linear-gradient(90deg,#4f9cf9,#8b7cf6)',
+            }}
+          />
+          <Typography
+            sx={{
+              mt: 3.25,
+              fontSize: '0.62rem',
+              letterSpacing: '0.12em',
+              lineHeight: 1.4,
+              color: 'rgba(139,152,173,.55)',
+            }}
+          >
+            TAP TO CONTINUE
+          </Typography>
+        </Box>
+      ) : (
+        <Box
+          component="video"
+          key={src}
+          src={src}
+          autoPlay
+          muted
+          playsInline
+          preload="auto"
+          ref={(el: HTMLVideoElement | null) => {
+            if (!el) return;
+            // React only sets the muted *attribute* — the DOM property is what
+            // autoplay policies check. Set both, then play() explicitly so any
+            // rejection (iOS Low Power Mode etc.) skips straight to the app
+            // instead of freezing on the first frame.
+            el.muted = true;
+            el.defaultMuted = true;
+            const p = el.play();
+            if (p) p.catch(() => setVideoDone(true));
+          }}
+          onEnded={() => setVideoDone(true)}
+          onError={() => setVideoDone(true)}
+          onLoadedMetadata={(e: React.SyntheticEvent<HTMLVideoElement>) => {
+            const dur = e.currentTarget.duration;
+            if (Number.isFinite(dur) && dur > 0) {
+              timers.current.push(window.setTimeout(() => setVideoDone(true), Math.min(dur * 1000 + 400, HARD_CAP_MS)));
+            }
+          }}
+          sx={{
+            width: '100%',
+            height: '100%',
+            objectFit: 'contain',
+            display: 'block',
+          }}
+        />
+      )}
     </Box>
   );
 }

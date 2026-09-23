@@ -8,6 +8,7 @@ import {
   createExpenseSchema,
   createAdvancePaymentSchema,
   approvalActionSchema,
+  updatePaymentRequestSchema,
   POPaymentType,
 } from '@hospital-erp/shared';
 import { prisma } from '../config/prisma';
@@ -104,7 +105,7 @@ router.get(
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const projectId = requireProjectId(req);
-      const { page, pageSize, status, vendorId, type, search, minAmount, maxAmount, dateFilter } = req.query as Record<string, unknown>;
+      const { page, pageSize, status, vendorId, type, search, minAmount, maxAmount, dateFilter, paymentDate } = req.query as Record<string, unknown>;
       const pageNum = Number(page) || 1;
       const size = Number(pageSize) || 20;
 
@@ -153,6 +154,19 @@ router.get(
             break;
         }
         if (start && end) where.createdAt = { gte: start, lte: end };
+      }
+
+      // Exact-day filter — "payments made on a previous date". Matches the
+      // expense/payment date when present, else the request creation date.
+      if (paymentDate) {
+        const dayStart = new Date(`${paymentDate}T00:00:00`);
+        const dayEnd = new Date(`${paymentDate}T23:59:59.999`);
+        if (!Number.isNaN(dayStart.getTime())) {
+          where.OR = [
+            { expenseDate: { gte: dayStart, lte: dayEnd } },
+            { AND: [{ expenseDate: null }, { createdAt: { gte: dayStart, lte: dayEnd } }] },
+          ];
+        }
       }
 
       const [data, total] = await Promise.all([
@@ -726,6 +740,236 @@ router.get(
         res.status(404).json({ error: 'Payment request not found' });
         return;
       }
+      res.json(record);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// PATCH /:id — edit payment request details directly (e.g. correcting an entry
+// recorded on a previous date). Never touches status, requestNumber, or the
+// approval workflow. When the request is already posted to a voucher, amount /
+// date / budget-head changes are propagated into the voucher entries, ledger
+// balances, bank/cash transactions and budget head totals inside one
+// transaction so the books stay consistent — no re-approval is required.
+router.patch(
+  '/:id',
+  rbacMiddleware(Permission.VIEW_FINANCIALS),
+  validateMiddleware(updatePaymentRequestSchema),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      const pr = await prisma.paymentRequest.findFirst({
+        where: { id: req.params.id, projectId, deletedAt: null },
+        include: { payments: true },
+      });
+      if (!pr) {
+        res.status(404).json({ error: 'Payment request not found' });
+        return;
+      }
+
+      const { description, notes, expenseDate, category, paymentMode, budgetHeadId, amount } = req.body;
+      const round2 = (x: number) => Math.round((x + Number.EPSILON) * 100) / 100;
+
+      let newExpenseDate: Date | null | undefined;
+      if (expenseDate !== undefined) {
+        if (!expenseDate) {
+          newExpenseDate = null;
+        } else {
+          const d = new Date(`${expenseDate}T00:00:00`);
+          if (Number.isNaN(d.getTime())) {
+            res.status(400).json({ error: 'Invalid expense date' });
+            return;
+          }
+          newExpenseDate = d;
+        }
+      }
+      let newAmount: number | undefined;
+      if (amount !== undefined) {
+        newAmount = Number(amount);
+        if (!Number.isFinite(newAmount) || newAmount <= 0) {
+          res.status(400).json({ error: 'Amount must be a positive number' });
+          return;
+        }
+      }
+      if (budgetHeadId) {
+        const bh = await prisma.budgetHead.findFirst({ where: { id: String(budgetHeadId), projectId, deletedAt: null } });
+        if (!bh) {
+          res.status(400).json({ error: 'Budget head not found' });
+          return;
+        }
+      }
+
+      const data: Record<string, unknown> = {};
+      if (description !== undefined) data.description = description ? String(description).trim() : null;
+      if (notes !== undefined) data.notes = notes ? String(notes).trim() : null;
+      if (newExpenseDate !== undefined) data.expenseDate = newExpenseDate;
+      if (category !== undefined) data.category = category ? String(category).trim() : null;
+      if (paymentMode !== undefined) data.paymentMode = paymentMode || null;
+      if (budgetHeadId !== undefined) data.budgetHeadId = budgetHeadId || null;
+      if (newAmount !== undefined) data.amount = newAmount;
+
+      if (Object.keys(data).length === 0) {
+        res.status(400).json({ error: 'No editable fields provided' });
+        return;
+      }
+
+      await prisma.$transaction(async (tx) => {
+        await tx.paymentRequest.update({ where: { id: pr.id }, data });
+
+        // Propagate into each posted payment + its voucher so ledgers,
+        // account balances and budget heads reflect the correction.
+        for (const p of pr.payments) {
+          const payData: Record<string, unknown> = {};
+          if (newAmount !== undefined) payData.amount = newAmount;
+          if (paymentMode !== undefined && paymentMode) payData.mode = paymentMode;
+          if (budgetHeadId !== undefined) payData.budgetHeadId = budgetHeadId || null;
+          if (newExpenseDate) payData.date = newExpenseDate;
+          if (Object.keys(payData).length > 0) {
+            await tx.payment.update({ where: { id: p.id }, data: payData });
+          }
+
+          const jv = p.journalVoucherId
+            ? await tx.journalVoucher.findUnique({
+                where: { id: p.journalVoucherId },
+                include: { entries: true },
+              })
+            : null;
+
+          const oldAmt = Number(p.amount);
+          const delta = newAmount !== undefined ? round2(newAmount - oldAmt) : 0;
+          const headChanged = budgetHeadId !== undefined && (budgetHeadId || null) !== (p.budgetHeadId ?? null);
+          const effectiveHeadId = headChanged ? (budgetHeadId ? String(budgetHeadId) : null) : p.budgetHeadId;
+
+          // Over-budget guard when the tagged head's actual would increase
+          if (effectiveHeadId && (delta > 0 || headChanged)) {
+            const head = await tx.budgetHead.findFirst({ where: { id: effectiveHeadId, projectId, deletedAt: null } });
+            if (head) {
+              const growBy = headChanged ? (newAmount ?? oldAmt) : delta;
+              if (Number(head.actualAmount) + growBy > Number(head.allocatedAmount) + 0.01) {
+                throw new Error(
+                  `This change would exceed the allocated budget for "${head.particulars}" ` +
+                  `(allocated: ₹${Number(head.allocatedAmount).toFixed(2)}, current actual: ₹${Number(head.actualAmount).toFixed(2)})`
+                );
+              }
+            }
+          }
+
+          if (jv) {
+            // Scale every entry side proportionally so each side totals
+            // newAmount exactly; fix rounding on the largest entry per side.
+            if (delta !== 0 && oldAmt > 0) {
+              const ratio = newAmount! / oldAmt;
+              const scaled = jv.entries.map((e) => ({
+                e,
+                debit: e.debit ? round2(Number(e.debit) * ratio) : 0,
+                credit: e.credit ? round2(Number(e.credit) * ratio) : 0,
+              }));
+              const fixSide = (side: 'debit' | 'credit') => {
+                const sideRows = scaled.filter((s) => Number(s.e[side]) > 0);
+                if (sideRows.length === 0) return;
+                const sum = round2(sideRows.reduce((a, s) => a + s[side], 0));
+                const diff = round2(newAmount! - sum);
+                if (diff !== 0) {
+                  const largest = sideRows.reduce((a, b) => (a[side] >= b[side] ? a : b));
+                  largest[side] = round2(largest[side] + diff);
+                }
+              };
+              fixSide('debit');
+              fixSide('credit');
+
+              for (const s of scaled) {
+                const dDelta = round2(s.debit - Number(s.e.debit));
+                const cDelta = round2(s.credit - Number(s.e.credit));
+                await tx.journalEntry.update({ where: { id: s.e.id }, data: { debit: s.debit, credit: s.credit } });
+                // Mirror the delta into the ledger-entry row + ledger balance
+                const le = await tx.ledgerEntry.findFirst({ where: { journalVoucherId: jv.id, debit: Number(s.e.debit), credit: Number(s.e.credit) } });
+                if (le) {
+                  await tx.ledgerEntry.update({ where: { id: le.id }, data: { debit: s.debit, credit: s.credit } });
+                  await tx.ledger.update({ where: { id: le.ledgerId }, data: { currentBalance: { increment: round2(dDelta - cDelta) } } });
+                }
+              }
+              await tx.journalVoucher.update({
+                where: { id: jv.id },
+                data: { totalDebit: newAmount!, totalCredit: newAmount! },
+              });
+            }
+
+            // Date correction flows through to the voucher + its ledger rows
+            if (newExpenseDate) {
+              await tx.journalVoucher.update({ where: { id: jv.id }, data: { date: newExpenseDate } });
+              await tx.ledgerEntry.updateMany({ where: { journalVoucherId: jv.id }, data: { voucherDate: newExpenseDate } });
+            }
+
+            // Budget-head retag: move this payment's totals between heads
+            if (headChanged) {
+              const amt = newAmount ?? oldAmt;
+              if (p.budgetHeadId) {
+                await tx.budgetHead.update({
+                  where: { id: p.budgetHeadId },
+                  data: { actualAmount: { decrement: amt }, paidAmount: { decrement: amt } },
+                });
+              }
+              if (effectiveHeadId) {
+                await tx.budgetHead.update({
+                  where: { id: effectiveHeadId },
+                  data: { actualAmount: { increment: amt }, paidAmount: { increment: amt } },
+                });
+              }
+              await tx.journalEntry.updateMany({
+                where: p.budgetHeadId
+                  ? { journalVoucherId: jv.id, budgetHeadId: p.budgetHeadId }
+                  : { journalVoucherId: jv.id, debit: { gt: 0 } },
+                data: { budgetHeadId: effectiveHeadId },
+              });
+              await tx.bankTransaction.updateMany({ where: { referenceId: jv.id }, data: { budgetHeadId: effectiveHeadId } });
+              await tx.cashTransaction.updateMany({ where: { referenceId: jv.id }, data: { budgetHeadId: effectiveHeadId } });
+            }
+          }
+
+          // Amount delta on the same head (no retag) adjusts actual + paid
+          if (delta !== 0 && !headChanged && p.budgetHeadId) {
+            await tx.budgetHead.update({
+              where: { id: p.budgetHeadId },
+              data: { actualAmount: { increment: delta }, paidAmount: { increment: delta } },
+            });
+          }
+
+          // Funding account: the credit side grew/shrank by delta
+          if (delta !== 0) {
+            if (p.bankAccountId) {
+              await tx.bankAccount.update({ where: { id: p.bankAccountId }, data: { currentBalance: { decrement: delta } } });
+              await tx.bankTransaction.updateMany({ where: { referenceId: p.journalVoucherId ?? undefined, type: 'WITHDRAWAL' }, data: { amount: newAmount! } });
+            } else if (p.cashAccountId) {
+              await tx.cashAccount.update({ where: { id: p.cashAccountId }, data: { currentBalance: { decrement: delta } } });
+              await tx.cashTransaction.updateMany({ where: { referenceId: p.journalVoucherId ?? undefined, type: 'OUT' }, data: { amount: newAmount! } });
+            }
+          }
+          // Date correction on the account transaction rows too
+          if (newExpenseDate && p.journalVoucherId) {
+            await tx.bankTransaction.updateMany({ where: { referenceId: p.journalVoucherId }, data: { date: newExpenseDate } });
+            await tx.cashTransaction.updateMany({ where: { referenceId: p.journalVoucherId }, data: { date: newExpenseDate } });
+          }
+        }
+
+        // Invoice/PO paid-to-date figures derive from payment rows — refresh status
+        if (newAmount !== undefined && pr.invoiceId) {
+          await recalcInvoicePaymentStatus(pr.invoiceId, tx);
+        }
+      });
+
+      await logAudit({
+        userId: req.user!.id,
+        action: AuditAction.UPDATE,
+        entityType: 'PAYMENT_REQUEST',
+        entityId: pr.id,
+        projectId,
+        oldValue: { paymentCode: pr.paymentCode, amount: String(pr.amount), expenseDate: pr.expenseDate, paymentMode: pr.paymentMode, budgetHeadId: pr.budgetHeadId, category: pr.category },
+        newValue: data as never,
+      });
+
+      const record = await prisma.paymentRequest.findUnique({ where: { id: pr.id }, include: prInclude });
       res.json(record);
     } catch (error) {
       next(error);

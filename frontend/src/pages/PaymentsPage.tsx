@@ -45,6 +45,7 @@ import {
   Download as DownloadIcon,
   Receipt as ReceiptIcon,
   Delete as DeleteIcon,
+  Edit as EditIcon,
   WhatsApp as WhatsAppIcon,
   Link as LinkIcon,
 } from '@mui/icons-material';
@@ -84,6 +85,7 @@ interface PaymentRequestRow {
   description: string | null;
   category: string | null;
   expenseDate: string | null;
+  notes: string | null;
   filePath: string | null;
   fileName: string | null;
   vendorId: string | null;
@@ -185,6 +187,7 @@ export default function PaymentsPage() {
   const [minAmount, setMinAmount] = useState('');
   const [maxAmount, setMaxAmount] = useState('');
   const [dateFilter, setDateFilter] = useState('');
+  const [paymentDate, setPaymentDate] = useState('');
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [expenseOpen, setExpenseOpen] = useState(false);
@@ -196,6 +199,8 @@ export default function PaymentsPage() {
   const advanceFileRef = useRef<HTMLInputElement>(null);
   const [advanceAcknowledged, setAdvanceAcknowledged] = useState(false);
   const [approvalAction, setApprovalAction] = useState<{ row: PaymentRequestRow; action: 'approve' | 'reject' } | null>(null);
+  const [editRow, setEditRow] = useState<PaymentRequestRow | null>(null);
+  const [editForm, setEditForm] = useState<Record<string, unknown>>({});
   const [linkVoucherRow, setLinkVoucherRow] = useState<PaymentRequestRow | null>(null);
   const [selectedVoucherId, setSelectedVoucherId] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
@@ -208,7 +213,7 @@ export default function PaymentsPage() {
   const [expenseFile, setExpenseFile] = useState<File | null>(null);
 
   const { data, isLoading, refetch } = useQuery({
-    queryKey: ['/payments', page, pageSize, search, statusFilter, typeFilter, minAmount, maxAmount, dateFilter],
+    queryKey: ['/payments', page, pageSize, search, statusFilter, typeFilter, minAmount, maxAmount, dateFilter, paymentDate],
     queryFn: async () => {
       const params: Record<string, unknown> = { page: page + 1, pageSize };
       if (search) params.search = search;
@@ -217,6 +222,7 @@ export default function PaymentsPage() {
       if (minAmount) params.minAmount = minAmount;
       if (maxAmount) params.maxAmount = maxAmount;
       if (dateFilter) params.dateFilter = dateFilter;
+      if (paymentDate) params.paymentDate = paymentDate;
       const response = await api.get('/payments', { params });
       return response.data;
     },
@@ -425,6 +431,36 @@ export default function PaymentsPage() {
     },
     onError: (err: unknown) => setError(extractErrorMessage(err)),
   });
+
+  // Edit details of a payment recorded on a previous date — saves directly,
+  // no re-approval. Financial fields are locked once posted to a voucher.
+  const editMutation = useMutation({
+    mutationFn: async ({ id, payload }: { id: string; payload: Record<string, unknown> }) => {
+      const response = await api.patch(`/payments/${id}`, payload);
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/payments'] });
+      queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
+      setEditRow(null);
+      setSuccessMsg('Payment details updated.');
+      setTimeout(() => setSuccessMsg(''), 3000);
+    },
+    onError: (err: unknown) => setError(extractErrorMessage(err)),
+  });
+
+  function openEdit(row: PaymentRequestRow) {
+    setEditForm({
+      expenseDate: row.expenseDate ? row.expenseDate.slice(0, 10) : '',
+      description: row.description ?? '',
+      notes: row.notes ?? '',
+      category: row.category ?? '',
+      amount: row.amount,
+      paymentMode: row.paymentMode ?? PaymentMode.CASH,
+      budgetHeadId: row.budgetHeadId ?? '',
+    });
+    setEditRow(row);
+  }
 
   // Posted PAYMENT vouchers matching this request's amount, for the
   // "Link Voucher" dialog (payment already recorded outside the request flow).
@@ -732,6 +768,16 @@ export default function PaymentsPage() {
               <MenuItem value="">All</MenuItem>
               {Object.values(PaymentStatus).map((s) => <MenuItem key={s} value={s}>{s}</MenuItem>)}
             </TextField>
+            <TextField
+              size="small"
+              label="Payment Date"
+              type="date"
+              value={paymentDate}
+              onChange={(e) => { setPaymentDate(e.target.value); setPage(0); }}
+              InputLabelProps={{ shrink: true }}
+              inputProps={{ max: todayLocalDate() }}
+              sx={{ width: { xs: '100%', sm: 170 } }}
+            />
           </Box>
 
           <ResponsiveTable>
@@ -804,6 +850,7 @@ export default function PaymentsPage() {
                       <TableCell data-label="Actions">
                         <Box sx={{ display: 'flex', gap: 0.5 }}>
                           <IconButton size="small" sx={{ color: '#25D366' }} onClick={() => shareOnWhatsApp(buildPaymentShareMessage({ paymentCode: row.paymentCode, requestNumber: row.requestNumber, vendorName: row.vendor?.name, amount: Number(row.amount), status: row.status, type: row.type, description: row.description ?? undefined }))} title="Share on WhatsApp"><WhatsAppIcon fontSize="small" /></IconButton>
+                          <IconButton size="small" color="primary" onClick={() => openEdit(row)} title="Edit payment details"><EditIcon fontSize="small" /></IconButton>
                           {canApprove(row) && (
                             <>
                               <IconButton size="small" color="success" onClick={() => setApprovalAction({ row, action: 'approve' })} title="Approve"><CheckIcon fontSize="small" /></IconButton>
@@ -1356,6 +1403,119 @@ export default function PaymentsPage() {
             onClick={() => { setError(''); linkVoucherMutation.mutate(); }}
           >
             {linkVoucherMutation.isPending ? <CircularProgress size={20} /> : 'Mark as Paid'}
+          </Button>
+        </DialogActions>
+      </ResponsiveDialog>
+
+      {/* Edit payment details — direct save, no re-approval. Financial fields
+          lock once the request has been posted to a voucher. */}
+      <ResponsiveDialog open={editRow !== null} onClose={() => setEditRow(null)} maxWidth="sm" fullWidth>
+        <DialogTitle>Edit Payment — {editRow?.paymentCode}</DialogTitle>
+        <DialogContent>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
+            {editRow && (editRow.payments.length > 0 || editRow.status === PaymentStatus.PAID) && (
+              <FormHelperText sx={{ m: 0 }}>
+                This payment is already posted — saving updates the linked voucher, account balances and budget head to match.
+              </FormHelperText>
+            )}
+            <TextField
+              label="Payment Date"
+              type="date"
+              value={String(editForm.expenseDate ?? '')}
+              onChange={(e) => setEditForm({ ...editForm, expenseDate: e.target.value })}
+              size="small"
+              InputLabelProps={{ shrink: true }}
+              inputProps={{ max: todayLocalDate() }}
+            />
+            <TextField
+              label="Description"
+              value={String(editForm.description ?? '')}
+              onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+              size="small"
+              fullWidth
+              inputProps={{ maxLength: 200 }}
+            />
+            <TextField
+              label="Notes (optional)"
+              value={String(editForm.notes ?? '')}
+              onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })}
+              size="small"
+              fullWidth
+              multiline
+              minRows={2}
+              inputProps={{ maxLength: 500 }}
+            />
+            <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, flexWrap: 'wrap' }}>
+              <TextField
+                label="Amount"
+                type="text"
+                value={formatIndianNumber(String(editForm.amount ?? ''))}
+                onChange={(e) => setEditForm({ ...editForm, amount: e.target.value === '' ? '' : Number(e.target.value.replace(/,/g, '')) })}
+                inputMode="decimal"
+                size="small"
+                sx={{ flex: 1, minWidth: 0 }}
+                required
+              />
+              <TextField
+                select
+                label="Payment Mode"
+                value={String(editForm.paymentMode ?? '')}
+                onChange={(e) => setEditForm({ ...editForm, paymentMode: e.target.value })}
+                size="small"
+                sx={{ flex: 1, minWidth: 0 }}
+              >
+                {PAYMENT_MODES.map((m) => <MenuItem key={m} value={m}>{m.replace(/_/g, ' ')}</MenuItem>)}
+              </TextField>
+            </Box>
+            <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, flexWrap: 'wrap' }}>
+              <TextField
+                select
+                label="Category"
+                value={String(editForm.category ?? '')}
+                onChange={(e) => setEditForm({ ...editForm, category: e.target.value })}
+                size="small"
+                sx={{ flex: 1, minWidth: 0 }}
+              >
+                <MenuItem value="">—</MenuItem>
+                {EXPENSE_CATEGORIES.map((c) => <MenuItem key={c} value={c}>{c}</MenuItem>)}
+              </TextField>
+              <TextField
+                select
+                label="Budget Head"
+                value={String(editForm.budgetHeadId ?? '')}
+                onChange={(e) => setEditForm({ ...editForm, budgetHeadId: e.target.value })}
+                size="small"
+                sx={{ flex: 1, minWidth: 0 }}
+              >
+                <MenuItem value="">—</MenuItem>
+                {budgetHeads.map((h) => <MenuItem key={h.id} value={h.id}>{h.particulars}</MenuItem>)}
+              </TextField>
+            </Box>
+          </Box>
+        </DialogContent>
+        <DialogActions sx={{ flexWrap: 'wrap', gap: 1 }}>
+          <Button onClick={() => setEditRow(null)}>Cancel</Button>
+          <Button
+            variant="contained"
+            disabled={editMutation.isPending}
+            onClick={() => {
+              if (!editRow) return;
+              setError('');
+              const amt = Number(editForm.amount);
+              if (!Number.isFinite(amt) || amt <= 0) { setError('Enter a valid amount'); return; }
+              const payload: Record<string, unknown> = {
+                expenseDate: editForm.expenseDate || null,
+                description: editForm.description ?? null,
+                notes: editForm.notes ?? null,
+                amount: amt,
+                paymentMode: editForm.paymentMode || null,
+                category: editForm.category || null,
+                budgetHeadId: editForm.budgetHeadId || null,
+              };
+              editMutation.mutate({ id: editRow.id, payload });
+            }}
+          >
+            {editMutation.isPending ? <CircularProgress size={20} /> : 'Save Changes'}
           </Button>
         </DialogActions>
       </ResponsiveDialog>

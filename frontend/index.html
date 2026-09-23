@@ -68,6 +68,64 @@
         height: 100%;
         object-fit: contain;
       }
+      /* Thought of the Day — dashboard palette + font, subtle fade-in. */
+      #opening-splash .tq {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+        padding: 0 34px;
+        width: 100%;
+        box-sizing: border-box;
+        max-width: 620px;
+        line-height: 1.4;
+        animation: tq-in 0.5s ease-out both;
+        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", Roboto, "Helvetica Neue", Arial, sans-serif;
+      }
+      #opening-splash .tq-mark {
+        font-size: 56px;
+        line-height: 1;
+        height: 30px;
+        color: #4f9cf9;
+        font-family: Georgia, 'Times New Roman', serif;
+      }
+      #opening-splash .tq-label {
+        margin: 14px 0 12px;
+        font-size: 10.5px;
+        font-weight: 700;
+        letter-spacing: 0.3em;
+        line-height: 1.4;
+        color: #8b98ad;
+      }
+      #opening-splash .tq-text {
+        display: block;
+        font-size: 22px;
+        font-weight: 600;
+        font-style: italic;
+        line-height: 1.6;
+        color: #e8edf7;
+      }
+      @media (max-width: 599px) {
+        #opening-splash .tq-text { font-size: 19px; }
+      }
+      #opening-splash .tq-line {
+        width: 58px;
+        height: 2px;
+        margin-top: 22px;
+        border-radius: 2px;
+        background: linear-gradient(90deg, #4f9cf9, #8b7cf6);
+      }
+      #opening-splash .tq-hint {
+        margin-top: 26px;
+        font-size: 10px;
+        letter-spacing: 0.12em;
+        line-height: 1.4;
+        color: rgba(139,152,173,.55);
+      }
+      @keyframes tq-in {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: none; }
+      }
     </style>
   </head>
   <body>
@@ -101,23 +159,65 @@
         v.playsInline = true;
         v.setAttribute('playsinline', '');
         v.setAttribute('webkit-playsinline', '');
-        var finished = false, videoDone = false, appReady = false;
+        var finished = false, videoDone = false, appReady = false, quoteDone = false;
         var done = function () {
           if (finished) return;
           finished = true;
           splash.style.opacity = '0';
           setTimeout(function () { splash.remove(); }, 260);
         };
-        var tryDone = function () { if (videoDone && appReady) done(); };
+        var tryDone = function () { if (videoDone && quoteDone && appReady) done(); };
         // React's OpeningVideo calls this once the dashboard queries settle —
         // the splash holds until the data is actually there, not just the video.
         window.__openingAppReady = function () { appReady = true; tryDone(); };
+        // Keep in sync with src/utils/dailyQuote.ts.
+        var QUOTES = [
+          "Today's small steps will become tomorrow's bigger steps.",
+          'Great things are built one careful decision at a time.',
+          'Progress is quiet work done consistently.',
+          'The best time to start was yesterday. The next best time is now.',
+          'Small details make big structures.',
+          'Measure twice, build once.',
+          'Every strong foundation begins with a clear plan.',
+          'Discipline today builds confidence tomorrow.',
+          'What you track, you improve.',
+          'Clarity in numbers, confidence in decisions.',
+          'A well-kept record is a well-run project.',
+          'Slow is smooth, and smooth is fast.',
+          'Done is better than perfect — but accurate is better than both.',
+          'Good accounts tell the story of good work.',
+          'Plan the work, then work the plan.',
+          'Attention to detail today prevents corrections tomorrow.',
+          'Every rupee accounted for is a project protected.',
+          'Consistency compounds.',
+          'The quiet routines are what hold big projects together.',
+          'Order in the books, clarity on the site.',
+          'Build carefully. Record faithfully.',
+          "Today's ledger is tomorrow's history.",
+          'Trust is built line by line, entry by entry.',
+          'Strong projects run on clear numbers.',
+        ];
+        var showQuote = function () {
+          var start = new Date(new Date().getFullYear(), 0, 0);
+          var day = Math.floor((Date.now() - start.getTime()) / 86400000);
+          splash.innerHTML = '';
+          var tq = document.createElement('div');
+          tq.className = 'tq';
+          var mark = document.createElement('div'); mark.className = 'tq-mark'; mark.textContent = '“';
+          var label = document.createElement('div'); label.className = 'tq-label'; label.textContent = 'THOUGHT OF THE DAY';
+          var text = document.createElement('div'); text.className = 'tq-text'; text.textContent = QUOTES[day % QUOTES.length];
+          var line = document.createElement('div'); line.className = 'tq-line';
+          var hint = document.createElement('div'); hint.className = 'tq-hint'; hint.textContent = 'TAP TO CONTINUE';
+          tq.appendChild(mark); tq.appendChild(label); tq.appendChild(text); tq.appendChild(line); tq.appendChild(hint);
+          splash.appendChild(tq);
+          setTimeout(function () { quoteDone = true; tryDone(); }, 2300);
+        };
         var videoDoneFn = function () {
           if (videoDone) return;
           videoDone = true;
           window.__hsplVideoDone = true;
           window.dispatchEvent(new Event('hspl-video-done'));
-          tryDone();
+          showQuote();
           // If React never signals readiness (slow mount), don't hold forever.
           setTimeout(done, 6000);
         };

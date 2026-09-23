@@ -361,6 +361,22 @@ export const listPaymentRequestsSchema = z.object({
     minAmount: z.coerce.number().optional(),
     maxAmount: z.coerce.number().optional(),
     dateFilter: z.enum(['today', 'this_week', 'this_month', 'last_month']).optional(),
+    paymentDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  }),
+});
+// Edit a payment request's details directly (e.g. correcting an entry made on
+// a previous date). Does not touch status or the approval workflow — the route
+// locks financial fields once the request has been posted to a voucher.
+export const updatePaymentRequestSchema = z.object({
+  params: z.object({ id: uuid }),
+  body: z.object({
+    description: z.string().max(200).optional(),
+    notes: z.string().max(500).optional().nullable(),
+    expenseDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().nullable(),
+    category: z.string().max(60).optional().nullable(),
+    paymentMode: z.string().max(50).optional().nullable(),
+    budgetHeadId: uuid.optional().nullable(),
+    amount: money.optional(),
   }),
 });
 export const recordPaymentSchema = z.object({
