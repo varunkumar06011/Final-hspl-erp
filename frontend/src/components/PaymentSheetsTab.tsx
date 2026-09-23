@@ -39,7 +39,7 @@ import {
   Receipt as ReceiptIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { PaymentMode, PaymentStatus } from '@hospital-erp/shared';
+import { PaymentMode, PaymentStatus, isAdminRole } from '@hospital-erp/shared';
 import { formatCurrency, formatDate, STATUS_COLORS } from '../utils/enumOptions';
 import api, { extractErrorMessage } from '../config/api';
 import { useAuthStore } from '../stores/authStore';
@@ -165,7 +165,7 @@ export default function PaymentSheetsTab() {
 
   // Edit-entry dialog state
   const [editRow, setEditRow] = useState<PaymentSheetRow | null>(null);
-  const [editForm, setEditForm] = useState({ amount: '', paymentMode: '', reference: '', notes: '', status: '' });
+  const [editForm, setEditForm] = useState({ amount: '', paymentMode: '', reference: '', notes: '', status: '', date: '' });
 
   // Confirm-dialog state
   const [confirmApproveId, setConfirmApproveId] = useState<string | null>(null);
@@ -265,6 +265,7 @@ export default function PaymentSheetsTab() {
       api.patch(`/payment-sheets/${id}`, {
         amount: Number(editForm.amount),
         paymentMode: editForm.paymentMode,
+        date: editForm.date || undefined,
         reference: editForm.reference || undefined,
         notes: editForm.notes || undefined,
         status: editForm.status || undefined,
@@ -296,6 +297,7 @@ export default function PaymentSheetsTab() {
       reference: r.reference ?? '',
       notes: r.notes ?? '',
       status: r.status,
+      date: r.date ? r.date.slice(0, 10) : '',
     });
   };
 
@@ -483,6 +485,11 @@ export default function PaymentSheetsTab() {
                   <TableCell>{r.createdByUser.name}</TableCell>
                   <TableCell className="no-print">
                     <Stack direction="row" spacing={0.5}>
+                      {(r.createdBy === user?.id || isAdminRole(user?.role ?? '')) && (
+                        <IconButton size="small" color="primary" title="Edit" onClick={() => openEdit(r)}>
+                          <EditIcon fontSize="small" />
+                        </IconButton>
+                      )}
                       {r.fileName && (
                         <IconButton size="small" title={r.fileName} onClick={() => downloadFile('payment-sheets', r.id, r.fileName as string)}>
                           <AttachFileIcon fontSize="small" />
@@ -494,11 +501,6 @@ export default function PaymentSheetsTab() {
                       <IconButton size="small" title="Print" onClick={() => openPdf(entryPdfPath(r.id))}>
                         <PrintIcon fontSize="small" />
                       </IconButton>
-                      {r.status !== PaymentStatus.PAID && r.status !== 'APPROVED' && r.createdBy === user?.id && (
-                        <IconButton size="small" title="Edit" onClick={() => openEdit(r)}>
-                          <EditIcon fontSize="small" />
-                        </IconButton>
-                      )}
                       {r.status !== PaymentStatus.PAID && r.status !== 'APPROVED' && r.createdBy === user?.id && (
                         <IconButton size="small" color="success" title="Mark paid" onClick={() => setConfirmApproveId(r.id)}>
                           <CheckIcon fontSize="small" />
@@ -668,6 +670,9 @@ export default function PaymentSheetsTab() {
                 </Typography>
               </Card>
             )}
+            <TextField label="Date" type="date" size="small" value={editForm.date}
+              onChange={(e) => setEditForm({ ...editForm, date: e.target.value })}
+              InputLabelProps={{ shrink: true }} />
             <TextField label="Amount" type="number" size="small" required value={editForm.amount}
               onChange={(e) => setEditForm({ ...editForm, amount: e.target.value })} />
             <TextField select label="Payment Mode" size="small" value={editForm.paymentMode}

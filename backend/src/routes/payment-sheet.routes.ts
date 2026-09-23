@@ -1,5 +1,5 @@
 import { Router, Response, NextFunction } from 'express';
-import { Permission, AuditAction, PaymentStatus, POStatus } from '@hospital-erp/shared';
+import { Permission, AuditAction, PaymentStatus, POStatus, isAdminRole } from '@hospital-erp/shared';
 import { createPaymentSheetSchema, listPaymentSheetsSchema, updatePaymentSheetSchema, upsertPaymentSheetNarrationSchema } from '@hospital-erp/shared';
 import { prisma } from '../config/prisma';
 import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middleware/auth';
@@ -517,7 +517,9 @@ router.post(
   }
 );
 
-// PATCH /:id — edit an entry (only by creator, only while still PENDING)
+// PATCH /:id — edit a register entry. Creators edit their own rows; admins can
+// correct any row, including PAID ones (the sheet is a daily register — the
+// underlying voucher/payment records are untouched). No approval is required.
 router.patch(
   '/:id',
   rbacMiddleware(Permission.VIEW_FINANCIALS),
@@ -532,12 +534,8 @@ router.patch(
         res.status(404).json({ error: 'Payment sheet entry not found' });
         return;
       }
-      if (existing.createdBy !== req.user!.id) {
-        res.status(403).json({ error: 'Only the creator can edit this entry' });
-        return;
-      }
-      if (existing.status === PaymentStatus.PAID || existing.status === PaymentStatus.APPROVED) {
-        res.status(400).json({ error: 'Cannot edit a paid entry' });
+      if (existing.createdBy !== req.user!.id && !isAdminRole(req.user!.role)) {
+        res.status(403).json({ error: 'Only the creator or an admin can edit this entry' });
         return;
       }
 
