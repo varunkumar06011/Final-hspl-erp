@@ -298,20 +298,20 @@ export default function LoginPage() {
 
   // Apple-style shared input/button styles
   const glassInputSx = {
-    mb: 3,
+    mb: { xs: 2, sm: 3 },
     '& .MuiOutlinedInput-root': {
       borderRadius: '14px',
       background: 'rgba(255, 255, 255, 0.95)',
       color: '#0a1929',
-      minHeight: 72,
-      fontSize: '1.25rem',
+      minHeight: { xs: 56, sm: 72 },
+      fontSize: { xs: '1rem', sm: '1.25rem' },
       '& fieldset': { borderColor: 'rgba(0, 0, 0, 0.15)' },
       '&:hover fieldset': { borderColor: 'rgba(21, 101, 192, 0.4)' },
       '&.Mui-focused fieldset': { borderColor: '#1565C0', borderWidth: 2 },
-      '& input': { color: '#0a1929', py: 2 },
+      '& input': { color: '#0a1929', py: { xs: 1.5, sm: 2 } },
       '& input::placeholder': { color: 'rgba(10, 25, 41, 0.4)' },
     },
-    '& .MuiInputLabel-root': { color: 'rgba(10, 25, 41, 0.6)', fontSize: '1.1rem' },
+    '& .MuiInputLabel-root': { color: 'rgba(10, 25, 41, 0.6)', fontSize: { xs: '0.95rem', sm: '1.1rem' } },
     '& .MuiInputLabel-root.Mui-focused': { color: '#1565C0' },
     '& .MuiInputAdornment-root': { color: 'rgba(10, 25, 41, 0.5)' },
   } as const;
@@ -320,8 +320,8 @@ export default function LoginPage() {
     borderRadius: '14px',
     textTransform: 'none',
     fontWeight: 600,
-    fontSize: '1.25rem',
-    py: 2,
+    fontSize: { xs: '1.05rem', sm: '1.25rem' },
+    py: { xs: 1.5, sm: 2 },
     background: '#1565C0',
     boxShadow: '0 4px 16px rgba(21, 101, 192, 0.3)',
     '&:hover': {
@@ -347,18 +347,18 @@ export default function LoginPage() {
   } as const;
 
   const glassPinInputSx = {
-    mb: 3,
+    mb: { xs: 2, sm: 3 },
     textAlign: 'center',
-    fontSize: '2.5rem',
-    letterSpacing: '1rem',
+    fontSize: { xs: '1.75rem', sm: '2.5rem' },
+    letterSpacing: { xs: '0.5rem', sm: '1rem' },
     color: '#0a1929',
     background: 'rgba(255, 255, 255, 0.9)',
     borderRadius: '14px',
     px: 2,
-    py: 2,
+    py: { xs: 1.5, sm: 2 },
     '&:before': { display: 'none' },
     '&:after': { borderBottomColor: '#1565C0' },
-    '& input': { color: '#0a1929', textAlign: 'center', fontSize: '2.5rem' },
+    '& input': { color: '#0a1929', textAlign: 'center', fontSize: { xs: '1.75rem', sm: '2.5rem' } },
     '& input::placeholder': { color: 'rgba(10, 25, 41, 0.35)' },
   } as const;
 
@@ -396,9 +396,10 @@ export default function LoginPage() {
       sx={{
         minHeight: { xs: '100dvh', md: '100vh' },
         display: 'flex',
+        flexDirection: { xs: 'column', md: 'row' },
         alignItems: 'center',
-        justifyContent: { xs: 'center', md: 'flex-end' },
-        // Dark navy fallback (fills empty space when image is 'contain' on mobile)
+        justifyContent: { xs: 'flex-start', md: 'flex-end' },
+        // Dark navy fallback
         backgroundColor: '#0a1929',
         // Premium dark gradient — deep navy to blue (over the background image)
         // Mobile: uniform dark overlay so the centered card stays readable while the full image shows
@@ -407,13 +408,17 @@ export default function LoginPage() {
           xs: `linear-gradient(180deg, rgba(10, 25, 41, 0.75) 0%, rgba(10, 25, 41, 0.82) 100%), url(${loginBg})`,
           md: `linear-gradient(90deg, rgba(10, 25, 41, 0.25) 0%, rgba(10, 25, 41, 0.45) 45%, rgba(10, 25, 41, 0.82) 70%, rgba(10, 25, 41, 0.92) 100%), url(${loginBg})`,
         },
-        backgroundSize: { xs: 'contain', md: 'cover' },
+        backgroundSize: 'cover',
         backgroundPosition: { xs: 'center', md: 'left center' },
         backgroundRepeat: 'no-repeat',
-        p: 2,
-        pr: { xs: 2, md: 6 },
+        px: { xs: 1.5, sm: 2 },
+        py: { xs: 2, md: 2 },
+        pr: { md: 6 },
         position: 'relative',
-        overflow: 'hidden',
+        overflowX: 'hidden',
+        // On phones the card can exceed the viewport — allow vertical scroll
+        // instead of clipping (the old overflow:hidden cut off the Continue button)
+        overflowY: { xs: 'auto', md: 'hidden' },
       }}
     >
       {/* Subtle radial glow — top center, like a soft spotlight */}
@@ -449,7 +454,10 @@ export default function LoginPage() {
         sx={{
           maxWidth: { xs: '100%', sm: 560 },
           width: '100%',
-          mx: { xs: 1, sm: 2 },
+          // Column layout on mobile: auto margins centre the card when it fits
+          // and let it top-align + scroll when it overflows the viewport
+          my: { xs: 'auto', md: 0 },
+          mx: { xs: 0, sm: 2 },
           // Frosted glass — 70% opaque so blobs tint through subtly
           background: 'rgba(255, 255, 255, 0.7)',
           backdropFilter: 'blur(30px) saturate(150%)',
@@ -461,25 +469,25 @@ export default function LoginPage() {
           zIndex: 1,
         }}
       >
-        <CardContent sx={{ p: { xs: 5, sm: 6 } }}>
+        <CardContent sx={{ p: { xs: 2.5, sm: 6 }, '&:last-child': { pb: { xs: 2.5, sm: 6 } } }}>
           {/* Logo + title */}
-          <Box sx={{ textAlign: 'center', mb: 5, animation: fadeAnim }}>
+          <Box sx={{ textAlign: 'center', mb: { xs: 3, sm: 5 }, animation: fadeAnim }}>
             <Box
               component="img"
               src={logoUrl || '/logo.png'}
               alt="Logo"
               sx={{
-                width: { xs: 96, sm: 112 },
-                height: { xs: 96, sm: 112 },
+                width: { xs: 72, sm: 112 },
+                height: { xs: 72, sm: 112 },
                 borderRadius: '22px',
-                mb: 3,
+                mb: { xs: 1.5, sm: 3 },
                 objectFit: 'contain',
               }}
             />
-            <Typography variant="h4" align="center" gutterBottom fontWeight={700} sx={{ color: '#0a1929', letterSpacing: '-0.5px', fontSize: { xs: '1.65rem', sm: '2rem' } }}>
+            <Typography variant="h4" align="center" gutterBottom fontWeight={700} sx={{ color: '#0a1929', letterSpacing: '-0.5px', fontSize: { xs: '1.45rem', sm: '2rem' } }}>
               Hospital Construction ERP
             </Typography>
-            <Typography variant="h6" align="center" sx={{ color: 'rgba(10, 25, 41, 0.6)', fontWeight: 400 }}>
+            <Typography variant="h6" align="center" sx={{ color: 'rgba(10, 25, 41, 0.6)', fontWeight: 400, fontSize: { xs: '0.95rem', sm: '1.25rem' } }}>
               Sign in to manage your project
             </Typography>
           </Box>
@@ -489,7 +497,7 @@ export default function LoginPage() {
             sx={{
               display: 'flex',
               p: 0.5,
-              mb: 5,
+              mb: { xs: 3, sm: 5 },
               borderRadius: 3,
               background: 'rgba(10, 25, 41, 0.08)',
             }}
@@ -499,11 +507,11 @@ export default function LoginPage() {
               sx={{
                 flex: 1,
                 textAlign: 'center',
-                py: 2,
+                py: { xs: 1.25, sm: 2 },
                 borderRadius: 2,
                 cursor: 'pointer',
                 fontWeight: 600,
-                fontSize: '1.15rem',
+                fontSize: { xs: '1rem', sm: '1.15rem' },
                 transition: 'all 0.2s',
                 color: mode === 'signin' ? '#0a1929' : 'rgba(10, 25, 41, 0.5)',
                 background: mode === 'signin' ? '#fff' : 'transparent',
@@ -517,11 +525,11 @@ export default function LoginPage() {
               sx={{
                 flex: 1,
                 textAlign: 'center',
-                py: 2,
+                py: { xs: 1.25, sm: 2 },
                 borderRadius: 2,
                 cursor: 'pointer',
                 fontWeight: 600,
-                fontSize: '1.15rem',
+                fontSize: { xs: '1rem', sm: '1.15rem' },
                 transition: 'all 0.2s',
                 color: mode === 'signup' ? '#0a1929' : 'rgba(10, 25, 41, 0.5)',
                 background: mode === 'signup' ? '#fff' : 'transparent',
@@ -571,13 +579,13 @@ export default function LoginPage() {
                         sx={{
                           display: 'flex',
                           alignItems: 'center',
-                          py: 2,
+                          py: { xs: 1.5, sm: 2 },
                           pl: 0.5,
                           pr: 2,
                           mr: 0.5,
                           color: '#0a1929',
                           fontWeight: 600,
-                          fontSize: '1.35rem',
+                          fontSize: { xs: '1.1rem', sm: '1.35rem' },
                           borderRight: '1px solid rgba(10, 25, 41, 0.15)',
                           whiteSpace: 'nowrap',
                           flexShrink: 0,
@@ -593,13 +601,13 @@ export default function LoginPage() {
                   {
                     '& .MuiOutlinedInput-root': {
                       paddingLeft: 0,
-                      minHeight: 72,
+                      minHeight: { xs: 56, sm: 72 },
                       '& input': {
                         color: '#0a1929',
-                        fontSize: '1.4rem',
+                        fontSize: { xs: '1.15rem', sm: '1.4rem' },
                         letterSpacing: '0.02em',
-                        paddingTop: 2,
-                        paddingBottom: 2,
+                        paddingTop: { xs: 1.5, sm: 2 },
+                        paddingBottom: { xs: 1.5, sm: 2 },
                       },
                     },
                   },
@@ -780,15 +788,20 @@ export default function LoginPage() {
         </CardContent>
       </Card>
 
-      {/* Footer legal links — always visible */}
+      {/* Footer legal links — in normal flow on mobile (absolute overlay would
+          cover the card's bottom buttons); pinned to the bottom on desktop */}
       <Box
         sx={{
-          position: 'absolute',
-          bottom: { xs: 'calc(12px + env(safe-area-inset-bottom))', md: 16 },
+          position: { xs: 'static', md: 'absolute' },
+          bottom: { md: 16 },
           left: 0,
           right: 0,
+          width: { xs: '100%', md: 'auto' },
+          mt: { xs: 2, md: 0 },
+          pb: { xs: 'calc(4px + env(safe-area-inset-bottom))', md: 0 },
           textAlign: 'center',
           zIndex: 1,
+          flexShrink: 0,
         }}
       >
         <Box sx={{ mb: 1.5 }}>
