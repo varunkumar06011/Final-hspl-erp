@@ -494,6 +494,7 @@ router.get(
           date: true,
           editedAt: true,
           parentPoId: true,
+          items: { select: { materialName: true } },
         },
         orderBy: { date: 'asc' },
       });
@@ -502,7 +503,10 @@ router.get(
           date: po.date.toISOString(),
           type: po.parentPoId ? 'PO (Regenerated)' : 'PO Approval',
           reference: po.poNumber,
-          description: `Committed on approved PO ${po.poNumber}`,
+          // Show what the PO actually contains instead of a generic label.
+          description: po.items.length > 0
+            ? po.items.map((it) => it.materialName).join(', ')
+            : `Committed on approved PO ${po.poNumber}`,
           committed: Number(po.grandTotal),
           actual: 0,
           paid: 0,

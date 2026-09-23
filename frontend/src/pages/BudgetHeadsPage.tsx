@@ -939,7 +939,23 @@ export default function BudgetHeadsPage() {
                               <TableCell data-label="Date">{formatDate(String(txn.date))}</TableCell>
                               <TableCell data-label="Type">{String(txn.type)}</TableCell>
                               <TableCell data-label="Reference">{String(txn.reference)}</TableCell>
-                              <TableCell data-label="Description" sx={{ fontSize: '0.75rem', maxWidth: 240 }}>{String(txn.description)}</TableCell>
+                              <TableCell data-label="Description" sx={{ fontSize: '0.75rem' }}>
+                                {/* Wrap, never sideways-scroll: 2 lines on desktop, 3 on phone. */}
+                                <Box
+                                  component="span"
+                                  sx={{
+                                    display: '-webkit-box',
+                                    WebkitBoxOrient: 'vertical',
+                                    WebkitLineClamp: { xs: 3, sm: 2 },
+                                    overflow: 'hidden',
+                                    wordBreak: 'break-word',
+                                    whiteSpace: 'normal',
+                                    maxWidth: { sm: 240 },
+                                  }}
+                                >
+                                  {String(txn.description)}
+                                </Box>
+                              </TableCell>
                               <TableCell data-label="Committed" align="right">{Number(txn.committed) !== 0 ? formatCurrency(Number(txn.committed)) : '—'}</TableCell>
                               <TableCell data-label="Actual" align="right">{Number(txn.actual) !== 0 ? formatCurrency(Number(txn.actual)) : '—'}</TableCell>
                               <TableCell data-label="Paid" align="right">{Number(txn.paid) !== 0 ? formatCurrency(Number(txn.paid)) : '—'}</TableCell>
