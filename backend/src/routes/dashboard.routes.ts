@@ -724,6 +724,7 @@ router.get(
         totalInvoices,
         phases,
         project,
+        recentReversals,
       ] = await Promise.all([
         // Bank base inflow (all time, no date filter)
         prisma.bankTransaction.aggregate({
@@ -946,6 +947,32 @@ router.get(
         prisma.project.findUnique({
           where: { id: projectId },
           select: { name: true, status: true, startDate: true, endDate: true, totalBudget: true },
+        }),
+        // Recently cancelled/reversed PAYMENT vouchers — surfaced to admins as
+        // a dashboard alert. Vendor name comes from the linked payment request
+        // when present, else the debit-side (party) ledger entry. The account
+        // name is the bank/cash account the money was returned to.
+        prisma.journalVoucher.findMany({
+          where: { projectId, deletedAt: null, status: 'CANCELLED', voucherType: 'PAYMENT' },
+          orderBy: { updatedAt: 'desc' },
+          take: 15,
+          select: {
+            id: true,
+            jvNumber: true,
+            totalDebit: true,
+            updatedAt: true,
+            payments: {
+              take: 1,
+              select: {
+                paymentRequest: { select: { vendor: { select: { name: true } }, paymentCode: true } },
+                bankAccount: { select: { accountName: true } },
+                cashAccount: { select: { name: true } },
+              },
+            },
+            ledgerEntries: {
+              select: { debit: true, credit: true, ledger: { select: { name: true, group: true } } },
+            },
+          },
         }),
       ]);
 
@@ -1183,6 +1210,21 @@ router.get(
         pendingPOs,
         pendingInvoices,
         actionItems,
+        // Recently cancelled/reversed payments — admin dashboard popup source
+        recentReversals: recentReversals.map((v) => {
+          const pmt = v.payments[0];
+          const partyLedger = v.ledgerEntries.find((e) => Number(e.debit) > 0)?.ledger?.name ?? null;
+          const refundLedger = v.ledgerEntries.find((e) => Number(e.credit) > 0)?.ledger?.name ?? null;
+          return {
+            id: v.id,
+            jvNumber: v.jvNumber,
+            amount: Number(v.totalDebit),
+            cancelledAt: v.updatedAt.toISOString(),
+            vendorName: pmt?.paymentRequest?.vendor?.name ?? partyLedger ?? 'Payment',
+            paymentCode: pmt?.paymentRequest?.paymentCode ?? null,
+            accountName: pmt?.bankAccount?.accountName ?? pmt?.cashAccount?.name ?? refundLedger,
+          };
+        }),
         // Recent activity — merged bank + cash transactions, sorted by date desc
         recentTransactions: [
           ...recentBankTxns.map((t) => ({

@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { keyframes } from '@emotion/react';
@@ -51,6 +51,9 @@ interface DashboardData {
   recentInvoices: Array<{ id: string; invoiceCode: string; vendorName: string; totalAmount: number; verificationStatus: string; createdAt: string }>;
   phases: Array<{ id: string; name: string; status: string; progressPercent: number }>;
   projectTimeline: { startDate: string; endDate: string | null } | null;
+  // Recently cancelled PAYMENT vouchers — the admin popup shows vendor,
+  // reversed amount and the account the money returned to.
+  recentReversals: Array<{ id: string; jvNumber: string; amount: number; cancelledAt: string; vendorName: string; paymentCode: string | null; accountName: string | null }>;
 }
 
 interface TrendData { trend: Array<{ date: string; amount: number }>; total: number }
@@ -219,6 +222,21 @@ export default function DenseAdminDashboard() {
   const prefetchVoucher = usePrefetchVoucher();
   const [expDateStart, setExpDateStart] = useState('');
   const [expDateEnd, setExpDateEnd] = useState('');
+  // Payment-reversal alert — pops once per reversal (tracked via localStorage),
+  // including reversals that land while the dashboard is open (10s polling).
+  const [reversalAlert, setReversalAlert] = useState<DashboardData['recentReversals']>([]);
+  const revSeenRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (revSeenRef.current === null) {
+      try { revSeenRef.current = localStorage.getItem('hspl-rev-seen') ?? '0'; } catch { revSeenRef.current = '0'; }
+    }
+    const fresh = (data?.recentReversals ?? []).filter((r) => r.cancelledAt > (revSeenRef.current ?? '0'));
+    if (!fresh.length) return;
+    const newest = fresh[0].cancelledAt; // list arrives newest-first
+    revSeenRef.current = newest;
+    try { localStorage.setItem('hspl-rev-seen', newest); } catch { /* storage blocked */ }
+    setReversalAlert(fresh);
+  }, [data]);
   const { data: expenditureDetails, isLoading: expenditureDetailsLoading } = useQuery<ExpenditureDetailData>({
     queryKey: ['/dashboard', 'outflow-by-range', expDateStart, expDateEnd],
     queryFn: async () => (await api.get('/dashboard/outflow-by-range', {
@@ -656,6 +674,42 @@ export default function DenseAdminDashboard() {
       </Box>
 
       {/* ── Detail dialogs (unchanged behavior) ── */}
+      {/* Payment reversal alert — pops when a payment voucher is cancelled and
+          the money is returned to its bank/cash account. */}
+      <Dialog open={reversalAlert.length > 0} onClose={() => setReversalAlert([])} maxWidth="xs" fullWidth PaperProps={{ sx: { bgcolor: D.card, color: D.text, border: `1px solid rgba(255,92,122,.35)` } }}>
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', pb: 1 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <SirenIcon sx={{ color: D.red, fontSize: 20 }} />
+            <Box>
+              <Typography sx={{ fontWeight: 800 }}>Payment Reversed</Typography>
+              <Typography variant="caption" sx={{ color: D.textDim }}>
+                {reversalAlert.length === 1 ? 'A payment was cancelled and the amount was added back' : `${reversalAlert.length} payments were cancelled and amounts added back`}
+              </Typography>
+            </Box>
+          </Box>
+          <Button aria-label="Dismiss reversal alert" onClick={() => setReversalAlert([])} sx={{ minWidth: 36, p: 0.5 }}><CloseIcon fontSize="small" /></Button>
+        </DialogTitle>
+        <DialogContent dividers sx={{ p: 0, borderColor: D.cardBorder }}>
+          {reversalAlert.map((r) => (
+            <Box key={r.id} sx={{ px: 2, py: 1.25, borderBottom: `1px solid ${D.cardBorder}`, '&:last-child': { borderBottom: 'none' } }}>
+              <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1}>
+                <Box sx={{ minWidth: 0 }}>
+                  <Typography sx={{ fontSize: '0.82rem', fontWeight: 700, color: D.text }} noWrap>{r.vendorName}</Typography>
+                  <Typography variant="caption" sx={{ color: D.textDim }}>
+                    {r.jvNumber}{r.paymentCode ? ` · ${r.paymentCode}` : ''}{r.accountName ? ` · added back to ${r.accountName}` : ''}
+                  </Typography>
+                </Box>
+                <Typography sx={{ fontSize: '0.85rem', fontWeight: 800, color: D.teal, fontFamily: NUM_FONT, whiteSpace: 'nowrap' }}>
+                  +{formatCurrency(r.amount)}
+                </Typography>
+              </Stack>
+              <Typography variant="caption" sx={{ color: D.textDim }}>{formatDate(r.cancelledAt)}</Typography>
+            </Box>
+          ))}
+        </DialogContent>
+        <DialogActions><Button onClick={() => setReversalAlert([])} variant="contained" size="small">Got it</Button></DialogActions>
+      </Dialog>
+
       <Dialog open={inwardOpen} onClose={() => setInwardOpen(false)} maxWidth="md" fullWidth PaperProps={{ sx: { bgcolor: D.card, color: D.text, border: `1px solid ${D.cardBorder}` } }}>
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', pb: 1 }}>
           <Box><Typography sx={{ fontWeight: 800 }}>Inward Funds Details</Typography><Typography variant="caption" sx={{ color: D.textDim }}>Bank receipts only</Typography></Box>
