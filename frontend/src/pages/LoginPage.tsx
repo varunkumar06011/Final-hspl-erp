@@ -346,6 +346,16 @@ export default function LoginPage() {
     backdropFilter: 'blur(10px)',
   } as const;
 
+  // Static label rendered above inputs — a floating MUI label overlaps the
+  // fieldset border and shows a line through the text on mobile
+  const fieldLabelSx = {
+    display: 'block',
+    mb: 0.75,
+    color: 'rgba(10, 25, 41, 0.6)',
+    fontSize: '0.85rem',
+    fontWeight: 600,
+  } as const;
+
   const glassPinInputSx = {
     mb: { xs: 2, sm: 3 },
     textAlign: 'center',
@@ -552,19 +562,21 @@ export default function LoginPage() {
           {step === 'phone' && (
             <Box sx={{ animation: stepFadeAnim }}>
               {mode === 'signup' && (
-                <TextField
-                  fullWidth
-                  label="Full Name"
-                  placeholder="Enter your full name"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  sx={glassInputSx}
-                  required
-                />
+                <>
+                  <Typography sx={fieldLabelSx}>Full Name</Typography>
+                  <TextField
+                    fullWidth
+                    placeholder="Enter your full name"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    sx={glassInputSx}
+                    required
+                  />
+                </>
               )}
+              <Typography sx={fieldLabelSx}>Phone Number</Typography>
               <TextField
                 fullWidth
-                label="Phone Number"
                 placeholder="9876543210"
                 value={phone}
                 onChange={(e) => {
@@ -698,9 +710,9 @@ export default function LoginPage() {
                 OTP sent to +91 {phone}. Enter the 6-digit code to verify your identity.
               </Alert>
               <Box ref={otpInputRef}>
+              <Typography sx={fieldLabelSx}>Enter OTP</Typography>
               <TextField
                 fullWidth
-                label="Enter OTP"
                 placeholder="6-digit code"
                 value={otp}
                 onChange={(e) => setOtp(e.target.value)}
