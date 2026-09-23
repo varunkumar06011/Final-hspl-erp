@@ -21,6 +21,10 @@ model User {
   projectId   String?  @db.Uuid
   isActive    Boolean  @default(true)
   pinHash     String?
+  // When the user accepted the Terms & Conditions / Privacy Policy.
+  // NULL = pre-consent user — auth middleware rejects API access until they
+  // log in again and tick the consent checkbox.
+  termsAcceptedAt DateTime?
   // Per-user push notification preferences. JSON map of event type → boolean.
   // Event types: "entity_created", "approval_request", "approval_result".
   // Missing key = enabled (default on). Set to false to mute that category.

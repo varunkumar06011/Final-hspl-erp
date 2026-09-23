@@ -15,7 +15,19 @@ export interface AuthenticatedRequest extends Request {
     role: UserRole;
     projectId: string | null;
     isActive: boolean;
+    termsAcceptedAt: Date | null;
   };
+}
+
+// Every authenticated path must populate req.user from a Prisma user row;
+// this helper centralises the mapping + the legal-consent gate.
+const TERMS_REQUIRED = {
+  error: 'Please accept the Terms & Conditions and Privacy Policy to continue.',
+  code: 'TERMS_NOT_ACCEPTED',
+} as const;
+
+function hasAcceptedTerms(user: { termsAcceptedAt: Date | null }): boolean {
+  return !!user.termsAcceptedAt;
 }
 
 export function requireProjectId(req: AuthenticatedRequest): string {
@@ -51,6 +63,7 @@ export async function authMiddleware(
         res.status(403).json({ error: 'No active users in system. Run seed first.' });
         return;
       }
+      // Dev tokens bypass the terms gate — they never reach production.
       req.user = {
         id: user.id,
         firebaseUid: user.firebaseUid,
@@ -59,6 +72,7 @@ export async function authMiddleware(
         role: user.role as UserRole,
         projectId: user.projectId,
         isActive: user.isActive,
+        termsAcceptedAt: user.termsAcceptedAt,
       };
       next();
       return;
@@ -77,6 +91,10 @@ export async function authMiddleware(
           res.status(403).json({ error: 'Account is inactive. Contact administrator.' });
           return;
         }
+        if (!hasAcceptedTerms(user)) {
+          res.status(403).json(TERMS_REQUIRED);
+          return;
+        }
         req.user = {
           id: user.id,
           firebaseUid: user.firebaseUid,
@@ -85,6 +103,7 @@ export async function authMiddleware(
           role: user.role as UserRole,
           projectId: user.projectId,
           isActive: user.isActive,
+          termsAcceptedAt: user.termsAcceptedAt,
         };
         next();
         return;
@@ -111,6 +130,11 @@ export async function authMiddleware(
       return;
     }
 
+    if (!hasAcceptedTerms(user)) {
+      res.status(403).json(TERMS_REQUIRED);
+      return;
+    }
+
     req.user = {
       id: user.id,
       firebaseUid: user.firebaseUid,
@@ -119,6 +143,7 @@ export async function authMiddleware(
       role: user.role as UserRole,
       projectId: user.projectId,
       isActive: user.isActive,
+      termsAcceptedAt: user.termsAcceptedAt,
     };
 
     next();

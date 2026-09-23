@@ -61,8 +61,11 @@ describe('Auth schemas — Firebase token verification & self-registration', () 
     expect(() =>
       registerTokenSchema.parse({ body: { idToken: 'tok', name: '   ' } })
     ).toThrow();
+    expect(() =>
+      registerTokenSchema.parse({ body: { idToken: 'tok', name: 'Bob' } })
+    ).toThrow(); // missing consent
     expect(
-      registerTokenSchema.parse({ body: { idToken: 'tok', name: 'Bob' } }).body.name
+      registerTokenSchema.parse({ body: { idToken: 'tok', name: 'Bob', agreedToTerms: true } }).body.name
     ).toBe('Bob');
   });
 });
@@ -83,7 +86,13 @@ describe('Auth schemas — PIN login & management (fallback auth path)', () => {
       pinLoginSchema.parse({ body: { phone: '+919999999999', pin: 'abcd' } })
     ).toThrow(); // PIN not numeric
 
-    const parsed = pinLoginSchema.parse({ body: { phone: '+919999999999', pin: '1234' } });
+    // Legal consent is mandatory — no session without it.
+    expect(() =>
+      pinLoginSchema.parse({ body: { phone: '+919999999999', pin: '1234' } })
+    ).toThrow();
+    const parsed = pinLoginSchema.parse({
+      body: { phone: '+919999999999', pin: '1234', agreedToTerms: true },
+    });
     expect(parsed.body.pin).toBe('1234');
   });
 
@@ -91,7 +100,7 @@ describe('Auth schemas — PIN login & management (fallback auth path)', () => {
     // Consistency: every PIN in the system is exactly 4 digits.
     expect(() => setPinSchema.parse({ body: { phone: '+919999999999', pin: '12' } })).toThrow();
     expect(
-      setPinSchema.parse({ body: { phone: '+919999999999', pin: '0000' } }).body.pin
+      setPinSchema.parse({ body: { phone: '+919999999999', pin: '0000', agreedToTerms: true } }).body.pin
     ).toBe('0000');
   });
 

@@ -25,16 +25,26 @@ const storage = {
   },
 };
 
-export const useAuthStore = create<AuthState>((set, get) => ({
-  user: (() => {
-    try {
-      const stored = storage.get('user');
-      return stored ? JSON.parse(stored) as UserResponse : null;
-    } catch {
-      return null;
+// Sessions created before legal consent existed carry no termsAcceptedAt —
+// drop them so every user re-authenticates and ticks the consent checkbox.
+const storedAuth = (() => {
+  try {
+    const raw = storage.get('user');
+    const user = raw ? JSON.parse(raw) as UserResponse : null;
+    if (user && !user.termsAcceptedAt) {
+      storage.remove('user');
+      storage.remove('firebaseToken');
+      return { user: null, token: null };
     }
-  })(),
-  token: storage.get('firebaseToken'),
+    return { user, token: storage.get('firebaseToken') };
+  } catch {
+    return { user: null, token: null };
+  }
+})();
+
+export const useAuthStore = create<AuthState>((set, get) => ({
+  user: storedAuth.user,
+  token: storedAuth.token,
   setUser: (user) => {
     if (user) {
       storage.set('user', JSON.stringify(user));

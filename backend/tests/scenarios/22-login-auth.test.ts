@@ -85,11 +85,18 @@ describe('Login & Auth', () => {
     record('check-pin.notFound', true, `404 as expected`);
   });
 
-  it('POST /auth/set-pin sets a 4-digit PIN and returns a JWT', async () => {
+  it('POST /auth/set-pin rejects missing consent', async () => {
     const res = await request.post('/api/auth/set-pin').send({ phone: testPhone, pin: '1234' });
+    expect(res.status).toBe(400);
+    record('set-pin.noConsent', true, `400 as expected`);
+  });
+
+  it('POST /auth/set-pin sets a 4-digit PIN and returns a JWT', async () => {
+    const res = await request.post('/api/auth/set-pin').send({ phone: testPhone, pin: '1234', agreedToTerms: true });
     expect(res.status).toBe(200);
     expect(res.body.token).toBeDefined();
     expect(res.body.user.id).toBe(testUserId);
+    expect(res.body.user.termsAcceptedAt).toBeDefined();
     // JWT has 3 dot-separated parts
     expect(res.body.token.split('.').length).toBe(3);
     record('set-pin', true, `JWT issued for user=${testUserId}`);
@@ -102,8 +109,14 @@ describe('Login & Auth', () => {
     record('check-pin.hasPin', true, `hasPin=true`);
   });
 
-  it('POST /auth/pin-login returns JWT with correct PIN', async () => {
+  it('POST /auth/pin-login rejects missing consent', async () => {
     const res = await request.post('/api/auth/pin-login').send({ phone: testPhone, pin: '1234' });
+    expect(res.status).toBe(400);
+    record('pin-login.noConsent', true, `400 as expected`);
+  });
+
+  it('POST /auth/pin-login returns JWT with correct PIN', async () => {
+    const res = await request.post('/api/auth/pin-login').send({ phone: testPhone, pin: '1234', agreedToTerms: true });
     expect(res.status).toBe(200);
     expect(res.body.token).toBeDefined();
     expect(res.body.user.id).toBe(testUserId);
@@ -112,20 +125,20 @@ describe('Login & Auth', () => {
   });
 
   it('POST /auth/pin-login rejects wrong PIN', async () => {
-    const res = await request.post('/api/auth/pin-login').send({ phone: testPhone, pin: '9999' });
+    const res = await request.post('/api/auth/pin-login').send({ phone: testPhone, pin: '9999', agreedToTerms: true });
     expect(res.status).toBe(401);
     expect(res.body.error).toContain('Incorrect PIN');
     record('pin-login.wrongPin', true, `401 as expected`);
   });
 
   it('POST /auth/pin-login rejects invalid PIN format (non-4-digit)', async () => {
-    const res = await request.post('/api/auth/pin-login').send({ phone: testPhone, pin: '12' });
+    const res = await request.post('/api/auth/pin-login').send({ phone: testPhone, pin: '12', agreedToTerms: true });
     expect([400, 500]).toContain(res.status);
     record('pin-login.badFormat', true, `${res.status} as expected`);
   });
 
   it('POST /auth/pin-login rejects unregistered phone', async () => {
-    const res = await request.post('/api/auth/pin-login').send({ phone: '+919999999998', pin: '1234' });
+    const res = await request.post('/api/auth/pin-login').send({ phone: '+919999999998', pin: '1234', agreedToTerms: true });
     expect(res.status).toBe(404);
     record('pin-login.notFound', true, `404 as expected`);
   });
@@ -197,7 +210,7 @@ describe('Login & Auth', () => {
   });
 
   it('pin-login works with the new PIN after change', async () => {
-    const res = await request.post('/api/auth/pin-login').send({ phone: testPhone, pin: '5678' });
+    const res = await request.post('/api/auth/pin-login').send({ phone: testPhone, pin: '5678', agreedToTerms: true });
     expect(res.status).toBe(200);
     expect(res.body.token).toBeDefined();
     jwtToken = res.body.token;

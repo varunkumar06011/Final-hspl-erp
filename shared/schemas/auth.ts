@@ -17,6 +17,9 @@ export const registerTokenSchema = z.object({
   body: z.object({
     idToken: z.string().min(1, 'Firebase ID token is required'),
     name: z.string().trim().min(1, 'Name is required').max(100),
+    agreedToTerms: z.literal(true, {
+      errorMap: () => ({ message: 'You must agree to the Terms & Conditions and Privacy Policy' }),
+    }),
   }),
 });
 
@@ -25,6 +28,9 @@ export const pinLoginSchema = z.object({
   body: z.object({
     phone: z.string().min(10, 'Phone number is required'),
     pin: z.string().length(4, 'PIN must be exactly 4 digits').regex(/^\d{4}$/, 'PIN must be 4 digits'),
+    agreedToTerms: z.literal(true, {
+      errorMap: () => ({ message: 'You must agree to the Terms & Conditions and Privacy Policy' }),
+    }),
   }),
 });
 
@@ -33,6 +39,9 @@ export const setPinSchema = z.object({
   body: z.object({
     phone: z.string().min(10, 'Phone number is required'),
     pin: z.string().length(4, 'PIN must be exactly 4 digits').regex(/^\d{4}$/, 'PIN must be 4 digits'),
+    agreedToTerms: z.literal(true, {
+      errorMap: () => ({ message: 'You must agree to the Terms & Conditions and Privacy Policy' }),
+    }),
   }),
 });
 
@@ -60,6 +69,7 @@ export const userResponseSchema = z.object({
   role: z.nativeEnum(UserRole),
   projectId: z.string().uuid().nullable(),
   isActive: z.boolean(),
+  termsAcceptedAt: z.string().nullable().optional(),
 });
 
 // Custom role validator — accepts any UserRole enum value OR a dynamic admin role (ADMIN_3, ADMIN_4, ...)

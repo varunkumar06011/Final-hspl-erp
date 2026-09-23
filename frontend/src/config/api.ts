@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { useNetworkStore } from '../stores/networkStore';
+import { useAuthStore } from '../stores/authStore';
 import { API_BASE_URL } from './appConfig';
 
 const api = axios.create({
@@ -42,6 +43,13 @@ api.interceptors.response.use(
           }
         }
       } catch { /* storage unavailable — ProtectedRoute handles it */ }
+    }
+
+    // TERMS_NOT_ACCEPTED (403) means the session predates legal consent —
+    // the backend rejects every call, so log out locally and let
+    // ProtectedRoute bounce the user to /login to re-accept.
+    if (error.response?.data?.code === 'TERMS_NOT_ACCEPTED') {
+      useAuthStore.getState().logout();
     }
 
     if (error.code === 'ECONNABORTED') {

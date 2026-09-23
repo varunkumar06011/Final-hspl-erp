@@ -41,6 +41,7 @@ export async function optionalAuthMiddleware(
           role: user.role as UserRole,
           projectId: user.projectId,
           isActive: user.isActive,
+          termsAcceptedAt: user.termsAcceptedAt,
         };
       }
       next();
@@ -52,7 +53,7 @@ export async function optionalAuthMiddleware(
       try {
         const decoded = jwt.verify(idToken, JWT_SECRET) as { userId: string };
         const user = await prisma.user.findUnique({ where: { id: decoded.userId } });
-        if (user && user.isActive) {
+        if (user && user.isActive && user.termsAcceptedAt) {
           req.user = {
             id: user.id,
             firebaseUid: user.firebaseUid,
@@ -61,6 +62,7 @@ export async function optionalAuthMiddleware(
             role: user.role as UserRole,
             projectId: user.projectId,
             isActive: user.isActive,
+            termsAcceptedAt: user.termsAcceptedAt,
           };
         }
         next();
@@ -75,7 +77,7 @@ export async function optionalAuthMiddleware(
     try {
       const decodedToken = await verifyFirebaseToken(idToken);
       const user = await prisma.user.findUnique({ where: { firebaseUid: decodedToken.uid } });
-      if (user && user.isActive) {
+      if (user && user.isActive && user.termsAcceptedAt) {
         req.user = {
           id: user.id,
           firebaseUid: user.firebaseUid,
@@ -84,6 +86,7 @@ export async function optionalAuthMiddleware(
           role: user.role as UserRole,
           projectId: user.projectId,
           isActive: user.isActive,
+          termsAcceptedAt: user.termsAcceptedAt,
         };
       }
     } catch {

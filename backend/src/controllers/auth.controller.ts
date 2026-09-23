@@ -67,6 +67,7 @@ export async function verifyToken(
       role: user.role,
       projectId: user.projectId,
       isActive: user.isActive,
+      termsAcceptedAt: user.termsAcceptedAt,
     });
   } catch (error) {
     res.status(401).json({ error: 'Invalid or expired Firebase token' });
@@ -114,6 +115,7 @@ export async function register(
         role: UserRole.SUPERVISOR,
         projectId: project.id,
         isActive: true,
+        termsAcceptedAt: new Date(),
       },
     });
 
@@ -125,6 +127,7 @@ export async function register(
       role: user.role,
       projectId: user.projectId,
       isActive: user.isActive,
+      termsAcceptedAt: user.termsAcceptedAt,
     });
   } catch (error) {
     res.status(401).json({ error: 'Invalid or expired Firebase token' });
@@ -301,6 +304,7 @@ export async function getMe(
     role: req.user!.role,
     projectId: req.user!.projectId,
     isActive: req.user!.isActive,
+    termsAcceptedAt: req.user!.termsAcceptedAt,
   });
 }
 
@@ -383,6 +387,12 @@ export async function devLogin(
       updatedName = name.trim();
       await prisma.user.update({ where: { id: user.id }, data: { name: updatedName } });
     }
+    if (!user.termsAcceptedAt) {
+      user = await prisma.user.update({
+        where: { id: user.id },
+        data: { termsAcceptedAt: new Date() },
+      });
+    }
 
     res.json({
       id: user.id,
@@ -392,6 +402,7 @@ export async function devLogin(
       role: user.role,
       projectId: user.projectId,
       isActive: user.isActive,
+      termsAcceptedAt: user.termsAcceptedAt,
     });
   } catch (error) {
     res.status(500).json({ error: 'Dev login failed' });
@@ -479,6 +490,12 @@ export async function pinLogin(
     // PIN correct — clear rate limit
     pinAttempts.delete(phone);
 
+    // Record legal consent — keeps the first acceptance timestamp.
+    const termsAcceptedAt = user.termsAcceptedAt ?? new Date();
+    if (!user.termsAcceptedAt) {
+      await prisma.user.update({ where: { id: user.id }, data: { termsAcceptedAt } });
+    }
+
     const token = signJwt(user.id);
     res.json({
       token,
@@ -490,6 +507,7 @@ export async function pinLogin(
         role: user.role,
         projectId: user.projectId,
         isActive: user.isActive,
+        termsAcceptedAt,
       },
     });
   } catch (error) {
@@ -517,7 +535,11 @@ export async function setPin(
     }
 
     const pinHash = await bcrypt.hash(pin, 10);
-    await prisma.user.update({ where: { id: user.id }, data: { pinHash } });
+    const termsAcceptedAt = user.termsAcceptedAt ?? new Date();
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { pinHash, termsAcceptedAt },
+    });
 
     const token = signJwt(user.id);
     res.json({
@@ -530,6 +552,7 @@ export async function setPin(
         role: user.role,
         projectId: user.projectId,
         isActive: user.isActive,
+        termsAcceptedAt,
       },
     });
   } catch (error) {

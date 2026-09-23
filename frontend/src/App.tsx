@@ -74,6 +74,12 @@ const InwardFundsPage = lazyWithRetry(() => import('./pages/InwardFundsPage'));
 const ExpenditurePage = lazyWithRetry(() => import('./pages/ExpenditurePage'));
 const MaterialPurchaseRequestsPage = lazyWithRetry(() => import('./pages/MaterialPurchaseRequestsPage'));
 const TransactionRegisterPage = lazyWithRetry(() => import('./pages/TransactionRegisterPage'));
+// Public legal/support pages — must be reachable without a session (login
+// checkbox links here; Apple also requires working privacy-policy and
+// support URLs pre-login).
+const PrivacyPolicyPage = lazyWithRetry(() => import('./pages/PrivacyPolicyPage'));
+const TermsConditionsPage = lazyWithRetry(() => import('./pages/TermsConditionsPage'));
+const SupportPage = lazyWithRetry(() => import('./pages/SupportPage'));
 
 function PageLoader() {
   return (
@@ -168,6 +174,10 @@ export default function App() {
                   <Route path="/login" element={<LoginPage />} />
                   {/* Public route — asset QR scan, no auth required */}
                   <Route path="/scan/:assetId" element={<Suspense fallback={<PageLoader />}><AssetScanPage /></Suspense>} />
+                  {/* Public legal pages — linked from the login consent checkbox */}
+                  <Route path="/privacy-policy" element={<Suspense fallback={<PageLoader />}><PrivacyPolicyPage /></Suspense>} />
+                  <Route path="/terms" element={<Suspense fallback={<PageLoader />}><TermsConditionsPage /></Suspense>} />
+                  <Route path="/support" element={<Suspense fallback={<PageLoader />}><SupportPage /></Suspense>} />
                   <Route
                     path="/"
                     element={

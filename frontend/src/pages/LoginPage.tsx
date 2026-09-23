@@ -13,9 +13,11 @@ import {
   Input,
   IconButton,
   InputAdornment as MuiInputAdornment,
+  Checkbox,
+  Link as MuiLink,
 } from '@mui/material';
-import { Visibility, VisibilityOff } from '@mui/icons-material';
-import { useNavigate, Navigate } from 'react-router-dom';
+import { SupportAgent, Visibility, VisibilityOff } from '@mui/icons-material';
+import { useNavigate, Navigate, Link as RouterLink } from 'react-router-dom';
 import { isConfigured, getFirebase, type FirebaseHandles } from '../config/firebase';
 import api, { extractErrorMessage } from '../config/api';
 import { useAuthStore } from '../stores/authStore';
@@ -51,6 +53,8 @@ export default function LoginPage() {
   const [showPin, setShowPin] = useState(false);
   const [confirmationResult, setConfirmationResult] = useState<any>(null);
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  // Legal consent — must be ticked before any sign-in/sign-up action.
+  const [agreed, setAgreed] = useState(false);
   const { setUser, setToken, isAuthenticated } = useAuthStore();
   const navigate = useNavigate();
 
@@ -162,6 +166,10 @@ export default function LoginPage() {
 
   // Step 1: Check if phone has a PIN set
   const handleCheckPhone = useCallback(async () => {
+    if (!agreed) {
+      setError('Please agree to the Terms & Conditions and Privacy Policy to continue.');
+      return;
+    }
     setError('');
     setLoading(true);
     try {
@@ -185,15 +193,19 @@ export default function LoginPage() {
     } finally {
       setLoading(false);
     }
-  }, [phone, mode, sendOtp]);
+  }, [phone, mode, sendOtp, agreed]);
 
   // Step 2a: Login with PIN
   const handlePinLogin = useCallback(async () => {
+    if (!agreed) {
+      setError('Please agree to the Terms & Conditions and Privacy Policy to continue.');
+      return;
+    }
     setError('');
     setLoading(true);
     try {
       const formattedPhone = formatPhone(phone);
-      const response = await api.post('/auth/pin-login', { phone: formattedPhone, pin });
+      const response = await api.post('/auth/pin-login', { phone: formattedPhone, pin, agreedToTerms: agreed });
       setToken(response.data.token);
       setUser(response.data.user);
       navigate('/', { replace: true });
@@ -202,7 +214,7 @@ export default function LoginPage() {
     } finally {
       setLoading(false);
     }
-  }, [phone, pin, setToken, setUser, navigate]);
+  }, [phone, pin, agreed, setToken, setUser, navigate]);
 
   // Step 2c: Verify OTP
   const handleVerifyOtp = useCallback(async () => {
@@ -240,7 +252,7 @@ export default function LoginPage() {
 
       // Verify or register with backend
       const response = mode === 'signup'
-        ? await api.post('/auth/register', { idToken, name: name.trim() })
+        ? await api.post('/auth/register', { idToken, name: name.trim(), agreedToTerms: agreed })
         : await api.post('/auth/verify', { idToken });
 
       // OTP verified — now set PIN
@@ -252,15 +264,19 @@ export default function LoginPage() {
     } finally {
       setLoading(false);
     }
-  }, [confirmationResult, otp, phone, name, mode, setUser]);
+  }, [confirmationResult, otp, phone, name, mode, agreed, setUser]);
 
   // Step 3: Set PIN (after OTP verification)
   const handleSetPin = useCallback(async () => {
+    if (!agreed) {
+      setError('Please agree to the Terms & Conditions and Privacy Policy to continue.');
+      return;
+    }
     setError('');
     setLoading(true);
     try {
       const formattedPhone = formatPhone(phone);
-      const response = await api.post('/auth/set-pin', { phone: formattedPhone, pin });
+      const response = await api.post('/auth/set-pin', { phone: formattedPhone, pin, agreedToTerms: agreed });
       setToken(response.data.token);
       setUser(response.data.user);
       navigate('/', { replace: true });
@@ -269,7 +285,7 @@ export default function LoginPage() {
     } finally {
       setLoading(false);
     }
-  }, [phone, pin, setToken, setUser, navigate]);
+  }, [phone, pin, agreed, setToken, setUser, navigate]);
 
   if (isAuthenticated()) {
     return <Navigate to="/" replace />;
@@ -345,6 +361,35 @@ export default function LoginPage() {
     '& input': { color: '#0a1929', textAlign: 'center', fontSize: '2.5rem' },
     '& input::placeholder': { color: 'rgba(10, 25, 41, 0.35)' },
   } as const;
+
+  // Consent checkbox — shown on every step that can lead to a session being
+  // issued (phone → OTP, PIN sign-in, set-PIN). RouterLink works in both the
+  // web BrowserRouter and the native HashRouter.
+  const consentCheckbox = (
+    <Box sx={{ display: 'flex', alignItems: 'flex-start', mb: 2 }}>
+      <Checkbox
+        checked={agreed}
+        onChange={(e) => setAgreed(e.target.checked)}
+        sx={{
+          p: 0.5,
+          mr: 1,
+          mt: -0.25,
+          color: 'rgba(10, 25, 41, 0.5)',
+          '&.Mui-checked': { color: '#1565C0' },
+        }}
+      />
+      <Typography variant="body2" sx={{ color: 'rgba(10, 25, 41, 0.7)', lineHeight: 1.5 }}>
+        I agree to the{' '}
+        <MuiLink component={RouterLink} to="/terms" underline="always" sx={{ color: '#1565C0', fontWeight: 600 }}>
+          Terms &amp; Conditions
+        </MuiLink>{' '}
+        and{' '}
+        <MuiLink component={RouterLink} to="/privacy-policy" underline="always" sx={{ color: '#1565C0', fontWeight: 600 }}>
+          Privacy Policy
+        </MuiLink>
+      </Typography>
+    </Box>
+  );
 
   return (
     <Box
@@ -563,12 +608,13 @@ export default function LoginPage() {
               <Typography variant="caption" sx={{ display: 'block', mt: -1.5, mb: 2, color: 'rgba(10, 25, 41, 0.5)', fontSize: '0.72rem' }}>
                 We'll send a verification code to this number.
               </Typography>
+              {consentCheckbox}
               <Button
                 fullWidth
                 variant="contained"
                 size="large"
                 onClick={handleCheckPhone}
-                disabled={loading || phone.length !== 10 || (mode === 'signup' && !name.trim())}
+                disabled={loading || !agreed || phone.length !== 10 || (mode === 'signup' && !name.trim())}
                 sx={glassButtonSx}
               >
                 {loading ? <CircularProgress size={24} color="inherit" /> : 'Continue'}
@@ -607,12 +653,13 @@ export default function LoginPage() {
                 }
               />
               </Box>
+              {consentCheckbox}
               <Button
                 fullWidth
                 variant="contained"
                 size="large"
                 onClick={handlePinLogin}
-                disabled={loading || pin.length !== 4}
+                disabled={loading || !agreed || pin.length !== 4}
                 sx={glassButtonSx}
               >
                 {loading ? <CircularProgress size={24} color="inherit" /> : 'Sign In'}
@@ -710,12 +757,13 @@ export default function LoginPage() {
               <Typography variant="caption" sx={{ display: 'block', mb: 2, color: 'rgba(10, 25, 41, 0.5)' }}>
                 You'll use this PIN with your phone number to sign in — no OTP needed.
               </Typography>
+              {consentCheckbox}
               <Button
                 fullWidth
                 variant="contained"
                 size="large"
                 onClick={handleSetPin}
-                disabled={loading || pin.length !== 4}
+                disabled={loading || !agreed || pin.length !== 4}
                 sx={glassButtonSx}
               >
                 {loading ? <CircularProgress size={24} color="inherit" /> : 'Set PIN & Sign In'}
@@ -731,6 +779,54 @@ export default function LoginPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Footer legal links — always visible */}
+      <Box
+        sx={{
+          position: 'absolute',
+          bottom: { xs: 'calc(12px + env(safe-area-inset-bottom))', md: 16 },
+          left: 0,
+          right: 0,
+          textAlign: 'center',
+          zIndex: 1,
+        }}
+      >
+        <Box sx={{ mb: 1.5 }}>
+          <MuiLink
+            component={RouterLink}
+            to="/support"
+            underline="none"
+            sx={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 0.75,
+              px: 2,
+              py: 0.75,
+              borderRadius: '999px',
+              border: '1px solid rgba(255,255,255,0.35)',
+              backgroundColor: 'rgba(255,255,255,0.12)',
+              color: 'rgba(255,255,255,0.92)',
+              fontSize: '0.8125rem',
+              fontWeight: 600,
+              backdropFilter: 'blur(6px)',
+              transition: 'background-color 0.2s',
+              '&:hover': { backgroundColor: 'rgba(255,255,255,0.22)' },
+            }}
+          >
+            <SupportAgent sx={{ fontSize: 16 }} />
+            Need help? Contact Support
+          </MuiLink>
+        </Box>
+        <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.65)' }}>
+          <MuiLink component={RouterLink} to="/terms" underline="hover" sx={{ color: 'rgba(255,255,255,0.85)' }}>
+            Terms &amp; Conditions
+          </MuiLink>
+          {' · '}
+          <MuiLink component={RouterLink} to="/privacy-policy" underline="hover" sx={{ color: 'rgba(255,255,255,0.85)' }}>
+            Privacy Policy
+          </MuiLink>
+        </Typography>
+      </Box>
     </Box>
   );
 }
