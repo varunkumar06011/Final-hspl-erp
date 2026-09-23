@@ -350,10 +350,10 @@ function drawSummaryTable(doc: PDFKit.PDFDocument, entries: any[], _date: Date, 
 
   const sumRowH = 16;
   // The description secondary row spans from the PO Number column's left edge
-  // to the Amount column's right edge — the S.No column stays outside it.
-  // +4 / -4 match the standard text inset used by every cell.
+  // up to (but not under) the Amount column — the S.No column stays outside it.
+  // +4 / -8 match the standard text inset used by every cell.
   const descX = colX[1] + 4;
-  const descW = RIGHT - 4 - descX;
+  const descW = colX[descIdx] - 8 - descX;
   if (entries.length === 0) {
     // Empty-day sheet — still render a clear "no payments" row so the
     // exported PDF isn't just a bare header.
