@@ -271,6 +271,7 @@ export default function VouchersPage() {
         setSimpleAmount(String(Number(pr.amount)));
         setVoucherDescription(`Payment: ${pr.paymentCode} (${pr.type})`);
         setVoucherDate(todayLocalDate());
+        if (pr.chequeNumber) setChequeNumber(String(pr.chequeNumber));
         if (pr.budgetHead?.id) setSimpleCostCenter(pr.budgetHead.id);
         if (partyLedger) {
           // Ensure the resolved ledger is in the autocomplete's list so it displays

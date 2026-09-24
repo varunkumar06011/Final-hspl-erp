@@ -82,6 +82,7 @@ interface PaymentRequestRow {
   amount: number;
   status: string;
   paymentMode: string | null;
+  chequeNumber: string | null;
   description: string | null;
   category: string | null;
   expenseDate: string | null;
@@ -279,6 +280,7 @@ export default function PaymentsPage() {
       formData.append('requestNumber', String(advancePayForm.requestNumber ?? ''));
       formData.append('amount', String(advancePayForm.amount ?? ''));
       if (advancePayForm.paymentMode) formData.append('paymentMode', String(advancePayForm.paymentMode));
+      if (advancePayForm.chequeNumber) formData.append('chequeNumber', String(advancePayForm.chequeNumber));
       if (advancePayForm.notes) formData.append('notes', String(advancePayForm.notes));
       if (advancePayForm.budgetHeadId) formData.append('budgetHeadId', String(advancePayForm.budgetHeadId));
       // ── E07: Only append acknowledged when the user actually checks the box ──
@@ -457,6 +459,7 @@ export default function PaymentsPage() {
       category: row.category ?? '',
       amount: row.amount,
       paymentMode: row.paymentMode ?? PaymentMode.CASH,
+      chequeNumber: row.chequeNumber ?? '',
       budgetHeadId: row.budgetHeadId ?? '',
     });
     setEditRow(row);
@@ -1034,6 +1037,16 @@ export default function PaymentsPage() {
             >
               {PAYMENT_MODES.map((m) => <MenuItem key={m} value={m}>{m.replace(/_/g, ' ')}</MenuItem>)}
             </TextField>
+            {String(invoicePayForm.paymentMode ?? '') === PaymentMode.CHEQUE && (
+              <TextField
+                label="Cheque Number"
+                value={String(invoicePayForm.chequeNumber ?? '')}
+                onChange={(e) => setInvoicePayForm({ ...invoicePayForm, chequeNumber: e.target.value })}
+                fullWidth
+                size="small"
+                required
+              />
+            )}
             <TextField
               select
               label="Budget Head (optional)"
@@ -1069,11 +1082,12 @@ export default function PaymentsPage() {
                 requestNumber: invoicePayForm.requestNumber,
                 amount: Number(invoicePayForm.amount),
                 paymentMode: invoicePayForm.paymentMode || undefined,
+                chequeNumber: invoicePayForm.chequeNumber || undefined,
                 notes: invoicePayForm.notes || undefined,
                 budgetHeadId: invoicePayForm.budgetHeadId || undefined,
               });
             }}
-            disabled={createInvoicePaymentMutation.isPending || !invoicePayForm.amount || Number(invoicePayForm.amount) <= 0}
+            disabled={createInvoicePaymentMutation.isPending || !invoicePayForm.amount || Number(invoicePayForm.amount) <= 0 || (invoicePayForm.paymentMode === PaymentMode.CHEQUE && !String(invoicePayForm.chequeNumber ?? '').trim())}
           >
             {createInvoicePaymentMutation.isPending ? <CircularProgress size={20} /> : 'Create Payment Request'}
           </Button>
@@ -1163,6 +1177,16 @@ export default function PaymentsPage() {
             >
               {PAYMENT_MODES.map((m) => <MenuItem key={m} value={m}>{m.replace(/_/g, ' ')}</MenuItem>)}
             </TextField>
+            {String(advancePayForm.paymentMode ?? '') === PaymentMode.CHEQUE && (
+              <TextField
+                label="Cheque Number"
+                value={String(advancePayForm.chequeNumber ?? '')}
+                onChange={(e) => setAdvancePayForm({ ...advancePayForm, chequeNumber: e.target.value })}
+                fullWidth
+                size="small"
+                required
+              />
+            )}
             <TextField
               select
               label="Budget Head (optional)"
@@ -1216,7 +1240,7 @@ export default function PaymentsPage() {
               setError('');
               createAdvancePaymentMutation.mutate();
             }}
-            disabled={createAdvancePaymentMutation.isPending || !advancePayForm.amount || Number(advancePayForm.amount) <= 0 || !advanceAcknowledged}
+            disabled={createAdvancePaymentMutation.isPending || !advancePayForm.amount || Number(advancePayForm.amount) <= 0 || !advanceAcknowledged || (advancePayForm.paymentMode === PaymentMode.CHEQUE && !String(advancePayForm.chequeNumber ?? '').trim())}
           >
             {createAdvancePaymentMutation.isPending ? <CircularProgress size={20} /> : 'Record Payment'}
           </Button>
@@ -1473,6 +1497,15 @@ export default function PaymentsPage() {
                 {PAYMENT_MODES.map((m) => <MenuItem key={m} value={m}>{m.replace(/_/g, ' ')}</MenuItem>)}
               </TextField>
             </Box>
+            {String(editForm.paymentMode ?? '') === PaymentMode.CHEQUE && (
+              <TextField
+                label="Cheque Number"
+                value={String(editForm.chequeNumber ?? '')}
+                onChange={(e) => setEditForm({ ...editForm, chequeNumber: e.target.value })}
+                size="small"
+                required
+              />
+            )}
             <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, flexWrap: 'wrap' }}>
               <TextField
                 select
@@ -1515,6 +1548,7 @@ export default function PaymentsPage() {
                 notes: editForm.notes ?? null,
                 amount: amt,
                 paymentMode: editForm.paymentMode || null,
+                chequeNumber: editForm.chequeNumber || null,
                 category: editForm.category || null,
                 budgetHeadId: editForm.budgetHeadId || null,
               };

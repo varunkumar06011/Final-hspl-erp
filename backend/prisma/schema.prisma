@@ -418,6 +418,7 @@ model PaymentRequest {
   amount        Decimal   @db.Decimal(15, 2)
   status        String    @default("PENDING") // PaymentStatus enum
   paymentMode   String? // PaymentMode enum
+  chequeNumber  String? // captured when paymentMode is CHEQUE; flows to the posted voucher + Payment.reference
   description   String?
   category      String?
   expenseDate   DateTime?

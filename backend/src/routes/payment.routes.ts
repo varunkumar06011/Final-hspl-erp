@@ -328,7 +328,11 @@ router.post(
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const projectId = requireProjectId(req);
-      const { poId, vendorId, requestNumber, amount, paymentMode, notes } = req.body;
+      const { poId, vendorId, requestNumber, amount, paymentMode, chequeNumber, notes } = req.body;
+      if (paymentMode === 'CHEQUE' && !String(chequeNumber ?? '').trim()) {
+        res.status(400).json({ error: 'Cheque number is required when payment mode is CHEQUE' });
+        return;
+      }
 
       // Validate PO exists, belongs to project, is approved, and has the right payment type
       const po = await prisma.purchaseOrder.findFirst({
@@ -410,6 +414,7 @@ router.post(
             type: 'ADVANCE',
             amount: Number(amount),
             paymentMode: paymentMode ?? null,
+            chequeNumber: chequeNumber ?? null,
             notes: notes ?? null,
             filePath,
             fileName,
@@ -489,7 +494,11 @@ router.post(
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const projectId = requireProjectId(req);
-      const { invoiceId, vendorId, requestNumber, amount, paymentMode, notes } = req.body;
+      const { invoiceId, vendorId, requestNumber, amount, paymentMode, chequeNumber, notes } = req.body;
+      if (paymentMode === 'CHEQUE' && !String(chequeNumber ?? '').trim()) {
+        res.status(400).json({ error: 'Cheque number is required when payment mode is CHEQUE' });
+        return;
+      }
 
       const invoice = await prisma.vendorInvoice.findFirst({
         where: { id: invoiceId, projectId, deletedAt: null },
@@ -542,6 +551,7 @@ router.post(
             type: 'INVOICE',
             amount: Number(amount),
             paymentMode: paymentMode ?? null,
+            chequeNumber: chequeNumber ?? null,
             notes: notes ?? null,
             // ── C26: Inherit budgetHeadId from the invoice's PO if not provided ──
             budgetHeadId: req.body.budgetHeadId ?? invoice.purchaseOrder?.budgetHeadId ?? null,
@@ -769,7 +779,7 @@ router.patch(
         return;
       }
 
-      const { description, notes, expenseDate, category, paymentMode, budgetHeadId, amount } = req.body;
+      const { description, notes, expenseDate, category, paymentMode, chequeNumber, budgetHeadId, amount } = req.body;
       const round2 = (x: number) => Math.round((x + Number.EPSILON) * 100) / 100;
 
       let newExpenseDate: Date | null | undefined;
@@ -807,6 +817,7 @@ router.patch(
       if (newExpenseDate !== undefined) data.expenseDate = newExpenseDate;
       if (category !== undefined) data.category = category ? String(category).trim() : null;
       if (paymentMode !== undefined) data.paymentMode = paymentMode || null;
+      if (chequeNumber !== undefined) data.chequeNumber = chequeNumber || null;
       if (budgetHeadId !== undefined) data.budgetHeadId = budgetHeadId || null;
       if (newAmount !== undefined) data.amount = newAmount;
 
@@ -824,6 +835,7 @@ router.patch(
           const payData: Record<string, unknown> = {};
           if (newAmount !== undefined) payData.amount = newAmount;
           if (paymentMode !== undefined && paymentMode) payData.mode = paymentMode;
+          if (chequeNumber !== undefined) payData.reference = chequeNumber || null;
           if (budgetHeadId !== undefined) payData.budgetHeadId = budgetHeadId || null;
           if (newExpenseDate) payData.date = newExpenseDate;
           if (Object.keys(payData).length > 0) {
@@ -900,6 +912,11 @@ router.patch(
             if (newExpenseDate) {
               await tx.journalVoucher.update({ where: { id: jv.id }, data: { date: newExpenseDate } });
               await tx.ledgerEntry.updateMany({ where: { journalVoucherId: jv.id }, data: { voucherDate: newExpenseDate } });
+            }
+
+            // Cheque number flows through to the posted voucher
+            if (chequeNumber !== undefined) {
+              await tx.journalVoucher.update({ where: { id: jv.id }, data: { chequeNumber: chequeNumber || null } });
             }
 
             // Budget-head retag: move this payment's totals between heads
@@ -1029,6 +1046,8 @@ router.get(
           type: pr.type,
           amount: Number(pr.amount),
           description: pr.description,
+          paymentMode: pr.paymentMode,
+          chequeNumber: pr.chequeNumber,
           vendor: pr.vendor,
           invoice: pr.invoice,
           purchaseOrder: pr.purchaseOrder,
