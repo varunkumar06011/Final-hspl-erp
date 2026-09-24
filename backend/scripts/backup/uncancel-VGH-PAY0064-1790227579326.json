@@ -1,0 +1,127 @@
+{
+  "voucher": {
+    "id": "0288fdf3-bdd8-4b7b-9a4e-1e55029678db",
+    "projectId": "78996889-e6d1-4f54-aa5e-8f62f5027394",
+    "jvNumber": "VGH-PAY0064",
+    "date": "2026-09-16T00:00:00.000Z",
+    "description": "towards advance for Purchase of Steel against Quotation",
+    "type": "ADJUSTMENT",
+    "voucherType": "PAYMENT",
+    "sourceInvoiceId": null,
+    "chequeNumber": null,
+    "chequeDate": null,
+    "status": "CANCELLED",
+    "totalDebit": "2582313",
+    "totalCredit": "2582313",
+    "postedAt": "2026-09-17T05:22:48.425Z",
+    "postedBy": "8e75a510-17e9-49d9-bec4-653a858145b8",
+    "approvalWorkflowId": null,
+    "createdBy": "8e75a510-17e9-49d9-bec4-653a858145b8",
+    "createdAt": "2026-09-17T05:22:48.427Z",
+    "updatedAt": "2026-09-23T15:25:33.751Z",
+    "updatedBy": "8e75a510-17e9-49d9-bec4-653a858145b8",
+    "deletedAt": null,
+    "ledgerEntries": [
+      {
+        "id": "a14dd563-67f1-4807-a1bf-2c8866a84594",
+        "ledgerId": "5147cda4-451f-40cb-bac0-0f4a220a93d7",
+        "journalVoucherId": "0288fdf3-bdd8-4b7b-9a4e-1e55029678db",
+        "debit": "0",
+        "credit": "2582313",
+        "description": "REVERSAL: towards advance for Purchase of Steel against Quotation",
+        "budgetHeadId": "0d403981-0006-4ef0-bc53-2fef15c44159",
+        "voucherType": "PAYMENT",
+        "voucherNumber": "VGH-PAY0064",
+        "voucherDate": "2026-09-16T00:00:00.000Z",
+        "createdAt": "2026-09-23T15:25:34.165Z"
+      },
+      {
+        "id": "d4716ddc-e659-4f6c-8e30-64484d0d3015",
+        "ledgerId": "49e58a6e-c7d8-43a1-93c7-c0871bb5fbe4",
+        "journalVoucherId": "0288fdf3-bdd8-4b7b-9a4e-1e55029678db",
+        "debit": "2582313",
+        "credit": "0",
+        "description": "REVERSAL: towards advance for Purchase of Steel against Quotation",
+        "budgetHeadId": null,
+        "voucherType": "PAYMENT",
+        "voucherNumber": "VGH-PAY0064",
+        "voucherDate": "2026-09-16T00:00:00.000Z",
+        "createdAt": "2026-09-23T15:25:34.580Z"
+      },
+      {
+        "id": "c0a0331e-d8aa-49fa-a8d4-e7e80f274efa",
+        "ledgerId": "5147cda4-451f-40cb-bac0-0f4a220a93d7",
+        "journalVoucherId": "0288fdf3-bdd8-4b7b-9a4e-1e55029678db",
+        "debit": "2582313",
+        "credit": "0",
+        "description": "towards advance for Purchase of Steel against Quotation",
+        "budgetHeadId": "0d403981-0006-4ef0-bc53-2fef15c44159",
+        "voucherType": "PAYMENT",
+        "voucherNumber": "VGH-PAY0064",
+        "voucherDate": "2026-09-16T00:00:00.000Z",
+        "createdAt": "2026-09-17T05:22:48.721Z"
+      },
+      {
+        "id": "ca5f573c-6d93-4c4b-a75b-d855d6e898c4",
+        "ledgerId": "49e58a6e-c7d8-43a1-93c7-c0871bb5fbe4",
+        "journalVoucherId": "0288fdf3-bdd8-4b7b-9a4e-1e55029678db",
+        "debit": "0",
+        "credit": "2582313",
+        "description": "towards advance for Purchase of Steel against Quotation",
+        "budgetHeadId": null,
+        "voucherType": "PAYMENT",
+        "voucherNumber": "VGH-PAY0064",
+        "voucherDate": "2026-09-16T00:00:00.000Z",
+        "createdAt": "2026-09-17T05:22:48.994Z"
+      }
+    ]
+  },
+  "reversalEntries": [
+    {
+      "id": "a14dd563-67f1-4807-a1bf-2c8866a84594",
+      "ledgerId": "5147cda4-451f-40cb-bac0-0f4a220a93d7",
+      "journalVoucherId": "0288fdf3-bdd8-4b7b-9a4e-1e55029678db",
+      "debit": "0",
+      "credit": "2582313",
+      "description": "REVERSAL: towards advance for Purchase of Steel against Quotation",
+      "budgetHeadId": "0d403981-0006-4ef0-bc53-2fef15c44159",
+      "voucherType": "PAYMENT",
+      "voucherNumber": "VGH-PAY0064",
+      "voucherDate": "2026-09-16T00:00:00.000Z",
+      "createdAt": "2026-09-23T15:25:34.165Z"
+    },
+    {
+      "id": "d4716ddc-e659-4f6c-8e30-64484d0d3015",
+      "ledgerId": "49e58a6e-c7d8-43a1-93c7-c0871bb5fbe4",
+      "journalVoucherId": "0288fdf3-bdd8-4b7b-9a4e-1e55029678db",
+      "debit": "2582313",
+      "credit": "0",
+      "description": "REVERSAL: towards advance for Purchase of Steel against Quotation",
+      "budgetHeadId": null,
+      "voucherType": "PAYMENT",
+      "voucherNumber": "VGH-PAY0064",
+      "voucherDate": "2026-09-16T00:00:00.000Z",
+      "createdAt": "2026-09-23T15:25:34.580Z"
+    }
+  ],
+  "reversalBankTxns": [
+    {
+      "id": "a4b5bb61-42ca-4759-87d0-257a289abcda",
+      "bankAccountId": "5ea29e57-e86a-40b4-b157-1fae73b33abb",
+      "type": "REVERSAL_IN",
+      "amount": "2582313",
+      "balanceAfter": "38440626",
+      "date": "2026-09-23T15:25:34.986Z",
+      "description": "REVERSAL: VGH-PAY0064",
+      "referenceType": "JOURNAL_VOUCHER",
+      "referenceId": "0288fdf3-bdd8-4b7b-9a4e-1e55029678db",
+      "transferPairId": null,
+      "status": "POSTED",
+      "reversalOfId": null,
+      "budgetHeadId": null,
+      "createdBy": "8e75a510-17e9-49d9-bec4-653a858145b8",
+      "createdAt": "2026-09-23T15:25:34.987Z"
+    }
+  ],
+  "reversalCashTxns": []
+}
