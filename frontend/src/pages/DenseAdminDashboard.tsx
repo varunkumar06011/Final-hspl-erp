@@ -341,8 +341,7 @@ export default function DenseAdminDashboard() {
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'repeat(2, minmax(0, 1fr))', lg: 'repeat(4, minmax(0, 1fr))' }, gap: { xs: 1, md: 1.2 }, mb: 1.4 }}>
         <KpiCard title="Inward Funds" value={data?.pureBankInward ?? 0} subtitle="All funds received" color={D.teal} spark={inwardSpark} onClick={() => setInwardOpen(true)} />
         <KpiCard title="Total Expenditure" value={data?.totalExpenditure ?? 0} subtitle="All posted spend" color={D.red} delta={expenditureDelta} spark={expenditureSpark} onClick={() => setExpenditureOpen(true)} />
-        <KpiCard title="Short Advance / Loan" value={data?.shortAdvance ?? 0} subtitle="Cash loans received" color={D.violet} onClick={() => setShortAdvanceOpen(true)}
-          extra={<Typography sx={{ fontSize: '0.62rem', mt: 0.2, color: D.amber, fontFamily: NUM_FONT }}>Still to repay: {formatCurrency(data?.outstandingLoans ?? 0)}</Typography>} />
+        <KpiCard title="Short Advance / Loan" value={data?.outstandingLoans ?? 0} subtitle="Still to repay to lenders" color={D.violet} onClick={() => setShortAdvanceOpen(true)} />
         <KpiCard title="Balance" value={data?.balance ?? 0} subtitle="Inward + loans − spend" color={D.blue} onClick={() => setBalanceOpen(true)} />
       </Box>
 
@@ -743,7 +742,7 @@ export default function DenseAdminDashboard() {
             <TableBody>
               {[
                 { label: 'Inward Funds (bank receipts)', value: data?.pureBankInward ?? 0, sign: '+', color: 'success.main' },
-                { label: 'Short Advance / Loan receipts', value: data?.shortAdvance ?? 0, sign: '+', color: 'warning.main' },
+                { label: 'Cash loans received (all-time)', value: data?.shortAdvance ?? 0, sign: '+', color: 'warning.main' },
                 { label: 'Bank expenditure', value: data?.bankExpenditure ?? 0, sign: '−', color: 'error.main' },
                 { label: 'Cash expenditure', value: data?.cashExpenditure ?? 0, sign: '−', color: 'error.main' },
               ].map((r) => (
@@ -795,7 +794,7 @@ export default function DenseAdminDashboard() {
 
       <Dialog open={shortAdvanceOpen} onClose={() => setShortAdvanceOpen(false)} maxWidth="md" fullWidth PaperProps={{ sx: { bgcolor: D.card, color: D.text, border: `1px solid ${D.cardBorder}` } }}>
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', pb: 1 }}>
-          <Box><Typography sx={{ fontWeight: 800 }}>Short Advance / Loan Details</Typography><Typography variant="caption" sx={{ color: D.textDim }}>Cash loan receipts only</Typography></Box>
+          <Box><Typography sx={{ fontWeight: 800 }}>Short Advance / Loan Details</Typography><Typography variant="caption" sx={{ color: D.textDim }}>Still to repay: {formatCurrency(data?.outstandingLoans ?? 0)} · receipts below are all-time loan inflows</Typography></Box>
           <Button aria-label="Close short advance details" onClick={() => setShortAdvanceOpen(false)} sx={{ minWidth: 36, p: 0.5 }}><CloseIcon fontSize="small" /></Button>
         </DialogTitle>
         <DialogContent dividers sx={{ p: 0, borderColor: D.cardBorder }}>
