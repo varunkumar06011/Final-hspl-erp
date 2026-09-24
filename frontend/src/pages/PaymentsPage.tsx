@@ -713,6 +713,12 @@ export default function PaymentsPage() {
                               color="warning"
                               label={`Request ${po.activePaymentRequest.status}`}
                             />
+                          ) : po.outstanding <= 0 ? (
+                            <Chip
+                              size="small"
+                              color="success"
+                              label="Paid"
+                            />
                           ) : (
                             <Button
                               size="small"
