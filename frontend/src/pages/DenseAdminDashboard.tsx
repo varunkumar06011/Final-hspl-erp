@@ -31,6 +31,7 @@ interface DashboardData {
   project: { name: string; status: string } | null;
   pureBankInward: number;
   shortAdvance: number;
+  outstandingLoans: number;
   totalInwardFunds: number;
   totalExpenditure: number;
   bankExpenditure: number;
@@ -154,10 +155,11 @@ function kpiFont(formatted: string) {
   return { xs: '1.15rem', sm: '1.4rem' };
 }
 
-function KpiCard({ title, value, subtitle, color, delta, spark, onClick }: {
+function KpiCard({ title, value, subtitle, color, delta, spark, extra, onClick }: {
   title: string; value: number; subtitle: string; color: string;
   delta?: { pct: number; up: boolean } | null;
   spark?: { v: number }[];
+  extra?: ReactNode;
   onClick?: () => void;
 }) {
   const formatted = formatCurrency(value);
@@ -190,6 +192,7 @@ function KpiCard({ title, value, subtitle, color, delta, spark, onClick }: {
           {formatted}
         </Typography>
         <Typography sx={{ fontSize: '0.66rem', color: D.textDim, mt: 0.25 }}>{subtitle}</Typography>
+        {extra}
         {spark && <Sparkline points={spark} color={color} />}
       </CardContent>
     </Card>
@@ -338,7 +341,8 @@ export default function DenseAdminDashboard() {
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'repeat(2, minmax(0, 1fr))', lg: 'repeat(4, minmax(0, 1fr))' }, gap: { xs: 1, md: 1.2 }, mb: 1.4 }}>
         <KpiCard title="Inward Funds" value={data?.pureBankInward ?? 0} subtitle="All funds received" color={D.teal} spark={inwardSpark} onClick={() => setInwardOpen(true)} />
         <KpiCard title="Total Expenditure" value={data?.totalExpenditure ?? 0} subtitle="All posted spend" color={D.red} delta={expenditureDelta} spark={expenditureSpark} onClick={() => setExpenditureOpen(true)} />
-        <KpiCard title="Short Advance / Loan" value={data?.shortAdvance ?? 0} subtitle="Cash loans received" color={D.violet} onClick={() => setShortAdvanceOpen(true)} />
+        <KpiCard title="Short Advance / Loan" value={data?.shortAdvance ?? 0} subtitle="Cash loans received" color={D.violet} onClick={() => setShortAdvanceOpen(true)}
+          extra={<Typography sx={{ fontSize: '0.62rem', mt: 0.2, color: D.amber, fontFamily: NUM_FONT }}>Still to repay: {formatCurrency(data?.outstandingLoans ?? 0)}</Typography>} />
         <KpiCard title="Balance" value={data?.balance ?? 0} subtitle="Inward + loans − spend" color={D.blue} onClick={() => setBalanceOpen(true)} />
       </Box>
 

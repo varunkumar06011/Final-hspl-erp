@@ -1014,6 +1014,20 @@ router.get(
         0,
       );
 
+      // Outstanding loans = credit balances of loan-group ledgers (money we
+      // still owe lenders). Debit balances (advances receivable like office
+      // float) are not netted — they are assets, not loans to repay.
+      // Display-only figure — the Balance formula keeps using gross
+      // shortAdvance so repayments are not deducted twice.
+      const loanLedgers = await prisma.ledger.findMany({
+        where: { projectId, deletedAt: null, group: { contains: 'loan', mode: 'insensitive' } },
+        select: { currentBalance: true },
+      });
+      const outstandingLoans = loanLedgers.reduce(
+        (sum, ledger) => sum + Math.max(0, -Number(ledger.currentBalance)),
+        0,
+      );
+
       // Action Required items — all recent records that are NOT yet approved/verified,
       // NOT rejected, and NOT cancelled. This includes DRAFT, SUBMITTED, UNDER_REVIEW
       // quotations and DRAFT, PENDING_APPROVAL POs, so the admin sees everything
@@ -1176,6 +1190,7 @@ router.get(
         // Accounting-first summary
         pureBankInward,
         shortAdvance,
+        outstandingLoans,
         totalInwardFunds,
         totalExpenditure,
         bankExpenditure,
