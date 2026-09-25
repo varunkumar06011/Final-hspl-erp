@@ -34,6 +34,68 @@ async function findLoanRepaymentVoucherIds(
   return new Set(entries.map((e) => e.journalVoucherId));
 }
 
+// Loan position for the dashboard:
+//   shortAdvance      — gross cash loan receipts (IN − REVERSAL_OUT) whose
+//                       voucher credits a loan-group ledger
+//   outstandingLoans  — credit balances still owed on loan ledgers
+//   loanRepayments    — NET lender repayments = shortAdvance − outstandingLoans.
+//                       Loan ledgers double as staff advance accounts, so raw
+//                       outflows to them (advances later spent on expenses or
+//                       partly returned via REVERSAL_IN) are NOT true
+//                       repayments. Netting against the outstanding balance
+//                       isolates exactly the repaid portion.
+async function getLoanPosition(projectId: string) {
+  const cashReceiptTransactions = await prisma.cashTransaction.findMany({
+    where: {
+      status: 'POSTED',
+      type: { in: ['IN', 'REVERSAL_OUT'] },
+      cashAccount: { projectId, deletedAt: null },
+      referenceId: { not: null },
+    },
+    select: { type: true, referenceId: true, amount: true },
+  });
+  const voucherIds = [
+    ...new Set(cashReceiptTransactions.map((t) => t.referenceId).filter((id): id is string => !!id)),
+  ];
+  const loanEntries = voucherIds.length > 0
+    ? await prisma.ledgerEntry.findMany({
+        where: {
+          journalVoucherId: { in: voucherIds },
+          credit: { gt: 0 },
+          // Match any ledger group containing "loan" (case-insensitive).
+          // The database uses "Unsecured Loan" as the group name, not "LOAN".
+          ledger: { group: { contains: 'loan', mode: 'insensitive' }, projectId, deletedAt: null },
+          journalVoucher: { status: 'POSTED', deletedAt: null },
+        },
+        select: { journalVoucherId: true },
+      })
+    : [];
+  const creditJvIds = new Set(loanEntries.map((e) => e.journalVoucherId));
+  const shortAdvance = cashReceiptTransactions.reduce((sum, t) => {
+    if (!creditJvIds.has(t.referenceId ?? '')) return sum;
+    const amount = Number(t.amount);
+    return sum + (t.type === 'REVERSAL_OUT' ? -amount : amount);
+  }, 0);
+
+  // Outstanding loans = credit balances of loan-group ledgers (money we
+  // still owe lenders). Debit balances (advances receivable like office
+  // float) are not netted — they are assets, not loans to repay.
+  const loanLedgers = await prisma.ledger.findMany({
+    where: { projectId, deletedAt: null, group: { contains: 'loan', mode: 'insensitive' } },
+    select: { currentBalance: true },
+  });
+  const outstandingLoans = loanLedgers.reduce(
+    (sum, ledger) => sum + Math.max(0, -Number(ledger.currentBalance)),
+    0,
+  );
+
+  return {
+    shortAdvance,
+    outstandingLoans,
+    loanRepayments: Math.max(0, shortAdvance - outstandingLoans),
+  };
+}
+
 router.get(
   '/summary',
   rbacMiddleware(Permission.VIEW_DASHBOARD),
@@ -685,15 +747,14 @@ router.get(
 // Reversals are netted so cancelled vouchers do not inflate the figures:
 //
 // Pure Bank Inward = (DEPOSIT + MANUAL_DEPOSIT) - reversed bank receipts
-// Bank Expenditure = (WITHDRAWAL + PAYMENT) - REVERSAL_IN (refunds) - loan repayments
-// Cash Expenditure = (OUT) - REVERSAL_IN (refunds) - loan repayments
+// Bank/Cash Expenditure = outflows - REVERSAL_IN (refunds) - NET loan repayments
 // Total Expenditure = Bank Expenditure + Cash Expenditure
-// Balance          = Pure Bank Inward + Short Advance/Loan - Total Expenditure - Loan Repayments
-//                  = Pure Bank Inward + Outstanding Loans - Total Expenditure
+// Balance          = Pure Bank Inward + Outstanding Loans - Total Expenditure
+//                  = Pure Bank Inward + Short Advance - Total Expenditure - Net Loan Repayments
 //
-// Loan repayments (outflows whose voucher debits a loan-group ledger) are a
-// liability reduction, not project spend, so they are excluded from
-// expenditure but still deducted from the balance.
+// Net loan repayments = shortAdvance - outstandingLoans. Raw loan-ledger
+// outflows are NOT all repayments — the ledgers double as staff advance
+// accounts, so only the net repaid portion is excluded from expenditure.
 //
 // This gives true net figures while keeping the balance unchanged.
 // For example, a cancelled receipt (DEPOSIT + REVERSAL_OUT) contributes
@@ -1008,48 +1069,14 @@ router.get(
         }),
       ]);
 
-      // Short Advance / Loan is a cash receipt whose counter-entry is a
-      // liability ledger in the LOAN group. It is separate from pure bank
-      // inward funds and is included only once in the available balance.
-      const cashReceiptTransactions = await prisma.cashTransaction.findMany({
-        where: {
-          status: 'POSTED',
-          type: { in: ['IN', 'REVERSAL_OUT'] },
-          cashAccount: { projectId, deletedAt: null },
-          referenceId: { not: null },
-        },
-        select: { type: true, referenceId: true, amount: true },
-      });
-      const cashReceiptVoucherIds = cashReceiptTransactions
-        .map((t) => t.referenceId)
-        .filter((id): id is string => !!id);
-      const loanEntries = cashReceiptVoucherIds.length > 0
-        ? await prisma.ledgerEntry.findMany({
-            where: {
-              journalVoucherId: { in: cashReceiptVoucherIds },
-              credit: { gt: 0 },
-              // Match any ledger group containing "loan" (case-insensitive).
-              // The database uses "Unsecured Loan" as the group name, not "LOAN".
-              ledger: { group: { contains: 'loan', mode: 'insensitive' }, projectId, deletedAt: null },
-              journalVoucher: { status: 'POSTED', deletedAt: null },
-            },
-            select: { journalVoucherId: true, credit: true },
-          })
-        : [];
-      const loanVoucherIds = new Set(loanEntries.map((entry) => entry.journalVoucherId));
-      const shortAdvance = cashReceiptTransactions.reduce(
-        (sum, transaction) => {
-          if (!loanVoucherIds.has(transaction.referenceId ?? '')) return sum;
-          const amount = Number(transaction.amount);
-          return sum + (transaction.type === 'REVERSAL_OUT' ? -amount : amount);
-        },
-        0,
-      );
+      // Short Advance / Loan position — see getLoanPosition. shortAdvance is
+      // gross cash loan receipts, outstandingLoans is still-owed balances,
+      // and loanRepayments is the NET repaid amount (received − still owed).
+      const { shortAdvance, outstandingLoans, loanRepayments } = await getLoanPosition(projectId);
 
-      // Loan repayments = outflow transactions whose voucher debits a
-      // loan-group ledger. They are excluded from expenditure below and
-      // deducted from the balance separately. `date` is also selected so
-      // the same rows feed today's-outflow without extra queries.
+      // Loan-ledger outflow transactions (repayments + advances) — kept out
+      // of today's-outflow list below since they are money movements to
+      // loan/advance accounts, not project spend. `date` feeds the filter.
       const [bankOutflowLoanTxns, cashOutflowLoanTxns] = await Promise.all([
         prisma.bankTransaction.findMany({
           where: {
@@ -1081,23 +1108,6 @@ router.get(
           const amount = Number(t.amount);
           return sum + (t.type === 'REVERSAL_IN' ? -amount : amount);
         }, 0);
-      const bankLoanRepayments = netRepayments(bankOutflowLoanTxns);
-      const cashLoanRepayments = netRepayments(cashOutflowLoanTxns);
-      const loanRepayments = bankLoanRepayments + cashLoanRepayments;
-
-      // Outstanding loans = credit balances of loan-group ledgers (money we
-      // still owe lenders). Debit balances (advances receivable like office
-      // float) are not netted — they are assets, not loans to repay.
-      // Display-only figure — the Balance formula keeps using gross
-      // shortAdvance so repayments are not deducted twice.
-      const loanLedgers = await prisma.ledger.findMany({
-        where: { projectId, deletedAt: null, group: { contains: 'loan', mode: 'insensitive' } },
-        select: { currentBalance: true },
-      });
-      const outstandingLoans = loanLedgers.reduce(
-        (sum, ledger) => sum + Math.max(0, -Number(ledger.currentBalance)),
-        0,
-      );
 
       // Action Required items — all recent records that are NOT yet approved/verified,
       // NOT rejected, and NOT cancelled. This includes DRAFT, SUBMITTED, UNDER_REVIEW
@@ -1162,18 +1172,23 @@ router.get(
       void cashReversalOutAgg;
 
       // Expenditure broken down by payment source (bank vs cash), net of
-      // reversals and excluding loan repayments (a liability reduction,
-      // not project spend).
-      const bankExpenditure =
-        Number(bankBaseOutflowAgg._sum.amount ?? 0) - Number(bankReversalInAgg._sum.amount ?? 0) - bankLoanRepayments;
-      const cashExpenditure =
-        Number(cashBaseOutflowAgg._sum.amount ?? 0) - Number(cashReversalInAgg._sum.amount ?? 0) - cashLoanRepayments;
+      // reversals and excluding NET loan repayments (a liability reduction,
+      // not project spend). Lender money arrives via cash, so the net
+      // repayment is netted on the cash side first.
+      const bankGrossExp =
+        Number(bankBaseOutflowAgg._sum.amount ?? 0) - Number(bankReversalInAgg._sum.amount ?? 0);
+      const cashGrossExp =
+        Number(cashBaseOutflowAgg._sum.amount ?? 0) - Number(cashReversalInAgg._sum.amount ?? 0);
+      const cashRepayShare = Math.min(loanRepayments, Math.max(0, cashGrossExp));
+      const bankRepayShare = loanRepayments - cashRepayShare;
+      const bankExpenditure = bankGrossExp - bankRepayShare;
+      const cashExpenditure = cashGrossExp - cashRepayShare;
 
       const totalInwardFunds = pureBankInward;
       const totalExpenditure = bankExpenditure + cashExpenditure;
-      // Repayments are not spend but the cash still left, so they are
-      // deducted here — equivalent to using outstanding loans instead of
-      // gross shortAdvance. The balance value is unchanged vs. before.
+      // Balance = Inward + Outstanding Loans − Expenditure. Equivalent to
+      // the gross-flow form (Inward + shortAdvance − grossExp), so the value
+      // always matches actual bank + cash account balances.
       const balance = totalInwardFunds + shortAdvance - totalExpenditure - loanRepayments;
 
       const bankBalance = Number(bankBalanceAgg._sum.currentBalance ?? 0);
@@ -1558,18 +1573,23 @@ router.get(
         }),
       ]);
 
-      // Loan repayments (voucher debits a loan ledger) are not project
-      // expenditure — subtract their net amount from the totals and drop
-      // them from the listed transactions.
-      const repaymentJvIds = await findLoanRepaymentVoucherIds(
-        projectId,
-        [...bankLoanTxns, ...cashLoanTxns],
+      // Loan-ledger outflows (repayments + advances) are not project
+      // expenditure — drop them from the listed transactions. The amount
+      // excluded from the total is capped at NET lender repayments
+      // (received − still owed), matching the Total Expenditure card:
+      // advance-cycle outflows stay inside spend.
+      const [repaymentJvIds, { loanRepayments }] = await Promise.all([
+        findLoanRepaymentVoucherIds(projectId, [...bankLoanTxns, ...cashLoanTxns]),
+        getLoanPosition(projectId),
+      ]);
+      const loanRepaymentNet = Math.min(
+        loanRepayments,
+        [...bankLoanTxns, ...cashLoanTxns].reduce((sum, t) => {
+          if (!repaymentJvIds.has(t.referenceId ?? '')) return sum;
+          const amount = Number(t.amount);
+          return sum + (t.type === 'REVERSAL_IN' ? -amount : amount);
+        }, 0),
       );
-      const loanRepaymentNet = [...bankLoanTxns, ...cashLoanTxns].reduce((sum, t) => {
-        if (!repaymentJvIds.has(t.referenceId ?? '')) return sum;
-        const amount = Number(t.amount);
-        return sum + (t.type === 'REVERSAL_IN' ? -amount : amount);
-      }, 0);
       const loanRepaymentCount = [...bankLoanTxns, ...cashLoanTxns].filter(
         (t) => t.type !== 'REVERSAL_IN' && repaymentJvIds.has(t.referenceId ?? ''),
       ).length;
