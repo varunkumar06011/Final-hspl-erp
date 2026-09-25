@@ -32,6 +32,7 @@ interface DashboardData {
   pureBankInward: number;
   shortAdvance: number;
   outstandingLoans: number;
+  loanRepayments: number;
   totalInwardFunds: number;
   totalExpenditure: number;
   bankExpenditure: number;
@@ -340,7 +341,7 @@ export default function DenseAdminDashboard() {
       {/* ── KPI cards — 2×2 on mobile, 4-across on desktop, sparklines under values ── */}
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'repeat(2, minmax(0, 1fr))', lg: 'repeat(4, minmax(0, 1fr))' }, gap: { xs: 1, md: 1.2 }, mb: 1.4 }}>
         <KpiCard title="Inward Funds" value={data?.pureBankInward ?? 0} subtitle="All funds received" color={D.teal} spark={inwardSpark} onClick={() => setInwardOpen(true)} />
-        <KpiCard title="Total Expenditure" value={data?.totalExpenditure ?? 0} subtitle="All posted spend" color={D.red} delta={expenditureDelta} spark={expenditureSpark} onClick={() => setExpenditureOpen(true)} />
+        <KpiCard title="Total Expenditure" value={data?.totalExpenditure ?? 0} subtitle="Spend excl. loan repayments" color={D.red} delta={expenditureDelta} spark={expenditureSpark} onClick={() => setExpenditureOpen(true)} />
         <KpiCard title="Short Advance / Loan" value={data?.outstandingLoans ?? 0} subtitle="Still to repay to lenders" color={D.violet} onClick={() => setShortAdvanceOpen(true)} />
         <KpiCard title="Balance" value={data?.balance ?? 0} subtitle="Inward + loans − spend" color={D.blue} onClick={() => setBalanceOpen(true)} />
       </Box>
@@ -743,6 +744,7 @@ export default function DenseAdminDashboard() {
               {[
                 { label: 'Inward Funds (bank receipts)', value: data?.pureBankInward ?? 0, sign: '+', color: 'success.main' },
                 { label: 'Cash loans received (all-time)', value: data?.shortAdvance ?? 0, sign: '+', color: 'warning.main' },
+                { label: 'Loan repayments', value: data?.loanRepayments ?? 0, sign: '−', color: 'error.main' },
                 { label: 'Bank expenditure', value: data?.bankExpenditure ?? 0, sign: '−', color: 'error.main' },
                 { label: 'Cash expenditure', value: data?.cashExpenditure ?? 0, sign: '−', color: 'error.main' },
               ].map((r) => (
@@ -771,7 +773,7 @@ export default function DenseAdminDashboard() {
 
       <Dialog open={expenditureOpen} onClose={() => setExpenditureOpen(false)} maxWidth="md" fullWidth PaperProps={{ sx: { bgcolor: D.card, color: D.text, border: `1px solid ${D.cardBorder}` } }}>
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', pb: 1 }}>
-          <Box><Typography sx={{ fontWeight: 800 }}>Expenditure Details</Typography><Typography variant="caption" sx={{ color: D.textDim }}>{expDateStart || expDateEnd ? `${expDateStart ? formatDate(expDateStart) : 'Start'} → ${expDateEnd ? formatDate(expDateEnd) : 'End'}` : 'All posted Bank and Cash expenditure records'}</Typography></Box>
+          <Box><Typography sx={{ fontWeight: 800 }}>Expenditure Details</Typography><Typography variant="caption" sx={{ color: D.textDim }}>{expDateStart || expDateEnd ? `${expDateStart ? formatDate(expDateStart) : 'Start'} → ${expDateEnd ? formatDate(expDateEnd) : 'End'}` : 'All posted Bank and Cash expenditure (excl. loan repayments)'}</Typography></Box>
           <Button aria-label="Close expenditure details" onClick={() => setExpenditureOpen(false)} sx={{ minWidth: 36, p: 0.5 }}><CloseIcon fontSize="small" /></Button>
         </DialogTitle>
         <DialogContent dividers sx={{ p: 0, borderColor: D.cardBorder }}>

@@ -7,6 +7,33 @@ import { rbacMiddleware } from '../middleware/rbac';
 const router = Router();
 router.use(authMiddleware);
 
+// Loan repayments are outflow transactions whose journal voucher DEBITS a
+// loan-group ledger (Dr Loan, Cr Bank/Cash) — the mirror of loan receipts,
+// which credit the loan ledger. Repayments reduce a liability, so they are
+// not project expenditure. Reversal transactions reference the ORIGINAL
+// voucher, so a REVERSAL_IN whose voucher debits a loan ledger is a reversed
+// repayment and must be subtracted from the repayment total.
+// Returns the JV ids to match transaction.referenceId against.
+async function findLoanRepaymentVoucherIds(
+  projectId: string,
+  txns: Array<{ referenceId: string | null }>,
+): Promise<Set<string>> {
+  const voucherIds = [
+    ...new Set(txns.map((t) => t.referenceId).filter((id): id is string => !!id)),
+  ];
+  if (voucherIds.length === 0) return new Set();
+  const entries = await prisma.ledgerEntry.findMany({
+    where: {
+      journalVoucherId: { in: voucherIds },
+      debit: { gt: 0 },
+      ledger: { group: { contains: 'loan', mode: 'insensitive' }, projectId, deletedAt: null },
+      journalVoucher: { status: 'POSTED', deletedAt: null },
+    },
+    select: { journalVoucherId: true },
+  });
+  return new Set(entries.map((e) => e.journalVoucherId));
+}
+
 router.get(
   '/summary',
   rbacMiddleware(Permission.VIEW_DASHBOARD),
@@ -658,10 +685,15 @@ router.get(
 // Reversals are netted so cancelled vouchers do not inflate the figures:
 //
 // Pure Bank Inward = (DEPOSIT + MANUAL_DEPOSIT) - reversed bank receipts
-// Bank Expenditure = (WITHDRAWAL + PAYMENT) - REVERSAL_IN (refunds)
-// Cash Expenditure = (OUT) - REVERSAL_IN (refunds)
+// Bank Expenditure = (WITHDRAWAL + PAYMENT) - REVERSAL_IN (refunds) - loan repayments
+// Cash Expenditure = (OUT) - REVERSAL_IN (refunds) - loan repayments
 // Total Expenditure = Bank Expenditure + Cash Expenditure
-// Balance          = Pure Bank Inward + Short Advance/Loan - Total Expenditure
+// Balance          = Pure Bank Inward + Short Advance/Loan - Total Expenditure - Loan Repayments
+//                  = Pure Bank Inward + Outstanding Loans - Total Expenditure
+//
+// Loan repayments (outflows whose voucher debits a loan-group ledger) are a
+// liability reduction, not project spend, so they are excluded from
+// expenditure but still deducted from the balance.
 //
 // This gives true net figures while keeping the balance unchanged.
 // For example, a cancelled receipt (DEPOSIT + REVERSAL_OUT) contributes
@@ -1014,6 +1046,45 @@ router.get(
         0,
       );
 
+      // Loan repayments = outflow transactions whose voucher debits a
+      // loan-group ledger. They are excluded from expenditure below and
+      // deducted from the balance separately. `date` is also selected so
+      // the same rows feed today's-outflow without extra queries.
+      const [bankOutflowLoanTxns, cashOutflowLoanTxns] = await Promise.all([
+        prisma.bankTransaction.findMany({
+          where: {
+            status: 'POSTED',
+            type: { in: [...bankOutflowTypes, ...bankReversalInTypes] },
+            bankAccount: { projectId, deletedAt: null },
+            referenceId: { not: null },
+          },
+          select: { type: true, referenceId: true, amount: true, date: true },
+        }),
+        prisma.cashTransaction.findMany({
+          where: {
+            status: 'POSTED',
+            type: { in: [...cashOutflowTypes, ...cashReversalInTypes] },
+            cashAccount: { projectId, deletedAt: null },
+            referenceId: { not: null },
+          },
+          select: { type: true, referenceId: true, amount: true, date: true },
+        }),
+      ]);
+      const repaymentJvIds = await findLoanRepaymentVoucherIds(
+        projectId,
+        [...bankOutflowLoanTxns, ...cashOutflowLoanTxns],
+      );
+      const netRepayments = (txns: typeof bankOutflowLoanTxns, since?: Date) =>
+        txns.reduce((sum, t) => {
+          if (!repaymentJvIds.has(t.referenceId ?? '')) return sum;
+          if (since && t.date < since) return sum;
+          const amount = Number(t.amount);
+          return sum + (t.type === 'REVERSAL_IN' ? -amount : amount);
+        }, 0);
+      const bankLoanRepayments = netRepayments(bankOutflowLoanTxns);
+      const cashLoanRepayments = netRepayments(cashOutflowLoanTxns);
+      const loanRepayments = bankLoanRepayments + cashLoanRepayments;
+
       // Outstanding loans = credit balances of loan-group ledgers (money we
       // still owe lenders). Debit balances (advances receivable like office
       // float) are not netted — they are assets, not loans to repay.
@@ -1090,15 +1161,20 @@ router.get(
         Number(bankBaseInflowAgg._sum.amount ?? 0) - Number(bankReversalOutAgg._sum.amount ?? 0);
       void cashReversalOutAgg;
 
-      // Expenditure broken down by payment source (bank vs cash), net of reversals.
+      // Expenditure broken down by payment source (bank vs cash), net of
+      // reversals and excluding loan repayments (a liability reduction,
+      // not project spend).
       const bankExpenditure =
-        Number(bankBaseOutflowAgg._sum.amount ?? 0) - Number(bankReversalInAgg._sum.amount ?? 0);
+        Number(bankBaseOutflowAgg._sum.amount ?? 0) - Number(bankReversalInAgg._sum.amount ?? 0) - bankLoanRepayments;
       const cashExpenditure =
-        Number(cashBaseOutflowAgg._sum.amount ?? 0) - Number(cashReversalInAgg._sum.amount ?? 0);
+        Number(cashBaseOutflowAgg._sum.amount ?? 0) - Number(cashReversalInAgg._sum.amount ?? 0) - cashLoanRepayments;
 
       const totalInwardFunds = pureBankInward;
       const totalExpenditure = bankExpenditure + cashExpenditure;
-      const balance = totalInwardFunds + shortAdvance - totalExpenditure;
+      // Repayments are not spend but the cash still left, so they are
+      // deducted here — equivalent to using outstanding loans instead of
+      // gross shortAdvance. The balance value is unchanged vs. before.
+      const balance = totalInwardFunds + shortAdvance - totalExpenditure - loanRepayments;
 
       const bankBalance = Number(bankBalanceAgg._sum.currentBalance ?? 0);
       const cashBalance = Number(cashBalanceAgg._sum.currentBalance ?? 0);
@@ -1132,14 +1208,22 @@ router.get(
         return Number(a.slNo) - Number(b.slNo);
       });
 
-      // ── Today's outflow (Amount Used Today) — net of refunds ──
+      // ── Today's outflow (Amount Used Today) — net of refunds and
+      // excluding loan repayments, same rule as Total Expenditure ──
+      const startOfToday = new Date(new Date().setHours(0, 0, 0, 0));
+      const todayLoanRepayments =
+        netRepayments(bankOutflowLoanTxns, startOfToday) + netRepayments(cashOutflowLoanTxns, startOfToday);
+      const todayRepaymentCount =
+        [...bankOutflowLoanTxns, ...cashOutflowLoanTxns].filter(
+          (t) => t.type !== 'REVERSAL_IN' && t.date >= startOfToday && repaymentJvIds.has(t.referenceId ?? ''),
+        ).length;
       const todayBaseOutflow =
         Number(todayBankBaseOutflowAgg._sum.amount ?? 0) + Number(todayCashBaseOutflowAgg._sum.amount ?? 0);
       const todayReversalIn =
         Number(todayBankReversalInAgg._sum.amount ?? 0) + Number(todayCashReversalInAgg._sum.amount ?? 0);
-      const todayOutflowAmount = todayBaseOutflow - todayReversalIn;
+      const todayOutflowAmount = todayBaseOutflow - todayReversalIn - todayLoanRepayments;
       const todayOutflowCount =
-        (todayBankBaseOutflowAgg._count ?? 0) + (todayCashBaseOutflowAgg._count ?? 0);
+        (todayBankBaseOutflowAgg._count ?? 0) + (todayCashBaseOutflowAgg._count ?? 0) - todayRepaymentCount;
 
       // Resolve budget head for today's outflow transactions (same logic as outflow-by-range)
       const todayJvIds = [
@@ -1165,7 +1249,7 @@ router.get(
       }
 
       const todayOutflowTransactions = [
-        ...todayBankOutTxns.map((t) => ({
+        ...todayBankOutTxns.filter((t) => !repaymentJvIds.has(t.referenceId ?? '')).map((t) => ({
           id: t.id,
           account: t.bankAccount?.accountName ?? 'Bank',
           accountType: 'BANK' as const,
@@ -1174,7 +1258,7 @@ router.get(
           time: t.date.toISOString(),
           budgetHead: t.budgetHead ?? (t.referenceId ? (todayJvToBudgetHead.get(t.referenceId) ?? null) : null),
         })),
-        ...todayCashOutTxns.map((t) => ({
+        ...todayCashOutTxns.filter((t) => !repaymentJvIds.has(t.referenceId ?? '')).map((t) => ({
           id: t.id,
           account: t.cashAccount?.name ?? 'Cash',
           accountType: 'CASH' as const,
@@ -1191,6 +1275,7 @@ router.get(
         pureBankInward,
         shortAdvance,
         outstandingLoans,
+        loanRepayments,
         totalInwardFunds,
         totalExpenditure,
         bankExpenditure,
@@ -1327,7 +1412,8 @@ router.get(
 //
 // Reversals of expenses (REVERSAL_IN) are subtracted so cancelled payments
 // do not inflate the total. Reversals of receipts (REVERSAL_OUT) are not
-// included in outflow at all.
+// included in outflow at all. Loan repayments (voucher debits a loan
+// ledger) are excluded — they reduce a liability, not project spend.
 //
 // Query params:
 //   startDate — ISO date string (default: today 00:00)
@@ -1372,7 +1458,7 @@ router.get(
       const limit = fetchAll ? undefined : (req.query.limit ? Math.min(Number(req.query.limit), 5000) : 20);
       const dateFilter = allTime ? {} : { date: { gte: startDate, lte: endDate } };
 
-      const [bankOutflowAgg, bankReversalInAgg, cashOutflowAgg, cashReversalInAgg, bankOutTxns, cashOutTxns] = await Promise.all([
+      const [bankOutflowAgg, bankReversalInAgg, cashOutflowAgg, cashReversalInAgg, bankOutTxns, cashOutTxns, bankLoanTxns, cashLoanTxns] = await Promise.all([
         // Bank base outflow in range
         prisma.bankTransaction.aggregate({
           where: {
@@ -1447,21 +1533,63 @@ router.get(
           orderBy: { date: 'desc' },
           take: limit,
         }),
+        // Lightweight full-range outflow+reversal rows for loan-repayment
+        // detection — the aggregates above are not take-limited, so the
+        // repayment subtraction must cover every in-range transaction.
+        prisma.bankTransaction.findMany({
+          where: {
+            status: 'POSTED',
+            type: { in: [...bankOutflowTypes, ...bankReversalInTypes] },
+            bankAccount: { projectId, deletedAt: null },
+            referenceId: { not: null },
+            ...dateFilter,
+          },
+          select: { type: true, referenceId: true, amount: true },
+        }),
+        prisma.cashTransaction.findMany({
+          where: {
+            status: 'POSTED',
+            type: { in: [...cashOutflowTypes, ...cashReversalInTypes] },
+            cashAccount: { projectId, deletedAt: null },
+            referenceId: { not: null },
+            ...dateFilter,
+          },
+          select: { type: true, referenceId: true, amount: true },
+        }),
       ]);
+
+      // Loan repayments (voucher debits a loan ledger) are not project
+      // expenditure — subtract their net amount from the totals and drop
+      // them from the listed transactions.
+      const repaymentJvIds = await findLoanRepaymentVoucherIds(
+        projectId,
+        [...bankLoanTxns, ...cashLoanTxns],
+      );
+      const loanRepaymentNet = [...bankLoanTxns, ...cashLoanTxns].reduce((sum, t) => {
+        if (!repaymentJvIds.has(t.referenceId ?? '')) return sum;
+        const amount = Number(t.amount);
+        return sum + (t.type === 'REVERSAL_IN' ? -amount : amount);
+      }, 0);
+      const loanRepaymentCount = [...bankLoanTxns, ...cashLoanTxns].filter(
+        (t) => t.type !== 'REVERSAL_IN' && repaymentJvIds.has(t.referenceId ?? ''),
+      ).length;
+
+      const bankSpendTxns = bankOutTxns.filter((t) => !repaymentJvIds.has(t.referenceId ?? ''));
+      const cashSpendTxns = cashOutTxns.filter((t) => !repaymentJvIds.has(t.referenceId ?? ''));
 
       // ── Resolve Budget Head for each outflow transaction ──
       // Priority 1: budgetHeadId directly on the transaction (manual cash flow entries)
       // Priority 2: resolve via Payment → JournalVoucher chain (payment-created transactions)
       const jvIds = [
-        ...bankOutTxns.filter((t) => !t.budgetHeadId).map((t) => t.referenceId),
-        ...cashOutTxns.filter((t) => !t.budgetHeadId).map((t) => t.referenceId),
+        ...bankSpendTxns.filter((t) => !t.budgetHeadId).map((t) => t.referenceId),
+        ...cashSpendTxns.filter((t) => !t.budgetHeadId).map((t) => t.referenceId),
       ].filter((id): id is string => !!id);
 
       // Every referenceId on the listed txns — the voucher check covers all
       // rows, not just the ones needing budget-head resolution.
       const allRefIds = [
-        ...bankOutTxns.map((t) => t.referenceId),
-        ...cashOutTxns.map((t) => t.referenceId),
+        ...bankSpendTxns.map((t) => t.referenceId),
+        ...cashSpendTxns.map((t) => t.referenceId),
       ].filter((id): id is string => !!id);
 
       const [payments, liveVouchers] = allRefIds.length > 0
@@ -1499,11 +1627,11 @@ router.get(
         Number(bankOutflowAgg._sum.amount ?? 0) + Number(cashOutflowAgg._sum.amount ?? 0);
       const reversalIn =
         Number(bankReversalInAgg._sum.amount ?? 0) + Number(cashReversalInAgg._sum.amount ?? 0);
-      const totalAmount = baseOutflow - reversalIn;
-      const totalCount = (bankOutflowAgg._count ?? 0) + (cashOutflowAgg._count ?? 0);
+      const totalAmount = baseOutflow - reversalIn - loanRepaymentNet;
+      const totalCount = (bankOutflowAgg._count ?? 0) + (cashOutflowAgg._count ?? 0) - loanRepaymentCount;
 
       const transactions = [
-        ...bankOutTxns.map((t) => ({
+        ...bankSpendTxns.map((t) => ({
           id: t.id,
           account: t.bankAccount?.accountName ?? 'Bank',
           accountType: 'BANK' as const,
@@ -1513,7 +1641,7 @@ router.get(
           voucherId: t.referenceId && liveVoucherIds.has(t.referenceId) ? t.referenceId : null,
           budgetHead: t.budgetHead ?? (t.referenceId ? (jvToBudgetHead.get(t.referenceId) ?? null) : null),
         })),
-        ...cashOutTxns.map((t) => ({
+        ...cashSpendTxns.map((t) => ({
           id: t.id,
           account: t.cashAccount?.name ?? 'Cash',
           accountType: 'CASH' as const,
@@ -1543,7 +1671,8 @@ router.get(
 // Used by the Admin Dashboard "Expenditure Trend" chart.
 // Groups posted bank + cash outflow transactions by date.
 // Reversals of expenses (REVERSAL_IN) are subtracted so cancelled
-// payments do not inflate daily outflow.
+// payments do not inflate daily outflow. Loan repayments are excluded
+// — they reduce a liability, not project spend.
 router.get(
   '/admin-outflow-trend',
   rbacMiddleware(Permission.VIEW_DASHBOARD),
@@ -1569,7 +1698,7 @@ router.get(
             bankAccount: { projectId, deletedAt: null },
             date: { gte: startDate },
           },
-          select: { date: true, amount: true },
+          select: { date: true, amount: true, referenceId: true },
         }),
         // Base cash outflows
         prisma.cashTransaction.findMany({
@@ -1579,7 +1708,7 @@ router.get(
             cashAccount: { projectId, deletedAt: null },
             date: { gte: startDate },
           },
-          select: { date: true, amount: true },
+          select: { date: true, amount: true, referenceId: true },
         }),
         // Bank reversals of expenses (refunds) — subtract from outflow
         prisma.bankTransaction.findMany({
@@ -1589,7 +1718,7 @@ router.get(
             bankAccount: { projectId, deletedAt: null },
             date: { gte: startDate },
           },
-          select: { date: true, amount: true },
+          select: { date: true, amount: true, referenceId: true },
         }),
         // Cash reversals of expenses (refunds) — subtract from outflow
         prisma.cashTransaction.findMany({
@@ -1599,25 +1728,36 @@ router.get(
             cashAccount: { projectId, deletedAt: null },
             date: { gte: startDate },
           },
-          select: { date: true, amount: true },
+          select: { date: true, amount: true, referenceId: true },
         }),
       ]);
+
+      // Loan repayments are not project spend — exclude them (and their
+      // reversals) from the daily trend, same rule as Total Expenditure.
+      const repaymentJvIds = await findLoanRepaymentVoucherIds(
+        projectId,
+        [...bankTxns, ...cashTxns, ...bankReversalInTxns, ...cashReversalInTxns],
+      );
 
       // Group by date (YYYY-MM-DD). Base outflows add, reversals subtract.
       const byDate = new Map<string, number>();
       for (const t of bankTxns) {
+        if (repaymentJvIds.has(t.referenceId ?? '')) continue;
         const key = t.date.toISOString().split('T')[0];
         byDate.set(key, (byDate.get(key) ?? 0) + Number(t.amount));
       }
       for (const t of cashTxns) {
+        if (repaymentJvIds.has(t.referenceId ?? '')) continue;
         const key = t.date.toISOString().split('T')[0];
         byDate.set(key, (byDate.get(key) ?? 0) + Number(t.amount));
       }
       for (const t of bankReversalInTxns) {
+        if (repaymentJvIds.has(t.referenceId ?? '')) continue;
         const key = t.date.toISOString().split('T')[0];
         byDate.set(key, (byDate.get(key) ?? 0) - Number(t.amount));
       }
       for (const t of cashReversalInTxns) {
+        if (repaymentJvIds.has(t.referenceId ?? '')) continue;
         const key = t.date.toISOString().split('T')[0];
         byDate.set(key, (byDate.get(key) ?? 0) - Number(t.amount));
       }
