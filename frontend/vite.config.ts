@@ -22,8 +22,12 @@ export default defineConfig({
           // them fall through keeps them in their own on-demand chunks
           // instead of the eager vendor bundle.
           if (id.includes('jspdf') || id.includes('lottie-web') || id.includes('html2canvas')) return;
-          if (id.includes('react-dom') || id.includes('react-router') || /[\\/]react[\\/]/.test(id)) return 'react-vendor';
-          if (id.includes('socket.io')) return 'socket';
+          // NOTE: react/react-dom/scheduler/socket.io deliberately stay in
+          // 'vendor'. Splitting them into their own chunk creates a circular
+          // chunk (vendor ↔ react-vendor) — Rollup then picks an evaluation
+          // order where react-dom's `scheduler` import is still undefined at
+          // module init, crashing boot with "unstable_scheduleCallback of
+          // undefined" and leaving the splash screen stuck forever.
           return 'vendor';
         },
       },
