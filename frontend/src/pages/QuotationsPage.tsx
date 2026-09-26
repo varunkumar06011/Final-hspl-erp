@@ -1,5 +1,6 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
+import { useTheme } from '@mui/material/styles';
 import {
   Box,
   Typography,
@@ -123,6 +124,7 @@ interface QuotationRow {
 }
 
 export default function QuotationsPage() {
+  const theme = useTheme();
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(20);
   const [search, setSearch] = useState('');
@@ -143,6 +145,7 @@ export default function QuotationsPage() {
   const [notesEditRow, setNotesEditRow] = useState<QuotationRow | null>(null);
   const [notesEditValue, setNotesEditValue] = useState('');
   const [pdfLoading, setPdfLoading] = useState(false);
+  const [expandedQuotationId, setExpandedQuotationId] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const createSubmissionLocked = useRef(false);
   const workTaskIdRef = useRef<string | null>(null);
@@ -376,6 +379,10 @@ export default function QuotationsPage() {
 
   // Deep-link from global search: ?id=<quotationId> — filter to that quotation and highlight it
   const { highlightId, rowRef } = useDeepLinkRow<QuotationRow>('/quotations', rows, 'quotationNumber', (v) => { setSearch(v); setPage(0); });
+
+  useEffect(() => {
+    if (highlightId) setExpandedQuotationId(highlightId);
+  }, [highlightId]);
 
   // Auto-open approval dialog when navigated from a push notification
   useApprovalDeepLink(rows, (row) => {
@@ -758,25 +765,49 @@ export default function QuotationsPage() {
                 agingStatus;
 
               const rowBg =
-                displayAgingStatus === 'OVERDUE' ? '#ffebee' :
-                displayAgingStatus === 'ATTENTION' ? '#fff3e0' :
-                highlightId === row.id ? 'warning.light' :
+                displayAgingStatus === 'OVERDUE' ? (theme.palette.mode === 'dark' ? 'rgba(127, 29, 29, 0.45)' : '#ffebee') :
+                displayAgingStatus === 'ATTENTION' ? (theme.palette.mode === 'dark' ? 'rgba(120, 53, 15, 0.4)' : '#fff3e0') :
+                highlightId === row.id ? (theme.palette.mode === 'dark' ? 'rgba(255, 202, 40, 0.14)' : 'warning.light') :
                 'background.paper';
 
+              const approvalStatus = row.approvalWorkflow?.status ?? effectiveStatus;
+
               return (
-                <Box
+                <Accordion
                   key={row.id}
                   ref={rowRef(row.id)}
+                  expanded={expandedQuotationId === row.id}
+                  onChange={(_event, expanded) => setExpandedQuotationId(expanded ? row.id : null)}
                   sx={{
+                    mb: 1,
                     bgcolor: rowBg,
+                    color: 'text.primary',
                     border: '1px solid',
-                    borderColor: 'divider',
+                    borderColor: highlightId === row.id ? 'primary.main' : 'divider',
                     borderRadius: 1,
-                    p: 1.25,
+                    overflow: 'hidden',
+                    '&:before': { display: 'none' },
                     '&:hover': { borderColor: 'primary.main' },
-                    ...(highlightId === row.id && rowBg === 'background.paper' && { bgcolor: 'warning.light' }),
                   }}
                 >
+                  <AccordionSummary
+                    expandIcon={<ExpandMoreIcon />}
+                    sx={{ minHeight: 52, '&.Mui-expanded': { minHeight: 52 }, '& .MuiAccordionSummary-content': { my: 1, '&.Mui-expanded': { my: 1 } } }}
+                  >
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap', minWidth: 0 }}>
+                      <Typography component="span" sx={{ fontSize: { xs: '0.82rem', sm: '0.9rem' } }}>
+                        <strong>{row.quotationNumber}</strong> — {row.vendor?.name ?? '—'} — Status:
+                      </Typography>
+                      <Chip label={approvalStatus.replace(/_/g, ' ')} size="small" color={STATUS_COLORS[approvalStatus] ?? 'default'} />
+                      {agingLabel && displayAgingStatus !== 'APPROVED' && displayAgingStatus !== 'REJECTED' && (
+                        <Typography variant="caption" sx={{ color: displayAgingStatus === 'OVERDUE' ? 'error.main' : (theme.palette.mode === 'dark' ? 'warning.light' : 'warning.dark'), fontWeight: displayAgingStatus === 'OVERDUE' ? 700 : 500 }}>
+                          {agingLabel}
+                        </Typography>
+                      )}
+                    </Box>
+                  </AccordionSummary>
+                  <AccordionDetails sx={{ borderTop: '1px solid', borderColor: 'divider', bgcolor: 'background.paper', color: 'text.primary', p: 1.25 }}>
+                    <Box sx={{ minWidth: 0 }}>
                   {/* Status bar */}
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 0.75, pb: 0.75, borderBottom: '1px solid', borderColor: 'action.hover' }}>
                     <Chip
@@ -794,7 +825,7 @@ export default function QuotationsPage() {
                     />
                     {agingLabel && displayAgingStatus !== 'APPROVED' && displayAgingStatus !== 'REJECTED' && (
                       <Typography variant="caption" sx={{
-                        color: displayAgingStatus === 'OVERDUE' ? 'error.main' : displayAgingStatus === 'ATTENTION' ? 'warning.dark' : 'text.secondary',
+                        color: displayAgingStatus === 'OVERDUE' ? 'error.main' : displayAgingStatus === 'ATTENTION' ? (theme.palette.mode === 'dark' ? 'warning.light' : 'warning.dark') : 'text.secondary',
                         fontWeight: displayAgingStatus === 'OVERDUE' ? 700 : 500,
                       }}>
                         {agingLabel}
@@ -872,41 +903,50 @@ export default function QuotationsPage() {
                   )}
 
                   {/* File + Actions — bottom row */}
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 0.75, pt: 0.75, borderTop: '1px solid', borderColor: 'action.hover' }}>
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, mt: 1, pt: 1, borderTop: '1px solid', borderColor: 'divider' }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                       <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>File</Typography>
                       {row.filePath ? (
-                        <IconButton size="small" onClick={() => handleDownload(row.id, row.fileName ?? 'quotation')}><DownloadIcon fontSize="small" /></IconButton>
+                        <Button size="small" startIcon={<DownloadIcon />} onClick={() => handleDownload(row.id, row.fileName ?? 'quotation')}>Download attachment</Button>
                       ) : <Typography variant="caption" sx={{ fontSize: '0.75rem' }}>—</Typography>}
                     </Box>
-                    <Box sx={{ display: 'flex', gap: 0.5 }}>
-                      <IconButton size="small" onClick={() => previewQuotationPDF(row.id)} title="Preview PDF" disabled={pdfLoading}>{pdfLoading ? <CircularProgress size={16} /> : <PdfIcon fontSize="small" />}</IconButton>
-                      <IconButton size="small" onClick={() => downloadQuotationPDF(row.id, row.quotationNumber)} title="Download PDF"><DownloadIcon fontSize="small" /></IconButton>
-                      <IconButton size="small" onClick={() => handleShareWhatsApp(row)} title="Share to WhatsApp"><ShareIcon fontSize="small" /></IconButton>
-                      <IconButton size="small" onClick={() => setTimelineRow(row)} title="Show Timeline"><TimelineIcon fontSize="small" /></IconButton>
+                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
+                      <Button size="small" variant="outlined" startIcon={pdfLoading ? <CircularProgress size={16} /> : <PdfIcon />} onClick={() => previewQuotationPDF(row.id)} disabled={pdfLoading}>Open</Button>
+                      <Button size="small" variant="outlined" startIcon={<TimelineIcon />} onClick={() => setTimelineRow(row)}>View</Button>
+                      <Button size="small" variant="outlined" startIcon={<DownloadIcon />} onClick={() => downloadQuotationPDF(row.id, row.quotationNumber)}>Download PDF</Button>
+                      <Button size="small" variant="outlined" startIcon={<ShareIcon />} onClick={() => handleShareWhatsApp(row)}>Share</Button>
                       {effectiveStatus !== QuotationStatus.DELETED && (
                         <>
                           {isAdmin && effectiveStatus !== QuotationStatus.CONVERTED_TO_PO ? (
-                            <IconButton size="small" onClick={() => openEdit(row, true)} title="Re-edit & Resend for Approval"><EditIcon fontSize="small" /></IconButton>
+                            <Button size="small" startIcon={<EditIcon />} onClick={() => openEdit(row, true)}>Re-edit & Resend</Button>
                           ) : effectiveStatus === QuotationStatus.SUBMITTED || effectiveStatus === QuotationStatus.UNDER_REVIEW ? (
-                            <IconButton size="small" onClick={() => openEdit(row)} title="Edit"><EditIcon fontSize="small" /></IconButton>
+                            <Button size="small" startIcon={<EditIcon />} onClick={() => openEdit(row)}>Edit</Button>
                           ) : (
-                            <IconButton size="small" onClick={() => { setNotesEditRow(row); setNotesEditValue(row.notes ?? ''); }} title="Edit Description"><EditIcon fontSize="small" /></IconButton>
+                            <Button size="small" startIcon={<EditIcon />} onClick={() => { setNotesEditRow(row); setNotesEditValue(row.notes ?? ''); }}>Edit Description</Button>
                           )}
                           {pendingStep && (
                             <>
-                              <IconButton size="small" color="success" onClick={() => setApprovalAction({ row, step: pendingStep, action: 'approve' })} title="Approve"><CheckIcon fontSize="small" /></IconButton>
-                              <IconButton size="small" color="error" onClick={() => setApprovalAction({ row, step: pendingStep, action: 'reject' })} title="Reject"><CloseIcon fontSize="small" /></IconButton>
+                              <Button size="small" color="success" startIcon={<CheckIcon />} onClick={() => setApprovalAction({ row, step: pendingStep, action: 'approve' })}>Approve</Button>
+                              <Button size="small" color="error" startIcon={<CloseIcon />} onClick={() => setApprovalAction({ row, step: pendingStep, action: 'reject' })}>Reject</Button>
                             </>
                           )}
                           {effectiveStatus !== QuotationStatus.APPROVED && effectiveStatus !== QuotationStatus.CONVERTED_TO_PO && (
-                            <IconButton size="small" color="error" onClick={() => setDeleteRow(row)} title="Delete"><DeleteIcon fontSize="small" /></IconButton>
+                            <Button size="small" color="error" startIcon={<DeleteIcon />} onClick={() => setDeleteRow(row)}>Delete</Button>
                           )}
                         </>
                       )}
                     </Box>
                   </Box>
-                </Box>
+                  {row.approvalWorkflow && (
+                    <Box sx={{ mt: 1.5 }}>
+                      {/* Approval details accordion for each quotation with a workflow */}
+                      <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>Approval Status</Typography>
+                      <ApprovalStepsDisplay steps={row.approvalWorkflow.steps} />
+                    </Box>
+                  )}
+                    </Box>
+                  </AccordionDetails>
+                </Accordion>
               );
             })}
           </Box>
@@ -923,26 +963,6 @@ export default function QuotationsPage() {
           sx={{ '& .MuiTablePagination-toolbar': { flexWrap: 'wrap' } }}
         />
       </Card>
-
-      {/* Approval details accordion for each quotation with a workflow */}
-      {rows.length > 0 && rows.some((r) => r.approvalWorkflow) && (
-        <Box sx={{ mt: 2 }}>
-          <Typography variant="h6" fontWeight={600} sx={{ mb: 1 }}>Approval Status</Typography>
-          {rows.filter((r) => r.approvalWorkflow).map((row) => (
-            <Accordion key={row.id}>
-              <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-                  <Typography component="span"><strong>{row.quotationNumber}</strong> — {row.vendor?.name} — Status: </Typography>
-                  <Chip label={row.approvalWorkflow!.status} size="small" color={STATUS_COLORS[row.approvalWorkflow!.status] ?? 'default'} />
-                </Box>
-              </AccordionSummary>
-              <AccordionDetails>
-                <ApprovalStepsDisplay steps={row.approvalWorkflow!.steps} />
-              </AccordionDetails>
-            </Accordion>
-          ))}
-        </Box>
-      )}
 
       {/* Create / Edit Dialog */}
       <ResponsiveDialog open={createOpen || editOpen} onClose={() => { setCreateOpen(false); setEditOpen(false); setEditing(null); }} maxWidth="md" fullWidth sx={{ '& .MuiDialog-paper': { margin: { xs: 1 } } }}>

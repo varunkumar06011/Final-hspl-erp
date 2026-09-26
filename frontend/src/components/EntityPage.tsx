@@ -1,4 +1,5 @@
-﻿import { useState, useCallback, useEffect, useRef, type ReactNode } from 'react';
+﻿import { useState, useCallback, useEffect, useRef, Fragment, type ReactNode } from 'react';
+import { useTheme } from '@mui/material/styles';
 import {
   Box,
   Typography,
@@ -20,6 +21,9 @@ import {
   Alert,
   CircularProgress,
   InputAdornment,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
 } from '@mui/material';
 import ResponsiveDialog from './ResponsiveDialog';
 import {
@@ -30,6 +34,7 @@ import {
   Refresh as RefreshIcon,
   RemoveCircleOutline as RemoveIcon,
   Download as DownloadIcon,
+  ExpandMore as ExpandMoreIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { extractErrorMessage } from '../config/api';
@@ -90,6 +95,10 @@ interface EntityPageProps {
   csvFilename?: string;
   /** Field name used to deep-link from global search (e.g. 'name', 'accountName'). */
   deepLinkField?: string;
+  /** Render rows as expandable cards (Quotation-style) instead of a table. */
+  cardLayout?: boolean;
+  /** Label for the button that triggers onRowClick in card layout. */
+  rowClickLabel?: string;
 }
 
 export default function EntityPage({
@@ -108,7 +117,10 @@ export default function EntityPage({
   csvColumns,
   csvFilename,
   deepLinkField,
+  cardLayout = false,
+  rowClickLabel = 'View',
 }: EntityPageProps) {
+  const theme = useTheme();
   const [page, setPage] = useUrlState<number>('page', 0, Number);
   const [pageSize, setPageSize] = useUrlState<number>('pageSize', 20, Number);
   const [search, setSearch] = useUrlState<string>('search', '');
@@ -267,6 +279,25 @@ export default function EntityPage({
     endpoint, rows as (Record<string, unknown> & { id: string })[], deepLinkField ?? 'name', setSearch,
   );
 
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  useEffect(() => {
+    if (highlightId) setExpandedId(highlightId);
+  }, [highlightId]);
+
+  // Shared cell renderer — used by both the table and the card layout.
+  const renderCellContent = (row: Record<string, unknown>, col: ColumnDef): ReactNode =>
+    col.render
+      ? col.render(row)
+      : col.key === statusKey
+        ? (
+            <Chip
+              label={String(row[col.key] ?? '')}
+              size="small"
+              color={statusColors?.[String(row[col.key])] ?? 'default'}
+            />
+          )
+        : String(row[col.key] ?? '—');
+
   return (
     <Box sx={{ minWidth: 0, overflow: 'hidden' }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: { xs: 'flex-start', sm: 'center' }, mb: 2, flexWrap: 'wrap', gap: 1 }}>
@@ -327,6 +358,97 @@ export default function EntityPage({
           />
         </Box>
 
+        {cardLayout ? (
+          /* Expandable cards — same pattern as the Quotations page */
+          isLoading ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress size={32} /></Box>
+          ) : isError ? (
+            <Box sx={{ textAlign: 'center', py: 4 }}>
+              <Alert severity="error" sx={{ mb: 1 }}>Failed to load data. Check your connection and try again.</Alert>
+              <Button size="small" onClick={() => refetch()} startIcon={<RefreshIcon />}>Retry</Button>
+            </Box>
+          ) : rows.length === 0 ? (
+            <Box sx={{ textAlign: 'center', py: 4 }}><Typography color="text.secondary">No {title.toLowerCase()} found</Typography></Box>
+          ) : (
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, px: 2, pb: 2 }}>
+              {rows.map((row: Record<string, unknown>) => (
+                <Accordion
+                  key={row.id as string}
+                  ref={rowRef(row.id as string)}
+                  expanded={expandedId === row.id}
+                  onChange={(_event, expanded) => setExpandedId(expanded ? (row.id as string) : null)}
+                  sx={{
+                    mb: 1,
+                    bgcolor: highlightId === row.id ? (theme.palette.mode === 'dark' ? 'rgba(255, 202, 40, 0.14)' : 'warning.light') : 'background.paper',
+                    color: 'text.primary',
+                    border: '1px solid',
+                    borderColor: highlightId === row.id ? 'primary.main' : 'divider',
+                    borderRadius: 1,
+                    overflow: 'hidden',
+                    '&:before': { display: 'none' },
+                    '&:hover': { borderColor: 'primary.main' },
+                  }}
+                >
+                  <AccordionSummary
+                    expandIcon={<ExpandMoreIcon />}
+                    sx={{ minHeight: 52, '&.Mui-expanded': { minHeight: 52 }, '& .MuiAccordionSummary-content': { my: 1, '&.Mui-expanded': { my: 1 } } }}
+                  >
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap', minWidth: 0 }}>
+                      <Typography component="span" sx={{ fontSize: { xs: '0.82rem', sm: '0.9rem' } }}>
+                        <strong>{String(row[columns[0]?.key] ?? '—')}</strong>
+                        {columns[1] && <> — {String(row[columns[1].key] ?? '—')}</>}
+                        {statusKey && ' — Status:'}
+                      </Typography>
+                      {statusKey && (
+                        <Chip
+                          label={String(row[statusKey] ?? '').replace(/_/g, ' ')}
+                          size="small"
+                          color={statusColors?.[String(row[statusKey])] ?? 'default'}
+                        />
+                      )}
+                    </Box>
+                  </AccordionSummary>
+                  <AccordionDetails sx={{ borderTop: '1px solid', borderColor: 'divider', bgcolor: 'background.paper', color: 'text.primary', p: 1.25 }}>
+                    <Box sx={{ minWidth: 0 }}>
+                      {/* Two-column label/value grid over all columns */}
+                      <Box sx={{
+                        display: 'grid',
+                        gridTemplateColumns: { xs: '1fr', sm: '140px 1fr 140px 1fr' },
+                        gap: { xs: 0.25, sm: '2px 12px' },
+                        alignItems: 'baseline',
+                      }}>
+                        {columns.map((col) => (
+                          <Fragment key={col.key}>
+                            <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>
+                              {col.label}
+                            </Typography>
+                            <Typography component="div" variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem', minWidth: 0, overflowWrap: 'break-word' }}>
+                              {renderCellContent(row, col)}
+                            </Typography>
+                          </Fragment>
+                        ))}
+                      </Box>
+
+                      {/* Actions */}
+                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, mt: 1, pt: 1, borderTop: '1px solid', borderColor: 'divider' }}>
+                        {onRowClick && (
+                          <Button size="small" variant="outlined" onClick={() => onRowClick(row)}>{rowClickLabel}</Button>
+                        )}
+                        {rowActions?.(row)}
+                        {canCreate && (
+                          <>
+                            <Button size="small" startIcon={<EditIcon />} onClick={() => openEdit(row)}>Edit</Button>
+                            <Button size="small" color="error" startIcon={<DeleteIcon />} onClick={() => setDeleteConfirm(row.id as string)}>Delete</Button>
+                          </>
+                        )}
+                      </Box>
+                    </Box>
+                  </AccordionDetails>
+                </Accordion>
+              ))}
+            </Box>
+          )
+        ) : (
         <ResponsiveTable>
         <TableContainer sx={{ overflowX: 'auto' }}>
           <Table size="small" sx={{ '@media (min-width: 900px)': { minWidth: 'max-content', '& .MuiTableCell-root': { whiteSpace: 'nowrap' } } }}>
@@ -374,17 +496,7 @@ export default function EntityPage({
                   >
                     {columns.map((col) => (
                       <TableCell key={col.key} data-label={col.label}>
-                        {col.render
-                          ? col.render(row)
-                          : col.key === statusKey
-                            ? (
-                                <Chip
-                                  label={String(row[col.key] ?? '')}
-                                  size="small"
-                                  color={statusColors?.[String(row[col.key])] ?? 'default'}
-                                />
-                              )
-                            : String(row[col.key] ?? '—')}
+                        {renderCellContent(row, col)}
                       </TableCell>
                     ))}
                     {canCreate && (
@@ -405,6 +517,7 @@ export default function EntityPage({
           </Table>
         </TableContainer>
         </ResponsiveTable>
+        )}
 
         <TablePagination
           component="div"

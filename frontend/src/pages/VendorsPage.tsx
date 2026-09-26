@@ -322,6 +322,8 @@ export default function VendorsPage() {
         entityName="Vendor"
         entityType="VENDOR"
         deepLinkField="name"
+        cardLayout
+        rowClickLabel="History"
         onRowClick={(row) => setHistoryId(String(row.id))}
         columns={[
           { key: 'vendorCode', label: 'Vendor ID' },

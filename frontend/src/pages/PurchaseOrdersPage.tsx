@@ -1,5 +1,6 @@
 ﻿import { useState, useMemo, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTheme } from '@mui/material/styles';
 import {
   Box,
   Typography,
@@ -51,15 +52,14 @@ import {
 } from '@mui/icons-material';
 import LedgerAutocomplete, { LedgerOption } from '../components/LedgerAutocomplete';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { POStatus, UserRole, POPaymentType, GST_RATES, isAdminRole } from '@hospital-erp/shared';
+import { POStatus, UserRole, POPaymentType, GST_RATES, ApprovalStatus, isAdminRole } from '@hospital-erp/shared';
 import { formatCurrency, formatDate, formatIndianNumber, STATUS_COLORS, QTY_UNIT_OPTIONS } from '../utils/enumOptions';
+import { num, toIncGst } from '../utils/taxCalc';
 import api, { extractErrorMessage } from '../config/api';
 import { useAuthStore } from '../stores/authStore';
 import AcknowledgementCheckbox from '../components/AcknowledgementCheckbox';
 import ApprovalActionDialog from '../components/ApprovalActionDialog';
-import ResponsiveTable from '../components/ResponsiveTable';
 import CreatableSelect from '../components/CreatableSelect';
-import TruncatedText from '../components/TruncatedText';
 import LandscapeExcelTable from '../components/LandscapeExcelTable';
 import PortraitRotateHint from '../components/PortraitRotateHint';
 import { useMobileLandscape, useMobilePortrait } from '../hooks/useMobileLandscape';
@@ -157,6 +157,7 @@ const HEAD_ROLES = [UserRole.PROJECT_HEAD, UserRole.HEAD_OF_CONSTRUCTION, UserRo
 // Admin roles (ADMIN, ADMIN_2, ADMIN_3, ...) are checked dynamically via isAdminRole().
 
 export default function PurchaseOrdersPage() {
+  const theme = useTheme();
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(20);
   const [search, setSearch] = useState('');
@@ -193,6 +194,7 @@ export default function PurchaseOrdersPage() {
   const [newBudgetHeadId, setNewBudgetHeadId] = useState('');
   const [budgetHeadReason, setBudgetHeadReason] = useState('');
   const [postLedgerRow, setPostLedgerRow] = useState<PORow | null>(null);
+  const [expandedPoId, setExpandedPoId] = useState<string | null>(null);
   const queryClient = useQueryClient();
   const { user } = useAuthStore();
   const navigate = useNavigate();
@@ -475,6 +477,9 @@ export default function PurchaseOrdersPage() {
   useApprovalDeepLink(rows, (row) => setApprovalAction({ row, action: 'approve' }));
   // Deep-link from global search: ?id=<poId> — filter to that PO and highlight it
   const { highlightId, rowRef } = useDeepLinkRow<PORow>('/purchase-orders', rows, 'poNumber', (v) => { setSearch(v); setPage(0); });
+  useEffect(() => {
+    if (highlightId) setExpandedPoId(highlightId);
+  }, [highlightId]);
   // Read NL query filters from URL on mount
   useUrlFilters({ search: (v) => { setSearch(v); setPage(0); }, status: (v) => { setStatusFilter(v); setPage(0); }, minAmount: setMinAmount, maxAmount: setMaxAmount, dateFilter: setDateFilter });
 
@@ -771,207 +776,275 @@ export default function PurchaseOrdersPage() {
           </Box>
         )}
 
+        {/* PO cards — compact expandable cards matching the Quotations layout */}
         {!isMobileLandscape && (
-        <ResponsiveTable>
-        <TableContainer sx={{ overflowX: 'auto' }}>
-          <Table size="small">
-            <TableHead>
-              <TableRow>
-                <TableCell sx={{ fontWeight: 600 }}>PO No</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Quotation No</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>PO Date</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Vendor Name</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Item Description</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Payment Type</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Total</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>GST</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Grand Total</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Deductions</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Net Payable</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Paid</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>To Pay Now</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Budget Head</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Created By</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Approved By</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Referred By</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Status</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Actions</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {isLoading ? (
-                <TableRow><TableCell colSpan={19} align="center" sx={{ py: 4 }}><CircularProgress size={32} /></TableCell></TableRow>
-              ) : rows.length === 0 ? (
-                <TableRow><TableCell colSpan={19} align="center" sx={{ py: 4 }}><Typography color="text.secondary">No purchase orders found</Typography></TableCell></TableRow>
-              ) : (
-                rows.map((row) => (
-                  <TableRow key={row.id} hover ref={rowRef(row.id)} sx={{ ...(highlightId === row.id && { bgcolor: 'warning.light', '&:hover': { bgcolor: 'warning.light' } }) }}>
-                    <TableCell data-label="PO No">
-                      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.25 }}>
-                        <Typography>{row.poNumber}</Typography>
-                        {row.parentPo && (
-                          <Typography variant="caption" color="text.secondary">
-                            from {row.parentPo.poNumber}
-                          </Typography>
-                        )}
-                        {row.childPos && row.childPos.length > 0 && (
-                          <Typography variant="caption" color="secondary.main">
-                            regen → {row.childPos.map((c) => c.poNumber).join(', ')}
-                          </Typography>
-                        )}
+          isLoading ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress size={32} /></Box>
+          ) : rows.length === 0 ? (
+            <Box sx={{ textAlign: 'center', py: 4 }}><Typography color="text.secondary">No purchase orders found</Typography></Box>
+          ) : (
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, px: 1, pb: 1 }}>
+              {rows.map((row) => {
+                // Effective status: if the approval workflow is APPROVED/REJECTED
+                // but the PO status hasn't caught up yet (stale data), use the
+                // workflow status for display — same rule as the Quotations page.
+                const wfStatus = row.approvalWorkflow?.status;
+                const effectiveStatus =
+                  row.status === POStatus.DELETED ? POStatus.DELETED :
+                  wfStatus === ApprovalStatus.APPROVED && row.status === POStatus.PENDING_APPROVAL ? POStatus.APPROVED :
+                  wfStatus === ApprovalStatus.REJECTED && row.status === POStatus.PENDING_APPROVAL ? POStatus.REJECTED :
+                  row.status;
+
+                const hasDeductions = !!row.deductions && row.deductions.length > 0 && Number(row.totalDeductions ?? 0) > 0;
+                const netPayable = hasDeductions
+                  ? Number(row.netPayable ?? row.grandTotal)
+                  : row.advanceAmount && Number(row.advanceAmount) > 0
+                    ? Number(row.advanceAmount)
+                    : Number(row.grandTotal);
+                const netPayableCaption = hasDeductions
+                  ? 'Net Payable'
+                  : row.advanceAmount && Number(row.advanceAmount) > 0
+                    ? `Advance: ${formatCurrency(Number(row.advanceAmount))}`
+                    : 'Grand Total';
+                const approverNames = row.approvalWorkflow?.steps?.some((s) => s.status === 'APPROVED' && s.approverUser)
+                  ? row.approvalWorkflow!.steps.filter((s) => s.status === 'APPROVED' && s.approverUser).map((s) => s.approverUser!.name).join(', ')
+                  : '—';
+
+                return (
+                  <Accordion
+                    key={row.id}
+                    ref={rowRef(row.id)}
+                    expanded={expandedPoId === row.id}
+                    onChange={(_event, expanded) => setExpandedPoId(expanded ? row.id : null)}
+                    sx={{
+                      mb: 1,
+                      bgcolor: highlightId === row.id ? (theme.palette.mode === 'dark' ? 'rgba(255, 202, 40, 0.14)' : 'warning.light') : 'background.paper',
+                      color: 'text.primary',
+                      border: '1px solid',
+                      borderColor: highlightId === row.id ? 'primary.main' : 'divider',
+                      borderRadius: 1,
+                      overflow: 'hidden',
+                      '&:before': { display: 'none' },
+                      '&:hover': { borderColor: 'primary.main' },
+                    }}
+                  >
+                    <AccordionSummary
+                      expandIcon={<ExpandMoreIcon />}
+                      sx={{ minHeight: 52, '&.Mui-expanded': { minHeight: 52 }, '& .MuiAccordionSummary-content': { my: 1, '&.Mui-expanded': { my: 1 } } }}
+                    >
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap', minWidth: 0 }}>
+                        <Typography component="span" sx={{ fontSize: { xs: '0.82rem', sm: '0.9rem' } }}>
+                          <strong>{row.poNumber}</strong> — {row.vendor?.name ?? '—'} — {formatCurrency(row.grandTotal)} — Status:
+                        </Typography>
+                        <Chip
+                          label={effectiveStatus.replace(/_/g, ' ')}
+                          size="small"
+                          color={effectiveStatus === POStatus.DELETED ? 'error' : (STATUS_COLORS[effectiveStatus] ?? 'default')}
+                          sx={effectiveStatus === POStatus.DELETED ? { bgcolor: '#d32f2f', color: '#fff', textDecoration: 'line-through' } : undefined}
+                        />
                         {row.editReason && (
-                          <Typography variant="caption" color="warning.main" title={row.editReason}>
-                            edited
+                          <Typography variant="caption" color="warning.main" title={row.editReason}>edited</Typography>
+                        )}
+                      </Box>
+                    </AccordionSummary>
+                    <AccordionDetails sx={{ borderTop: '1px solid', borderColor: 'divider', bgcolor: 'background.paper', color: 'text.primary', p: 1.25 }}>
+                      <Box sx={{ minWidth: 0 }}>
+                        {/* Status bar */}
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 0.75, pb: 0.75, borderBottom: '1px solid', borderColor: 'action.hover', gap: 1, flexWrap: 'wrap' }}>
+                          <Chip
+                            label={effectiveStatus.replace(/_/g, ' ')}
+                            size="small"
+                            color={effectiveStatus === POStatus.DELETED ? 'error' : (STATUS_COLORS[effectiveStatus] ?? 'default')}
+                            sx={effectiveStatus === POStatus.DELETED ? { bgcolor: '#d32f2f', color: '#fff', textDecoration: 'line-through' } : undefined}
+                          />
+                          <Chip
+                            size="small"
+                            label={row.paymentType === POPaymentType.ADVANCE ? 'Advance' : row.paymentType === POPaymentType.FULL_PAYMENT ? 'Full Payment' : 'After Delivery'}
+                            color={row.paymentType === POPaymentType.ADVANCE ? 'warning' : row.paymentType === POPaymentType.FULL_PAYMENT ? 'success' : 'info'}
+                            variant="outlined"
+                          />
+                        </Box>
+
+                        {/* Two-column label/value grid */}
+                        <Box sx={{
+                          display: 'grid',
+                          gridTemplateColumns: { xs: '1fr', sm: '140px 1fr 140px 1fr' },
+                          gap: { xs: 0.25, sm: '2px 12px' },
+                          alignItems: 'baseline',
+                        }}>
+                          <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>PO No</Typography>
+                          <Typography component="div" variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem', minWidth: 0 }}>
+                            {row.poNumber}
+                            {row.parentPo && (
+                              <Typography component="span" variant="caption" color="text.secondary" sx={{ display: 'block' }}>from {row.parentPo.poNumber}</Typography>
+                            )}
+                            {row.childPos && row.childPos.length > 0 && (
+                              <Typography component="span" variant="caption" color="secondary.main" sx={{ display: 'block' }}>regen → {row.childPos.map((c) => c.poNumber).join(', ')}</Typography>
+                            )}
                           </Typography>
-                        )}
-                      </Box>
-                    </TableCell>
-                    <TableCell data-label="Quotation No">{row.quotation?.quotationNumber ?? '—'}</TableCell>
-                    <TableCell data-label="PO Date">
-                      {row.quotation && new Date(row.date) < new Date(row.quotation.date) ? (
-                        <Box>
-                          <Typography color="error" fontWeight={600}>{formatDate(row.date)}</Typography>
-                          <Typography variant="caption" color="error">Before quotation ({formatDate(row.quotation.date)})</Typography>
-                        </Box>
-                      ) : formatDate(row.date)}
-                    </TableCell>
-                    <TableCell data-label="Vendor Name">{row.vendor?.vendorCode} - {row.vendor?.name ?? '—'}</TableCell>
-                    <TableCell data-label="Item Description" sx={{ maxWidth: 220 }}>
-                      <TruncatedText text={row.notes ?? ''} wordLimit={3} variant="caption" />
-                    </TableCell>
-                    <TableCell data-label="Payment Type">
-                      <Chip
-                        size="small"
-                        label={row.paymentType === POPaymentType.ADVANCE
-                          ? 'Advance'
-                          : row.paymentType === POPaymentType.FULL_PAYMENT
-                            ? 'Full Payment'
-                            : 'After Delivery'}
-                        color={row.paymentType === POPaymentType.ADVANCE
-                          ? 'warning'
-                          : row.paymentType === POPaymentType.FULL_PAYMENT
-                            ? 'success'
-                            : 'info'}
-                        variant="outlined"
-                      />
-                    </TableCell>
-                    <TableCell data-label="Total">{formatCurrency(row.totalAmount)}</TableCell>
-                    <TableCell data-label="GST">{formatCurrency(row.gstAmount)}</TableCell>
-                    <TableCell data-label="Grand Total">{formatCurrency(row.grandTotal)}</TableCell>
-                    <TableCell data-label="Deductions">
-                      {row.deductions && row.deductions.length > 0 ? (
-                        <Box>
-                          <Typography color="error" fontWeight={600}>-{formatCurrency(Number(row.totalDeductions ?? 0))}</Typography>
-                          {row.deductions.map((d, i) => (
-                            <Typography key={i} variant="caption" color="text.secondary" display="block">
-                              {d.reason}: {formatCurrency(d.amount)}
-                            </Typography>
-                          ))}
-                        </Box>
-                      ) : (
-                        <Typography variant="caption" color="text.secondary">—</Typography>
-                      )}
-                    </TableCell>
-                    <TableCell data-label="Net Payable">
-                      <Typography fontWeight={600}>
-                        {formatCurrency(
-                          row.totalDeductions && Number(row.totalDeductions) > 0
-                            ? Number(row.netPayable ?? row.grandTotal)
-                            : row.advanceAmount && Number(row.advanceAmount) > 0
-                              ? Number(row.advanceAmount)
-                              : Number(row.grandTotal)
-                        )}
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary" display="block">
-                        {row.totalDeductions && Number(row.totalDeductions) > 0
-                          ? '(Net Payable)'
-                          : row.advanceAmount && Number(row.advanceAmount) > 0
-                            ? `(Advance: ${formatCurrency(Number(row.advanceAmount))})`
-                            : '(Grand Total)'}
-                      </Typography>
-                    </TableCell>
-                    <TableCell data-label="Paid">
-                      <Typography color="success.main" fontWeight={600}>
-                        {formatCurrency(Number(row.paidToDate ?? 0))}
-                      </Typography>
-                    </TableCell>
-                    <TableCell data-label="To Pay Now">
-                      <Typography fontWeight={700} color={Number(row.amountToPayNow ?? 0) > 0 ? 'error.main' : 'text.secondary'}>
-                        {formatCurrency(Number(row.amountToPayNow ?? 0))}
-                      </Typography>
-                    </TableCell>
-                    <TableCell data-label="Budget Head">
-                      {row.budgetHead ? (
-                        <Chip label={row.budgetHead.particulars} size="small" variant="outlined" color="primary" />
-                      ) : (
-                        <Typography variant="caption" color="text.secondary">—</Typography>
-                      )}
-                    </TableCell>
-                    <TableCell data-label="Created By">{row.createdByUser?.name ?? '—'}</TableCell>
-                    <TableCell data-label="Approved By">
-                      {row.approvalWorkflow?.steps?.some((s) => s.status === 'APPROVED' && s.approverUser)
-                        ? row.approvalWorkflow!.steps
-                            .filter((s) => s.status === 'APPROVED' && s.approverUser)
-                            .map((s) => s.approverUser!.name)
-                            .join(', ')
-                        : '—'}
-                    </TableCell>
-                    <TableCell data-label="Referred By">{row.referredBy ?? '—'}</TableCell>
-                    <TableCell data-label="Status"><Chip label={row.status.replace(/_/g, ' ')} size="small" color={row.status === POStatus.DELETED ? 'error' : (STATUS_COLORS[row.status] ?? 'default')} sx={row.status === POStatus.DELETED ? { bgcolor: '#d32f2f', color: '#fff', textDecoration: 'line-through' } : undefined} /></TableCell>
-                    <TableCell data-label="Actions">
-                      <Box sx={{ display: 'flex', gap: 0.5 }}>
-                        <IconButton size="small" onClick={() => previewPDF(row.id)} title="Preview PDF" disabled={pdfLoading}>{pdfLoading ? <CircularProgress size={16} /> : <PdfIcon fontSize="small" />}</IconButton>
-                        <IconButton size="small" onClick={() => downloadPDF(row.id, row.poNumber)} title="Download PDF"><DownloadIcon fontSize="small" /></IconButton>
-                        <IconButton size="small" sx={{ color: '#25D366' }} onClick={() => shareOnWhatsApp(buildPOShareMessage({ poNumber: row.poNumber, vendorName: row.vendor?.name, grandTotal: Number(row.grandTotal), status: row.status, date: row.date, totalDeductions: Number(row.totalDeductions ?? 0), netPayable: Number(row.netPayable ?? row.grandTotal), deductions: row.deductions ?? undefined, notes: row.notes ?? undefined }))} title="Share on WhatsApp"><WhatsAppIcon fontSize="small" /></IconButton>
-                        {row.status !== POStatus.DELETED && (
-                          <>
-                            {canApprove(row) && (
+
+                          <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>Vendor</Typography>
+                          <Typography component="div" variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem', minWidth: 0 }}>{row.vendor?.vendorCode} - {row.vendor?.name ?? '—'}</Typography>
+
+                          <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>Quotation No</Typography>
+                          <Typography component="div" variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem', minWidth: 0 }}>{row.quotation?.quotationNumber ?? '—'}</Typography>
+
+                          <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>PO Date</Typography>
+                          <Typography component="div" variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem', minWidth: 0 }}>
+                            {row.quotation && new Date(row.date) < new Date(row.quotation.date) ? (
                               <>
-                                <IconButton size="small" color="success" onClick={() => setApprovalAction({ row, action: 'approve' })} title="Approve"><CheckIcon fontSize="small" /></IconButton>
-                                <IconButton size="small" color="error" onClick={() => setApprovalAction({ row, action: 'reject' })} title="Reject"><CloseIcon fontSize="small" /></IconButton>
+                                <Box component="span" sx={{ color: 'error.main', fontWeight: 600 }}>{formatDate(row.date)}</Box>
+                                <Typography component="span" variant="caption" color="error" sx={{ display: 'block' }}>Before quotation ({formatDate(row.quotation.date)})</Typography>
                               </>
-                            )}
-                            {(row.status === POStatus.APPROVED || row.status === POStatus.PARTIALLY_DELIVERED) && (
-                              <IconButton size="small" color="primary" onClick={() => navigate('/gate-passes')} title="Create Gate Pass"><GatePassIcon fontSize="small" /></IconButton>
-                            )}
-                            {(row.status === POStatus.APPROVED || row.status === POStatus.PARTIALLY_DELIVERED || row.status === POStatus.DELIVERED) && (
-                              <IconButton size="small" onClick={() => setTrailRow(row)} title="Delivery Trail"><TimelineIcon fontSize="small" /></IconButton>
-                            )}
-                            {row.status === POStatus.PARTIALLY_DELIVERED && !row.parentPoId && (
-                              <IconButton size="small" color="warning" onClick={() => setEditRow(row)} title="Edit PO to Match Delivered"><EditIcon fontSize="small" /></IconButton>
-                            )}
-                            {(row.status === POStatus.PENDING_APPROVAL || row.status === POStatus.REJECTED || (row.status === POStatus.APPROVED && !!user && isAdminRole(user.role))) && (
-                              <IconButton size="small" color="primary" onClick={() => setEditUnapprovedRow(row)} title="Edit PO"><EditIcon fontSize="small" /></IconButton>
-                            )}
-                            {(row.status === POStatus.APPROVED || row.status === POStatus.DELIVERED || row.status === POStatus.PARTIALLY_DELIVERED) && (
-                              <IconButton size="small" onClick={() => { setNotesEditRow(row); setNotesEditValue(row.notes ?? ''); setReferredByEditValue(row.referredBy ?? ''); }} title="Edit PO Details"><EditIcon fontSize="small" /></IconButton>
-                            )}
-                            {(row.status === POStatus.APPROVED || row.status === POStatus.DELIVERED || row.status === POStatus.PARTIALLY_DELIVERED) && user && (isAdminRole(user.role) || user.role === UserRole.ACCOUNTANT) && (
-                              <IconButton size="small" color="secondary" onClick={() => setPostLedgerRow(row)} title="Post to Ledger"><PostLedgerIcon fontSize="small" /></IconButton>
-                            )}
-                            {(row.status === POStatus.APPROVED || row.status === POStatus.DELIVERED || row.status === POStatus.PARTIALLY_DELIVERED) && row.budgetHeadId && user && isAdminRole(user.role) && (
-                              <IconButton size="small" color="info" onClick={() => { setBudgetHeadRow(row); setNewBudgetHeadId(''); setBudgetHeadReason(''); }} title="Change Budget Head"><SwapBudgetIcon fontSize="small" /></IconButton>
-                            )}
-                            {row.status === POStatus.APPROVED && (
-                              <IconButton size="small" color="secondary" onClick={() => setPaymentTypeRow(row)} title="Change Payment Type"><PaymentIcon fontSize="small" /></IconButton>
-                            )}
-                            {row.status === POStatus.DELIVERED && !row.parentPoId && Array.isArray(row.regenerationData) && (row.regenerationData as unknown[]).length > 0 && (!row.childPos || row.childPos.length === 0) ? (
-                              <IconButton size="small" color="secondary" onClick={() => setRegenRow(row)} title="Generate Regenerated PO"><AutoRenewIcon fontSize="small" /></IconButton>
-                            ) : null}
-                            {row.status !== POStatus.APPROVED && row.status !== POStatus.PARTIALLY_DELIVERED && row.status !== POStatus.DELIVERED && (
-                              <IconButton size="small" color="error" onClick={() => setDeleteRow(row)} title="Delete"><DeleteIcon fontSize="small" /></IconButton>
-                            )}
-                          </>
+                            ) : formatDate(row.date)}
+                          </Typography>
+
+                          <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>Payment Type</Typography>
+                          <Typography component="div" variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem', minWidth: 0 }}>
+                            {row.paymentType === POPaymentType.ADVANCE ? 'Advance' : row.paymentType === POPaymentType.FULL_PAYMENT ? 'Full Payment' : 'After Delivery'}
+                          </Typography>
+
+                          <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>Budget Head</Typography>
+                          <Typography component="div" variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem', minWidth: 0 }}>{row.budgetHead?.particulars ?? '—'}</Typography>
+
+                          <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>Total</Typography>
+                          <Typography component="div" variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem', minWidth: 0 }}>{formatCurrency(row.totalAmount)}</Typography>
+
+                          <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>GST</Typography>
+                          <Typography component="div" variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem', minWidth: 0 }}>{formatCurrency(row.gstAmount)}</Typography>
+
+                          <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>Grand Total</Typography>
+                          <Typography component="div" variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem', minWidth: 0 }}>{formatCurrency(row.grandTotal)}</Typography>
+
+                          <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>Net Payable</Typography>
+                          <Typography component="div" variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem', minWidth: 0 }}>
+                            {formatCurrency(netPayable)}
+                            <Typography component="span" variant="caption" color="text.secondary" sx={{ display: 'block' }}>({netPayableCaption})</Typography>
+                          </Typography>
+
+                          <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>Paid</Typography>
+                          <Typography component="div" variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem', minWidth: 0, color: 'success.main' }}>{formatCurrency(Number(row.paidToDate ?? 0))}</Typography>
+
+                          <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>To Pay Now</Typography>
+                          <Typography component="div" variant="body2" sx={{ fontWeight: 700, fontSize: '0.85rem', minWidth: 0, color: Number(row.amountToPayNow ?? 0) > 0 ? 'error.main' : 'text.secondary' }}>{formatCurrency(Number(row.amountToPayNow ?? 0))}</Typography>
+
+                          <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>Created By</Typography>
+                          <Typography component="div" variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem', minWidth: 0 }}>{row.createdByUser?.name ?? '—'}</Typography>
+
+                          <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>Approved By</Typography>
+                          <Typography component="div" variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem', minWidth: 0 }}>{approverNames}</Typography>
+
+                          <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>Referred By</Typography>
+                          <Typography component="div" variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem', minWidth: 0 }}>{row.referredBy ?? '—'}</Typography>
+
+                          <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>Description</Typography>
+                          <Typography component="div" variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem', minWidth: 0, overflowWrap: 'break-word' }}>{row.notes || '—'}</Typography>
+                        </Box>
+
+                        {/* Deductions */}
+                        {hasDeductions && (
+                          <Box sx={{ mt: 0.75 }}>
+                            <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem', display: 'block', mb: 0.25 }}>Deductions</Typography>
+                            <Typography color="error" fontWeight={600} variant="body2">-{formatCurrency(Number(row.totalDeductions ?? 0))}</Typography>
+                            {row.deductions!.map((d, i) => (
+                              <Typography key={i} variant="caption" color="text.secondary" display="block">
+                                {d.reason}: {formatCurrency(d.amount)}
+                              </Typography>
+                            ))}
+                          </Box>
+                        )}
+
+                        {/* Items — full width compact table */}
+                        {row.items && row.items.length > 0 && (
+                          <Box sx={{ mt: 0.5 }}>
+                            <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem', display: 'block', mb: 0.5 }}>Items</Typography>
+                            <Box sx={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', mx: -0.5, px: 0.5 }}>
+                            <Box component="table" sx={{ width: '100%', minWidth: 430, borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+                              <Box component="thead">
+                                <Box component="tr" sx={{ borderBottom: '1px solid', borderColor: 'divider' }}>
+                                  <Box component="th" sx={{ textAlign: 'left', py: 0.25, px: 0.5, fontWeight: 600, fontSize: '0.7rem', color: 'text.secondary', textTransform: 'uppercase' }}>Material</Box>
+                                  <Box component="th" sx={{ textAlign: 'right', py: 0.25, px: 0.5, fontWeight: 600, fontSize: '0.7rem', color: 'text.secondary', textTransform: 'uppercase' }}>Qty</Box>
+                                  <Box component="th" sx={{ textAlign: 'right', py: 0.25, px: 0.5, fontWeight: 600, fontSize: '0.7rem', color: 'text.secondary', textTransform: 'uppercase' }}>Unit Price</Box>
+                                  <Box component="th" sx={{ textAlign: 'right', py: 0.25, px: 0.5, fontWeight: 600, fontSize: '0.7rem', color: 'text.secondary', textTransform: 'uppercase' }}>GST</Box>
+                                  <Box component="th" sx={{ textAlign: 'right', py: 0.25, px: 0.5, fontWeight: 600, fontSize: '0.7rem', color: 'text.secondary', textTransform: 'uppercase' }}>Amount (Inc. GST)</Box>
+                                </Box>
+                              </Box>
+                              <Box component="tbody">
+                                {row.items.map((item, i) => (
+                                  <Box key={i} component="tr" sx={{ borderBottom: '1px solid', borderColor: 'action.hover', '&:last-child': { borderBottom: 'none' } }}>
+                                    <Box component="td" sx={{ py: 0.25, px: 0.5, fontWeight: 600, fontSize: '0.8rem' }}>{item.materialName}</Box>
+                                    <Box component="td" sx={{ py: 0.25, px: 0.5, textAlign: 'right', fontSize: '0.8rem', whiteSpace: 'nowrap' }}>{item.quantity}{item.unit ? ` ${item.unit}` : ''}</Box>
+                                    <Box component="td" sx={{ py: 0.25, px: 0.5, textAlign: 'right', fontSize: '0.8rem', whiteSpace: 'nowrap' }}>{formatCurrency(Number(item.unitPrice))}</Box>
+                                    <Box component="td" sx={{ py: 0.25, px: 0.5, textAlign: 'right', fontSize: '0.8rem', whiteSpace: 'nowrap' }}>{num(item.gstRate)}% ({formatCurrency(Number(item.amount) * num(item.gstRate) / 100)})</Box>
+                                    <Box component="td" sx={{ py: 0.25, px: 0.5, textAlign: 'right', fontWeight: 600, fontSize: '0.8rem', whiteSpace: 'nowrap' }}>{formatCurrency(toIncGst(item.amount, item.gstRate))}</Box>
+                                  </Box>
+                                ))}
+                              </Box>
+                            </Box>
+                            </Box>
+                          </Box>
+                        )}
+
+                        {/* Actions — bottom row */}
+                        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, mt: 1, pt: 1, borderTop: '1px solid', borderColor: 'divider' }}>
+                          <Button size="small" variant="outlined" startIcon={pdfLoading ? <CircularProgress size={16} /> : <PdfIcon />} onClick={() => previewPDF(row.id)} disabled={pdfLoading}>Open</Button>
+                          <Button size="small" variant="outlined" startIcon={<DownloadIcon />} onClick={() => downloadPDF(row.id, row.poNumber)}>PDF</Button>
+                          <Button size="small" variant="outlined" startIcon={<WhatsAppIcon />} onClick={() => shareOnWhatsApp(buildPOShareMessage({ poNumber: row.poNumber, vendorName: row.vendor?.name, grandTotal: Number(row.grandTotal), status: row.status, date: row.date, totalDeductions: Number(row.totalDeductions ?? 0), netPayable: Number(row.netPayable ?? row.grandTotal), deductions: row.deductions ?? undefined, notes: row.notes ?? undefined }))}>Share</Button>
+                          {row.status !== POStatus.DELETED && (
+                            <>
+                              {canApprove(row) && (
+                                <>
+                                  <Button size="small" color="success" startIcon={<CheckIcon />} onClick={() => setApprovalAction({ row, action: 'approve' })}>Approve</Button>
+                                  <Button size="small" color="error" startIcon={<CloseIcon />} onClick={() => setApprovalAction({ row, action: 'reject' })}>Reject</Button>
+                                </>
+                              )}
+                              {(row.status === POStatus.APPROVED || row.status === POStatus.PARTIALLY_DELIVERED) && (
+                                <Button size="small" color="primary" startIcon={<GatePassIcon />} onClick={() => navigate('/gate-passes')}>Gate Pass</Button>
+                              )}
+                              {(row.status === POStatus.APPROVED || row.status === POStatus.PARTIALLY_DELIVERED || row.status === POStatus.DELIVERED) && (
+                                <Button size="small" startIcon={<TimelineIcon />} onClick={() => setTrailRow(row)}>Trail</Button>
+                              )}
+                              {row.status === POStatus.PARTIALLY_DELIVERED && !row.parentPoId && (
+                                <Button size="small" color="warning" startIcon={<EditIcon />} onClick={() => setEditRow(row)}>Match Delivered</Button>
+                              )}
+                              {(row.status === POStatus.PENDING_APPROVAL || row.status === POStatus.REJECTED || (row.status === POStatus.APPROVED && !!user && isAdminRole(user.role))) && (
+                                <Button size="small" color="primary" startIcon={<EditIcon />} onClick={() => setEditUnapprovedRow(row)}>Edit PO</Button>
+                              )}
+                              {(row.status === POStatus.APPROVED || row.status === POStatus.DELIVERED || row.status === POStatus.PARTIALLY_DELIVERED) && (
+                                <Button size="small" startIcon={<EditIcon />} onClick={() => { setNotesEditRow(row); setNotesEditValue(row.notes ?? ''); setReferredByEditValue(row.referredBy ?? ''); }}>Edit Details</Button>
+                              )}
+                              {(row.status === POStatus.APPROVED || row.status === POStatus.DELIVERED || row.status === POStatus.PARTIALLY_DELIVERED) && user && (isAdminRole(user.role) || user.role === UserRole.ACCOUNTANT) && (
+                                <Button size="small" color="secondary" startIcon={<PostLedgerIcon />} onClick={() => setPostLedgerRow(row)}>Post Ledger</Button>
+                              )}
+                              {(row.status === POStatus.APPROVED || row.status === POStatus.DELIVERED || row.status === POStatus.PARTIALLY_DELIVERED) && row.budgetHeadId && user && isAdminRole(user.role) && (
+                                <Button size="small" color="info" startIcon={<SwapBudgetIcon />} onClick={() => { setBudgetHeadRow(row); setNewBudgetHeadId(''); setBudgetHeadReason(''); }}>Budget Head</Button>
+                              )}
+                              {row.status === POStatus.APPROVED && (
+                                <Button size="small" color="secondary" startIcon={<PaymentIcon />} onClick={() => setPaymentTypeRow(row)}>Payment Type</Button>
+                              )}
+                              {row.status === POStatus.DELIVERED && !row.parentPoId && Array.isArray(row.regenerationData) && (row.regenerationData as unknown[]).length > 0 && (!row.childPos || row.childPos.length === 0) && (
+                                <Button size="small" color="secondary" startIcon={<AutoRenewIcon />} onClick={() => setRegenRow(row)}>Regen PO</Button>
+                              )}
+                              {row.status !== POStatus.APPROVED && row.status !== POStatus.PARTIALLY_DELIVERED && row.status !== POStatus.DELIVERED && (
+                                <Button size="small" color="error" startIcon={<DeleteIcon />} onClick={() => setDeleteRow(row)}>Delete</Button>
+                              )}
+                            </>
+                          )}
+                        </Box>
+
+                        {row.approvalWorkflow && (
+                          <Box sx={{ mt: 1.5 }}>
+                            <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>Approval Status</Typography>
+                            <ApprovalStepsDisplay steps={row.approvalWorkflow.steps} />
+                          </Box>
                         )}
                       </Box>
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </TableContainer>
-        </ResponsiveTable>
+                    </AccordionDetails>
+                  </Accordion>
+                );
+              })}
+            </Box>
+          )
         )}
 
         <TablePagination
@@ -986,23 +1059,6 @@ export default function PurchaseOrdersPage() {
         />
       </Card>
       </>
-      )}
-
-      {/* Approval details */}
-      {rows.length > 0 && rows.some((r) => r.approvalWorkflow) && (
-        <Box sx={{ mt: 2 }}>
-          <Typography variant="h6" fontWeight={600} sx={{ mb: 1 }}>Approval Status</Typography>
-          {rows.filter((r) => r.approvalWorkflow).map((row) => (
-            <Accordion key={row.id}>
-              <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                <Typography><strong>{row.poNumber}</strong> — {row.vendor?.name} — Status: <Chip label={row.approvalWorkflow!.status} size="small" color={STATUS_COLORS[row.approvalWorkflow!.status] ?? 'default'} /></Typography>
-              </AccordionSummary>
-              <AccordionDetails>
-                <ApprovalStepsDisplay steps={row.approvalWorkflow!.steps} />
-              </AccordionDetails>
-            </Accordion>
-          ))}
-        </Box>
       )}
 
       {/* Create PO Dialog */}
