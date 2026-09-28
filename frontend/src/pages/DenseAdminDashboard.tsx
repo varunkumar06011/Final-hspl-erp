@@ -26,6 +26,8 @@ import { formatCurrency, formatDate } from '../utils/enumOptions';
 import { useAuthStore } from '../stores/authStore';
 import RateTrackerWidget from '../components/RateTrackerWidget';
 import { VoucherPreviewDialog, usePrefetchVoucher } from '../components/VoucherPrint';
+import AllPendingTasksDialog from '../components/AllPendingTasksDialog';
+import type { PendingEntityType } from '../components/PendingItemsDialog';
 
 interface DashboardData {
   project: { name: string; status: string } | null;
@@ -117,6 +119,17 @@ const sirenIconPulse = keyframes`
   0%, 100% { transform: scale(1); opacity: 1; }
   50% { transform: scale(1.18); opacity: .7; }
 `;
+
+// Maps the dashboard's mixed actionItems.type to the PendingEntityType used
+// by AllPendingTasksDialog / PendingItemsDialog.
+function toPendingEntityType(type: string): PendingEntityType {
+  switch (type) {
+    case 'purchase-order': return 'pos';
+    case 'invoice': return 'invoices';
+    case 'payment': return 'payments';
+    default: return 'quotations';
+  }
+}
 
 function Section({ title, icon, children, sx = {}, action }: { title: string; icon?: ReactNode; children: ReactNode; sx?: object; action?: ReactNode }) {
   return (
@@ -223,6 +236,8 @@ export default function DenseAdminDashboard() {
   const [shortAdvanceOpen, setShortAdvanceOpen] = useState(false);
   const [voucherPreviewId, setVoucherPreviewId] = useState<string | null>(null);
   const [noVoucherHint, setNoVoucherHint] = useState(false);
+  const [allTasksOpen, setAllTasksOpen] = useState(false);
+  const [allTasksInitialTab, setAllTasksInitialTab] = useState<PendingEntityType>('quotations');
   const prefetchVoucher = usePrefetchVoucher();
   const [expDateStart, setExpDateStart] = useState('');
   const [expDateEnd, setExpDateEnd] = useState('');
@@ -398,7 +413,7 @@ export default function DenseAdminDashboard() {
                 </Box>
               </Stack>
               {(data?.actionItems ?? []).length > 0 && (
-                <Chip size="small" clickable onClick={() => navigate(data!.actionItems[0].path)} label="View All →" sx={{ height: 20, fontSize: '0.6rem', fontWeight: 700, color: D.red, borderColor: 'rgba(255,92,122,.45)', bgcolor: 'rgba(255,92,122,.1)' }} variant="outlined" />
+                <Chip size="small" clickable onClick={() => { setAllTasksInitialTab(toPendingEntityType(data!.actionItems[0].type)); setAllTasksOpen(true); }} label="View All →" sx={{ height: 20, fontSize: '0.6rem', fontWeight: 700, color: D.red, borderColor: 'rgba(255,92,122,.45)', bgcolor: 'rgba(255,92,122,.1)' }} variant="outlined" />
               )}
             </Stack>
             <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', mt: 1, overflow: 'auto', '&::-webkit-scrollbar': { width: 4 }, '&::-webkit-scrollbar-thumb': { bgcolor: 'rgba(148,163,184,.2)', borderRadius: 2 } }}>
@@ -424,7 +439,7 @@ export default function DenseAdminDashboard() {
                       </Stack>
                     ))}
                   </Stack>
-                  <Button fullWidth onClick={() => navigate(data!.actionItems[0].path)} sx={{ mt: 0.9, py: 0.8, fontSize: '0.74rem', fontWeight: 700, color: '#fff', borderRadius: 2, background: 'linear-gradient(90deg, #ff5c7a, #e0345f)', '&:hover': { background: 'linear-gradient(90deg, #ff6f8a, #f0456f)' } }}>
+                  <Button fullWidth onClick={() => { setAllTasksInitialTab(toPendingEntityType(data!.actionItems[0].type)); setAllTasksOpen(true); }} sx={{ mt: 0.9, py: 0.8, fontSize: '0.74rem', fontWeight: 700, color: '#fff', borderRadius: 2, background: 'linear-gradient(90deg, #ff5c7a, #e0345f)', '&:hover': { background: 'linear-gradient(90deg, #ff6f8a, #f0456f)' } }}>
                     Take Action →
                   </Button>
                 </>
@@ -816,6 +831,21 @@ export default function DenseAdminDashboard() {
         </DialogContent>
         <DialogActions><Button onClick={() => setShortAdvanceOpen(false)}>Close</Button></DialogActions>
       </Dialog>
+
+      {/* All Pending Tasks — tabbed popup covering every pending approval item,
+          each with View + Approve/Reject (with confirmation) inline. */}
+      <AllPendingTasksDialog
+        open={allTasksOpen}
+        user={user}
+        onClose={() => setAllTasksOpen(false)}
+        initialTab={allTasksInitialTab}
+        counts={{
+          quotations: data?.pendingQuotations ?? 0,
+          pos: data?.pendingPOs ?? 0,
+          invoices: data?.pendingInvoices ?? 0,
+          payments: data?.pendingPayments ?? 0,
+        }}
+      />
 
       {/* Related voucher — landscape sheet, horizontally scrollable on mobile */}
       <VoucherPreviewDialog voucherId={voucherPreviewId} onClose={() => setVoucherPreviewId(null)} />

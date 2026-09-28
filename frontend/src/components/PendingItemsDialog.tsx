@@ -33,7 +33,7 @@ import { formatCurrency, formatDate } from '../utils/enumOptions';
 //  - the route to navigate to when "View" is clicked
 //  - the fields to display for each record
 
-type PendingEntityType = 'payments' | 'quotations' | 'pos' | 'invoices';
+export type PendingEntityType = 'payments' | 'quotations' | 'pos' | 'invoices';
 
 interface EntityConfig {
   title: string;
@@ -46,7 +46,7 @@ interface EntityConfig {
   entityLabel: string; // singular label for the approval dialog
 }
 
-const ENTITY_CONFIGS: Record<PendingEntityType, EntityConfig> = {
+export const ENTITY_CONFIGS: Record<PendingEntityType, EntityConfig> = {
   payments: {
     title: 'Pending Payments',
     endpoint: '/payments',
@@ -194,14 +194,18 @@ function statusColor(status: string): 'default' | 'warning' | 'success' | 'error
 
 // ─── Component ──────────────────────────────────────────────────────────────
 
-interface PendingItemsDialogProps {
-  open: boolean;
+interface PendingItemsContentProps {
   entityType: PendingEntityType;
   user: UserResponse | null;
+  open: boolean;
   onClose: () => void;
 }
 
-export default function PendingItemsDialog({ open, entityType, user, onClose }: PendingItemsDialogProps) {
+// ─── Content ────────────────────────────────────────────────────────────────
+// The list + approve/reject logic for a single entity type, without the
+// enclosing Dialog chrome. Reused by PendingItemsDialog (single-type dialog)
+// and by AllPendingTasksDialog (tabbed, all-types-in-one-place dialog).
+export function PendingItemsContent({ entityType, user, open, onClose }: PendingItemsContentProps) {
   const config = ENTITY_CONFIGS[entityType];
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -311,14 +315,7 @@ export default function PendingItemsDialog({ open, entityType, user, onClose }: 
 
   return (
     <>
-      <ResponsiveDialog open={open} onClose={onClose} fullWidth maxWidth="sm">
-        <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', pr: 1 }}>
-          <Typography variant="h6" component="span" fontWeight={600}>{config.title}</Typography>
-          <IconButton onClick={onClose} size="small" aria-label="Close">
-            <CloseIcon fontSize="small" />
-          </IconButton>
-        </DialogTitle>
-        <DialogContent sx={{ pt: '12px !important' }}>
+      <Box>
           {actionError && (
             <Alert severity="error" sx={{ mb: 2 }} onClose={() => setActionError('')}>{actionError}</Alert>
           )}
@@ -412,8 +409,7 @@ export default function PendingItemsDialog({ open, entityType, user, onClose }: 
               </Stack>
             </>
           )}
-        </DialogContent>
-      </ResponsiveDialog>
+      </Box>
 
       {/* Reuse the existing ApprovalActionDialog for the approve/reject confirmation */}
       <ApprovalActionDialog
@@ -427,6 +423,32 @@ export default function PendingItemsDialog({ open, entityType, user, onClose }: 
         onConfirm={handleConfirmApproval}
       />
     </>
+  );
+}
+
+// ─── Single-type dialog wrapper (existing usage, e.g. DashboardPage.tsx) ────
+
+interface PendingItemsDialogProps {
+  open: boolean;
+  entityType: PendingEntityType;
+  user: UserResponse | null;
+  onClose: () => void;
+}
+
+export default function PendingItemsDialog({ open, entityType, user, onClose }: PendingItemsDialogProps) {
+  const config = ENTITY_CONFIGS[entityType];
+  return (
+    <ResponsiveDialog open={open} onClose={onClose} fullWidth maxWidth="sm">
+      <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', pr: 1 }}>
+        <Typography variant="h6" component="span" fontWeight={600}>{config.title}</Typography>
+        <IconButton onClick={onClose} size="small" aria-label="Close">
+          <CloseIcon fontSize="small" />
+        </IconButton>
+      </DialogTitle>
+      <DialogContent sx={{ pt: '12px !important' }}>
+        <PendingItemsContent entityType={entityType} user={user} open={open} onClose={onClose} />
+      </DialogContent>
+    </ResponsiveDialog>
   );
 }
 
