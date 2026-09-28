@@ -688,6 +688,7 @@ export default function MaterialPurchaseRequestsPage() {
                     )}
                     {row.status === MPRStatus.SUBMITTED && (
                       <>
+                        <IconButton size="small" onClick={() => openEdit(row)} title="Edit (will re-raise for approval)"><EditIcon fontSize="small" /></IconButton>
                         {pendingStep && (
                           <>
                             <Button size="small" color="success" startIcon={<CheckIcon />} onClick={() => setApprovalAction({ row, step: pendingStep, action: 'approve' })}>Approve</Button>

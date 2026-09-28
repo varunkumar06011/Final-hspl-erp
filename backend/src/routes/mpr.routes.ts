@@ -347,7 +347,9 @@ router.post(
   }
 );
 
-// PUT /:id — update MPR (only if DRAFT)
+// PUT /:id — update MPR. Allowed while DRAFT or SUBMITTED (an edit made
+// while awaiting approval resets and re-raises the approval workflow, since
+// the numbers/items the approvers saw no longer match).
 router.put(
   '/:id',
   rbacMiddleware(Permission.CREATE_MPR),
@@ -362,8 +364,9 @@ router.put(
         res.status(404).json({ error: 'Material Purchase Request not found' });
         return;
       }
-      if (existing.status !== MPRStatus.DRAFT) {
-        res.status(400).json({ error: 'Cannot edit MPR after it has been submitted' });
+      const wasSubmitted = existing.status === MPRStatus.SUBMITTED;
+      if (existing.status !== MPRStatus.DRAFT && !wasSubmitted) {
+        res.status(400).json({ error: 'Cannot edit MPR after it has been approved, rejected, cancelled, or closed' });
         return;
       }
 
@@ -426,13 +429,62 @@ router.put(
         updateData.estimatedTotal = estimatedSubtotal + estimatedGstAmount;
       }
 
-      const record = await prisma.materialPurchaseRequest.update({
-        where: { id: req.params.id },
-        data: updateData,
-        include: mprInclude,
-      });
+      let approverRoles: string[] = [];
+      let record;
+      if (wasSubmitted) {
+        approverRoles = await getMprApproverRoles(projectId);
+        const newTotal = Number(updateData.estimatedTotal ?? existing.estimatedTotal);
+        record = await prisma.$transaction(async (tx) => {
+          await tx.approvalWorkflow.deleteMany({
+            where: { entityType: 'MATERIAL_PURCHASE_REQUEST', entityId: existing.id },
+          });
+
+          const workflow = await tx.approvalWorkflow.create({
+            data: {
+              entityType: 'MATERIAL_PURCHASE_REQUEST',
+              entityId: existing.id,
+              projectId,
+              status: 'VERIFICATION',
+              currentStep: 0,
+              minApprovers: getRequiredApproverCount(newTotal),
+              approvalPolicy: 'HEAD_GROUPS',
+              steps: {
+                create: approverRoles.map((role, idx) => ({
+                  stepNumber: idx + 1,
+                  approverRole: role,
+                  status: 'PENDING',
+                })),
+              },
+            },
+          });
+
+          return tx.materialPurchaseRequest.update({
+            where: { id: req.params.id },
+            data: { ...updateData, approvalWorkflowId: workflow.id },
+            include: mprInclude,
+          });
+        });
+      } else {
+        record = await prisma.materialPurchaseRequest.update({
+          where: { id: req.params.id },
+          data: updateData,
+          include: mprInclude,
+        });
+      }
 
       await logAudit({ userId: req.user!.id, action: AuditAction.UPDATE_MPR, entityType: 'material_purchase_requests', entityId: record.id, projectId, newValue: { mprNumber: record.mprNumber } });
+
+      if (wasSubmitted) {
+        notifyApprovers(projectId, approverRoles as UserRole[], {
+          approvalId: record.approvalWorkflowId!,
+          entityType: 'MATERIAL_PURCHASE_REQUEST',
+          entityId: record.id,
+          title: 'Material Purchase Request Updated — Approval Required',
+          body: `Material Purchase Request ${record.mprNumber} — ₹${Number(record.estimatedTotal).toLocaleString('en-IN')}`,
+          url: `/mpr?approval=${record.approvalWorkflowId}`,
+        }).catch((err) => console.error('[Push] MPR notification error:', err));
+      }
+
       res.json(record);
     } catch (error) {
       if (error instanceof Error && error.message === 'Vendor not found') {
