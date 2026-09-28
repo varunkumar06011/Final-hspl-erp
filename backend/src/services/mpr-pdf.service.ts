@@ -190,15 +190,16 @@ export async function streamMprPdf(res: NodeJS.WritableStream, mpr: any) {
   y += 18;
 
   // Column widths — must fit within page width (511px)
-  // Total: 25+58+150+120+35+35+65 = 488 + 6 gaps × 3 = 506 (fits in 511)
-  const colGap = 3;
-  const wSl = 25;
-  const wCode = 58;
-  const wDesc = 150;
-  const wSpec = 120;
-  const wQty = 35;
-  const wUnit = 35;
-  const wReqDate = 65;
+  const colGap = 2;
+  const wSl = 18;
+  const wCode = 40;
+  const wDesc = 108;
+  const wSpec = 68;
+  const wQty = 26;
+  const wUnit = 30;
+  const wReqDate = 48;
+  const wPrice = 45;
+  const wAmount = 58;
 
   const colSl = left;
   const colCode = colSl + wSl + colGap;
@@ -207,30 +208,42 @@ export async function streamMprPdf(res: NodeJS.WritableStream, mpr: any) {
   const colQty = colSpec + wSpec + colGap;
   const colUnit = colQty + wQty + colGap;
   const colReqDate = colUnit + wUnit + colGap;
+  const colPrice = colReqDate + wReqDate + colGap;
+  const colAmount = colPrice + wPrice + colGap;
+
+  const fmtMoney = (n: number) => n.toLocaleString('en-IN', { maximumFractionDigits: 2 });
 
   // Header row
   const headerRowH = 28;
   doc.rect(left, y, width, headerRowH).fill(primary);
-  doc.fillColor('#fff').font('Helvetica-Bold').fontSize(7.5);
+  doc.fillColor('#fff').font('Helvetica-Bold').fontSize(7);
   doc.text('SL.', colSl, y + 8, { width: wSl, align: 'center' });
   doc.text('MATERIAL CODE', colCode + 2, y + 8, { width: wCode - 4, align: 'center' });
   doc.text('MATERIAL / ITEM DESCRIPTION', colDesc + 2, y + 8, { width: wDesc - 4 });
-  doc.text('SPECIFICATION / GRADE', colSpec + 2, y + 8, { width: wSpec - 4 });
+  doc.text('SPEC / GRADE', colSpec + 2, y + 8, { width: wSpec - 4 });
   doc.text('QTY', colQty, y + 8, { width: wQty, align: 'center' });
   doc.text('UNIT', colUnit, y + 8, { width: wUnit, align: 'center' });
-  doc.text('REQUIRED DATE', colReqDate + 2, y + 8, { width: wReqDate - 4, align: 'center' });
+  doc.text('REQD. DATE', colReqDate + 2, y + 8, { width: wReqDate - 4, align: 'center' });
+  doc.text('PRICE/UNIT', colPrice + 2, y + 8, { width: wPrice - 4, align: 'right' });
+  doc.text('AMOUNT', colAmount + 2, y + 8, { width: wAmount - 4, align: 'right' });
   y += headerRowH;
 
   // Data rows — only show actual entered items (no blank rows)
   const dataRowH = 30;
   const items = mpr.items ?? [];
+  let grandTotal = 0;
   for (let i = 0; i < items.length; i++) {
-    if (y > pageH - 120) { doc.addPage(); y = 40; }
+    if (y > pageH - 150) { doc.addPage(); y = 40; }
     const item = items[i];
+    const qty = Number(item.quantity) || 0;
+    const rate = Number(item.estimatedRate) || 0;
+    const amount = qty * rate;
+    grandTotal += amount;
+
     if (i % 2 === 0) doc.rect(left, y, width, dataRowH).fill(primaryLight);
     doc.rect(left, y, width, dataRowH).stroke(border);
 
-    doc.fillColor(dark).font('Helvetica').fontSize(8);
+    doc.fillColor(dark).font('Helvetica').fontSize(7.5);
     doc.text(String(i + 1), colSl, y + 7, { width: wSl, align: 'center' });
     doc.text(text(item.materialCode), colCode + 2, y + 7, { width: wCode - 4 });
     doc.text(text(item.materialName), colDesc + 2, y + 7, { width: wDesc - 4 });
@@ -238,8 +251,20 @@ export async function streamMprPdf(res: NodeJS.WritableStream, mpr: any) {
     doc.text(String(item.quantity), colQty, y + 7, { width: wQty, align: 'center' });
     doc.text(text(item.unit), colUnit, y + 7, { width: wUnit, align: 'center' });
     doc.text(item.requiredDate ? new Date(item.requiredDate).toLocaleDateString('en-IN') : '—', colReqDate + 2, y + 7, { width: wReqDate - 4, align: 'center' });
+    doc.text(rate > 0 ? fmtMoney(rate) : '—', colPrice + 2, y + 7, { width: wPrice - 4, align: 'right' });
+    doc.text(amount > 0 ? fmtMoney(amount) : '—', colAmount + 2, y + 7, { width: wAmount - 4, align: 'right' });
     y += dataRowH;
   }
+
+  // Grand total row — bold, spans the description columns through Amount
+  if (y > pageH - 150) { doc.addPage(); y = 40; }
+  const totalRowH = 26;
+  const totalLabelW = colPrice - colSl;
+  doc.rect(left, y, width, totalRowH).fill(primary);
+  doc.fillColor('#fff').font('Helvetica-Bold').fontSize(9.5);
+  doc.text('GRAND TOTAL', colSl, y + 7, { width: totalLabelW - 6, align: 'right' });
+  doc.text(`Rs. ${fmtMoney(grandTotal)}`, colPrice + 2, y + 7, { width: wAmount + wPrice + colGap - 4, align: 'right' });
+  y += totalRowH;
   y += 16;
 
   // ═══════════════════════════════════════════════════════════

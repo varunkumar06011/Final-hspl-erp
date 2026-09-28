@@ -881,6 +881,7 @@ export default function MaterialPurchaseRequestsPage() {
                   <TableCell>Unit</TableCell>
                   <TableCell>Required Date</TableCell>
                   <TableCell align="right">Price</TableCell>
+                  <TableCell align="right">Total</TableCell>
                   <TableCell>Remarks</TableCell>
                   <TableCell></TableCell>
                 </TableRow>
@@ -955,6 +956,13 @@ export default function MaterialPurchaseRequestsPage() {
                         inputProps={{ style: { textAlign: 'right' }, inputMode: 'decimal', min: 0, step: '0.01' }}
                       />
                     </TableCell>
+                    <TableCell align="right">
+                      <Typography variant="body2" sx={{ minWidth: 80 }}>
+                        {(Number(item.quantity) > 0 && Number(item.estimatedRate) > 0)
+                          ? (Number(item.quantity) * Number(item.estimatedRate)).toLocaleString('en-IN', { maximumFractionDigits: 2 })
+                          : '—'}
+                      </Typography>
+                    </TableCell>
                     <TableCell>
                       <TextField
                         size="small"
@@ -970,6 +978,17 @@ export default function MaterialPurchaseRequestsPage() {
                     </TableCell>
                   </TableRow>
                 ))}
+                <TableRow>
+                  <TableCell colSpan={7} align="right" sx={{ borderBottom: 'none' }}>
+                    <Typography variant="subtitle2" fontWeight={700}>Grand Total</Typography>
+                  </TableCell>
+                  <TableCell align="right" sx={{ borderBottom: 'none' }}>
+                    <Typography variant="subtitle2" fontWeight={700}>
+                      ₹{items.reduce((sum, i) => sum + (Number(i.quantity) > 0 && Number(i.estimatedRate) > 0 ? Number(i.quantity) * Number(i.estimatedRate) : 0), 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+                    </Typography>
+                  </TableCell>
+                  <TableCell colSpan={2} sx={{ borderBottom: 'none' }} />
+                </TableRow>
               </TableBody>
             </Table>
           </TableContainer>
