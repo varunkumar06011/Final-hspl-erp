@@ -475,6 +475,12 @@ router.post(
       const approverRoles = await getMprApproverRoles(projectId);
 
       const record = await prisma.$transaction(async (tx) => {
+        // A prior submit (e.g. before this MPR was cancelled/reset to draft) may have
+        // left a workflow behind — entityType+entityId is unique, so clear it first.
+        await tx.approvalWorkflow.deleteMany({
+          where: { entityType: 'MATERIAL_PURCHASE_REQUEST', entityId: existing.id },
+        });
+
         const workflow = await tx.approvalWorkflow.create({
           data: {
             entityType: 'MATERIAL_PURCHASE_REQUEST',

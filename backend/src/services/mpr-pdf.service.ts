@@ -170,12 +170,9 @@ export async function streamMprPdf(res: NodeJS.WritableStream, mpr: any) {
   doc.fillColor('#fff').font('Helvetica-Bold').fontSize(8.5).text('BILL TO', addrBox2X + 8, y + 5, { width: addrBoxW - 16 });
 
   const billingAddr = mpr.billingAddress || mpr.project?.officeAddress || '—';
-  const gstin = mpr.project?.gstNumber || '—';
   const billLines = [
     { label: 'Company:', value: 'V Grand Health Care Pvt. Ltd.' },
     { label: 'Billing Address:', value: text(billingAddr) },
-    { label: 'GSTIN:', value: text(gstin) },
-    { label: 'State / State Code:', value: text(mpr.stateCode) },
   ];
   dy = y + 26;
   for (const line of billLines) {
