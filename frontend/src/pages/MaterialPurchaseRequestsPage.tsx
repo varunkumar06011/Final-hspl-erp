@@ -36,7 +36,6 @@ interface MPRItem {
   quantity: string | number;
   unit?: string;
   requiredDate?: string;
-  estimatedRate?: string | number;
   remarks?: string;
 }
 
@@ -181,7 +180,7 @@ export default function MaterialPurchaseRequestsPage() {
       const saved = JSON.parse(localStorage.getItem(MPR_DRAFT_KEY) || '{}').items;
       if (Array.isArray(saved) && saved.length > 0) return saved;
     } catch { /* ignore */ }
-    return [{ materialName: '', materialCode: '', quantity: '', unit: 'nos', requiredDate: '', estimatedRate: '', remarks: '' }];
+    return [{ materialName: '', materialCode: '', quantity: '', unit: 'nos', requiredDate: '', remarks: '' }];
   });
 
   // Vendor selection — an existing vendor, or a brand-new one created inline
@@ -261,7 +260,7 @@ export default function MaterialPurchaseRequestsPage() {
     setStateCode('');
     setRequestRaisedById('');
     setTechnicalRequirements('');
-    setItems([{ materialName: '', materialCode: '', quantity: '', unit: 'nos', requiredDate: '', estimatedRate: '', remarks: '' }]);
+    setItems([{ materialName: '', materialCode: '', quantity: '', unit: 'nos', requiredDate: '', remarks: '' }]);
     setVendorMode('existing');
     setSelectedVendorId('');
     setNewVendorName('');
@@ -301,7 +300,6 @@ export default function MaterialPurchaseRequestsPage() {
       quantity: String(i.quantity),
       unit: i.unit ?? 'nos',
       requiredDate: i.requiredDate ? new Date(i.requiredDate).toISOString().slice(0, 10) : '',
-      estimatedRate: i.estimatedRate !== undefined && i.estimatedRate !== null ? String(i.estimatedRate) : '',
       remarks: i.remarks ?? '',
     })));
     setVendorMode('existing');
@@ -319,7 +317,7 @@ export default function MaterialPurchaseRequestsPage() {
   }
 
   function addItem() {
-    setItems([...items, { materialName: '', materialCode: '', quantity: '', unit: 'nos', requiredDate: '', estimatedRate: '', remarks: '' }]);
+    setItems([...items, { materialName: '', materialCode: '', quantity: '', unit: 'nos', requiredDate: '', remarks: '' }]);
   }
 
   function removeItem(index: number) {
@@ -347,7 +345,6 @@ export default function MaterialPurchaseRequestsPage() {
           quantity: Number(i.quantity),
           unit: i.unit || undefined,
           requiredDate: i.requiredDate || undefined,
-          estimatedRate: i.estimatedRate !== undefined && i.estimatedRate !== '' ? Number(i.estimatedRate) : undefined,
           remarks: i.remarks || undefined,
         })),
       };
@@ -893,8 +890,6 @@ export default function MaterialPurchaseRequestsPage() {
                   <TableCell align="right">Qty</TableCell>
                   <TableCell>Unit</TableCell>
                   <TableCell>Required Date</TableCell>
-                  <TableCell align="right">Price</TableCell>
-                  <TableCell align="right">Total</TableCell>
                   <TableCell>Remarks</TableCell>
                   <TableCell></TableCell>
                 </TableRow>
@@ -962,23 +957,6 @@ export default function MaterialPurchaseRequestsPage() {
                     <TableCell>
                       <TextField
                         size="small"
-                        type="number"
-                        value={item.estimatedRate ?? ''}
-                        onChange={(e) => updateItem(index, 'estimatedRate', e.target.value)}
-                        sx={{ width: 90 }}
-                        inputProps={{ style: { textAlign: 'right' }, inputMode: 'decimal', min: 0, step: '0.01' }}
-                      />
-                    </TableCell>
-                    <TableCell align="right">
-                      <Typography variant="body2" sx={{ minWidth: 80 }}>
-                        {(Number(item.quantity) > 0 && Number(item.estimatedRate) > 0)
-                          ? (Number(item.quantity) * Number(item.estimatedRate)).toLocaleString('en-IN', { maximumFractionDigits: 2 })
-                          : '—'}
-                      </Typography>
-                    </TableCell>
-                    <TableCell>
-                      <TextField
-                        size="small"
                         value={item.remarks ?? ''}
                         onChange={(e) => updateItem(index, 'remarks', e.target.value)}
                         sx={{ minWidth: 100 }}
@@ -991,17 +969,6 @@ export default function MaterialPurchaseRequestsPage() {
                     </TableCell>
                   </TableRow>
                 ))}
-                <TableRow>
-                  <TableCell colSpan={7} align="right" sx={{ borderBottom: 'none' }}>
-                    <Typography variant="subtitle2" fontWeight={700}>Grand Total</Typography>
-                  </TableCell>
-                  <TableCell align="right" sx={{ borderBottom: 'none' }}>
-                    <Typography variant="subtitle2" fontWeight={700}>
-                      ₹{items.reduce((sum, i) => sum + (Number(i.quantity) > 0 && Number(i.estimatedRate) > 0 ? Number(i.quantity) * Number(i.estimatedRate) : 0), 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
-                    </Typography>
-                  </TableCell>
-                  <TableCell colSpan={2} sx={{ borderBottom: 'none' }} />
-                </TableRow>
               </TableBody>
             </Table>
           </TableContainer>
