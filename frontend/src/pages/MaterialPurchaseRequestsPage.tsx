@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   Box, Typography, Button, Card, CardContent, Chip, IconButton, Dialog, DialogTitle, DialogContent, DialogActions,
   TextField, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, CircularProgress,
-  MenuItem, InputAdornment, Grid, Alert, ToggleButtonGroup, ToggleButton, Divider,
+  MenuItem, InputAdornment, Grid, Alert, ToggleButtonGroup, ToggleButton, Divider, Autocomplete,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -123,6 +123,22 @@ export default function MaterialPurchaseRequestsPage() {
   const [varianceRow, setVarianceRow] = useState<MPRRow | null>(null);
 
   const MPR_DRAFT_KEY = 'mpr_form_draft';
+  const MPR_DEPARTMENTS_KEY = 'mpr_department_history';
+
+  // Remembered department names, so previously typed values can be picked again instead of retyped.
+  const [departmentOptions, setDepartmentOptions] = useState<string[]>(() => {
+    try { return JSON.parse(localStorage.getItem(MPR_DEPARTMENTS_KEY) || '[]'); } catch { return []; }
+  });
+
+  function rememberDepartment(value: string) {
+    const trimmed = value.trim();
+    if (!trimmed) return;
+    setDepartmentOptions((prev) => {
+      const next = [trimmed, ...prev.filter((d) => d.toLowerCase() !== trimmed.toLowerCase())].slice(0, 20);
+      try { localStorage.setItem(MPR_DEPARTMENTS_KEY, JSON.stringify(next)); } catch { /* ignore */ }
+      return next;
+    });
+  }
 
   // Form state — initialized from localStorage if available
   const [requiredBy, setRequiredBy] = useState(() => {
@@ -344,6 +360,7 @@ export default function MaterialPurchaseRequestsPage() {
       queryClient.invalidateQueries({ queryKey: ['/vendors'] });
       setCreateOpen(false);
       setError('');
+      rememberDepartment(department);
       try { localStorage.removeItem(MPR_DRAFT_KEY); } catch { /* ignore */ }
     },
     onError: (err: unknown) => {
@@ -773,12 +790,17 @@ export default function MaterialPurchaseRequestsPage() {
               />
             </Grid>
             <Grid item xs={12} sm={6} md={3}>
-              <TextField
+              <Autocomplete
+                freeSolo
                 fullWidth
                 size="small"
-                label="Department"
+                options={departmentOptions}
                 value={department}
-                onChange={(e) => setDepartment(e.target.value)}
+                inputValue={department}
+                onInputChange={(_e, newValue) => setDepartment(newValue)}
+                onChange={(_e, newValue) => setDepartment(newValue ?? '')}
+                onBlur={() => rememberDepartment(department)}
+                renderInput={(params) => <TextField {...params} label="Department" />}
               />
             </Grid>
             <Grid item xs={12} sm={6} md={3}>
