@@ -426,7 +426,7 @@ router.post(
         entityId: invoice.id,
         title: 'New Approval Required',
         body: `Invoice ${finalInvoiceNumber} — ₹${totalAmount}`,
-        url: `/invoices?approval=${workflow.id}`,
+        url: `/invoices?id=${invoice.id}`,
       }).catch((err) => console.error('[Push] Invoice notification error:', err));
 
       const result = await prisma.vendorInvoice.findUnique({

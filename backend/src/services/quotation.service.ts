@@ -206,7 +206,7 @@ export async function createQuotation(input: CreateQuotationInput) {
     entityId: quotation.id,
     title: 'New Approval Required',
     body: `Quotation ${quotationNumber} from ${quotation.vendor?.name ?? 'vendor'} — ₹${grandTotal}`,
-    url: `/quotations?approval=${workflow.id}`,
+    url: `/quotations?id=${quotation.id}`,
   }).catch((err) => console.error('[Push] Quotation notification error:', err));
 
   // If raised from a work task, link the quotation back to it and advance

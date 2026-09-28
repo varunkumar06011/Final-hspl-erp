@@ -27,6 +27,7 @@ import { useAuthStore } from '../stores/authStore';
 import ApprovalStepsDisplay from '../components/ApprovalStepsDisplay';
 import ApprovalActionDialog from '../components/ApprovalActionDialog';
 import ResponsiveDialog from '../components/ResponsiveDialog';
+import { useDeepLinkRow } from '../hooks/useDeepLinkRow';
 
 interface MPRItem {
   materialName: string;
@@ -243,6 +244,10 @@ export default function MaterialPurchaseRequestsPage() {
   const varianceItems: VarianceRow[] = varianceData?.items ?? [];
 
   const mprs: MPRRow[] = data?.data ?? [];
+
+  // Deep-link from a push notification or global search: ?id=<mprId> scrolls
+  // to and briefly highlights the matching card.
+  const { highlightId, rowRef } = useDeepLinkRow<MPRRow>('/material-purchase-requests', mprs, 'mprNumber', setSearch);
 
   function resetForm() {
     setRequiredBy('');
@@ -596,7 +601,15 @@ export default function MaterialPurchaseRequestsPage() {
             const isNonVendor = row.vendor?.vendorType === 'NON_VENDOR';
             return (
             <Grid item xs={12} key={row.id}>
-              <Card variant="outlined">
+              <Card
+                variant="outlined"
+                ref={rowRef(row.id)}
+                sx={highlightId === row.id ? {
+                  borderColor: 'primary.main',
+                  boxShadow: (theme) => `0 0 0 2px ${theme.palette.primary.main}`,
+                  transition: 'box-shadow 0.3s ease',
+                } : undefined}
+              >
                 <CardContent>
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 1 }}>
                     <Box>

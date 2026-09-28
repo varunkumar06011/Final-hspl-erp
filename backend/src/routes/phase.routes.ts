@@ -25,7 +25,7 @@ export default createCrudRouter({
       entityId: record.id as string,
       title: 'New Phase Created',
       body: `Phase "${record.name}" created`,
-      url: '/dashboard',
+      url: '/',
     });
   },
 });

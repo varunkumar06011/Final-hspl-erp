@@ -51,8 +51,8 @@ const ENTITY_URL_MAP: Record<string, string> = {
   PURCHASE_ORDER: '/pos',
   VENDOR_INVOICE: '/invoices',
   PAYMENT_REQUEST: '/payments',
-  JOURNAL_VOUCHER: '/journal-vouchers',
-  MATERIAL_PURCHASE_REQUEST: '/mpr',
+  JOURNAL_VOUCHER: '/vouchers',
+  MATERIAL_PURCHASE_REQUEST: '/material-purchase-requests',
 };
 
 const ENTITY_LABEL_MAP: Record<string, string> = {
@@ -309,7 +309,7 @@ export async function approve(stepId: string, userId: string, comments?: string)
       user.name,
       true,
       entityInfo.label,
-      `${ENTITY_URL_MAP[workflow.entityType] ?? '/'}?approval=${workflow.id}`,
+      `${ENTITY_URL_MAP[workflow.entityType] ?? '/'}?id=${workflow.entityId}`,
       entityInfo.projectId || workflow.projectId,
       entityInfo.createdBy,
     ).catch((err) => console.error('[Push] Approval notification error:', err));
@@ -356,7 +356,7 @@ export async function approve(stepId: string, userId: string, comments?: string)
     user.name,
     false,
     entityInfo.label,
-    `${ENTITY_URL_MAP[workflow.entityType] ?? '/'}?approval=${workflow.id}`,
+    `${ENTITY_URL_MAP[workflow.entityType] ?? '/'}?id=${workflow.entityId}`,
     entityInfo.projectId || workflow.projectId,
     entityInfo.createdBy,
   ).catch((err) => console.error('[Push] Step approval notification error:', err));
@@ -465,7 +465,7 @@ export async function reject(stepId: string, userId: string, reason: string) {
     user.name,
     isFullyRejected,
     entityInfo.label,
-    `${ENTITY_URL_MAP[workflow.entityType] ?? '/'}?approval=${workflow.id}`,
+    `${ENTITY_URL_MAP[workflow.entityType] ?? '/'}?id=${workflow.entityId}`,
     entityInfo.projectId || workflow.projectId,
     entityInfo.createdBy,
   ).catch((err) => console.error('[Push] Rejection notification error:', err));

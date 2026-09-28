@@ -481,7 +481,7 @@ router.put(
           entityId: record.id,
           title: 'Material Purchase Request Updated — Approval Required',
           body: `Material Purchase Request ${record.mprNumber} — ₹${Number(record.estimatedTotal).toLocaleString('en-IN')}`,
-          url: `/mpr?approval=${record.approvalWorkflowId}`,
+          url: `/material-purchase-requests?id=${record.id}`,
         }).catch((err) => console.error('[Push] MPR notification error:', err));
       }
 
@@ -567,7 +567,7 @@ router.post(
         entityId: record.id,
         title: 'New Approval Required',
         body: `Material Purchase Request ${record.mprNumber} — ₹${Number(record.estimatedTotal).toLocaleString('en-IN')}`,
-        url: `/mpr?approval=${record.approvalWorkflowId}`,
+        url: `/material-purchase-requests?id=${record.id}`,
       }).catch((err) => console.error('[Push] MPR notification error:', err));
 
       res.json(record);

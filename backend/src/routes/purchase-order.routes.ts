@@ -577,7 +577,7 @@ router.post(
         entityId: po.id,
         title: 'New Approval Required',
         body: `Purchase Order ${poNumber} — ₹${grandTotal}`,
-        url: `/pos?approval=${workflow.id}`,
+        url: `/pos?id=${po.id}`,
       }).catch((err) => console.error('[Push] PO notification error:', err));
 
       const result = await prisma.purchaseOrder.findUnique({
@@ -1204,7 +1204,7 @@ router.post(
         entityId: po.id,
         title: 'PO Edited — Re-approval Required',
         body: `${po.poNumber} was edited and needs re-approval`,
-        url: `/pos?approval=${po.approvalWorkflowId ?? ''}`,
+        url: `/pos?id=${po.id}`,
       }).catch((err) => console.error('[Push] PO edit notification error:', err));
 
       res.json(result);
@@ -1357,7 +1357,7 @@ router.post(
         entityId: po.id,
         title: 'PO Payment Type Changed — Re-approval Required',
         body: `${po.poNumber} payment type changed to ${paymentType.replace(/_/g, ' ')} and needs re-approval`,
-        url: `/pos?approval=${po.approvalWorkflowId ?? ''}`,
+        url: `/pos?id=${po.id}`,
       }).catch((err) => console.error('[Push] PO payment-type notification error:', err));
 
       res.json(updated);
@@ -1588,7 +1588,7 @@ router.post(
         entityId: po.id,
         title: 'PO Edited — Re-approval Required',
         body: `${po.poNumber} was edited and needs re-approval`,
-        url: `/pos?approval=${po.approvalWorkflowId ?? ''}`,
+        url: `/pos?id=${po.id}`,
       }).catch((err) => console.error('[Push] PO edit notification error:', err));
 
       res.json(result);
@@ -1723,7 +1723,7 @@ router.post(
         entityId: result!.id,
         title: 'Regenerated PO — Approval Required',
         body: `${regenNumber} (from ${po.poNumber}) needs approval`,
-        url: `/pos?approval=${result!.approvalWorkflowId ?? ''}`,
+        url: `/pos?id=${result!.id}`,
       }).catch((err) => console.error('[Push] Regen PO notification error:', err));
 
       res.json(result);

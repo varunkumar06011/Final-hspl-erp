@@ -83,7 +83,7 @@ router.post(
         entityId: record.id,
         title: 'New Activity Created',
         body: `Activity "${record.name}" added`,
-        url: '/dashboard',
+        url: '/',
       }).catch((err) => console.error('[Push] Activity notification error:', err));
 
       res.status(201).json(record);

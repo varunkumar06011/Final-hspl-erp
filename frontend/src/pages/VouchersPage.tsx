@@ -55,6 +55,7 @@ import { VoucherType, LedgerGroup, Permission, UserRole, hasPermission } from '@
 import LedgerAutocomplete, { type LedgerOption } from '../components/LedgerAutocomplete';
 import { useAuthStore } from '../stores/authStore';
 import VoucherProofAttachment from '../components/VoucherProofAttachment';
+import { useDeepLinkRow } from '../hooks/useDeepLinkRow';
 import {
   mapVoucher, printVoucherSheet,
   PaymentVoucherPrintPreview, ReceiptVoucherPrintPreview, JournalVoucherPrintPreview,
@@ -762,6 +763,10 @@ export default function VouchersPage() {
   // Map backend response (ledgerEntries with nested ledger) to frontend Voucher format (entries with flat fields)
   const rows: Voucher[] = (data?.data ?? []).map(mapVoucher);
   const pagination = data?.pagination ?? { page: 1, pageSize: 20, total: 0, totalPages: 0 };
+
+  // Deep-link from a push notification or global search: ?id=<voucherId> scrolls
+  // to and briefly highlights the matching row.
+  const { highlightId, rowRef } = useDeepLinkRow<Voucher>('/vouchers', rows, 'jvNumber', (v) => { setSearch(v); setPage(0); });
   const ledgers: Ledger[] = ledgersData?.data ?? [];
   const budgetHeads: BudgetHead[] = budgetHeadsData?.data ?? [];
   const pendingInvoices: PendingInvoice[] = (pendingInvoicesData?.data ?? []).map((inv: any) => ({
@@ -891,7 +896,12 @@ export default function VouchersPage() {
                 </TableCell></TableRow>
               ) : (
                 rows.map((v) => (
-                  <TableRow key={v.id} hover>
+                  <TableRow
+                    key={v.id}
+                    hover
+                    ref={rowRef(v.id)}
+                    sx={highlightId === v.id ? { bgcolor: 'action.selected', transition: 'background-color 0.3s ease' } : undefined}
+                  >
                     <TableCell sx={{ fontWeight: 600 }} data-label="Voucher No.">{v.jvNumber}</TableCell>
                     <TableCell data-label="Date">{formatDate(v.date)}</TableCell>
                     <TableCell data-label="Type"><Chip label={v.voucherType.replace(/_/g, ' ')} size="small" color={VOUCHER_TYPE_COLORS[v.voucherType] ?? 'default'} /></TableCell>

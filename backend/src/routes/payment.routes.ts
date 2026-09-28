@@ -475,7 +475,7 @@ router.post(
           entityId: result.id,
           title: 'New Approval Required',
           body: `Advance payment ${paymentCode} — ₹${amount}`,
-          url: `/payments?approval=${record.approvalWorkflow.id}`,
+          url: `/payments?id=${result.id}`,
         }).catch((err) => console.error('[Push] Advance payment notification error:', err));
       }
 
@@ -609,7 +609,7 @@ router.post(
           entityId: result.id,
           title: 'New Approval Required',
           body: `Payment request ${paymentCode} — ₹${amount}`,
-          url: `/payments?approval=${record.approvalWorkflow.id}`,
+          url: `/payments?id=${result.id}`,
         }).catch((err) => console.error('[Push] Payment notification error:', err));
       }
 
@@ -724,7 +724,7 @@ router.post(
           entityId: result.id,
           title: 'New Approval Required',
           body: `Expense: ${description} — ₹${amount}`,
-          url: `/payments?approval=${record.approvalWorkflow.id}`,
+          url: `/payments?id=${result.id}`,
         }).catch((err) => console.error('[Push] Expense notification error:', err));
       }
 

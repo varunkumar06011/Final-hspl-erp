@@ -269,7 +269,7 @@ router.post(
             type: 'QUOTATION_APPROVAL_OVERDUE',
             title: '🔴 Quotation Approval Required',
             body: `Quotation ${q.quotationNumber} has been pending approval since ${agingLabel}. Total: ₹${Number(q.grandTotal).toLocaleString('en-IN')}`,
-            url: `/quotations?approval=${q.approvalWorkflow?.id ?? ''}`,
+            url: `/quotations?id=${q.id}`,
             entityId: q.id,
             entityType: 'QUOTATION',
           });
@@ -290,7 +290,7 @@ router.post(
             entityId: q.id,
             title: 'Pending Approval',
             body: `Quotation #${q.quotationNumber} has been pending approval for 1 day. Please review and confirm.`,
-            url: `/quotations?approval=${q.approvalWorkflow?.id ?? ''}`,
+            url: `/quotations?id=${q.id}`,
           });
           pushSent++;
         } catch (pushError) {
@@ -874,7 +874,7 @@ router.post(
         entityId: existing.id,
         title: 'Quotation Resent for Approval',
         body: `Quotation ${existing.quotationNumber} was re-edited and resent for approval`,
-        url: `/quotations?approval=${existing.approvalWorkflowId ?? ''}`,
+        url: `/quotations?id=${existing.id}`,
       }).catch((err) => console.error('[Push] Quotation revise notification error:', err));
 
       const result = await prisma.quotation.findUnique({

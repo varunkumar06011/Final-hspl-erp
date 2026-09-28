@@ -199,7 +199,7 @@ async function checkOverdueQuotations(): Promise<void> {
           type: 'QUOTATION_APPROVAL_OVERDUE',
           title: '🔴 Quotation Approval Required',
           body: `Quotation ${q.quotationNumber} has been pending approval since ${agingLabel}. Total: ₹${Number(q.grandTotal).toLocaleString('en-IN')}`,
-          url: `/quotations?approval=${q.approvalWorkflow?.id ?? ''}`,
+          url: `/quotations?id=${q.id}`,
           entityId: q.id,
           entityType: 'QUOTATION',
         });
@@ -220,7 +220,7 @@ async function checkOverdueQuotations(): Promise<void> {
           entityId: q.id,
           title: 'Pending Approval',
           body: `Quotation #${q.quotationNumber} has been pending approval for 1 day. Please review and confirm.`,
-          url: `/quotations?approval=${q.approvalWorkflow?.id ?? ''}`,
+          url: `/quotations?id=${q.id}`,
         });
         pushSent++;
       } catch (pushError) {

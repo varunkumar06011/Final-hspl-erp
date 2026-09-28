@@ -229,7 +229,7 @@ router.post(
         entityId: jv.id,
         title: 'Journal Voucher Approval Required',
         body: `JV ${jv.jvNumber} (${jv.type}) — ₹${jv.totalDebit} needs approval`,
-        url: '/journal-vouchers',
+        url: `/vouchers?id=${jv.id}`,
       }).catch((err) => console.error('[Push] JV submit notification error:', err));
 
       await logAudit({
