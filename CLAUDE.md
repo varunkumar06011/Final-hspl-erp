@@ -48,6 +48,7 @@ Unit/logic tests mock Prisma; only the `e2e-real-*` / `vitest.real.config.ts` su
 
 ## Notes
 
+- Data model: `backend/prisma/schema.prisma` (~1700 lines) is the single source of truth for every entity and relation; read it before touching a query or writing a migration. Migrations live in `backend/prisma/migrations/`; assorted one-off scripts (backfills, `sql/`) also sit under `backend/prisma/`.
 - Env vars: backend `.env` (`DATABASE_URL`, Firebase admin creds, `SUPABASE_*`, `STORAGE_MODE`, `JWT_SECRET`, `FRONTEND_URL`); frontend `.env.local` (`VITE_API_URL`, Firebase web config). `.env` files are gitignored.
 - `backend/` contains many stray scratch files (`_prodtest*.txt`, `_checkdata.js`, `nul`); ignore them.
 - `QA_Test_Plan.md` has manual/API/E2E test cases and role/user setup; DB backup/DR procedures are in `docs/`.

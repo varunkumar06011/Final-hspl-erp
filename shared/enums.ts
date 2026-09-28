@@ -100,6 +100,18 @@ export enum VendorStatus {
   BLACKLISTED = 'BLACKLISTED',
 }
 
+// VENDOR — a recurring vendor we maintain a relationship with (steel, cement,
+// other high-value construction material/contract suppliers). Goes through
+// the full MPR → Quotation → PO flow.
+// NON_VENDOR — a one-off/occasional supplier (transport, small local
+// purchases). Raised the same way via an MPR, but skips the Quotation step
+// entirely — the MPR is approved and then closed directly against an
+// uploaded receipt/bill.
+export enum VendorType {
+  VENDOR = 'VENDOR',
+  NON_VENDOR = 'NON_VENDOR',
+}
+
 export enum VendorCategory {
   LABOUR_SUPPLIER = 'LABOUR_SUPPLIER',
   ELECTRICAL_CONTRACTOR = 'ELECTRICAL_CONTRACTOR',
@@ -138,7 +150,9 @@ export enum POStatus {
 // shared with vendors as PDF so they can respond with quotations.
 export enum MPRStatus {
   DRAFT = 'DRAFT',
-  SUBMITTED = 'SUBMITTED',
+  SUBMITTED = 'SUBMITTED', // submitted and pending the approval workflow (Kaushal / Nagarjuna / Ashok)
+  APPROVED = 'APPROVED', // approval workflow completed — vendor MPRs can now raise a Quotation; non-vendor MPRs can attach a receipt and close
+  REJECTED = 'REJECTED',
   QUOTATIONS_RECEIVED = 'QUOTATIONS_RECEIVED',
   CLOSED = 'CLOSED',
   CANCELLED = 'CANCELLED',
@@ -700,6 +714,8 @@ export const PERMISSION_MATRIX: Record<UserRole, Permission[]> = {
     Permission.MANAGE_CONTRACTS,
     Permission.MANAGE_LABOUR,
     Permission.VIEW_AUDIT_LOG,
+    Permission.CREATE_MPR,
+    Permission.VIEW_MPR,
   ],
   [UserRole.HEAD_OF_CONSTRUCTION]: [
     Permission.CREATE_VENDOR,
@@ -721,6 +737,8 @@ export const PERMISSION_MATRIX: Record<UserRole, Permission[]> = {
     Permission.MANAGE_INSPECTIONS,
     Permission.MANAGE_DOCUMENTS,
     Permission.MANAGE_LABOUR,
+    Permission.CREATE_MPR,
+    Permission.VIEW_MPR,
   ],
   [UserRole.ACCOUNTS_HEAD]: [
     Permission.CREATE_PO,
@@ -729,6 +747,7 @@ export const PERMISSION_MATRIX: Record<UserRole, Permission[]> = {
     Permission.MANAGE_FINANCE,
     Permission.REVERSE_VOUCHER,
     Permission.MANAGE_USERS,
+    Permission.VIEW_MPR,
   ],
   [UserRole.ADMIN]: [
     Permission.CREATE_VENDOR,

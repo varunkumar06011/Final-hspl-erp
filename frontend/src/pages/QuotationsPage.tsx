@@ -75,6 +75,12 @@ interface QuotationItem {
   gstRate: number;
 }
 
+// MPR-requested quantity for the material this line item was raised for
+// (populated only when the quotation is being created against an MPR),
+// keyed by lower-cased material name — used to show the requested-vs-quoted
+// variance inline on each row.
+type RequestedQtyMap = Record<string, { quantity: number; unit?: string | null }>;
+
 interface VendorMaterial {
   id: string;
   name: string;
@@ -115,6 +121,7 @@ interface QuotationRow {
   notes?: string | null;
   createdByUser: { id: string; name: string };
   items: QuotationItem[];
+  mpr?: { id: string; mprNumber: string; items: { materialName: string; quantity: number; unit?: string | null }[] } | null;
   approvalWorkflow?: {
     id: string;
     status: string;
@@ -149,6 +156,9 @@ export default function QuotationsPage() {
   const fileRef = useRef<HTMLInputElement>(null);
   const createSubmissionLocked = useRef(false);
   const workTaskIdRef = useRef<string | null>(null);
+  const mprIdRef = useRef<string | null>(null);
+  const [mprNumber, setMprNumber] = useState<string | null>(null);
+  const [requestedQtyMap, setRequestedQtyMap] = useState<RequestedQtyMap>({});
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -215,6 +225,7 @@ export default function QuotationsPage() {
       formData.append('items', JSON.stringify(filteredItems));
       formData.append('acknowledged', String(acknowledged));
       if (workTaskIdRef.current) formData.append('workTaskId', workTaskIdRef.current);
+      if (mprIdRef.current) formData.append('mprId', mprIdRef.current);
       if (quotationNotes.trim()) formData.append('notes', quotationNotes.trim());
       if (selectedFile) formData.append('file', selectedFile);
       const response = await api.post('/quotations', formData, {
@@ -227,6 +238,7 @@ export default function QuotationsPage() {
       queryClient.invalidateQueries({ queryKey: ['/quotations'] });
       queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['/work-tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['mprs'] });
       setCreateOpen(false);
       resetForm();
       // If raised from the Work tab, go back there after creating.
@@ -392,13 +404,39 @@ export default function QuotationsPage() {
 
   // Deep-link from the Work tab: ?create=true&workTaskId=xxx&vendorId=yyy
   // auto-opens the create dialog with the vendor pre-selected.
+  // Deep-link from the MPR module: ?create=true&mprId=xxx&vendorId=yyy — same,
+  // but also pre-fills the line items from the MPR's requested items and
+  // keeps the requested quantities around to show a variance hint.
   useEffect(() => {
     if (searchParams.get('create') !== 'true') return;
     workTaskIdRef.current = searchParams.get('workTaskId');
     const preVendorId = searchParams.get('vendorId');
+    const preMprId = searchParams.get('mprId');
     createSubmissionLocked.current = false;
     resetForm();
     if (preVendorId) setSelectedVendorId(preVendorId);
+    if (preMprId) {
+      mprIdRef.current = preMprId;
+      api.get(`/material-purchase-requests/${preMprId}`).then((res) => {
+        const mpr = res.data;
+        setMprNumber(mpr.mprNumber);
+        const qtyMap: RequestedQtyMap = {};
+        const prefillItems: QuotationItem[] = (mpr.items ?? []).map((item: any) => {
+          qtyMap[item.materialName.trim().toLowerCase()] = { quantity: Number(item.quantity), unit: item.unit };
+          return {
+            materialName: item.materialName,
+            quantity: item.quantity,
+            unit: item.unit ?? 'nos',
+            unitPrice: '',
+            amount: 0,
+            gstRate: 0,
+          };
+        });
+        setRequestedQtyMap(qtyMap);
+        setLineItems(prefillItems);
+        setSelectedMaterialNames(new Set(prefillItems.map((i) => i.materialName)));
+      }).catch(() => setError('Failed to load the Material Purchase Request'));
+    }
     setCreateOpen(true);
     // Clean the URL so a refresh doesn't re-trigger.
     setSearchParams({}, { replace: true });
@@ -426,6 +464,9 @@ export default function QuotationsPage() {
     setQuotationNotes('');
     setReviseMode(false);
     setError('');
+    mprIdRef.current = null;
+    setMprNumber(null);
+    setRequestedQtyMap({});
   }
 
   function openCreate() {
@@ -871,7 +912,9 @@ export default function QuotationsPage() {
                   {/* Materials — full width compact table */}
                   {row.items && row.items.length > 0 && (
                     <Box sx={{ mt: 0.5 }}>
-                      <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem', display: 'block', mb: 0.5 }}>Materials</Typography>
+                      <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem', display: 'block', mb: 0.5 }}>
+                        Materials{row.mpr ? ` — raised against MPR ${row.mpr.mprNumber}` : ''}
+                      </Typography>
                       {/* On narrow phones the fixed-width money columns can't shrink below
                           their content — give the table a floor and let it scroll sideways
                           instead of clipping Material/Unit Price/GST/Amount. */}
@@ -880,6 +923,9 @@ export default function QuotationsPage() {
                         <Box component="thead">
                           <Box component="tr" sx={{ borderBottom: '1px solid', borderColor: 'divider' }}>
                             <Box component="th" sx={{ textAlign: 'left', py: 0.25, px: 0.5, fontWeight: 600, fontSize: '0.7rem', color: 'text.secondary', textTransform: 'uppercase' }}>Material</Box>
+                            {row.mpr && (
+                              <Box component="th" sx={{ textAlign: 'right', py: 0.25, px: 0.5, fontWeight: 600, fontSize: '0.7rem', color: 'text.secondary', textTransform: 'uppercase' }}>Requested</Box>
+                            )}
                             <Box component="th" sx={{ textAlign: 'right', py: 0.25, px: 0.5, fontWeight: 600, fontSize: '0.7rem', color: 'text.secondary', textTransform: 'uppercase' }}>Qty</Box>
                             <Box component="th" sx={{ textAlign: 'right', py: 0.25, px: 0.5, fontWeight: 600, fontSize: '0.7rem', color: 'text.secondary', textTransform: 'uppercase' }}>Unit Price</Box>
                             <Box component="th" sx={{ textAlign: 'right', py: 0.25, px: 0.5, fontWeight: 600, fontSize: '0.7rem', color: 'text.secondary', textTransform: 'uppercase' }}>GST</Box>
@@ -887,15 +933,24 @@ export default function QuotationsPage() {
                           </Box>
                         </Box>
                         <Box component="tbody">
-                          {row.items.map((item, i) => (
+                          {row.items.map((item, i) => {
+                            const requested = row.mpr?.items.find((mi) => mi.materialName.trim().toLowerCase() === item.materialName.trim().toLowerCase());
+                            const qtyDiff = requested ? num(item.quantity) - Number(requested.quantity) : 0;
+                            return (
                             <Box key={i} component="tr" sx={{ borderBottom: '1px solid', borderColor: 'action.hover', '&:last-child': { borderBottom: 'none' } }}>
                               <Box component="td" sx={{ py: 0.25, px: 0.5, fontWeight: 600, fontSize: '0.8rem' }}>{item.materialName}</Box>
+                              {row.mpr && (
+                                <Box component="td" sx={{ py: 0.25, px: 0.5, textAlign: 'right', fontSize: '0.8rem', whiteSpace: 'nowrap', color: !requested ? 'text.disabled' : qtyDiff !== 0 ? 'warning.main' : 'success.main' }}>
+                                  {requested ? `${requested.quantity}${requested.unit ? ` ${requested.unit}` : ''}${qtyDiff !== 0 ? ` (${qtyDiff > 0 ? '+' : ''}${round2(qtyDiff)})` : ''}` : '—'}
+                                </Box>
+                              )}
                               <Box component="td" sx={{ py: 0.25, px: 0.5, textAlign: 'right', fontSize: '0.8rem', whiteSpace: 'nowrap' }}>{item.quantity}{item.unit ? ` ${item.unit}` : ''}</Box>
                               <Box component="td" sx={{ py: 0.25, px: 0.5, textAlign: 'right', fontSize: '0.8rem', whiteSpace: 'nowrap' }}>{formatCurrency(Number(item.unitPrice))}</Box>
                               <Box component="td" sx={{ py: 0.25, px: 0.5, textAlign: 'right', fontSize: '0.8rem', whiteSpace: 'nowrap' }}>{num(item.gstRate)}% ({formatCurrency(Number(item.amount) * num(item.gstRate) / 100)})</Box>
                               <Box component="td" sx={{ py: 0.25, px: 0.5, textAlign: 'right', fontWeight: 600, fontSize: '0.8rem', whiteSpace: 'nowrap' }}>{formatCurrency(toIncGst(item.amount, item.gstRate))}</Box>
                             </Box>
-                          ))}
+                            );
+                          })}
                         </Box>
                       </Box>
                       </Box>
@@ -972,6 +1027,11 @@ export default function QuotationsPage() {
           {editOpen && reviseMode && (
             <Alert severity="info" sx={{ mb: 2 }}>
               This quotation will be updated and resent for approval with the same quotation number ({editing?.quotationNumber}). Previous approvals will be reset.
+            </Alert>
+          )}
+          {!editOpen && mprNumber && (
+            <Alert severity="info" sx={{ mb: 2 }}>
+              Raising this quotation against Material Purchase Request <strong>{mprNumber}</strong>. Requested quantities are shown below each item — adjust quantity/price to match what the vendor is actually quoting.
             </Alert>
           )}
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1, flexWrap: 'wrap' }}>
@@ -1063,6 +1123,22 @@ export default function QuotationsPage() {
                           inputProps={{ min: 0.01, step: 0.01 }}
                           size="small"
                           sx={{ flex: 1, minWidth: 0 }}
+                          helperText={(() => {
+                            const requested = requestedQtyMap[item.materialName.trim().toLowerCase()];
+                            if (!requested) return undefined;
+                            const diff = num(item.quantity) - requested.quantity;
+                            if (diff === 0) return `Requested: ${requested.quantity}`;
+                            return `Requested: ${requested.quantity} (${diff > 0 ? '+' : ''}${round2(diff)})`;
+                          })()}
+                          FormHelperTextProps={{
+                            sx: {
+                              color: (() => {
+                                const requested = requestedQtyMap[item.materialName.trim().toLowerCase()];
+                                if (!requested) return undefined;
+                                return num(item.quantity) - requested.quantity !== 0 ? 'warning.main' : 'success.main';
+                              })(),
+                            },
+                          }}
                         />
                         <TextField
                           select

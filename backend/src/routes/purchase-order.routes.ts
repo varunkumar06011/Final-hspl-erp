@@ -119,7 +119,16 @@ async function recalculatePoStatus(poId: string): Promise<string> {
 
 const poInclude = {
   vendor: { select: { id: true, name: true, vendorCode: true, phone: true, address: true, contactPersonName: true, contactPersonPhone: true } },
-  quotation: { select: { id: true, quotationNumber: true, date: true, createdAt: true } },
+  quotation: {
+    select: {
+      id: true,
+      quotationNumber: true,
+      date: true,
+      createdAt: true,
+      items: { select: { materialName: true, quantity: true, unit: true, unitPrice: true } },
+      mpr: { select: { id: true, mprNumber: true, items: { select: { materialName: true, quantity: true, unit: true, estimatedRate: true } } } },
+    },
+  },
   items: {
     include: {
       ledgerPosts: {

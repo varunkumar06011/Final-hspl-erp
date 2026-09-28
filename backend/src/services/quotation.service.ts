@@ -25,6 +25,7 @@ export interface CreateQuotationInput {
   createdBy: string;
   quotationNumber?: string;
   workTaskId?: string;
+  mprId?: string | null;
   filePath?: string | null;
   fileName?: string | null;
   fileMimeType?: string | null;
@@ -32,7 +33,8 @@ export interface CreateQuotationInput {
 }
 
 const quotationInclude = {
-  vendor: { select: { id: true, name: true, vendorCode: true, category: true } },
+  vendor: { select: { id: true, name: true, vendorCode: true, category: true, vendorType: true } },
+  mpr: { select: { id: true, mprNumber: true, items: true } },
   items: true,
   createdByUser: { select: { id: true, name: true } },
   approvalWorkflow: {
@@ -70,6 +72,7 @@ export async function createQuotation(input: CreateQuotationInput) {
     createdBy,
     quotationNumber: providedNumber,
     workTaskId,
+    mprId = null,
     filePath = null,
     fileName = null,
     fileMimeType = null,
@@ -134,6 +137,7 @@ export async function createQuotation(input: CreateQuotationInput) {
     data: {
       projectId,
       vendorId,
+      mprId,
       quotationNumber,
       status: QuotationStatus.SUBMITTED,
       totalAmount,
@@ -148,6 +152,16 @@ export async function createQuotation(input: CreateQuotationInput) {
     },
     include: quotationInclude,
   });
+
+  // Mark the MPR as having a quotation on file, so the requester can see the
+  // request is progressing (vendor-side MPRs go DRAFT → SUBMITTED → APPROVED
+  // → QUOTATIONS_RECEIVED → CLOSED).
+  if (mprId) {
+    await prisma.materialPurchaseRequest.updateMany({
+      where: { id: mprId, status: 'APPROVED' },
+      data: { status: 'QUOTATIONS_RECEIVED' },
+    }).catch((err) => console.error('[Quotation] Failed to sync MPR status:', err));
+  }
 
   // Initiate approval workflow — ADMIN_SINGLE_APPROVER: a single approval
   // from any admin (ADMIN or ADMIN_2) is enough to fully approve the

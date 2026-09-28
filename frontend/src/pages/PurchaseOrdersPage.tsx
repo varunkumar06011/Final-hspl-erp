@@ -54,7 +54,7 @@ import LedgerAutocomplete, { LedgerOption } from '../components/LedgerAutocomple
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { POStatus, UserRole, POPaymentType, GST_RATES, ApprovalStatus, isAdminRole } from '@hospital-erp/shared';
 import { formatCurrency, formatDate, formatIndianNumber, STATUS_COLORS, QTY_UNIT_OPTIONS } from '../utils/enumOptions';
-import { num, toIncGst } from '../utils/taxCalc';
+import { num, toIncGst, round2 } from '../utils/taxCalc';
 import api, { extractErrorMessage } from '../config/api';
 import { useAuthStore } from '../stores/authStore';
 import AcknowledgementCheckbox from '../components/AcknowledgementCheckbox';
@@ -97,6 +97,15 @@ interface Quotation {
   items: POItem[];
 }
 
+interface QuotationSummary {
+  id: string;
+  quotationNumber: string;
+  date: string;
+  createdAt: string;
+  items?: { materialName: string; quantity: number; unit?: string | null; unitPrice: number }[];
+  mpr?: { id: string; mprNumber: string; items: { materialName: string; quantity: number; unit?: string | null; estimatedRate: number }[] } | null;
+}
+
 interface ApprovalStep {
   id: string;
   stepNumber: number;
@@ -114,7 +123,7 @@ interface PORow {
   vendorId: string;
   vendor: { id: string; name: string; vendorCode: string; phone?: string; address?: string };
   quotationId: string;
-  quotation: { id: string; quotationNumber: string; date: string; createdAt: string };
+  quotation: QuotationSummary;
   date: string;
   createdAt: string;
   status: string;
@@ -954,31 +963,70 @@ export default function PurchaseOrdersPage() {
                           </Box>
                         )}
 
-                        {/* Items — full width compact table */}
+                        {/* Items — full width compact table, with Quoted (and, if this
+                            quotation was itself raised against an MPR, Requested) columns
+                            so a short-delivery / price-change against the quotation is visible. */}
                         {row.items && row.items.length > 0 && (
                           <Box sx={{ mt: 0.5 }}>
-                            <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem', display: 'block', mb: 0.5 }}>Items</Typography>
+                            <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem', display: 'block', mb: 0.5 }}>
+                              Items{row.quotation?.mpr ? ` — from Quotation ${row.quotation.quotationNumber} (MPR ${row.quotation.mpr.mprNumber})` : row.quotation ? ` — from Quotation ${row.quotation.quotationNumber}` : ''}
+                            </Typography>
                             <Box sx={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', mx: -0.5, px: 0.5 }}>
                             <Box component="table" sx={{ width: '100%', minWidth: 430, borderCollapse: 'collapse', fontSize: '0.8rem' }}>
                               <Box component="thead">
                                 <Box component="tr" sx={{ borderBottom: '1px solid', borderColor: 'divider' }}>
                                   <Box component="th" sx={{ textAlign: 'left', py: 0.25, px: 0.5, fontWeight: 600, fontSize: '0.7rem', color: 'text.secondary', textTransform: 'uppercase' }}>Material</Box>
-                                  <Box component="th" sx={{ textAlign: 'right', py: 0.25, px: 0.5, fontWeight: 600, fontSize: '0.7rem', color: 'text.secondary', textTransform: 'uppercase' }}>Qty</Box>
+                                  {row.quotation?.mpr && (
+                                    <Box component="th" sx={{ textAlign: 'right', py: 0.25, px: 0.5, fontWeight: 600, fontSize: '0.7rem', color: 'text.secondary', textTransform: 'uppercase' }}>Requested</Box>
+                                  )}
+                                  {row.quotation?.items && (
+                                    <>
+                                      <Box component="th" sx={{ textAlign: 'right', py: 0.25, px: 0.5, fontWeight: 600, fontSize: '0.7rem', color: 'text.secondary', textTransform: 'uppercase' }}>Quoted Qty</Box>
+                                      <Box component="th" sx={{ textAlign: 'right', py: 0.25, px: 0.5, fontWeight: 600, fontSize: '0.7rem', color: 'text.secondary', textTransform: 'uppercase' }}>Quoted Price</Box>
+                                    </>
+                                  )}
+                                  <Box component="th" sx={{ textAlign: 'right', py: 0.25, px: 0.5, fontWeight: 600, fontSize: '0.7rem', color: 'text.secondary', textTransform: 'uppercase' }}>Ordered Qty</Box>
                                   <Box component="th" sx={{ textAlign: 'right', py: 0.25, px: 0.5, fontWeight: 600, fontSize: '0.7rem', color: 'text.secondary', textTransform: 'uppercase' }}>Unit Price</Box>
                                   <Box component="th" sx={{ textAlign: 'right', py: 0.25, px: 0.5, fontWeight: 600, fontSize: '0.7rem', color: 'text.secondary', textTransform: 'uppercase' }}>GST</Box>
                                   <Box component="th" sx={{ textAlign: 'right', py: 0.25, px: 0.5, fontWeight: 600, fontSize: '0.7rem', color: 'text.secondary', textTransform: 'uppercase' }}>Amount (Inc. GST)</Box>
                                 </Box>
                               </Box>
                               <Box component="tbody">
-                                {row.items.map((item, i) => (
+                                {row.items.map((item, i) => {
+                                  const norm = (s: string) => s.trim().toLowerCase();
+                                  const requested = row.quotation?.mpr?.items.find((mi) => norm(mi.materialName) === norm(item.materialName));
+                                  const quoted = row.quotation?.items?.find((qi) => norm(qi.materialName) === norm(item.materialName));
+                                  const qtyVsQuoted = quoted ? Number(item.quantity) - Number(quoted.quantity) : 0;
+                                  const priceVsQuoted = quoted ? Number(item.unitPrice) - Number(quoted.unitPrice) : 0;
+                                  return (
                                   <Box key={i} component="tr" sx={{ borderBottom: '1px solid', borderColor: 'action.hover', '&:last-child': { borderBottom: 'none' } }}>
                                     <Box component="td" sx={{ py: 0.25, px: 0.5, fontWeight: 600, fontSize: '0.8rem' }}>{item.materialName}</Box>
-                                    <Box component="td" sx={{ py: 0.25, px: 0.5, textAlign: 'right', fontSize: '0.8rem', whiteSpace: 'nowrap' }}>{item.quantity}{item.unit ? ` ${item.unit}` : ''}</Box>
-                                    <Box component="td" sx={{ py: 0.25, px: 0.5, textAlign: 'right', fontSize: '0.8rem', whiteSpace: 'nowrap' }}>{formatCurrency(Number(item.unitPrice))}</Box>
+                                    {row.quotation?.mpr && (
+                                      <Box component="td" sx={{ py: 0.25, px: 0.5, textAlign: 'right', fontSize: '0.8rem', whiteSpace: 'nowrap', color: 'text.secondary' }}>
+                                        {requested ? `${requested.quantity}${requested.unit ? ` ${requested.unit}` : ''}` : '—'}
+                                      </Box>
+                                    )}
+                                    {row.quotation?.items && (
+                                      <>
+                                        <Box component="td" sx={{ py: 0.25, px: 0.5, textAlign: 'right', fontSize: '0.8rem', whiteSpace: 'nowrap', color: !quoted ? 'text.disabled' : qtyVsQuoted !== 0 ? 'warning.main' : 'text.secondary' }}>
+                                          {quoted ? `${quoted.quantity}${quoted.unit ? ` ${quoted.unit}` : ''}` : '—'}
+                                        </Box>
+                                        <Box component="td" sx={{ py: 0.25, px: 0.5, textAlign: 'right', fontSize: '0.8rem', whiteSpace: 'nowrap', color: !quoted ? 'text.disabled' : priceVsQuoted !== 0 ? 'warning.main' : 'text.secondary' }}>
+                                          {quoted ? formatCurrency(Number(quoted.unitPrice)) : '—'}
+                                        </Box>
+                                      </>
+                                    )}
+                                    <Box component="td" sx={{ py: 0.25, px: 0.5, textAlign: 'right', fontSize: '0.8rem', whiteSpace: 'nowrap', fontWeight: qtyVsQuoted !== 0 ? 700 : 400, color: qtyVsQuoted !== 0 ? 'warning.main' : undefined }}>
+                                      {item.quantity}{item.unit ? ` ${item.unit}` : ''}{qtyVsQuoted !== 0 ? ` (${qtyVsQuoted > 0 ? '+' : ''}${round2(qtyVsQuoted)})` : ''}
+                                    </Box>
+                                    <Box component="td" sx={{ py: 0.25, px: 0.5, textAlign: 'right', fontSize: '0.8rem', whiteSpace: 'nowrap', fontWeight: priceVsQuoted !== 0 ? 700 : 400, color: priceVsQuoted !== 0 ? 'warning.main' : undefined }}>
+                                      {formatCurrency(Number(item.unitPrice))}{priceVsQuoted !== 0 ? ` (${priceVsQuoted > 0 ? '+' : ''}${formatCurrency(priceVsQuoted)})` : ''}
+                                    </Box>
                                     <Box component="td" sx={{ py: 0.25, px: 0.5, textAlign: 'right', fontSize: '0.8rem', whiteSpace: 'nowrap' }}>{num(item.gstRate)}% ({formatCurrency(Number(item.amount) * num(item.gstRate) / 100)})</Box>
                                     <Box component="td" sx={{ py: 0.25, px: 0.5, textAlign: 'right', fontWeight: 600, fontSize: '0.8rem', whiteSpace: 'nowrap' }}>{formatCurrency(toIncGst(item.amount, item.gstRate))}</Box>
                                   </Box>
-                                ))}
+                                  );
+                                })}
                               </Box>
                             </Box>
                             </Box>

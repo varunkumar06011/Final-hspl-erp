@@ -43,6 +43,7 @@ const ENTITY_MODEL_MAP: Record<string, string> = {
   VENDOR_INVOICE: 'vendorInvoice',
   PAYMENT_REQUEST: 'paymentRequest',
   JOURNAL_VOUCHER: 'journalVoucher',
+  MATERIAL_PURCHASE_REQUEST: 'materialPurchaseRequest',
 };
 
 const ENTITY_URL_MAP: Record<string, string> = {
@@ -51,6 +52,7 @@ const ENTITY_URL_MAP: Record<string, string> = {
   VENDOR_INVOICE: '/invoices',
   PAYMENT_REQUEST: '/payments',
   JOURNAL_VOUCHER: '/journal-vouchers',
+  MATERIAL_PURCHASE_REQUEST: '/mpr',
 };
 
 const ENTITY_LABEL_MAP: Record<string, string> = {
@@ -59,6 +61,7 @@ const ENTITY_LABEL_MAP: Record<string, string> = {
   VENDOR_INVOICE: 'Invoice',
   PAYMENT_REQUEST: 'Payment Request',
   JOURNAL_VOUCHER: 'Journal Voucher',
+  MATERIAL_PURCHASE_REQUEST: 'Material Purchase Request',
 };
 
 // ─── Entity type → status to set when workflow is APPROVED/REJECTED ──
@@ -71,6 +74,7 @@ const ENTITY_STATUS_MAP: Record<string, { approved: string; rejected: string }> 
   VENDOR_INVOICE: { approved: 'APPROVED', rejected: 'REJECTED' },
   PAYMENT_REQUEST: { approved: 'APPROVED', rejected: 'REJECTED' },
   JOURNAL_VOUCHER: { approved: 'APPROVED', rejected: 'REJECTED' },
+  MATERIAL_PURCHASE_REQUEST: { approved: 'APPROVED', rejected: 'REJECTED' },
 };
 
 /**

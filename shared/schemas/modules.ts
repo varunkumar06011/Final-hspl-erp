@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import {
   VendorStatus,
+  VendorType,
   QuotationStatus,
   POStatus,
   InvoiceVerificationStatus,
@@ -82,6 +83,9 @@ const vendorMaterial = z.object({
 export const createVendorSchema = z.object({
   body: z.object({
     name: z.string().min(1).max(200),
+    // VENDOR = recurring supplier, goes through Quotation → PO.
+    // NON_VENDOR = one-time supplier (e.g. transport); skips Quotation.
+    vendorType: z.nativeEnum(VendorType).default(VendorType.VENDOR),
     contactPersonName: z.string().max(200).optional(),
     contactPersonPhone: z.string().max(20).optional(),
     referenceBy: z.string().max(200).optional(),
@@ -108,7 +112,17 @@ export const listVendorsSchema = z.object({
   query: pagination.extend({
     search: z.string().optional(),
     status: z.nativeEnum(VendorStatus).optional(),
+    vendorType: z.nativeEnum(VendorType).optional(),
   }),
+});
+
+// Minimal vendor creation used inline from the MPR form — just enough to
+// identify who the material is being requested from. Bank/GST/PAN details
+// (and everything else) can be filled in later from the Vendors module.
+export const quickCreateVendorSchema = z.object({
+  name: z.string().trim().min(1).max(200),
+  phone: z.string().trim().max(20).optional(),
+  vendorType: z.nativeEnum(VendorType).default(VendorType.VENDOR),
 });
 
 // ═══ Quotations ═══
@@ -132,6 +146,10 @@ export const createQuotationSchema = z.object({
     items: itemsField,
     acknowledged: acknowledgement,
     workTaskId: uuid.optional(),
+    // Links this quotation back to the Material Purchase Request it is
+    // responding to, so the MPR-requested vs quoted quantity/amount
+    // variance can be shown.
+    mprId: uuid.optional(),
     notes: z.string().trim().max(2000).optional(),
   }),
 });
@@ -1619,6 +1637,11 @@ export const createMPRSchema = z.object({
     estimatedGstRate: z.coerce.number().min(0).max(100).default(0),
     technicalRequirements: z.string().trim().max(5000).optional(),
     items: z.array(mprItemInput).min(1, 'At least one item is required'),
+    // Who the request is being raised against — either an existing vendor,
+    // or a brand-new one created inline (which also gets saved to the
+    // Vendors module). Exactly one of these should be provided.
+    vendorId: uuid.optional(),
+    newVendor: quickCreateVendorSchema.optional(),
   }),
 });
 
@@ -1638,6 +1661,8 @@ export const updateMPRSchema = z.object({
     estimatedGstRate: z.coerce.number().min(0).max(100).optional(),
     technicalRequirements: z.string().trim().max(5000).optional(),
     items: z.array(mprItemInput).min(1, 'At least one item is required').optional(),
+    vendorId: uuid.optional(),
+    newVendor: quickCreateVendorSchema.optional(),
   }),
 });
 
@@ -1645,5 +1670,16 @@ export const listMPRSchema = z.object({
   query: pagination.extend({
     search: z.string().optional(),
     status: z.string().optional(),
+    vendorId: uuid.optional(),
+  }),
+});
+
+// Attach a receipt/bill and close a NON_VENDOR MPR directly, skipping the
+// Quotation step entirely (multipart/form-data — the file itself is parsed
+// by multer in the route, this schema covers the rest of the body).
+export const mprReceiptSchema = z.object({
+  params: z.object({ id: uuid }),
+  body: z.object({
+    notes: z.string().trim().max(1000).optional(),
   }),
 });

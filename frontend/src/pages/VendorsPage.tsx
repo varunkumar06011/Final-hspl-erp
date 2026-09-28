@@ -328,6 +328,7 @@ export default function VendorsPage() {
         columns={[
           { key: 'vendorCode', label: 'Vendor ID' },
           { key: 'name', label: 'Vendor Name' },
+          { key: 'vendorType', label: 'Type', render: (r) => r.vendorType === 'NON_VENDOR' ? 'Non-Vendor' : 'Vendor' },
           { key: 'category', label: 'Category' },
           { key: 'gstNumber', label: 'GST No' },
           { key: 'createdAt', label: 'Date', render: (r) => formatDate(r.createdAt) },
@@ -359,6 +360,10 @@ export default function VendorsPage() {
         ]}
         fields={[
           { name: 'name', label: 'Vendor Name', type: 'text', required: true },
+          { name: 'vendorType', label: 'Vendor Type', type: 'select', required: true, options: [
+            { value: 'VENDOR', label: 'Vendor (recurring — Quotation → PO)' },
+            { value: 'NON_VENDOR', label: 'Non-Vendor (one-time — e.g. transport)' },
+          ], defaultValue: 'VENDOR' },
           { name: 'phone', label: 'Phone', type: 'text' },
           { name: 'gstNumber', label: 'GST Number', type: 'text' },
           { name: 'category', label: 'Vendor Category', type: 'select', required: true, dropdownType: 'VENDOR_CATEGORY', createOptionLabel: 'New Category', options: [

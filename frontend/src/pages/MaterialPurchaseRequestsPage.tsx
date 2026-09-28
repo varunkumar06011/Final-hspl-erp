@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Box, Typography, Button, Card, CardContent, Chip, IconButton, Dialog, DialogTitle, DialogContent, DialogActions,
   TextField, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, CircularProgress,
-  MenuItem, InputAdornment, Grid, Alert,
+  MenuItem, InputAdornment, Grid, Alert, ToggleButtonGroup, ToggleButton, Divider,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -13,11 +14,19 @@ import {
   Send as SendIcon,
   Close as CloseIcon,
   Search as SearchIcon,
+  Check as CheckIcon,
+  RequestQuote as QuotationIcon,
+  ReceiptLong as ReceiptIcon,
+  Balance as VarianceIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { MPRStatus } from '@hospital-erp/shared';
+import { MPRStatus, isApproverRole } from '@hospital-erp/shared';
 import { formatDate, STATUS_COLORS, QTY_UNIT_OPTIONS } from '../utils/enumOptions';
 import api, { extractErrorMessage } from '../config/api';
+import { useAuthStore } from '../stores/authStore';
+import ApprovalStepsDisplay from '../components/ApprovalStepsDisplay';
+import ApprovalActionDialog from '../components/ApprovalActionDialog';
+import ResponsiveDialog from '../components/ResponsiveDialog';
 
 interface MPRItem {
   materialName: string;
@@ -27,6 +36,16 @@ interface MPRItem {
   unit?: string;
   requiredDate?: string;
   remarks?: string;
+}
+
+interface ApprovalStep {
+  id: string;
+  stepNumber: number;
+  approverRole: string;
+  status: string;
+  approverUserId?: string | null;
+  approverUser?: { id: string; name: string; role: string } | null;
+  comments?: string | null;
 }
 
 interface MPRRow {
@@ -48,11 +67,40 @@ interface MPRRow {
   technicalRequirements?: string | null;
   createdByUser: { id: string; name: string };
   items: MPRItem[];
+  vendorId?: string | null;
+  vendor?: { id: string; name: string; vendorCode: string; vendorType: string; phone?: string | null; contactPersonPhone?: string | null } | null;
+  quotations?: { id: string; quotationNumber: string; status: string; grandTotal: number }[];
+  approvalWorkflowId?: string | null;
+  approvalWorkflow?: { id: string; status: string; currentStep: number; steps: ApprovalStep[] } | null;
+  receiptFilePath?: string | null;
+  receiptFileName?: string | null;
+}
+
+interface Vendor {
+  id: string;
+  name: string;
+  vendorCode: string;
+  vendorType: string;
+}
+
+interface VarianceRow {
+  materialName: string;
+  unit: string | null;
+  requestedQty: number;
+  quotedQty: number;
+  quotedRate: number;
+  orderedQty: number;
+  orderedRate: number;
+  qtyVarianceVsRequested: number;
+  qtyVarianceVsQuoted: number;
+  rateVarianceVsQuoted: number;
 }
 
 const STATUS_LABELS: Record<string, string> = {
   DRAFT: 'Draft',
-  SUBMITTED: 'Submitted',
+  SUBMITTED: 'Pending Approval',
+  APPROVED: 'Approved',
+  REJECTED: 'Rejected',
   QUOTATIONS_RECEIVED: 'Quotations Received',
   CLOSED: 'Closed',
   CANCELLED: 'Cancelled',
@@ -60,12 +108,19 @@ const STATUS_LABELS: Record<string, string> = {
 
 export default function MaterialPurchaseRequestsPage() {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const { user } = useAuthStore();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [createOpen, setCreateOpen] = useState(false);
   const [editRow, setEditRow] = useState<MPRRow | null>(null);
   const [error, setError] = useState('');
   const [pdfLoading, setPdfLoading] = useState(false);
+  const [approvalAction, setApprovalAction] = useState<{ row: MPRRow; step: ApprovalStep; action: 'approve' | 'reject' } | null>(null);
+  const [receiptRow, setReceiptRow] = useState<MPRRow | null>(null);
+  const [receiptFile, setReceiptFile] = useState<File | null>(null);
+  const [receiptNotes, setReceiptNotes] = useState('');
+  const [varianceRow, setVarianceRow] = useState<MPRRow | null>(null);
 
   const MPR_DRAFT_KEY = 'mpr_form_draft';
 
@@ -111,16 +166,26 @@ export default function MaterialPurchaseRequestsPage() {
     return [{ materialName: '', materialCode: '', quantity: '', unit: 'nos', requiredDate: '', remarks: '' }];
   });
 
+  // Vendor selection — an existing vendor, or a brand-new one created inline
+  // (name + phone + type only). Non-vendor requests skip the Quotation step.
+  const [vendorMode, setVendorMode] = useState<'existing' | 'new'>('existing');
+  const [selectedVendorId, setSelectedVendorId] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(MPR_DRAFT_KEY) || '{}').selectedVendorId ?? ''; } catch { return ''; }
+  });
+  const [newVendorName, setNewVendorName] = useState('');
+  const [newVendorPhone, setNewVendorPhone] = useState('');
+  const [newVendorType, setNewVendorType] = useState<'VENDOR' | 'NON_VENDOR'>('VENDOR');
+
   // Persist form state to localStorage whenever it changes (only for new MPR, not editing)
   useEffect(() => {
     if (editRow) return; // Don't save when editing an existing MPR
     const draft = {
       requiredBy, department, priority, description, deliveryAddress,
       contactPerson, contactNumber, billingAddress, stateCode,
-      requestRaisedById, technicalRequirements, items,
+      requestRaisedById, technicalRequirements, items, selectedVendorId,
     };
     try { localStorage.setItem(MPR_DRAFT_KEY, JSON.stringify(draft)); } catch { /* ignore quota errors */ }
-  }, [requiredBy, department, priority, description, deliveryAddress, contactPerson, contactNumber, billingAddress, stateCode, requestRaisedById, technicalRequirements, items, editRow]);
+  }, [requiredBy, department, priority, description, deliveryAddress, contactPerson, contactNumber, billingAddress, stateCode, requestRaisedById, technicalRequirements, items, selectedVendorId, editRow]);
 
   const { data, isLoading } = useQuery({
     queryKey: ['mprs', search, statusFilter],
@@ -139,6 +204,27 @@ export default function MaterialPurchaseRequestsPage() {
   });
   const users: { id: string; name: string; role: string }[] = usersData ?? [];
 
+  const { data: vendorsData } = useQuery({
+    queryKey: ['/vendors', 'for-mpr'],
+    queryFn: async () => (await api.get('/vendors', { params: { pageSize: 200 } })).data,
+  });
+  const vendors: Vendor[] = vendorsData?.data ?? [];
+
+  // Project settings — Delivery Address defaults to the hospital site address,
+  // Billing Address to the office ("Bill To") address, both configured once
+  // in Settings instead of retyped on every MPR.
+  const { data: projectSettings } = useQuery({
+    queryKey: ['/settings'],
+    queryFn: async () => (await api.get('/settings')).data,
+  });
+
+  const { data: varianceData, isLoading: varianceLoading } = useQuery({
+    queryKey: ['/material-purchase-requests', varianceRow?.id, 'variance'],
+    queryFn: async () => (await api.get(`/material-purchase-requests/${varianceRow!.id}/variance`)).data,
+    enabled: !!varianceRow,
+  });
+  const varianceItems: VarianceRow[] = varianceData?.items ?? [];
+
   const mprs: MPRRow[] = data?.data ?? [];
 
   function resetForm() {
@@ -154,12 +240,22 @@ export default function MaterialPurchaseRequestsPage() {
     setRequestRaisedById('');
     setTechnicalRequirements('');
     setItems([{ materialName: '', materialCode: '', quantity: '', unit: 'nos', requiredDate: '', remarks: '' }]);
+    setVendorMode('existing');
+    setSelectedVendorId('');
+    setNewVendorName('');
+    setNewVendorPhone('');
+    setNewVendorType('VENDOR');
     try { localStorage.removeItem(MPR_DRAFT_KEY); } catch { /* ignore */ }
   }
 
   function openCreate() {
     resetForm();
     setEditRow(null);
+    // Default Delivery/Billing address from Settings (Hospital Address →
+    // Delivery, Office Address → Bill To) instead of retyping every time.
+    // Still editable per-request — this only sets the starting value.
+    if (projectSettings?.hospitalAddress) setDeliveryAddress(projectSettings.hospitalAddress);
+    if (projectSettings?.officeAddress) setBillingAddress(projectSettings.officeAddress);
     setCreateOpen(true);
   }
 
@@ -185,6 +281,11 @@ export default function MaterialPurchaseRequestsPage() {
       requiredDate: i.requiredDate ? new Date(i.requiredDate).toISOString().slice(0, 10) : '',
       remarks: i.remarks ?? '',
     })));
+    setVendorMode('existing');
+    setSelectedVendorId(row.vendorId ?? '');
+    setNewVendorName('');
+    setNewVendorPhone('');
+    setNewVendorType('VENDOR');
     setCreateOpen(true);
   }
 
@@ -204,7 +305,7 @@ export default function MaterialPurchaseRequestsPage() {
 
   const createMutation = useMutation({
     mutationFn: async () => {
-      const payload = {
+      const payload: Record<string, unknown> = {
         requiredBy: requiredBy || undefined,
         department: department || undefined,
         priority: priority || undefined,
@@ -226,6 +327,11 @@ export default function MaterialPurchaseRequestsPage() {
           remarks: i.remarks || undefined,
         })),
       };
+      if (vendorMode === 'existing' && selectedVendorId) {
+        payload.vendorId = selectedVendorId;
+      } else if (vendorMode === 'new' && newVendorName.trim()) {
+        payload.newVendor = { name: newVendorName.trim(), phone: newVendorPhone.trim() || undefined, vendorType: newVendorType };
+      }
       if (editRow) {
         const res = await api.put(`/material-purchase-requests/${editRow.id}`, payload);
         return res.data;
@@ -235,6 +341,7 @@ export default function MaterialPurchaseRequestsPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['mprs'] });
+      queryClient.invalidateQueries({ queryKey: ['/vendors'] });
       setCreateOpen(false);
       setError('');
       try { localStorage.removeItem(MPR_DRAFT_KEY); } catch { /* ignore */ }
@@ -292,6 +399,81 @@ export default function MaterialPurchaseRequestsPage() {
     },
   });
 
+  const approveMutation = useMutation({
+    mutationFn: async ({ mprId, comments }: { mprId: string; comments?: string }) => {
+      await api.post(`/material-purchase-requests/${mprId}/approve`, { comments, acknowledged: true });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['mprs'] });
+      setApprovalAction(null);
+    },
+    onError: (err: unknown) => setError(extractErrorMessage(err)),
+  });
+
+  const rejectMutation = useMutation({
+    mutationFn: async ({ mprId, reason }: { mprId: string; reason: string }) => {
+      await api.post(`/material-purchase-requests/${mprId}/reject`, { reason, acknowledged: true });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['mprs'] });
+      setApprovalAction(null);
+    },
+    onError: (err: unknown) => setError(extractErrorMessage(err)),
+  });
+
+  const receiptMutation = useMutation({
+    mutationFn: async () => {
+      if (!receiptRow || !receiptFile) return;
+      const formData = new FormData();
+      formData.append('file', receiptFile);
+      if (receiptNotes.trim()) formData.append('notes', receiptNotes.trim());
+      await api.post(`/material-purchase-requests/${receiptRow.id}/receipt`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['mprs'] });
+      setReceiptRow(null);
+      setReceiptFile(null);
+      setReceiptNotes('');
+      setError('');
+    },
+    onError: (err: unknown) => setError(extractErrorMessage(err)),
+  });
+
+  function canApprove(row: MPRRow): ApprovalStep | null {
+    if (!row.approvalWorkflow || !user || !isApproverRole(user.role)) return null;
+    if (row.status !== MPRStatus.SUBMITTED) return null;
+    const alreadyDecided = row.approvalWorkflow.steps.some(
+      (step) => step.approverUserId === user.id && step.status !== 'PENDING'
+    );
+    if (alreadyDecided) return null;
+    return row.approvalWorkflow.steps.find(
+      (step) => step.approverRole === user.role && step.status === 'PENDING'
+    ) ?? null;
+  }
+
+  function raiseQuotation(row: MPRRow) {
+    if (!row.vendorId) return;
+    navigate(`/quotations?create=true&vendorId=${row.vendorId}&mprId=${row.id}`);
+  }
+
+  function downloadReceipt(mprId: string, fileName: string) {
+    const token = localStorage.getItem('firebaseToken');
+    const url = `${api.defaults.baseURL}/material-purchase-requests/${mprId}/receipt?_t=${Date.now()}`;
+    fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+      .then((res) => res.blob())
+      .then((blob) => {
+        const objUrl = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = objUrl;
+        a.download = fileName;
+        a.click();
+        window.URL.revokeObjectURL(objUrl);
+      })
+      .catch(() => setError('Failed to open receipt'));
+  }
+
   function downloadPDF(mprId: string, mprNumber: string) {
     const token = localStorage.getItem('firebaseToken');
     const url = `${api.defaults.baseURL}/material-purchase-requests/${mprId}/pdf?_t=${Date.now()}`;
@@ -337,6 +519,10 @@ export default function MaterialPurchaseRequestsPage() {
   function handleSave() {
     if (items.some((i) => !i.materialName.trim() || !Number.isFinite(Number(i.quantity)) || Number(i.quantity) <= 0)) {
       setError('Each item must have a name and quantity greater than zero');
+      return;
+    }
+    if (vendorMode === 'new' && !newVendorName.trim()) {
+      setError('Enter a name for the new vendor, or switch to an existing vendor');
       return;
     }
     setError('');
@@ -385,7 +571,10 @@ export default function MaterialPurchaseRequestsPage() {
         </Paper>
       ) : (
         <Grid container spacing={2}>
-          {mprs.map((row) => (
+          {mprs.map((row) => {
+            const pendingStep = canApprove(row);
+            const isNonVendor = row.vendor?.vendorType === 'NON_VENDOR';
+            return (
             <Grid item xs={12} key={row.id}>
               <Card variant="outlined">
                 <CardContent>
@@ -397,6 +586,18 @@ export default function MaterialPurchaseRequestsPage() {
                       </Typography>
                       <Typography variant="body2" color="text.secondary">
                         Requested By: {row.createdByUser?.name ?? '—'} | Priority: {row.priority ?? 'Normal'} | Items: {row.items.length}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        Vendor: {row.vendor ? `${row.vendor.name} (${row.vendor.vendorCode})` : '—'}
+                        {row.vendor && (
+                          <Chip
+                            label={isNonVendor ? 'Non-Vendor' : 'Vendor'}
+                            size="small"
+                            sx={{ ml: 0.75, height: 18, fontSize: '0.65rem' }}
+                            color={isNonVendor ? 'default' : 'primary'}
+                            variant="outlined"
+                          />
+                        )}
                       </Typography>
                       {row.description && (
                         <Typography variant="body2" sx={{ mt: 0.5, color: 'text.primary' }}>{row.description}</Typography>
@@ -423,6 +624,33 @@ export default function MaterialPurchaseRequestsPage() {
                     )}
                   </Box>
 
+                  {/* Quotations raised against this MPR */}
+                  {row.quotations && row.quotations.length > 0 && (
+                    <Box sx={{ mt: 1 }}>
+                      <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary' }}>Quotations: </Typography>
+                      {row.quotations.map((q) => (
+                        <Chip key={q.id} label={`${q.quotationNumber} · ${q.status.replace(/_/g, ' ')} · ₹${Number(q.grandTotal).toLocaleString('en-IN')}`} size="small" sx={{ mr: 0.5, mb: 0.5 }} />
+                      ))}
+                    </Box>
+                  )}
+
+                  {/* Receipt attached (non-vendor fast path) */}
+                  {row.receiptFilePath && (
+                    <Box sx={{ mt: 1 }}>
+                      <Button size="small" startIcon={<ReceiptIcon />} onClick={() => downloadReceipt(row.id, row.receiptFileName ?? 'receipt')}>
+                        {row.receiptFileName ?? 'Receipt attached'}
+                      </Button>
+                    </Box>
+                  )}
+
+                  {/* Approval workflow */}
+                  {row.approvalWorkflow && (
+                    <Box sx={{ mt: 1.5 }}>
+                      <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>Approval Status</Typography>
+                      <ApprovalStepsDisplay steps={row.approvalWorkflow.steps} />
+                    </Box>
+                  )}
+
                   {/* Actions */}
                   <Box sx={{ display: 'flex', gap: 0.5, mt: 1, pt: 1, borderTop: '1px solid', borderColor: 'action.hover', flexWrap: 'wrap' }}>
                     <IconButton size="small" onClick={() => previewPDF(row.id)} title="Preview PDF" disabled={pdfLoading}>
@@ -431,27 +659,45 @@ export default function MaterialPurchaseRequestsPage() {
                     <IconButton size="small" onClick={() => downloadPDF(row.id, row.mprNumber)} title="Download PDF">
                       <DownloadIcon fontSize="small" />
                     </IconButton>
+                    {(row.status !== MPRStatus.DRAFT) && (
+                      <Button size="small" startIcon={<VarianceIcon />} onClick={() => setVarianceRow(row)}>Variance</Button>
+                    )}
                     {row.status === MPRStatus.DRAFT && (
                       <>
                         <IconButton size="small" onClick={() => openEdit(row)} title="Edit"><EditIcon fontSize="small" /></IconButton>
-                        <Button size="small" startIcon={<SendIcon />} onClick={() => submitMutation.mutate(row.id)} disabled={submitMutation.isPending}>Submit</Button>
+                        <Button size="small" startIcon={<SendIcon />} onClick={() => submitMutation.mutate(row.id)} disabled={submitMutation.isPending}>Submit for Approval</Button>
                         <IconButton size="small" onClick={() => deleteMutation.mutate(row.id)} title="Delete"><DeleteIcon fontSize="small" /></IconButton>
                       </>
                     )}
                     {row.status === MPRStatus.SUBMITTED && (
                       <>
-                        <Button size="small" color="success" onClick={() => closeMutation.mutate(row.id)} disabled={closeMutation.isPending}>Mark Closed</Button>
+                        {pendingStep && (
+                          <>
+                            <Button size="small" color="success" startIcon={<CheckIcon />} onClick={() => setApprovalAction({ row, step: pendingStep, action: 'approve' })}>Approve</Button>
+                            <Button size="small" color="error" startIcon={<CloseIcon />} onClick={() => setApprovalAction({ row, step: pendingStep, action: 'reject' })}>Reject</Button>
+                          </>
+                        )}
                         <Button size="small" color="error" startIcon={<CloseIcon />} onClick={() => cancelMutation.mutate(row.id)} disabled={cancelMutation.isPending}>Cancel</Button>
                       </>
                     )}
-                    {(row.status === MPRStatus.QUOTATIONS_RECEIVED) && (
+                    {row.status === MPRStatus.APPROVED && !isNonVendor && row.vendorId && (
+                      <Button size="small" variant="contained" startIcon={<QuotationIcon />} onClick={() => raiseQuotation(row)}>Raise Quotation</Button>
+                    )}
+                    {row.status === MPRStatus.APPROVED && isNonVendor && (
+                      <Button size="small" variant="contained" startIcon={<ReceiptIcon />} onClick={() => setReceiptRow(row)}>Upload Receipt & Close</Button>
+                    )}
+                    {row.status === MPRStatus.QUOTATIONS_RECEIVED && !isNonVendor && row.vendorId && (
+                      <Button size="small" startIcon={<QuotationIcon />} onClick={() => raiseQuotation(row)}>Raise Another Quotation</Button>
+                    )}
+                    {(row.status === MPRStatus.APPROVED || row.status === MPRStatus.QUOTATIONS_RECEIVED) && (
                       <Button size="small" color="success" onClick={() => closeMutation.mutate(row.id)} disabled={closeMutation.isPending}>Mark Closed</Button>
                     )}
                   </Box>
                 </CardContent>
               </Card>
             </Grid>
-          ))}
+            );
+          })}
         </Grid>
       )}
 
@@ -460,6 +706,59 @@ export default function MaterialPurchaseRequestsPage() {
         <DialogTitle>{editRow ? `Edit ${editRow.mprNumber}` : 'New Material Purchase Request'}</DialogTitle>
         <DialogContent dividers>
           {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
+
+          {/* Vendor Selection */}
+          <Typography variant="subtitle2" sx={{ mb: 1 }}>Vendor</Typography>
+          <ToggleButtonGroup
+            value={vendorMode}
+            exclusive
+            size="small"
+            onChange={(_e, v) => { if (v) setVendorMode(v); }}
+            sx={{ mb: 1 }}
+          >
+            <ToggleButton value="existing">Existing Vendor</ToggleButton>
+            <ToggleButton value="new">New Vendor</ToggleButton>
+          </ToggleButtonGroup>
+          {vendorMode === 'existing' ? (
+            <TextField
+              fullWidth
+              size="small"
+              select
+              label="Vendor"
+              value={selectedVendorId}
+              onChange={(e) => setSelectedVendorId(e.target.value)}
+              sx={{ mb: 2 }}
+            >
+              <MenuItem value=""><em>— Select —</em></MenuItem>
+              {vendors.map((v) => (
+                <MenuItem key={v.id} value={v.id}>{v.vendorCode} - {v.name} {v.vendorType === 'NON_VENDOR' ? '(Non-Vendor)' : ''}</MenuItem>
+              ))}
+            </TextField>
+          ) : (
+            <Grid container spacing={2} sx={{ mb: 2 }}>
+              <Grid item xs={12} sm={5}>
+                <TextField fullWidth size="small" label="Vendor Name" value={newVendorName} onChange={(e) => setNewVendorName(e.target.value)} required />
+              </Grid>
+              <Grid item xs={12} sm={4}>
+                <TextField fullWidth size="small" label="Phone" value={newVendorPhone} onChange={(e) => setNewVendorPhone(e.target.value)} />
+              </Grid>
+              <Grid item xs={12} sm={3}>
+                <TextField fullWidth size="small" select label="Type" value={newVendorType} onChange={(e) => setNewVendorType(e.target.value as 'VENDOR' | 'NON_VENDOR')}>
+                  <MenuItem value="VENDOR">Vendor (recurring)</MenuItem>
+                  <MenuItem value="NON_VENDOR">Non-Vendor (one-time)</MenuItem>
+                </TextField>
+              </Grid>
+              <Grid item xs={12}>
+                <Alert severity="info" sx={{ mt: 0 }}>
+                  {newVendorType === 'NON_VENDOR'
+                    ? 'Non-vendor requests skip the Quotation step — once approved, you attach a receipt/bill directly and close the request.'
+                    : 'This vendor will also be saved to the Vendors module. You can add bank/GST details there later.'}
+                </Alert>
+              </Grid>
+            </Grid>
+          )}
+
+          <Divider sx={{ mb: 2 }} />
 
           <Grid container spacing={2} sx={{ mb: 2 }}>
             <Grid item xs={12} sm={6} md={3}>
@@ -504,7 +803,6 @@ export default function MaterialPurchaseRequestsPage() {
                 label="Request Raised By"
                 value={requestRaisedById}
                 onChange={(e) => setRequestRaisedById(e.target.value)}
-                SelectProps={{ displayEmpty: true }}
               >
                 <MenuItem value=""><em>— Select —</em></MenuItem>
                 {users.map((u) => (
@@ -665,6 +963,95 @@ export default function MaterialPurchaseRequestsPage() {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Approve / Reject Dialog */}
+      <ApprovalActionDialog
+        open={approvalAction !== null}
+        action={approvalAction?.action ?? 'approve'}
+        entityLabel="Material Purchase Request"
+        pending={approveMutation.isPending || rejectMutation.isPending}
+        error={error}
+        onClearError={() => setError('')}
+        onClose={() => setApprovalAction(null)}
+        onConfirm={(payload) => {
+          if (!approvalAction) return;
+          if (approvalAction.action === 'approve') {
+            approveMutation.mutate({ mprId: approvalAction.row.id, comments: payload.comments });
+          } else {
+            rejectMutation.mutate({ mprId: approvalAction.row.id, reason: payload.reason! });
+          }
+        }}
+      />
+
+      {/* Receipt Upload Dialog — NON_VENDOR fast path */}
+      <ResponsiveDialog open={receiptRow !== null} onClose={() => { setReceiptRow(null); setReceiptFile(null); setReceiptNotes(''); }} maxWidth="sm" fullWidth>
+        <DialogTitle>Upload Receipt & Close — {receiptRow?.mprNumber}</DialogTitle>
+        <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '12px !important' }}>
+          {error && <Alert severity="error" onClose={() => setError('')}>{error}</Alert>}
+          <Alert severity="info">This request will be marked Closed once the receipt/bill is uploaded.</Alert>
+          <Button component="label" variant="outlined" startIcon={<ReceiptIcon />}>
+            {receiptFile ? receiptFile.name : 'Choose Receipt / Bill File'}
+            <input type="file" hidden accept="application/pdf,image/*" onChange={(e) => setReceiptFile(e.target.files?.[0] ?? null)} />
+          </Button>
+          <TextField label="Notes (optional)" value={receiptNotes} onChange={(e) => setReceiptNotes(e.target.value)} multiline minRows={2} />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => { setReceiptRow(null); setReceiptFile(null); setReceiptNotes(''); }} disabled={receiptMutation.isPending}>Cancel</Button>
+          <Button variant="contained" disabled={!receiptFile || receiptMutation.isPending} onClick={() => receiptMutation.mutate()}>
+            {receiptMutation.isPending ? <CircularProgress size={16} /> : 'Upload & Close'}
+          </Button>
+        </DialogActions>
+      </ResponsiveDialog>
+
+      {/* Variance Dialog — Requested vs Quoted vs Ordered */}
+      <ResponsiveDialog open={varianceRow !== null} onClose={() => setVarianceRow(null)} maxWidth="md" fullWidth>
+        <DialogTitle>Variance — {varianceRow?.mprNumber}</DialogTitle>
+        <DialogContent>
+          {varianceLoading ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress size={28} /></Box>
+          ) : varianceItems.length === 0 ? (
+            <Typography color="text.secondary" sx={{ py: 2 }}>No items to compare yet.</Typography>
+          ) : (
+            <TableContainer sx={{ overflowX: 'auto' }}>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Material</TableCell>
+                    <TableCell align="right">Requested</TableCell>
+                    <TableCell align="right">Quoted</TableCell>
+                    <TableCell align="right">Ordered</TableCell>
+                    <TableCell align="right">Qty Δ (Quoted−Req.)</TableCell>
+                    <TableCell align="right">Qty Δ (Ordered−Quoted)</TableCell>
+                    <TableCell align="right">Rate Δ (Ordered−Quoted)</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {varianceItems.map((row, i) => (
+                    <TableRow key={i}>
+                      <TableCell>{row.materialName}</TableCell>
+                      <TableCell align="right">{row.requestedQty}{row.unit ? ` ${row.unit}` : ''}</TableCell>
+                      <TableCell align="right">{row.quotedQty || '—'}</TableCell>
+                      <TableCell align="right">{row.orderedQty || '—'}</TableCell>
+                      <TableCell align="right" sx={{ color: row.qtyVarianceVsRequested !== 0 ? 'warning.main' : 'success.main', fontWeight: 600 }}>
+                        {row.qtyVarianceVsRequested > 0 ? '+' : ''}{row.qtyVarianceVsRequested || 0}
+                      </TableCell>
+                      <TableCell align="right" sx={{ color: row.qtyVarianceVsQuoted !== 0 ? 'warning.main' : 'success.main', fontWeight: 600 }}>
+                        {row.qtyVarianceVsQuoted > 0 ? '+' : ''}{row.qtyVarianceVsQuoted || 0}
+                      </TableCell>
+                      <TableCell align="right" sx={{ color: row.rateVarianceVsQuoted !== 0 ? 'warning.main' : 'success.main', fontWeight: 600 }}>
+                        {row.rateVarianceVsQuoted > 0 ? '+' : ''}₹{row.rateVarianceVsQuoted || 0}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setVarianceRow(null)}>Close</Button>
+        </DialogActions>
+      </ResponsiveDialog>
     </Box>
   );
 }

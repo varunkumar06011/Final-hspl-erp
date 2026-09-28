@@ -391,9 +391,36 @@ router.post(
     try {
       const projectId = requireProjectId(req);
       const vendorId = req.body.vendorId;
+      const mprId = req.body.mprId || null;
       const items = typeof req.body.items === 'string'
         ? JSON.parse(req.body.items || '[]') as QuotationLineItem[]
         : (req.body.items || []) as QuotationLineItem[];
+
+      // If raised against a Material Purchase Request, validate it's in the
+      // right state for a quotation — approved, and not a NON_VENDOR request
+      // (those skip the Quotation module and go straight to a receipt upload).
+      if (mprId) {
+        const mpr = await prisma.materialPurchaseRequest.findFirst({
+          where: { id: mprId, projectId, deletedAt: null },
+          include: { vendor: true },
+        });
+        if (!mpr) {
+          res.status(400).json({ error: 'Material Purchase Request not found' });
+          return;
+        }
+        if (mpr.status !== 'APPROVED' && mpr.status !== 'QUOTATIONS_RECEIVED') {
+          res.status(400).json({ error: 'The Material Purchase Request must be approved before a quotation can be raised against it' });
+          return;
+        }
+        if (mpr.vendorId && mpr.vendorId !== vendorId) {
+          res.status(400).json({ error: 'Vendor does not match the vendor on the Material Purchase Request' });
+          return;
+        }
+        if (mpr.vendor?.vendorType === 'NON_VENDOR') {
+          res.status(400).json({ error: 'Non-vendor requests skip the Quotation step — upload a receipt directly on the MPR instead' });
+          return;
+        }
+      }
 
       // Generate the quotation number up front so it can be used for the file
       // prefix; it is passed into createQuotation to avoid regenerating it.
@@ -425,6 +452,7 @@ router.post(
         createdBy: req.user!.id,
         quotationNumber,
         workTaskId: req.body.workTaskId,
+        mprId,
         filePath,
         fileName,
         fileMimeType,
