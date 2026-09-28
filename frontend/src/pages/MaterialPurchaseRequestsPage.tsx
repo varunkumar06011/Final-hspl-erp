@@ -35,6 +35,7 @@ interface MPRItem {
   quantity: string | number;
   unit?: string;
   requiredDate?: string;
+  estimatedRate?: string | number;
   remarks?: string;
 }
 
@@ -179,7 +180,7 @@ export default function MaterialPurchaseRequestsPage() {
       const saved = JSON.parse(localStorage.getItem(MPR_DRAFT_KEY) || '{}').items;
       if (Array.isArray(saved) && saved.length > 0) return saved;
     } catch { /* ignore */ }
-    return [{ materialName: '', materialCode: '', quantity: '', unit: 'nos', requiredDate: '', remarks: '' }];
+    return [{ materialName: '', materialCode: '', quantity: '', unit: 'nos', requiredDate: '', estimatedRate: '', remarks: '' }];
   });
 
   // Vendor selection — an existing vendor, or a brand-new one created inline
@@ -255,7 +256,7 @@ export default function MaterialPurchaseRequestsPage() {
     setStateCode('');
     setRequestRaisedById('');
     setTechnicalRequirements('');
-    setItems([{ materialName: '', materialCode: '', quantity: '', unit: 'nos', requiredDate: '', remarks: '' }]);
+    setItems([{ materialName: '', materialCode: '', quantity: '', unit: 'nos', requiredDate: '', estimatedRate: '', remarks: '' }]);
     setVendorMode('existing');
     setSelectedVendorId('');
     setNewVendorName('');
@@ -295,6 +296,7 @@ export default function MaterialPurchaseRequestsPage() {
       quantity: String(i.quantity),
       unit: i.unit ?? 'nos',
       requiredDate: i.requiredDate ? new Date(i.requiredDate).toISOString().slice(0, 10) : '',
+      estimatedRate: i.estimatedRate !== undefined && i.estimatedRate !== null ? String(i.estimatedRate) : '',
       remarks: i.remarks ?? '',
     })));
     setVendorMode('existing');
@@ -312,7 +314,7 @@ export default function MaterialPurchaseRequestsPage() {
   }
 
   function addItem() {
-    setItems([...items, { materialName: '', materialCode: '', quantity: '', unit: 'nos', requiredDate: '', remarks: '' }]);
+    setItems([...items, { materialName: '', materialCode: '', quantity: '', unit: 'nos', requiredDate: '', estimatedRate: '', remarks: '' }]);
   }
 
   function removeItem(index: number) {
@@ -340,6 +342,7 @@ export default function MaterialPurchaseRequestsPage() {
           quantity: Number(i.quantity),
           unit: i.unit || undefined,
           requiredDate: i.requiredDate || undefined,
+          estimatedRate: i.estimatedRate !== undefined && i.estimatedRate !== '' ? Number(i.estimatedRate) : undefined,
           remarks: i.remarks || undefined,
         })),
       };
@@ -877,6 +880,7 @@ export default function MaterialPurchaseRequestsPage() {
                   <TableCell align="right">Qty</TableCell>
                   <TableCell>Unit</TableCell>
                   <TableCell>Required Date</TableCell>
+                  <TableCell align="right">Price</TableCell>
                   <TableCell>Remarks</TableCell>
                   <TableCell></TableCell>
                 </TableRow>
@@ -939,6 +943,16 @@ export default function MaterialPurchaseRequestsPage() {
                         onChange={(e) => updateItem(index, 'requiredDate', e.target.value)}
                         sx={{ width: 130 }}
                         InputLabelProps={{ shrink: true }}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <TextField
+                        size="small"
+                        type="number"
+                        value={item.estimatedRate ?? ''}
+                        onChange={(e) => updateItem(index, 'estimatedRate', e.target.value)}
+                        sx={{ width: 90 }}
+                        inputProps={{ style: { textAlign: 'right' }, inputMode: 'decimal', min: 0, step: '0.01' }}
                       />
                     </TableCell>
                     <TableCell>
