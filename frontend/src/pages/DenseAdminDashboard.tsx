@@ -48,6 +48,7 @@ interface DashboardData {
   pendingQuotations: number;
   pendingPOs: number;
   pendingInvoices: number;
+  pendingMPRs: number;
   actionItems: Array<{ id: string; type: string; code: string; status: string; createdAt: string; path: string }>;
   recentTransactions: Array<{ id: string; account: string; accountType: 'BANK' | 'CASH'; type: string; isInflow: boolean; amount: number; description: string; date: string }>;
   recentQuotations: Array<{ id: string; quotationNumber: string; vendorName: string; grandTotal: number; status: string; createdAt: string }>;
@@ -127,6 +128,7 @@ function toPendingEntityType(type: string): PendingEntityType {
     case 'purchase-order': return 'pos';
     case 'invoice': return 'invoices';
     case 'payment': return 'payments';
+    case 'material-purchase-request': return 'mprs';
     default: return 'quotations';
   }
 }
@@ -434,7 +436,7 @@ export default function DenseAdminDashboard() {
                     {data!.actionItems.map((item) => (
                       <Stack key={`${item.type}-${item.id}`} direction="row" alignItems="center" spacing={0.8} onClick={() => navigate(item.path)} sx={{ cursor: 'pointer', px: 0.9, py: 0.7, borderRadius: 1.5, bgcolor: 'rgba(255,92,122,.1)', border: '1px solid rgba(255,92,122,.22)', '&:hover': { bgcolor: 'rgba(255,92,122,.16)' }, minWidth: 0 }}>
                         <ReceiptIcon sx={{ fontSize: 14, color: D.red, flexShrink: 0 }} />
-                        <Typography sx={{ fontSize: '0.68rem', fontWeight: 600, color: D.text, flex: 1 }} noWrap>{item.type === 'purchase-order' ? 'PO' : item.type === 'quotation' ? 'Quotation' : item.type === 'invoice' ? 'Invoice' : 'Payment'} {item.code}</Typography>
+                        <Typography sx={{ fontSize: '0.68rem', fontWeight: 600, color: D.text, flex: 1 }} noWrap>{item.type === 'purchase-order' ? 'PO' : item.type === 'quotation' ? 'Quotation' : item.type === 'invoice' ? 'Invoice' : item.type === 'material-purchase-request' ? 'MPR' : 'Payment'} {item.code}</Typography>
                         <Typography sx={{ fontSize: '0.85rem', color: D.red, fontWeight: 700 }}>›</Typography>
                       </Stack>
                     ))}
@@ -844,6 +846,7 @@ export default function DenseAdminDashboard() {
           pos: data?.pendingPOs ?? 0,
           invoices: data?.pendingInvoices ?? 0,
           payments: data?.pendingPayments ?? 0,
+          mprs: data?.pendingMPRs ?? 0,
         }}
       />
 

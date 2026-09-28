@@ -33,7 +33,7 @@ import { formatCurrency, formatDate } from '../utils/enumOptions';
 //  - the route to navigate to when "View" is clicked
 //  - the fields to display for each record
 
-export type PendingEntityType = 'payments' | 'quotations' | 'pos' | 'invoices';
+export type PendingEntityType = 'payments' | 'quotations' | 'pos' | 'invoices' | 'mprs';
 
 interface EntityConfig {
   title: string;
@@ -44,6 +44,7 @@ interface EntityConfig {
   rejectEndpoint: (id: string) => string;
   viewRoute: string;
   entityLabel: string; // singular label for the approval dialog
+  pageSizeParam?: string; // query param name for page size (default: 'pageSize')
 }
 
 export const ENTITY_CONFIGS: Record<PendingEntityType, EntityConfig> = {
@@ -86,6 +87,17 @@ export const ENTITY_CONFIGS: Record<PendingEntityType, EntityConfig> = {
     rejectEndpoint: (id) => `/invoices/${id}/reject`,
     viewRoute: '/invoices',
     entityLabel: 'Invoice',
+  },
+  mprs: {
+    title: 'Pending Material Purchase Requests',
+    endpoint: '/material-purchase-requests',
+    statusParam: 'status',
+    pendingStatuses: ['SUBMITTED'],
+    approveEndpoint: (id) => `/material-purchase-requests/${id}/approve`,
+    rejectEndpoint: (id) => `/material-purchase-requests/${id}/reject`,
+    viewRoute: '/material-purchase-requests',
+    entityLabel: 'Material Purchase Request',
+    pageSizeParam: 'limit',
   },
 };
 
@@ -159,6 +171,16 @@ function extractRecord(entityType: PendingEntityType, raw: Record<string, unknow
         status: String(raw.verificationStatus ?? 'PENDING'),
         approvalWorkflow: raw.approvalWorkflow as RecordDisplay['approvalWorkflow'],
       };
+    case 'mprs':
+      return {
+        id: String(raw.id ?? ''),
+        code: String(raw.mprNumber ?? '—'),
+        vendorName: vendor?.name ?? '—',
+        amount: formatCurrency(Number(raw.estimatedTotal ?? 0)),
+        date: formatDate(String(raw.date ?? raw.createdAt ?? '')),
+        status: String(raw.status ?? 'SUBMITTED'),
+        approvalWorkflow: raw.approvalWorkflow as RecordDisplay['approvalWorkflow'],
+      };
   }
 }
 
@@ -219,7 +241,7 @@ export function PendingItemsContent({ entityType, user, open, onClose }: Pending
     queryKey: ['pending-items', entityType],
     queryFn: async () => {
       // Use the same { params } syntax as the existing pages (e.g. QuotationsPage)
-      const params: Record<string, string | number> = { page: 1, pageSize: 50 };
+      const params: Record<string, string | number> = { page: 1, [config.pageSizeParam ?? 'pageSize']: 50 };
       // For quotations, the dashboard counts both SUBMITTED + UNDER_REVIEW as
       // pending, but the API only accepts a single status value. So we fetch
       // without a status filter and filter client-side.

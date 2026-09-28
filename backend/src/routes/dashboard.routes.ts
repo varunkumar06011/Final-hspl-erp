@@ -801,6 +801,7 @@ router.get(
         pendingQuotations,
         pendingPOs,
         pendingInvoices,
+        pendingMPRs,
         recentBankTxns,
         recentCashTxns,
         todayBankBaseOutflowAgg,
@@ -911,6 +912,7 @@ router.get(
         prisma.quotation.count({ where: { projectId, status: { notIn: ['APPROVED', 'REJECTED', 'CONVERTED_TO_PO'] }, deletedAt: null, approvalWorkflow: { steps: { none: { status: 'REJECTED' } } } } }),
         prisma.purchaseOrder.count({ where: { projectId, status: { notIn: ['APPROVED', 'REJECTED', 'CANCELLED', 'DELIVERED', 'PARTIALLY_DELIVERED'] }, deletedAt: null } }),
         prisma.vendorInvoice.count({ where: { projectId, verificationStatus: { notIn: ['VERIFIED', 'REJECTED'] }, deletedAt: null } }),
+        prisma.materialPurchaseRequest.count({ where: { projectId, status: 'SUBMITTED', deletedAt: null } }),
         // Recent bank transactions (last 15 — enough for the scrollable dashboard list)
         prisma.bankTransaction.findMany({
           where: { status: 'POSTED', bankAccount: { projectId, deletedAt: null } },
@@ -1113,7 +1115,7 @@ router.get(
       // NOT rejected, and NOT cancelled. This includes DRAFT, SUBMITTED, UNDER_REVIEW
       // quotations and DRAFT, PENDING_APPROVAL POs, so the admin sees everything
       // that still needs action. Sorted most-recent first.
-      const [actionQuotations, actionPOs, actionInvoices, actionPayments] = await Promise.all([
+      const [actionQuotations, actionPOs, actionInvoices, actionPayments, actionMPRs] = await Promise.all([
         prisma.quotation.findMany({
           where: {
             projectId,
@@ -1147,12 +1149,19 @@ router.get(
           orderBy: { createdAt: 'desc' },
           take: 5,
         }),
+        prisma.materialPurchaseRequest.findMany({
+          where: { projectId, deletedAt: null, status: 'SUBMITTED' },
+          select: { id: true, mprNumber: true, status: true, createdAt: true },
+          orderBy: { createdAt: 'desc' },
+          take: 5,
+        }),
       ]);
       const actionItems = [
         ...actionQuotations.map((item) => ({ id: item.id, type: 'quotation' as const, code: item.quotationNumber, status: item.status, createdAt: item.createdAt.toISOString(), path: `/quotations?id=${item.id}` })),
         ...actionPOs.map((item) => ({ id: item.id, type: 'purchase-order' as const, code: item.poNumber, status: item.status, createdAt: item.createdAt.toISOString(), path: `/pos?id=${item.id}` })),
         ...actionInvoices.map((item) => ({ id: item.id, type: 'invoice' as const, code: item.invoiceCode ?? item.invoiceNumber, status: item.verificationStatus, createdAt: item.createdAt.toISOString(), path: `/invoices?id=${item.id}` })),
         ...actionPayments.map((item) => ({ id: item.id, type: 'payment' as const, code: item.paymentCode, status: item.status, createdAt: item.createdAt.toISOString(), path: `/payments?id=${item.id}` })),
+        ...actionMPRs.map((item) => ({ id: item.id, type: 'material-purchase-request' as const, code: item.mprNumber, status: item.status, createdAt: item.createdAt.toISOString(), path: `/material-purchase-requests?id=${item.id}` })),
       ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 8);
 
       // ── Calculate summary values (net of reversals) ──
@@ -1324,6 +1333,7 @@ router.get(
         pendingQuotations,
         pendingPOs,
         pendingInvoices,
+        pendingMPRs,
         actionItems,
         // Recently cancelled/reversed payments — admin dashboard popup source
         recentReversals: recentReversals.map((v) => {
