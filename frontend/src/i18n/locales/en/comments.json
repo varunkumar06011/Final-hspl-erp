@@ -20,6 +20,7 @@
   "delete": "Delete",
   "save": "Save",
   "cancel": "Cancel",
+  "close": "Close",
   "editingComment": "Editing comment",
   "confirmDelete": "Delete this comment?",
   "editedBy": "Edited by {{name}} · {{time}}",
