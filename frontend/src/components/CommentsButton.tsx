@@ -21,6 +21,7 @@ import {
 import {
   ChatBubbleOutline as CommentIcon,
   Delete as DeleteIcon,
+  Edit as EditIcon,
   Send as SendIcon,
 } from '@mui/icons-material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -44,6 +45,9 @@ export interface CommentRow {
   body: string;
   mentions: CommentMention[];
   createdAt: string;
+  editedAt?: string | null;
+  deletedAt?: string | null;
+  deletedByName?: string | null;
   author: { id: string; name: string; role: string };
 }
 
@@ -98,6 +102,28 @@ export function CommentBody({ body, mentions }: { body: string; mentions: Commen
         ),
       )}
     </Typography>
+  );
+}
+
+/** Comment text, or the "deleted by" placeholder; adds an "edited" note when edited. */
+export function CommentContent({ comment }: { comment: CommentRow }) {
+  const { t: tr } = useTranslation('comments');
+  if (comment.deletedAt) {
+    return (
+      <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+        {tr('deletedBy', { name: comment.deletedByName ?? '' })}
+      </Typography>
+    );
+  }
+  return (
+    <>
+      <CommentBody body={comment.body} mentions={comment.mentions ?? []} />
+      {comment.editedAt && (
+        <Typography variant="caption" color="text.secondary">
+          {tr('editedBy', { name: comment.author.name, time: timeAgo(comment.editedAt) })}
+        </Typography>
+      )}
+    </>
   );
 }
 
@@ -175,6 +201,8 @@ function CommentsDialog({
   const [tagged, setTagged] = useState<Record<string, MentionUser>>({});
   const [pickerIndex, setPickerIndex] = useState(0);
   const [error, setError] = useState('');
+  // When set, the composer is editing this comment instead of posting a new one.
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   const { data: comments, isLoading } = useQuery<CommentRow[]>({
     queryKey: ['comments', entityType, entityId],
@@ -223,12 +251,34 @@ function CommentsDialog({
     });
   };
 
+  const resetComposer = () => {
+    setText('');
+    setTagged({});
+    setEditingId(null);
+    setError('');
+  };
+
+  const startEdit = (c: CommentRow) => {
+    setEditingId(c.id);
+    setText(c.body);
+    setCaret(c.body.length);
+    setTagged(
+      Object.fromEntries((c.mentions ?? []).map((m) => [m.id, { id: m.id, name: m.name, role: '' }])),
+    );
+    setError('');
+    requestAnimationFrame(() => inputRef.current?.focus());
+  };
+
   const postMutation = useMutation({
     mutationFn: async () => {
       // Only tags whose @Name is still in the text count.
       const mentionIds = Object.values(tagged)
         .filter((u) => text.includes(`@${u.name}`))
         .map((u) => u.id);
+      if (editingId) {
+        await api.patch(`/comments/${editingId}`, { body: text.trim(), mentionIds });
+        return;
+      }
       await api.post('/comments', {
         entityType,
         entityId,
@@ -239,9 +289,7 @@ function CommentsDialog({
       });
     },
     onSuccess: () => {
-      setText('');
-      setTagged({});
-      setError('');
+      resetComposer();
       queryClient.invalidateQueries({ queryKey: ['comments'] });
     },
     onError: (err) => setError(extractErrorMessage(err)),
@@ -251,12 +299,16 @@ function CommentsDialog({
     mutationFn: async (id: string) => {
       await api.delete(`/comments/${id}`);
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['comments'] }),
+    onSuccess: (_d, id) => {
+      if (id === editingId) resetComposer();
+      queryClient.invalidateQueries({ queryKey: ['comments'] });
+    },
     onError: (err) => setError(extractErrorMessage(err)),
   });
 
   const canDelete = (c: CommentRow) =>
-    c.author.id === me?.id || String(me?.role ?? '').startsWith('ADMIN');
+    !c.deletedAt && (c.author.id === me?.id || String(me?.role ?? '').startsWith('ADMIN'));
+  const canEdit = (c: CommentRow) => !c.deletedAt && c.author.id === me?.id;
 
   return (
     <ResponsiveDialog open onClose={onClose} maxWidth="sm" fullWidth>
@@ -284,18 +336,30 @@ function CommentsDialog({
                     <Typography variant="caption" color="text.secondary">
                       {timeAgo(c.createdAt)}
                     </Typography>
-                    {canDelete(c) && (
-                      <IconButton
-                        size="small"
-                        sx={{ ml: 'auto' }}
-                        onClick={() => deleteMutation.mutate(c.id)}
-                        disabled={deleteMutation.isPending}
-                      >
-                        <DeleteIcon sx={{ fontSize: 16 }} />
-                      </IconButton>
-                    )}
+                    <Box sx={{ ml: 'auto', display: 'flex' }}>
+                      {canEdit(c) && (
+                        <Tooltip title={tr('edit')}>
+                          <IconButton size="small" onClick={() => startEdit(c)}>
+                            <EditIcon sx={{ fontSize: 16 }} />
+                          </IconButton>
+                        </Tooltip>
+                      )}
+                      {canDelete(c) && (
+                        <Tooltip title={tr('delete')}>
+                          <IconButton
+                            size="small"
+                            onClick={() => {
+                              if (window.confirm(tr('confirmDelete'))) deleteMutation.mutate(c.id);
+                            }}
+                            disabled={deleteMutation.isPending}
+                          >
+                            <DeleteIcon sx={{ fontSize: 16 }} />
+                          </IconButton>
+                        </Tooltip>
+                      )}
+                    </Box>
                   </Box>
-                  <CommentBody body={c.body} mentions={c.mentions ?? []} />
+                  <CommentContent comment={c} />
                 </Box>
               </Box>
             ))}
@@ -309,6 +373,16 @@ function CommentsDialog({
       </DialogContent>
       <DialogActions sx={{ alignItems: { xs: "stretch", sm: "flex-end" }, flexDirection: { xs: "column", sm: "row" }, px: 2, py: 1.5, gap: 1, pb: { xs: "calc(12px + env(safe-area-inset-bottom))", sm: 1.5 } }}>
         <Box sx={{ flex: 1 }}>
+          {editingId && (
+            <Box sx={{ display: 'flex', alignItems: 'center', mb: 0.5 }}>
+              <Typography variant="caption" color="primary" sx={{ fontWeight: 600 }}>
+                {tr('editingComment')}
+              </Typography>
+              <Button size="small" sx={{ ml: 'auto' }} onClick={resetComposer}>
+                {tr('cancel')}
+              </Button>
+            </Box>
+          )}
           <TextField
             fullWidth
             multiline
@@ -384,7 +458,7 @@ function CommentsDialog({
           disabled={!text.trim() || postMutation.isPending}
           onClick={() => postMutation.mutate()}
         >
-          {tr('post')}
+          {editingId ? tr('save') : tr('post')}
         </Button>
       </DialogActions>
     </ResponsiveDialog>

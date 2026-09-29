@@ -1781,6 +1781,11 @@ model Comment {
   // Tagged users: [{ "id": "<userId>", "name": "<display name>" }]. Empty = untagged (notifies everyone).
   mentions    Json     @default("[]")
   createdAt   DateTime @default(now())
+  // Only the author edits. A deleted comment keeps its row: body is blanked and the deleter recorded.
+  editedAt      DateTime?
+  deletedAt     DateTime?
+  deletedById   String?   @db.Uuid
+  deletedByName String?
 
   author User @relation(fields: [authorId], references: [id])
 

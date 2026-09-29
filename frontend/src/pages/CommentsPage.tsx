@@ -17,7 +17,7 @@ import { OpenInNew as OpenIcon } from '@mui/icons-material';
 import { useQuery } from '@tanstack/react-query';
 import api from '../config/api';
 import RefreshButton from '../components/RefreshButton';
-import CommentsButton, { CommentBody, CommentRow, roleLabel, timeAgo } from '../components/CommentsButton';
+import CommentsButton, { CommentContent, CommentRow, roleLabel, timeAgo } from '../components/CommentsButton';
 
 import { useTranslation } from 'react-i18next';
 // Record types that can carry comments — keep in sync with the CommentsButton
@@ -231,7 +231,7 @@ export default function CommentsPage() {
                       )}
                     </Box>
                   </Box>
-                  <CommentBody body={c.body} mentions={c.mentions ?? []} />
+                  <CommentContent comment={c} />
                 </Box>
               </Box>
             </Card>

@@ -206,7 +206,98 @@ router.post(
   },
 );
 
-// DELETE /comments/:id — author, or any admin
+const editCommentSchema = z.object({
+  body: z.object({
+    body: z.string().trim().min(1).max(4000),
+    mentionIds: z.array(z.string().uuid()).max(50).optional(),
+  }),
+});
+
+// PATCH /comments/:id — author only; notifies only users newly tagged by the edit
+router.patch(
+  '/:id',
+  validateMiddleware(editCommentSchema),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const user = req.user!;
+      const existing = await prisma.comment.findUnique({ where: { id: req.params.id } });
+      if (!existing) {
+        res.status(404).json({ error: 'Comment not found' });
+        return;
+      }
+      if (existing.authorId !== user.id) {
+        res.status(403).json({ error: 'You can only edit your own comments' });
+        return;
+      }
+      if (existing.deletedAt) {
+        res.status(400).json({ error: 'This comment was deleted' });
+        return;
+      }
+      const { body, mentionIds } = req.body as { body: string; mentionIds?: string[] };
+      const scope = projectUserScope(user.projectId ?? null);
+
+      const wanted = Array.from(new Set(mentionIds ?? [])).filter((id) => id !== user.id);
+      const tagged = wanted.length
+        ? await prisma.user.findMany({
+            where: { ...scope, id: { in: wanted } },
+            select: { id: true, name: true },
+          })
+        : [];
+      const mentions: Mention[] = tagged.map((u) => ({ id: u.id, name: u.name }));
+
+      const previousIds = new Set(
+        ((existing.mentions as unknown as Mention[] | null) ?? []).map((m) => m.id),
+      );
+      const newlyTagged = mentions.filter((m) => !previousIds.has(m.id));
+
+      const comment = await prisma.comment.update({
+        where: { id: existing.id },
+        data: {
+          body,
+          mentions: mentions as unknown as Prisma.InputJsonValue,
+          editedAt: new Date(),
+        },
+        include: { author: { select: { id: true, name: true, role: true } } },
+      });
+
+      if (newlyTagged.length > 0) {
+        const recipientIds = newlyTagged.map((m) => m.id);
+        const label =
+          existing.entityLabel || existing.entityType.replace(/_/g, ' ').toLowerCase();
+        const title = `${user.name} mentioned you on ${label}`;
+        const preview = body.length > 140 ? `${body.slice(0, 137)}...` : body;
+        const targetUrl = existing.url || '/comments';
+
+        await prisma.appNotification.createMany({
+          data: recipientIds.map((userId) => ({
+            userId,
+            projectId: existing.projectId,
+            type: 'COMMENT_MENTION',
+            title,
+            body: preview,
+            url: targetUrl,
+            entityId: existing.entityId,
+            entityType: existing.entityType,
+          })),
+        });
+        notifyUsers(recipientIds, {
+          entityType: existing.entityType,
+          entityId: existing.entityId,
+          title,
+          body: preview,
+          url: targetUrl,
+        }).catch((err) => console.error('[Comments] push failed:', err));
+      }
+
+      res.json({ data: comment });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+// DELETE /comments/:id — author, or any admin. Soft delete: the row stays so the thread
+// shows who deleted it; the text and tags are wiped.
 router.delete('/:id', async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
     const existing = await prisma.comment.findUnique({ where: { id: req.params.id } });
@@ -219,7 +310,18 @@ router.delete('/:id', async (req: AuthenticatedRequest, res: Response, next: Nex
       res.status(403).json({ error: 'You can only delete your own comments' });
       return;
     }
-    await prisma.comment.delete({ where: { id: existing.id } });
+    if (!existing.deletedAt) {
+      await prisma.comment.update({
+        where: { id: existing.id },
+        data: {
+          body: '',
+          mentions: [],
+          deletedAt: new Date(),
+          deletedById: req.user!.id,
+          deletedByName: req.user!.name,
+        },
+      });
+    }
     res.json({ success: true });
   } catch (error) {
     next(error);
