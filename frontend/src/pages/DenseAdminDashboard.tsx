@@ -275,6 +275,12 @@ export default function DenseAdminDashboard() {
     queryFn: async () => (await api.get('/dashboard/admin-inflow-detail', { params: { limit: 5000 } })).data,
     enabled: inwardOpen,
   });
+  const { data: inwardFeed, isLoading: inwardFeedLoading } = useQuery<InwardDetailData>({
+    queryKey: ['/dashboard', 'admin-inflow-detail', 'feed'],
+    queryFn: async () => (await api.get('/dashboard/admin-inflow-detail', { params: { limit: 100 } })).data,
+    refetchInterval: 30000,
+  });
+  const inwardFeedRows = (inwardFeed?.transactions ?? []).filter((t) => t.accountType === 'BANK' && ['DEPOSIT', 'MANUAL_DEPOSIT', 'REVERSAL_OUT'].includes(t.type));
   const { data: shortAdvanceDetails, isLoading: shortAdvanceDetailsLoading } = useQuery<ShortAdvanceDetailData>({
     queryKey: ['/dashboard', 'admin-short-advance-detail'],
     queryFn: async () => (await api.get('/dashboard/admin-short-advance-detail', { params: { limit: 5000 } })).data,
@@ -522,6 +528,38 @@ export default function DenseAdminDashboard() {
           </CardContent>
         </Card>
       </Box>
+
+      {/* ── Inward funds feed: 6 rows visible, scrolls for the rest ── */}
+      <Card sx={{ ...darkCard, borderColor: 'rgba(47,217,164,.3)', background: `linear-gradient(165deg, rgba(47,217,164,.11), rgba(47,217,164,.02) 65%), ${D.card}`, mb: 1.4 }}>
+        <CardContent sx={{ p: 1.5, '&:last-child': { pb: 1.5 } }}>
+          <Stack direction="row" justifyContent="space-between" alignItems="flex-start" sx={{ mb: 1 }}>
+            <Stack direction="row" spacing={1} alignItems="center">
+              <Box sx={{ width: 34, height: 34, borderRadius: 2, bgcolor: D.teal, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <MoneyIcon sx={{ fontSize: 18, color: '#fff' }} />
+              </Box>
+              <Box>
+                <Typography sx={{ fontSize: '0.82rem', fontWeight: 800, color: D.text, lineHeight: 1.15 }}>Inward Funds</Typography>
+                <Typography sx={{ fontSize: '0.62rem', color: D.textDim }}>Latest bank receipts</Typography>
+              </Box>
+            </Stack>
+            <Chip size="small" clickable onClick={() => setInwardOpen(true)} label="View All →" sx={{ height: 20, fontSize: '0.6rem', fontWeight: 700, color: D.teal, borderColor: 'rgba(47,217,164,.45)', bgcolor: 'rgba(47,217,164,.1)' }} variant="outlined" />
+          </Stack>
+          <Box sx={{ display: 'grid', gridTemplateColumns: '76px minmax(0,1fr) auto', gap: '0 10px', px: 0.6, pb: 0.6, borderBottom: `1px solid ${D.cardBorder}` }}>
+            {['Date', 'Description', 'Amount'].map((h) => <Typography key={h} sx={{ fontSize: '0.58rem', fontWeight: 700, color: D.textDim, textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: h === 'Amount' ? 'right' : 'left' }}>{h}</Typography>)}
+          </Box>
+          <Box sx={{ maxHeight: 6 * 34, overflowY: 'auto', '&::-webkit-scrollbar': { width: 5 }, '&::-webkit-scrollbar-thumb': { bgcolor: 'rgba(148,163,184,.3)', borderRadius: 3 } }}>
+            {inwardFeedRows.map((tx) => (
+              <Box key={tx.id} sx={{ display: 'grid', gridTemplateColumns: '76px minmax(0,1fr) auto', gap: '0 10px', alignItems: 'center', px: 0.6, height: 34, boxSizing: 'border-box', borderBottom: `1px solid ${D.cardBorder}`, '&:hover': { bgcolor: 'rgba(148,163,184,.05)' } }}>
+                <Typography sx={{ fontSize: '0.66rem', color: D.textDim, fontFamily: NUM_FONT }} noWrap>{formatDate(tx.date)}</Typography>
+                <Typography sx={{ fontSize: '0.7rem', fontWeight: 600, color: D.text }} noWrap title={tx.description || tx.account}>{tx.description || tx.account}</Typography>
+                <Typography sx={{ fontSize: '0.7rem', fontWeight: 800, color: D.teal, fontFamily: NUM_FONT, textAlign: 'right' }}>+{formatCurrency(tx.amount)}</Typography>
+              </Box>
+            ))}
+            {inwardFeedLoading && <Skeleton variant="rectangular" height={34} sx={{ bgcolor: 'rgba(148,163,184,.12)' }} />}
+            {!inwardFeedLoading && inwardFeedRows.length === 0 && <Typography sx={{ fontSize: '0.7rem', color: D.textDim, textAlign: 'center', py: 2 }}>No inward funds yet.</Typography>}
+          </Box>
+        </CardContent>
+      </Card>
 
       {/* ── Middle: activity feed + expenditure trend ── */}
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'minmax(0, 1fr)', lg: 'minmax(0, 1fr) minmax(0, 1.4fr)' }, gap: { xs: 1, md: 1.2 }, mb: 1.4 }}>
