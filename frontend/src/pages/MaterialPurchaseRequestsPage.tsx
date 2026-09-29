@@ -21,7 +21,7 @@ import {
   Balance as VarianceIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { MPRStatus, MPRRequestType, isApproverRole } from '@hospital-erp/shared';
+import { MPRStatus, MPRRequestType, UserRole, isApproverRole } from '@hospital-erp/shared';
 import { formatDate, STATUS_COLORS, QTY_UNIT_OPTIONS, SERVICE_UNIT_OPTIONS, SERVICE_CATEGORY_OPTIONS, enumLabel, unitLabel, serviceCategoryLabel } from '../utils/enumOptions';
 import { useTranslation } from 'react-i18next';
 import api, { extractErrorMessage } from '../config/api';
@@ -794,6 +794,19 @@ export default function MaterialPurchaseRequestsPage() {
                           </>
                         )}
                         <Button size="small" color="error" startIcon={<CloseIcon />} onClick={() => cancelMutation.mutate(row.id)} disabled={cancelMutation.isPending}>{t('cancel')}</Button>
+                      </>
+                    )}
+                    {row.status === MPRStatus.APPROVED && (
+                      <>
+                        <IconButton size="small" onClick={() => openEdit(row)} title={t('editReRaise')}><EditIcon fontSize="small" /></IconButton>
+                        {user?.role === UserRole.ADMIN_2 && (
+                          <IconButton
+                            size="small"
+                            color="error"
+                            onClick={() => { if (window.confirm(t('confirmDeleteApproved', { n: row.mprNumber }))) deleteMutation.mutate(row.id); }}
+                            title={t('delete')}
+                          ><DeleteIcon fontSize="small" /></IconButton>
+                        )}
                       </>
                     )}
                     {row.status === MPRStatus.APPROVED && !isNonVendor && row.vendorId && (

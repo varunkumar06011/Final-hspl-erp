@@ -43,6 +43,7 @@
   "switchToService": "Switch to Service Request",
   "edit": "Edit",
   "editReRaise": "Edit (will re-raise for approval)",
+  "confirmDeleteApproved": "Delete approved request {{n}}? This cannot be undone.",
   "delete": "Delete",
   "submitForApproval": "Submit for Approval",
   "approve": "Approve",

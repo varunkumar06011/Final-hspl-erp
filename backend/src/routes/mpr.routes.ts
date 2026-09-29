@@ -376,10 +376,26 @@ router.put(
         res.status(404).json({ error: 'Material Purchase Request not found' });
         return;
       }
-      const wasSubmitted = existing.status === MPRStatus.SUBMITTED;
+      // An approved MPR can be edited too — it goes back through approval.
+      const wasApproved = existing.status === MPRStatus.APPROVED;
+      const wasSubmitted = existing.status === MPRStatus.SUBMITTED || wasApproved;
       if (existing.status !== MPRStatus.DRAFT && !wasSubmitted) {
-        res.status(400).json({ error: 'Cannot edit MPR after it has been approved, rejected, cancelled, or closed' });
+        res.status(400).json({ error: 'Cannot edit MPR after it has been rejected, cancelled, or closed' });
         return;
+      }
+      if (wasApproved) {
+        const [quotationCount, po] = await Promise.all([
+          prisma.quotation.count({ where: { mprId: existing.id, deletedAt: null } }),
+          findLivePoForMpr(existing.id),
+        ]);
+        if (po) {
+          res.status(400).json({ error: `Purchase Order ${po.poNumber} has been raised from this request — it cannot be edited` });
+          return;
+        }
+        if (quotationCount > 0) {
+          res.status(400).json({ error: `This request has ${quotationCount} quotation(s) raised against it — it cannot be edited` });
+          return;
+        }
       }
 
       const updateData: Record<string, unknown> = {};
@@ -475,7 +491,7 @@ router.put(
 
           return tx.materialPurchaseRequest.update({
             where: { id: req.params.id },
-            data: { ...updateData, approvalWorkflowId: workflow.id },
+            data: { ...updateData, approvalWorkflowId: workflow.id, status: MPRStatus.SUBMITTED },
             include: mprInclude,
           });
         });
@@ -927,7 +943,9 @@ router.post(
   }
 );
 
-// DELETE /:id — soft delete (only if DRAFT)
+// DELETE /:id — soft delete. DRAFT MPRs can be deleted by their editors; an
+// APPROVED MPR can only be deleted by Vinod Sir (ADMIN_2), and only while no
+// quotation or purchase order has been raised from it.
 router.delete(
   '/:id',
   rbacMiddleware(Permission.CREATE_MPR),
@@ -941,8 +959,21 @@ router.delete(
         res.status(404).json({ error: 'Material Purchase Request not found' });
         return;
       }
-      if (existing.status !== MPRStatus.DRAFT) {
-        res.status(400).json({ error: 'Only DRAFT MPRs can be deleted' });
+      if (existing.status === MPRStatus.APPROVED) {
+        if (req.user!.role !== UserRole.ADMIN_2) {
+          res.status(403).json({ error: 'Only Vinod Sir can delete an approved request' });
+          return;
+        }
+        const [quotationCount, po] = await Promise.all([
+          prisma.quotation.count({ where: { mprId: existing.id, deletedAt: null } }),
+          findLivePoForMpr(existing.id),
+        ]);
+        if (po || quotationCount > 0) {
+          res.status(400).json({ error: 'A quotation or purchase order has been raised from this request — remove it first' });
+          return;
+        }
+      } else if (existing.status !== MPRStatus.DRAFT) {
+        res.status(400).json({ error: 'Only DRAFT or APPROVED MPRs can be deleted' });
         return;
       }
 
