@@ -121,6 +121,38 @@ async function resolveVendor(
   return null;
 }
 
+// GET /next-material-code — next auto-increment item code (e.g. VGH-MAT-0021),
+// continuing from the highest code already used in this project's MPR items.
+router.get(
+  '/next-material-code',
+  rbacMiddleware(Permission.VIEW_MPR),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      const rows = await prisma.materialPurchaseRequestItem.findMany({
+        where: { materialCode: { contains: '-MAT-' }, mpr: { projectId } },
+        select: { materialCode: true },
+      });
+      let prefix = 'MAT-';
+      let max = 0;
+      let width = 4;
+      for (const r of rows) {
+        const m = /^(.*-MAT-)(\d+)$/.exec(r.materialCode ?? '');
+        if (!m) continue;
+        const n = Number(m[2]);
+        if (n >= max) {
+          max = n;
+          prefix = m[1];
+          width = m[2].length;
+        }
+      }
+      res.json({ prefix, next: max + 1, width });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
 // GET / — list MPRs
 router.get(
   '/',

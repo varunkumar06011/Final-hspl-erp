@@ -277,6 +277,20 @@ export default function MaterialPurchaseRequestsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams.get('id')]);
 
+  // Auto-continuing item codes (VGH-MAT-0021, 0022, …) — starts from the highest
+  // code already used in the project; still editable per row.
+  const [codeSeq, setCodeSeq] = useState<{ prefix: string; next: number; width: number } | null>(null);
+
+  function nextRowCode(rows: MPRItem[], seq = codeSeq): string {
+    if (!seq) return '';
+    let n = seq.next;
+    for (const r of rows) {
+      const m = /^(.*?)(\d+)$/.exec(r.materialCode ?? '');
+      if (m && m[1] === seq.prefix) n = Math.max(n, Number(m[2]) + 1);
+    }
+    return `${seq.prefix}${String(n).padStart(seq.width, '0')}`;
+  }
+
   function resetForm() {
     setRequiredBy('');
     setDepartment('');
@@ -304,6 +318,12 @@ export default function MaterialPurchaseRequestsPage() {
   function openCreate() {
     resetForm();
     setEditRow(null);
+    api.get('/material-purchase-requests/next-material-code')
+      .then((res) => {
+        setCodeSeq(res.data);
+        setItems((prev) => prev.map((it, i) => (i === 0 && !it.materialCode ? { ...it, materialCode: nextRowCode([], res.data) } : it)));
+      })
+      .catch(() => { /* codes stay manual if the lookup fails */ });
     // Default Delivery/Billing address from Settings (Hospital Address →
     // Delivery, Office Address → Bill To) instead of retyping every time.
     // Still editable per-request — this only sets the starting value.
@@ -352,7 +372,7 @@ export default function MaterialPurchaseRequestsPage() {
   }
 
   function addItem() {
-    setItems([...items, { materialName: '', materialCode: '', quantity: '', unit: isServiceTab ? 'hrs' : 'nos', requiredDate: '', remarks: '' }]);
+    setItems([...items, { materialName: '', materialCode: nextRowCode(items), quantity: '', unit: isServiceTab ? 'hrs' : 'nos', requiredDate: '', remarks: '' }]);
   }
 
   function removeItem(index: number) {
