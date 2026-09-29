@@ -410,7 +410,7 @@ router.put(
       }
       // An approved MPR can be edited too — it goes back through approval.
       const wasApproved = existing.status === MPRStatus.APPROVED;
-      const wasSubmitted = existing.status === MPRStatus.SUBMITTED || wasApproved;
+      let wasSubmitted = existing.status === MPRStatus.SUBMITTED || wasApproved;
       if (existing.status !== MPRStatus.DRAFT && !wasSubmitted) {
         res.status(400).json({ error: 'Cannot edit MPR after it has been rejected, cancelled, or closed' });
         return;
@@ -427,6 +427,11 @@ router.put(
         if (quotationCount > 0) {
           res.status(400).json({ error: `This request has ${quotationCount} quotation(s) raised against it — it cannot be edited` });
           return;
+        }
+        // Its PO was rejected: the edited request stays approved so a fresh PO
+        // can be raised straight away (that PO goes through its own approval).
+        if (await prisma.purchaseOrder.count({ where: { mprId: existing.id, deletedAt: null, status: 'REJECTED' } })) {
+          wasSubmitted = false;
         }
       }
 
