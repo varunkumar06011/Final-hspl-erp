@@ -38,7 +38,7 @@ import {
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { IssueSeverity, IssueCategory, IssueStatus } from '@hospital-erp/shared';
-import { enumToOptions, formatDate, STATUS_COLORS } from '../utils/enumOptions';
+import { enumToOptions, formatDate, STATUS_COLORS, enumLabel } from '../utils/enumOptions';
 import api, { extractErrorMessage } from '../config/api';
 import { useDeepLinkRow } from '../hooks/useDeepLinkRow';
 import { useUrlFilters } from '../hooks/useUrlFilters';
@@ -47,6 +47,7 @@ import ResponsiveTable from '../components/ResponsiveTable';
 import RefreshButton from '../components/RefreshButton';
 import CommentsButton from '../components/CommentsButton';
 
+import { useTranslation } from 'react-i18next';
 interface IssueRow {
   id: string;
   title: string;
@@ -65,6 +66,7 @@ interface IssueRow {
 }
 
 export default function IssuesPage() {
+  const { t: tr } = useTranslation('issues');
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(20);
   const [search, setSearch] = useState('');
@@ -120,7 +122,7 @@ export default function IssuesPage() {
       setCreateOpen(false);
       setEditingId(null);
       setForm({});
-      setSuccessMsg(editingId ? 'Issue updated.' : 'Issue created.');
+      setSuccessMsg(editingId ? tr('okUpdated') : tr('okCreated'));
       setTimeout(() => setSuccessMsg(''), 3000);
     },
     onError: (err: unknown) => setError(extractErrorMessage(err)),
@@ -131,7 +133,7 @@ export default function IssuesPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/issues'] });
       queryClient.invalidateQueries({ queryKey: ['/dashboard', 'summary'] });
-      setSuccessMsg('Issue deleted.');
+      setSuccessMsg(tr('okDeleted'));
       setTimeout(() => setSuccessMsg(''), 3000);
     },
     onError: (err: unknown) => setError(extractErrorMessage(err)),
@@ -176,7 +178,7 @@ export default function IssuesPage() {
       setCloseTarget(null);
       setCloseNotes('');
       setCloseFile(null);
-      setSuccessMsg('Issue closed.');
+      setSuccessMsg(tr('okClosed'));
       setTimeout(() => setSuccessMsg(''), 3000);
     },
   });
@@ -192,12 +194,12 @@ export default function IssuesPage() {
   const addressToOptions = [
     ...(heads as { id: string; name: string; role: string }[] ?? []),
     ...(user && !(heads as { id: string }[] ?? []).some((h) => h.id === user.id)
-      ? [{ id: user.id, name: `${user.name} (Self)`, role: user.role }]
+      ? [{ id: user.id, name: tr('self', { name: user.name }), role: user.role }]
       : []),
   ];
 
   function getNamesForIds(ids: string[]): string {
-    return ids.map((id) => addressToOptions.find((o) => o.id === id)?.name ?? 'Unknown').join(', ');
+    return ids.map((id) => addressToOptions.find((o) => o.id === id)?.name ?? tr('unknown')).join(', ');
   }
 
   function openCreate() {
@@ -229,7 +231,7 @@ export default function IssuesPage() {
 
   function handleCloseFileSelect(file: File) {
     if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 50 * 1024 * 1024) {
-      setError('Photo proof must be a JPEG, PNG, or WebP image smaller than 50 MB');
+      setError(tr('errPhoto'));
       return;
     }
     setError('');
@@ -256,10 +258,10 @@ export default function IssuesPage() {
   return (
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap' }}>
-        <Typography variant="h5" fontWeight={600} sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' } }}>Issues</Typography>
+        <Typography variant="h5" fontWeight={600} sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' } }}>{tr('title')}</Typography>
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', justifyContent: { xs: 'flex-end', md: 'flex-end' }, width: { xs: '100%', md: 'auto' } }}>
           <RefreshButton onClick={() => refetch()} />
-          <Button variant="contained" startIcon={<AddIcon />} onClick={openCreate}>New Issue</Button>
+          <Button variant="contained" startIcon={<AddIcon />} onClick={openCreate}>{tr('newIssue')}</Button>
         </Box>
       </Box>
 
@@ -270,18 +272,18 @@ export default function IssuesPage() {
         <Box sx={{ p: 2, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
           <TextField
             size="small"
-            placeholder="Search issues..."
+            placeholder={tr('search')}
             value={search}
             onChange={(e) => { setSearch(e.target.value); setPage(0); }}
             InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> }}
             sx={{ width: { xs: '100%', sm: 300 } }}
           />
-          <TextField select size="small" label="Severity" value={severityFilter} onChange={(e) => { setSeverityFilter(e.target.value); setPage(0); }} sx={{ width: 150 }}>
-            <MenuItem value="">All</MenuItem>
+          <TextField select size="small" label={tr('severity')} value={severityFilter} onChange={(e) => { setSeverityFilter(e.target.value); setPage(0); }} sx={{ width: 150 }}>
+            <MenuItem value="">{tr('all')}</MenuItem>
             {Object.values(IssueSeverity).map((s) => <MenuItem key={s} value={s}>{s}</MenuItem>)}
           </TextField>
-          <TextField select size="small" label="Status" value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(0); }} sx={{ width: 150 }}>
-            <MenuItem value="">All</MenuItem>
+          <TextField select size="small" label={tr('status')} value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(0); }} sx={{ width: 150 }}>
+            <MenuItem value="">{tr('all')}</MenuItem>
             {Object.values(IssueStatus).map((s) => <MenuItem key={s} value={s}>{s.replace(/_/g, ' ')}</MenuItem>)}
           </TextField>
         </Box>
@@ -291,41 +293,41 @@ export default function IssuesPage() {
           <Table size="small">
             <TableHead>
               <TableRow>
-                <TableCell sx={{ fontWeight: 600 }}>Title</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Category</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Severity</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Status</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Address To</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Raised By</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Date</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Actions</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>{tr('title2')}</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>{tr('category')}</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>{tr('severity')}</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>{tr('status')}</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>{tr('addressTo')}</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>{tr('raisedBy')}</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>{tr('date')}</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>{tr('actions')}</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {isLoading ? (
                 <TableRow><TableCell colSpan={8} align="center" sx={{ py: 4 }}><CircularProgress size={32} /></TableCell></TableRow>
               ) : rows.length === 0 ? (
-                <TableRow><TableCell colSpan={8} align="center" sx={{ py: 4 }}><Typography color="text.secondary">No issues found</Typography></TableCell></TableRow>
+                <TableRow><TableCell colSpan={8} align="center" sx={{ py: 4 }}><Typography color="text.secondary">{tr('none')}</Typography></TableCell></TableRow>
               ) : (
                 rows.map((row) => (
                   <TableRow key={row.id} hover ref={rowRef(row.id)} sx={{ ...(highlightId === row.id && { bgcolor: 'warning.light', '&:hover': { bgcolor: 'warning.light' } }) }}>
-                    <TableCell data-label="Title">{row.title}</TableCell>
-                    <TableCell data-label="Category">{row.category}</TableCell>
-                    <TableCell data-label="Severity"><Chip label={row.severity} size="small" color={STATUS_COLORS[row.severity] ?? 'default'} /></TableCell>
-                    <TableCell data-label="Status"><Chip label={(row.status ?? IssueStatus.OPEN).replace(/_/g, ' ')} size="small" color={STATUS_COLORS[row.status ?? IssueStatus.OPEN] ?? 'default'} /></TableCell>
-                    <TableCell data-label="Address To">{getNamesForIds(row.addressTo)}</TableCell>
-                    <TableCell data-label="Raised By">{row.createdByUser?.name ?? '—'}</TableCell>
-                    <TableCell data-label="Date">{formatDate(row.dateRaised)}</TableCell>
-                    <TableCell data-label="Actions">
+                    <TableCell data-label={tr('title2')}>{row.title}</TableCell>
+                    <TableCell data-label={tr('category')}>{enumLabel(row.category)}</TableCell>
+                    <TableCell data-label={tr('severity')}><Chip label={enumLabel(row.severity)} size="small" color={STATUS_COLORS[row.severity] ?? 'default'} /></TableCell>
+                    <TableCell data-label={tr('status')}><Chip label={enumLabel(row.status ?? IssueStatus.OPEN)} size="small" color={STATUS_COLORS[row.status ?? IssueStatus.OPEN] ?? 'default'} /></TableCell>
+                    <TableCell data-label={tr('addressTo')}>{getNamesForIds(row.addressTo)}</TableCell>
+                    <TableCell data-label={tr('raisedBy')}>{row.createdByUser?.name ?? '—'}</TableCell>
+                    <TableCell data-label={tr('date')}>{formatDate(row.dateRaised)}</TableCell>
+                    <TableCell data-label={tr('actions')}>
                       {row.status !== IssueStatus.CLOSED && (
-                        <IconButton size="small" color="success" title="Close issue" onClick={() => openClose(row)}><CheckCircleIcon fontSize="small" /></IconButton>
+                        <IconButton size="small" color="success" title={tr('closeIssueTip')} onClick={() => openClose(row)}><CheckCircleIcon fontSize="small" /></IconButton>
                       )}
                       {row.status === IssueStatus.CLOSED && row.closurePhotoUrl && (
-                        <IconButton size="small" title="View photo proof" onClick={() => openProof(row)}><PhotoIcon fontSize="small" /></IconButton>
+                        <IconButton size="small" title={tr('viewPhotoProof')} onClick={() => openProof(row)}><PhotoIcon fontSize="small" /></IconButton>
                       )}
                       <CommentsButton entityType="ISSUE" entityId={row.id} entityLabel={row.title} url="/issues" />
                       <IconButton size="small" onClick={() => openEdit(row)}><EditIcon fontSize="small" /></IconButton>
-                      <IconButton size="small" color="error" onClick={() => { if (confirm('Delete this issue?')) deleteMutation.mutate(row.id); }}><DeleteIcon fontSize="small" /></IconButton>
+                      <IconButton size="small" color="error" onClick={() => { if (confirm(tr('confirmDelete'))) deleteMutation.mutate(row.id); }}><DeleteIcon fontSize="small" /></IconButton>
                     </TableCell>
                   </TableRow>
                 ))
@@ -349,13 +351,13 @@ export default function IssuesPage() {
 
       {/* Create/Edit Issue Dialog */}
       <ResponsiveDialog open={createOpen} onClose={() => { setCreateOpen(false); setEditingId(null); }} maxWidth="sm" fullWidth>
-        <DialogTitle>{editingId ? 'Edit Issue' : 'New Issue'}</DialogTitle>
+        <DialogTitle>{editingId ? tr('editTitle') : 'New Issue'}</DialogTitle>
         <DialogContent>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
-            <TextField label="Title" required value={String(form.title ?? '')} onChange={(e) => setForm({ ...form, title: e.target.value })} fullWidth size="small" />
+            <TextField label={tr('title2')} required value={String(form.title ?? '')} onChange={(e) => setForm({ ...form, title: e.target.value })} fullWidth size="small" />
             <TextField
               select
-              label="Category"
+              label={tr('category')}
               required
               value={String(form.category ?? IssueCategory.OTHER)}
               onChange={(e) => setForm({ ...form, category: e.target.value })}
@@ -366,7 +368,7 @@ export default function IssuesPage() {
             </TextField>
             <TextField
               select
-              label="Severity"
+              label={tr('severity')}
               value={String(form.severity ?? IssueSeverity.MEDIUM)}
               onChange={(e) => setForm({ ...form, severity: e.target.value })}
               fullWidth
@@ -374,15 +376,15 @@ export default function IssuesPage() {
             >
               {enumToOptions(IssueSeverity).map((o) => <MenuItem key={o.value} value={o.value}>{o.label}</MenuItem>)}
             </TextField>
-            <TextField label="Description" value={String(form.description ?? '')} onChange={(e) => setForm({ ...form, description: e.target.value })} fullWidth size="small" multiline rows={3} />
+            <TextField label={tr('description')} value={String(form.description ?? '')} onChange={(e) => setForm({ ...form, description: e.target.value })} fullWidth size="small" multiline rows={3} />
             <FormControl fullWidth size="small">
-              <InputLabel>Address To (select multiple)</InputLabel>
+              <InputLabel>{tr('addressToSelectMultiple')}</InputLabel>
               <Select
                 multiple
                 value={(form.addressTo as string[]) ?? []}
                 onChange={(e) => setForm({ ...form, addressTo: e.target.value as string[] })}
                 renderValue={(selected) => getNamesForIds(selected as string[])}
-                label="Address To (select multiple)"
+                label={tr('addressToSelectMultiple')}
               >
                 {addressToOptions.map((opt) => (
                   <MenuItem key={opt.id} value={opt.id}>
@@ -395,13 +397,13 @@ export default function IssuesPage() {
           </Box>
         </DialogContent>
         <DialogActions sx={{ flexWrap: "wrap", gap: 1 }}>
-          <Button onClick={() => { setCreateOpen(false); setEditingId(null); }}>Cancel</Button>
+          <Button onClick={() => { setCreateOpen(false); setEditingId(null); }}>{tr('cancel')}</Button>
           <Button
             variant="contained"
             onClick={() => {
               setError('');
               if (!form.title || !(form.addressTo as string[])?.length) {
-                setError('Title and Address To are required');
+                setError(tr('errRequired'));
                 return;
               }
               createMutation.mutate({
@@ -414,28 +416,28 @@ export default function IssuesPage() {
             }}
             disabled={!form.title || createMutation.isPending}
           >
-            {createMutation.isPending ? <CircularProgress size={20} /> : editingId ? 'Update' : 'Create'}
+            {createMutation.isPending ? <CircularProgress size={20} /> : editingId ? tr('update') : tr('create')}
           </Button>
         </DialogActions>
       </ResponsiveDialog>
 
       {/* Close Issue Dialog */}
       <ResponsiveDialog open={!!closeTarget} onClose={() => { setCloseTarget(null); setCloseFile(null); setCloseNotes(''); }} maxWidth="sm" fullWidth>
-        <DialogTitle>Close Issue</DialogTitle>
+        <DialogTitle>{tr('closeIssue')}</DialogTitle>
         <DialogContent>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
             <Typography variant="body2" color="text.secondary">
-              Closing: <strong>{closeTarget?.title}</strong>
+              {tr('closing')} <strong>{closeTarget?.title}</strong>
             </Typography>
             <input ref={closeFileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files?.[0]; if (f) handleCloseFileSelect(f); }} />
             <Button variant="outlined" onClick={() => closeFileRef.current?.click()}>
-              {closeFile ? '✓ Photo Selected' : 'Add Photo Proof (optional)'}
+              {closeFile ? tr('photoSelected') : tr('addPhoto')}
             </Button>
             {closeFile && (
               <Box component="img" src={URL.createObjectURL(closeFile)} sx={{ width: '100%', maxHeight: 240, objectFit: 'contain', borderRadius: 1 }} />
             )}
             <TextField
-              label="Closure Notes (optional)"
+              label={tr('closureNotesOptional')}
               value={closeNotes}
               onChange={(e) => setCloseNotes(e.target.value)}
               fullWidth
@@ -446,7 +448,7 @@ export default function IssuesPage() {
           </Box>
         </DialogContent>
         <DialogActions sx={{ flexWrap: "wrap", gap: 1 }}>
-          <Button onClick={() => { setCloseTarget(null); setCloseFile(null); setCloseNotes(''); }}>Cancel</Button>
+          <Button onClick={() => { setCloseTarget(null); setCloseFile(null); setCloseNotes(''); }}>{tr('cancel')}</Button>
           <Button
             variant="contained"
             color="success"
@@ -462,14 +464,14 @@ export default function IssuesPage() {
 
       {/* Closure Photo Proof Dialog */}
       <ResponsiveDialog open={!!proofTarget} onClose={closeProof} maxWidth="sm" fullWidth>
-        <DialogTitle>Closure Proof</DialogTitle>
+        <DialogTitle>{tr('closureProof')}</DialogTitle>
         <DialogContent>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
-            <Typography variant="body2"><strong>Issue:</strong> {proofTarget?.title}</Typography>
-            <Typography variant="body2"><strong>Closed By:</strong> {proofTarget?.closedByUser?.name ?? '—'}</Typography>
-            <Typography variant="body2"><strong>Closed At:</strong> {formatDate(proofTarget?.closedAt)}</Typography>
+            <Typography variant="body2"><strong>{tr('issue')}</strong> {proofTarget?.title}</Typography>
+            <Typography variant="body2"><strong>{tr('closedBy')}</strong> {proofTarget?.closedByUser?.name ?? '—'}</Typography>
+            <Typography variant="body2"><strong>{tr('closedAt')}</strong> {formatDate(proofTarget?.closedAt)}</Typography>
             {proofTarget?.closureNotes && (
-              <Typography variant="body2"><strong>Notes:</strong> {proofTarget.closureNotes}</Typography>
+              <Typography variant="body2"><strong>{tr('notes')}</strong> {proofTarget.closureNotes}</Typography>
             )}
             {proofUrl ? (
               <Box component="img" src={proofUrl} sx={{ width: '100%', maxHeight: 400, objectFit: 'contain', borderRadius: 1 }} />
@@ -479,7 +481,7 @@ export default function IssuesPage() {
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={closeProof}>Close</Button>
+          <Button onClick={closeProof}>{tr('close')}</Button>
         </DialogActions>
       </ResponsiveDialog>
     </Box>

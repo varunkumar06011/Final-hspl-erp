@@ -1,0 +1,12 @@
+{
+  "inwardFunds": "Inward Funds",
+  "date": "Date",
+  "account": "Account",
+  "type": "Type",
+  "description": "Description",
+  "amount": "Amount",
+  "none": "No inward fund transactions found",
+  "search": "Search by account, description, type...",
+  "count": "{{n}} transactions",
+  "cashIn": "Cash In"
+}

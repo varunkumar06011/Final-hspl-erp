@@ -25,9 +25,11 @@ import {
 } from '@mui/icons-material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import api, { extractErrorMessage } from '../config/api';
+import i18n, { dateLocale } from '../i18n';
 import { useAuthStore } from '../stores/authStore';
 import ResponsiveDialog from './ResponsiveDialog';
 
+import { useTranslation } from 'react-i18next';
 export interface CommentMention {
   id: string;
   name: string;
@@ -60,11 +62,11 @@ export function roleLabel(role: unknown): string {
 
 export function timeAgo(iso: string): string {
   const diffMin = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
-  if (diffMin < 1) return 'just now';
-  if (diffMin < 60) return `${diffMin}m ago`;
+  if (diffMin < 1) return i18n.t('comments:justNow');
+  if (diffMin < 60) return i18n.t('comments:minAgo', { n: diffMin });
   const hr = Math.floor(diffMin / 60);
-  if (hr < 24) return `${hr}h ago`;
-  return new Date(iso).toLocaleString('en-IN', {
+  if (hr < 24) return i18n.t('comments:hrAgo', { n: hr });
+  return new Date(iso).toLocaleString(dateLocale(), {
     day: '2-digit',
     month: 'short',
     year: 'numeric',
@@ -121,11 +123,12 @@ export default function CommentsButton({
   url,
   size = 'small',
 }: CommentsButtonProps) {
+  const { t: tr } = useTranslation('comments');
   const [open, setOpen] = useState(false);
   if (!entityId) return null;
   return (
     <>
-      <Tooltip title="Comments">
+      <Tooltip title={tr('comments')}>
         <IconButton
           size={size}
           sx={{ p: { xs: 1, sm: 0.5 } }}
@@ -163,6 +166,7 @@ function CommentsDialog({
   url?: string;
   onClose: () => void;
 }) {
+  const { t: tr } = useTranslation('comments');
   const queryClient = useQueryClient();
   const me = useAuthStore((s) => s.user);
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -256,7 +260,7 @@ function CommentsDialog({
 
   return (
     <ResponsiveDialog open onClose={onClose} maxWidth="sm" fullWidth>
-      <DialogTitle>Comments{entityLabel ? ` — ${entityLabel}` : ''}</DialogTitle>
+      <DialogTitle>{tr('comments')}{entityLabel ? ` — ${entityLabel}` : ''}</DialogTitle>
       <DialogContent dividers sx={{ minHeight: 200 }}>
         {isLoading ? (
           <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
@@ -264,7 +268,7 @@ function CommentsDialog({
           </Box>
         ) : (comments ?? []).length === 0 ? (
           <Typography variant="body2" color="text.secondary" sx={{ py: 3, textAlign: 'center' }}>
-            No comments yet. Start the conversation below.
+            {tr('none')}
           </Typography>
         ) : (
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
@@ -315,7 +319,7 @@ function CommentsDialog({
             size="small"
             inputRef={inputRef}
             value={text}
-            placeholder="Write a comment… type @ to tag someone (no tag = notify everyone)"
+            placeholder={tr('placeholder')}
             onChange={(e) => {
               setText(e.target.value);
               setCaret(e.target.selectionStart ?? e.target.value.length);
@@ -380,7 +384,7 @@ function CommentsDialog({
           disabled={!text.trim() || postMutation.isPending}
           onClick={() => postMutation.mutate()}
         >
-          Post
+          {tr('post')}
         </Button>
       </DialogActions>
     </ResponsiveDialog>

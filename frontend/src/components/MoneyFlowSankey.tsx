@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react';
 import { formatCurrency } from '../utils/enumOptions';
 import { useColorMode } from '../config/ColorModeContext';
 
+import { useTranslation } from 'react-i18next';
 interface FlowNode {
   id: string;
   label: string;
@@ -33,6 +34,7 @@ interface MoneyFlowSankeyProps {
  *   Total Budget → Remaining
  */
 export default function MoneyFlowSankey({ totalBudget, committed, paid }: MoneyFlowSankeyProps) {
+  const { t } = useTranslation('widgets');
   const { mode } = useColorMode();
   const [hovered, setHovered] = useState<string | null>(null);
   const theme = useTheme();
@@ -81,11 +83,11 @@ export default function MoneyFlowSankey({ totalBudget, committed, paid }: MoneyF
     const unpaidY = col3StartY + paidHeight + nodePadding;
 
     return [
-      { id: 'budget', label: 'Total Budget', value: totalBudget, color: '#2196F3', x: col1X, _h: budgetHeight, _y: budgetY },
-      { id: 'committed', label: 'Committed', value: committed, color: '#FF9800', x: col2X, _h: committedHeight, _y: committedY },
-      { id: 'remaining', label: 'Remaining', value: remaining, color: '#4CAF50', x: col2X, _h: remainingHeight, _y: remainingY },
-      { id: 'paid', label: 'Paid', value: paid, color: '#66BB6A', x: col3X, _h: paidHeight, _y: paidY },
-      { id: 'unpaid', label: 'Outstanding', value: unpaid, color: '#EF5350', x: col3X, _h: unpaidHeight, _y: unpaidY },
+      { id: 'budget', label: t('flowBudget'), value: totalBudget, color: '#2196F3', x: col1X, _h: budgetHeight, _y: budgetY },
+      { id: 'committed', label: t('flowCommitted'), value: committed, color: '#FF9800', x: col2X, _h: committedHeight, _y: committedY },
+      { id: 'remaining', label: t('flowRemaining'), value: remaining, color: '#4CAF50', x: col2X, _h: remainingHeight, _y: remainingY },
+      { id: 'paid', label: t('flowPaid'), value: paid, color: '#66BB6A', x: col3X, _h: paidHeight, _y: paidY },
+      { id: 'unpaid', label: t('flowOutstanding'), value: unpaid, color: '#EF5350', x: col3X, _h: unpaidHeight, _y: unpaidY },
     ];
   }, [totalBudget, committed, paid, unpaid, remaining, maxValue]);
 
@@ -159,9 +161,9 @@ export default function MoneyFlowSankey({ totalBudget, committed, paid }: MoneyF
   return (
     <Card>
       <CardContent>
-        <Typography variant="h6" gutterBottom>Money Flow</Typography>
+        <Typography variant="h6" gutterBottom>{t('flowTitle')}</Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          How your budget flows through commitments to payments
+          {t('flowSubtitle')}
         </Typography>
 
         {/* ── Mobile: stacked flow representation (below md / 900px) ── */}
@@ -170,18 +172,18 @@ export default function MoneyFlowSankey({ totalBudget, committed, paid }: MoneyF
         {isMobile && (
           <Stack spacing={1.5} sx={{ width: '100%' }}>
             {/* Total Budget */}
-            <FlowBar label="Total Budget" value={totalBudget} color="#2196F3" />
+            <FlowBar label={t('flowBudget')} value={totalBudget} color="#2196F3" />
             <FlowArrow />
             {/* Committed + Remaining split */}
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-              <FlowBar label="Committed (POs)" value={committed} color="#FF9800" />
-              <FlowBar label="Remaining" value={remaining} color="#4CAF50" />
+              <FlowBar label={t('flowCommittedPos')} value={committed} color="#FF9800" />
+              <FlowBar label={t('flowRemaining')} value={remaining} color="#4CAF50" />
             </Box>
             <FlowArrow />
             {/* Paid + Outstanding split */}
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-              <FlowBar label="Paid" value={paid} color="#66BB6A" />
-              <FlowBar label="Outstanding" value={unpaid} color="#EF5350" />
+              <FlowBar label={t('flowPaid')} value={paid} color="#66BB6A" />
+              <FlowBar label={t('flowOutstanding')} value={unpaid} color="#EF5350" />
             </Box>
           </Stack>
         )}

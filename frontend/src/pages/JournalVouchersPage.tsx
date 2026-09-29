@@ -42,9 +42,10 @@ import api, { extractErrorMessage } from '../config/api';
 import ResponsiveDialog from '../components/ResponsiveDialog';
 import ResponsiveTable from '../components/ResponsiveTable';
 import RefreshButton from '../components/RefreshButton';
-import { formatCurrency, formatIndianNumber, formatDate, todayLocalDate } from '../utils/enumOptions';
+import { formatCurrency, formatIndianNumber, formatDate, todayLocalDate, enumLabel } from '../utils/enumOptions';
 import CommentsButton from '../components/CommentsButton';
 
+import { useTranslation } from 'react-i18next';
 interface JournalEntry {
   id: string;
   accountType: string;
@@ -91,13 +92,6 @@ interface CashAccount { id: string; name: string; }
 interface BudgetHead { id: string; particulars: string; }
 interface OwnerAccount { id: string; ownerName: string; }
 
-const JV_TYPE_LABELS: Record<string, string> = {
-  OWNER_EXPENSE: 'Owner Expense',
-  OWNER_REPAYMENT: 'Owner Repayment',
-  INTER_ACCOUNT: 'Inter-Account',
-  ADJUSTMENT: 'Adjustment',
-};
-
 const JV_STATUS_COLORS: Record<string, 'default' | 'info' | 'warning' | 'success' | 'error'> = {
   DRAFT: 'default',
   PENDING_APPROVAL: 'info',
@@ -125,6 +119,7 @@ interface EntryForm {
 }
 
 export default function JournalVouchersPage() {
+  const { t: tr } = useTranslation('jv');
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(20);
   const [search, setSearch] = useState('');
@@ -309,22 +304,22 @@ export default function JournalVouchersPage() {
 
   const handleCreate = () => {
     if (!isBalanced) {
-      setError(`Total debit (${formatIndianNumber(totalDebit)}) must equal total credit (${formatIndianNumber(totalCredit)}) and be > 0`);
+      setError(tr('errBalance', { d: formatIndianNumber(totalDebit), c: formatIndianNumber(totalCredit) }));
       return;
     }
     // Validate account selections
     for (let i = 0; i < entries.length; i++) {
       const e = entries[i];
       if ((e.accountType === 'BANK' || e.accountType === 'CASH') && !e.accountId) {
-        setError(`Entry ${i + 1}: Select an account for ${e.accountType} type`);
+        setError(tr('errAccount', { i: i + 1, t: enumLabel(e.accountType) }));
         return;
       }
       if (e.accountType === 'BUDGET_HEAD' && !e.budgetHeadId) {
-        setError(`Entry ${i + 1}: Select a budget head`);
+        setError(tr('errHead', { i: i + 1 }));
         return;
       }
       if (e.accountType === 'OWNER' && !e.ownerAccountId) {
-        setError(`Entry ${i + 1}: Select an owner account`);
+        setError(tr('errOwner', { i: i + 1 }));
         return;
       }
     }
@@ -357,25 +352,25 @@ export default function JournalVouchersPage() {
     switch (entry.accountType) {
       case 'BANK':
         return (
-          <TextField select size="small" label="Bank Account" value={entry.accountId} onChange={(e) => updateEntry(index, 'accountId', e.target.value)} sx={{ minWidth: 180 }}>
+          <TextField select size="small" label={tr('bankAccount')} value={entry.accountId} onChange={(e) => updateEntry(index, 'accountId', e.target.value)} sx={{ minWidth: 180 }}>
             {bankAccounts.map((a) => <MenuItem key={a.id} value={a.id}>{a.accountName}</MenuItem>)}
           </TextField>
         );
       case 'CASH':
         return (
-          <TextField select size="small" label="Cash Account" value={entry.accountId} onChange={(e) => updateEntry(index, 'accountId', e.target.value)} sx={{ minWidth: 180 }}>
+          <TextField select size="small" label={tr('cashAccount')} value={entry.accountId} onChange={(e) => updateEntry(index, 'accountId', e.target.value)} sx={{ minWidth: 180 }}>
             {cashAccounts.map((a) => <MenuItem key={a.id} value={a.id}>{a.name}</MenuItem>)}
           </TextField>
         );
       case 'BUDGET_HEAD':
         return (
-          <TextField select size="small" label="Budget Head" value={entry.budgetHeadId} onChange={(e) => updateEntry(index, 'budgetHeadId', e.target.value)} sx={{ minWidth: 180 }}>
+          <TextField select size="small" label={tr('budgetHead')} value={entry.budgetHeadId} onChange={(e) => updateEntry(index, 'budgetHeadId', e.target.value)} sx={{ minWidth: 180 }}>
             {budgetHeads.map((h) => <MenuItem key={h.id} value={h.id}>{h.particulars}</MenuItem>)}
           </TextField>
         );
       case 'OWNER':
         return (
-          <TextField select size="small" label="Owner Account" value={entry.ownerAccountId} onChange={(e) => updateEntry(index, 'ownerAccountId', e.target.value)} sx={{ minWidth: 180 }}>
+          <TextField select size="small" label={tr('ownerAccount')} value={entry.ownerAccountId} onChange={(e) => updateEntry(index, 'ownerAccountId', e.target.value)} sx={{ minWidth: 180 }}>
             {ownerAccounts.map((o) => <MenuItem key={o.id} value={o.id}>{o.ownerName}</MenuItem>)}
           </TextField>
         );
@@ -388,11 +383,11 @@ export default function JournalVouchersPage() {
     <Box sx={{ minWidth: 0, overflow: 'hidden' }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: { xs: 'flex-start', sm: 'center' }, mb: 2, flexWrap: 'wrap', gap: 1 }}>
         <Typography variant="h5" fontWeight={600} sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' } }}>
-          Journal Vouchers
+          {tr('title')}
         </Typography>
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
           <RefreshButton onClick={() => refetch()} />
-          <Button variant="contained" startIcon={<AddIcon />} onClick={openCreate}>New JV</Button>
+          <Button variant="contained" startIcon={<AddIcon />} onClick={openCreate}>{tr('newJv')}</Button>
         </Box>
       </Box>
 
@@ -402,20 +397,20 @@ export default function JournalVouchersPage() {
         <Box sx={{ p: 2, display: 'flex', gap: 1, flexWrap: 'wrap' }}>
           <TextField
             size="small"
-            placeholder="Search by JV number..."
+            placeholder={tr('search')}
             value={search}
             onChange={(e) => { setSearch(e.target.value); setPage(0); }}
             InputProps={{ startAdornment: (<InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment>) }}
             sx={{ width: { xs: '100%', sm: 250 } }}
           />
-          <TextField select size="small" label="Status" value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(0); }} sx={{ width: 180 }}>
-            <MenuItem value="">All</MenuItem>
-            <MenuItem value="DRAFT">Draft</MenuItem>
-            <MenuItem value="PENDING_APPROVAL">Pending Approval</MenuItem>
-            <MenuItem value="APPROVED">Approved</MenuItem>
-            <MenuItem value="POSTED">Posted</MenuItem>
-            <MenuItem value="REJECTED">Rejected</MenuItem>
-            <MenuItem value="CANCELLED">Cancelled</MenuItem>
+          <TextField select size="small" label={tr('status')} value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(0); }} sx={{ width: 180 }}>
+            <MenuItem value="">{tr('all')}</MenuItem>
+            <MenuItem value="DRAFT">{tr('draft')}</MenuItem>
+            <MenuItem value="PENDING_APPROVAL">{tr('pendingApproval')}</MenuItem>
+            <MenuItem value="APPROVED">{tr('approved')}</MenuItem>
+            <MenuItem value="POSTED">{tr('posted')}</MenuItem>
+            <MenuItem value="REJECTED">{tr('rejected')}</MenuItem>
+            <MenuItem value="CANCELLED">{tr('cancelled')}</MenuItem>
           </TextField>
         </Box>
 
@@ -424,13 +419,13 @@ export default function JournalVouchersPage() {
           <Table size="small" sx={{ '@media (min-width: 900px)': { minWidth: 'max-content', '& .MuiTableCell-root': { whiteSpace: 'nowrap' } } }}>
             <TableHead>
               <TableRow>
-                <TableCell sx={{ fontWeight: 600 }}>JV Number</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Date</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Type</TableCell>
-                <TableCell sx={{ fontWeight: 600 }} align="right">Amount</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Status</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Created By</TableCell>
-                <TableCell align="right" sx={{ fontWeight: 600 }}>Actions</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>{tr('jvNumber')}</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>{tr('date')}</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>{tr('type')}</TableCell>
+                <TableCell sx={{ fontWeight: 600 }} align="right">{tr('amount')}</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>{tr('status')}</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>{tr('createdBy')}</TableCell>
+                <TableCell align="right" sx={{ fontWeight: 600 }}>{tr('actions')}</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -438,34 +433,34 @@ export default function JournalVouchersPage() {
                 <TableRow><TableCell colSpan={7} align="center" sx={{ py: 4 }}><CircularProgress size={32} /></TableCell></TableRow>
               ) : isError ? (
                 <TableRow><TableCell colSpan={7} align="center" sx={{ py: 4 }}>
-                  <Alert severity="error" sx={{ mb: 1 }}>Failed to load data.</Alert>
-                  <Button size="small" onClick={() => refetch()} startIcon={<RefreshIcon />}>Retry</Button>
+                  <Alert severity="error" sx={{ mb: 1 }}>{tr('errLoad')}</Alert>
+                  <Button size="small" onClick={() => refetch()} startIcon={<RefreshIcon />}>{tr('retry')}</Button>
                 </TableCell></TableRow>
               ) : rows.length === 0 ? (
                 <TableRow><TableCell colSpan={7} align="center" sx={{ py: 4 }}>
-                  <Typography color="text.secondary">No journal vouchers found. Click "New JV" to create one.</Typography>
+                  <Typography color="text.secondary">{tr('none')}</Typography>
                 </TableCell></TableRow>
               ) : (
                 rows.map((jv) => (
                   <TableRow key={jv.id} hover>
-                    <TableCell sx={{ fontWeight: 600 }} data-label="JV Number">{jv.jvNumber}</TableCell>
-                    <TableCell data-label="Date">{formatDate(jv.date)}</TableCell>
-                    <TableCell data-label="Type"><Chip label={JV_TYPE_LABELS[jv.type] ?? jv.type} size="small" variant="outlined" /></TableCell>
-                    <TableCell align="right" data-label="Amount">{formatCurrency(jv.totalDebit)}</TableCell>
-                    <TableCell data-label="Status"><Chip label={jv.status.replace(/_/g, ' ')} size="small" color={JV_STATUS_COLORS[jv.status] ?? 'default'} /></TableCell>
-                    <TableCell data-label="Created By">{jv.createdByUser?.name ?? '—'}</TableCell>
-                    <TableCell align="right" data-label="Actions">
+                    <TableCell sx={{ fontWeight: 600 }} data-label={tr('jvNumber')}>{jv.jvNumber}</TableCell>
+                    <TableCell data-label={tr('date')}>{formatDate(jv.date)}</TableCell>
+                    <TableCell data-label={tr('type')}><Chip label={enumLabel(jv.type)} size="small" variant="outlined" /></TableCell>
+                    <TableCell align="right" data-label={tr('amount')}>{formatCurrency(jv.totalDebit)}</TableCell>
+                    <TableCell data-label={tr('status')}><Chip label={jv.status.replace(/_/g, ' ')} size="small" color={JV_STATUS_COLORS[jv.status] ?? 'default'} /></TableCell>
+                    <TableCell data-label={tr('createdBy')}>{jv.createdByUser?.name ?? '—'}</TableCell>
+                    <TableCell align="right" data-label={tr('actions')}>
                       <Stack direction="row" spacing={0.5} justifyContent="flex-end">
                         <CommentsButton entityType="JOURNAL_VOUCHER" entityId={jv.id} entityLabel={jv.jvNumber} url="/vouchers" />
-                        <Tooltip title="View Details"><IconButton size="small" onClick={() => setDetailJv(jv)}><ViewIcon fontSize="small" /></IconButton></Tooltip>
+                        <Tooltip title={tr('viewDetails')}><IconButton size="small" onClick={() => setDetailJv(jv)}><ViewIcon fontSize="small" /></IconButton></Tooltip>
                         {jv.status === 'DRAFT' && (
-                          <Tooltip title="Submit for Approval"><IconButton size="small" onClick={() => submitMutation.mutate(jv.id)}><SubmitIcon fontSize="small" color="info" /></IconButton></Tooltip>
+                          <Tooltip title={tr('submitForApproval')}><IconButton size="small" onClick={() => submitMutation.mutate(jv.id)}><SubmitIcon fontSize="small" color="info" /></IconButton></Tooltip>
                         )}
                         {jv.status === 'APPROVED' && (
-                          <Tooltip title="Post JV"><IconButton size="small" onClick={() => postMutation.mutate(jv.id)}><PostIcon fontSize="small" color="success" /></IconButton></Tooltip>
+                          <Tooltip title={tr('postJv')}><IconButton size="small" onClick={() => postMutation.mutate(jv.id)}><PostIcon fontSize="small" color="success" /></IconButton></Tooltip>
                         )}
                         {['DRAFT', 'PENDING_APPROVAL', 'REJECTED'].includes(jv.status) && (
-                          <Tooltip title="Cancel"><IconButton size="small" onClick={() => cancelMutation.mutate(jv.id)}><CancelIcon fontSize="small" /></IconButton></Tooltip>
+                          <Tooltip title={tr('cancel')}><IconButton size="small" onClick={() => cancelMutation.mutate(jv.id)}><CancelIcon fontSize="small" /></IconButton></Tooltip>
                         )}
                       </Stack>
                     </TableCell>
@@ -490,41 +485,41 @@ export default function JournalVouchersPage() {
 
       {/* Create JV dialog */}
       <ResponsiveDialog open={createOpen} onClose={() => setCreateOpen(false)} maxWidth="lg" fullWidth>
-        <DialogTitle>New Journal Voucher</DialogTitle>
+        <DialogTitle>{tr('newJournalVoucher')}</DialogTitle>
         <DialogContent>
           {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
           <Box sx={{ display: 'flex', gap: 2, mb: 2, mt: 1, flexWrap: 'wrap' }}>
-            <TextField select size="small" label="JV Type" value={jvType} onChange={(e) => setJvType(e.target.value)} sx={{ minWidth: 200 }}>
-              {Object.entries(JV_TYPE_LABELS).map(([value, label]) => <MenuItem key={value} value={value}>{label}</MenuItem>)}
+            <TextField select size="small" label={tr('jvType')} value={jvType} onChange={(e) => setJvType(e.target.value)} sx={{ minWidth: 200 }}>
+              {['OWNER_EXPENSE', 'OWNER_REPAYMENT', 'INTER_ACCOUNT', 'ADJUSTMENT'].map((value) => <MenuItem key={value} value={value}>{enumLabel(value)}</MenuItem>)}
             </TextField>
-            <TextField size="small" type="date" label="Date" value={jvDate} onChange={(e) => setJvDate(e.target.value)} InputLabelProps={{ shrink: true }} inputProps={{ max: todayLocalDate() }} />
-            <TextField size="small" label="Description" value={jvDescription} onChange={(e) => setJvDescription(e.target.value)} sx={{ minWidth: 300 }} />
+            <TextField size="small" type="date" label={tr('date')} value={jvDate} onChange={(e) => setJvDate(e.target.value)} InputLabelProps={{ shrink: true }} inputProps={{ max: todayLocalDate() }} />
+            <TextField size="small" label={tr('description')} value={jvDescription} onChange={(e) => setJvDescription(e.target.value)} sx={{ minWidth: 300 }} />
           </Box>
 
-          <Typography variant="subtitle2" sx={{ mb: 1 }}>Journal Entries (Debit must equal Credit)</Typography>
+          <Typography variant="subtitle2" sx={{ mb: 1 }}>{tr('entriesHint')}</Typography>
           <ResponsiveTable>
           <TableContainer component={Card} variant="outlined" sx={{ overflowX: 'auto' }}>
             <Table size="small">
               <TableHead>
                 <TableRow>
-                  <TableCell>Account Type</TableCell>
-                  <TableCell>Account</TableCell>
-                  <TableCell align="right">Debit</TableCell>
-                  <TableCell align="right">Credit</TableCell>
-                  <TableCell>Description</TableCell>
+                  <TableCell>{tr('accountType')}</TableCell>
+                  <TableCell>{tr('account')}</TableCell>
+                  <TableCell align="right">{tr('debit')}</TableCell>
+                  <TableCell align="right">{tr('credit')}</TableCell>
+                  <TableCell>{tr('description')}</TableCell>
                   <TableCell></TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
                 {entries.map((entry, index) => (
                   <TableRow key={index}>
-                    <TableCell data-label="Account Type">
+                    <TableCell data-label={tr('accountType')}>
                       <TextField select size="small" value={entry.accountType} onChange={(e) => updateEntry(index, 'accountType', e.target.value)} sx={{ minWidth: 130 }}>
-                        {ACCOUNT_TYPES.map((t) => <MenuItem key={t.value} value={t.value}>{t.label}</MenuItem>)}
+                        {ACCOUNT_TYPES.map((o) => <MenuItem key={o.value} value={o.value}>{enumLabel(o.value)}</MenuItem>)}
                       </TextField>
                     </TableCell>
-                    <TableCell data-label="Account">{renderEntryAccountSelector(entry, index)}</TableCell>
-                    <TableCell align="right" data-label="Debit">
+                    <TableCell data-label={tr('account')}>{renderEntryAccountSelector(entry, index)}</TableCell>
+                    <TableCell align="right" data-label={tr('debit')}>
                       <TextField
                         size="small"
                         value={formatIndianNumber(entry.debit)}
@@ -533,7 +528,7 @@ export default function JournalVouchersPage() {
                         InputProps={{ startAdornment: <InputAdornment position="start">₹</InputAdornment> }}
                       />
                     </TableCell>
-                    <TableCell align="right" data-label="Credit">
+                    <TableCell align="right" data-label={tr('credit')}>
                       <TextField
                         size="small"
                         value={formatIndianNumber(entry.credit)}
@@ -542,10 +537,10 @@ export default function JournalVouchersPage() {
                         InputProps={{ startAdornment: <InputAdornment position="start">₹</InputAdornment> }}
                       />
                     </TableCell>
-                    <TableCell data-label="Description">
+                    <TableCell data-label={tr('description')}>
                       <TextField size="small" value={entry.description} onChange={(e) => updateEntry(index, 'description', e.target.value)} sx={{ minWidth: 150 }} />
                     </TableCell>
-                    <TableCell data-label="Actions">
+                    <TableCell data-label={tr('actions')}>
                       {entries.length > 2 && <IconButton size="small" onClick={() => removeEntry(index)}><DeleteIcon fontSize="small" /></IconButton>}
                     </TableCell>
                   </TableRow>
@@ -556,18 +551,18 @@ export default function JournalVouchersPage() {
           </ResponsiveTable>
 
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 1 }}>
-            <Button size="small" startIcon={<AddIcon />} onClick={addEntry}>Add Entry</Button>
+            <Button size="small" startIcon={<AddIcon />} onClick={addEntry}>{tr('addEntry')}</Button>
             <Stack direction="row" spacing={2} sx={{ flexWrap: 'wrap', gap: 1 }}>
-              <Typography variant="body2">Total Debit: <Box component="strong" sx={{ color: isBalanced ? 'success.main' : 'error.main' }}>{formatCurrency(totalDebit)}</Box></Typography>
-              <Typography variant="body2">Total Credit: <Box component="strong" sx={{ color: isBalanced ? 'success.main' : 'error.main' }}>{formatCurrency(totalCredit)}</Box></Typography>
-              <Chip label={isBalanced ? 'Balanced' : 'Unbalanced'} size="small" color={isBalanced ? 'success' : 'error'} />
+              <Typography variant="body2">{tr('totalDebit')} <Box component="strong" sx={{ color: isBalanced ? 'success.main' : 'error.main' }}>{formatCurrency(totalDebit)}</Box></Typography>
+              <Typography variant="body2">{tr('totalCredit')} <Box component="strong" sx={{ color: isBalanced ? 'success.main' : 'error.main' }}>{formatCurrency(totalCredit)}</Box></Typography>
+              <Chip label={isBalanced ? tr('balanced') : tr('unbalanced')} size="small" color={isBalanced ? 'success' : 'error'} />
             </Stack>
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setCreateOpen(false)}>Cancel</Button>
+          <Button onClick={() => setCreateOpen(false)}>{tr('cancel')}</Button>
           <Button variant="contained" onClick={handleCreate} disabled={createMutation.isPending || !isBalanced}>
-            {createMutation.isPending ? <CircularProgress size={20} /> : 'Create JV (Draft)'}
+            {createMutation.isPending ? <CircularProgress size={20} /> : tr('createDraft')}
           </Button>
         </DialogActions>
       </ResponsiveDialog>
@@ -586,41 +581,41 @@ export default function JournalVouchersPage() {
               {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
               <Stack spacing={2}>
                 <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
-                  <Typography variant="body2"><strong>Type:</strong> {JV_TYPE_LABELS[detailJv.type] ?? detailJv.type}</Typography>
-                  <Typography variant="body2"><strong>Date:</strong> {formatDate(detailJv.date)}</Typography>
-                  <Typography variant="body2"><strong>Created By:</strong> {detailJv.createdByUser?.name}</Typography>
-                  {detailJv.postedAt && <Typography variant="body2"><strong>Posted At:</strong> {formatDate(detailJv.postedAt)}</Typography>}
+                  <Typography variant="body2"><strong>{tr('type2')}</strong> {enumLabel(detailJv.type)}</Typography>
+                  <Typography variant="body2"><strong>{tr('date2')}</strong> {formatDate(detailJv.date)}</Typography>
+                  <Typography variant="body2"><strong>{tr('createdBy2')}</strong> {detailJv.createdByUser?.name}</Typography>
+                  {detailJv.postedAt && <Typography variant="body2"><strong>{tr('postedAt')}</strong> {formatDate(detailJv.postedAt)}</Typography>}
                 </Box>
-                {detailJv.description && <Typography variant="body2"><strong>Description:</strong> {detailJv.description}</Typography>}
+                {detailJv.description && <Typography variant="body2"><strong>{tr('description2')}</strong> {detailJv.description}</Typography>}
 
                 <Divider />
-                <Typography variant="subtitle2">Journal Entries</Typography>
+                <Typography variant="subtitle2">{tr('journalEntries')}</Typography>
                 <ResponsiveTable>
                 <TableContainer component={Card} variant="outlined" sx={{ overflowX: 'auto' }}>
                   <Table size="small">
                     <TableHead>
                       <TableRow>
-                        <TableCell>Account Type</TableCell>
-                        <TableCell>Account</TableCell>
-                        <TableCell align="right">Debit</TableCell>
-                        <TableCell align="right">Credit</TableCell>
-                        <TableCell>Description</TableCell>
+                        <TableCell>{tr('accountType')}</TableCell>
+                        <TableCell>{tr('account')}</TableCell>
+                        <TableCell align="right">{tr('debit')}</TableCell>
+                        <TableCell align="right">{tr('credit')}</TableCell>
+                        <TableCell>{tr('description')}</TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
                       {detailJv.entries.map((entry) => (
                         <TableRow key={entry.id}>
-                          <TableCell data-label="Account Type"><Chip label={entry.accountType} size="small" variant="outlined" /></TableCell>
-                          <TableCell data-label="Account">
+                          <TableCell data-label={tr('accountType')}><Chip label={entry.accountType} size="small" variant="outlined" /></TableCell>
+                          <TableCell data-label={tr('account')}>
                             {entry.budgetHead?.particulars ?? entry.ownerAccount?.ownerName ?? '—'}
                           </TableCell>
-                          <TableCell align="right" sx={{ color: 'error.main' }} data-label="Debit">{Number(entry.debit) > 0 ? formatCurrency(entry.debit) : '—'}</TableCell>
-                          <TableCell align="right" sx={{ color: 'success.main' }} data-label="Credit">{Number(entry.credit) > 0 ? formatCurrency(entry.credit) : '—'}</TableCell>
-                          <TableCell data-label="Description">{entry.description ?? '—'}</TableCell>
+                          <TableCell align="right" sx={{ color: 'error.main' }} data-label={tr('debit')}>{Number(entry.debit) > 0 ? formatCurrency(entry.debit) : '—'}</TableCell>
+                          <TableCell align="right" sx={{ color: 'success.main' }} data-label={tr('credit')}>{Number(entry.credit) > 0 ? formatCurrency(entry.credit) : '—'}</TableCell>
+                          <TableCell data-label={tr('description')}>{entry.description ?? '—'}</TableCell>
                         </TableRow>
                       ))}
                       <TableRow>
-                        <TableCell colSpan={2} align="right" sx={{ fontWeight: 600 }}>Total</TableCell>
+                        <TableCell colSpan={2} align="right" sx={{ fontWeight: 600 }}>{tr('total')}</TableCell>
                         <TableCell align="right" sx={{ fontWeight: 600 }}>{formatCurrency(detailJv.totalDebit)}</TableCell>
                         <TableCell align="right" sx={{ fontWeight: 600 }}>{formatCurrency(detailJv.totalCredit)}</TableCell>
                         <TableCell />
@@ -633,7 +628,7 @@ export default function JournalVouchersPage() {
                 {detailJv.approvalWorkflow && (
                   <>
                     <Divider />
-                    <Typography variant="subtitle2">Approval Workflow</Typography>
+                    <Typography variant="subtitle2">{tr('approvalWorkflow')}</Typography>
                     <Stack spacing={1}>
                       {detailJv.approvalWorkflow.steps.map((step) => (
                         <Box key={step.id} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -655,7 +650,7 @@ export default function JournalVouchersPage() {
               </Stack>
             </DialogContent>
             <DialogActions>
-              <Button onClick={() => setDetailJv(null)}>Close</Button>
+              <Button onClick={() => setDetailJv(null)}>{tr('close')}</Button>
               {detailJv.status === 'PENDING_APPROVAL' && (
                 <>
                   <Button
@@ -663,12 +658,12 @@ export default function JournalVouchersPage() {
                     variant="outlined"
                     startIcon={<RejectIcon />}
                     onClick={() => {
-                      const reason = prompt('Reason for rejection:');
+                      const reason = prompt(tr('rejectReason'));
                       if (reason) rejectMutation.mutate({ id: detailJv.id, reason });
                     }}
                     disabled={rejectMutation.isPending}
                   >
-                    Reject
+                    {tr('reject')}
                   </Button>
                   <Button
                     color="success"
@@ -677,7 +672,7 @@ export default function JournalVouchersPage() {
                     onClick={() => approveMutation.mutate({ id: detailJv.id })}
                     disabled={approveMutation.isPending}
                   >
-                    Approve
+                    {tr('approve')}
                   </Button>
                 </>
               )}

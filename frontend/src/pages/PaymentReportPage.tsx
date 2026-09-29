@@ -21,8 +21,9 @@ import { useQuery } from '@tanstack/react-query';
 import { UserRole, isAdminRole } from '@hospital-erp/shared';
 import api from '../config/api';
 import { useAuthStore } from '../stores/authStore';
-import { formatCurrency, formatDate, STATUS_COLORS } from '../utils/enumOptions';
+import { formatCurrency, formatDate, STATUS_COLORS, enumLabel } from '../utils/enumOptions';
 
+import { useTranslation } from 'react-i18next';
 interface PaymentRecord {
   id: string;
   paymentCode: string;
@@ -68,22 +69,8 @@ interface Summary {
   byVendor: { vendor: string; amount: number }[];
 }
 
-const TYPE_LABELS: Record<string, string> = {
-  INVOICE: 'Invoice',
-  EXPENSE: 'Expense',
-  ADVANCE: 'Advance',
-};
-
-const PAYMENT_MODE_LABELS: Record<string, string> = {
-  BANK_TRANSFER: 'Bank Transfer',
-  CASH: 'Cash',
-  CHEQUE: 'Cheque',
-  UPI: 'UPI',
-  RTGS: 'RTGS',
-  NEFT: 'NEFT',
-};
-
 export default function PaymentReportPage() {
+  const { t: tr } = useTranslation('payreport');
   const user = useAuthStore((s) => s.user);
   const allowedRoles = [UserRole.PROJECT_HEAD, UserRole.ACCOUNTANT];
   // Admin roles (ADMIN, ADMIN_2, ADMIN_3, ...) are checked dynamically via isAdminRole().
@@ -148,12 +135,12 @@ export default function PaymentReportPage() {
         r.paymentCode,
         r.expenseDate ? formatDate(r.expenseDate) : formatDate(r.createdAt),
         paid?.date ? formatDate(paid.date) : '',
-        TYPE_LABELS[r.type] ?? r.type,
+        enumLabel(r.type),
       r.vendor ? `${r.vendor.vendorCode} - ${r.vendor.name}` : '',
       r.description ?? '',
       r.budgetHead?.particulars ?? '',
       String(Number(r.amount)),
-      r.payments[0] ? (PAYMENT_MODE_LABELS[r.payments[0].mode] ?? r.payments[0].mode) : '',
+      r.payments[0] ? enumLabel(r.payments[0].mode) : '',
       r.status,
       r.purchaseOrder?.poNumber ?? '',
       r.invoice?.invoiceNumber ?? '',
@@ -174,7 +161,7 @@ export default function PaymentReportPage() {
   if (user && !allowedRoles.includes(user.role as UserRole) && !isAdminRole(user.role)) {
     return (
       <Box>
-        <Alert severity="warning">You do not have access to view the Payment Report.</Alert>
+        <Alert severity="warning">{tr('noAccess')}</Alert>
       </Box>
     );
   }
@@ -182,10 +169,10 @@ export default function PaymentReportPage() {
   return (
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-        <Typography variant="h5" fontWeight={600}>Payment Report</Typography>
+        <Typography variant="h5" fontWeight={600}>{tr('title')}</Typography>
         <Box sx={{ display: 'flex', gap: 1 }}>
-          <Button size="small" startIcon={<RefreshIcon />} onClick={() => refetch()}>Refresh</Button>
-          <Button size="small" startIcon={<DownloadIcon />} onClick={handleExportCsv} disabled={!rows.length}>Export CSV</Button>
+          <Button size="small" startIcon={<RefreshIcon />} onClick={() => refetch()}>{tr('refresh')}</Button>
+          <Button size="small" startIcon={<DownloadIcon />} onClick={handleExportCsv} disabled={!rows.length}>{tr('exportCsv')}</Button>
         </Box>
       </Box>
 
@@ -193,20 +180,20 @@ export default function PaymentReportPage() {
       {summary && (
         <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', sm: '1fr 1fr 1fr 1fr' }, gap: 1, mb: 2 }}>
           <Card sx={{ p: 1.5 }}>
-            <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600, textTransform: 'uppercase', fontSize: '0.7rem' }}>Total Paid</Typography>
+            <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600, textTransform: 'uppercase', fontSize: '0.7rem' }}>{tr('totalPaid')}</Typography>
             <Typography variant="h6" sx={{ fontWeight: 700, color: 'success.main' }}>{formatCurrency(summary.totalPaid)}</Typography>
           </Card>
           <Card sx={{ p: 1.5 }}>
-            <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600, textTransform: 'uppercase', fontSize: '0.7rem' }}>Approved (Unpaid)</Typography>
+            <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600, textTransform: 'uppercase', fontSize: '0.7rem' }}>{tr('approvedUnpaid')}</Typography>
             <Typography variant="h6" sx={{ fontWeight: 700, color: 'info.main' }}>{formatCurrency(summary.totalApproved)}</Typography>
           </Card>
           <Card sx={{ p: 1.5 }}>
-            <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600, textTransform: 'uppercase', fontSize: '0.7rem' }}>Pending Approval</Typography>
+            <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600, textTransform: 'uppercase', fontSize: '0.7rem' }}>{tr('pendingApproval')}</Typography>
             <Typography variant="h6" sx={{ fontWeight: 700, color: 'warning.main' }}>{formatCurrency(summary.totalPending)}</Typography>
             <Typography variant="caption" color="text.secondary">{summary.pendingCount} request(s)</Typography>
           </Card>
           <Card sx={{ p: 1.5 }}>
-            <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600, textTransform: 'uppercase', fontSize: '0.7rem' }}>Advances</Typography>
+            <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600, textTransform: 'uppercase', fontSize: '0.7rem' }}>{tr('advances')}</Typography>
             <Typography variant="h6" sx={{ fontWeight: 700 }}>{formatCurrency(summary.totalAdvance)}</Typography>
           </Card>
         </Box>
@@ -217,51 +204,51 @@ export default function PaymentReportPage() {
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
           <TextField
             size="small"
-            placeholder="Search payment no, vendor..."
+            placeholder={tr('search')}
             value={search}
             onChange={(e) => { setSearch(e.target.value); setPage(0); }}
             InputProps={{ startAdornment: (<InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment>) }}
             sx={{ width: { xs: '100%', sm: 250 } }}
           />
-          <TextField size="small" type="date" label="From" value={startDate} onChange={(e) => { setStartDate(e.target.value); setPage(0); }} sx={{ width: 150 }} InputLabelProps={{ shrink: true }} />
-          <TextField size="small" type="date" label="To" value={endDate} onChange={(e) => { setEndDate(e.target.value); setPage(0); }} sx={{ width: 150 }} InputLabelProps={{ shrink: true }} />
-          <TextField select size="small" label="Vendor" value={vendorId} onChange={(e) => { setVendorId(e.target.value); setPage(0); }} sx={{ width: 180 }}>
-            <MenuItem value="">All Vendors</MenuItem>
+          <TextField size="small" type="date" label={tr('from')} value={startDate} onChange={(e) => { setStartDate(e.target.value); setPage(0); }} sx={{ width: 150 }} InputLabelProps={{ shrink: true }} />
+          <TextField size="small" type="date" label={tr('to')} value={endDate} onChange={(e) => { setEndDate(e.target.value); setPage(0); }} sx={{ width: 150 }} InputLabelProps={{ shrink: true }} />
+          <TextField select size="small" label={tr('vendor')} value={vendorId} onChange={(e) => { setVendorId(e.target.value); setPage(0); }} sx={{ width: 180 }}>
+            <MenuItem value="">{tr('allVendors')}</MenuItem>
             {(vendorsData?.data ?? []).map((v: { id: string; name: string; vendorCode: string }) => (
               <MenuItem key={v.id} value={v.id}>{v.vendorCode} - {v.name}</MenuItem>
             ))}
           </TextField>
-          <TextField select size="small" label="Budget Head" value={budgetHeadId} onChange={(e) => { setBudgetHeadId(e.target.value); setPage(0); }} sx={{ width: 180 }}>
-            <MenuItem value="">All Budget Heads</MenuItem>
+          <TextField select size="small" label={tr('budgetHead')} value={budgetHeadId} onChange={(e) => { setBudgetHeadId(e.target.value); setPage(0); }} sx={{ width: 180 }}>
+            <MenuItem value="">{tr('allBudgetHeads')}</MenuItem>
             {(budgetHeadsData?.data ?? []).map((b: { id: string; particulars: string }) => (
               <MenuItem key={b.id} value={b.id}>{b.particulars}</MenuItem>
             ))}
           </TextField>
-          <TextField select size="small" label="Type" value={type} onChange={(e) => { setType(e.target.value); setPage(0); }} sx={{ width: 130 }}>
-            <MenuItem value="">All Types</MenuItem>
-            <MenuItem value="INVOICE">Invoice</MenuItem>
-            <MenuItem value="EXPENSE">Expense</MenuItem>
-            <MenuItem value="ADVANCE">Advance</MenuItem>
+          <TextField select size="small" label={tr('type')} value={type} onChange={(e) => { setType(e.target.value); setPage(0); }} sx={{ width: 130 }}>
+            <MenuItem value="">{tr('allTypes')}</MenuItem>
+            <MenuItem value="INVOICE">{tr('invoice')}</MenuItem>
+            <MenuItem value="EXPENSE">{tr('expense')}</MenuItem>
+            <MenuItem value="ADVANCE">{tr('advance')}</MenuItem>
           </TextField>
-          <TextField select size="small" label="Status" value={status} onChange={(e) => { setStatus(e.target.value); setPage(0); }} sx={{ width: 150 }}>
-            <MenuItem value="">All Status</MenuItem>
-            <MenuItem value="PENDING">Pending</MenuItem>
-            <MenuItem value="APPROVED">Approved</MenuItem>
-            <MenuItem value="PAID">Paid</MenuItem>
-            <MenuItem value="REJECTED">Rejected</MenuItem>
+          <TextField select size="small" label={tr('status')} value={status} onChange={(e) => { setStatus(e.target.value); setPage(0); }} sx={{ width: 150 }}>
+            <MenuItem value="">{tr('allStatus')}</MenuItem>
+            <MenuItem value="PENDING">{tr('pending')}</MenuItem>
+            <MenuItem value="APPROVED">{tr('approved')}</MenuItem>
+            <MenuItem value="PAID">{tr('paid')}</MenuItem>
+            <MenuItem value="REJECTED">{tr('rejected')}</MenuItem>
           </TextField>
-          <TextField select size="small" label="Mode" value={paymentMode} onChange={(e) => { setPaymentMode(e.target.value); setPage(0); }} sx={{ width: 150 }}>
-            <MenuItem value="">All Modes</MenuItem>
-            <MenuItem value="BANK_TRANSFER">Bank Transfer</MenuItem>
-            <MenuItem value="CASH">Cash</MenuItem>
-            <MenuItem value="CHEQUE">Cheque</MenuItem>
-            <MenuItem value="UPI">UPI</MenuItem>
-            <MenuItem value="RTGS">RTGS</MenuItem>
-            <MenuItem value="NEFT">NEFT</MenuItem>
+          <TextField select size="small" label={tr('mode')} value={paymentMode} onChange={(e) => { setPaymentMode(e.target.value); setPage(0); }} sx={{ width: 150 }}>
+            <MenuItem value="">{tr('allModes')}</MenuItem>
+            <MenuItem value="BANK_TRANSFER">{tr('bankTransfer')}</MenuItem>
+            <MenuItem value="CASH">{tr('cash')}</MenuItem>
+            <MenuItem value="CHEQUE">{tr('cheque')}</MenuItem>
+            <MenuItem value="UPI">{tr('upi')}</MenuItem>
+            <MenuItem value="RTGS">{tr('rtgs')}</MenuItem>
+            <MenuItem value="NEFT">{tr('neft')}</MenuItem>
           </TextField>
           <TextField
             size="small"
-            label="Min ₹"
+            label={tr('min')}
             value={minAmount}
             onChange={(e) => { setMinAmount(e.target.value.replace(/[^0-9.]/g, '')); setPage(0); }}
             inputMode="decimal"
@@ -269,7 +256,7 @@ export default function PaymentReportPage() {
           />
           <TextField
             size="small"
-            label="Max ₹"
+            label={tr('max')}
             value={maxAmount}
             onChange={(e) => { setMaxAmount(e.target.value.replace(/[^0-9.]/g, '')); setPage(0); }}
             inputMode="decimal"
@@ -283,7 +270,7 @@ export default function PaymentReportPage() {
         <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1, mb: 2 }}>
           {summary.byBudgetHead.length > 0 && (
             <Card sx={{ p: 1.5 }}>
-              <Typography variant="caption" sx={{ fontWeight: 600, textTransform: 'uppercase', fontSize: '0.7rem', color: 'text.secondary', display: 'block', mb: 0.5 }}>Paid by Budget Head</Typography>
+              <Typography variant="caption" sx={{ fontWeight: 600, textTransform: 'uppercase', fontSize: '0.7rem', color: 'text.secondary', display: 'block', mb: 0.5 }}>{tr('paidByBudgetHead')}</Typography>
               {summary.byBudgetHead.map((item) => (
                 <Box key={item.head} sx={{ display: 'flex', justifyContent: 'space-between', py: 0.25 }}>
                   <Typography variant="body2" sx={{ fontSize: '0.8rem' }}>{item.head}</Typography>
@@ -294,7 +281,7 @@ export default function PaymentReportPage() {
           )}
           {summary.byVendor.length > 0 && (
             <Card sx={{ p: 1.5 }}>
-              <Typography variant="caption" sx={{ fontWeight: 600, textTransform: 'uppercase', fontSize: '0.7rem', color: 'text.secondary', display: 'block', mb: 0.5 }}>Paid by Vendor</Typography>
+              <Typography variant="caption" sx={{ fontWeight: 600, textTransform: 'uppercase', fontSize: '0.7rem', color: 'text.secondary', display: 'block', mb: 0.5 }}>{tr('paidByVendor')}</Typography>
               {summary.byVendor.slice(0, 10).map((item) => (
                 <Box key={item.vendor} sx={{ display: 'flex', justifyContent: 'space-between', py: 0.25 }}>
                   <Typography variant="body2" sx={{ fontSize: '0.8rem' }}>{item.vendor}</Typography>
@@ -310,10 +297,10 @@ export default function PaymentReportPage() {
       {isLoading ? (
         <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress size={32} /></Box>
       ) : isError ? (
-        <Alert severity="error" sx={{ mb: 2 }}>Failed to load payment report.</Alert>
+        <Alert severity="error" sx={{ mb: 2 }}>{tr('errLoad')}</Alert>
       ) : rows.length === 0 ? (
         <Card sx={{ p: 4, textAlign: 'center' }}>
-          <Typography color="text.secondary">No payments found with the selected filters.</Typography>
+          <Typography color="text.secondary">{tr('none')}</Typography>
         </Card>
       ) : (
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
@@ -335,7 +322,7 @@ export default function PaymentReportPage() {
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 0.75, pb: 0.75, borderBottom: '1px solid', borderColor: 'action.hover' }}>
                   <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center' }}>
                     <Chip label={row.status} size="small" color={STATUS_COLORS[row.status] ?? 'default'} />
-                    <Chip label={TYPE_LABELS[row.type] ?? row.type} size="small" variant="outlined" />
+                    <Chip label={enumLabel(row.type)} size="small" variant="outlined" />
                   </Box>
                   <Typography variant="caption" sx={{ fontWeight: 600, fontSize: '0.75rem' }}>
                     {formatCurrency(Number(row.amount))}
@@ -349,41 +336,41 @@ export default function PaymentReportPage() {
                   gap: { xs: 0.25, sm: '2px 12px' },
                   alignItems: 'baseline',
                 }}>
-                  <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>Payment No</Typography>
+                  <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>{tr('paymentNo')}</Typography>
                   <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem' }}>{row.paymentCode}</Typography>
 
-                  <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>Request Date</Typography>
+                  <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>{tr('requestDate')}</Typography>
                   <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem' }}>{row.expenseDate ? formatDate(row.expenseDate) : formatDate(row.createdAt)}</Typography>
 
-                  <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>Payment Date</Typography>
+                  <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>{tr('paymentDate')}</Typography>
                   <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem' }}>{paidPayment?.date ? formatDate(paidPayment.date) : '—'}</Typography>
 
-                  <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>Vendor</Typography>
+                  <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>{tr('vendor')}</Typography>
                   <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem' }}>{row.vendor ? `${row.vendor.vendorCode} - ${row.vendor.name}` : '—'}</Typography>
 
-                  <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>Budget Head</Typography>
+                  <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>{tr('budgetHead')}</Typography>
                   <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem' }}>{row.budgetHead?.particulars ?? '—'}</Typography>
 
-                  <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>Mode</Typography>
-                  <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem' }}>{paidPayment ? (PAYMENT_MODE_LABELS[paidPayment.mode] ?? paidPayment.mode) : '—'}</Typography>
+                  <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>{tr('mode')}</Typography>
+                  <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem' }}>{paidPayment ? enumLabel(paidPayment.mode) : '—'}</Typography>
 
-                  <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>Account</Typography>
+                  <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>{tr('account')}</Typography>
                   <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem' }}>{paidPayment?.bankAccount?.accountName ?? paidPayment?.cashAccount?.name ?? '—'}</Typography>
 
-                  <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>PO / Invoice</Typography>
+                  <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>{tr('poInvoice')}</Typography>
                   <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem' }}>{row.purchaseOrder?.poNumber ?? row.invoice?.invoiceNumber ?? '—'}</Typography>
 
-                  <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>Created By</Typography>
+                  <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>{tr('createdBy')}</Typography>
                   <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem' }}>{row.createdByUser?.name ?? '—'}</Typography>
 
-                  <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>Approved By</Typography>
+                  <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>{tr('approvedBy')}</Typography>
                   <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem' }}>{approverNames || '—'}</Typography>
                 </Box>
 
                 {/* Description */}
                 {row.description && (
                   <Box sx={{ display: 'flex', gap: 1, alignItems: 'baseline', mt: 0.5 }}>
-                    <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem', flexShrink: 0, minWidth: 130 }}>Description</Typography>
+                    <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem', flexShrink: 0, minWidth: 130 }}>{tr('description')}</Typography>
                     <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem' }}>{row.description}</Typography>
                   </Box>
                 )}
@@ -391,7 +378,7 @@ export default function PaymentReportPage() {
                 {/* Payment reference */}
                 {paidPayment?.reference && (
                   <Box sx={{ display: 'flex', gap: 1, alignItems: 'baseline', mt: 0.25 }}>
-                    <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem', flexShrink: 0, minWidth: 130 }}>Reference</Typography>
+                    <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem', flexShrink: 0, minWidth: 130 }}>{tr('reference')}</Typography>
                     <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem' }}>{paidPayment.reference}</Typography>
                   </Box>
                 )}

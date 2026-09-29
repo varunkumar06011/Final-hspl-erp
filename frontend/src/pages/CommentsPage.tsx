@@ -19,6 +19,7 @@ import api from '../config/api';
 import RefreshButton from '../components/RefreshButton';
 import CommentsButton, { CommentBody, CommentRow, roleLabel, timeAgo } from '../components/CommentsButton';
 
+import { useTranslation } from 'react-i18next';
 // Record types that can carry comments — keep in sync with the CommentsButton
 // usages across pages.
 export const COMMENT_ENTITY_LABELS: Record<string, string> = {
@@ -43,6 +44,7 @@ interface UserOption {
 }
 
 export default function CommentsPage() {
+  const { t: tr } = useTranslation('comments');
   const navigate = useNavigate();
   const [authorId, setAuthorId] = useState('');
   const [mentionedUserId, setMentionedUserId] = useState('');
@@ -92,7 +94,7 @@ export default function CommentsPage() {
     <Box>
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
         <Typography variant="h5" sx={{ fontWeight: 700 }}>
-          Comments
+          {tr('comments')}
         </Typography>
         <RefreshButton onClick={() => refetch()} />
       </Box>
@@ -102,12 +104,12 @@ export default function CommentsPage() {
           <TextField
             select
             size="small"
-            label="Commented by"
+            label={tr('commentedBy')}
             value={authorId}
             onChange={(e) => reset(setAuthorId)(e.target.value)}
             sx={{ minWidth: { xs: "100%", md: 180 } }}
           >
-            <MenuItem value="">Anyone</MenuItem>
+            <MenuItem value="">{tr('anyone')}</MenuItem>
             {users.map((u) => (
               <MenuItem key={u.id} value={u.id}>
                 {u.name}
@@ -117,12 +119,12 @@ export default function CommentsPage() {
           <TextField
             select
             size="small"
-            label="Tagged user"
+            label={tr('taggedUser')}
             value={mentionedUserId}
             onChange={(e) => reset(setMentionedUserId)(e.target.value)}
             sx={{ minWidth: { xs: "100%", md: 180 } }}
           >
-            <MenuItem value="">Anyone</MenuItem>
+            <MenuItem value="">{tr('anyone')}</MenuItem>
             {users.map((u) => (
               <MenuItem key={u.id} value={u.id}>
                 {u.name}
@@ -137,7 +139,7 @@ export default function CommentsPage() {
             onChange={(e) => reset(setEntityType)(e.target.value)}
             sx={{ minWidth: { xs: "100%", md: 180 } }}
           >
-            <MenuItem value="">All records</MenuItem>
+            <MenuItem value="">{tr('allRecords')}</MenuItem>
             {Object.entries(COMMENT_ENTITY_LABELS).map(([k, label]) => (
               <MenuItem key={k} value={k}>
                 {label}
@@ -147,7 +149,7 @@ export default function CommentsPage() {
           <TextField
             size="small"
             type="date"
-            label="From"
+            label={tr('from')}
             value={from}
             onChange={(e) => reset(setFrom)(e.target.value)}
             InputLabelProps={{ shrink: true }}
@@ -162,7 +164,7 @@ export default function CommentsPage() {
           />
           <TextField
             size="small"
-            label="Search text or reference"
+            label={tr('search')}
             value={search}
             onChange={(e) => reset(setSearch)(e.target.value)}
             sx={{ minWidth: { xs: "100%", md: 220 }, flex: 1 }}
@@ -179,7 +181,7 @@ export default function CommentsPage() {
                 setPage(0);
               }}
             >
-              Clear
+              {tr('clear')}
             </Button>
           )}
         </Stack>
@@ -191,7 +193,7 @@ export default function CommentsPage() {
         </Box>
       ) : rows.length === 0 ? (
         <Card sx={{ p: 4, textAlign: 'center' }}>
-          <Typography color="text.secondary">No comments found.</Typography>
+          <Typography color="text.secondary">{tr('notFound')}</Typography>
         </Card>
       ) : (
         <Stack spacing={1.5}>
@@ -210,10 +212,10 @@ export default function CommentsPage() {
                       size="small"
                       variant="outlined"
                       color="primary"
-                      label={`${COMMENT_ENTITY_LABELS[c.entityType] ?? c.entityType}${c.entityLabel ? ` · ${c.entityLabel}` : ''}`}
+                      label={`${tr(`entity_${c.entityType}`, COMMENT_ENTITY_LABELS[c.entityType] ?? c.entityType)}${c.entityLabel ? ` · ${c.entityLabel}` : ''}`}
                     />
                     {(c.mentions ?? []).length === 0 && (
-                      <Chip size="small" label="To everyone" sx={{ height: 20, fontSize: '0.65rem' }} />
+                      <Chip size="small" label={tr('toEveryone')} sx={{ height: 20, fontSize: '0.65rem' }} />
                     )}
                     <Box sx={{ ml: 'auto', display: 'flex', alignItems: 'center' }}>
                       <CommentsButton
@@ -224,7 +226,7 @@ export default function CommentsPage() {
                       />
                       {c.url && (
                         <Button size="small" startIcon={<OpenIcon />} onClick={() => navigate(c.url as string)}>
-                          Open
+                          {tr('open')}
                         </Button>
                       )}
                     </Box>

@@ -32,6 +32,9 @@ import ResponsiveDialog from './ResponsiveDialog';
 import api, { extractErrorMessage } from '../config/api';
 import { formatCurrency, formatDate, formatDateTime } from '../utils/enumOptions';
 import { fetchFileUrl, downloadFile } from '../utils/file';
+import { useTranslation, Trans } from 'react-i18next';
+import { enumLabel, roleLabel } from '../utils/enumOptions';
+import type { TFunction } from 'i18next';
 
 interface TimelineEvent {
   timestamp: string;
@@ -90,6 +93,7 @@ export default function QuotationTimelineDialog({
   open: boolean;
   onClose: () => void;
 }) {
+  const { t } = useTranslation('qtimeline');
   const [errorMsg, setErrorMsg] = useState('');
   const [fileUrl, setFileUrl] = useState<string | null>(null);
   const [fileLoading, setFileLoading] = useState(false);
@@ -144,7 +148,7 @@ export default function QuotationTimelineDialog({
   function handleDownloadFile() {
     if (!quotationId || !data?.quotation?.fileName) return;
     downloadFile('quotations', quotationId, data.quotation.fileName).catch(() =>
-      setFileError('Failed to download file')
+      setFileError(t('errDownload'))
     );
   }
 
@@ -171,7 +175,7 @@ export default function QuotationTimelineDialog({
       <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
         <ScheduleIcon />
         <Typography component="span" variant="h6">
-          Quotation Timeline
+          {t('title')}
         </Typography>
         {data && (
           <Chip
@@ -223,7 +227,7 @@ export default function QuotationTimelineDialog({
               >
                 <Box>
                   <Typography variant="caption" color="text.secondary">
-                    Vendor
+                    {t('vendor')}
                   </Typography>
                   <Typography variant="body2" fontWeight={600}>
                     {data.quotation.vendor?.vendorCode} — {data.quotation.vendor?.name}
@@ -231,7 +235,7 @@ export default function QuotationTimelineDialog({
                 </Box>
                 <Box>
                   <Typography variant="caption" color="text.secondary">
-                    Grand Total
+                    {t('grandTotal')}
                   </Typography>
                   <Typography variant="body2" fontWeight={600}>
                     {formatCurrency(data.quotation.grandTotal)}
@@ -239,11 +243,11 @@ export default function QuotationTimelineDialog({
                 </Box>
                 <Box>
                   <Typography variant="caption" color="text.secondary">
-                    Status
+                    {t('status')}
                   </Typography>
                   <Box>
                     <Chip
-                      label={data.quotation.status.replace(/_/g, ' ')}
+                      label={enumLabel(data.quotation.status)}
                       size="small"
                       color="primary"
                     />
@@ -251,7 +255,7 @@ export default function QuotationTimelineDialog({
                 </Box>
                 <Box>
                   <Typography variant="caption" color="text.secondary">
-                    Created By
+                    {t('createdBy')}
                   </Typography>
                   <Typography variant="body2" fontWeight={600}>
                     {data.quotation.createdByUser?.name ?? '—'}
@@ -259,7 +263,7 @@ export default function QuotationTimelineDialog({
                 </Box>
                 <Box>
                   <Typography variant="caption" color="text.secondary">
-                    Created On
+                    {t('createdOn')}
                   </Typography>
                   <Typography variant="body2" fontWeight={600}>
                     {formatDate(data.quotation.createdAt)}
@@ -268,7 +272,7 @@ export default function QuotationTimelineDialog({
                 {data.quotation.fileName && (
                   <Box>
                     <Typography variant="caption" color="text.secondary">
-                      Attachment
+                      {t('attachment')}
                     </Typography>
                     <Typography variant="body2" fontWeight={600}>
                       <AttachFileIcon
@@ -298,10 +302,10 @@ export default function QuotationTimelineDialog({
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
                     <VisibilityIcon fontSize="small" color="primary" />
                     <Typography variant="subtitle2" fontWeight={600}>
-                      View Uploaded Quotation
+                      {t('viewUploaded')}
                     </Typography>
                     <Chip
-                      label={isPdfFile(data.quotation.fileName) ? 'PDF' : isImageFile(data.quotation.fileName) ? 'Image' : 'File'}
+                      label={isPdfFile(data.quotation.fileName) ? t('typePdf') : isImageFile(data.quotation.fileName) ? t('typeImage') : t('typeFile')}
                       size="small"
                       variant="outlined"
                       sx={{ height: 18, fontSize: '0.65rem' }}
@@ -328,7 +332,7 @@ export default function QuotationTimelineDialog({
                           startIcon={<DownloadIcon fontSize="small" />}
                           onClick={handleDownloadFile}
                         >
-                          Download
+                          {t('download')}
                         </Button>
                         <Button
                           size="small"
@@ -336,7 +340,7 @@ export default function QuotationTimelineDialog({
                           startIcon={<VisibilityIcon fontSize="small" />}
                           onClick={() => window.open(fileUrl, '_blank')}
                         >
-                          Open in New Tab
+                          {t('openNewTab')}
                         </Button>
                       </Box>
                       {isImageFile(data.quotation.fileName) && (
@@ -370,21 +374,21 @@ export default function QuotationTimelineDialog({
                         >
                           <iframe
                             src={fileUrl}
-                            title="Quotation PDF"
+                            title={t('pdfTitle')}
                             style={{ width: '100%', height: 500, border: 'none' }}
                           />
                         </Box>
                       )}
                       {!isImageFile(data.quotation.fileName) && !isPdfFile(data.quotation.fileName) && (
                         <Alert severity="info">
-                          File type not previewable in-browser. Use Download or Open in New Tab.
+                          {t('notPreviewable')}
                         </Alert>
                       )}
                     </Box>
                   )}
                   {!fileUrl && !fileLoading && !fileError && (
                     <Typography variant="body2" color="text.secondary">
-                      Click to load the uploaded quotation file.
+                      {t('clickToLoad')}
                     </Typography>
                   )}
                 </AccordionDetails>
@@ -395,14 +399,14 @@ export default function QuotationTimelineDialog({
               <Box sx={{ mb: 2, p: 1.5, bgcolor: 'grey.50', borderRadius: 1, textAlign: 'center' }}>
                 <Typography variant="body2" color="text.secondary">
                   <AttachFileIcon fontSize="small" sx={{ verticalAlign: 'middle', mr: 0.5 }} />
-                  No file uploaded for this quotation
+                  {t('noFile')}
                 </Typography>
               </Box>
             )}
 
             <Divider sx={{ mb: 2 }}>
               <Typography variant="overline" color="text.secondary">
-                Lifecycle ({data.timeline.length} events)
+                {t('lifecycle', { n: data.timeline.length })}
               </Typography>
             </Divider>
 
@@ -477,7 +481,7 @@ export default function QuotationTimelineDialog({
                         }}
                       >
                         <Typography variant="subtitle2" fontWeight={600}>
-                          {event.actionLabel}
+                          {t(`actions.${event.action}`, { defaultValue: event.actionLabel })}
                         </Typography>
                         <Chip
                           label={event.action}
@@ -496,7 +500,7 @@ export default function QuotationTimelineDialog({
                       </Typography>
 
                       <Typography variant="body2" sx={{ mt: 0.5 }}>
-                        <strong>User:</strong> {event.userName}
+                        <strong>{t('user')}</strong> {event.userName}
                         {event.userRole && (
                           <Typography
                             component="span"
@@ -504,7 +508,7 @@ export default function QuotationTimelineDialog({
                             color="text.secondary"
                             sx={{ ml: 0.5 }}
                           >
-                            ({event.userRole.replace(/_/g, ' ')})
+                            ({roleLabel(event.userRole)})
                           </Typography>
                         )}
                       </Typography>
@@ -521,7 +525,7 @@ export default function QuotationTimelineDialog({
                               fontSize: '0.75rem',
                             }}
                           >
-                            {renderDetails(event.details, event.action)}
+                            {renderDetails(event.details, event.action, t)}
                           </Box>
                         )}
                     </Box>
@@ -532,7 +536,7 @@ export default function QuotationTimelineDialog({
 
             {data.timeline.length === 0 && (
               <Typography color="text.secondary" align="center" sx={{ py: 3 }}>
-                No timeline events recorded.
+                {t('noEvents')}
               </Typography>
             )}
           </Box>
@@ -544,7 +548,8 @@ export default function QuotationTimelineDialog({
 
 function renderDetails(
   details: Record<string, unknown>,
-  action: string
+  action: string,
+  t: TFunction
 ): React.ReactNode {
   // For approval/rejection steps, show comments prominently
   if (
@@ -559,7 +564,7 @@ function renderDetails(
     if (text) {
       return (
         <Typography variant="caption">
-          <strong>Comments:</strong> {text}
+          <strong>{t('comments')}</strong> {text}
         </Typography>
       );
     }
@@ -570,7 +575,7 @@ function renderDetails(
     const fileName = details.fileName as string | undefined;
     return (
       <Typography variant="caption">
-        <strong>File attached:</strong> {fileName ?? '—'}
+        <strong>{t('fileAttached')}</strong> {fileName ?? '—'}
       </Typography>
     );
   }
@@ -585,12 +590,12 @@ function renderDetails(
       <Box>
         {vendor && (
           <Typography variant="caption" sx={{ display: 'block' }}>
-            <strong>Vendor:</strong> {vendor.vendorCode} — {vendor.name}
+            <strong>{t('vendorLabel')}</strong> {vendor.vendorCode} — {vendor.name}
           </Typography>
         )}
         {hasFile && (
           <Typography variant="caption" sx={{ display: 'block' }}>
-            <strong>Attachment:</strong> {details.fileName as string}
+            <strong>{t('attachmentLabel')}</strong> {details.fileName as string}
           </Typography>
         )}
       </Box>
@@ -601,7 +606,7 @@ function renderDetails(
   if (action === 'PENDING_APPROVAL') {
     return (
       <Typography variant="caption">
-        <strong>Step:</strong> {details.stepNumber as number} — Awaiting decision
+        <Trans t={t} i18nKey="stepLine" values={{ n: details.stepNumber as number }} components={{ b: <strong /> }} />
       </Typography>
     );
   }

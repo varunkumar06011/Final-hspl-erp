@@ -4,8 +4,9 @@ import { Box, Typography, Card, CardContent, Chip, IconButton, Tooltip, Alert, C
 import { Edit as EditIcon } from '@mui/icons-material';
 import api from '../config/api';
 import { WorkTaskStatus, WorkTaskPriority } from '@hospital-erp/shared';
-import { formatDate } from '../utils/enumOptions';
+import { formatDate, enumLabel } from '../utils/enumOptions';
 
+import { useTranslation } from 'react-i18next';
 interface WorkTask {
   id: string;
   title: string;
@@ -19,11 +20,11 @@ interface WorkTask {
   assignedVendor?: { id: string; name: string } | null;
 }
 
-const COLUMNS: { status: WorkTaskStatus; label: string; color: string }[] = [
-  { status: WorkTaskStatus.PLANNED, label: 'Planned', color: '#90CAF9' },
-  { status: WorkTaskStatus.IN_PROGRESS, label: 'In Progress', color: '#FFB74D' },
-  { status: WorkTaskStatus.DONE, label: 'Done', color: '#81C784' },
-  { status: WorkTaskStatus.CANCELLED, label: 'Cancelled', color: '#E57373' },
+const COLUMNS: { status: WorkTaskStatus; color: string }[] = [
+  { status: WorkTaskStatus.PLANNED, color: '#90CAF9' },
+  { status: WorkTaskStatus.IN_PROGRESS, color: '#FFB74D' },
+  { status: WorkTaskStatus.DONE, color: '#81C784' },
+  { status: WorkTaskStatus.CANCELLED, color: '#E57373' },
 ];
 
 const PRIORITY_COLORS: Record<string, 'default' | 'error' | 'warning' | 'success'> = {
@@ -41,6 +42,7 @@ interface KanbanBoardProps {
 }
 
 export default function KanbanBoard({ onEdit }: KanbanBoardProps) {
+  const { t } = useTranslation('widgets');
   const queryClient = useQueryClient();
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState<string | null>(null);
@@ -62,7 +64,7 @@ export default function KanbanBoard({ onEdit }: KanbanBoardProps) {
       queryClient.invalidateQueries({ queryKey: ['/work-tasks'] });
     },
     onError: () => {
-      setError('Failed to update task status');
+      setError(t('kbFail'));
       setTimeout(() => setError(''), 3000);
     },
   });
@@ -133,7 +135,7 @@ export default function KanbanBoard({ onEdit }: KanbanBoardProps) {
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
                   <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: col.color }} />
                   <Typography variant="subtitle2" fontWeight={600}>
-                    {col.label}
+                    {enumLabel(col.status)}
                   </Typography>
                   <Chip label={colTasks.length} size="small" sx={{ ml: 'auto', height: 20, fontSize: '0.7rem' }} />
                 </Box>
@@ -159,7 +161,7 @@ export default function KanbanBoard({ onEdit }: KanbanBoardProps) {
                           {task.title}
                         </Typography>
                         {onEdit && (
-                          <Tooltip title="Edit">
+                          <Tooltip title={t('kbEdit')}>
                             <IconButton size="small" onClick={() => onEdit(task)} sx={{ p: 0.25 }}>
                               <EditIcon sx={{ fontSize: 16 }} />
                             </IconButton>
@@ -182,7 +184,7 @@ export default function KanbanBoard({ onEdit }: KanbanBoardProps) {
 
                       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 1 }}>
                         <Typography variant="caption" color="text.secondary">
-                          {task.assignedToUser?.name ?? task.assignedVendor?.name ?? 'Unassigned'}
+                          {task.assignedToUser?.name ?? task.assignedVendor?.name ?? t('kbUnassigned')}
                         </Typography>
                         <Typography variant="caption" color="text.secondary">
                           {formatDate(task.scheduledDate)}
@@ -195,7 +197,7 @@ export default function KanbanBoard({ onEdit }: KanbanBoardProps) {
                 {colTasks.length === 0 && (
                   <Box sx={{ textAlign: 'center', py: 3 }}>
                     <Typography variant="caption" color="text.secondary">
-                      Drag tasks here
+                      {t('kbDrag')}
                     </Typography>
                   </Box>
                 )}

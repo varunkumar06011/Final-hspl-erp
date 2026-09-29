@@ -17,12 +17,14 @@ import {
 } from '@mui/icons-material';
 import { parseNaturalQuery, EXAMPLE_QUERIES, type ParsedQuery } from '../utils/nlQueryParser';
 
+import { useTranslation } from 'react-i18next';
 interface NLQueryBarProps {
   open: boolean;
   onClose: () => void;
 }
 
 export default function NLQueryBar({ open, onClose }: NLQueryBarProps) {
+  const { t } = useTranslation('widgets');
   const [query, setQuery] = useState('');
   const [parsed, setParsed] = useState<ParsedQuery | null>(null);
   const [error, setError] = useState('');
@@ -51,7 +53,7 @@ export default function NLQueryBar({ open, onClose }: NLQueryBarProps) {
       setError('');
     } else {
       setParsed(null);
-      setError('Could not understand. Try mentioning a type: PO, invoice, payment, vendor, issue, work task…');
+      setError(t('nlError'));
     }
   };
 
@@ -108,10 +110,10 @@ export default function NLQueryBar({ open, onClose }: NLQueryBarProps) {
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, p: 2, pb: 1 }}>
             <AutoAwesomeIcon color="primary" />
             <Typography variant="h6" fontWeight={600} sx={{ fontSize: '1.1rem' }}>
-              Ask ERP
+              {t('nlTitle')}
             </Typography>
             <Typography variant="caption" color="text.secondary" sx={{ ml: 'auto' }}>
-              Natural Language Query
+              {t('nlSub')}
             </Typography>
             <IconButton size="small" onClick={onClose}>
               <CloseIcon fontSize="small" />
@@ -165,7 +167,7 @@ export default function NLQueryBar({ open, onClose }: NLQueryBarProps) {
                 }}
               >
                 <Typography variant="body2" fontWeight={600} color="success.main">
-                  Understood:
+                  {t('nlUnderstood')}
                 </Typography>
                 <Typography variant="body2" color="text.primary">
                   {parsed.summary}
@@ -205,7 +207,7 @@ export default function NLQueryBar({ open, onClose }: NLQueryBarProps) {
           {!query && (
             <Box sx={{ p: 2, pt: 1 }}>
               <Typography variant="overline" color="text.secondary">
-                Try these examples:
+                {t('nlExamples')}
               </Typography>
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, mt: 0.5 }}>
                 {EXAMPLE_QUERIES.slice(0, 5).map((ex) => (

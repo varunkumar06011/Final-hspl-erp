@@ -18,7 +18,9 @@ import {
   type NotificationPermissionState,
 } from '../config/notifications';
 
+import { useTranslation } from 'react-i18next';
 export default function NotificationPermissionPrompt() {
+  const { t } = useTranslation('widgets');
   const [supported, setSupported] = useState(true);
   const [permission, setPermission] = useState<NotificationPermissionState>('default');
   const [subscribed, setSubscribed] = useState(false);
@@ -52,9 +54,9 @@ export default function NotificationPermissionPrompt() {
     if (result.success) {
       setSubscribed(true);
       setPermission('granted');
-      setSnack({ open: true, message: 'Notifications enabled! You will receive approval alerts.', severity: 'success' });
+      setSnack({ open: true, message: t('npOn'), severity: 'success' });
     } else {
-      setSnack({ open: true, message: result.error || 'Failed to enable notifications', severity: 'error' });
+      setSnack({ open: true, message: result.error || t('npOnFail'), severity: 'error' });
       setPermission(getPermissionState());
     }
   };
@@ -66,9 +68,9 @@ export default function NotificationPermissionPrompt() {
 
     if (result.success) {
       setSubscribed(false);
-      setSnack({ open: true, message: 'Notifications disabled.', severity: 'info' });
+      setSnack({ open: true, message: t('npOff'), severity: 'info' });
     } else {
-      setSnack({ open: true, message: result.error || 'Failed to disable notifications', severity: 'error' });
+      setSnack({ open: true, message: result.error || t('npOffFail'), severity: 'error' });
     }
   };
 
@@ -76,7 +78,7 @@ export default function NotificationPermissionPrompt() {
     return (
       <Alert severity="warning" icon={<NotificationsOffIcon />}>
         <Typography variant="body2">
-          Push notifications are not supported in this browser. For iOS, add this site to your Home Screen first.
+          {t('npUnsupported')}
         </Typography>
       </Alert>
     );
@@ -86,7 +88,7 @@ export default function NotificationPermissionPrompt() {
     return (
       <Alert severity="error" icon={<NotificationsOffIcon />}>
         <Typography variant="body2">
-          Notification permission was denied. To re-enable, go to your browser settings and allow notifications for this site.
+          {t('npDenied')}
         </Typography>
       </Alert>
     );
@@ -97,7 +99,7 @@ export default function NotificationPermissionPrompt() {
       <Box>
         <Alert severity="success" icon={<NotificationsActiveIcon />} sx={{ mb: 1 }}>
           <Typography variant="body2">
-            Notifications are enabled. You will receive approval alerts even when this site is closed.
+            {t('npEnabled')}
           </Typography>
         </Alert>
         <Button
@@ -108,7 +110,7 @@ export default function NotificationPermissionPrompt() {
           disabled={loading}
           sx={{ mt: 1 }}
         >
-          {loading ? <CircularProgress size={20} /> : 'Disable Notifications'}
+          {loading ? <CircularProgress size={20} /> : t('npDisable')}
         </Button>
         <Snackbar
           open={snack.open}
@@ -131,7 +133,7 @@ export default function NotificationPermissionPrompt() {
     <Box>
       <Alert severity="info" icon={<NotificationsActiveIcon />} sx={{ mb: 1 }}>
         <Typography variant="body2" sx={{ mb: 1 }}>
-          Enable notifications to receive approval alerts even when you're not using the website.
+          {t('npPrompt')}
         </Typography>
       </Alert>
       <Button
@@ -142,7 +144,7 @@ export default function NotificationPermissionPrompt() {
         startIcon={loading ? <CircularProgress size={20} color="inherit" /> : <NotificationsActiveIcon />}
         sx={{ mt: 1 }}
       >
-        Enable Notifications
+        {t('npEnable')}
       </Button>
       <Snackbar
         open={snack.open}

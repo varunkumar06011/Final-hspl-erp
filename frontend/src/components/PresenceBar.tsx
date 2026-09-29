@@ -2,6 +2,7 @@ import { Avatar, Box, Tooltip, Typography, Fade } from '@mui/material';
 import { usePresence } from '../hooks/usePresence';
 import { UserRole } from '@hospital-erp/shared';
 
+import { useTranslation } from 'react-i18next';
 const ROLE_COLORS: Record<string, string> = {
   [UserRole.SUPERVISOR]: '#FF9800',
   [UserRole.ACCOUNTANT]: '#2196F3',
@@ -33,13 +34,14 @@ function getInitials(name: string): string {
  * Floating bar at the bottom-right of the screen.
  */
 export default function PresenceBar() {
+  const { t } = useTranslation('widgets');
   const { viewers } = usePresence();
 
   if (viewers.length === 0) return null;
 
   const label = viewers.length === 1
-    ? `${viewers[0].userName} is also viewing this page`
-    : `${viewers.length} others are also viewing this page`;
+    ? t('pbOne', { name: viewers[0].userName })
+    : t('pbMany', { n: viewers.length });
 
   return (
     <Fade in={viewers.length > 0}>

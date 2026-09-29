@@ -12,6 +12,7 @@ import voucherTemplate from '../vochuer.png';
 import receiptVoucherTemplate from '../Receipt.png';
 import journalVoucherTemplate from '../Journal voucher.png';
 
+import { useTranslation } from 'react-i18next';
 export interface VoucherEntry {
   ledgerId: string;
   ledgerName: string;
@@ -374,6 +375,7 @@ export function usePrefetchVoucher() {
  * Used by the dashboard payment-detail dialogs and the vouchers page.
  */
 export function VoucherPreviewDialog({ voucherId, onClose }: { voucherId: string | null; onClose: () => void }) {
+  const { t } = useTranslation('vouchers');
   const { data: voucher, isLoading, isError } = useQuery<Voucher>({
     ...voucherQueryOptions(voucherId ?? ''),
     enabled: !!voucherId,
@@ -394,10 +396,10 @@ export function VoucherPreviewDialog({ voucherId, onClose }: { voucherId: string
   return (
     <Dialog open={!!voucherId} onClose={onClose} maxWidth="lg" fullWidth
       sx={{ '& .MuiDialog-paper': { m: { xs: 0.5, sm: 4 }, width: { xs: 'calc(100% - 8px)' }, maxHeight: { xs: 'calc(100% - 16px)' } } }}>
-      <DialogTitle sx={{ py: { xs: 1, sm: 2 } }}>{voucher?.voucherType === VoucherType.RECEIPT ? 'Receipt Voucher Preview' : voucher?.voucherType === VoucherType.JOURNAL ? 'Journal Voucher Preview' : 'Payment Voucher Preview'}</DialogTitle>
+      <DialogTitle sx={{ py: { xs: 1, sm: 2 } }}>{voucher?.voucherType === VoucherType.RECEIPT ? t('previewReceipt') : voucher?.voucherType === VoucherType.JOURNAL ? t('previewJournal') : t('previewPayment')}</DialogTitle>
       <DialogContent sx={{ bgcolor: '#eef1f5', p: { xs: 0.5, sm: 2 } }}>
         {isLoading && <Box sx={{ py: 8, textAlign: 'center' }}><CircularProgress /></Box>}
-        {isError && <Alert severity="error">Unable to load the saved voucher for printing.</Alert>}
+        {isError && <Alert severity="error">{t('printLoadFail')}</Alert>}
         {voucher && (
           voucher.voucherType === VoucherType.RECEIPT
             ? <ReceiptVoucherPrintPreview voucher={voucher} template={receiptVoucherTemplate} />
@@ -408,20 +410,20 @@ export function VoucherPreviewDialog({ voucherId, onClose }: { voucherId: string
       </DialogContent>
       <DialogActions>
         {signMutation.isError && <Alert severity="error" sx={{ mr: 'auto', py: 0.2 }}>{extractErrorMessage(signMutation.error)}</Alert>}
-        <Button onClick={onClose}>Close</Button>
+        <Button onClick={onClose}>{t('printClose')}</Button>
         {canSign && voucher && (
           <Button variant="outlined" startIcon={<DrawIcon />} onClick={() => setSignOpen(true)}>
-            {voucher.signatureData ? 'Re-sign' : 'Sign'}
+            {voucher.signatureData ? t('reSign') : t('sign')}
           </Button>
         )}
-        <Button variant="contained" startIcon={<PrintIcon />} disabled={!voucher} onClick={printVoucherSheet}>Print Voucher</Button>
+        <Button variant="contained" startIcon={<PrintIcon />} disabled={!voucher} onClick={printVoucherSheet}>{t('printBtn')}</Button>
       </DialogActions>
       <SignaturePad
         open={signOpen}
         saving={signMutation.isPending}
         onClose={() => setSignOpen(false)}
         onSave={(dataUrl) => signMutation.mutate(dataUrl)}
-        title={`Sign ${voucher?.jvNumber ?? 'Voucher'}`}
+        title={t('signTitle', { n: voucher?.jvNumber ?? t('voucherWord') })}
       />
     </Dialog>
   );

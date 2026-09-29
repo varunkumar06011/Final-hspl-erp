@@ -1,0 +1,17 @@
+{
+  "support": "Support",
+  "intro": "Need help with the Hospital Construction ERP? Reach the VGRAND Health Care support team through either channel below, or contact your project administrator for account access issues.",
+  "email": "Email",
+  "phoneWhatsapp": "Phone / WhatsApp",
+  "beforeYouContactUs": "Before you contact us",
+  "legal": "Legal",
+  "privacyPolicy": "Privacy Policy",
+  "termsConditions": "Terms & Conditions",
+  "tip1": "For account access, role, or permission issues, contact your project administrator first — they can reset your PIN or adjust your access.",
+  "tip2": "Include your registered phone number and project name so we can locate your account quickly.",
+  "tip3": "For OTP delivery problems, wait a minute and use \"Resend OTP\" on the sign-in screen before reaching out.",
+  "legalIntro": "Please also review our",
+  "and": "and",
+  "placeholderNote": "This page will be built with live API data when its phase is implemented.",
+  "placeholderTitle": "{{title}} module — coming in the next build step"
+}

@@ -2,32 +2,34 @@ import EntityPage from '../components/EntityPage';
 import { ContractType, ContractStatus } from '@hospital-erp/shared';
 import { enumToOptions, formatCurrency, formatDate, STATUS_COLORS } from '../utils/enumOptions';
 
+import { useTranslation } from 'react-i18next';
 export default function ContractsPage() {
+  const { t } = useTranslation('contracts');
   return (
     <EntityPage
-      title="Contracts & Work Orders"
+      title={t('title')}
       endpoint="/contracts"
-      entityName="Contract"
+      entityName={t('entity')}
       entityType="CONTRACT"
       columns={[
-        { key: 'vendor', label: 'Vendor', render: (r) => (r.vendor as any)?.name ?? '—' },
-        { key: 'type', label: 'Type' },
-        { key: 'startDate', label: 'Start', render: (r) => formatDate(r.startDate) },
-        { key: 'endDate', label: 'End', render: (r) => formatDate(r.endDate) },
-        { key: 'value', label: 'Value', render: (r) => formatCurrency(r.value) },
-        { key: 'status', label: 'Status' },
+        { key: 'vendor', label: t('vendor'), render: (r) => (r.vendor as any)?.name ?? '—' },
+        { key: 'type', label: t('type') },
+        { key: 'startDate', label: t('start'), render: (r) => formatDate(r.startDate) },
+        { key: 'endDate', label: t('end'), render: (r) => formatDate(r.endDate) },
+        { key: 'value', label: t('value'), render: (r) => formatCurrency(r.value) },
+        { key: 'status', label: t('status') },
       ]}
       statusKey="status"
       statusColors={STATUS_COLORS}
       fields={[
-        { name: 'vendorId', label: 'Vendor', type: 'select', required: true, optionsEndpoint: '/vendors' },
-        { name: 'type', label: 'Contract Type', type: 'select', required: true, options: enumToOptions(ContractType), defaultValue: ContractType.FIXED_PRICE, dropdownType: 'CONTRACT_TYPE' },
-        { name: 'startDate', label: 'Start Date', type: 'date', required: true },
-        { name: 'endDate', label: 'End Date', type: 'date' },
-        { name: 'value', label: 'Contract Value', type: 'number', required: true },
-        { name: 'advancePercent', label: 'Advance %', type: 'number', defaultValue: 0 },
-        { name: 'retentionPercent', label: 'Retention %', type: 'number', defaultValue: 0 },
-        { name: 'status', label: 'Status', type: 'select', options: enumToOptions(ContractStatus), defaultValue: ContractStatus.DRAFT },
+        { name: 'vendorId', label: t('vendor'), type: 'select', required: true, optionsEndpoint: '/vendors' },
+        { name: 'type', label: t('contractType'), type: 'select', required: true, options: enumToOptions(ContractType), defaultValue: ContractType.FIXED_PRICE, dropdownType: 'CONTRACT_TYPE' },
+        { name: 'startDate', label: t('startDate'), type: 'date', required: true },
+        { name: 'endDate', label: t('endDate'), type: 'date' },
+        { name: 'value', label: t('contractValue'), type: 'number', required: true },
+        { name: 'advancePercent', label: t('advance'), type: 'number', defaultValue: 0 },
+        { name: 'retentionPercent', label: t('retention'), type: 'number', defaultValue: 0 },
+        { name: 'status', label: t('status'), type: 'select', options: enumToOptions(ContractStatus), defaultValue: ContractStatus.DRAFT },
       ]}
       buildPayload={(form) => ({
         vendorId: form.vendorId,

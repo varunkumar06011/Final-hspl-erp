@@ -20,7 +20,8 @@
     "lint": "eslint . --ext .ts,.tsx",
     "format": "prettier --write .",
     "seed": "npm run seed --workspace backend",
-    "test": "npm run test --workspace backend"
+    "test": "npm run test --workspace backend",
+    "i18n:check": "npm run i18n:check -w @hospital-erp/frontend"
   },
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^7.8.0",

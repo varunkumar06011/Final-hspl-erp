@@ -21,6 +21,8 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { extractErrorMessage } from '../config/api';
 import { downloadFile } from '../utils/file';
+import { useTranslation } from 'react-i18next';
+import { enumLabel } from '../utils/enumOptions';
 
 interface AttachmentUploadProps {
   entityType: string;
@@ -33,6 +35,7 @@ export default function AttachmentUpload({
   entityId,
   size = 'small',
 }: AttachmentUploadProps) {
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const fileRef = useRef<HTMLInputElement>(null);
   const [error, setError] = useState('');
@@ -83,12 +86,12 @@ export default function AttachmentUpload({
 
   const handleFileSelect = (file: File) => {
     if (!entityId) {
-      setError('Save the record first before uploading attachments');
+      setError(t('shared.errSaveFirst'));
       return;
     }
     const allowedTypes = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'];
     if (!allowedTypes.includes(file.type) || file.size > 50 * 1024 * 1024) {
-      setError('File must be a supported document or image smaller than 50 MB');
+      setError(t('shared.errFileType'));
       return;
     }
     uploadMutation.mutate({ file, description: description.trim() || undefined });
@@ -100,10 +103,10 @@ export default function AttachmentUpload({
     <Box>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
         <Typography variant={size === 'small' ? 'body2' : 'body1'} fontWeight={600}>
-          Attachments / Proof
+          {t('shared.attachments')}
         </Typography>
         {!entityId && (
-          <Chip label="Save record first to upload" size="small" color="warning" />
+          <Chip label={t('shared.saveFirstChip')} size="small" color="warning" />
         )}
       </Box>
 
@@ -132,7 +135,7 @@ export default function AttachmentUpload({
           onClick={() => fileRef.current?.click()}
           disabled={!entityId || uploadMutation.isPending}
         >
-          {uploadMutation.isPending ? <CircularProgress size={16} /> : 'Upload'}
+          {uploadMutation.isPending ? <CircularProgress size={16} /> : t('shared.upload')}
         </Button>
       </Box>
 
@@ -147,13 +150,13 @@ export default function AttachmentUpload({
                 {isImage ? <ImageIcon fontSize="small" color="primary" /> : <AttachFileIcon fontSize="small" />}
                 <ListItemText
                   primary={String(row.fileName)}
-                  secondary={`${String(row.fileType)} • ${row.description ? String(row.description) : 'No description'} • ${(row.user as any)?.name ?? 'Unknown'}`}
+                  secondary={`${enumLabel(row.fileType)} • ${row.description ? String(row.description) : t('shared.noDescription')} • ${(row.user as any)?.name ?? t('shared.unknown')}`}
                   sx={{ ml: 1 }}
                 />
                 <ListItemSecondaryAction>
                   <IconButton
                     size="small"
-                    onClick={() => downloadFile('attachments', row.id as string, String(row.fileName)).catch(() => setError('Failed to download file'))}
+                    onClick={() => downloadFile('attachments', row.id as string, String(row.fileName)).catch(() => setError(t('shared.errDownload')))}
                   >
                     <AttachFileIcon fontSize="small" />
                   </IconButton>
@@ -172,7 +175,7 @@ export default function AttachmentUpload({
       ) : (
         entityId && (
           <Typography variant="body2" color="text.secondary">
-            No attachments yet
+            {t('shared.noAttachments')}
           </Typography>
         )
       )}

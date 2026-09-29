@@ -31,11 +31,12 @@ import {
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { InspectionStatus } from '@hospital-erp/shared';
-import { enumToOptions, formatDate, STATUS_COLORS } from '../utils/enumOptions';
+import { enumToOptions, formatDate, STATUS_COLORS, enumLabel } from '../utils/enumOptions';
 import api, { extractErrorMessage } from '../config/api';
 import ResponsiveTable from '../components/ResponsiveTable';
 import RefreshButton from '../components/RefreshButton';
 
+import { useTranslation } from 'react-i18next';
 interface InspectionRow {
   id: string;
   name: string;
@@ -49,6 +50,7 @@ interface InspectionRow {
 }
 
 export default function InspectionsPage() {
+  const { t } = useTranslation('inspections');
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(20);
   const [search, setSearch] = useState('');
@@ -85,7 +87,7 @@ export default function InspectionsPage() {
       setCreateOpen(false);
       setEditingId(null);
       setForm({});
-      setSuccessMsg(editingId ? 'Inspection updated.' : 'Inspection created.');
+      setSuccessMsg(editingId ? t('okUpdated') : t('okCreated'));
       setTimeout(() => setSuccessMsg(''), 3000);
     },
     onError: (err: unknown) => setError(extractErrorMessage(err)),
@@ -95,7 +97,7 @@ export default function InspectionsPage() {
     mutationFn: async (id: string) => { await api.delete(`/inspections/${id}`); },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/inspections'] });
-      setSuccessMsg('Inspection deleted.');
+      setSuccessMsg(t('okDeleted'));
       setTimeout(() => setSuccessMsg(''), 3000);
     },
     onError: (err: unknown) => setError(extractErrorMessage(err)),
@@ -127,10 +129,10 @@ export default function InspectionsPage() {
   return (
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap' }}>
-        <Typography variant="h5" fontWeight={600} sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' } }}>Inspections</Typography>
+        <Typography variant="h5" fontWeight={600} sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' } }}>{t('title')}</Typography>
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', justifyContent: { xs: 'flex-end', md: 'flex-end' }, width: { xs: '100%', md: 'auto' } }}>
           <RefreshButton onClick={() => refetch()} />
-          <Button variant="contained" startIcon={<AddIcon />} onClick={openCreate}>New Inspection</Button>
+          <Button variant="contained" startIcon={<AddIcon />} onClick={openCreate}>{t('newInspection')}</Button>
         </Box>
       </Box>
 
@@ -141,14 +143,14 @@ export default function InspectionsPage() {
         <Box sx={{ p: 2, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
           <TextField
             size="small"
-            placeholder="Search inspections..."
+            placeholder={t('search')}
             value={search}
             onChange={(e) => { setSearch(e.target.value); setPage(0); }}
             InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> }}
             sx={{ width: { xs: '100%', sm: 300 } }}
           />
-          <TextField select size="small" label="Status" value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(0); }} sx={{ width: 150 }}>
-            <MenuItem value="">All</MenuItem>
+          <TextField select size="small" label={t('status')} value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(0); }} sx={{ width: 150 }}>
+            <MenuItem value="">{t('all')}</MenuItem>
             {Object.values(InspectionStatus).map((s) => <MenuItem key={s} value={s}>{s.replace(/_/g, ' ')}</MenuItem>)}
           </TextField>
         </Box>
@@ -158,32 +160,32 @@ export default function InspectionsPage() {
           <Table size="small">
             <TableHead>
               <TableRow>
-                <TableCell sx={{ fontWeight: 600 }}>Name</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Date</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Scheduled Date</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Status</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Completed</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Inspector</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Actions</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>{t('name')}</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>{t('date')}</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>{t('scheduledDate')}</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>{t('status')}</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>{t('completed')}</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>{t('inspector')}</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>{t('actions')}</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {isLoading ? (
                 <TableRow><TableCell colSpan={7} align="center" sx={{ py: 4 }}><CircularProgress size={32} /></TableCell></TableRow>
               ) : rows.length === 0 ? (
-                <TableRow><TableCell colSpan={7} align="center" sx={{ py: 4 }}><Typography color="text.secondary">No inspections found</Typography></TableCell></TableRow>
+                <TableRow><TableCell colSpan={7} align="center" sx={{ py: 4 }}><Typography color="text.secondary">{t('none')}</Typography></TableCell></TableRow>
               ) : (
                 rows.map((row) => (
                   <TableRow key={row.id} hover>
-                    <TableCell data-label="Name">{row.name}</TableCell>
-                    <TableCell data-label="Date">{formatDate(row.date)}</TableCell>
-                    <TableCell data-label="Scheduled Date">{row.scheduledDate ? formatDate(row.scheduledDate) : '—'}</TableCell>
-                    <TableCell data-label="Status"><Chip label={row.status.replace(/_/g, ' ')} size="small" color={STATUS_COLORS[row.status] ?? 'default'} /></TableCell>
-                    <TableCell data-label="Completed">{row.completedDate ? formatDate(row.completedDate) : '—'}</TableCell>
-                    <TableCell data-label="Inspector">{row.inspector?.name ?? '—'}</TableCell>
-                    <TableCell data-label="Actions">
+                    <TableCell data-label={t('name')}>{row.name}</TableCell>
+                    <TableCell data-label={t('date')}>{formatDate(row.date)}</TableCell>
+                    <TableCell data-label={t('scheduledDate')}>{row.scheduledDate ? formatDate(row.scheduledDate) : '—'}</TableCell>
+                    <TableCell data-label={t('status')}><Chip label={enumLabel(row.status)} size="small" color={STATUS_COLORS[row.status] ?? 'default'} /></TableCell>
+                    <TableCell data-label={t('completed')}>{row.completedDate ? formatDate(row.completedDate) : '—'}</TableCell>
+                    <TableCell data-label={t('inspector')}>{row.inspector?.name ?? '—'}</TableCell>
+                    <TableCell data-label={t('actions')}>
                       <IconButton size="small" onClick={() => openEdit(row)}><EditIcon fontSize="small" /></IconButton>
-                      <IconButton size="small" color="error" onClick={() => { if (confirm('Delete this inspection?')) deleteMutation.mutate(row.id); }}><DeleteIcon fontSize="small" /></IconButton>
+                      <IconButton size="small" color="error" onClick={() => { if (confirm(t('confirmDelete'))) deleteMutation.mutate(row.id); }}><DeleteIcon fontSize="small" /></IconButton>
                     </TableCell>
                   </TableRow>
                 ))
@@ -207,12 +209,12 @@ export default function InspectionsPage() {
 
       {/* Create/Edit Dialog */}
       <ResponsiveDialog open={createOpen} onClose={() => { setCreateOpen(false); setEditingId(null); }} maxWidth="sm" fullWidth>
-        <DialogTitle>{editingId ? 'Edit Inspection' : 'New Inspection'}</DialogTitle>
+        <DialogTitle>{editingId ? t('edit') : t('newInspection')}</DialogTitle>
         <DialogContent>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
-            <TextField label="Name" required value={String(form.name ?? '')} onChange={(e) => setForm({ ...form, name: e.target.value })} fullWidth size="small" />
+            <TextField label={t('name')} required value={String(form.name ?? '')} onChange={(e) => setForm({ ...form, name: e.target.value })} fullWidth size="small" />
             <TextField
-              label="Date"
+              label={t('date')}
               type="date"
               value={String(form.date ?? '')}
               onChange={(e) => setForm({ ...form, date: e.target.value })}
@@ -221,7 +223,7 @@ export default function InspectionsPage() {
               InputLabelProps={{ shrink: true }}
             />
             <TextField
-              label="Scheduled Date"
+              label={t('scheduledDate')}
               type="date"
               value={String(form.scheduledDate ?? '')}
               onChange={(e) => setForm({ ...form, scheduledDate: e.target.value })}
@@ -233,7 +235,7 @@ export default function InspectionsPage() {
               <>
                 <TextField
                   select
-                  label="Status"
+                  label={t('status')}
                   value={String(form.status ?? InspectionStatus.SCHEDULED)}
                   onChange={(e) => setForm({ ...form, status: e.target.value })}
                   fullWidth
@@ -241,18 +243,18 @@ export default function InspectionsPage() {
                 >
                   {enumToOptions(InspectionStatus).map((o) => <MenuItem key={o.value} value={o.value}>{o.label}</MenuItem>)}
                 </TextField>
-                <TextField label="Corrective Action" value={String(form.correctiveAction ?? '')} onChange={(e) => setForm({ ...form, correctiveAction: e.target.value })} fullWidth size="small" multiline rows={2} />
+                <TextField label={t('correctiveAction')} value={String(form.correctiveAction ?? '')} onChange={(e) => setForm({ ...form, correctiveAction: e.target.value })} fullWidth size="small" multiline rows={2} />
               </>
             )}
           </Box>
         </DialogContent>
         <DialogActions sx={{ flexWrap: "wrap", gap: 1 }}>
-          <Button onClick={() => { setCreateOpen(false); setEditingId(null); }}>Cancel</Button>
+          <Button onClick={() => { setCreateOpen(false); setEditingId(null); }}>{t('cancel')}</Button>
           <Button
             variant="contained"
             onClick={() => {
               setError('');
-              if (!form.name) { setError('Name is required'); return; }
+              if (!form.name) { setError(t('errName')); return; }
               createMutation.mutate({
                 name: form.name,
                 date: form.date || undefined,
@@ -262,7 +264,7 @@ export default function InspectionsPage() {
             }}
             disabled={!form.name || createMutation.isPending}
           >
-            {createMutation.isPending ? <CircularProgress size={20} /> : editingId ? 'Update' : 'Create'}
+            {createMutation.isPending ? <CircularProgress size={20} /> : editingId ? t('update') : t('create')}
           </Button>
         </DialogActions>
       </ResponsiveDialog>

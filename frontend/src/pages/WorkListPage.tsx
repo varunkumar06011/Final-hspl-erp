@@ -52,6 +52,7 @@ import { useAuthStore } from '../stores/authStore';
 import { useUrlFilters } from '../hooks/useUrlFilters';
 import KanbanBoard from '../components/KanbanBoard';
 
+import { useTranslation } from 'react-i18next';
 interface WorkTaskQuotationLink {
   id: string;
   quotation: {
@@ -122,6 +123,7 @@ const EMPTY_FORM: Record<string, unknown> = {
 };
 
 export default function WorkListPage() {
+  const { t: tr } = useTranslation('worklist');
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(20);
   const [search, setSearch] = useState('');
@@ -182,7 +184,7 @@ export default function WorkListPage() {
       setFormOpen(false);
       setEditingId(null);
       setForm({});
-      setSuccessMsg(editingId ? 'Work item updated.' : 'Work item created.');
+      setSuccessMsg(editingId ? tr('okUpdated') : tr('okCreated'));
       setTimeout(() => setSuccessMsg(''), 3000);
     },
     onError: (err: unknown) => setError(extractErrorMessage(err)),
@@ -193,7 +195,7 @@ export default function WorkListPage() {
     onSuccess: () => {
       invalidateAll();
       setDeleteId(null);
-      setSuccessMsg('Work item deleted.');
+      setSuccessMsg(tr('okDeleted'));
       setTimeout(() => setSuccessMsg(''), 3000);
     },
     onError: (err: unknown) => setError(extractErrorMessage(err)),
@@ -230,11 +232,11 @@ export default function WorkListPage() {
   function handleSave() {
     const title = String(form.title ?? '').trim();
     if (!title) {
-      setError('Title is required');
+      setError(tr('errTitle'));
       return;
     }
     if (!form.scheduledDate) {
-      setError('Scheduled date is required');
+      setError(tr('errDate'));
       return;
     }
     setError('');
@@ -263,15 +265,15 @@ export default function WorkListPage() {
   return (
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1, mb: 2 }}>
-        <Typography variant="h5">Work</Typography>
+        <Typography variant="h5">{tr('title')}</Typography>
         <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
           <Box sx={{ display: 'flex', border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
-            <Tooltip title="Table view">
+            <Tooltip title={tr('tableView')}>
               <IconButton size="small" onClick={() => setViewMode('table')} color={viewMode === 'table' ? 'primary' : 'default'} sx={{ borderRadius: '4px 0 0 4px' }}>
                 <TableIcon fontSize="small" />
               </IconButton>
             </Tooltip>
-            <Tooltip title="Kanban board">
+            <Tooltip title={tr('kanbanBoard')}>
               <IconButton size="small" onClick={() => setViewMode('kanban')} color={viewMode === 'kanban' ? 'primary' : 'default'} sx={{ borderRadius: '0 4px 4px 0' }}>
                 <KanbanIcon fontSize="small" />
               </IconButton>
@@ -279,7 +281,7 @@ export default function WorkListPage() {
           </Box>
           <RefreshButton onClick={() => refetch()} />
           {canManageWork && (
-            <Button variant="contained" startIcon={<AddIcon />} onClick={openCreate}>Add Work</Button>
+            <Button variant="contained" startIcon={<AddIcon />} onClick={openCreate}>{tr('addWork')}</Button>
           )}
         </Box>
       </Box>
@@ -299,7 +301,7 @@ export default function WorkListPage() {
       <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 2 }}>
         <TextField
           size="small"
-          placeholder="Search work…"
+          placeholder={tr('search')}
           value={search}
           onChange={(e) => { setSearch(e.target.value); setPage(0); }}
           InputProps={{
@@ -307,16 +309,16 @@ export default function WorkListPage() {
           }}
           sx={{ flex: 1, minWidth: 180 }}
         />
-        <TextField select size="small" label="Status" value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(0); }} sx={{ minWidth: 130 }}>
-          <MenuItem value="">All</MenuItem>
+        <TextField select size="small" label={tr('status')} value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(0); }} sx={{ minWidth: 130 }}>
+          <MenuItem value="">{tr('all')}</MenuItem>
           {enumToOptions(WorkTaskStatus).map((o) => <MenuItem key={o.value} value={o.value}>{o.label}</MenuItem>)}
         </TextField>
-        <TextField select size="small" label="Type" value={typeFilter} onChange={(e) => { setTypeFilter(e.target.value); setPage(0); }} sx={{ minWidth: 130 }}>
-          <MenuItem value="">All</MenuItem>
+        <TextField select size="small" label={tr('type')} value={typeFilter} onChange={(e) => { setTypeFilter(e.target.value); setPage(0); }} sx={{ minWidth: 130 }}>
+          <MenuItem value="">{tr('all')}</MenuItem>
           {enumToOptions(WorkTaskType).map((o) => <MenuItem key={o.value} value={o.value}>{o.label}</MenuItem>)}
         </TextField>
-        <TextField select size="small" label="Priority" value={priorityFilter} onChange={(e) => { setPriorityFilter(e.target.value); setPage(0); }} sx={{ minWidth: 130 }}>
-          <MenuItem value="">All</MenuItem>
+        <TextField select size="small" label={tr('priority')} value={priorityFilter} onChange={(e) => { setPriorityFilter(e.target.value); setPage(0); }} sx={{ minWidth: 130 }}>
+          <MenuItem value="">{tr('all')}</MenuItem>
           {enumToOptions(WorkTaskPriority).map((o) => <MenuItem key={o.value} value={o.value}>{o.label}</MenuItem>)}
         </TextField>
       </Box>
@@ -327,43 +329,43 @@ export default function WorkListPage() {
             <Table size="small">
               <TableHead>
                 <TableRow>
-                  <TableCell>Title</TableCell>
-                  <TableCell>Type</TableCell>
-                  <TableCell>Priority</TableCell>
-                  <TableCell>Status</TableCell>
-                  <TableCell>Assigned</TableCell>
-                  <TableCell>Scheduled</TableCell>
-                  <TableCell>Quotations</TableCell>
+                  <TableCell>{tr('title2')}</TableCell>
+                  <TableCell>{tr('type')}</TableCell>
+                  <TableCell>{tr('priority')}</TableCell>
+                  <TableCell>{tr('status')}</TableCell>
+                  <TableCell>{tr('assigned')}</TableCell>
+                  <TableCell>{tr('scheduled')}</TableCell>
+                  <TableCell>{tr('quotations')}</TableCell>
                   <TableCell>PO</TableCell>
-                  <TableCell align="right">Actions</TableCell>
+                  <TableCell align="right">{tr('actions')}</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
                 {isLoading ? (
                   <TableRow><TableCell colSpan={9} sx={{ textAlign: 'center', py: 4 }}><CircularProgress size={24} /></TableCell></TableRow>
                 ) : rows.length === 0 ? (
-                  <TableRow><TableCell colSpan={9} sx={{ textAlign: 'center', py: 4, color: 'text.secondary' }}>No work items yet.</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={9} sx={{ textAlign: 'center', py: 4, color: 'text.secondary' }}>{tr('none')}</TableCell></TableRow>
                 ) : rows.map((task) => (
                   <TableRow key={task.id} hover>
-                    <TableCell data-label="Title">
+                    <TableCell data-label={tr('title2')}>
                       <Typography variant="body2" fontWeight={600}>{task.title}</Typography>
                       {task.description && (
                         <Typography variant="caption" color="text.secondary" sx={{ display: 'block', maxWidth: 280, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{task.description}</Typography>
                       )}
                     </TableCell>
-                    <TableCell data-label="Type">{task.type.replace(/_/g, ' ').toLowerCase()}</TableCell>
-                    <TableCell data-label="Priority">
+                    <TableCell data-label={tr('type')}>{task.type.replace(/_/g, ' ').toLowerCase()}</TableCell>
+                    <TableCell data-label={tr('priority')}>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                         <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: PRIORITY_DOT[task.priority] ?? '#9e9e9e' }} />
                         {task.priority.toLowerCase()}
                       </Box>
                     </TableCell>
-                    <TableCell data-label="Status">
+                    <TableCell data-label={tr('status')}>
                       <Chip size="small" label={task.status.replace(/_/g, ' ')} color={STATUS_COLORS[task.status] ?? 'default'} />
                     </TableCell>
-                    <TableCell data-label="Assigned">{task.assignedToUser?.name ?? '—'}</TableCell>
-                    <TableCell data-label="Scheduled">{formatDate(task.scheduledDate)}</TableCell>
-                    <TableCell data-label="Quotations">
+                    <TableCell data-label={tr('assigned')}>{task.assignedToUser?.name ?? '—'}</TableCell>
+                    <TableCell data-label={tr('scheduled')}>{formatDate(task.scheduledDate)}</TableCell>
+                    <TableCell data-label={tr('quotations')}>
                       <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
                         {task.quotations?.length ? task.quotations.map((l) => (
                           <Chip
@@ -382,20 +384,20 @@ export default function WorkListPage() {
                         <Chip size="small" variant="outlined" label={task.linkedPo.poNumber} onClick={() => navigate('/pos')} sx={{ cursor: 'pointer' }} />
                       ) : <Typography variant="body2" color="text.secondary">—</Typography>}
                     </TableCell>
-                    <TableCell data-label="Actions" align="right">
+                    <TableCell data-label={tr('actions')} align="right">
                       <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 0.5, alignItems: 'center' }}>
                         {canCreateQuotation && (
                           <Button size="small" variant="outlined" color="primary" startIcon={<QuoteIcon />} onClick={() => raiseToQuotation(task)}>
-                            Raise to Quotation
+                            {tr('raise')}
                           </Button>
                         )}
                         {canManageWork && (
-                          <Tooltip title="Edit">
+                          <Tooltip title={tr('edit')}>
                             <IconButton size="small" onClick={() => openEdit(task)}><EditIcon fontSize="small" /></IconButton>
                           </Tooltip>
                         )}
                         {canManageWork && (
-                          <Tooltip title="Delete">
+                          <Tooltip title={tr('delete')}>
                             <IconButton size="small" color="error" onClick={() => setDeleteId(task.id)}><DeleteIcon fontSize="small" /></IconButton>
                           </Tooltip>
                         )}
@@ -422,50 +424,50 @@ export default function WorkListPage() {
 
       {/* Create / Edit work item dialog */}
       <ResponsiveDialog open={formOpen} onClose={() => { setFormOpen(false); setEditingId(null); setForm({}); }} maxWidth="sm" fullWidth>
-        <DialogTitle>{editingId ? 'Edit Work Item' : 'Add Work Item'}</DialogTitle>
+        <DialogTitle>{editingId ? tr('editTitle') : tr('addTitle')}</DialogTitle>
         <DialogContent>
           {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
           <Stack spacing={2} sx={{ pt: 1 }}>
-            <TextField label="Title" value={String(form.title ?? '')} onChange={(e) => setForm({ ...form, title: e.target.value })} fullWidth required />
-            <TextField label="Description" value={String(form.description ?? '')} onChange={(e) => setForm({ ...form, description: e.target.value })} fullWidth multiline minRows={2} />
+            <TextField label={tr('title2')} value={String(form.title ?? '')} onChange={(e) => setForm({ ...form, title: e.target.value })} fullWidth required />
+            <TextField label={tr('description')} value={String(form.description ?? '')} onChange={(e) => setForm({ ...form, description: e.target.value })} fullWidth multiline minRows={2} />
             <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-              <TextField select label="Type" value={String(form.type ?? WorkTaskType.SITE_WORK)} onChange={(e) => setForm({ ...form, type: e.target.value })} sx={{ flex: 1, minWidth: 120 }}>
+              <TextField select label={tr('type')} value={String(form.type ?? WorkTaskType.SITE_WORK)} onChange={(e) => setForm({ ...form, type: e.target.value })} sx={{ flex: 1, minWidth: 120 }}>
                 {enumToOptions(WorkTaskType).map((o) => <MenuItem key={o.value} value={o.value}>{o.label}</MenuItem>)}
               </TextField>
-              <TextField select label="Priority" value={String(form.priority ?? WorkTaskPriority.MEDIUM)} onChange={(e) => setForm({ ...form, priority: e.target.value })} sx={{ flex: 1, minWidth: 120 }}>
+              <TextField select label={tr('priority')} value={String(form.priority ?? WorkTaskPriority.MEDIUM)} onChange={(e) => setForm({ ...form, priority: e.target.value })} sx={{ flex: 1, minWidth: 120 }}>
                 {enumToOptions(WorkTaskPriority).map((o) => <MenuItem key={o.value} value={o.value}>{o.label}</MenuItem>)}
               </TextField>
-              <TextField select label="Status" value={String(form.status ?? WorkTaskStatus.PLANNED)} onChange={(e) => setForm({ ...form, status: e.target.value })} sx={{ flex: 1, minWidth: 120 }}>
+              <TextField select label={tr('status')} value={String(form.status ?? WorkTaskStatus.PLANNED)} onChange={(e) => setForm({ ...form, status: e.target.value })} sx={{ flex: 1, minWidth: 120 }}>
                 {enumToOptions(WorkTaskStatus).map((o) => <MenuItem key={o.value} value={o.value}>{o.label}</MenuItem>)}
               </TextField>
             </Box>
             <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-              <TextField type="date" label="Scheduled Date" value={String(form.scheduledDate ?? '')} onChange={(e) => setForm({ ...form, scheduledDate: e.target.value })} InputLabelProps={{ shrink: true }} sx={{ flex: 1, minWidth: 140 }} required />
-              <TextField type="date" label="Deadline" value={String(form.deadlineDate ?? '')} onChange={(e) => setForm({ ...form, deadlineDate: e.target.value })} InputLabelProps={{ shrink: true }} sx={{ flex: 1, minWidth: 140 }} />
+              <TextField type="date" label={tr('scheduledDate')} value={String(form.scheduledDate ?? '')} onChange={(e) => setForm({ ...form, scheduledDate: e.target.value })} InputLabelProps={{ shrink: true }} sx={{ flex: 1, minWidth: 140 }} required />
+              <TextField type="date" label={tr('deadline')} value={String(form.deadlineDate ?? '')} onChange={(e) => setForm({ ...form, deadlineDate: e.target.value })} InputLabelProps={{ shrink: true }} sx={{ flex: 1, minWidth: 140 }} />
             </Box>
-            <TextField select label="Assigned To" value={String(form.assignedTo ?? '')} onChange={(e) => setForm({ ...form, assignedTo: e.target.value })} fullWidth>
-              <MenuItem value="">Unassigned</MenuItem>
+            <TextField select label={tr('assignedTo')} value={String(form.assignedTo ?? '')} onChange={(e) => setForm({ ...form, assignedTo: e.target.value })} fullWidth>
+              <MenuItem value="">{tr('unassigned')}</MenuItem>
               {(assignableUsers as AssignableUser[] | undefined)?.map((u) => <MenuItem key={u.id} value={u.id}>{u.name} ({u.role.replace(/_/g, ' ').toLowerCase()})</MenuItem>)}
             </TextField>
-            <TextField label="Follow up by" value={String(form.followUpBy ?? '')} onChange={(e) => setForm({ ...form, followUpBy: e.target.value })} fullWidth />
+            <TextField label={tr('followUpBy')} value={String(form.followUpBy ?? '')} onChange={(e) => setForm({ ...form, followUpBy: e.target.value })} fullWidth />
           </Stack>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => { setFormOpen(false); setEditingId(null); setForm({}); }}>Cancel</Button>
+          <Button onClick={() => { setFormOpen(false); setEditingId(null); setForm({}); }}>{tr('cancel')}</Button>
           <Button variant="contained" onClick={handleSave} disabled={saveMutation.isPending}>
-            {saveMutation.isPending ? <CircularProgress size={20} /> : editingId ? 'Update' : 'Create'}
+            {saveMutation.isPending ? <CircularProgress size={20} /> : editingId ? tr('update') : tr('create')}
           </Button>
         </DialogActions>
       </ResponsiveDialog>
 
       {/* Delete confirm */}
       <ResponsiveDialog open={!!deleteId} onClose={() => setDeleteId(null)} maxWidth="xs">
-        <DialogTitle>Delete work item?</DialogTitle>
+        <DialogTitle>{tr('deleteQ')}</DialogTitle>
         <DialogContent>
-          <Typography variant="body2">This will remove the work item. Any linked quotations will remain in the Quotations tab but will be unlinked from this work item.</Typography>
+          <Typography variant="body2">{tr('deleteNote')}</Typography>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDeleteId(null)}>Cancel</Button>
+          <Button onClick={() => setDeleteId(null)}>{tr('cancel')}</Button>
           <Button variant="contained" color="error" disabled={deleteMutation.isPending} onClick={() => deleteId && deleteMutation.mutate(deleteId)}>
             {deleteMutation.isPending ? <CircularProgress size={20} /> : 'Delete'}
           </Button>

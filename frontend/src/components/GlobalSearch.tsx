@@ -36,6 +36,7 @@ import {
 } from '@mui/icons-material';
 import api from '../config/api';
 
+import { useTranslation } from 'react-i18next';
 interface SearchResult {
   id: string;
   label: string;
@@ -203,7 +204,10 @@ interface GlobalSearchProps {
 }
 
 export default function GlobalSearch({ open, onClose }: GlobalSearchProps) {
+  const { t } = useTranslation('widgets');
   const navigate = useNavigate();
+  const tl = (l: string) => t(`page_${l.replace(/[^A-Za-z]/g, '')}`, l);
+  const tt = (ty: string) => t(`type_${ty.replace(/[^A-Za-z]/g, '')}`, ty);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
@@ -216,15 +220,15 @@ export default function GlobalSearch({ open, onClose }: GlobalSearchProps) {
     const q = query.trim().toLowerCase();
     if (!q) return PAGE_SHORTCUTS.slice(0, 6); // show first 6 when empty
     return PAGE_SHORTCUTS.filter(
-      (p) => p.label.toLowerCase().includes(q) || p.keywords.some((k) => k.includes(q) || q.includes(k)),
+      (p) => p.label.toLowerCase().includes(q) || tl(p.label).toLowerCase().includes(q) || p.keywords.some((k) => k.includes(q) || q.includes(k)),
     );
-  }, [query]);
+  }, [query, t]);
 
   // Build the flat list of all selectable items (page shortcuts + search results)
   const allItems: SearchResult[] = useMemo(() => {
     const pages: SearchResult[] = matchedPages.map((p) => ({
       id: `page-${p.path}`,
-      label: p.label,
+      label: tl(p.label),
       path: p.path,
       type: 'Page',
       icon: p.icon,
@@ -354,7 +358,7 @@ export default function GlobalSearch({ open, onClose }: GlobalSearchProps) {
         <TextField
           autoFocus
           fullWidth
-          placeholder="Search anything, or type a page name…"
+          placeholder={t('gsPlaceholder')}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           InputProps={{
@@ -365,7 +369,7 @@ export default function GlobalSearch({ open, onClose }: GlobalSearchProps) {
             ),
             endAdornment: (
               <InputAdornment position="end">
-                <Chip size="small" label="Esc" sx={{ fontSize: '0.65rem', height: 18 }} />
+                <Chip size="small" label={t('gsEsc')} sx={{ fontSize: '0.65rem', height: 18 }} />
               </InputAdornment>
             ),
           }}
@@ -388,12 +392,12 @@ export default function GlobalSearch({ open, onClose }: GlobalSearchProps) {
                       key={p.path}
                       data-idx={flatIdx}
                       selected={isSelected}
-                      onClick={() => handleSelect({ id: `page-${p.path}`, label: p.label, path: p.path, type: 'Page', icon: p.icon })}
+                      onClick={() => handleSelect({ id: `page-${p.path}`, label: tl(p.label), path: p.path, type: 'Page', icon: p.icon })}
                       sx={{ py: 0.5 }}
                     >
                       <ListItemIcon sx={{ minWidth: 36 }}>{p.icon}</ListItemIcon>
                       <ListItemText
-                        primary={highlightMatch(p.label, query)}
+                        primary={highlightMatch(tl(p.label), query)}
                         primaryTypographyProps={{ variant: 'body2', noWrap: true }}
                       />
                       {query.trim() && <ArrowIcon fontSize="small" color="action" sx={{ opacity: 0.5 }} />}
@@ -410,18 +414,18 @@ export default function GlobalSearch({ open, onClose }: GlobalSearchProps) {
               {results.length > 0 && hasPageMatches && <Divider sx={{ my: 0.5 }} />}
               {results.length === 0 && !loading && !hasPageMatches ? (
                 <Typography color="text.secondary" sx={{ p: 3, textAlign: 'center' }}>
-                  No results for "{query}"
+                  {t('gsNoResults', { q: query })}
                 </Typography>
               ) : results.length > 0 ? (
                 <>
                   <Typography variant="overline" color="text.secondary" sx={{ px: 2, display: 'block' }}>
-                    Results {results.length > 0 && `(${results.length})`}
+                    {t('gsResults', { n: results.length > 0 ? `(${results.length})` : '' })}
                   </Typography>
                   <List dense sx={{ pt: 0 }}>
                     {Object.entries(grouped).map(([type, items]) => (
                       <Box key={type}>
                         <Typography variant="caption" color="text.secondary" sx={{ px: 2, pt: 0.5, display: 'block', fontWeight: 600 }}>
-                          {type}
+                          {tt(type)}
                         </Typography>
                         {items.map((r) => {
                           const flatIdx = allItems.findIndex((a) => a.id === r.id && a.type === r.type);
@@ -458,7 +462,7 @@ export default function GlobalSearch({ open, onClose }: GlobalSearchProps) {
             return recent.length > 0 ? (
               <Box>
                 <Typography variant="overline" color="text.secondary" sx={{ px: 2, pt: 1, display: 'block' }}>
-                  Recently Viewed
+                  {t('gsRecent')}
                 </Typography>
                 <List dense sx={{ pt: 0 }}>
                   {recent.map((r: RecentItem) => (
@@ -472,7 +476,7 @@ export default function GlobalSearch({ open, onClose }: GlobalSearchProps) {
                       </ListItemIcon>
                       <ListItemText
                         primary={r.label}
-                        secondary={r.type}
+                        secondary={tt(r.type)}
                         primaryTypographyProps={{ variant: 'body2', noWrap: true }}
                         secondaryTypographyProps={{ variant: 'caption', noWrap: true }}
                       />
@@ -490,7 +494,7 @@ export default function GlobalSearch({ open, onClose }: GlobalSearchProps) {
             ) : (
               <Box sx={{ p: 3, textAlign: 'center' }}>
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                  Type to search across all modules
+                  {t('gsHint')}
                 </Typography>
                 <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'center', flexWrap: 'wrap' }}>
                   {['vendors', 'POs', 'invoices', 'ledgers', 'payments', 'banks'].map((t) => (
@@ -505,7 +509,7 @@ export default function GlobalSearch({ open, onClose }: GlobalSearchProps) {
           {allItems.length > 0 && (
             <Box sx={{ px: 2, py: 1, borderTop: 1, borderColor: 'divider', display: 'flex', gap: 2, justifyContent: 'center' }}>
               <Typography variant="caption" color="text.secondary">
-                ↑↓ navigate · Enter select · Esc close
+                {t('gsFooter')}
               </Typography>
             </Box>
           )}

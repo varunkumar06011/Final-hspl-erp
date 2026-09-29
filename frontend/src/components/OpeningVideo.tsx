@@ -4,6 +4,7 @@ import { useIsFetching } from '@tanstack/react-query';
 import { useAuthStore } from '../stores/authStore';
 import { getDailyQuote } from '../utils/dailyQuote';
 
+import { useTranslation } from 'react-i18next';
 const SHOWN_KEY = 'hspl-opening-shown';
 // Absolute failsafe — the app is never held hostage by the video or the network.
 const HARD_CAP_MS = 9000;
@@ -36,6 +37,7 @@ declare global {
  * landscape/desktop get the laptop cut. Tap/click skips.
  */
 export default function OpeningVideo() {
+  const { t } = useTranslation('widgets');
   const token = useAuthStore((s) => s.token);
   const user = useAuthStore((s) => s.user);
   const authed = Boolean(token && user);
@@ -179,7 +181,7 @@ export default function OpeningVideo() {
         >
           <Box sx={{ fontSize: 56, lineHeight: 1, height: 30, color: '#4f9cf9', fontFamily: 'Georgia, serif' }}>&ldquo;</Box>
           <Typography sx={{ mt: 1.75, mb: 1.5, fontSize: '0.66rem', fontWeight: 700, letterSpacing: '0.3em', lineHeight: 1.4, color: '#8b98ad' }}>
-            THOUGHT OF THE DAY
+            {t('ovThought')}
           </Typography>
           <Typography
             component="div"
@@ -211,7 +213,7 @@ export default function OpeningVideo() {
               color: 'rgba(139,152,173,.55)',
             }}
           >
-            TAP TO CONTINUE
+            {t('ovTap')}
           </Typography>
         </Box>
       ) : (

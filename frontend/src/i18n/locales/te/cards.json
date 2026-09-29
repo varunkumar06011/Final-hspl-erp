@@ -1,0 +1,42 @@
+{
+  "finance": {
+    "title": "ఫైనాన్స్ డాష్‌బోర్డ్",
+    "totalBudgetAllocated": "మొత్తం బడ్జెట్ (కేటాయించినది)",
+    "utilization": "వినియోగం",
+    "budgetHeads": "బడ్జెట్ శీర్షికలు",
+    "liquidity": "ద్రవ్య నిల్వ",
+    "viewDetails": "వివరాలు చూడండి →",
+    "financialDetails": "ఆర్థిక వివరాలు",
+    "close": "మూసివేయి",
+    "loadError": "ఫైనాన్స్ డేటాను లోడ్ చేయలేకపోయాము. బ్యాక్‌ఎండ్ నడుస్తోందో లేదో చూడండి.",
+    "totalAllocatedBudget": "మొత్తం కేటాయింపు (బడ్జెట్)",
+    "headsLine": "{{n}} బడ్జెట్ శీర్షికలు · వినియోగం: {{p}}%",
+    "bankBalance": "బ్యాంక్ నిల్వ",
+    "cashBalance": "నగదు నిల్వ",
+    "totalLiquidity": "మొత్తం ద్రవ్య నిల్వ",
+    "bankPlusCash": "బ్యాంక్ + నగదు",
+    "allocationBreakdown": "కేటాయింపుల విశ్లేషణ",
+    "allocation": "కేటాయింపు",
+    "amount": "మొత్తం",
+    "allocated": "కేటాయించినది",
+    "bank": "బ్యాంక్",
+    "cash": "నగదు",
+    "actualSpent": "వాస్తవ ఖర్చు",
+    "availableRemaining": "అందుబాటులో ఉన్నది / మిగిలినది",
+    "formula": "అందుబాటులో ఉన్నది / మిగిలినది = మొత్తం కేటాయింపు − వాస్తవ ఖర్చు"
+  },
+  "docs": {
+    "title": "పత్రాల సారాంశం",
+    "invoicesCount": "{{n}} ఇన్వాయిస్‌లు",
+    "loadError": "పత్రాల సారాంశాన్ని లోడ్ చేయలేకపోయాము.",
+    "quotations": "కొటేషన్లు",
+    "purchaseOrders": "కొనుగోలు ఆర్డర్లు",
+    "invoices": "ఇన్వాయిస్‌లు",
+    "totalInvoiceValue": "మొత్తం ఇన్వాయిస్ విలువ",
+    "viewDetails": "వివరాలు చూడండి →",
+    "close": "మూసివేయి",
+    "total": "మొత్తం",
+    "totalInvoices": "మొత్తం ఇన్వాయిస్‌లు",
+    "totalValue": "మొత్తం విలువ"
+  }
+}

@@ -40,7 +40,7 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { QRCodeSVG } from 'qrcode.react';
 import { AssetStatus, isAdminRole } from '@hospital-erp/shared';
-import { enumToOptions, formatDate } from '../utils/enumOptions';
+import { enumLabel, enumToOptions, formatDate } from '../utils/enumOptions';
 import api, { extractErrorMessage } from '../config/api';
 import { QR_BASE_URL } from '../config/appConfig';
 import { useAuthStore } from '../stores/authStore';
@@ -48,29 +48,12 @@ import AttachmentUpload from '../components/AttachmentUpload';
 import RefreshButton from '../components/RefreshButton';
 import TraceabilityChain, { TraceData } from '../components/TraceabilityChain';
 
+import { useTranslation } from 'react-i18next';
 const STATUS_COLORS: Record<string, 'success' | 'warning' | 'info' | 'error' | 'default'> = {
   ACTIVE: 'success',
   ISSUED: 'warning',
   UNDER_MAINTENANCE: 'info',
   RETIRED: 'error',
-};
-
-const STATUS_LABELS: Record<string, string> = {
-  ACTIVE: 'Active',
-  ISSUED: 'Issued',
-  UNDER_MAINTENANCE: 'Under Maintenance',
-  RETIRED: 'Retired',
-};
-
-const MOVEMENT_LABELS: Record<string, string> = {
-  CREATED: 'Created',
-  ISSUED: 'Issued',
-  RETURNED: 'Returned',
-  RELOCATED: 'Relocated',
-  MAINTENANCE_START: 'Maintenance Start',
-  MAINTENANCE_COMPLETE: 'Maintenance Complete',
-  RETIRED: 'Retired',
-  SCANNED: 'Scanned',
 };
 
 interface AssetRow {
@@ -112,6 +95,7 @@ interface AssetRow {
 }
 
 export default function AssetDetailPage() {
+  const { t: tr } = useTranslation('assetdetail');
   const { itemId } = useParams<{ itemId: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -197,7 +181,7 @@ export default function AssetDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['/assets'] });
       setActionDialog(null);
       setActionForm({});
-      setSuccessMsg('Action completed successfully.');
+      setSuccessMsg(tr('okAction'));
       setTimeout(() => setSuccessMsg(''), 3000);
     },
     onError: (err: unknown) => setError(extractErrorMessage(err)),
@@ -212,7 +196,7 @@ export default function AssetDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['/assets'] });
       setEditDialog(null);
       setEditForm({});
-      setSuccessMsg('Asset details updated.');
+      setSuccessMsg(tr('okUpdated'));
       setTimeout(() => setSuccessMsg(''), 3000);
     },
     onError: (err: unknown) => setError(extractErrorMessage(err)),
@@ -225,7 +209,7 @@ export default function AssetDetailPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/assets'] });
-      setSuccessMsg('Asset records backfilled.');
+      setSuccessMsg(tr('okBackfill'));
       setTimeout(() => setSuccessMsg(''), 3000);
     },
     onError: (err: unknown) => setError(extractErrorMessage(err)),
@@ -241,7 +225,7 @@ export default function AssetDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['/inventory/items'] });
       setCreateOpen(false);
       setCreateForm({ location: itemData?.location ?? 'Main Store' });
-      setSuccessMsg('Asset set up.');
+      setSuccessMsg(tr('okSetup'));
       setTimeout(() => setSuccessMsg(''), 3000);
     },
     onError: (err: unknown) => setError(extractErrorMessage(err)),
@@ -344,13 +328,13 @@ export default function AssetDetailPage() {
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, flexWrap: 'wrap' }}>
         <IconButton onClick={() => navigate('/assets')}><ArrowBackIcon /></IconButton>
         <Typography variant="h5" fontWeight={600} sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' } }}>
-          {itemData ? String(itemData.name) : 'Asset'} — Units
+          {tr('titleUnits', { name: itemData ? String(itemData.name) : tr('asset') })}
         </Typography>
         <Box sx={{ flexGrow: 1 }} />
         <RefreshButton onClick={() => refetch()} />
-        <Button variant="outlined" startIcon={<DownloadIcon />} onClick={handleExport} size="small">Export CSV</Button>
-        <Button variant="outlined" startIcon={<PrintIcon />} onClick={() => setPrintOpen(true)} size="small" disabled={rows.length === 0}>Print QR Tags</Button>
-        <Button variant="contained" startIcon={<AddIcon />} onClick={() => { setCreateForm({ location: itemData?.location ?? 'Main Store' }); setCreateOpen(true); }} size="small">Set up Asset</Button>
+        <Button variant="outlined" startIcon={<DownloadIcon />} onClick={handleExport} size="small">{tr('exportCsv')}</Button>
+        <Button variant="outlined" startIcon={<PrintIcon />} onClick={() => setPrintOpen(true)} size="small" disabled={rows.length === 0}>{tr('printQrTags')}</Button>
+        <Button variant="contained" startIcon={<AddIcon />} onClick={() => { setCreateForm({ location: itemData?.location ?? 'Main Store' }); setCreateOpen(true); }} size="small">{tr('setupAsset')}</Button>
       </Box>
 
       {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
@@ -358,9 +342,9 @@ export default function AssetDetailPage() {
 
       {/* Status summary */}
       <Box sx={{ display: 'flex', gap: 1, mb: 2, flexWrap: 'wrap' }}>
-        <Chip label={`Total: ${pagination.total}`} color="default" />
+        <Chip label={tr('totalN', { n: pagination.total })} color="default" />
         {Object.entries(statusCounts).map(([status, count]) => (
-          <Chip key={status} label={`${STATUS_LABELS[status] ?? status}: ${count}`} color={STATUS_COLORS[status] ?? 'default'} size="small" variant="outlined" />
+          <Chip key={status} label={`${enumLabel(status)}: ${count}`} color={STATUS_COLORS[status] ?? 'default'} size="small" variant="outlined" />
         ))}
       </Box>
 
@@ -368,7 +352,7 @@ export default function AssetDetailPage() {
       <Box sx={{ display: 'flex', gap: 1, mb: 2, flexWrap: 'wrap' }}>
         <TextField
           size="small"
-          placeholder="Search by Asset ID, Serial, UDI, GTIN..."
+          placeholder={tr('search')}
           value={search}
           onChange={(e) => { setSearch(e.target.value); setPage(0); }}
           sx={{ width: { xs: '100%', sm: 280 } }}
@@ -376,12 +360,12 @@ export default function AssetDetailPage() {
         <TextField
           select
           size="small"
-          label="Status"
+          label={tr('status')}
           value={statusFilter}
           onChange={(e) => { setStatusFilter(e.target.value); setPage(0); }}
           sx={{ width: 150 }}
         >
-          <MenuItem value="">All</MenuItem>
+          <MenuItem value="">{tr('all')}</MenuItem>
           {enumToOptions(AssetStatus).map((opt) => <MenuItem key={opt.value} value={opt.value}>{opt.label}</MenuItem>)}
         </TextField>
       </Box>
@@ -393,14 +377,14 @@ export default function AssetDetailPage() {
           <Table size="small">
             <TableHead>
               <TableRow>
-                <TableCell sx={{ fontWeight: 600 }}>Asset ID</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Serial</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Status</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Location</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Issued To</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Warranty</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>AMC</TableCell>
-                <TableCell align="right" sx={{ fontWeight: 600 }}>Actions</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>{tr('assetId')}</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>{tr('serial')}</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>{tr('status')}</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>{tr('location')}</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>{tr('issuedTo')}</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>{tr('warranty')}</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>{tr('amc')}</TableCell>
+                <TableCell align="right" sx={{ fontWeight: 600 }}>{tr('actions')}</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -409,9 +393,9 @@ export default function AssetDetailPage() {
               ) : rows.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={8} align="center" sx={{ py: 4 }}>
-                    <Typography color="text.secondary" sx={{ mb: 1 }}>Asset details have not been set up yet.</Typography>
+                    <Typography color="text.secondary" sx={{ mb: 1 }}>{tr('notSetup')}</Typography>
                     <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center', flexWrap: 'wrap' }}>
-                      <Button variant="contained" size="small" startIcon={<AddIcon />} onClick={() => { setCreateForm({ location: itemData?.location ?? 'Main Store' }); setCreateOpen(true); }}>Set up Asset</Button>
+                      <Button variant="contained" size="small" startIcon={<AddIcon />} onClick={() => { setCreateForm({ location: itemData?.location ?? 'Main Store' }); setCreateOpen(true); }}>{tr('setupAsset')}</Button>
                       {Number(itemData?.currentStock ?? 0) > 0 && (
                         <Button
                           variant="outlined"
@@ -419,7 +403,7 @@ export default function AssetDetailPage() {
                           onClick={() => generateMutation.mutate()}
                           disabled={generateMutation.isPending}
                         >
-                          {generateMutation.isPending ? <CircularProgress size={20} /> : `Generate ${Math.floor(Number(itemData?.currentStock))} Asset Record${Number(itemData?.currentStock) === 1 ? '' : 's'}`}
+                          {generateMutation.isPending ? <CircularProgress size={20} /> : tr('gen', { count: Math.floor(Number(itemData?.currentStock)), n: Math.floor(Number(itemData?.currentStock)) })}
                         </Button>
                       )}
                     </Box>
@@ -432,53 +416,53 @@ export default function AssetDetailPage() {
                   sx={{ cursor: 'pointer', backgroundColor: selectedAsset?.id === row.id ? 'action.selected' : undefined }}
                   onClick={() => setSelectedAssetIds([row.id])}
                 >
-                  <TableCell data-label="Asset ID"><strong>{row.assetId}</strong></TableCell>
-                  <TableCell data-label="Serial">{row.serialNumber ?? '—'}</TableCell>
-                  <TableCell data-label="Status">
-                    <Chip label={STATUS_LABELS[row.status] ?? row.status} size="small" color={STATUS_COLORS[row.status] ?? 'default'} />
+                  <TableCell data-label={tr('assetId')}><strong>{row.assetId}</strong></TableCell>
+                  <TableCell data-label={tr('serial')}>{row.serialNumber ?? '—'}</TableCell>
+                  <TableCell data-label={tr('status')}>
+                    <Chip label={enumLabel(row.status)} size="small" color={STATUS_COLORS[row.status] ?? 'default'} />
                   </TableCell>
-                  <TableCell data-label="Location">{row.location}</TableCell>
-                  <TableCell data-label="Issued To">
+                  <TableCell data-label={tr('location')}>{row.location}</TableCell>
+                  <TableCell data-label={tr('issuedTo')}>
                     {row.issuedToDept || row.issuedToPerson
                       ? `${row.issuedToDept ?? ''}${row.issuedToDept && row.issuedToPerson ? ' / ' : ''}${row.issuedToPerson ?? ''}`
                       : '—'}
                   </TableCell>
-                  <TableCell data-label="Warranty">
+                  <TableCell data-label={tr('warranty')}>
                     {row.warrantyExpiry ? (
                       <Box>
                         <Typography variant="caption" display="block">{formatDate(row.warrantyExpiry)}</Typography>
-                        {isExpiringSoon(row.warrantyExpiry) && <Chip label="Expiring" size="small" color="warning" sx={{ height: 18 }} />}
+                        {isExpiringSoon(row.warrantyExpiry) && <Chip label={tr('expiring')} size="small" color="warning" sx={{ height: 18 }} />}
                       </Box>
                     ) : '—'}
                   </TableCell>
-                  <TableCell data-label="AMC">
+                  <TableCell data-label={tr('amc')}>
                     {row.amcExpiry ? (
                       <Box>
                         <Typography variant="caption" display="block">{formatDate(row.amcExpiry)}</Typography>
-                        {isExpiringSoon(row.amcExpiry) && <Chip label="Expiring" size="small" color="warning" sx={{ height: 18 }} />}
+                        {isExpiringSoon(row.amcExpiry) && <Chip label={tr('expiring')} size="small" color="warning" sx={{ height: 18 }} />}
                       </Box>
                     ) : '—'}
                   </TableCell>
-                  <TableCell align="right" data-label="Actions" onClick={(e) => e.stopPropagation()}>
-                    <IconButton size="small" onClick={() => openEdit(row)} title="Edit Details"><EditIcon fontSize="small" /></IconButton>
+                  <TableCell align="right" data-label={tr('actions')} onClick={(e) => e.stopPropagation()}>
+                    <IconButton size="small" onClick={() => openEdit(row)} title={tr('editDetails')}><EditIcon fontSize="small" /></IconButton>
                     {row.status === AssetStatus.ACTIVE && (
                       <>
-                        <Button size="small" onClick={() => openAction('issue', row.id)}>Issue</Button>
-                        <Button size="small" onClick={() => openAction('maintenance', row.id)}>Maint</Button>
-                        <Button size="small" onClick={() => openAction('relocate', row.id)}>Move</Button>
+                        <Button size="small" onClick={() => openAction('issue', row.id)}>{tr('issue')}</Button>
+                        <Button size="small" onClick={() => openAction('maintenance', row.id)}>{tr('maint')}</Button>
+                        <Button size="small" onClick={() => openAction('relocate', row.id)}>{tr('move')}</Button>
                       </>
                     )}
                     {row.status === AssetStatus.ISSUED && (
                       <>
-                        <Button size="small" onClick={() => openAction('return', row.id)}>Return</Button>
-                        <Button size="small" onClick={() => openAction('maintenance', row.id)}>Maint</Button>
+                        <Button size="small" onClick={() => openAction('return', row.id)}>{tr('return')}</Button>
+                        <Button size="small" onClick={() => openAction('maintenance', row.id)}>{tr('maint')}</Button>
                       </>
                     )}
                     {row.status === AssetStatus.UNDER_MAINTENANCE && (
-                      <Button size="small" onClick={() => openAction('maintenance/complete', row.id)}>Complete</Button>
+                      <Button size="small" onClick={() => openAction('maintenance/complete', row.id)}>{tr('complete')}</Button>
                     )}
                     {canRetire && row.status !== AssetStatus.RETIRED && (
-                      <Button size="small" color="error" onClick={() => openAction('retire', row.id)}>Retire</Button>
+                      <Button size="small" color="error" onClick={() => openAction('retire', row.id)}>{tr('retire')}</Button>
                     )}
                   </TableCell>
                 </TableRow>
@@ -504,12 +488,12 @@ export default function AssetDetailPage() {
         <Card>
           <Box sx={{ borderBottom: 1, borderColor: 'divider', px: 2 }}>
             <Tabs value={tab} onChange={(_, v) => setTab(v)} variant="scrollable" scrollButtons="auto">
-              <Tab label="Overview" />
-              <Tab label={`Movement (${selectedAsset.movements?.length ?? 0})`} />
-              <Tab label={`Maintenance (${selectedAsset.maintenances?.length ?? 0})`} />
-              <Tab label={`Scans (${selectedAsset.scans?.length ?? 0})`} />
-              <Tab label="Traceability" />
-              <Tab label="Documents" />
+              <Tab label={tr('overview')} />
+              <Tab label={tr('tabMovement', { n: selectedAsset.movements?.length ?? 0 })} />
+              <Tab label={tr('tabMaint', { n: selectedAsset.maintenances?.length ?? 0 })} />
+              <Tab label={tr('tabScans', { n: selectedAsset.scans?.length ?? 0 })} />
+              <Tab label={tr('traceability')} />
+              <Tab label={tr('documents')} />
             </Tabs>
           </Box>
 
@@ -527,7 +511,7 @@ export default function AssetDetailPage() {
                       <Typography variant="caption" color="text.secondary">{selectedAsset.location}</Typography>
                     </Card>
                     <Box sx={{ mt: 1 }}>
-                      <Button size="small" startIcon={<PrintIcon />} onClick={() => { handlePrintLog(selectedAsset.id); setPrintOpen(true); setSelectedAssetIds([selectedAsset.id]); }}>Print Tag</Button>
+                      <Button size="small" startIcon={<PrintIcon />} onClick={() => { handlePrintLog(selectedAsset.id); setPrintOpen(true); setSelectedAssetIds([selectedAsset.id]); }}>{tr('printTag')}</Button>
                     </Box>
                   </Box>
                 </Grid>
@@ -535,79 +519,79 @@ export default function AssetDetailPage() {
                 {/* Right: Details grid */}
                 <Grid item xs={12} md={8}>
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1, flexWrap: 'wrap', gap: 1 }}>
-                    <Typography variant="h6">Asset Details</Typography>
-                    <Button size="small" startIcon={<EditIcon />} onClick={() => openEdit(selectedAsset)}>Edit Details</Button>
+                    <Typography variant="h6">{tr('assetDetails')}</Typography>
+                    <Button size="small" startIcon={<EditIcon />} onClick={() => openEdit(selectedAsset)}>{tr('editDetails')}</Button>
                   </Box>
                   <Grid container spacing={1}>
-                    <Grid item xs={6} sm={4}><DetailField label="Status" value={<Chip label={STATUS_LABELS[selectedAsset.status]} size="small" color={STATUS_COLORS[selectedAsset.status]} />} /></Grid>
-                    <Grid item xs={6} sm={4}><DetailField label="Category" value={selectedAsset.inventoryItem.category ?? '—'} /></Grid>
-                    <Grid item xs={6} sm={4}><DetailField label="Serial Number" value={selectedAsset.serialNumber ?? '—'} /></Grid>
-                    <Grid item xs={6} sm={4}><DetailField label="Location" value={selectedAsset.location} /></Grid>
-                    <Grid item xs={6} sm={4}><DetailField label="Issued To" value={selectedAsset.issuedToDept || selectedAsset.issuedToPerson ? `${selectedAsset.issuedToDept ?? ''}${selectedAsset.issuedToDept && selectedAsset.issuedToPerson ? ' / ' : ''}${selectedAsset.issuedToPerson ?? ''}` : '—'} /></Grid>
-                    <Grid item xs={6} sm={4}><DetailField label="Issued At" value={selectedAsset.issuedAt ? formatDate(selectedAsset.issuedAt) : '—'} /></Grid>
+                    <Grid item xs={6} sm={4}><DetailField label={tr('status')} value={<Chip label={enumLabel(selectedAsset.status)} size="small" color={STATUS_COLORS[selectedAsset.status]} />} /></Grid>
+                    <Grid item xs={6} sm={4}><DetailField label={tr('category')} value={selectedAsset.inventoryItem.category ?? '—'} /></Grid>
+                    <Grid item xs={6} sm={4}><DetailField label={tr('serialNumber')} value={selectedAsset.serialNumber ?? '—'} /></Grid>
+                    <Grid item xs={6} sm={4}><DetailField label={tr('location')} value={selectedAsset.location} /></Grid>
+                    <Grid item xs={6} sm={4}><DetailField label={tr('issuedTo')} value={selectedAsset.issuedToDept || selectedAsset.issuedToPerson ? `${selectedAsset.issuedToDept ?? ''}${selectedAsset.issuedToDept && selectedAsset.issuedToPerson ? ' / ' : ''}${selectedAsset.issuedToPerson ?? ''}` : '—'} /></Grid>
+                    <Grid item xs={6} sm={4}><DetailField label={tr('issuedAt')} value={selectedAsset.issuedAt ? formatDate(selectedAsset.issuedAt) : '—'} /></Grid>
                   </Grid>
 
-                  <Typography variant="subtitle2" sx={{ mt: 2, mb: 1 }}>Regulatory Identifiers</Typography>
+                  <Typography variant="subtitle2" sx={{ mt: 2, mb: 1 }}>{tr('regulatoryIdentifiers')}</Typography>
                   <Grid container spacing={1}>
-                    <Grid item xs={6} sm={6}><DetailField label="UDI" value={selectedAsset.udi ?? '—'} /></Grid>
-                    <Grid item xs={6} sm={6}><DetailField label="GTIN" value={selectedAsset.gtin ?? '—'} /></Grid>
+                    <Grid item xs={6} sm={6}><DetailField label={tr('udi')} value={selectedAsset.udi ?? '—'} /></Grid>
+                    <Grid item xs={6} sm={6}><DetailField label={tr('gtin')} value={selectedAsset.gtin ?? '—'} /></Grid>
                   </Grid>
 
-                  <Typography variant="subtitle2" sx={{ mt: 2, mb: 1 }}>Warranty & AMC</Typography>
+                  <Typography variant="subtitle2" sx={{ mt: 2, mb: 1 }}>{tr('warrantyAmc')}</Typography>
                   <Grid container spacing={1}>
                     <Grid item xs={6} sm={4}>
                       <DetailField
-                        label="Warranty Expiry"
+                        label={tr('warrantyExpiry')}
                         value={
                           <Box component="span">
                             {selectedAsset.warrantyExpiry ? formatDate(selectedAsset.warrantyExpiry) : '—'}
-                            {isExpiringSoon(selectedAsset.warrantyExpiry) && <Chip icon={<WarningIcon />} label="Expiring" size="small" color="warning" sx={{ ml: 0.5, height: 18 }} />}
+                            {isExpiringSoon(selectedAsset.warrantyExpiry) && <Chip icon={<WarningIcon />} label={tr('expiring')} size="small" color="warning" sx={{ ml: 0.5, height: 18 }} />}
                           </Box>
                         }
                       />
                     </Grid>
-                    <Grid item xs={6} sm={4}><DetailField label="AMC Vendor" value={selectedAsset.amcVendor ?? '—'} /></Grid>
+                    <Grid item xs={6} sm={4}><DetailField label={tr('amcVendor')} value={selectedAsset.amcVendor ?? '—'} /></Grid>
                     <Grid item xs={6} sm={4}>
                       <DetailField
-                        label="AMC Expiry"
+                        label={tr('amcExpiry')}
                         value={
                           <Box component="span">
                             {selectedAsset.amcExpiry ? formatDate(selectedAsset.amcExpiry) : '—'}
-                            {isExpiringSoon(selectedAsset.amcExpiry) && <Chip icon={<WarningIcon />} label="Expiring" size="small" color="warning" sx={{ ml: 0.5, height: 18 }} />}
+                            {isExpiringSoon(selectedAsset.amcExpiry) && <Chip icon={<WarningIcon />} label={tr('expiring')} size="small" color="warning" sx={{ ml: 0.5, height: 18 }} />}
                           </Box>
                         }
                       />
                     </Grid>
                   </Grid>
 
-                  <Typography variant="subtitle2" sx={{ mt: 2, mb: 1 }}>Purchase Chain</Typography>
+                  <Typography variant="subtitle2" sx={{ mt: 2, mb: 1 }}>{tr('purchaseChain')}</Typography>
                   <Grid container spacing={1}>
-                    <Grid item xs={6} sm={4}><DetailField label="Vendor" value={selectedAsset.vendorName ?? '—'} /></Grid>
-                    <Grid item xs={6} sm={4}><DetailField label="PO Number" value={selectedAsset.poNumber ?? '—'} /></Grid>
-                    <Grid item xs={6} sm={4}><DetailField label="Invoice Number" value={selectedAsset.invoiceNumber ?? '—'} /></Grid>
-                    <Grid item xs={6} sm={4}><DetailField label="Unit Price" value={selectedAsset.unitPrice ? `₹${Number(selectedAsset.unitPrice).toLocaleString('en-IN')}` : '—'} /></Grid>
-                    <Grid item xs={6} sm={4}><DetailField label="Total Cost" value={selectedAsset.totalCost ? `₹${Number(selectedAsset.totalCost).toLocaleString('en-IN')}` : '—'} /></Grid>
-                    <Grid item xs={6} sm={4}><DetailField label="Receipt Number" value={selectedAsset.receiptNumber ?? '—'} /></Grid>
+                    <Grid item xs={6} sm={4}><DetailField label={tr('vendor')} value={selectedAsset.vendorName ?? '—'} /></Grid>
+                    <Grid item xs={6} sm={4}><DetailField label={tr('poNumber')} value={selectedAsset.poNumber ?? '—'} /></Grid>
+                    <Grid item xs={6} sm={4}><DetailField label={tr('invoiceNumber')} value={selectedAsset.invoiceNumber ?? '—'} /></Grid>
+                    <Grid item xs={6} sm={4}><DetailField label={tr('unitPrice')} value={selectedAsset.unitPrice ? `₹${Number(selectedAsset.unitPrice).toLocaleString('en-IN')}` : '—'} /></Grid>
+                    <Grid item xs={6} sm={4}><DetailField label={tr('totalCost')} value={selectedAsset.totalCost ? `₹${Number(selectedAsset.totalCost).toLocaleString('en-IN')}` : '—'} /></Grid>
+                    <Grid item xs={6} sm={4}><DetailField label={tr('receiptNumber')} value={selectedAsset.receiptNumber ?? '—'} /></Grid>
                   </Grid>
 
                   {/* Depreciation */}
                   {calcDepreciation(selectedAsset) && (
                     <>
-                      <Typography variant="subtitle2" sx={{ mt: 2, mb: 1 }}>Depreciation</Typography>
+                      <Typography variant="subtitle2" sx={{ mt: 2, mb: 1 }}>{tr('depreciation')}</Typography>
                       <Grid container spacing={1}>
-                        <Grid item xs={6} sm={4}><DetailField label="Useful Life" value={`${selectedAsset.usefulLifeYears} years`} /></Grid>
-                        <Grid item xs={6} sm={4}><DetailField label="Method" value={selectedAsset.depreciationMethod === 'STRAIGHT_LINE' ? 'Straight Line' : selectedAsset.depreciationMethod ?? '—'} /></Grid>
-                        <Grid item xs={6} sm={4}><DetailField label="Salvage Value" value={selectedAsset.salvageValue ? `₹${Number(selectedAsset.salvageValue).toLocaleString('en-IN')}` : '—'} /></Grid>
-                        <Grid item xs={6} sm={4}><DetailField label="Annual Depreciation" value={`₹${calcDepreciation(selectedAsset)!.annualDep.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`} /></Grid>
-                        <Grid item xs={6} sm={4}><DetailField label="Accumulated Dep." value={`₹${calcDepreciation(selectedAsset)!.accDep.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`} /></Grid>
-                        <Grid item xs={6} sm={4}><DetailField label="Current Value" value={`₹${calcDepreciation(selectedAsset)!.currentValue.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`} /></Grid>
+                        <Grid item xs={6} sm={4}><DetailField label={tr('usefulLife')} value={tr('years', { n: selectedAsset.usefulLifeYears })} /></Grid>
+                        <Grid item xs={6} sm={4}><DetailField label={tr('method')} value={selectedAsset.depreciationMethod === 'STRAIGHT_LINE' ? tr('straightLine') : selectedAsset.depreciationMethod === 'WRITTEN_DOWN_VALUE' ? tr('wdv') : selectedAsset.depreciationMethod ?? '—'} /></Grid>
+                        <Grid item xs={6} sm={4}><DetailField label={tr('salvageValue')} value={selectedAsset.salvageValue ? `₹${Number(selectedAsset.salvageValue).toLocaleString('en-IN')}` : '—'} /></Grid>
+                        <Grid item xs={6} sm={4}><DetailField label={tr('annualDepreciation')} value={`₹${calcDepreciation(selectedAsset)!.annualDep.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`} /></Grid>
+                        <Grid item xs={6} sm={4}><DetailField label={tr('accumulatedDep')} value={`₹${calcDepreciation(selectedAsset)!.accDep.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`} /></Grid>
+                        <Grid item xs={6} sm={4}><DetailField label={tr('currentValue')} value={`₹${calcDepreciation(selectedAsset)!.currentValue.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`} /></Grid>
                       </Grid>
                     </>
                   )}
 
                   {selectedAsset.notes && (
                     <Box sx={{ mt: 2 }}>
-                      <Typography variant="subtitle2">Notes</Typography>
+                      <Typography variant="subtitle2">{tr('notes')}</Typography>
                       <Typography variant="body2" color="text.secondary">{selectedAsset.notes}</Typography>
                     </Box>
                   )}
@@ -625,23 +609,23 @@ export default function AssetDetailPage() {
                   <Table size="small">
                     <TableHead>
                       <TableRow>
-                        <TableCell sx={{ fontWeight: 600 }}>Date</TableCell>
-                        <TableCell sx={{ fontWeight: 600 }}>Type</TableCell>
-                        <TableCell sx={{ fontWeight: 600 }}>From</TableCell>
-                        <TableCell sx={{ fontWeight: 600 }}>To</TableCell>
+                        <TableCell sx={{ fontWeight: 600 }}>{tr('date')}</TableCell>
+                        <TableCell sx={{ fontWeight: 600 }}>{tr('type')}</TableCell>
+                        <TableCell sx={{ fontWeight: 600 }}>{tr('from')}</TableCell>
+                        <TableCell sx={{ fontWeight: 600 }}>{tr('to')}</TableCell>
                         <TableCell sx={{ fontWeight: 600 }}>By</TableCell>
-                        <TableCell sx={{ fontWeight: 600 }}>Notes</TableCell>
+                        <TableCell sx={{ fontWeight: 600 }}>{tr('notes')}</TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
                       {selectedAsset.movements.map((m) => (
                         <TableRow key={m.id}>
-                          <TableCell data-label="Date">{formatDate(m.timestamp)}</TableCell>
-                          <TableCell data-label="Type"><Chip label={MOVEMENT_LABELS[m.type] ?? m.type} size="small" variant="outlined" /></TableCell>
-                          <TableCell data-label="From">{m.fromLocation ?? m.fromStatus ?? '—'}</TableCell>
-                          <TableCell data-label="To">{m.toLocation ?? m.toStatus ?? '—'}</TableCell>
+                          <TableCell data-label={tr('date')}>{formatDate(m.timestamp)}</TableCell>
+                          <TableCell data-label={tr('type')}><Chip label={enumLabel(m.type)} size="small" variant="outlined" /></TableCell>
+                          <TableCell data-label={tr('from')}>{m.fromLocation ?? m.fromStatus ?? '—'}</TableCell>
+                          <TableCell data-label={tr('to')}>{m.toLocation ?? m.toStatus ?? '—'}</TableCell>
                           <TableCell data-label="By">{m.user.name}</TableCell>
-                          <TableCell data-label="Notes">{m.reason ?? m.notes ?? '—'}</TableCell>
+                          <TableCell data-label={tr('notes')}>{m.reason ?? m.notes ?? '—'}</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
@@ -649,7 +633,7 @@ export default function AssetDetailPage() {
                 </TableContainer>
                 </ResponsiveTable>
               ) : (
-                <Typography color="text.secondary">No movement history.</Typography>
+                <Typography color="text.secondary">{tr('noMovement')}</Typography>
               )}
             </CardContent>
           )}
@@ -663,25 +647,25 @@ export default function AssetDetailPage() {
                   <Table size="small">
                     <TableHead>
                       <TableRow>
-                        <TableCell sx={{ fontWeight: 600 }}>Sent At</TableCell>
-                        <TableCell sx={{ fontWeight: 600 }}>Reason</TableCell>
-                        <TableCell sx={{ fontWeight: 600 }}>Vendor</TableCell>
-                        <TableCell sx={{ fontWeight: 600 }}>Technician</TableCell>
-                        <TableCell sx={{ fontWeight: 600 }}>Cost</TableCell>
-                        <TableCell sx={{ fontWeight: 600 }}>Completed</TableCell>
-                        <TableCell sx={{ fontWeight: 600 }}>Final Cost</TableCell>
+                        <TableCell sx={{ fontWeight: 600 }}>{tr('sentAt')}</TableCell>
+                        <TableCell sx={{ fontWeight: 600 }}>{tr('reason')}</TableCell>
+                        <TableCell sx={{ fontWeight: 600 }}>{tr('vendor')}</TableCell>
+                        <TableCell sx={{ fontWeight: 600 }}>{tr('technician')}</TableCell>
+                        <TableCell sx={{ fontWeight: 600 }}>{tr('cost')}</TableCell>
+                        <TableCell sx={{ fontWeight: 600 }}>{tr('completed')}</TableCell>
+                        <TableCell sx={{ fontWeight: 600 }}>{tr('finalCost')}</TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
                       {selectedAsset.maintenances.map((m) => (
                         <TableRow key={m.id}>
-                          <TableCell data-label="Sent At">{formatDate(m.sentAt)}</TableCell>
-                          <TableCell data-label="Reason">{m.reason}</TableCell>
-                          <TableCell data-label="Vendor">{m.maintenanceVendor ?? '—'}</TableCell>
-                          <TableCell data-label="Technician">{m.technician ?? '—'}</TableCell>
-                          <TableCell data-label="Cost">{m.cost ? `₹${Number(m.cost).toLocaleString('en-IN')}` : '—'}</TableCell>
-                          <TableCell data-label="Completed">{m.completedAt ? formatDate(m.completedAt) : <Chip label="Pending" size="small" color="warning" />}</TableCell>
-                          <TableCell data-label="Final Cost">{m.finalCost ? `₹${Number(m.finalCost).toLocaleString('en-IN')}` : '—'}</TableCell>
+                          <TableCell data-label={tr('sentAt')}>{formatDate(m.sentAt)}</TableCell>
+                          <TableCell data-label={tr('reason')}>{m.reason}</TableCell>
+                          <TableCell data-label={tr('vendor')}>{m.maintenanceVendor ?? '—'}</TableCell>
+                          <TableCell data-label={tr('technician')}>{m.technician ?? '—'}</TableCell>
+                          <TableCell data-label={tr('cost')}>{m.cost ? `₹${Number(m.cost).toLocaleString('en-IN')}` : '—'}</TableCell>
+                          <TableCell data-label={tr('completed')}>{m.completedAt ? formatDate(m.completedAt) : <Chip label={tr('pending')} size="small" color="warning" />}</TableCell>
+                          <TableCell data-label={tr('finalCost')}>{m.finalCost ? `₹${Number(m.finalCost).toLocaleString('en-IN')}` : '—'}</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
@@ -689,7 +673,7 @@ export default function AssetDetailPage() {
                 </TableContainer>
                 </ResponsiveTable>
               ) : (
-                <Typography color="text.secondary">No maintenance records.</Typography>
+                <Typography color="text.secondary">{tr('noMaint')}</Typography>
               )}
             </CardContent>
           )}
@@ -703,17 +687,17 @@ export default function AssetDetailPage() {
                   <Table size="small">
                     <TableHead>
                       <TableRow>
-                        <TableCell sx={{ fontWeight: 600 }}>Timestamp</TableCell>
-                        <TableCell sx={{ fontWeight: 600 }}>Location</TableCell>
-                        <TableCell sx={{ fontWeight: 600 }}>User</TableCell>
+                        <TableCell sx={{ fontWeight: 600 }}>{tr('timestamp')}</TableCell>
+                        <TableCell sx={{ fontWeight: 600 }}>{tr('location')}</TableCell>
+                        <TableCell sx={{ fontWeight: 600 }}>{tr('user')}</TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
                       {selectedAsset.scans.map((s) => (
                         <TableRow key={s.id}>
-                          <TableCell data-label="Timestamp">{formatDate(s.timestamp)}</TableCell>
-                          <TableCell data-label="Location">{s.location ?? '—'}</TableCell>
-                          <TableCell data-label="User">{s.user?.name ?? 'Anonymous'}</TableCell>
+                          <TableCell data-label={tr('timestamp')}>{formatDate(s.timestamp)}</TableCell>
+                          <TableCell data-label={tr('location')}>{s.location ?? '—'}</TableCell>
+                          <TableCell data-label={tr('user')}>{s.user?.name ?? tr('anon')}</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
@@ -721,7 +705,7 @@ export default function AssetDetailPage() {
                 </TableContainer>
                 </ResponsiveTable>
               ) : (
-                <Typography color="text.secondary">No scan history.</Typography>
+                <Typography color="text.secondary">{tr('noScan')}</Typography>
               )}
             </CardContent>
           )}
@@ -734,7 +718,7 @@ export default function AssetDetailPage() {
               ) : traceData ? (
                 <TraceabilityChain trace={traceData} />
               ) : (
-                <Typography color="text.secondary">No traceability data available.</Typography>
+                <Typography color="text.secondary">{tr('noTrace')}</Typography>
               )}
             </CardContent>
           )}
@@ -750,12 +734,12 @@ export default function AssetDetailPage() {
 
       {/* Print QR Tags Dialog */}
       <ResponsiveDialog open={printOpen} onClose={() => { setPrintOpen(false); setSelectedAssetIds([]); }} maxWidth="md" fullWidth>
-        <DialogTitle>Print QR Asset Tags</DialogTitle>
+        <DialogTitle>{tr('printQrAssetTags')}</DialogTitle>
         <DialogContent>
           <Typography variant="body2" sx={{ mb: 2 }}>
             {selectedAssetIds.length > 0
-              ? `Printing ${selectedAssetIds.length} tag(s). Use your browser's print dialog (Ctrl+P) and select A4 paper.`
-              : `Showing all ${rows.length} assets. Use your browser's print dialog (Ctrl+P) and select A4 paper.`}
+              ? tr('printingN', { n: selectedAssetIds.length })
+              : tr('showingN', { n: rows.length })}
           </Typography>
           <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', md: '1fr 1fr 1fr' }, gap: 2 }} className="print-area">
             {(selectedAssetIds.length > 0
@@ -775,97 +759,97 @@ export default function AssetDetailPage() {
           </Box>
         </DialogContent>
         <DialogActions sx={{ flexWrap: 'wrap', gap: 1 }}>
-          <Button onClick={() => { setPrintOpen(false); setSelectedAssetIds([]); }}>Close</Button>
+          <Button onClick={() => { setPrintOpen(false); setSelectedAssetIds([]); }}>{tr('close')}</Button>
           <Button variant="contained" startIcon={<PrintIcon />} onClick={() => {
             (selectedAssetIds.length > 0 ? selectedAssetIds : rows.filter((r) => r.status !== AssetStatus.RETIRED).map((r) => r.id))
               .forEach((id) => handlePrintLog(id));
             window.print();
-          }}>Print</Button>
+          }}>{tr('print')}</Button>
         </DialogActions>
       </ResponsiveDialog>
 
       {/* Action Dialog */}
       <ResponsiveDialog open={!!actionDialog} onClose={() => setActionDialog(null)} maxWidth="sm" fullWidth>
         <DialogTitle>
-          {actionDialog?.type === 'issue' && 'Issue Asset'}
-          {actionDialog?.type === 'return' && 'Return Asset'}
-          {actionDialog?.type === 'relocate' && 'Relocate Asset'}
-          {actionDialog?.type === 'maintenance' && 'Send for Maintenance'}
-          {actionDialog?.type === 'maintenance/complete' && 'Complete Maintenance'}
-          {actionDialog?.type === 'retire' && 'Retire Asset'}
+          {actionDialog?.type === 'issue' && tr('tIssue')}
+          {actionDialog?.type === 'return' && tr('tReturn')}
+          {actionDialog?.type === 'relocate' && tr('tRelocate')}
+          {actionDialog?.type === 'maintenance' && tr('tMaint')}
+          {actionDialog?.type === 'maintenance/complete' && tr('tMaintDone')}
+          {actionDialog?.type === 'retire' && tr('tRetire')}
         </DialogTitle>
         <DialogContent>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
             {actionDialog?.type === 'issue' && (
               <>
-                <TextField label="Issued To Department" value={String(actionForm.issuedToDept ?? '')} onChange={(e) => setActionForm({ ...actionForm, issuedToDept: e.target.value })} fullWidth size="small" />
-                <TextField label="Issued To Person" value={String(actionForm.issuedToPerson ?? '')} onChange={(e) => setActionForm({ ...actionForm, issuedToPerson: e.target.value })} fullWidth size="small" />
-                <TextField label="Destination Location" required value={String(actionForm.location ?? '')} onChange={(e) => setActionForm({ ...actionForm, location: e.target.value })} fullWidth size="small" />
-                <TextField label="Notes" value={String(actionForm.notes ?? '')} onChange={(e) => setActionForm({ ...actionForm, notes: e.target.value })} fullWidth size="small" multiline rows={2} />
+                <TextField label={tr('issuedToDepartment')} value={String(actionForm.issuedToDept ?? '')} onChange={(e) => setActionForm({ ...actionForm, issuedToDept: e.target.value })} fullWidth size="small" />
+                <TextField label={tr('issuedToPerson')} value={String(actionForm.issuedToPerson ?? '')} onChange={(e) => setActionForm({ ...actionForm, issuedToPerson: e.target.value })} fullWidth size="small" />
+                <TextField label={tr('destinationLocation')} required value={String(actionForm.location ?? '')} onChange={(e) => setActionForm({ ...actionForm, location: e.target.value })} fullWidth size="small" />
+                <TextField label={tr('notes')} value={String(actionForm.notes ?? '')} onChange={(e) => setActionForm({ ...actionForm, notes: e.target.value })} fullWidth size="small" multiline rows={2} />
               </>
             )}
             {actionDialog?.type === 'return' && (
               <>
-                <TextField label="Return To Location" value={String(actionForm.location ?? 'Main Store')} onChange={(e) => setActionForm({ ...actionForm, location: e.target.value })} fullWidth size="small" />
-                <TextField label="Notes" value={String(actionForm.notes ?? '')} onChange={(e) => setActionForm({ ...actionForm, notes: e.target.value })} fullWidth size="small" multiline rows={2} />
+                <TextField label={tr('returnToLocation')} value={String(actionForm.location ?? 'Main Store')} onChange={(e) => setActionForm({ ...actionForm, location: e.target.value })} fullWidth size="small" />
+                <TextField label={tr('notes')} value={String(actionForm.notes ?? '')} onChange={(e) => setActionForm({ ...actionForm, notes: e.target.value })} fullWidth size="small" multiline rows={2} />
               </>
             )}
             {actionDialog?.type === 'relocate' && (
               <>
-                <TextField label="New Location" required value={String(actionForm.location ?? '')} onChange={(e) => setActionForm({ ...actionForm, location: e.target.value })} fullWidth size="small" />
-                <TextField label="Reason (optional)" value={String(actionForm.reason ?? '')} onChange={(e) => setActionForm({ ...actionForm, reason: e.target.value })} fullWidth size="small" multiline rows={2} />
+                <TextField label={tr('newLocation')} required value={String(actionForm.location ?? '')} onChange={(e) => setActionForm({ ...actionForm, location: e.target.value })} fullWidth size="small" />
+                <TextField label={tr('reasonOptional')} value={String(actionForm.reason ?? '')} onChange={(e) => setActionForm({ ...actionForm, reason: e.target.value })} fullWidth size="small" multiline rows={2} />
               </>
             )}
             {actionDialog?.type === 'maintenance' && (
               <>
-                <TextField label="Reason" required value={String(actionForm.reason ?? '')} onChange={(e) => setActionForm({ ...actionForm, reason: e.target.value })} fullWidth size="small" multiline rows={2} />
-                <TextField label="Maintenance Vendor (optional)" value={String(actionForm.maintenanceVendor ?? '')} onChange={(e) => setActionForm({ ...actionForm, maintenanceVendor: e.target.value })} fullWidth size="small" />
-                <TextField label="Technician (optional)" value={String(actionForm.technician ?? '')} onChange={(e) => setActionForm({ ...actionForm, technician: e.target.value })} fullWidth size="small" />
-                <TextField label="Cost (optional)" type="text" value={String(actionForm.cost ?? '')} onChange={(e) => setActionForm({ ...actionForm, cost: e.target.value })} fullWidth size="small" inputMode="decimal" InputProps={{ startAdornment: <InputAdornment position="start">₹</InputAdornment> }} />
+                <TextField label={tr('reason')} required value={String(actionForm.reason ?? '')} onChange={(e) => setActionForm({ ...actionForm, reason: e.target.value })} fullWidth size="small" multiline rows={2} />
+                <TextField label={tr('maintenanceVendorOptional')} value={String(actionForm.maintenanceVendor ?? '')} onChange={(e) => setActionForm({ ...actionForm, maintenanceVendor: e.target.value })} fullWidth size="small" />
+                <TextField label={tr('technicianOptional')} value={String(actionForm.technician ?? '')} onChange={(e) => setActionForm({ ...actionForm, technician: e.target.value })} fullWidth size="small" />
+                <TextField label={tr('costOptional')} type="text" value={String(actionForm.cost ?? '')} onChange={(e) => setActionForm({ ...actionForm, cost: e.target.value })} fullWidth size="small" inputMode="decimal" InputProps={{ startAdornment: <InputAdornment position="start">₹</InputAdornment> }} />
               </>
             )}
             {actionDialog?.type === 'maintenance/complete' && (
               <>
-                <TextField label="Completion Notes" value={String(actionForm.completionNotes ?? '')} onChange={(e) => setActionForm({ ...actionForm, completionNotes: e.target.value })} fullWidth size="small" multiline rows={2} />
-                <TextField label="Final Cost (optional)" type="text" value={String(actionForm.finalCost ?? '')} onChange={(e) => setActionForm({ ...actionForm, finalCost: e.target.value })} fullWidth size="small" inputMode="decimal" InputProps={{ startAdornment: <InputAdornment position="start">₹</InputAdornment> }} />
-                <TextField label="Return To Location" value={String(actionForm.returnToLocation ?? 'Main Store')} onChange={(e) => setActionForm({ ...actionForm, returnToLocation: e.target.value })} fullWidth size="small" />
+                <TextField label={tr('completionNotes')} value={String(actionForm.completionNotes ?? '')} onChange={(e) => setActionForm({ ...actionForm, completionNotes: e.target.value })} fullWidth size="small" multiline rows={2} />
+                <TextField label={tr('finalCostOptional')} type="text" value={String(actionForm.finalCost ?? '')} onChange={(e) => setActionForm({ ...actionForm, finalCost: e.target.value })} fullWidth size="small" inputMode="decimal" InputProps={{ startAdornment: <InputAdornment position="start">₹</InputAdornment> }} />
+                <TextField label={tr('returnToLocation')} value={String(actionForm.returnToLocation ?? 'Main Store')} onChange={(e) => setActionForm({ ...actionForm, returnToLocation: e.target.value })} fullWidth size="small" />
               </>
             )}
             {actionDialog?.type === 'retire' && (
-              <TextField label="Reason" required value={String(actionForm.reason ?? '')} onChange={(e) => setActionForm({ ...actionForm, reason: e.target.value })} fullWidth size="small" multiline rows={2} />
+              <TextField label={tr('reason')} required value={String(actionForm.reason ?? '')} onChange={(e) => setActionForm({ ...actionForm, reason: e.target.value })} fullWidth size="small" multiline rows={2} />
             )}
           </Box>
         </DialogContent>
         <DialogActions sx={{ flexWrap: 'wrap', gap: 1 }}>
-          <Button onClick={() => setActionDialog(null)}>Cancel</Button>
+          <Button onClick={() => setActionDialog(null)}>{tr('cancel')}</Button>
           <Button variant="contained" onClick={() => actionMutation.mutate()} disabled={actionMutation.isPending}>
-            {actionMutation.isPending ? <CircularProgress size={20} /> : 'Confirm'}
+            {actionMutation.isPending ? <CircularProgress size={20} /> : tr('confirm')}
           </Button>
         </DialogActions>
       </ResponsiveDialog>
 
       {/* Create Asset Dialog */}
       <ResponsiveDialog open={createOpen} onClose={() => { setCreateOpen(false); setCreateForm({ location: itemData?.location ?? 'Main Store' }); }} maxWidth="sm" fullWidth>
-        <DialogTitle>Set up Asset — {itemData ? String(itemData.name) : 'Asset'}</DialogTitle>
+        <DialogTitle>{tr('setupTitle', { name: itemData ? String(itemData.name) : tr('asset') })}</DialogTitle>
         <DialogContent>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
-            <TextField label="Location" value={String(createForm.location ?? 'Main Store')} onChange={(e) => setCreateForm({ ...createForm, location: e.target.value })} fullWidth size="small" required />
-            <TextField label="Serial Number" value={String(createForm.serialNumber ?? '')} onChange={(e) => setCreateForm({ ...createForm, serialNumber: e.target.value })} fullWidth size="small" />
-            <TextField label="UDI (Unique Device Identifier)" value={String(createForm.udi ?? '')} onChange={(e) => setCreateForm({ ...createForm, udi: e.target.value })} fullWidth size="small" />
-            <TextField label="GTIN (Global Trade Item Number)" value={String(createForm.gtin ?? '')} onChange={(e) => setCreateForm({ ...createForm, gtin: e.target.value })} fullWidth size="small" />
-            <TextField label="Warranty Expiry" type="date" value={String(createForm.warrantyExpiry ?? '')} onChange={(e) => setCreateForm({ ...createForm, warrantyExpiry: e.target.value })} fullWidth size="small" InputLabelProps={{ shrink: true }} />
-            <TextField label="AMC Vendor" value={String(createForm.amcVendor ?? '')} onChange={(e) => setCreateForm({ ...createForm, amcVendor: e.target.value })} fullWidth size="small" />
-            <TextField label="AMC Expiry" type="date" value={String(createForm.amcExpiry ?? '')} onChange={(e) => setCreateForm({ ...createForm, amcExpiry: e.target.value })} fullWidth size="small" InputLabelProps={{ shrink: true }} />
-            <TextField label="Useful Life (Years)" type="number" value={String(createForm.usefulLifeYears ?? '')} onChange={(e) => setCreateForm({ ...createForm, usefulLifeYears: e.target.value })} fullWidth size="small" inputProps={{ step: 0.5, min: 0 }} helperText="For depreciation calculation" />
-            <TextField select label="Depreciation Method" value={String(createForm.depreciationMethod ?? '')} onChange={(e) => setCreateForm({ ...createForm, depreciationMethod: e.target.value })} fullWidth size="small">
-              <MenuItem value="">None</MenuItem>
-              <MenuItem value="STRAIGHT_LINE">Straight Line</MenuItem>
-              <MenuItem value="WRITTEN_DOWN_VALUE">Written Down Value</MenuItem>
+            <TextField label={tr('location')} value={String(createForm.location ?? 'Main Store')} onChange={(e) => setCreateForm({ ...createForm, location: e.target.value })} fullWidth size="small" required />
+            <TextField label={tr('serialNumber')} value={String(createForm.serialNumber ?? '')} onChange={(e) => setCreateForm({ ...createForm, serialNumber: e.target.value })} fullWidth size="small" />
+            <TextField label={tr('udiUniqueDeviceIdentifier')} value={String(createForm.udi ?? '')} onChange={(e) => setCreateForm({ ...createForm, udi: e.target.value })} fullWidth size="small" />
+            <TextField label={tr('gtinGlobalTradeItem')} value={String(createForm.gtin ?? '')} onChange={(e) => setCreateForm({ ...createForm, gtin: e.target.value })} fullWidth size="small" />
+            <TextField label={tr('warrantyExpiry')} type="date" value={String(createForm.warrantyExpiry ?? '')} onChange={(e) => setCreateForm({ ...createForm, warrantyExpiry: e.target.value })} fullWidth size="small" InputLabelProps={{ shrink: true }} />
+            <TextField label={tr('amcVendor')} value={String(createForm.amcVendor ?? '')} onChange={(e) => setCreateForm({ ...createForm, amcVendor: e.target.value })} fullWidth size="small" />
+            <TextField label={tr('amcExpiry')} type="date" value={String(createForm.amcExpiry ?? '')} onChange={(e) => setCreateForm({ ...createForm, amcExpiry: e.target.value })} fullWidth size="small" InputLabelProps={{ shrink: true }} />
+            <TextField label={tr('usefulLifeYears')} type="number" value={String(createForm.usefulLifeYears ?? '')} onChange={(e) => setCreateForm({ ...createForm, usefulLifeYears: e.target.value })} fullWidth size="small" inputProps={{ step: 0.5, min: 0 }} helperText={tr('forDepreciationCalculation')} />
+            <TextField select label={tr('depreciationMethod')} value={String(createForm.depreciationMethod ?? '')} onChange={(e) => setCreateForm({ ...createForm, depreciationMethod: e.target.value })} fullWidth size="small">
+              <MenuItem value="">{tr('none')}</MenuItem>
+              <MenuItem value="STRAIGHT_LINE">{tr('straightLine')}</MenuItem>
+              <MenuItem value="WRITTEN_DOWN_VALUE">{tr('wdv')}</MenuItem>
             </TextField>
-            <TextField label="Salvage Value" type="number" value={String(createForm.salvageValue ?? '')} onChange={(e) => setCreateForm({ ...createForm, salvageValue: e.target.value })} fullWidth size="small" inputProps={{ step: 0.01, min: 0 }} InputProps={{ startAdornment: <InputAdornment position="start">₹</InputAdornment> }} />
+            <TextField label={tr('salvageValue')} type="number" value={String(createForm.salvageValue ?? '')} onChange={(e) => setCreateForm({ ...createForm, salvageValue: e.target.value })} fullWidth size="small" inputProps={{ step: 0.01, min: 0 }} InputProps={{ startAdornment: <InputAdornment position="start">₹</InputAdornment> }} />
             <TextField
               select
-              label="Vendor"
+              label={tr('vendor')}
               value={String(createForm.vendorId ?? '')}
               onChange={(e) => {
                 const vendorId = e.target.value;
@@ -883,12 +867,12 @@ export default function AssetDetailPage() {
               fullWidth
               size="small"
             >
-              <MenuItem value=""><em>Select a vendor</em></MenuItem>
+              <MenuItem value=""><em>{tr('selectAVendor')}</em></MenuItem>
               {vendors.map((v) => <MenuItem key={v.id} value={v.id}>{v.name}</MenuItem>)}
             </TextField>
             <TextField
               select
-              label="PO Number"
+              label={tr('poNumber')}
               value={String(createForm.poId ?? '')}
               onChange={(e) => {
                 const poId = e.target.value;
@@ -899,12 +883,12 @@ export default function AssetDetailPage() {
               size="small"
               disabled={!createForm.vendorId}
             >
-              <MenuItem value=""><em>Select a PO</em></MenuItem>
+              <MenuItem value=""><em>{tr('selectAPo')}</em></MenuItem>
               {purchaseOrders.map((p) => <MenuItem key={p.id} value={p.id}>{p.poNumber}</MenuItem>)}
             </TextField>
             <TextField
               select
-              label="Invoice Number"
+              label={tr('invoiceNumber')}
               value={String(createForm.invoiceId ?? '')}
               onChange={(e) => {
                 const invoiceId = e.target.value;
@@ -915,49 +899,49 @@ export default function AssetDetailPage() {
               size="small"
               disabled={!createForm.vendorId}
             >
-              <MenuItem value=""><em>Select an invoice</em></MenuItem>
+              <MenuItem value=""><em>{tr('selectAnInvoice')}</em></MenuItem>
               {invoices.map((i) => <MenuItem key={i.id} value={i.id}>{i.invoiceNumber}</MenuItem>)}
             </TextField>
-            <TextField label="Receipt Number" value={String(createForm.receiptNumber ?? '')} onChange={(e) => setCreateForm({ ...createForm, receiptNumber: e.target.value })} fullWidth size="small" />
-            <TextField label="Unit Price" type="number" value={String(createForm.unitPrice ?? '')} onChange={(e) => setCreateForm({ ...createForm, unitPrice: e.target.value })} fullWidth size="small" inputProps={{ step: 0.01, min: 0 }} InputProps={{ startAdornment: <InputAdornment position="start">₹</InputAdornment> }} />
-            <TextField label="Total Cost (incl. GST)" type="number" value={String(createForm.totalCost ?? '')} onChange={(e) => setCreateForm({ ...createForm, totalCost: e.target.value })} fullWidth size="small" inputProps={{ step: 0.01, min: 0 }} InputProps={{ startAdornment: <InputAdornment position="start">₹</InputAdornment> }} />
-            <TextField label="Purchase / Receipt Date" type="date" value={String(createForm.receiptDate ?? '')} onChange={(e) => setCreateForm({ ...createForm, receiptDate: e.target.value })} fullWidth size="small" InputLabelProps={{ shrink: true }} />
-            <TextField label="Notes" value={String(createForm.notes ?? '')} onChange={(e) => setCreateForm({ ...createForm, notes: e.target.value })} fullWidth size="small" multiline rows={2} />
+            <TextField label={tr('receiptNumber')} value={String(createForm.receiptNumber ?? '')} onChange={(e) => setCreateForm({ ...createForm, receiptNumber: e.target.value })} fullWidth size="small" />
+            <TextField label={tr('unitPrice')} type="number" value={String(createForm.unitPrice ?? '')} onChange={(e) => setCreateForm({ ...createForm, unitPrice: e.target.value })} fullWidth size="small" inputProps={{ step: 0.01, min: 0 }} InputProps={{ startAdornment: <InputAdornment position="start">₹</InputAdornment> }} />
+            <TextField label={tr('totalCostInclGst')} type="number" value={String(createForm.totalCost ?? '')} onChange={(e) => setCreateForm({ ...createForm, totalCost: e.target.value })} fullWidth size="small" inputProps={{ step: 0.01, min: 0 }} InputProps={{ startAdornment: <InputAdornment position="start">₹</InputAdornment> }} />
+            <TextField label={tr('purchaseReceiptDate')} type="date" value={String(createForm.receiptDate ?? '')} onChange={(e) => setCreateForm({ ...createForm, receiptDate: e.target.value })} fullWidth size="small" InputLabelProps={{ shrink: true }} />
+            <TextField label={tr('notes')} value={String(createForm.notes ?? '')} onChange={(e) => setCreateForm({ ...createForm, notes: e.target.value })} fullWidth size="small" multiline rows={2} />
           </Box>
         </DialogContent>
         <DialogActions sx={{ flexWrap: 'wrap', gap: 1 }}>
-          <Button onClick={() => { setCreateOpen(false); setCreateForm({ location: itemData?.location ?? 'Main Store' }); }}>Cancel</Button>
+          <Button onClick={() => { setCreateOpen(false); setCreateForm({ location: itemData?.location ?? 'Main Store' }); }}>{tr('cancel')}</Button>
           <Button variant="contained" onClick={() => createMutation.mutate()} disabled={createMutation.isPending}>
-            {createMutation.isPending ? <CircularProgress size={20} /> : 'Set up Asset'}
+            {createMutation.isPending ? <CircularProgress size={20} /> : tr('setupAsset')}
           </Button>
         </DialogActions>
       </ResponsiveDialog>
 
       {/* Edit Details Dialog */}
       <ResponsiveDialog open={!!editDialog} onClose={() => setEditDialog(null)} maxWidth="sm" fullWidth>
-        <DialogTitle>Edit Asset Details — {editDialog?.asset.assetId}</DialogTitle>
+        <DialogTitle>{tr('editTitle', { id: editDialog?.asset.assetId })}</DialogTitle>
         <DialogContent>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
-            <TextField label="Serial Number" value={String(editForm.serialNumber ?? '')} onChange={(e) => setEditForm({ ...editForm, serialNumber: e.target.value })} fullWidth size="small" />
-            <TextField label="UDI (Unique Device Identifier)" value={String(editForm.udi ?? '')} onChange={(e) => setEditForm({ ...editForm, udi: e.target.value })} fullWidth size="small" helperText="Scanned from manufacturer's label (CDSCO requirement for Class C/D devices)" />
-            <TextField label="GTIN (Global Trade Item Number)" value={String(editForm.gtin ?? '')} onChange={(e) => setEditForm({ ...editForm, gtin: e.target.value })} fullWidth size="small" helperText="GS1 standard product identifier" />
-            <TextField label="Warranty Expiry" type="date" value={String(editForm.warrantyExpiry ?? '')} onChange={(e) => setEditForm({ ...editForm, warrantyExpiry: e.target.value })} fullWidth size="small" InputLabelProps={{ shrink: true }} />
-            <TextField label="AMC Vendor" value={String(editForm.amcVendor ?? '')} onChange={(e) => setEditForm({ ...editForm, amcVendor: e.target.value })} fullWidth size="small" />
-            <TextField label="AMC Expiry" type="date" value={String(editForm.amcExpiry ?? '')} onChange={(e) => setEditForm({ ...editForm, amcExpiry: e.target.value })} fullWidth size="small" InputLabelProps={{ shrink: true }} />
-            <TextField label="Useful Life (Years)" type="number" value={String(editForm.usefulLifeYears ?? '')} onChange={(e) => setEditForm({ ...editForm, usefulLifeYears: e.target.value })} fullWidth size="small" inputProps={{ step: 0.5, min: 0 }} helperText="For depreciation calculation" />
-            <TextField select label="Depreciation Method" value={String(editForm.depreciationMethod ?? '')} onChange={(e) => setEditForm({ ...editForm, depreciationMethod: e.target.value })} fullWidth size="small">
-              <MenuItem value="">None</MenuItem>
-              <MenuItem value="STRAIGHT_LINE">Straight Line</MenuItem>
-              <MenuItem value="WRITTEN_DOWN_VALUE">Written Down Value</MenuItem>
+            <TextField label={tr('serialNumber')} value={String(editForm.serialNumber ?? '')} onChange={(e) => setEditForm({ ...editForm, serialNumber: e.target.value })} fullWidth size="small" />
+            <TextField label={tr('udiUniqueDeviceIdentifier')} value={String(editForm.udi ?? '')} onChange={(e) => setEditForm({ ...editForm, udi: e.target.value })} fullWidth size="small" helperText={tr('scannedFromManufacturerS')} />
+            <TextField label={tr('gtinGlobalTradeItem')} value={String(editForm.gtin ?? '')} onChange={(e) => setEditForm({ ...editForm, gtin: e.target.value })} fullWidth size="small" helperText={tr('gs1StandardProductIdentifier')} />
+            <TextField label={tr('warrantyExpiry')} type="date" value={String(editForm.warrantyExpiry ?? '')} onChange={(e) => setEditForm({ ...editForm, warrantyExpiry: e.target.value })} fullWidth size="small" InputLabelProps={{ shrink: true }} />
+            <TextField label={tr('amcVendor')} value={String(editForm.amcVendor ?? '')} onChange={(e) => setEditForm({ ...editForm, amcVendor: e.target.value })} fullWidth size="small" />
+            <TextField label={tr('amcExpiry')} type="date" value={String(editForm.amcExpiry ?? '')} onChange={(e) => setEditForm({ ...editForm, amcExpiry: e.target.value })} fullWidth size="small" InputLabelProps={{ shrink: true }} />
+            <TextField label={tr('usefulLifeYears')} type="number" value={String(editForm.usefulLifeYears ?? '')} onChange={(e) => setEditForm({ ...editForm, usefulLifeYears: e.target.value })} fullWidth size="small" inputProps={{ step: 0.5, min: 0 }} helperText={tr('forDepreciationCalculation')} />
+            <TextField select label={tr('depreciationMethod')} value={String(editForm.depreciationMethod ?? '')} onChange={(e) => setEditForm({ ...editForm, depreciationMethod: e.target.value })} fullWidth size="small">
+              <MenuItem value="">{tr('none')}</MenuItem>
+              <MenuItem value="STRAIGHT_LINE">{tr('straightLine')}</MenuItem>
+              <MenuItem value="WRITTEN_DOWN_VALUE">{tr('wdv')}</MenuItem>
             </TextField>
-            <TextField label="Salvage Value" type="number" value={String(editForm.salvageValue ?? '')} onChange={(e) => setEditForm({ ...editForm, salvageValue: e.target.value })} fullWidth size="small" inputProps={{ step: 0.01, min: 0 }} InputProps={{ startAdornment: <InputAdornment position="start">₹</InputAdornment> }} helperText="Residual value at end of useful life" />
-            <TextField label="Notes" value={String(editForm.notes ?? '')} onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })} fullWidth size="small" multiline rows={2} />
+            <TextField label={tr('salvageValue')} type="number" value={String(editForm.salvageValue ?? '')} onChange={(e) => setEditForm({ ...editForm, salvageValue: e.target.value })} fullWidth size="small" inputProps={{ step: 0.01, min: 0 }} InputProps={{ startAdornment: <InputAdornment position="start">₹</InputAdornment> }} helperText={tr('residualValueAtEnd')} />
+            <TextField label={tr('notes')} value={String(editForm.notes ?? '')} onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })} fullWidth size="small" multiline rows={2} />
           </Box>
         </DialogContent>
         <DialogActions sx={{ flexWrap: 'wrap', gap: 1 }}>
-          <Button onClick={() => setEditDialog(null)}>Cancel</Button>
+          <Button onClick={() => setEditDialog(null)}>{tr('cancel')}</Button>
           <Button variant="contained" onClick={() => editMutation.mutate()} disabled={editMutation.isPending}>
-            {editMutation.isPending ? <CircularProgress size={20} /> : 'Save Details'}
+            {editMutation.isPending ? <CircularProgress size={20} /> : tr('saveDetails')}
           </Button>
         </DialogActions>
       </ResponsiveDialog>

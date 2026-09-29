@@ -3,7 +3,8 @@ import { Badge, DialogContent, DialogTitle, IconButton, Tab, Tabs, Typography } 
 import CloseIcon from '@mui/icons-material/Close';
 import type { UserResponse } from '@hospital-erp/shared';
 import ResponsiveDialog from './ResponsiveDialog';
-import { PendingItemsContent, ENTITY_CONFIGS, type PendingEntityType } from './PendingItemsDialog';
+import { PendingItemsContent, type PendingEntityType } from './PendingItemsDialog';
+import { useTranslation } from 'react-i18next';
 
 interface AllPendingTasksDialogProps {
   open: boolean;
@@ -19,6 +20,7 @@ const TAB_ORDER: PendingEntityType[] = ['mprs', 'quotations', 'pos', 'invoices',
 // place, tabbed by type. Each tab reuses the same list + approve/reject +
 // confirmation logic as the single-type PendingItemsDialog.
 export default function AllPendingTasksDialog({ open, user, onClose, counts, initialTab }: AllPendingTasksDialogProps) {
+  const { t: tr } = useTranslation('pending');
   const [tab, setTab] = useState<PendingEntityType>(initialTab ?? 'quotations');
 
   useEffect(() => {
@@ -32,9 +34,9 @@ export default function AllPendingTasksDialog({ open, user, onClose, counts, ini
     <ResponsiveDialog open={open} onClose={onClose} fullWidth maxWidth="sm">
       <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', pr: 1 }}>
         <Typography variant="h6" component="span" fontWeight={600}>
-          All Pending Tasks {totalCount > 0 ? `(${totalCount})` : ''}
+          {tr('allTasks')} {totalCount > 0 ? `(${totalCount})` : ''}
         </Typography>
-        <IconButton onClick={onClose} size="small" aria-label="Close">
+        <IconButton onClick={onClose} size="small" aria-label={tr('close')}>
           <CloseIcon fontSize="small" />
         </IconButton>
       </DialogTitle>
@@ -51,7 +53,7 @@ export default function AllPendingTasksDialog({ open, user, onClose, counts, ini
             value={t}
             label={
               <Badge badgeContent={counts[t] ?? 0} color="warning" max={99} sx={{ pr: counts[t] ? 1.2 : 0 }}>
-                {ENTITY_CONFIGS[t].entityLabel}
+                {tr(`entity.${t}`)}
               </Badge>
             }
           />

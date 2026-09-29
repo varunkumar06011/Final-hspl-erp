@@ -18,25 +18,18 @@ import { Visibility, VisibilityOff } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { extractErrorMessage } from '../config/api';
 import { useAuthStore } from '../stores/authStore';
-import { formatCurrency, formatIndianNumber } from '../utils/enumOptions';
+import { formatCurrency, formatIndianNumber, roleLabel } from '../utils/enumOptions';
 import NotificationPermissionPrompt from '../components/NotificationPermissionPrompt';
 
+import { useTranslation } from 'react-i18next';
 const NOTIFICATION_EVENT_LABELS: { key: string; label: string; description: string }[] = [
   { key: 'entity_created', label: 'New entity created', description: 'PO, quotation, invoice, payment, etc. created by your team' },
   { key: 'approval_request', label: 'Approval requests', description: 'A document is waiting for your approval' },
   { key: 'approval_result', label: 'Approval results', description: 'Your document was approved or rejected' },
 ];
 
-const ROLE_LABELS: Record<string, string> = {
-  PROJECT_HEAD: 'Project Head',
-  HEAD_OF_CONSTRUCTION: 'Head of Construction',
-  ACCOUNTS_HEAD: 'Accounts Head',
-  ADMIN: 'Admin',
-  ADMIN_2: 'Admin 2',
-  SUPERVISOR: 'Supervisor',
-};
-
 export default function SettingsPage() {
+  const { t: tr } = useTranslation('settings');
   const queryClient = useQueryClient();
   const { user, setUser } = useAuthStore();
   const [officeAddress, setOfficeAddress] = useState('');
@@ -119,7 +112,7 @@ export default function SettingsPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/settings'] });
-      setSuccess('Settings saved successfully');
+      setSuccess(tr('okSettings'));
       setError('');
       setTimeout(() => setSuccess(''), 3000);
     },
@@ -153,7 +146,7 @@ export default function SettingsPage() {
       if (user) {
         setUser({ ...user, name: data.name, phone: data.phone });
       }
-      setSuccess('Profile updated successfully');
+      setSuccess(tr('okProfile'));
       setError('');
       setTimeout(() => setSuccess(''), 3000);
     },
@@ -191,7 +184,7 @@ export default function SettingsPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/notifications/preferences'] });
-      setSuccess('Notification preferences saved');
+      setSuccess(tr('okPrefs'));
       setError('');
       setTimeout(() => setSuccess(''), 3000);
     },
@@ -204,7 +197,7 @@ export default function SettingsPage() {
 
   return (
     <Box>
-      <Typography variant="h5" gutterBottom fontWeight={600} sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' } }}>Settings</Typography>
+      <Typography variant="h5" gutterBottom fontWeight={600} sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' } }}>{tr('title')}</Typography>
 
       {success && <Alert severity="success" sx={{ mb: 2 }}>{success}</Alert>}
       {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
@@ -212,33 +205,33 @@ export default function SettingsPage() {
       {/* Profile Settings */}
       <Card sx={{ mb: 3 }}>
         <CardContent>
-          <Typography variant="h6" gutterBottom>My Profile</Typography>
+          <Typography variant="h6" gutterBottom>{tr('myProfile')}</Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            Update your name and phone number. Your phone number is used for gate pass OTP verification.
+            {tr('profileNote')}
           </Typography>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, maxWidth: { xs: '100%', sm: 400 } }}>
             <TextField
-              label="Name"
+              label={tr('name')}
               value={profileName}
               onChange={(e) => setProfileName(e.target.value)}
               fullWidth
               size="small"
             />
             <TextField
-              label="Phone Number"
+              label={tr('phoneNumber')}
               value={profilePhone}
               onChange={(e) => setProfilePhone(e.target.value)}
               fullWidth
               size="small"
-              helperText="Include country code, e.g. +917386861234"
+              helperText={tr('phoneHelp')}
             />
             <TextField
-              label="Role"
-              value={ROLE_LABELS[profile?.role ?? user?.role ?? ''] ?? profile?.role ?? ''}
+              label={tr('role')}
+              value={roleLabel(profile?.role ?? user?.role ?? '')}
               fullWidth
               size="small"
               InputProps={{ readOnly: true }}
-              helperText="Role can only be changed by an admin via the Users tab"
+              helperText={tr('roleHelp')}
             />
             <Button
               variant="contained"
@@ -246,7 +239,7 @@ export default function SettingsPage() {
               disabled={(!profileName || !profilePhone) || updateProfileMutation.isPending}
               sx={{ alignSelf: 'flex-start' }}
             >
-              {updateProfileMutation.isPending ? <CircularProgress size={20} /> : 'Save Profile'}
+              {updateProfileMutation.isPending ? <CircularProgress size={20} /> : tr('saveProfile')}
             </Button>
           </Box>
         </CardContent>
@@ -255,9 +248,9 @@ export default function SettingsPage() {
       {/* Notifications */}
       <Card sx={{ mb: 3 }}>
         <CardContent>
-          <Typography variant="h6" gutterBottom>Push Notifications</Typography>
+          <Typography variant="h6" gutterBottom>{tr('pushNotifications')}</Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            Get system-level alerts when an approval is required, even when the website is closed or minimized.
+            {tr('pushNote')}
           </Typography>
           <NotificationPermissionPrompt />
         </CardContent>
@@ -266,9 +259,9 @@ export default function SettingsPage() {
       {/* Notification Preferences */}
       <Card sx={{ mb: 3 }}>
         <CardContent>
-          <Typography variant="h6" gutterBottom>Notification Preferences</Typography>
+          <Typography variant="h6" gutterBottom>{tr('notificationPreferences')}</Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            Choose which types of push notifications you want to receive. Muted categories will not trigger a push, even if you are subscribed.
+            {tr('prefNote')}
           </Typography>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
             {NOTIFICATION_EVENT_LABELS.map(({ key, label, description }) => (
@@ -286,8 +279,8 @@ export default function SettingsPage() {
                 }
                 label={
                   <Box>
-                    <Typography variant="body2" fontWeight={600}>{label}</Typography>
-                    <Typography variant="caption" color="text.secondary">{description}</Typography>
+                    <Typography variant="body2" fontWeight={600}>{tr(`n_${key}_label`, label)}</Typography>
+                    <Typography variant="caption" color="text.secondary">{tr(`n_${key}_desc`, description)}</Typography>
                   </Box>
                 }
                 sx={{ alignItems: 'flex-start', mr: 0 }}
@@ -300,16 +293,16 @@ export default function SettingsPage() {
       {/* Change PIN */}
       <Card sx={{ mb: 3 }}>
         <CardContent>
-          <Typography variant="h6" gutterBottom>Change Login PIN</Typography>
+          <Typography variant="h6" gutterBottom>{tr('changeLoginPin')}</Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            Your 4-digit PIN is used with your phone number to sign in. No OTP needed after setting it.
+            {tr('pinNote')}
           </Typography>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, maxWidth: { xs: '100%', sm: 400 }, flexWrap: 'wrap' }}>
             <Input
               type={showPins ? 'text' : 'password'}
               value={oldPin}
               onChange={(e) => { const d = e.target.value.replace(/\D/g, '').slice(0, 4); setOldPin(d); }}
-              placeholder="Current PIN"
+              placeholder={tr('currentPin')}
               fullWidth
               inputProps={{ maxLength: 4, style: { textAlign: 'center', letterSpacing: '0.3rem', fontSize: '1.25rem' } }}
               endAdornment={
@@ -324,7 +317,7 @@ export default function SettingsPage() {
               type={showPins ? 'text' : 'password'}
               value={newPin}
               onChange={(e) => { const d = e.target.value.replace(/\D/g, '').slice(0, 4); setNewPin(d); }}
-              placeholder="New PIN"
+              placeholder={tr('newPin')}
               fullWidth
               inputProps={{ maxLength: 4, style: { textAlign: 'center', letterSpacing: '0.3rem', fontSize: '1.25rem' } }}
             />
@@ -332,13 +325,13 @@ export default function SettingsPage() {
               type={showPins ? 'text' : 'password'}
               value={confirmPin}
               onChange={(e) => { const d = e.target.value.replace(/\D/g, '').slice(0, 4); setConfirmPin(d); }}
-              placeholder="Confirm New PIN"
+              placeholder={tr('confirmNewPin')}
               fullWidth
               error={confirmPin.length > 0 && confirmPin !== newPin}
               inputProps={{ maxLength: 4, style: { textAlign: 'center', letterSpacing: '0.3rem', fontSize: '1.25rem' } }}
             />
             {confirmPin.length > 0 && confirmPin !== newPin && (
-              <Typography variant="caption" color="error">PINs do not match</Typography>
+              <Typography variant="caption" color="error">{tr('pinsDoNotMatch')}</Typography>
             )}
             <Button
               variant="contained"
@@ -346,7 +339,7 @@ export default function SettingsPage() {
               disabled={oldPin.length !== 4 || newPin.length !== 4 || confirmPin !== newPin || changePinMutation.isPending}
               sx={{ alignSelf: 'flex-start' }}
             >
-              {changePinMutation.isPending ? <CircularProgress size={20} /> : 'Update PIN'}
+              {changePinMutation.isPending ? <CircularProgress size={20} /> : tr('updatePin')}
             </Button>
           </Box>
         </CardContent>
@@ -355,34 +348,34 @@ export default function SettingsPage() {
       {/* Address Settings */}
       <Card sx={{ mb: 3 }}>
         <CardContent>
-          <Typography variant="h6" gutterBottom>Project Settings</Typography>
+          <Typography variant="h6" gutterBottom>{tr('projectSettings')}</Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            These addresses are used in Purchase Order PDFs. The total budget is used for dashboard tracking.
+            {tr('projNote')}
           </Typography>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, flexWrap: 'wrap' }}>
             <TextField
-              label="Hospital Name"
+              label={tr('hospitalName')}
               value={hospitalName}
               onChange={(e) => setHospitalName(e.target.value)}
               fullWidth
               size="small"
-              helperText="This name appears on PO PDFs and across the app"
+              helperText={tr('hospitalHelp')}
             />
             <TextField
-              label="GST Number"
+              label={tr('gstNumber')}
               value={gstNumber}
               onChange={(e) => setGstNumber(e.target.value)}
               fullWidth
               size="small"
-              helperText="GSTIN shown on PO PDFs (e.g. 36ABCDE1234F1Z5)"
+              helperText={tr('gstHelp')}
             />
             <TextField
-              label="PAN Number"
+              label={tr('panNumber')}
               value={panNumber}
               onChange={(e) => setPanNumber(e.target.value)}
               fullWidth
               size="small"
-              helperText="Company PAN shown on PO PDFs"
+              helperText={tr('panHelp')}
             />
             <Box>
               <input
@@ -403,14 +396,14 @@ export default function SettingsPage() {
                 disabled={uploadLogoMutation.isPending}
                 sx={{ mr: 1 }}
               >
-                {uploadLogoMutation.isPending ? <CircularProgress size={18} /> : 'Choose Logo'}
+                {uploadLogoMutation.isPending ? <CircularProgress size={18} /> : tr('chooseLogo')}
               </Button>
               <Typography variant="body2" color="text.secondary" component="span">
-                {logoUrl ? `Logo uploaded: ${logoUrl}` : 'Upload company logo for PO PDFs (optional)'}
+                {logoUrl ? tr('logoUploaded', { u: logoUrl }) : tr('logoHint')}
               </Typography>
             </Box>
             <TextField
-              label="Total Budget"
+              label={tr('totalBudget')}
               type="text"
               value={formatIndianNumber(totalBudget)}
               onChange={(e) => setTotalBudget(e.target.value.replace(/,/g, ''))}
@@ -418,10 +411,10 @@ export default function SettingsPage() {
               inputProps={{ min: 0, step: 0.01 }}
               fullWidth
               size="small"
-              helperText={totalBudget ? `Current: ${formatCurrency(Number(totalBudget))}` : 'Set the total project budget'}
+              helperText={totalBudget ? tr('currentV', { v: formatCurrency(Number(totalBudget)) }) : tr('setBudget')}
             />
             <TextField
-              label="Office Address (Bill To)"
+              label={tr('officeAddressBillTo')}
               value={officeAddress}
               onChange={(e) => setOfficeAddress(e.target.value)}
               fullWidth
@@ -429,7 +422,7 @@ export default function SettingsPage() {
               rows={3}
             />
             <TextField
-              label="Hospital Address (Delivery Address)"
+              label={tr('hospitalAddressDeliveryAddress')}
               value={hospitalAddress}
               onChange={(e) => setHospitalAddress(e.target.value)}
               fullWidth
@@ -442,7 +435,7 @@ export default function SettingsPage() {
               disabled={updateMutation.isPending}
               sx={{ alignSelf: 'flex-start' }}
             >
-              {updateMutation.isPending ? <CircularProgress size={20} /> : 'Save Settings'}
+              {updateMutation.isPending ? <CircularProgress size={20} /> : tr('saveSettings')}
             </Button>
           </Box>
         </CardContent>
@@ -451,9 +444,9 @@ export default function SettingsPage() {
       {/* App Update */}
       <Card sx={{ mb: 3 }}>
         <CardContent>
-          <Typography variant="h6" gutterBottom>App Update</Typography>
+          <Typography variant="h6" gutterBottom>{tr('appUpdate')}</Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            Fetch the latest version — new features, fixes and updated app icons. The app reloads automatically after updating.
+            {tr('updateNote')}
           </Typography>
           <Button
             variant="contained"
@@ -462,7 +455,7 @@ export default function SettingsPage() {
             disabled={updating}
             sx={{ alignSelf: 'flex-start' }}
           >
-            {updating ? <CircularProgress size={20} /> : 'Update App'}
+            {updating ? <CircularProgress size={20} /> : tr('updateApp')}
           </Button>
         </CardContent>
       </Card>

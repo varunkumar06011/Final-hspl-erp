@@ -40,6 +40,7 @@ import paymentReportRoutes from './payment-reports.routes';
 import mprRoutes from './mpr.routes';
 import transactionRegisterRoutes from './transaction-register.routes';
 import commentRoutes from './comment.routes';
+import activityLogRoutes from './activity-log.routes';
 
 const router = Router();
 
@@ -84,5 +85,6 @@ router.use('/payment-reports', paymentReportRoutes);
 router.use('/material-purchase-requests', mprRoutes);
 router.use('/transaction-register', transactionRegisterRoutes);
 router.use('/comments', commentRoutes);
+router.use('/activity-log', activityLogRoutes);
 
 export default router;

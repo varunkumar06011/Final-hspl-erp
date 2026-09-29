@@ -23,6 +23,8 @@ import {
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../config/api';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 
 interface AppNotification {
   id: string;
@@ -43,17 +45,17 @@ interface NotificationResponse {
   pagination: { page: number; pageSize: number; total: number; totalPages: number };
 }
 
-function timeAgo(iso: string): string {
+function timeAgo(iso: string, t: TFunction): string {
   const d = new Date(iso);
   const now = new Date();
   const diffMs = now.getTime() - d.getTime();
   const diffMin = Math.floor(diffMs / 60000);
   const diffHr = Math.floor(diffMin / 60);
   const diffDay = Math.floor(diffHr / 24);
-  if (diffDay > 0) return `${diffDay}d ago`;
-  if (diffHr > 0) return `${diffHr}h ago`;
-  if (diffMin > 0) return `${diffMin}m ago`;
-  return 'just now';
+  if (diffDay > 0) return t('bell.daysAgo', { n: diffDay });
+  if (diffHr > 0) return t('bell.hoursAgo', { n: diffHr });
+  if (diffMin > 0) return t('bell.minutesAgo', { n: diffMin });
+  return t('bell.justNow');
 }
 
 /**
@@ -64,6 +66,7 @@ function timeAgo(iso: string): string {
  * Additive — does not modify any existing AppShell behavior.
  */
 export default function NotificationBell() {
+  const { t } = useTranslation('misc');
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
@@ -115,7 +118,7 @@ export default function NotificationBell() {
       <IconButton
         color="inherit"
         onClick={(e) => setAnchorEl(e.currentTarget)}
-        title="Notifications"
+        title={t('bell.title')}
       >
         <Badge badgeContent={unreadCount} color="error">
           <NotificationsIcon />
@@ -138,7 +141,7 @@ export default function NotificationBell() {
         {/* Header */}
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', p: 2, borderBottom: 1, borderColor: 'divider' }}>
           <Typography variant="subtitle1" fontWeight={600}>
-            Notifications
+            {t('bell.title')}
             {unreadCount > 0 && (
               <Chip label={unreadCount} size="small" color="error" sx={{ ml: 1 }} />
             )}
@@ -150,7 +153,7 @@ export default function NotificationBell() {
               onClick={() => markAllReadMutation.mutate()}
               disabled={markAllReadMutation.isPending}
             >
-              Mark all read
+              {t('bell.markAllRead')}
             </Button>
           )}
         </Box>
@@ -163,7 +166,7 @@ export default function NotificationBell() {
         ) : notifications.length === 0 ? (
           <Box sx={{ p: 3, textAlign: 'center' }}>
             <Typography color="text.secondary" variant="body2">
-              No notifications yet
+              {t('bell.none')}
             </Typography>
           </Box>
         ) : (
@@ -189,7 +192,7 @@ export default function NotificationBell() {
                           {n.title}
                         </Typography>
                         <Typography variant="caption" color="text.secondary">
-                          {timeAgo(n.createdAt)}
+                          {timeAgo(n.createdAt, t)}
                         </Typography>
                       </Stack>
                     }
@@ -200,7 +203,7 @@ export default function NotificationBell() {
                         </Typography>
                         {n.url && (
                           <Typography variant="caption" color="primary" sx={{ display: 'block', mt: 0.5 }}>
-                            Click to view →
+                            {t('bell.clickToView')}
                           </Typography>
                         )}
                       </>

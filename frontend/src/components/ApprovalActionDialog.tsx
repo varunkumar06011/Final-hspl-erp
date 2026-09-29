@@ -1,5 +1,6 @@
-﻿import { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Alert, Button, DialogActions, DialogContent, DialogTitle, TextField } from '@mui/material';
+import { useTranslation } from 'react-i18next';
 import ResponsiveDialog from './ResponsiveDialog';
 import AcknowledgementCheckbox from './AcknowledgementCheckbox';
 
@@ -24,6 +25,7 @@ export default function ApprovalActionDialog({
   onClose,
   onConfirm,
 }: ApprovalActionDialogProps) {
+  const { t } = useTranslation();
   const [notes, setNotes] = useState('');
   const [acknowledged, setAcknowledged] = useState(false);
 
@@ -38,11 +40,11 @@ export default function ApprovalActionDialog({
 
   return (
     <ResponsiveDialog open={open} onClose={pending ? undefined : onClose} fullWidth maxWidth="sm">
-      <DialogTitle>{isReject ? 'Reject' : 'Approve'} {entityLabel}</DialogTitle>
+      <DialogTitle>{isReject ? t('approval.reject') : t('approval.approve')} {entityLabel}</DialogTitle>
       <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '12px !important' }}>
         {error && <Alert severity="error" sx={{ width: '100%' }} onClose={onClearError}>{error}</Alert>}
         <TextField
-          label={isReject ? 'Reason for rejection' : 'Comments (optional)'}
+          label={isReject ? t('approval.reasonForRejection') : t('approval.commentsOptional')}
           value={notes}
           onChange={(event) => setNotes(event.target.value)}
           multiline
@@ -56,7 +58,7 @@ export default function ApprovalActionDialog({
         />
       </DialogContent>
       <DialogActions sx={{ flexWrap: 'wrap', gap: 1 }}>
-        <Button onClick={onClose} disabled={pending}>Cancel</Button>
+        <Button onClick={onClose} disabled={pending}>{t('approval.cancel')}</Button>
         <Button
           variant="contained"
           color={isReject ? 'error' : 'success'}
@@ -66,7 +68,7 @@ export default function ApprovalActionDialog({
             acknowledged: true,
           })}
         >
-          {isReject ? 'Reject' : 'Approve'}
+          {isReject ? t('approval.reject') : t('approval.approve')}
         </Button>
       </DialogActions>
     </ResponsiveDialog>

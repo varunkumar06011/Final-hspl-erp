@@ -1,8 +1,41 @@
+import i18n from '../i18n';
+
+const titleCase = (v: string) => v.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+
+/** Localised label for an enum/status value (e.g. PENDING_APPROVAL). Falls back to Title Case. */
+export function enumLabel(value: unknown): string {
+  const v = String(value ?? '');
+  if (!v) return '';
+  return i18n.t(`enums.${v}`, { defaultValue: titleCase(v) });
+}
+
+/** Localised label for a ledger group (FIXED_ASSET -> Fixed Assets). */
+export function ledgerGroupLabel(group: unknown): string {
+  const g = String(group ?? '');
+  if (!g) return '';
+  return i18n.t(`ledgerGroups.${g}`, { defaultValue: titleCase(g) });
+}
+
+/** Localised label for a quantity/service unit value (nos, hrs, sqft, ...). */
+export function unitLabel(value: string): string {
+  return i18n.t(`units.${value}`, { defaultValue: value });
+}
+
+/** Localised label for a Service Category suggestion. */
+export function serviceCategoryLabel(value: string): string {
+  return i18n.t(`serviceCategories.${value}`, { defaultValue: value });
+}
+
+/** Localised label for a user/approver role (ADMIN_3 -> 'Admin 3'). */
+export function roleLabel(role: unknown): string {
+  const r = String(role ?? '');
+  const adminN = /^ADMIN_(\d+)$/.exec(r);
+  if (adminN && r !== 'ADMIN_2') return i18n.t('roles.adminN', { num: adminN[1] });
+  return i18n.t(`roles.${r}`, { defaultValue: titleCase(r) });
+}
+
 export function enumToOptions(e: Record<string, string>): { value: string; label: string }[] {
-  return Object.values(e).map((v) => ({
-    value: v,
-    label: v.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
-  }));
+  return Object.values(e).map((v) => ({ value: v, label: enumLabel(v) }));
 }
 
 export function formatCurrency(amount: unknown): string {

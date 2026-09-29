@@ -17,8 +17,10 @@ import {
 import { Add as AddIcon } from '@mui/icons-material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import api, { extractErrorMessage } from '../config/api';
+import { ledgerGroupLabel } from '../utils/enumOptions';
 import { LedgerGroup } from '@hospital-erp/shared';
 
+import { useTranslation } from 'react-i18next';
 export interface LedgerOption {
   id: string;
   name: string;
@@ -43,29 +45,10 @@ interface LedgerAutocompleteProps {
   onError?: (msg: string) => void;
 }
 
-const GROUP_LABELS: Record<string, string> = {
-  FIXED_ASSET: 'Fixed Assets',
-  CURRENT_ASSET: 'Current Assets',
-  BANK: 'Bank Accounts',
-  CASH: 'Cash-in-Hand',
-  CURRENT_LIABILITY: 'Current Liabilities',
-  LOAN: 'Loans (Liability)',
-  DUTIES_TAXES: 'Duties & Taxes',
-  CAPITAL_ACCOUNT: 'Capital Account',
-  SUNDRY_CREDITORS: 'Sundry Creditors',
-  SUNDRY_DEBTORS: 'Sundry Debtors',
-  DIRECT_EXPENSE: 'Direct Expenses',
-  INDIRECT_EXPENSE: 'Indirect Expenses',
-  PURCHASE: 'Purchase Accounts',
-  DIRECT_INCOME: 'Direct Incomes',
-  INDIRECT_INCOME: 'Indirect Incomes',
-  SALES: 'Sales Accounts',
-};
-
 const ALL_GROUPS = Object.values(LedgerGroup);
 
 export default function LedgerAutocomplete({
-  label = 'Ledger',
+  label,
   value,
   onChange,
   ledgers,
@@ -73,9 +56,10 @@ export default function LedgerAutocomplete({
   preferredGroups,
   size = 'small',
   autoFocus = false,
-  placeholder = 'Type ledger name...',
+  placeholder,
   onError,
 }: LedgerAutocompleteProps) {
+  const { t } = useTranslation('vouchers');
   const queryClient = useQueryClient();
   const [inputValue, setInputValue] = useState('');
   const [createOpen, setCreateOpen] = useState(false);
@@ -148,7 +132,7 @@ export default function LedgerAutocomplete({
 
   const handleCreate = () => {
     if (!newLedgerName.trim()) {
-      setCreateError('Enter a ledger name');
+      setCreateError(t('laErrName'));
       return;
     }
     createLedgerMutation.mutate({ name: newLedgerName.trim(), group: newLedgerGroup });
@@ -177,7 +161,7 @@ export default function LedgerAutocomplete({
 
   const handleCreateGroup = () => {
     if (!newGroupName.trim()) {
-      setGroupError('Enter a group name');
+      setGroupError(t('laErrGroup'));
       return;
     }
     createGroupMutation.mutate({ name: newGroupName.trim(), parentGroup: newGroupParent });
@@ -231,7 +215,7 @@ export default function LedgerAutocomplete({
           ) {
             filtered.push({
               id: `__create__${params.inputValue}`,
-              name: `Create "${params.inputValue}"`,
+              name: t('laCreateOption', { v: params.inputValue }),
               group: '',
               currentBalance: 0,
               linkedEntityType: null,
@@ -253,11 +237,11 @@ export default function LedgerAutocomplete({
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                     <span style={{ opacity: option.isActive === false ? 0.5 : 1 }}>{option.name}</span>
                     {option.isActive === false && (
-                      <Chip label="Inactive" size="small" sx={{ fontSize: '0.6rem', height: 16, color: 'text.secondary' }} />
+                      <Chip label={t('laInactive')} size="small" sx={{ fontSize: '0.6rem', height: 16, color: 'text.secondary' }} />
                     )}
                   </Box>
                   <Chip
-                    label={GROUP_LABELS[option.group] ?? option.group}
+                    label={ledgerGroupLabel(option.group)}
                     size="small"
                     variant="outlined"
                     sx={{ ml: 1, fontSize: '0.7rem' }}
@@ -270,20 +254,20 @@ export default function LedgerAutocomplete({
         renderInput={(params) => (
           <TextField
             {...params}
-            label={label}
-            placeholder={placeholder}
+            label={label ?? t('laLabel')}
+            placeholder={placeholder ?? t('laPlaceholder')}
           />
         )}
         freeSolo
         selectOnFocus
         clearOnBlur
         handleHomeEndKeys
-        noOptionsText="No ledgers found — type to create a new one"
+        noOptionsText={t('laNoOptions')}
       />
 
       {/* Quick-create ledger dialog (Tally Alt+C style) */}
       <Dialog open={createOpen} onClose={() => setCreateOpen(false)} maxWidth="xs" fullWidth>
-        <DialogTitle>Create New Ledger</DialogTitle>
+        <DialogTitle>{t('laCreateLedger')}</DialogTitle>
         <DialogContent>
           {createError && (
             <Typography color="error" variant="body2" sx={{ mb: 1 }}>{createError}</Typography>
@@ -291,7 +275,7 @@ export default function LedgerAutocomplete({
           <TextField
             autoFocus
             fullWidth
-            label="Ledger Name"
+            label={t('laLedgerName')}
             value={newLedgerName}
             onChange={(e) => setNewLedgerName(e.target.value)}
             sx={{ mt: 1, mb: 2 }}
@@ -299,7 +283,7 @@ export default function LedgerAutocomplete({
           <TextField
             select
             fullWidth
-            label="Group"
+            label={t('laGroup')}
             value={newLedgerGroup}
             onChange={(e) => {
               const val = e.target.value;
@@ -311,20 +295,20 @@ export default function LedgerAutocomplete({
             }}
           >
             {ALL_GROUPS.map((g) => (
-              <MenuItem key={g} value={g}>{GROUP_LABELS[g] ?? g}</MenuItem>
+              <MenuItem key={g} value={g}>{ledgerGroupLabel(g)}</MenuItem>
             ))}
             {customGroups.length > 0 && (
               <Box sx={{ borderTop: '1px solid', borderColor: 'divider', my: 0.5 }} />
             )}
             {customGroups.map((g) => (
               <MenuItem key={g.id} value={g.name}>
-                {g.name} <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>({GROUP_LABELS[g.parentGroup] ?? g.parentGroup})</Typography>
+                {g.name} <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>({ledgerGroupLabel(g.parentGroup)})</Typography>
               </MenuItem>
             ))}
             <Box sx={{ borderTop: '1px solid', borderColor: 'divider', my: 0.5 }} />
             <MenuItem value="__create_new__" sx={{ color: 'primary.main', fontWeight: 600 }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <AddIcon fontSize="small" /> Create New Group
+                <AddIcon fontSize="small" /> {t('laCreateGroup')}
               </Box>
             </MenuItem>
           </TextField>
@@ -332,13 +316,13 @@ export default function LedgerAutocomplete({
           {/* Inline create-group form (Tally Alt+C in group field) */}
           <Collapse in={showCreateGroup}>
             <Box sx={{ mt: 2, p: 2, border: '1px solid', borderColor: 'divider', borderRadius: 1, bgcolor: 'action.hover' }}>
-              <Typography variant="subtitle2" sx={{ mb: 1 }}>Create New Group</Typography>
+              <Typography variant="subtitle2" sx={{ mb: 1 }}>{t('laCreateGroup')}</Typography>
               {groupError && <Typography color="error" variant="body2" sx={{ mb: 1 }}>{groupError}</Typography>}
               <TextField
                 autoFocus
                 fullWidth
                 size="small"
-                label="Group Name"
+                label={t('laGroupName')}
                 value={newGroupName}
                 onChange={(e) => setNewGroupName(e.target.value)}
                 sx={{ mb: 1.5 }}
@@ -347,13 +331,13 @@ export default function LedgerAutocomplete({
                 select
                 fullWidth
                 size="small"
-                label="Under (Parent Group)"
+                label={t('laParent')}
                 value={newGroupParent}
                 onChange={(e) => setNewGroupParent(e.target.value)}
                 sx={{ mb: 1.5 }}
               >
                 {ALL_GROUPS.map((g) => (
-                  <MenuItem key={g} value={g}>{GROUP_LABELS[g] ?? g}</MenuItem>
+                  <MenuItem key={g} value={g}>{ledgerGroupLabel(g)}</MenuItem>
                 ))}
               </TextField>
               <Box sx={{ display: 'flex', gap: 1 }}>
@@ -364,28 +348,28 @@ export default function LedgerAutocomplete({
                   disabled={createGroupMutation.isPending}
                   startIcon={createGroupMutation.isPending ? <CircularProgress size={14} /> : undefined}
                 >
-                  Create Group
+                  {t('laCreateGroupBtn')}
                 </Button>
                 <Button size="small" onClick={() => { setShowCreateGroup(false); setNewGroupName(''); setGroupError(''); }}>
-                  Cancel
+                  {t('laCancel')}
                 </Button>
               </Box>
             </Box>
           </Collapse>
 
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
-            Opening balance defaults to 0. You can adjust it later from Chart of Accounts.
+            {t('laOpening')}
           </Typography>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setCreateOpen(false)}>Cancel</Button>
+          <Button onClick={() => setCreateOpen(false)}>{t('laCancel')}</Button>
           <Button
             variant="contained"
             onClick={handleCreate}
             disabled={createLedgerMutation.isPending}
             startIcon={createLedgerMutation.isPending ? <CircularProgress size={16} /> : undefined}
           >
-            Create & Select
+            {t('laCreateSelect')}
           </Button>
         </DialogActions>
       </Dialog>

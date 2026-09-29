@@ -1,0 +1,23 @@
+{
+  "title": "GST రికార్డులు",
+  "gstRecorded": "నమోదైన GST",
+  "gstPaid": "చెల్లించిన GST",
+  "gstOutstanding": "బకాయి GST",
+  "all": "అన్నీ",
+  "paid": "చెల్లించినవి",
+  "outstanding": "బకాయి ఉన్నవి",
+  "source": "మూలం",
+  "vendor": "విక్రేత",
+  "po": "PO",
+  "date": "తేదీ",
+  "cgst": "CGST",
+  "sgst": "SGST",
+  "igst": "IGST",
+  "status": "స్థితి",
+  "noRecords": "GST రికార్డులు కనబడలేదు",
+  "invoiceSource": "ఇన్వాయిస్: {{n}}",
+  "poEstimate": "PO అంచనా: {{n}}",
+  "poGstReplaced": "భర్తీ చేయబడిన PO GST అంచనా: {{v}}",
+  "quotationGstEstimate": "కొటేషన్ GST అంచనా: {{v}}",
+  "vendorWise": "విక్రేత వారీగా GST"
+}

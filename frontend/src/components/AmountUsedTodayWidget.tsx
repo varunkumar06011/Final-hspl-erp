@@ -13,9 +13,11 @@ import {
 import { Paid as PaidIcon, Today as TodayIcon } from '@mui/icons-material';
 import { useQuery } from '@tanstack/react-query';
 import api from '../config/api';
-import { formatCurrency } from '../utils/enumOptions';
+import { formatCurrency, enumLabel } from '../utils/enumOptions';
+import { dateLocale } from '../i18n';
 import { AnimatedNumber } from './AnimatedNumber';
 
+import { useTranslation } from 'react-i18next';
 // ── Types matching the backend GET /dashboard/payments-today response ──
 interface PaymentToday {
   id: string;
@@ -45,12 +47,12 @@ interface PaymentsTodayResponse {
 function formatTime(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '—';
-  return d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+  return d.toLocaleTimeString(dateLocale(), { hour: '2-digit', minute: '2-digit' });
 }
 
 function prettyMode(mode: string): string {
   if (!mode) return '—';
-  return mode.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+  return enumLabel(mode);
 }
 
 /**
@@ -62,6 +64,7 @@ function prettyMode(mode: string): string {
  * gated by the parent page (admin + accountant only).
  */
 export default function AmountUsedTodayWidget() {
+  const { t } = useTranslation('widgets');
   const { data, isLoading, isError } = useQuery({
     queryKey: ['/dashboard', 'payments-today'],
     queryFn: async () => {
@@ -75,7 +78,7 @@ export default function AmountUsedTodayWidget() {
   const payments = data?.payments ?? [];
   const total = data?.totalAmount ?? 0;
   const count = data?.count ?? 0;
-  const todayLabel = new Date().toLocaleDateString('en-IN', {
+  const todayLabel = new Date().toLocaleDateString(dateLocale(), {
     weekday: 'short',
     day: '2-digit',
     month: 'short',
@@ -90,7 +93,7 @@ export default function AmountUsedTodayWidget() {
             <Stack direction="row" alignItems="center" spacing={1}>
               <TodayIcon color="primary" fontSize="small" />
               <Typography variant="h6" fontWeight={600}>
-                Amount Used Today
+                {t('usedTitle')}
               </Typography>
             </Stack>
             <Typography variant="body2" color="text.secondary">
@@ -102,7 +105,7 @@ export default function AmountUsedTodayWidget() {
               size="small"
               color={count > 0 ? 'primary' : 'default'}
               icon={<PaidIcon />}
-              label={`${count} payment${count === 1 ? '' : 's'}`}
+              label={t('usedCount', { count })}
             />
           )}
         </Stack>
@@ -117,26 +120,26 @@ export default function AmountUsedTodayWidget() {
             </Typography>
           )}
           <Typography variant="caption" color="text.secondary">
-            Total paid out today across all payment modes
+            {t('usedSubtitle')}
           </Typography>
         </Box>
 
         {isError && (
           <Alert severity="warning" sx={{ mb: 2 }}>
-            Could not load today's payments. Make sure the backend is running.
+            {t('usedError')}
           </Alert>
         )}
 
         {!isLoading && count === 0 && !isError && (
           <Alert severity="info">
-            No payments have been made today yet. Payments marked as PAID today will appear here.
+            {t('usedEmpty')}
           </Alert>
         )}
 
         {!isLoading && payments.length > 0 && (
           <Box>
             <Divider sx={{ mb: 1 }} />
-            <Typography variant="subtitle2" sx={{ mb: 1 }}>Today's Payments</Typography>
+            <Typography variant="subtitle2" sx={{ mb: 1 }}>{t('usedList')}</Typography>
             <Stack spacing={1.5}>
               {payments.map((p) => (
                 <Box
@@ -178,7 +181,7 @@ export default function AmountUsedTodayWidget() {
               ))}
             </Stack>
             <Typography variant="caption" color="text.secondary" sx={{ mt: 1.5, display: 'block' }}>
-              <Link href="/payments" underline="hover">View all payments →</Link>
+              <Link href="/payments" underline="hover">{t('usedViewAll')}</Link>
             </Typography>
           </Box>
         )}

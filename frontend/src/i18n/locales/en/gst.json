@@ -1,0 +1,23 @@
+{
+  "title": "GST Records",
+  "gstRecorded": "GST Recorded",
+  "gstPaid": "GST Paid",
+  "gstOutstanding": "GST Outstanding",
+  "all": "All",
+  "paid": "Paid",
+  "outstanding": "Outstanding",
+  "source": "Source",
+  "vendor": "Vendor",
+  "po": "PO",
+  "date": "Date",
+  "cgst": "CGST",
+  "sgst": "SGST",
+  "igst": "IGST",
+  "status": "Status",
+  "noRecords": "No GST records found",
+  "invoiceSource": "Invoice: {{n}}",
+  "poEstimate": "PO estimate: {{n}}",
+  "poGstReplaced": "PO GST estimate replaced: {{v}}",
+  "quotationGstEstimate": "Quotation GST estimate: {{v}}",
+  "vendorWise": "Vendor-wise GST"
+}

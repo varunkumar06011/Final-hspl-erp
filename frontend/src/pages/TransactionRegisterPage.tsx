@@ -11,8 +11,10 @@ import InputAdornment from '@mui/material/InputAdornment';
 import api from '../config/api';
 import ResponsiveTable from '../components/ResponsiveTable';
 import VendorHistoryDialog from '../components/VendorHistoryDialog';
-import { formatCurrency, formatIndianNumber, formatDate } from '../utils/enumOptions';
+import { formatCurrency, formatIndianNumber, formatDate, enumLabel } from '../utils/enumOptions';
+import { dateLocale } from '../i18n';
 
+import { useTranslation } from 'react-i18next';
 const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
 const TYPE_OPTIONS = [
@@ -74,6 +76,7 @@ interface RegisterResponse {
 const currentIST = () => new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
 
 export default function TransactionRegisterPage() {
+  const { t: tr } = useTranslation('txregister');
   const now = currentIST();
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState<number | ''>(''); // '' = all months
@@ -127,39 +130,39 @@ export default function TransactionRegisterPage() {
 
   return (
     <Box sx={{ p: { xs: 1.5, sm: 2, md: 3 } }}>
-      <Typography variant="h5" fontWeight={700} sx={{ mb: 0.5 }}>Transaction Register</Typography>
+      <Typography variant="h5" fontWeight={700} sx={{ mb: 0.5 }}>{tr('title')}</Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        Month-wise index of every vendor with ERP activity — click a vendor for the full 360° view.
+        {tr('intro')}
       </Typography>
 
       {/* ── Filters ── */}
       <Paper variant="outlined" sx={{ p: 1.5, mb: 2 }}>
         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ flexWrap: 'wrap' }} useFlexGap>
           <TextField
-            size="small" label="Search vendor / doc #" value={search}
+            size="small" label={tr('search')} value={search}
             onChange={(e) => onSearch(e.target.value)}
             sx={{ minWidth: { xs: '100%', sm: 240 } }}
             InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> }}
           />
-          <TextField select size="small" label="Year" value={year} onChange={(e) => setYear(Number(e.target.value))} sx={{ minWidth: 100 }}>
+          <TextField select size="small" label={tr('year')} value={year} onChange={(e) => setYear(Number(e.target.value))} sx={{ minWidth: 100 }}>
             {years.map((y) => <MenuItem key={y} value={y}>{y}</MenuItem>)}
           </TextField>
-          <TextField select size="small" label="Month" value={month} onChange={(e) => setMonth(e.target.value === '' ? '' : Number(e.target.value))} sx={{ minWidth: 130 }}>
-            <MenuItem value="">All months</MenuItem>
-            {MONTH_NAMES.map((n, i) => <MenuItem key={i} value={i + 1}>{n}</MenuItem>)}
+          <TextField select size="small" label={tr('month')} value={month} onChange={(e) => setMonth(e.target.value === '' ? '' : Number(e.target.value))} sx={{ minWidth: 130 }}>
+            <MenuItem value="">{tr('allMonths')}</MenuItem>
+            {MONTH_NAMES.map((_n, i) => <MenuItem key={i} value={i + 1}>{new Date(2000, i, 1).toLocaleString(dateLocale(), { month: 'long' })}</MenuItem>)}
           </TextField>
-          <TextField select size="small" label="Type" value={type} onChange={(e) => setType(e.target.value)} sx={{ minWidth: 150 }}>
-            <MenuItem value="">All types</MenuItem>
-            {TYPE_OPTIONS.map((t) => <MenuItem key={t.value} value={t.value}>{t.label}</MenuItem>)}
+          <TextField select size="small" label={tr('type')} value={type} onChange={(e) => setType(e.target.value)} sx={{ minWidth: 150 }}>
+            <MenuItem value="">{tr('allTypes')}</MenuItem>
+            {TYPE_OPTIONS.map((o) => <MenuItem key={o.value} value={o.value}>{tr(`type_${o.value}`)}</MenuItem>)}
           </TextField>
-          <TextField select size="small" label="Budget Head" value={budgetHeadId} onChange={(e) => setBudgetHeadId(e.target.value)} sx={{ minWidth: 160 }}>
-            <MenuItem value="">All heads</MenuItem>
+          <TextField select size="small" label={tr('budgetHead')} value={budgetHeadId} onChange={(e) => setBudgetHeadId(e.target.value)} sx={{ minWidth: 160 }}>
+            <MenuItem value="">{tr('allHeads')}</MenuItem>
             {(budgetHeads ?? []).map((b) => <MenuItem key={b.id} value={b.id}>{b.particulars}</MenuItem>)}
           </TextField>
-          <TextField select size="small" label="Doc Status" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} sx={{ minWidth: 140 }}>
-            <MenuItem value="">Any status</MenuItem>
+          <TextField select size="small" label={tr('docStatus')} value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} sx={{ minWidth: 140 }}>
+            <MenuItem value="">{tr('anyStatus')}</MenuItem>
             {['PENDING', 'PENDING_APPROVAL', 'APPROVED', 'REJECTED', 'PAID', 'PARTIALLY_PAID', 'PARTIALLY_DELIVERED', 'DELIVERED', 'SETTLED'].map((st) => (
-              <MenuItem key={st} value={st}>{st.replace(/_/g, ' ')}</MenuItem>
+              <MenuItem key={st} value={st}>{enumLabel(st)}</MenuItem>
             ))}
           </TextField>
         </Stack>
@@ -168,12 +171,12 @@ export default function TransactionRegisterPage() {
       {/* ── Grand summary across the selected scope ── */}
       {data?.grandSummary && (
         <Stack direction="row" spacing={1} sx={{ mb: 2, flexWrap: 'wrap', gap: 1 }}>
-          <Chip color="primary" label={`Vendors: ${data.grandSummary.vendorCount}`} />
-          <Chip variant="outlined" label={`Quotations: ${money(data.grandSummary.quotationAmount)} (${data.grandSummary.counts.quotations})`} />
-          <Chip variant="outlined" label={`POs: ${money(data.grandSummary.poAmount)} (${data.grandSummary.counts.pos})`} />
-          <Chip variant="outlined" label={`Invoiced: ${money(data.grandSummary.invoiceAmount)} (${data.grandSummary.counts.invoices})`} />
-          <Chip variant="outlined" color="success" label={`Paid: ${money(data.grandSummary.paidAmount)}`} />
-          <Chip variant="outlined" color="error" label={`Outstanding: ${money(data.grandSummary.outstandingAmount)}`} />
+          <Chip color="primary" label={tr('sumVendors', { n: data.grandSummary.vendorCount })} />
+          <Chip variant="outlined" label={tr('sumQuotations', { v: money(data.grandSummary.quotationAmount), c: data.grandSummary.counts.quotations })} />
+          <Chip variant="outlined" label={tr('sumPos', { v: money(data.grandSummary.poAmount), c: data.grandSummary.counts.pos })} />
+          <Chip variant="outlined" label={tr('sumInvoiced', { v: money(data.grandSummary.invoiceAmount), c: data.grandSummary.counts.invoices })} />
+          <Chip variant="outlined" color="success" label={tr('sumPaid', { v: money(data.grandSummary.paidAmount) })} />
+          <Chip variant="outlined" color="error" label={tr('sumOutstanding', { v: money(data.grandSummary.outstandingAmount) })} />
         </Stack>
       )}
 
@@ -182,7 +185,7 @@ export default function TransactionRegisterPage() {
       ) : !data || data.months.length === 0 ? (
         <Paper variant="outlined" sx={{ p: 4, textAlign: 'center' }}>
           <Typography color="text.secondary">
-            {hasFilters ? 'No transactions match the selected filters.' : `No transactions recorded for ${year}.`}
+            {hasFilters ? tr('noMatch') : tr('noYear', { y: year })}
           </Typography>
         </Paper>
       ) : (
@@ -199,7 +202,7 @@ export default function TransactionRegisterPage() {
                 <Typography fontWeight={700} sx={{ textTransform: 'uppercase', letterSpacing: 0.5 }}>
                   {m.name} {m.year}
                 </Typography>
-                <Chip size="small" color="primary" variant="outlined" label={`${m.summary.vendorCount} vendor${m.summary.vendorCount === 1 ? '' : 's'}`} />
+                <Chip size="small" color="primary" variant="outlined" label={tr('mVendors', { count: m.summary.vendorCount })} />
                 <Box sx={{ flexGrow: 1 }} />
                 <Typography variant="body2" color="text.secondary">
                   Paid {formatIndianNumber(m.summary.paidAmount)} · Outstanding {formatIndianNumber(m.summary.outstandingAmount)}
@@ -209,12 +212,12 @@ export default function TransactionRegisterPage() {
             <AccordionDetails sx={{ px: { xs: 1.5, sm: 2 }, pt: 0 }}>
               {/* Month summary strip */}
               <Stack direction="row" spacing={1} sx={{ mb: 1.5, flexWrap: 'wrap', gap: 0.75 }}>
-                <Chip size="small" variant="outlined" label={`Quotations ${money(m.summary.quotationAmount)} · ${m.summary.counts.quotations}`} />
-                <Chip size="small" variant="outlined" label={`POs ${money(m.summary.poAmount)} · ${m.summary.counts.pos}`} />
-                <Chip size="small" variant="outlined" label={`Invoiced ${money(m.summary.invoiceAmount)} · ${m.summary.counts.invoices}`} />
-                <Chip size="small" variant="outlined" color="success" label={`Paid ${money(m.summary.paidAmount)} · ${m.summary.counts.payments + m.summary.counts.sheets}`} />
-                <Chip size="small" variant="outlined" color="error" label={`Outstanding ${money(m.summary.outstandingAmount)}`} />
-                {m.summary.payableAmount > 0 && <Chip size="small" variant="outlined" color="warning" label={`Sheet payable ${money(m.summary.payableAmount)}`} />}
+                <Chip size="small" variant="outlined" label={tr('mQuotations', { v: money(m.summary.quotationAmount), c: m.summary.counts.quotations })} />
+                <Chip size="small" variant="outlined" label={tr('mPos', { v: money(m.summary.poAmount), c: m.summary.counts.pos })} />
+                <Chip size="small" variant="outlined" label={tr('mInvoiced', { v: money(m.summary.invoiceAmount), c: m.summary.counts.invoices })} />
+                <Chip size="small" variant="outlined" color="success" label={tr('mPaid', { v: money(m.summary.paidAmount), c: m.summary.counts.payments + m.summary.counts.sheets })} />
+                <Chip size="small" variant="outlined" color="error" label={tr('mOutstanding', { v: money(m.summary.outstandingAmount) })} />
+                {m.summary.payableAmount > 0 && <Chip size="small" variant="outlined" color="warning" label={tr('mSheetPayable', { v: money(m.summary.payableAmount) })} />}
               </Stack>
 
               {/* Vendor rows → cards on mobile */}
@@ -223,15 +226,15 @@ export default function TransactionRegisterPage() {
                   <Table size="small">
                     <TableHead>
                       <TableRow sx={{ bgcolor: 'grey.50' }}>
-                        <TableCell sx={{ fontWeight: 600 }}>Vendor</TableCell>
-                        <TableCell sx={{ fontWeight: 600 }}>Status</TableCell>
-                        <TableCell align="right" sx={{ fontWeight: 600 }}>Quotations</TableCell>
-                        <TableCell align="right" sx={{ fontWeight: 600 }}>PO Payable</TableCell>
-                        <TableCell align="right" sx={{ fontWeight: 600 }}>Invoiced</TableCell>
-                        <TableCell align="right" sx={{ fontWeight: 600 }}>Paid</TableCell>
-                        <TableCell align="right" sx={{ fontWeight: 600 }}>Outstanding</TableCell>
-                        <TableCell sx={{ fontWeight: 600 }}>Budget Heads</TableCell>
-                        <TableCell sx={{ fontWeight: 600 }}>Last Activity</TableCell>
+                        <TableCell sx={{ fontWeight: 600 }}>{tr('vendor')}</TableCell>
+                        <TableCell sx={{ fontWeight: 600 }}>{tr('status')}</TableCell>
+                        <TableCell align="right" sx={{ fontWeight: 600 }}>{tr('quotations')}</TableCell>
+                        <TableCell align="right" sx={{ fontWeight: 600 }}>{tr('poPayable')}</TableCell>
+                        <TableCell align="right" sx={{ fontWeight: 600 }}>{tr('invoiced')}</TableCell>
+                        <TableCell align="right" sx={{ fontWeight: 600 }}>{tr('paid')}</TableCell>
+                        <TableCell align="right" sx={{ fontWeight: 600 }}>{tr('outstanding')}</TableCell>
+                        <TableCell sx={{ fontWeight: 600 }}>{tr('budgetHeads')}</TableCell>
+                        <TableCell sx={{ fontWeight: 600 }}>{tr('lastActivity')}</TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
@@ -242,26 +245,26 @@ export default function TransactionRegisterPage() {
                           onClick={() => setHistoryVendor({ id: v.vendorId, month: m.month, year: m.year })}
                           sx={{ cursor: 'pointer' }}
                         >
-                          <TableCell data-label="Vendor">
+                          <TableCell data-label={tr('vendor')}>
                             <Typography fontWeight={600} variant="body2">{v.name}</Typography>
                             <Typography variant="caption" color="text.secondary">
                               {v.vendorCode ?? '—'} · {v.txnCount} txn{v.txnCount === 1 ? '' : 's'}
                             </Typography>
                           </TableCell>
-                          <TableCell data-label="Status">
-                            <Chip size="small" label={v.status} color={STATUS_CHIP_COLOR[v.status] ?? 'default'} />
+                          <TableCell data-label={tr('status')}>
+                            <Chip size="small" label={v.status === 'Partially Paid' ? tr('vs_partiallyPaid') : v.status === 'Not Paid' ? tr('vs_notPaid') : v.status === 'Active' ? tr('vs_active') : v.status === 'Paid' ? tr('paid') : v.status} color={STATUS_CHIP_COLOR[v.status] ?? 'default'} />
                           </TableCell>
-                          <TableCell data-label="Quotations" align="right">{v.quotationAmount ? formatIndianNumber(v.quotationAmount) : '₹0'}</TableCell>
-                          <TableCell data-label="PO Payable" align="right">{v.poAmount ? formatIndianNumber(v.poAmount) : '₹0'}</TableCell>
-                          <TableCell data-label="Invoiced" align="right">{v.invoiceAmount ? formatIndianNumber(v.invoiceAmount) : '₹0'}</TableCell>
-                          <TableCell data-label="Paid" align="right" sx={{ color: v.paidAmount ? 'success.main' : 'text.disabled' }}>{v.paidAmount ? formatIndianNumber(v.paidAmount) : 'Not Paid'}</TableCell>
-                          <TableCell data-label="Outstanding" align="right" sx={{ color: v.outstandingAmount ? 'error.main' : 'text.disabled', fontWeight: 600 }}>{formatIndianNumber(v.outstandingAmount)}</TableCell>
-                          <TableCell data-label="Budget Heads">
-                            {v.budgetHeads.length === 0 ? 'Not Assigned' : v.budgetHeads.map((h) => (
+                          <TableCell data-label={tr('quotations')} align="right">{v.quotationAmount ? formatIndianNumber(v.quotationAmount) : '₹0'}</TableCell>
+                          <TableCell data-label={tr('poPayable')} align="right">{v.poAmount ? formatIndianNumber(v.poAmount) : '₹0'}</TableCell>
+                          <TableCell data-label={tr('invoiced')} align="right">{v.invoiceAmount ? formatIndianNumber(v.invoiceAmount) : '₹0'}</TableCell>
+                          <TableCell data-label={tr('paid')} align="right" sx={{ color: v.paidAmount ? 'success.main' : 'text.disabled' }}>{v.paidAmount ? formatIndianNumber(v.paidAmount) : 'Not Paid'}</TableCell>
+                          <TableCell data-label={tr('outstanding')} align="right" sx={{ color: v.outstandingAmount ? 'error.main' : 'text.disabled', fontWeight: 600 }}>{formatIndianNumber(v.outstandingAmount)}</TableCell>
+                          <TableCell data-label={tr('budgetHeads')}>
+                            {v.budgetHeads.length === 0 ? tr('notAssigned') : v.budgetHeads.map((h) => (
                               <Chip key={h} size="small" variant="outlined" label={h} sx={{ mr: 0.5, mb: 0.5 }} />
                             ))}
                           </TableCell>
-                          <TableCell data-label="Last Activity">{formatDate(v.lastActivityDate)}</TableCell>
+                          <TableCell data-label={tr('lastActivity')}>{formatDate(v.lastActivityDate)}</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>

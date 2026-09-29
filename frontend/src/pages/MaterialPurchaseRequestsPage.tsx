@@ -21,7 +21,8 @@ import {
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { MPRStatus, MPRRequestType, isApproverRole } from '@hospital-erp/shared';
-import { formatDate, STATUS_COLORS, QTY_UNIT_OPTIONS, SERVICE_UNIT_OPTIONS, SERVICE_CATEGORY_OPTIONS } from '../utils/enumOptions';
+import { formatDate, STATUS_COLORS, QTY_UNIT_OPTIONS, SERVICE_UNIT_OPTIONS, SERVICE_CATEGORY_OPTIONS, enumLabel, unitLabel, serviceCategoryLabel } from '../utils/enumOptions';
+import { useTranslation } from 'react-i18next';
 import api, { extractErrorMessage } from '../config/api';
 import { useAuthStore } from '../stores/authStore';
 import ApprovalStepsDisplay from '../components/ApprovalStepsDisplay';
@@ -102,17 +103,8 @@ interface VarianceRow {
   rateVarianceVsQuoted: number;
 }
 
-const STATUS_LABELS: Record<string, string> = {
-  DRAFT: 'Draft',
-  SUBMITTED: 'Pending Approval',
-  APPROVED: 'Approved',
-  REJECTED: 'Rejected',
-  QUOTATIONS_RECEIVED: 'Quotations Received',
-  CLOSED: 'Closed',
-  CANCELLED: 'Cancelled',
-};
-
 export default function MaterialPurchaseRequestsPage() {
+  const { t } = useTranslation('mpr');
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const { user } = useAuthStore();
@@ -550,7 +542,7 @@ export default function MaterialPurchaseRequestsPage() {
         a.click();
         window.URL.revokeObjectURL(objUrl);
       })
-      .catch(() => setError('Failed to open receipt'));
+      .catch(() => setError(t('errFailedReceipt')));
   }
 
   function downloadPDF(mprId: string, mprNumber: string) {
@@ -566,7 +558,7 @@ export default function MaterialPurchaseRequestsPage() {
         a.click();
         window.URL.revokeObjectURL(objUrl);
       })
-      .catch(() => setError('Failed to download PDF'));
+      .catch(() => setError(t('errFailedPdf')));
   }
 
   function previewPDF(mprId: string) {
@@ -576,7 +568,7 @@ export default function MaterialPurchaseRequestsPage() {
     const url = `${api.defaults.baseURL}/material-purchase-requests/${mprId}/pdf?_t=${Date.now()}`;
     const newWindow = window.open('', '_blank');
     if (newWindow) {
-      newWindow.document.write('<html><head><title>MPR PDF Loading...</title></head><body style="display:flex;align-items:center;justify-content:center;height:100vh;margin:0;font-family:sans-serif;"><div style="text-align:center;"><div style="border:4px solid #f3f3f3;border-top:4px solid #1976d2;border-radius:50%;width:40px;height:40px;animation:spin 1s linear infinite;margin:0 auto 16px;"></div><style>@keyframes spin{0%{transform:rotate(0)}100%{transform:rotate(360deg)}}</style><p>Loading PDF...</p></div></body></html>');
+      newWindow.document.write(`<html><head><title>${t('pdfLoadingTitle')}</title></head><body style="display:flex;align-items:center;justify-content:center;height:100vh;margin:0;font-family:sans-serif;"><div style="text-align:center;"><div style="border:4px solid #f3f3f3;border-top:4px solid #1976d2;border-radius:50%;width:40px;height:40px;animation:spin 1s linear infinite;margin:0 auto 16px;"></div><style>@keyframes spin{0%{transform:rotate(0)}100%{transform:rotate(360deg)}}</style><p>${t('pdfLoadingText')}</p></div></body></html>`);
     }
     fetch(url, { headers: { Authorization: `Bearer ${token}` } })
       .then((res) => res.blob())
@@ -590,18 +582,18 @@ export default function MaterialPurchaseRequestsPage() {
       })
       .catch(() => {
         if (newWindow && !newWindow.closed) newWindow.close();
-        setError('Failed to preview PDF');
+        setError(t('errFailedPreview'));
       })
       .finally(() => setPdfLoading(false));
   }
 
   function handleSave() {
     if (items.some((i) => !i.materialName.trim() || !Number.isFinite(Number(i.quantity)) || Number(i.quantity) <= 0)) {
-      setError('Each item must have a name and quantity greater than zero');
+      setError(t('errItems'));
       return;
     }
     if (vendorMode === 'new' && !newVendorName.trim()) {
-      setError('Enter a name for the new vendor, or switch to an existing vendor');
+      setError(t('errNewVendor'));
       return;
     }
     setError('');
@@ -611,8 +603,8 @@ export default function MaterialPurchaseRequestsPage() {
   return (
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap', gap: 1 }}>
-        <Typography variant="h5" fontWeight={700}>{isServiceTab ? 'Service Requests' : 'Material Purchase Requests'}</Typography>
-        <Button variant="contained" startIcon={<AddIcon />} onClick={openCreate}>{isServiceTab ? 'New Service Request' : 'New MPR'}</Button>
+        <Typography variant="h5" fontWeight={700}>{isServiceTab ? t('titleService') : t('titleMaterial')}</Typography>
+        <Button variant="contained" startIcon={<AddIcon />} onClick={openCreate}>{isServiceTab ? t('newService') : t('newMpr')}</Button>
       </Box>
 
       <Tabs
@@ -620,8 +612,8 @@ export default function MaterialPurchaseRequestsPage() {
         onChange={(_e, v) => setRequestTypeTab(v)}
         sx={{ mb: 2, borderBottom: 1, borderColor: 'divider' }}
       >
-        <Tab label="Material Requests" value="MATERIAL" />
-        <Tab label="Service Requests" value="SERVICE" />
+        <Tab label={t('tabMaterial')} value="MATERIAL" />
+        <Tab label={t('tabService')} value="SERVICE" />
       </Tabs>
 
       {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
@@ -630,7 +622,7 @@ export default function MaterialPurchaseRequestsPage() {
       <Box sx={{ display: 'flex', gap: 1, mb: 2, flexWrap: 'wrap' }}>
         <TextField
           size="small"
-          placeholder="Search by MPR number..."
+          placeholder={t('searchPlaceholder')}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           InputProps={{ startAdornment: (<InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment>) }}
@@ -639,14 +631,14 @@ export default function MaterialPurchaseRequestsPage() {
         <TextField
           size="small"
           select
-          label="Status"
+          label={t('statusLabel')}
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
           sx={{ minWidth: 150 }}
         >
-          <MenuItem value="">All</MenuItem>
+          <MenuItem value="">{t('all')}</MenuItem>
           {Object.values(MPRStatus).map((s) => (
-            <MenuItem key={s} value={s}>{STATUS_LABELS[s] ?? s}</MenuItem>
+            <MenuItem key={s} value={s}>{t(`status.${s}`, enumLabel(s))}</MenuItem>
           ))}
         </TextField>
       </Box>
@@ -656,7 +648,7 @@ export default function MaterialPurchaseRequestsPage() {
       ) : mprs.length === 0 ? (
         <Paper sx={{ p: 4, textAlign: 'center' }}>
           <Typography variant="body2" color="text.secondary">
-            {isServiceTab ? 'No Service Requests found. Click "New Service Request" to create one.' : 'No Material Purchase Requests found. Click "New MPR" to create one.'}
+            {isServiceTab ? t('emptyService') : t('emptyMaterial')}
           </Typography>
         </Paper>
       ) : (
@@ -680,16 +672,16 @@ export default function MaterialPurchaseRequestsPage() {
                     <Box>
                       <Typography variant="subtitle1" fontWeight={700}>{row.mprNumber}</Typography>
                       <Typography variant="body2" color="text.secondary">
-                        Date: {formatDate(row.date)} | Required By: {row.requiredBy ? formatDate(row.requiredBy) : '—'} | Dept: {row.department ?? '—'}
+                        {t('dateLine', { date: formatDate(row.date), required: row.requiredBy ? formatDate(row.requiredBy) : '—', dept: row.department ?? '—' })}
                       </Typography>
                       <Typography variant="body2" color="text.secondary">
-                        Requested By: {row.createdByUser?.name ?? '—'} | Priority: {row.priority ?? 'Normal'} | Items: {row.items.length}
+                        {t('requestedLine', { by: row.createdByUser?.name ?? '—', priority: t(`priority.${row.priority ?? 'Normal'}`, row.priority ?? 'Normal'), n: row.items.length })}
                       </Typography>
                       <Typography variant="body2" color="text.secondary">
-                        Vendor: {row.vendor ? `${row.vendor.name} (${row.vendor.vendorCode})` : '—'}
+                        {t('vendorLine', { v: row.vendor ? `${row.vendor.name} (${row.vendor.vendorCode})` : '—' })}
                         {row.vendor && (
                           <Chip
-                            label={isNonVendor ? 'Non-Vendor' : 'Vendor'}
+                            label={isNonVendor ? t('nonVendor') : t('vendor')}
                             size="small"
                             sx={{ ml: 0.75, height: 18, fontSize: '0.65rem' }}
                             color={isNonVendor ? 'default' : 'primary'}
@@ -700,7 +692,7 @@ export default function MaterialPurchaseRequestsPage() {
                       {row.requestType === 'SERVICE' && (row.serviceCategory || row.servicePeriodStart || row.servicePeriodEnd) && (
                         <Typography variant="body2" color="text.secondary">
                           {row.serviceCategory ?? '—'}
-                          {(row.servicePeriodStart || row.servicePeriodEnd) && ` | Period: ${row.servicePeriodStart ? formatDate(row.servicePeriodStart) : '—'} to ${row.servicePeriodEnd ? formatDate(row.servicePeriodEnd) : '—'}`}
+                          {(row.servicePeriodStart || row.servicePeriodEnd) && t('periodLine', { from: row.servicePeriodStart ? formatDate(row.servicePeriodStart) : '—', to: row.servicePeriodEnd ? formatDate(row.servicePeriodEnd) : '—' })}
                         </Typography>
                       )}
                       {row.description && (
@@ -709,7 +701,7 @@ export default function MaterialPurchaseRequestsPage() {
                     </Box>
                     <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 1 }}>
                       <Chip
-                        label={STATUS_LABELS[row.status] ?? row.status}
+                        label={t(`status.${row.status}`, enumLabel(row.status))}
                         size="small"
                         color={(STATUS_COLORS[row.status] as any) ?? 'default'}
                       />
@@ -720,20 +712,20 @@ export default function MaterialPurchaseRequestsPage() {
                   <Box sx={{ mt: 1 }}>
                     {row.items.slice(0, 3).map((item, idx) => (
                       <Typography key={idx} variant="caption" sx={{ display: 'block', color: 'text.secondary' }}>
-                        • {item.materialCode ? `[${item.materialCode}] ` : ''}{item.materialName} — {item.quantity}{item.unit ? ` ${item.unit}` : ''}{item.requiredDate ? ` (by ${formatDate(item.requiredDate)})` : ''}
+                        • {item.materialCode ? `[${item.materialCode}] ` : ''}{item.materialName} — {item.quantity}{item.unit ? ` ${item.unit}` : ''}{item.requiredDate ? t('requiredByShort', { d: formatDate(item.requiredDate) }) : ''}
                       </Typography>
                     ))}
                     {row.items.length > 3 && (
-                      <Typography variant="caption" color="text.secondary">...and {row.items.length - 3} more items</Typography>
+                      <Typography variant="caption" color="text.secondary">{t('andMore', { n: row.items.length - 3 })}</Typography>
                     )}
                   </Box>
 
                   {/* Quotations raised against this MPR */}
                   {row.quotations && row.quotations.length > 0 && (
                     <Box sx={{ mt: 1 }}>
-                      <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary' }}>Quotations: </Typography>
+                      <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary' }}>{t('quotations')} </Typography>
                       {row.quotations.map((q) => (
-                        <Chip key={q.id} label={`${q.quotationNumber} · ${q.status.replace(/_/g, ' ')} · ₹${Number(q.grandTotal).toLocaleString('en-IN')}`} size="small" sx={{ mr: 0.5, mb: 0.5 }} />
+                        <Chip key={q.id} label={`${q.quotationNumber} · ${enumLabel(q.status)} · ₹${Number(q.grandTotal).toLocaleString('en-IN')}`} size="small" sx={{ mr: 0.5, mb: 0.5 }} />
                       ))}
                     </Box>
                   )}
@@ -742,7 +734,7 @@ export default function MaterialPurchaseRequestsPage() {
                   {row.receiptFilePath && (
                     <Box sx={{ mt: 1 }}>
                       <Button size="small" startIcon={<ReceiptIcon />} onClick={() => downloadReceipt(row.id, row.receiptFileName ?? 'receipt')}>
-                        {row.receiptFileName ?? 'Receipt attached'}
+                        {row.receiptFileName ?? t('receiptAttached')}
                       </Button>
                     </Box>
                   )}
@@ -750,53 +742,53 @@ export default function MaterialPurchaseRequestsPage() {
                   {/* Approval workflow */}
                   {row.approvalWorkflow && (
                     <Box sx={{ mt: 1.5 }}>
-                      <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>Approval Status</Typography>
+                      <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>{t('approvalStatus')}</Typography>
                       <ApprovalStepsDisplay steps={row.approvalWorkflow.steps} />
                     </Box>
                   )}
 
                   {/* Actions */}
                   <Box sx={{ display: 'flex', gap: 0.5, mt: 1, pt: 1, borderTop: '1px solid', borderColor: 'action.hover', flexWrap: 'wrap' }}>
-                    <IconButton size="small" onClick={() => previewPDF(row.id)} title="Preview PDF" disabled={pdfLoading}>
+                    <IconButton size="small" onClick={() => previewPDF(row.id)} title={t('previewPdf')} disabled={pdfLoading}>
                       {pdfLoading ? <CircularProgress size={16} /> : <PdfIcon fontSize="small" />}
                     </IconButton>
                     <CommentsButton entityType="MATERIAL_PURCHASE_REQUEST" entityId={row.id} entityLabel={row.mprNumber} url="/material-purchase-requests" />
-                    <IconButton size="small" onClick={() => downloadPDF(row.id, row.mprNumber)} title="Download PDF">
+                    <IconButton size="small" onClick={() => downloadPDF(row.id, row.mprNumber)} title={t('downloadPdf')}>
                       <DownloadIcon fontSize="small" />
                     </IconButton>
                     {(row.status !== MPRStatus.DRAFT) && (
-                      <Button size="small" startIcon={<VarianceIcon />} onClick={() => setVarianceRow(row)}>Variance</Button>
+                      <Button size="small" startIcon={<VarianceIcon />} onClick={() => setVarianceRow(row)}>{t('variance')}</Button>
                     )}
                     {row.status === MPRStatus.DRAFT && (
                       <>
-                        <IconButton size="small" onClick={() => openEdit(row)} title="Edit"><EditIcon fontSize="small" /></IconButton>
-                        <Button size="small" startIcon={<SendIcon />} onClick={() => submitMutation.mutate(row.id)} disabled={submitMutation.isPending}>Submit for Approval</Button>
-                        <IconButton size="small" onClick={() => deleteMutation.mutate(row.id)} title="Delete"><DeleteIcon fontSize="small" /></IconButton>
+                        <IconButton size="small" onClick={() => openEdit(row)} title={t('edit')}><EditIcon fontSize="small" /></IconButton>
+                        <Button size="small" startIcon={<SendIcon />} onClick={() => submitMutation.mutate(row.id)} disabled={submitMutation.isPending}>{t('submitForApproval')}</Button>
+                        <IconButton size="small" onClick={() => deleteMutation.mutate(row.id)} title={t('delete')}><DeleteIcon fontSize="small" /></IconButton>
                       </>
                     )}
                     {row.status === MPRStatus.SUBMITTED && (
                       <>
-                        <IconButton size="small" onClick={() => openEdit(row)} title="Edit (will re-raise for approval)"><EditIcon fontSize="small" /></IconButton>
+                        <IconButton size="small" onClick={() => openEdit(row)} title={t('editReRaise')}><EditIcon fontSize="small" /></IconButton>
                         {pendingStep && (
                           <>
-                            <Button size="small" color="success" startIcon={<CheckIcon />} onClick={() => setApprovalAction({ row, step: pendingStep, action: 'approve' })}>Approve</Button>
-                            <Button size="small" color="error" startIcon={<CloseIcon />} onClick={() => setApprovalAction({ row, step: pendingStep, action: 'reject' })}>Reject</Button>
+                            <Button size="small" color="success" startIcon={<CheckIcon />} onClick={() => setApprovalAction({ row, step: pendingStep, action: 'approve' })}>{t('approve')}</Button>
+                            <Button size="small" color="error" startIcon={<CloseIcon />} onClick={() => setApprovalAction({ row, step: pendingStep, action: 'reject' })}>{t('reject')}</Button>
                           </>
                         )}
-                        <Button size="small" color="error" startIcon={<CloseIcon />} onClick={() => cancelMutation.mutate(row.id)} disabled={cancelMutation.isPending}>Cancel</Button>
+                        <Button size="small" color="error" startIcon={<CloseIcon />} onClick={() => cancelMutation.mutate(row.id)} disabled={cancelMutation.isPending}>{t('cancel')}</Button>
                       </>
                     )}
                     {row.status === MPRStatus.APPROVED && !isNonVendor && row.vendorId && (
-                      <Button size="small" variant="contained" startIcon={<QuotationIcon />} onClick={() => raiseQuotation(row)}>Raise Quotation</Button>
+                      <Button size="small" variant="contained" startIcon={<QuotationIcon />} onClick={() => raiseQuotation(row)}>{t('raiseQuotation')}</Button>
                     )}
                     {row.status === MPRStatus.APPROVED && isNonVendor && (
-                      <Button size="small" variant="contained" startIcon={<ReceiptIcon />} onClick={() => setReceiptRow(row)}>Upload Receipt & Close</Button>
+                      <Button size="small" variant="contained" startIcon={<ReceiptIcon />} onClick={() => setReceiptRow(row)}>{t('uploadReceiptClose')}</Button>
                     )}
                     {row.status === MPRStatus.QUOTATIONS_RECEIVED && !isNonVendor && row.vendorId && (
-                      <Button size="small" startIcon={<QuotationIcon />} onClick={() => raiseQuotation(row)}>Raise Another Quotation</Button>
+                      <Button size="small" startIcon={<QuotationIcon />} onClick={() => raiseQuotation(row)}>{t('raiseAnother')}</Button>
                     )}
                     {(row.status === MPRStatus.APPROVED || row.status === MPRStatus.QUOTATIONS_RECEIVED) && (
-                      <Button size="small" color="success" onClick={() => closeMutation.mutate(row.id)} disabled={closeMutation.isPending}>Mark Closed</Button>
+                      <Button size="small" color="success" onClick={() => closeMutation.mutate(row.id)} disabled={closeMutation.isPending}>{t('markClosed')}</Button>
                     )}
                   </Box>
                 </CardContent>
@@ -809,12 +801,12 @@ export default function MaterialPurchaseRequestsPage() {
 
       {/* Create / Edit Dialog */}
       <Dialog open={createOpen} onClose={() => setCreateOpen(false)} maxWidth="lg" fullWidth>
-        <DialogTitle>{editRow ? `Edit ${editRow.mprNumber}` : (isServiceTab ? 'New Service Request' : 'New Material Purchase Request')}</DialogTitle>
+        <DialogTitle>{editRow ? t('editTitle', { n: editRow.mprNumber }) : (isServiceTab ? t('newService') : t('newMaterialFull'))}</DialogTitle>
         <DialogContent dividers>
           {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
 
           {/* Vendor Selection */}
-          <Typography variant="subtitle2" sx={{ mb: 1 }}>Vendor</Typography>
+          <Typography variant="subtitle2" sx={{ mb: 1 }}>{t('vendorSection')}</Typography>
           <ToggleButtonGroup
             value={vendorMode}
             exclusive
@@ -822,43 +814,41 @@ export default function MaterialPurchaseRequestsPage() {
             onChange={(_e, v) => { if (v) setVendorMode(v); }}
             sx={{ mb: 1 }}
           >
-            <ToggleButton value="existing">Existing Vendor</ToggleButton>
-            <ToggleButton value="new">New Vendor</ToggleButton>
+            <ToggleButton value="existing">{t('existingVendor')}</ToggleButton>
+            <ToggleButton value="new">{t('newVendor')}</ToggleButton>
           </ToggleButtonGroup>
           {vendorMode === 'existing' ? (
             <TextField
               fullWidth
               size="small"
               select
-              label="Vendor"
+              label={t('vendorSection')}
               value={selectedVendorId}
               onChange={(e) => setSelectedVendorId(e.target.value)}
               sx={{ mb: 2 }}
             >
-              <MenuItem value=""><em>— Select —</em></MenuItem>
+              <MenuItem value=""><em>{t('select')}</em></MenuItem>
               {vendors.map((v) => (
-                <MenuItem key={v.id} value={v.id}>{v.vendorCode} - {v.name} {v.vendorType === 'NON_VENDOR' ? '(Non-Vendor)' : ''}</MenuItem>
+                <MenuItem key={v.id} value={v.id}>{v.vendorCode} - {v.name} {v.vendorType === 'NON_VENDOR' ? t('nonVendorTag') : ''}</MenuItem>
               ))}
             </TextField>
           ) : (
             <Grid container spacing={2} sx={{ mb: 2 }}>
               <Grid item xs={12} sm={5}>
-                <TextField fullWidth size="small" label="Vendor Name" value={newVendorName} onChange={(e) => setNewVendorName(e.target.value)} required />
+                <TextField fullWidth size="small" label={t('vendorName')} value={newVendorName} onChange={(e) => setNewVendorName(e.target.value)} required />
               </Grid>
               <Grid item xs={12} sm={4}>
-                <TextField fullWidth size="small" label="Phone" value={newVendorPhone} onChange={(e) => setNewVendorPhone(e.target.value)} />
+                <TextField fullWidth size="small" label={t('phone')} value={newVendorPhone} onChange={(e) => setNewVendorPhone(e.target.value)} />
               </Grid>
               <Grid item xs={12} sm={3}>
-                <TextField fullWidth size="small" select label="Type" value={newVendorType} onChange={(e) => setNewVendorType(e.target.value as 'VENDOR' | 'NON_VENDOR')}>
-                  <MenuItem value="VENDOR">Vendor (recurring)</MenuItem>
-                  <MenuItem value="NON_VENDOR">Non-Vendor (one-time)</MenuItem>
+                <TextField fullWidth size="small" select label={t('type')} value={newVendorType} onChange={(e) => setNewVendorType(e.target.value as 'VENDOR' | 'NON_VENDOR')}>
+                  <MenuItem value="VENDOR">{t('vendorRecurring')}</MenuItem>
+                  <MenuItem value="NON_VENDOR">{t('nonVendorOneTime')}</MenuItem>
                 </TextField>
               </Grid>
               <Grid item xs={12}>
                 <Alert severity="info" sx={{ mt: 0 }}>
-                  {newVendorType === 'NON_VENDOR'
-                    ? 'Non-vendor requests skip the Quotation step — once approved, you attach a receipt/bill directly and close the request.'
-                    : 'This vendor will also be saved to the Vendors module. You can add bank/GST details there later.'}
+                  {newVendorType === 'NON_VENDOR' ? t('nonVendorInfo') : t('vendorInfo')}
                 </Alert>
               </Grid>
             </Grid>
@@ -872,7 +862,7 @@ export default function MaterialPurchaseRequestsPage() {
                 fullWidth
                 size="small"
                 type="date"
-                label="Required By"
+                label={t('requiredBy')}
                 value={requiredBy}
                 onChange={(e) => setRequiredBy(e.target.value)}
                 InputLabelProps={{ shrink: true }}
@@ -889,7 +879,7 @@ export default function MaterialPurchaseRequestsPage() {
                 onInputChange={(_e, newValue) => setDepartment(newValue)}
                 onChange={(_e, newValue) => setDepartment(newValue ?? '')}
                 onBlur={() => rememberDepartment(department)}
-                renderInput={(params) => <TextField {...params} label="Department" />}
+                renderInput={(params) => <TextField {...params} label={t('department')} />}
               />
             </Grid>
             <Grid item xs={12} sm={6} md={3}>
@@ -897,13 +887,13 @@ export default function MaterialPurchaseRequestsPage() {
                 fullWidth
                 size="small"
                 select
-                label="Priority"
+                label={t('priorityLabel')}
                 value={priority}
                 onChange={(e) => setPriority(e.target.value)}
               >
-                <MenuItem value="Normal">Normal</MenuItem>
-                <MenuItem value="Urgent">Urgent</MenuItem>
-                <MenuItem value="Critical">Critical</MenuItem>
+                <MenuItem value="Normal">{t('priority.Normal')}</MenuItem>
+                <MenuItem value="Urgent">{t('priority.Urgent')}</MenuItem>
+                <MenuItem value="Critical">{t('priority.Critical')}</MenuItem>
               </TextField>
             </Grid>
             <Grid item xs={12} sm={6} md={3}>
@@ -911,11 +901,11 @@ export default function MaterialPurchaseRequestsPage() {
                 fullWidth
                 size="small"
                 select
-                label="Request Raised By"
+                label={t('requestRaisedBy')}
                 value={requestRaisedById}
                 onChange={(e) => setRequestRaisedById(e.target.value)}
               >
-                <MenuItem value=""><em>— Select —</em></MenuItem>
+                <MenuItem value=""><em>{t('select')}</em></MenuItem>
                 {users.map((u) => (
                   <MenuItem key={u.id} value={u.id}>{u.name}</MenuItem>
                 ))}
@@ -935,7 +925,8 @@ export default function MaterialPurchaseRequestsPage() {
                   inputValue={serviceCategory}
                   onInputChange={(_e, newValue) => setServiceCategory(newValue)}
                   onChange={(_e, newValue) => setServiceCategory(newValue ?? '')}
-                  renderInput={(params) => <TextField {...params} label="Service Category" />}
+                  renderOption={(props, opt) => <li {...props}>{serviceCategoryLabel(opt)}</li>}
+                  renderInput={(params) => <TextField {...params} label={t('serviceCategory')} />}
                 />
               </Grid>
               <Grid item xs={12} sm={3} md={4}>
@@ -943,7 +934,7 @@ export default function MaterialPurchaseRequestsPage() {
                   fullWidth
                   size="small"
                   type="date"
-                  label="Service Period — From"
+                  label={t('periodFrom')}
                   value={servicePeriodStart}
                   onChange={(e) => setServicePeriodStart(e.target.value)}
                   InputLabelProps={{ shrink: true }}
@@ -954,7 +945,7 @@ export default function MaterialPurchaseRequestsPage() {
                   fullWidth
                   size="small"
                   type="date"
-                  label="Service Period — To"
+                  label={t('periodTo')}
                   value={servicePeriodEnd}
                   onChange={(e) => setServicePeriodEnd(e.target.value)}
                   InputLabelProps={{ shrink: true }}
@@ -964,21 +955,21 @@ export default function MaterialPurchaseRequestsPage() {
           )}
 
           {/* Delivery & Billing Information */}
-          <Typography variant="subtitle2" sx={{ mt: 1, mb: 1 }}>Delivery & Billing Information</Typography>
+          <Typography variant="subtitle2" sx={{ mt: 1, mb: 1 }}>{t('deliveryBilling')}</Typography>
           <Grid container spacing={2} sx={{ mb: 2 }}>
             <Grid item xs={12} md={6}>
               <Box sx={{ p: 1, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
-                <Typography variant="caption" fontWeight={700} color="primary">DELIVERY ADDRESS</Typography>
-                <TextField fullWidth size="small" label="Delivery Address" value={deliveryAddress} onChange={(e) => setDeliveryAddress(e.target.value)} placeholder="Where material is physically delivered" sx={{ mt: 1 }} />
-                <TextField fullWidth size="small" label="Contact Person" value={contactPerson} onChange={(e) => setContactPerson(e.target.value)} sx={{ mt: 1 }} />
-                <TextField fullWidth size="small" label="Contact Number" value={contactNumber} onChange={(e) => setContactNumber(e.target.value)} sx={{ mt: 1 }} />
+                <Typography variant="caption" fontWeight={700} color="primary">{t('deliveryAddressCaps')}</Typography>
+                <TextField fullWidth size="small" label={t('deliveryAddress')} value={deliveryAddress} onChange={(e) => setDeliveryAddress(e.target.value)} placeholder={t('deliveryPlaceholder')} sx={{ mt: 1 }} />
+                <TextField fullWidth size="small" label={t('contactPerson')} value={contactPerson} onChange={(e) => setContactPerson(e.target.value)} sx={{ mt: 1 }} />
+                <TextField fullWidth size="small" label={t('contactNumber')} value={contactNumber} onChange={(e) => setContactNumber(e.target.value)} sx={{ mt: 1 }} />
               </Box>
             </Grid>
             <Grid item xs={12} md={6}>
               <Box sx={{ p: 1, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
-                <Typography variant="caption" fontWeight={700} color="primary">BILL TO</Typography>
-                <TextField fullWidth size="small" label="Billing Address" value={billingAddress} onChange={(e) => setBillingAddress(e.target.value)} placeholder="V Grand Health Care Pvt. Ltd. billing address" sx={{ mt: 1 }} />
-                <TextField fullWidth size="small" label="State / State Code" value={stateCode} onChange={(e) => setStateCode(e.target.value)} sx={{ mt: 1 }} />
+                <Typography variant="caption" fontWeight={700} color="primary">{t('billTo')}</Typography>
+                <TextField fullWidth size="small" label={t('billingAddress')} value={billingAddress} onChange={(e) => setBillingAddress(e.target.value)} placeholder={t('billingPlaceholder')} sx={{ mt: 1 }} />
+                <TextField fullWidth size="small" label={t('stateCode')} value={stateCode} onChange={(e) => setStateCode(e.target.value)} sx={{ mt: 1 }} />
               </Box>
             </Grid>
           </Grid>
@@ -986,26 +977,26 @@ export default function MaterialPurchaseRequestsPage() {
           <TextField
             fullWidth
             size="small"
-            label="Purpose / Justification"
+            label={t('purpose')}
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            placeholder="Explain why the material is required"
+            placeholder={t('purposePlaceholder')}
             sx={{ mb: 2 }}
           />
 
           {/* Items table */}
-          <Typography variant="subtitle2" sx={{ mb: 1 }}>{isServiceTab ? 'Service Details' : 'Material Details'}</Typography>
+          <Typography variant="subtitle2" sx={{ mb: 1 }}>{isServiceTab ? t('serviceDetails') : t('materialDetails')}</Typography>
           <TableContainer component={Paper} variant="outlined" sx={{ mb: 2, overflowX: 'auto' }}>
             <Table size="small">
               <TableHead>
                 <TableRow>
-                  <TableCell>{isServiceTab ? 'Service Description' : 'Material / Item Description'}</TableCell>
-                  <TableCell>{isServiceTab ? 'Service Code' : 'Material Code'}</TableCell>
-                  <TableCell>{isServiceTab ? 'Scope of Work' : 'Specification / Grade'}</TableCell>
-                  <TableCell align="right">Qty</TableCell>
-                  <TableCell>Unit</TableCell>
-                  <TableCell>{isServiceTab ? 'Service Date' : 'Required Date'}</TableCell>
-                  <TableCell>Remarks</TableCell>
+                  <TableCell>{isServiceTab ? t('colServiceDesc') : t('colMaterialDesc')}</TableCell>
+                  <TableCell>{isServiceTab ? t('colServiceCode') : t('colMaterialCode')}</TableCell>
+                  <TableCell>{isServiceTab ? t('colScope') : t('colSpec')}</TableCell>
+                  <TableCell align="right">{t('colQty')}</TableCell>
+                  <TableCell>{t('colUnit')}</TableCell>
+                  <TableCell>{isServiceTab ? t('colServiceDate') : t('colRequiredDate')}</TableCell>
+                  <TableCell>{t('colRemarks')}</TableCell>
                   <TableCell></TableCell>
                 </TableRow>
               </TableHead>
@@ -1055,7 +1046,7 @@ export default function MaterialPurchaseRequestsPage() {
                         sx={{ width: 90 }}
                       >
                         {(isServiceTab ? SERVICE_UNIT_OPTIONS : QTY_UNIT_OPTIONS).map((opt) => (
-                          <MenuItem key={opt.value} value={opt.value}>{opt.label}</MenuItem>
+                          <MenuItem key={opt.value} value={opt.value}>{unitLabel(isServiceTab && opt.value === 'nos' ? 'nosUnits' : opt.value)}</MenuItem>
                         ))}
                       </TextField>
                     </TableCell>
@@ -1088,10 +1079,10 @@ export default function MaterialPurchaseRequestsPage() {
             </Table>
           </TableContainer>
 
-          <Button size="small" startIcon={<AddIcon />} onClick={addItem} sx={{ mb: 2 }}>Add Item</Button>
+          <Button size="small" startIcon={<AddIcon />} onClick={addItem} sx={{ mb: 2 }}>{t('addItem')}</Button>
 
           {/* Technical Requirements */}
-          <Typography variant="subtitle2" sx={{ mb: 1 }}>{isServiceTab ? 'Terms / Service Requirements' : 'Technical / Purchase Requirements'}</Typography>
+          <Typography variant="subtitle2" sx={{ mb: 1 }}>{isServiceTab ? t('termsService') : t('termsMaterial')}</Typography>
           <TextField
             fullWidth
             size="small"
@@ -1099,20 +1090,18 @@ export default function MaterialPurchaseRequestsPage() {
             minRows={3}
             value={technicalRequirements}
             onChange={(e) => setTechnicalRequirements(e.target.value)}
-            placeholder={isServiceTab
-              ? 'e.g. Service must conform to project SLA. Vendor quotation should mention rate basis (per hour/visit/lumpsum), taxes, and payment terms.'
-              : 'e.g. Material must conform to project specifications. Vendor quotation should mention brand/make, taxes, freight, delivery and payment terms. MTC/test certificates where required.'}
+            placeholder={isServiceTab ? t('termsServicePlaceholder') : t('termsMaterialPlaceholder')}
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setCreateOpen(false)}>Cancel</Button>
+          <Button onClick={() => setCreateOpen(false)}>{t('cancel')}</Button>
           <Button
             variant="contained"
             onClick={handleSave}
             disabled={createMutation.isPending}
             startIcon={createMutation.isPending ? <CircularProgress size={16} /> : null}
           >
-            {editRow ? 'Update' : 'Create'} MPR
+            {editRow ? t('updateMpr') : t('createMpr')}
           </Button>
         </DialogActions>
       </Dialog>
@@ -1121,7 +1110,7 @@ export default function MaterialPurchaseRequestsPage() {
       <ApprovalActionDialog
         open={approvalAction !== null}
         action={approvalAction?.action ?? 'approve'}
-        entityLabel={approvalAction?.row.requestType === 'SERVICE' ? 'Service Request' : 'Material Purchase Request'}
+        entityLabel={approvalAction?.row.requestType === 'SERVICE' ? t('entityService') : t('entityMaterial')}
         pending={approveMutation.isPending || rejectMutation.isPending}
         error={error}
         onClearError={() => setError('')}
@@ -1138,44 +1127,44 @@ export default function MaterialPurchaseRequestsPage() {
 
       {/* Receipt Upload Dialog — NON_VENDOR fast path */}
       <ResponsiveDialog open={receiptRow !== null} onClose={() => { setReceiptRow(null); setReceiptFile(null); setReceiptNotes(''); }} maxWidth="sm" fullWidth>
-        <DialogTitle>Upload Receipt & Close — {receiptRow?.mprNumber}</DialogTitle>
+        <DialogTitle>{t('receiptTitle', { n: receiptRow?.mprNumber })}</DialogTitle>
         <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '12px !important' }}>
           {error && <Alert severity="error" onClose={() => setError('')}>{error}</Alert>}
-          <Alert severity="info">This request will be marked Closed once the receipt/bill is uploaded.</Alert>
+          <Alert severity="info">{t('receiptInfo')}</Alert>
           <Button component="label" variant="outlined" startIcon={<ReceiptIcon />}>
-            {receiptFile ? receiptFile.name : 'Choose Receipt / Bill File'}
+            {receiptFile ? receiptFile.name : t('chooseReceipt')}
             <input type="file" hidden accept="application/pdf,image/*" onChange={(e) => setReceiptFile(e.target.files?.[0] ?? null)} />
           </Button>
-          <TextField label="Notes (optional)" value={receiptNotes} onChange={(e) => setReceiptNotes(e.target.value)} multiline minRows={2} />
+          <TextField label={t('notesOptional')} value={receiptNotes} onChange={(e) => setReceiptNotes(e.target.value)} multiline minRows={2} />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => { setReceiptRow(null); setReceiptFile(null); setReceiptNotes(''); }} disabled={receiptMutation.isPending}>Cancel</Button>
+          <Button onClick={() => { setReceiptRow(null); setReceiptFile(null); setReceiptNotes(''); }} disabled={receiptMutation.isPending}>{t('cancel')}</Button>
           <Button variant="contained" disabled={!receiptFile || receiptMutation.isPending} onClick={() => receiptMutation.mutate()}>
-            {receiptMutation.isPending ? <CircularProgress size={16} /> : 'Upload & Close'}
+            {receiptMutation.isPending ? <CircularProgress size={16} /> : t('uploadClose')}
           </Button>
         </DialogActions>
       </ResponsiveDialog>
 
       {/* Variance Dialog — Requested vs Quoted vs Ordered */}
       <ResponsiveDialog open={varianceRow !== null} onClose={() => setVarianceRow(null)} maxWidth="md" fullWidth>
-        <DialogTitle>Variance — {varianceRow?.mprNumber}</DialogTitle>
+        <DialogTitle>{t('varianceTitle', { n: varianceRow?.mprNumber })}</DialogTitle>
         <DialogContent>
           {varianceLoading ? (
             <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress size={28} /></Box>
           ) : varianceItems.length === 0 ? (
-            <Typography color="text.secondary" sx={{ py: 2 }}>No items to compare yet.</Typography>
+            <Typography color="text.secondary" sx={{ py: 2 }}>{t('noItemsCompare')}</Typography>
           ) : (
             <TableContainer sx={{ overflowX: 'auto' }}>
               <Table size="small">
                 <TableHead>
                   <TableRow>
-                    <TableCell>Material</TableCell>
-                    <TableCell align="right">Requested</TableCell>
-                    <TableCell align="right">Quoted</TableCell>
-                    <TableCell align="right">Ordered</TableCell>
-                    <TableCell align="right">Qty Δ (Quoted−Req.)</TableCell>
-                    <TableCell align="right">Qty Δ (Ordered−Quoted)</TableCell>
-                    <TableCell align="right">Rate Δ (Ordered−Quoted)</TableCell>
+                    <TableCell>{t('colMaterial')}</TableCell>
+                    <TableCell align="right">{t('requested')}</TableCell>
+                    <TableCell align="right">{t('quoted')}</TableCell>
+                    <TableCell align="right">{t('ordered')}</TableCell>
+                    <TableCell align="right">{t('qtyDeltaQuoted')}</TableCell>
+                    <TableCell align="right">{t('qtyDeltaOrdered')}</TableCell>
+                    <TableCell align="right">{t('rateDelta')}</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -1202,7 +1191,7 @@ export default function MaterialPurchaseRequestsPage() {
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setVarianceRow(null)}>Close</Button>
+          <Button onClick={() => setVarianceRow(null)}>{t('close')}</Button>
         </DialogActions>
       </ResponsiveDialog>
     </Box>

@@ -23,7 +23,8 @@ import { APPROVER_ROLES, type UserResponse } from '@hospital-erp/shared';
 import api, { extractErrorMessage } from '../config/api';
 import ResponsiveDialog from './ResponsiveDialog';
 import ApprovalActionDialog from './ApprovalActionDialog';
-import { formatCurrency, formatDate } from '../utils/enumOptions';
+import { formatCurrency, formatDate, enumLabel } from '../utils/enumOptions';
+import { useTranslation } from 'react-i18next';
 
 // ─── Entity type configuration ──────────────────────────────────────────────
 // Each pending entity maps to:
@@ -228,6 +229,7 @@ interface PendingItemsContentProps {
 // enclosing Dialog chrome. Reused by PendingItemsDialog (single-type dialog)
 // and by AllPendingTasksDialog (tabbed, all-types-in-one-place dialog).
 export function PendingItemsContent({ entityType, user, open, onClose }: PendingItemsContentProps) {
+  const { t } = useTranslation('pending');
   const config = ENTITY_CONFIGS[entityType];
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -351,18 +353,18 @@ export function PendingItemsContent({ entityType, user, open, onClose }: Pending
           ) : isError ? (
             <Box sx={{ textAlign: 'center', py: 3 }}>
               <Alert severity="error" sx={{ mb: 2 }}>
-                {extractErrorMessage(error) || 'Failed to load pending records. Please try again.'}
+                {extractErrorMessage(error) || t('errLoad')}
               </Alert>
-              <Button size="small" onClick={() => refetch()}>Retry</Button>
+              <Button size="small" onClick={() => refetch()}>{t('retry')}</Button>
             </Box>
           ) : records.length === 0 ? (
             <Box sx={{ textAlign: 'center', py: 4 }}>
-              <Typography color="text.secondary">No {config.title.toLowerCase()}</Typography>
+              <Typography color="text.secondary">{t('noneTitle', { title: t(`title.${entityType}`).toLowerCase() })}</Typography>
             </Box>
           ) : (
             <>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
-                {records.length} pending {records.length === 1 ? 'record' : 'records'}
+                {t('count', { count: records.length })}
               </Typography>
               <Stack spacing={1.5}>
                 {records.map((record) => {
@@ -375,29 +377,29 @@ export function PendingItemsContent({ entityType, user, open, onClose }: Pending
                           <Typography variant="subtitle2" fontWeight={600} sx={{ overflowWrap: 'break-word' }}>
                             {record.code}
                           </Typography>
-                          <Chip label={record.status.replace(/_/g, ' ')} size="small" color={statusColor(record.status)} />
+                          <Chip label={enumLabel(record.status)} size="small" color={statusColor(record.status)} />
                         </Box>
 
                         {/* Record details: stacked label/value rows */}
                         <Stack spacing={0.5} sx={{ mb: 1.5 }}>
-                          <DetailRow label="Vendor" value={record.vendorName} />
-                          <DetailRow label="Amount" value={record.amount} />
+                          <DetailRow label={t('vendor')} value={record.vendorName} />
+                          <DetailRow label={t('amount')} value={record.amount} />
                           {record.deductions && record.deductions.length > 0 && (
                             <>
                               {record.deductions.map((d, i) => (
-                                <DetailRow key={i} label={`  Less: ${d.reason}`} value={`-${formatCurrency(d.amount)}`} />
+                                <DetailRow key={i} label={t('lessLine', { reason: d.reason })} value={`-${formatCurrency(d.amount)}`} />
                               ))}
-                              <DetailRow label="Total Deductions" value={formatCurrency(Number(record.totalDeductions ?? 0))} />
-                              <DetailRow label="Net Payable" value={formatCurrency(Number(record.netPayable ?? 0))} />
+                              <DetailRow label={t('totalDeductions')} value={formatCurrency(Number(record.totalDeductions ?? 0))} />
+                              <DetailRow label={t('netPayable')} value={formatCurrency(Number(record.netPayable ?? 0))} />
                             </>
                           )}
-                          <DetailRow label="Date" value={record.date} />
+                          <DetailRow label={t('date')} value={record.date} />
                         </Stack>
 
                         {/* Actions */}
                         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
                           <Button size="small" variant="outlined" startIcon={<VisibilityIcon />} onClick={() => handleView(record)}>
-                            View
+                            {t('view')}
                           </Button>
                           {canApprove && (
                             <>
@@ -409,7 +411,7 @@ export function PendingItemsContent({ entityType, user, open, onClose }: Pending
                                 onClick={() => handleApprove(record)}
                                 disabled={pending}
                               >
-                                Approve
+                                {t('approve')}
                               </Button>
                               <Button
                                 size="small"
@@ -419,7 +421,7 @@ export function PendingItemsContent({ entityType, user, open, onClose }: Pending
                                 onClick={() => handleReject(record)}
                                 disabled={pending}
                               >
-                                Reject
+                                {t('reject')}
                               </Button>
                             </>
                           )}
@@ -437,7 +439,7 @@ export function PendingItemsContent({ entityType, user, open, onClose }: Pending
       <ApprovalActionDialog
         open={!!approvalAction}
         action={approvalAction?.action ?? 'approve'}
-        entityLabel={config.entityLabel}
+        entityLabel={t(`entity.${entityType}`)}
         pending={pending}
         error={actionError}
         onClearError={() => setActionError('')}
@@ -458,12 +460,12 @@ interface PendingItemsDialogProps {
 }
 
 export default function PendingItemsDialog({ open, entityType, user, onClose }: PendingItemsDialogProps) {
-  const config = ENTITY_CONFIGS[entityType];
+  const { t } = useTranslation('pending');
   return (
     <ResponsiveDialog open={open} onClose={onClose} fullWidth maxWidth="sm">
       <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', pr: 1 }}>
-        <Typography variant="h6" component="span" fontWeight={600}>{config.title}</Typography>
-        <IconButton onClick={onClose} size="small" aria-label="Close">
+        <Typography variant="h6" component="span" fontWeight={600}>{t(`title.${entityType}`)}</Typography>
+        <IconButton onClick={onClose} size="small" aria-label={t('close')}>
           <CloseIcon fontSize="small" />
         </IconButton>
       </DialogTitle>

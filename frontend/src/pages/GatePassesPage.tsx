@@ -34,7 +34,8 @@ import {
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { isConfigured, getFirebase, type FirebaseHandles } from '../config/firebase';
-import { formatDate } from '../utils/enumOptions';
+import { formatDate, enumLabel } from '../utils/enumOptions';
+import { useTranslation, Trans } from 'react-i18next';
 import api, { extractErrorMessage } from '../config/api';
 import ResponsiveTable from '../components/ResponsiveTable';
 import RefreshButton from '../components/RefreshButton';
@@ -105,6 +106,7 @@ let confirmationResult: any = null;
 let confirmationGatePassId: string | null = null;
 
 export default function GatePassesPage() {
+  const { t } = useTranslation('gatepass');
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(20);
   const [search, setSearch] = useState('');
@@ -191,14 +193,14 @@ export default function GatePassesPage() {
   const sendFirebaseOtp = useCallback(
     async (phone: string, gatePassId?: string): Promise<boolean> => {
       if (!isConfigured) {
-        setError('Firebase is not configured. Cannot send OTP.');
+        setError(t('firebaseNotConfigured'));
         return false;
       }
       setSendingOtp(true);
       try {
         const fb = await getFirebase();
         if (!fb) {
-          setError('Firebase is not configured. Cannot send OTP.');
+          setError(t('firebaseNotConfigured'));
           return false;
         }
         const appVerifier = setupRecaptcha(fb);
@@ -212,7 +214,7 @@ export default function GatePassesPage() {
         setSendingOtp(false);
       }
     },
-    [setupRecaptcha],
+    [setupRecaptcha, t],
   );
 
   const createMutation = useMutation({
@@ -250,19 +252,13 @@ export default function GatePassesPage() {
       setCreateOpen(false);
       setCreatedGatePass({ id: data.id, passNumber: data.passNumber });
       resetForm();
-      setSuccessMsg(
-        `Gate pass ${data.passNumber} created. Sending OTP to ${data.headName} at ${data.headPhone}...`,
-      );
+      setSuccessMsg(t('createdSending', { n: data.passNumber, name: data.headName, phone: data.headPhone }));
       // Send Firebase OTP to the head's phone
       const sent = await sendFirebaseOtp(data.headPhone, data.id);
       if (sent) {
-        setSuccessMsg(
-          `OTP sent to ${data.headName} at ${data.headPhone}. Get the OTP from them and click "Enter OTP" to approve.`,
-        );
+        setSuccessMsg(t('otpSentMsg', { name: data.headName, phone: data.headPhone }));
       } else {
-        setError(
-          `Gate pass created but OTP could not be sent. Click "Enter OTP" then "Resend OTP" to try again.`,
-        );
+        setError(t('otpFailed'));
       }
       setTimeout(() => setSuccessMsg(''), 8000);
     },
@@ -304,7 +300,7 @@ export default function GatePassesPage() {
       setOtpInput('');
       confirmationResult = null;
       confirmationGatePassId = null;
-      setSuccessMsg(data.message || 'Gate pass approved. Inventory has not been updated.');
+      setSuccessMsg(data.message || t('approvedMsg'));
       setTimeout(() => setSuccessMsg(''), 5000);
     },
   });
@@ -365,9 +361,7 @@ export default function GatePassesPage() {
     setError('');
     // Check if we have a valid confirmationResult for this specific gate pass
     if (!confirmationResult || confirmationGatePassId !== otpDialogOpen.id) {
-      setError(
-        'No OTP has been sent for this gate pass yet. Click "Resend OTP" to send an OTP to the head\'s phone.',
-      );
+      setError(t('noOtpYet'));
       return;
     }
     try {
@@ -375,7 +369,7 @@ export default function GatePassesPage() {
       const idToken = await userCredential.user.getIdToken();
       verifyOtpMutation.mutate({ id: otpDialogOpen.id, idToken });
     } catch (err: unknown) {
-      setError(extractErrorMessage(err) || 'Invalid OTP. Please try again.');
+      setError(extractErrorMessage(err) || t('invalidOtp'));
     }
   }
 
@@ -385,9 +379,7 @@ export default function GatePassesPage() {
     setError('');
     const sent = await sendFirebaseOtp(otpDialogOpen.otpRequestedForUser.phone, otpDialogOpen.id);
     if (sent) {
-      setSuccessMsg(
-        `OTP resent to ${otpDialogOpen.otpRequestedForUser.name} at ${otpDialogOpen.otpRequestedForUser.phone}.`,
-      );
+      setSuccessMsg(t('otpResent', { name: otpDialogOpen.otpRequestedForUser.name, phone: otpDialogOpen.otpRequestedForUser.phone }));
       setTimeout(() => setSuccessMsg(''), 5000);
     }
     setResendingOtp(false);
@@ -411,7 +403,7 @@ export default function GatePassesPage() {
           fontWeight={600}
           sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' } }}
         >
-          Gate Passes
+          {t('title')}
         </Typography>
         <Box
           sx={{
@@ -431,7 +423,7 @@ export default function GatePassesPage() {
               setCreateOpen(true);
             }}
           >
-            Create Gate Pass
+            {t('create')}
           </Button>
         </Box>
       </Box>
@@ -457,11 +449,11 @@ export default function GatePassesPage() {
               startIcon={<DownloadIcon />}
               onClick={() => downloadGatePassPdf(createdGatePass.id, createdGatePass.passNumber)}
             >
-              Download PDF
+              {t('downloadPdf')}
             </Button>
           }
         >
-          Gate Pass {createdGatePass.passNumber} is ready to download. OTP approval is separate.
+          {t('readyToDownload', { n: createdGatePass.passNumber })}
         </Alert>
       )}
 
@@ -469,7 +461,7 @@ export default function GatePassesPage() {
         <Box sx={{ p: 2, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
           <TextField
             size="small"
-            placeholder="Search gate passes..."
+            placeholder={t('search')}
             value={search}
             onChange={(e) => {
               setSearch(e.target.value);
@@ -487,7 +479,7 @@ export default function GatePassesPage() {
           <TextField
             select
             size="small"
-            label="Status"
+            label={t('status')}
             value={statusFilter}
             onChange={(e) => {
               setStatusFilter(e.target.value);
@@ -495,9 +487,9 @@ export default function GatePassesPage() {
             }}
             sx={{ width: 150 }}
           >
-            <MenuItem value="">All</MenuItem>
-            <MenuItem value="PENDING">Pending</MenuItem>
-            <MenuItem value="APPROVED">Approved</MenuItem>
+            <MenuItem value="">{t('all')}</MenuItem>
+            <MenuItem value="PENDING">{enumLabel('PENDING')}</MenuItem>
+            <MenuItem value="APPROVED">{enumLabel('APPROVED')}</MenuItem>
           </TextField>
         </Box>
 
@@ -506,17 +498,17 @@ export default function GatePassesPage() {
             <Table size="small">
               <TableHead>
                 <TableRow>
-                  <TableCell sx={{ fontWeight: 600 }}>Pass Number</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>Type</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>PO</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>Invoice</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>Vendor</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>Items</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>OTP Sent To</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>Approved By</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>Date</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>Status</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>Actions</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>{t('passNumber')}</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>{t('type')}</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>{t('po')}</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>{t('invoice')}</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>{t('vendor')}</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>{t('items')}</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>{t('otpSentTo')}</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>{t('approvedBy')}</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>{t('date')}</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>{t('status')}</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>{t('actions')}</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -529,42 +521,42 @@ export default function GatePassesPage() {
                 ) : rows.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={11} align="center" sx={{ py: 4 }}>
-                      <Typography color="text.secondary">No gate passes found</Typography>
+                      <Typography color="text.secondary">{t('none')}</Typography>
                     </TableCell>
                   </TableRow>
                 ) : (
                   rows.map((row) => (
                     <TableRow key={row.id} hover>
-                      <TableCell data-label="Pass Number">{row.passNumber}</TableCell>
-                      <TableCell data-label="Type"><Chip size="small" label={row.gatePassCategory === 'VISITOR' ? 'Visitor' : 'Material'} color={row.gatePassCategory === 'VISITOR' ? 'info' : 'default'} /></TableCell>
-                      <TableCell data-label="PO">{row.purchaseOrder?.poNumber ?? '—'}</TableCell>
-                      <TableCell data-label="Invoice">{row.invoice?.invoiceCode ?? '—'}</TableCell>
-                      <TableCell data-label="Vendor">
+                      <TableCell data-label={t('passNumber')}>{row.passNumber}</TableCell>
+                      <TableCell data-label={t('type')}><Chip size="small" label={row.gatePassCategory === 'VISITOR' ? t('visitor') : t('material')} color={row.gatePassCategory === 'VISITOR' ? 'info' : 'default'} /></TableCell>
+                      <TableCell data-label={t('po')}>{row.purchaseOrder?.poNumber ?? '—'}</TableCell>
+                      <TableCell data-label={t('invoice')}>{row.invoice?.invoiceCode ?? '—'}</TableCell>
+                      <TableCell data-label={t('vendor')}>
                         {row.purchaseOrder?.vendor
                           ? `${row.purchaseOrder.vendor.vendorCode} - ${row.purchaseOrder.vendor.name}`
                           : '—'}
                       </TableCell>
-                      <TableCell data-label="Items">{row.items?.length ?? 0} item(s)</TableCell>
-                      <TableCell data-label="OTP Sent To">
+                      <TableCell data-label={t('items')}>{t('itemsCount', { n: row.items?.length ?? 0 })}</TableCell>
+                      <TableCell data-label={t('otpSentTo')}>
                         {row.otpRequestedForUser?.name ?? '—'}
                       </TableCell>
-                      <TableCell data-label="Approved By">
+                      <TableCell data-label={t('approvedBy')}>
                         {row.otpApprovedByUser?.name ?? '—'}
                       </TableCell>
-                      <TableCell data-label="Date">{formatDate(row.date)}</TableCell>
-                      <TableCell data-label="Status">
+                      <TableCell data-label={t('date')}>{formatDate(row.date)}</TableCell>
+                      <TableCell data-label={t('status')}>
                         <Chip
-                          label={row.status}
+                          label={enumLabel(row.status)}
                           size="small"
                           color={row.status === 'APPROVED' ? 'success' : row.status === 'DELIVERED' ? 'info' : 'warning'}
                         />
                       </TableCell>
-                      <TableCell data-label="Actions">
+                      <TableCell data-label={t('actions')}>
                         <Box sx={{ display: 'flex', gap: 0.5 }}>
                           <CommentsButton entityType="GATE_PASS" entityId={row.id} entityLabel={row.passNumber} url="/gate-passes" />
                           <IconButton
                             size="small"
-                            title="Download PDF"
+                            title={t('downloadPdf')}
                             onClick={() => downloadGatePassPdf(row.id, row.passNumber)}
                           >
                             <DownloadIcon fontSize="small" />
@@ -580,7 +572,7 @@ export default function GatePassesPage() {
                                   setOtpInput('');
                                 }}
                               >
-                                Enter OTP
+                                {t('enterOtp')}
                               </Button>
                               <IconButton
                                 size="small"
@@ -626,13 +618,13 @@ export default function GatePassesPage() {
         maxWidth="sm"
         fullWidth
       >
-        <DialogTitle>Create Gate Pass</DialogTitle>
+        <DialogTitle>{t('createTitle')}</DialogTitle>
         <DialogContent>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
             {!categoryConfirmed ? (
               <TextField
                 select
-                label="Which gate pass do you need?"
+                label={t('whichPass')}
                 value=""
                 onChange={(e) => {
                   setGatePassCategory(e.target.value as 'MATERIAL' | 'VISITOR');
@@ -641,17 +633,17 @@ export default function GatePassesPage() {
                 fullWidth
                 size="small"
               >
-                <MenuItem value="MATERIAL">Material Delivery Gate Pass</MenuItem>
-                <MenuItem value="VISITOR">Visitor Gate Pass</MenuItem>
+                <MenuItem value="MATERIAL">{t('materialPass')}</MenuItem>
+                <MenuItem value="VISITOR">{t('visitorPass')}</MenuItem>
               </TextField>
             ) : <>
             <Typography variant="body2" color="text.secondary">
-              {gatePassCategory === 'MATERIAL' ? 'Material Delivery Gate Pass' : 'Visitor Gate Pass'}
+              {gatePassCategory === 'MATERIAL' ? t('materialPass') : t('visitorPass')}
             </Typography>
             {gatePassCategory === 'MATERIAL' && <>
             <TextField
               select
-              label="Purchase Order (approved)"
+              label={t('poApproved')}
               value={selectedPoId}
               onChange={(e) => {
                 const poId = e.target.value;
@@ -661,7 +653,7 @@ export default function GatePassesPage() {
               fullWidth
               size="small"
               required
-              helperText={approvedPOs?.length === 0 ? 'No approved POs available' : undefined}
+              helperText={approvedPOs?.length === 0 ? t('noApprovedPOs') : undefined}
             >
               {approvedPOs?.map((po) => (
                 <MenuItem key={po.id} value={po.id}>
@@ -673,14 +665,14 @@ export default function GatePassesPage() {
             {selectedPO && selectedPO.invoices.length > 0 && (
               <TextField
                 select
-                label="Invoice (optional)"
+                label={t('invoiceOptional')}
                 value={selectedInvoiceId}
                 onChange={(e) => setSelectedInvoiceId(e.target.value)}
                 fullWidth
                 size="small"
-                helperText="Attach a verified invoice if available — can be added later at goods receipt"
+                helperText={t('invoiceHelp')}
               >
-                <MenuItem value="">— None —</MenuItem>
+                <MenuItem value="">{t('noneOption')}</MenuItem>
                 {selectedPO.invoices.map((inv) => (
                   <MenuItem key={inv.id} value={inv.id}>
                     {inv.invoiceCode} — {inv.invoiceNumber}
@@ -690,25 +682,25 @@ export default function GatePassesPage() {
             )}
             {selectedPO && selectedPO.invoices.length === 0 && (
               <Alert severity="info" sx={{ py: 0.5 }}>
-                No invoice attached — you can create and attach one later if needed.
+                {t('noInvoice')}
               </Alert>
             )}
 
             {selectedPO && (
               <Box>
                 <Typography variant="body2" fontWeight={600} sx={{ mb: 1 }}>
-                  PO Items — expected delivery (actual quantities will be entered at goods receipt)
+                  {t('poItemsTitle')}
                 </Typography>
                 <TableContainer component={Card} variant="outlined" sx={{ overflowX: 'auto' }}>
                   <Table size="small">
                     <TableHead>
                       <TableRow>
-                        <TableCell sx={{ fontWeight: 600 }}>Material</TableCell>
-                        <TableCell sx={{ fontWeight: 600 }}>Ordered</TableCell>
-                        <TableCell sx={{ fontWeight: 600 }}>Accepted</TableCell>
-                        <TableCell sx={{ fontWeight: 600 }}>In Transit</TableCell>
-                        <TableCell sx={{ fontWeight: 600 }}>Expected</TableCell>
-                        <TableCell sx={{ fontWeight: 600 }}>Unit</TableCell>
+                        <TableCell sx={{ fontWeight: 600 }}>{t('colMaterial')}</TableCell>
+                        <TableCell sx={{ fontWeight: 600 }}>{t('ordered')}</TableCell>
+                        <TableCell sx={{ fontWeight: 600 }}>{t('accepted')}</TableCell>
+                        <TableCell sx={{ fontWeight: 600 }}>{t('inTransit')}</TableCell>
+                        <TableCell sx={{ fontWeight: 600 }}>{t('expected')}</TableCell>
+                        <TableCell sx={{ fontWeight: 600 }}>{t('unit')}</TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
@@ -726,34 +718,34 @@ export default function GatePassesPage() {
                   </Table>
                 </TableContainer>
                 <Typography variant="caption" color="text.secondary">
-                  Accepted = quantity inspected and posted to inventory. In Transit = approved gate pass but not yet inspected. Expected = remaining quantity to be delivered. Actual delivered quantities will be recorded when creating the goods receipt.
+                  {t('qtyHelp')}
                 </Typography>
               </Box>
             )}
             </>}
 
             <Typography variant="subtitle2" sx={{ mt: 1 }}>
-              {gatePassCategory === 'VISITOR' ? 'Visitor details' : 'Vehicle details'}
+              {gatePassCategory === 'VISITOR' ? t('visitorDetails') : t('vehicleDetails')}
             </Typography>
             <Box
               sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 2 }}
             >
               {gatePassCategory === 'VISITOR' && <>
               <TextField
-                label="Visitor / person name"
+                label={t('visitorName')}
                 value={visitorName}
                 required={gatePassCategory === 'VISITOR'}
                 onChange={(e) => setVisitorName(e.target.value)}
                 size="small"
               />
               <TextField
-                label="Visitor phone"
+                label={t('visitorPhone')}
                 value={visitorPhone}
                 onChange={(e) => setVisitorPhone(e.target.value)}
                 size="small"
               />
               <TextField
-                label="Visit date"
+                label={t('visitDate')}
                 type="date"
                 value={visitDate}
                 onChange={(e) => setVisitDate(e.target.value)}
@@ -761,7 +753,7 @@ export default function GatePassesPage() {
                 InputLabelProps={{ shrink: true }}
               />
               <TextField
-                label="Visit time"
+                label={t('visitTime')}
                 type="time"
                 value={visitTime}
                 onChange={(e) => setVisitTime(e.target.value)}
@@ -769,7 +761,7 @@ export default function GatePassesPage() {
                 InputLabelProps={{ shrink: true }}
               />
               <TextField
-                label="Purpose"
+                label={t('purpose')}
                 value={purpose}
                 onChange={(e) => setPurpose(e.target.value)}
                 size="small"
@@ -778,55 +770,49 @@ export default function GatePassesPage() {
               {gatePassCategory === 'MATERIAL' && <>
               <TextField
                 select
-                label="Vehicle type"
+                label={t('vehicleType')}
                 value={vehicleType}
                 onChange={(e) => setVehicleType(e.target.value)}
                 size="small"
                 required
               >
-                <MenuItem value="LORRY">Lorry</MenuItem>
-                <MenuItem value="TRUCK">Truck</MenuItem>
-                <MenuItem value="MINI_TRUCK">Mini Truck</MenuItem>
-                <MenuItem value="TRAILER">Trailer</MenuItem>
-                <MenuItem value="CAR">Car</MenuItem>
-                <MenuItem value="BIKE">Bike</MenuItem>
-                <MenuItem value="AUTO">Auto</MenuItem>
-                <MenuItem value="VAN">Van</MenuItem>
-                <MenuItem value="OTHER">Other</MenuItem>
+                {['LORRY', 'TRUCK', 'MINI_TRUCK', 'TRAILER', 'CAR', 'BIKE', 'AUTO', 'VAN', 'OTHER'].map((v) => (
+                  <MenuItem key={v} value={v}>{t(`vehicleTypes.${v}`)}</MenuItem>
+                ))}
               </TextField>
               <TextField
-                label="Vehicle number"
+                label={t('vehicleNumber')}
                 value={vehicleNumber}
                 onChange={(e) => setVehicleNumber(e.target.value.toUpperCase())}
                 size="small"
-                helperText="Example: AP39AB1234"
+                helperText={t('vehicleNumberHelp')}
                 inputProps={{ maxLength: 20 }}
               />
               <TextField
-                label="Driver name"
+                label={t('driverName')}
                 value={driverName}
                 onChange={(e) => setDriverName(e.target.value)}
                 size="small"
               />
               <TextField
-                label="Driver mobile"
+                label={t('driverMobile')}
                 value={driverMobile}
                 onChange={(e) => setDriverMobile(e.target.value)}
                 size="small"
               />
               <TextField
                 select
-                label="Gate pass type"
+                label={t('gatePassType')}
                 value={gatePassType}
                 onChange={(e) => setGatePassType(e.target.value)}
                 size="small"
               >
-                <MenuItem value="NON_RETURNABLE">Non-returnable</MenuItem>
-                <MenuItem value="RETURNABLE">Returnable</MenuItem>
+                <MenuItem value="NON_RETURNABLE">{t('nonReturnable')}</MenuItem>
+                <MenuItem value="RETURNABLE">{t('returnable')}</MenuItem>
               </TextField>
               </>}
               <TextField
-                label="Remarks"
+                label={t('remarks')}
                 value={remarks}
                 onChange={(e) => setRemarks(e.target.value)}
                 size="small"
@@ -841,7 +827,7 @@ export default function GatePassesPage() {
               size="small"
               sx={{ alignSelf: 'flex-start' }}
             >
-              {photoProof ? `Photo: ${photoProof.name}` : 'Add photo proof (optional)'}
+              {photoProof ? t('photoName', { name: photoProof.name }) : t('addPhoto')}
               <input
                 hidden
                 type="file"
@@ -852,17 +838,17 @@ export default function GatePassesPage() {
 
             <TextField
               select
-              label="Select Head for OTP Approval"
+              label={t('selectHead')}
               value={selectedHeadId}
               onChange={(e) => setSelectedHeadId(e.target.value)}
               fullWidth
               size="small"
               required
-              helperText="A real OTP will be sent to this person's phone via Firebase. They will tell you the OTP."
+              helperText={t('headHelp')}
             >
               {heads?.map((h) => (
                 <MenuItem key={h.id} value={h.id}>
-                  {h.name} ({h.role.replace(/_/g, ' ')}) — {h.phone}
+                  {h.name} ({enumLabel(h.role)}) — {h.phone}
                 </MenuItem>
               ))}
             </TextField>
@@ -876,7 +862,7 @@ export default function GatePassesPage() {
               resetForm();
             }}
           >
-            Cancel
+            {t('cancel')}
           </Button>
           {categoryConfirmed && <Button
             variant="contained"
@@ -895,7 +881,7 @@ export default function GatePassesPage() {
             {createMutation.isPending || sendingOtp ? (
               <CircularProgress size={20} />
             ) : (
-              'Create & Send OTP'
+              t('createSendOtp')
             )}
           </Button>}
         </DialogActions>
@@ -911,16 +897,14 @@ export default function GatePassesPage() {
         maxWidth="xs"
         fullWidth
       >
-        <DialogTitle>Enter OTP for {otpDialogOpen?.passNumber}</DialogTitle>
+        <DialogTitle>{t('otpDialogTitle', { n: otpDialogOpen?.passNumber })}</DialogTitle>
         <DialogContent>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
             <Typography variant="body2">
-              An OTP was sent to <strong>{otpDialogOpen?.otpRequestedForUser?.name}</strong> at{' '}
-              <strong>{otpDialogOpen?.otpRequestedForUser?.phone}</strong>. Enter the OTP they
-              provide to approve this gate pass. Inventory is updated separately.
+              <Trans t={t} i18nKey="otpDialogText" values={{ name: otpDialogOpen?.otpRequestedForUser?.name, phone: otpDialogOpen?.otpRequestedForUser?.phone }} components={{ b: <strong /> }} />
             </Typography>
             <TextField
-              label="Enter OTP"
+              label={t('enterOtp')}
               value={otpInput}
               onChange={(e) => setOtpInput(e.target.value)}
               fullWidth
@@ -935,7 +919,7 @@ export default function GatePassesPage() {
               disabled={resendingOtp}
               sx={{ alignSelf: 'flex-start' }}
             >
-              Resend OTP
+              {t('resendOtp')}
             </Button>
           </Box>
         </DialogContent>
@@ -946,30 +930,30 @@ export default function GatePassesPage() {
               setOtpInput('');
             }}
           >
-            Cancel
+            {t('cancel')}
           </Button>
           <Button
             variant="contained"
             onClick={handleVerifyOtp}
             disabled={!otpInput || verifyOtpMutation.isPending}
           >
-            {verifyOtpMutation.isPending ? <CircularProgress size={20} /> : 'Verify & Approve'}
+            {verifyOtpMutation.isPending ? <CircularProgress size={20} /> : t('verifyApprove')}
           </Button>
         </DialogActions>
       </ResponsiveDialog>
 
       <ResponsiveDialog open={deleteRow !== null} onClose={() => setDeleteRow(null)} maxWidth="xs" fullWidth>
-        <DialogTitle>Delete Gate Pass</DialogTitle>
+        <DialogTitle>{t('deleteTitle')}</DialogTitle>
         <DialogContent>
-          <Typography>Are you sure you want to delete gate pass <strong>{deleteRow?.passNumber}</strong>?</Typography>
+          <Typography><Trans t={t} i18nKey="deleteConfirm" values={{ n: deleteRow?.passNumber }} components={{ b: <strong /> }} /></Typography>
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
-            This action cannot be undone. Only pending gate passes created by you can be deleted.
+            {t('deleteNote')}
           </Typography>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDeleteRow(null)}>Cancel</Button>
+          <Button onClick={() => setDeleteRow(null)}>{t('cancel')}</Button>
           <Button color="error" variant="contained" disabled={deleteMutation.isPending} onClick={() => deleteRow && deleteMutation.mutate(deleteRow.id)}>
-            {deleteMutation.isPending ? <CircularProgress size={20} /> : 'Delete'}
+            {deleteMutation.isPending ? <CircularProgress size={20} /> : t('delete')}
           </Button>
         </DialogActions>
       </ResponsiveDialog>

@@ -34,6 +34,7 @@ import RefreshButton from '../components/RefreshButton';
 import ResponsiveDialog from '../components/ResponsiveDialog';
 import { formatCurrency } from '../utils/enumOptions';
 
+import { useTranslation } from 'react-i18next';
 interface DashboardData {
   budget: {
     totalAllocated: number;
@@ -80,6 +81,7 @@ interface BudgetReport {
 }
 
 export default function FinanceDashboardPage() {
+  const { t: tr } = useTranslation('findash');
   const [error, setError] = useState('');
   const [allocatedModalOpen, setAllocatedModalOpen] = useState(false);
   const queryClient = useQueryClient();
@@ -122,7 +124,7 @@ export default function FinanceDashboardPage() {
   return (
     <Box sx={{ minWidth: 0, overflow: 'hidden' }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3, flexWrap: 'wrap', gap: 1 }}>
-        <Typography variant="h5" fontWeight={600} sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' } }}>Finance Dashboard</Typography>
+        <Typography variant="h5" fontWeight={600} sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' } }}>{tr('title')}</Typography>
         <RefreshButton onClick={() => queryClient.invalidateQueries()} />
       </Box>
 
@@ -133,18 +135,18 @@ export default function FinanceDashboardPage() {
         <Grid item xs={12} sm={6} md={3}>
           <KpiCard
             icon={<BudgetIcon />}
-            label="Total Allocated"
+            label={tr('totalAllocated')}
             value={formatCurrency(d?.budget.totalAllocated ?? 0)}
-            sublabel={`${d?.budgetHeadCount ?? 0} budget heads`}
+            sublabel={tr('nHeads', { n: d?.budgetHeadCount ?? 0 })}
             color="primary.main"
           />
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
           <KpiCard
             icon={<UtilizationIcon />}
-            label="Utilization"
+            label={tr('utilization')}
             value={`${d?.budget.utilizationPct ?? 0}%`}
-            sublabel={`Actual: ${formatCurrency(d?.budget.totalActual ?? 0)}`}
+            sublabel={tr('actualV', { v: formatCurrency(d?.budget.totalActual ?? 0) })}
             color="warning.main"
             progress={d?.budget.utilizationPct ?? 0}
           />
@@ -152,18 +154,18 @@ export default function FinanceDashboardPage() {
         <Grid item xs={12} sm={6} md={3}>
           <KpiCard
             icon={<UnpaidIcon />}
-            label="Unpaid Liabilities"
+            label={tr('unpaidLiabilities')}
             value={formatCurrency(d?.budget.totalUnpaid ?? 0)}
-            sublabel={`Paid: ${formatCurrency(d?.budget.totalPaid ?? 0)}`}
+            sublabel={tr('paidV', { v: formatCurrency(d?.budget.totalPaid ?? 0) })}
             color="error.main"
           />
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
           <KpiCard
             icon={<OwnerIcon />}
-            label="Owner Equity"
+            label={tr('ownerEquity')}
             value={formatCurrency(d?.ownerEquity ?? 0)}
-            sublabel={Number(d?.ownerEquity ?? 0) > 0 ? 'Company owes owner' : 'Owner owes company'}
+            sublabel={Number(d?.ownerEquity ?? 0) > 0 ? tr('coOwes') : tr('ownerOwes')}
             color={Number(d?.ownerEquity ?? 0) > 0 ? 'error.main' : 'success.main'}
           />
         </Grid>
@@ -174,7 +176,7 @@ export default function FinanceDashboardPage() {
         <Grid item xs={12} md={3}>
           <KpiCard
             icon={<BankIcon />}
-            label="Bank Balance"
+            label={tr('bankBalance')}
             value={formatCurrency(d?.liquidity.bankBalance ?? 0)}
             color="info.main"
           />
@@ -182,7 +184,7 @@ export default function FinanceDashboardPage() {
         <Grid item xs={12} md={3}>
           <KpiCard
             icon={<CashIcon />}
-            label="Cash Balance"
+            label={tr('cashBalance')}
             value={formatCurrency(d?.liquidity.cashBalance ?? 0)}
             color="success.main"
           />
@@ -190,9 +192,9 @@ export default function FinanceDashboardPage() {
         <Grid item xs={12} md={3}>
           <KpiCard
             icon={<BudgetIcon />}
-            label="Total Liquidity"
+            label={tr('totalLiquidity')}
             value={formatCurrency(d?.liquidity.totalLiquidity ?? 0)}
-            sublabel="Bank + Cash"
+            sublabel={tr('bankCash')}
             color="secondary.main"
           />
         </Grid>
@@ -214,12 +216,12 @@ export default function FinanceDashboardPage() {
             <Stack direction="row" spacing={1.5} alignItems="flex-start">
               <Box sx={{ color: 'primary.main', mt: 0.5 }}><AllocatedIcon /></Box>
               <Box sx={{ flex: 1, minWidth: 0 }}>
-                <Typography variant="caption" color="text.secondary">Total Allocated</Typography>
+                <Typography variant="caption" color="text.secondary">{tr('totalAllocated')}</Typography>
                 <Typography variant="h6" sx={{ color: 'primary.main', fontSize: { xs: '1rem', sm: '1.25rem' }, fontWeight: 600, overflowWrap: 'break-word' }}>
                   {formatCurrency(d?.budget.totalAllocated ?? 0)}
                 </Typography>
                 <Link component="button" variant="caption" onClick={(e) => { e.stopPropagation(); setAllocatedModalOpen(true); }} sx={{ mt: 0.5, display: 'block' }}>
-                  View Details →
+                  {tr('viewDetails')}
                 </Link>
               </Box>
             </Stack>
@@ -230,14 +232,14 @@ export default function FinanceDashboardPage() {
       {/* Budget Summary Bar (visual) */}
       {budgetReport && (
         <Card sx={{ p: 2, mb: 3 }}>
-          <Typography variant="h6" fontWeight={600} sx={{ mb: 2 }}>Budget Summary</Typography>
+          <Typography variant="h6" fontWeight={600} sx={{ mb: 2 }}>{tr('budgetSummary')}</Typography>
           <Grid container spacing={2}>
             {[
-              { label: 'Allocated', value: budgetReport.totals.allocated, color: '#1976d2' },
-              { label: 'Committed', value: budgetReport.totals.committed, color: '#0288d1' },
-              { label: 'Actual', value: budgetReport.totals.actual, color: '#ed6c02' },
-              { label: 'Paid', value: budgetReport.totals.paid, color: '#2e7d32' },
-              { label: 'Available', value: budgetReport.totals.uncommittedAvailable ?? budgetReport.totals.available, color: '#9c27b0' },
+              { label: tr('allocated'), value: budgetReport.totals.allocated, color: '#1976d2' },
+              { label: tr('committed'), value: budgetReport.totals.committed, color: '#0288d1' },
+              { label: tr('actual'), value: budgetReport.totals.actual, color: '#ed6c02' },
+              { label: tr('paid'), value: budgetReport.totals.paid, color: '#2e7d32' },
+              { label: tr('available'), value: budgetReport.totals.uncommittedAvailable ?? budgetReport.totals.available, color: '#9c27b0' },
             ].map((item) => {
               const maxVal = budgetReport.totals.allocated || 1;
               const widthPct = Math.max(2, (item.value / maxVal) * 100);
@@ -261,10 +263,10 @@ export default function FinanceDashboardPage() {
 
       {/* Budget Head Breakdown — only heads that have been started (committed/actual/paid > 0) */}
       <Card sx={{ p: 2 }}>
-        <Typography variant="h6" fontWeight={600} sx={{ mb: 2 }}>Budget Head Breakdown</Typography>
+        <Typography variant="h6" fontWeight={600} sx={{ mb: 2 }}>{tr('budgetHeadBreakdown')}</Typography>
         {budgetHeads.length === 0 ? (
           <Typography color="text.secondary" sx={{ py: 2, textAlign: 'center' }}>
-            No budget heads have been used yet. Budget heads with no committed, actual, or paid amounts are hidden.
+            {tr('noHeads')}
           </Typography>
         ) : (
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
@@ -324,18 +326,18 @@ export default function FinanceDashboardPage() {
           <Stack direction="row" alignItems="center" spacing={1}>
             <AllocatedIcon color="primary" />
             <Box>
-              <Typography variant="h6" fontWeight={600}>Total Allocated</Typography>
-              <Typography variant="caption" color="text.secondary">Financial Details</Typography>
+              <Typography variant="h6" fontWeight={600}>{tr('totalAllocated')}</Typography>
+              <Typography variant="caption" color="text.secondary">{tr('financialDetails')}</Typography>
             </Box>
           </Stack>
-          <IconButton onClick={() => setAllocatedModalOpen(false)} size="small" aria-label="close">
+          <IconButton onClick={() => setAllocatedModalOpen(false)} size="small" aria-label={tr('close')}>
             <CloseIcon />
           </IconButton>
         </Box>
         <Box sx={{ p: 3 }}>
           {/* Headline number */}
           <Box sx={{ mb: 3 }}>
-            <Typography variant="subtitle2" color="text.secondary">Total Allocated</Typography>
+            <Typography variant="subtitle2" color="text.secondary">{tr('totalAllocated')}</Typography>
             <Typography variant="h4" fontWeight={700} color="primary.main">
               {formatCurrency(d?.budget.totalAllocated ?? 0)}
             </Typography>
@@ -348,7 +350,7 @@ export default function FinanceDashboardPage() {
           <Box sx={{ mb: 2.5 }}>
             <Stack direction="row" alignItems="center" spacing={1}>
               <BankIcon color="info" fontSize="small" />
-              <Typography variant="subtitle2" fontWeight={600}>Bank Balance</Typography>
+              <Typography variant="subtitle2" fontWeight={600}>{tr('bankBalance')}</Typography>
             </Stack>
             <Typography variant="h6" color="info.main">
               {formatCurrency(d?.liquidity.bankBalance ?? 0)}
@@ -358,7 +360,7 @@ export default function FinanceDashboardPage() {
           <Box sx={{ mb: 2.5 }}>
             <Stack direction="row" alignItems="center" spacing={1}>
               <CashIcon color="success" fontSize="small" />
-              <Typography variant="subtitle2" fontWeight={600}>Cash Balance</Typography>
+              <Typography variant="subtitle2" fontWeight={600}>{tr('cashBalance')}</Typography>
             </Stack>
             <Typography variant="h6" color="success.main">
               {formatCurrency(d?.liquidity.cashBalance ?? 0)}
@@ -368,53 +370,53 @@ export default function FinanceDashboardPage() {
           <Box sx={{ mb: 3 }}>
             <Stack direction="row" alignItems="center" spacing={1}>
               <BudgetIcon color="secondary" fontSize="small" />
-              <Typography variant="subtitle2" fontWeight={600}>Total Liquidity</Typography>
+              <Typography variant="subtitle2" fontWeight={600}>{tr('totalLiquidity')}</Typography>
             </Stack>
             <Typography variant="h6" color="secondary.main">
               {formatCurrency(d?.liquidity.totalLiquidity ?? 0)}
             </Typography>
-            <Typography variant="caption" color="text.secondary">Bank + Cash</Typography>
+            <Typography variant="caption" color="text.secondary">{tr('bankCash')}</Typography>
           </Box>
 
           {/* Allocation breakdown table */}
           <Typography variant="subtitle2" fontWeight={600} sx={{ mb: 1 }}>
-            Allocation Breakdown
+            {tr('allocationBreakdown')}
           </Typography>
           <TableContainer component={Card} variant="outlined">
             <Table size="small">
               <TableHead>
                 <TableRow sx={{ bgcolor: 'grey.50' }}>
-                  <TableCell sx={{ fontWeight: 600 }}>Allocation</TableCell>
-                  <TableCell align="right" sx={{ fontWeight: 600 }}>Amount</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>{tr('allocation')}</TableCell>
+                  <TableCell align="right" sx={{ fontWeight: 600 }}>{tr('amount')}</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
                 <TableRow>
-                  <TableCell>Allocated</TableCell>
+                  <TableCell>{tr('allocated')}</TableCell>
                   <TableCell align="right" sx={{ fontWeight: 600, color: 'primary.main' }}>
                     {formatCurrency(d?.budget.totalAllocated ?? 0)}
                   </TableCell>
                 </TableRow>
                 <TableRow>
-                  <TableCell>Bank</TableCell>
+                  <TableCell>{tr('bank')}</TableCell>
                   <TableCell align="right" sx={{ color: 'info.main' }}>
                     {formatCurrency(d?.liquidity.bankBalance ?? 0)}
                   </TableCell>
                 </TableRow>
                 <TableRow>
-                  <TableCell>Cash</TableCell>
+                  <TableCell>{tr('cash')}</TableCell>
                   <TableCell align="right" sx={{ color: 'success.main' }}>
                     {formatCurrency(d?.liquidity.cashBalance ?? 0)}
                   </TableCell>
                 </TableRow>
                 <TableRow>
-                  <TableCell>Actual Spent</TableCell>
+                  <TableCell>{tr('actualSpent')}</TableCell>
                   <TableCell align="right" sx={{ color: 'warning.main' }}>
                     {formatCurrency(d?.budget.totalActual ?? 0)}
                   </TableCell>
                 </TableRow>
                 <TableRow sx={{ bgcolor: 'grey.50' }}>
-                  <TableCell sx={{ fontWeight: 700 }}>Available / Remaining</TableCell>
+                  <TableCell sx={{ fontWeight: 700 }}>{tr('availableRemaining')}</TableCell>
                   <TableCell align="right" sx={{ fontWeight: 700, color: (d?.budget.totalAvailable ?? 0) < 0 ? 'error.main' : 'success.main' }}>
                     {formatCurrency(d?.budget.totalAvailable ?? 0)}
                   </TableCell>

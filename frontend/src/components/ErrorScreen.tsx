@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Box, Typography, Button, Alert } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 
 export type ErrorVariant = '404' | 'offline' | 'generic';
 
@@ -12,19 +13,10 @@ interface Props {
   showReload?: boolean;
 }
 
-const COPY: Record<ErrorVariant, { title: string; defaultMessage: string }> = {
-  '404': {
-    title: 'Page Not Found',
-    defaultMessage: "The page you're looking for doesn't exist or has been moved.",
-  },
-  offline: {
-    title: "You're Offline",
-    defaultMessage: 'Please check your internet connection and try again.',
-  },
-  generic: {
-    title: 'Something Went Wrong',
-    defaultMessage: 'An unexpected error occurred. Please try again.',
-  },
+const COPY_KEYS: Record<ErrorVariant, { title: string; message: string }> = {
+  '404': { title: 'error.notFoundTitle', message: 'error.notFoundMsg' },
+  offline: { title: 'error.offlineTitle', message: 'error.offlineMsg' },
+  generic: { title: 'error.genericTitle', message: 'error.genericMsg' },
 };
 
 export default function ErrorScreen({
@@ -33,9 +25,11 @@ export default function ErrorScreen({
   showReload,
 }: Props) {
   const navigate = useNavigate();
+  const { t } = useTranslation('misc');
   const containerRef = useRef<HTMLDivElement>(null);
   const [stillOffline, setStillOffline] = useState(false);
-  const { title, defaultMessage } = COPY[variant];
+  const title = t(COPY_KEYS[variant].title);
+  const defaultMessage = t(COPY_KEYS[variant].message);
   const reload = showReload ?? variant === 'offline';
 
   const handleReload = () => {
@@ -103,18 +97,18 @@ export default function ErrorScreen({
       <Box sx={{ display: 'flex', gap: 1.5, mt: 2 }}>
         {reload ? (
           <Button variant="contained" size="large" onClick={handleReload}>
-            Reload
+            {t('error.reload')}
           </Button>
         ) : (
           <Button variant="contained" size="large" onClick={() => navigate('/', { replace: true })}>
-            Go Home
+            {t('error.goHome')}
           </Button>
         )}
       </Box>
 
       {stillOffline && (
         <Alert severity="info" sx={{ mt: 2, maxWidth: 420 }} onClose={() => setStillOffline(false)}>
-          Still offline. The page will load automatically once your connection is back.
+          {t('error.stillOffline')}
         </Alert>
       )}
     </Box>

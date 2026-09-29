@@ -50,7 +50,7 @@ import api, { extractErrorMessage } from '../config/api';
 import ResponsiveDialog from '../components/ResponsiveDialog';
 import ResponsiveTable from '../components/ResponsiveTable';
 import RefreshButton from '../components/RefreshButton';
-import { formatCurrency, formatIndianNumber, formatDate, amountToWords, todayLocalDate } from '../utils/enumOptions';
+import { enumLabel, formatCurrency, formatIndianNumber, formatDate, amountToWords, todayLocalDate } from '../utils/enumOptions';
 import { VoucherType, LedgerGroup, Permission, UserRole, hasPermission } from '@hospital-erp/shared';
 import LedgerAutocomplete, { type LedgerOption } from '../components/LedgerAutocomplete';
 import { useAuthStore } from '../stores/authStore';
@@ -66,6 +66,7 @@ import receiptVoucherTemplate from '../Receipt.png';
 import journalVoucherTemplate from '../Journal voucher.png';
 import CommentsButton from '../components/CommentsButton';
 
+import { useTranslation } from 'react-i18next';
 interface Ledger {
   id: string;
   name: string;
@@ -139,6 +140,7 @@ const VOUCHER_TYPE_COLORS: Record<string, 'success' | 'error' | 'info' | 'warnin
 };
 
 export default function VouchersPage() {
+  const { t: tr } = useTranslation('vouchers2');
   const user = useAuthStore((s) => s.user);
   const canReverseVoucher = !!user && hasPermission(user.role as UserRole, Permission.REVERSE_VOUCHER);
   const [page, setPage] = useState(0);
@@ -316,7 +318,7 @@ export default function VouchersPage() {
           });
         } catch {
           // Voucher is saved — attachment failure is non-fatal, just show a note
-          setSuccessMsg(`Voucher ${data.jvNumber} posted. Proof attachment upload failed — please edit the voucher to re-attach.`);
+          setSuccessMsg(tr('okPostedNoProof', { n: data.jvNumber }));
           setPendingProofFile(null);
           setCreateOpen(false);
           queryClient.invalidateQueries({ queryKey: ['/vouchers'] });
@@ -334,7 +336,7 @@ export default function VouchersPage() {
       queryClient.invalidateQueries({ queryKey: ['/bank-accounts'] });
       queryClient.invalidateQueries({ queryKey: ['/cash-accounts'] });
       setCreateOpen(false);
-      setSuccessMsg(`Voucher ${data.jvNumber} posted successfully`);
+      setSuccessMsg(tr('okPosted', { n: data.jvNumber }));
       setTimeout(() => setSuccessMsg(''), 4000);
       finishLinked();
     },
@@ -355,7 +357,7 @@ export default function VouchersPage() {
       setCreateOpen(false);
       setEditingVoucherId(null);
       setDetailVoucher(null);
-      setSuccessMsg(`Voucher ${data.jvNumber} updated successfully`);
+      setSuccessMsg(tr('okUpdated', { n: data.jvNumber }));
       setTimeout(() => setSuccessMsg(''), 4000);
     },
     onError: (err: unknown) => setError(extractErrorMessage(err)),
@@ -373,7 +375,7 @@ export default function VouchersPage() {
       queryClient.invalidateQueries({ queryKey: ['/cash-accounts'] });
       queryClient.invalidateQueries({ queryKey: ['/audit-logs'] });
       setDetailVoucher(null);
-      setSuccessMsg('Voucher cancelled and reversed');
+      setSuccessMsg(tr('okCancelled'));
       setTimeout(() => setSuccessMsg(''), 4000);
     },
     onError: (err: unknown) => setError(extractErrorMessage(err)),
@@ -388,7 +390,7 @@ export default function VouchersPage() {
       queryClient.invalidateQueries({ queryKey: ['/vouchers'] });
       queryClient.invalidateQueries({ queryKey: ['/audit-logs'] });
       setDetailVoucher(null);
-      setSuccessMsg('Voucher deleted and number series resequenced');
+      setSuccessMsg(tr('okDeleted'));
       setTimeout(() => setSuccessMsg(''), 4000);
     },
     onError: (err: unknown) => setError(extractErrorMessage(err)),
@@ -653,7 +655,7 @@ export default function VouchersPage() {
     if (voucherDate) {
       const today = todayLocalDate();
       if (voucherDate > today) {
-        setError('Voucher date cannot be in the future');
+        setError(tr('errFuture'));
         return;
       }
     }
@@ -662,15 +664,15 @@ export default function VouchersPage() {
     if (isSimpleVoucher) {
       const amount = Number(simpleAmount.replace(/,/g, '')) || 0;
       if (amount <= 0) {
-        setError('Enter a valid amount');
+        setError(tr('errAmount'));
         return;
       }
 
       if (selectedVoucherType === VoucherType.CONTRA) {
         // Contra: Dr toLedger, Cr fromLedger
-        if (!simpleFromLedger) { setError('Select the account to transfer FROM'); return; }
-        if (!simpleToLedger) { setError('Select the account to transfer TO'); return; }
-        if (simpleFromLedger === simpleToLedger) { setError('FROM and TO accounts cannot be the same'); return; }
+        if (!simpleFromLedger) { setError(tr('errFrom')); return; }
+        if (!simpleToLedger) { setError(tr('errTo')); return; }
+        if (simpleFromLedger === simpleToLedger) { setError(tr('errSame')); return; }
         const payload = {
           voucherType: selectedVoucherType,
           date: voucherDate || undefined,
@@ -686,8 +688,8 @@ export default function VouchersPage() {
 
       // Payment: Dr party, Cr cashBank
       // Receipt: Dr cashBank, Cr party
-      if (!simplePartyLedger) { setError('Select a ledger (type the name)'); return; }
-      if (!simpleCashBankLedger) { setError('Select the Cash/Bank account'); return; }
+      if (!simplePartyLedger) { setError(tr('errLedger')); return; }
+      if (!simpleCashBankLedger) { setError(tr('errCashBank')); return; }
 
       const isPayment = selectedVoucherType === VoucherType.PAYMENT;
       const partyEntry = {
@@ -706,7 +708,7 @@ export default function VouchersPage() {
       const validSettlements = billSettlements.filter((s) => s.invoiceId && Number(s.amount) > 0);
       const settlementTotal = validSettlements.reduce((s, b) => s + (Number(b.amount) || 0), 0);
       if (settlementTotal > amount + 0.01) {
-        setError(`Bill settlement total (${formatIndianNumber(settlementTotal)}) cannot exceed payment amount (${formatIndianNumber(amount)})`);
+        setError(tr('errSettlePay', { a: formatIndianNumber(settlementTotal), b: formatIndianNumber(amount) }));
         return;
       }
 
@@ -728,19 +730,19 @@ export default function VouchersPage() {
 
     // ── For Journal / Credit Note / Debit Note — use the table-based entries ──
     if (!isBalanced) {
-      setError(`Total debit (${formatIndianNumber(totalDebit)}) must equal total credit (${formatIndianNumber(totalCredit)}) and be > 0`);
+      setError(tr('errBalance', { a: formatIndianNumber(totalDebit), b: formatIndianNumber(totalCredit) }));
       return;
     }
     for (let i = 0; i < entries.length; i++) {
       if (!entries[i].ledgerId) {
-        setError(`Entry ${i + 1}: Select a ledger`);
+        setError(tr('errEntryLedger', { i: i + 1 }));
         return;
       }
     }
     const validSettlements = billSettlements.filter((s) => s.invoiceId && Number(s.amount) > 0);
     const settlementTotal = validSettlements.reduce((s, b) => s + (Number(b.amount) || 0), 0);
     if (settlementTotal > totalCredit + 0.01) {
-      setError(`Bill settlement total (${formatIndianNumber(settlementTotal)}) cannot exceed total credit (${formatIndianNumber(totalCredit)})`);
+      setError(tr('errSettleCr', { a: formatIndianNumber(settlementTotal), b: formatIndianNumber(totalCredit) }));
       return;
     }
     const payload = {
@@ -792,7 +794,7 @@ export default function VouchersPage() {
     <Box sx={{ minWidth: 0, overflow: 'hidden' }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: { xs: 'flex-start', sm: 'center' }, mb: 2, flexWrap: 'wrap', gap: 1 }}>
         <Typography variant="h5" fontWeight={600} sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' } }}>
-          Vouchers
+          {tr('title')}
         </Typography>
         <RefreshButton onClick={() => refetch()} />
       </Box>
@@ -802,7 +804,7 @@ export default function VouchersPage() {
 
       {/* Voucher type cards — Tally-style quick entry buttons */}
       <Box sx={{ mb: 3 }}>
-        <Typography variant="subtitle2" sx={{ mb: 1 }}>Create New Voucher</Typography>
+        <Typography variant="subtitle2" sx={{ mb: 1 }}>{tr('createNewVoucher')}</Typography>
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
           {VOUCHER_TYPES.map((vt) => (
             <Button
@@ -812,7 +814,7 @@ export default function VouchersPage() {
               onClick={() => openCreate(vt.value)}
               sx={{ borderColor: `${vt.color}.main`, color: `${vt.color}.main` }}
             >
-              {vt.label}
+              {tr(`vt_${vt.value}`)}
             </Button>
           ))}
         </Box>
@@ -823,21 +825,21 @@ export default function VouchersPage() {
         <Box sx={{ p: 2, display: 'flex', gap: 1, flexWrap: 'wrap' }}>
           <TextField
             size="small"
-            placeholder="Search voucher number..."
+            placeholder={tr('searchVoucherNumber')}
             value={search}
             onChange={(e) => { setSearch(e.target.value); setPage(0); }}
             InputProps={{ startAdornment: (<InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment>) }}
             sx={{ width: { xs: '100%', sm: 250 } }}
           />
-          <TextField select size="small" label="Type" value={typeFilter} onChange={(e) => { setTypeFilter(e.target.value); setPage(0); }} sx={{ width: 180 }}>
-            <MenuItem value="">All Types</MenuItem>
-            {VOUCHER_TYPES.map((vt) => <MenuItem key={vt.value} value={vt.value}>{vt.label}</MenuItem>)}
-            <MenuItem value="PURCHASE">Purchase (F8)</MenuItem>
+          <TextField select size="small" label={tr('type')} value={typeFilter} onChange={(e) => { setTypeFilter(e.target.value); setPage(0); }} sx={{ width: 180 }}>
+            <MenuItem value="">{tr('allTypes')}</MenuItem>
+            {VOUCHER_TYPES.map((vt) => <MenuItem key={vt.value} value={vt.value}>{tr(`vt_${vt.value}`)}</MenuItem>)}
+            <MenuItem value="PURCHASE">{tr('purchaseF8')}</MenuItem>
           </TextField>
           <TextField
             size="small"
             type="date"
-            label="Date"
+            label={tr('date')}
             value={dateFilter}
             onChange={(e) => { setDateFilter(e.target.value); setPage(0); }}
             InputLabelProps={{ shrink: true }}
@@ -845,7 +847,7 @@ export default function VouchersPage() {
           />
           <TextField
             size="small"
-            label="Min Amount"
+            label={tr('minAmount')}
             type="text"
             value={minAmount}
             onChange={(e) => { setMinAmount(e.target.value.replace(/[^0-9.]/g, '')); setPage(0); }}
@@ -855,7 +857,7 @@ export default function VouchersPage() {
           />
           <TextField
             size="small"
-            label="Max Amount"
+            label={tr('maxAmount')}
             type="text"
             value={maxAmount}
             onChange={(e) => { setMaxAmount(e.target.value.replace(/[^0-9.]/g, '')); setPage(0); }}
@@ -873,14 +875,14 @@ export default function VouchersPage() {
           <Table size="small" sx={{ '@media (min-width: 900px)': { minWidth: 'max-content', '& .MuiTableCell-root': { whiteSpace: 'nowrap' } } }}>
             <TableHead>
               <TableRow>
-                <TableCell sx={{ fontWeight: 600 }}>Voucher No.</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Date</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Type</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Description</TableCell>
-                <TableCell sx={{ fontWeight: 600 }} align="right">Amount</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Status</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Created By</TableCell>
-                <TableCell align="right" sx={{ fontWeight: 600 }}>Actions</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>{tr('voucherNo')}</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>{tr('date')}</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>{tr('type')}</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>{tr('description')}</TableCell>
+                <TableCell sx={{ fontWeight: 600 }} align="right">{tr('amount')}</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>{tr('status')}</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>{tr('createdBy')}</TableCell>
+                <TableCell align="right" sx={{ fontWeight: 600 }}>{tr('actions')}</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -888,12 +890,12 @@ export default function VouchersPage() {
                 <TableRow><TableCell colSpan={8} align="center" sx={{ py: 4 }}><CircularProgress size={32} /></TableCell></TableRow>
               ) : isError ? (
                 <TableRow><TableCell colSpan={8} align="center" sx={{ py: 4 }}>
-                  <Alert severity="error" sx={{ mb: 1 }}>Failed to load data.</Alert>
-                  <Button size="small" onClick={() => refetch()} startIcon={<RefreshIcon />}>Retry</Button>
+                  <Alert severity="error" sx={{ mb: 1 }}>{tr('errLoad')}</Alert>
+                  <Button size="small" onClick={() => refetch()} startIcon={<RefreshIcon />}>{tr('retry')}</Button>
                 </TableCell></TableRow>
               ) : rows.length === 0 ? (
                 <TableRow><TableCell colSpan={8} align="center" sx={{ py: 4 }}>
-                  <Typography color="text.secondary">No vouchers found. Use the buttons above to create a Receipt, Payment, Contra, or Journal voucher.</Typography>
+                  <Typography color="text.secondary">{tr('noVouchers')}</Typography>
                 </TableCell></TableRow>
               ) : (
                 rows.map((v) => (
@@ -903,28 +905,28 @@ export default function VouchersPage() {
                     ref={rowRef(v.id)}
                     sx={highlightId === v.id ? { bgcolor: 'action.selected', transition: 'background-color 0.3s ease' } : undefined}
                   >
-                    <TableCell sx={{ fontWeight: 600 }} data-label="Voucher No.">{v.jvNumber}</TableCell>
-                    <TableCell data-label="Date">{formatDate(v.date)}</TableCell>
-                    <TableCell data-label="Type"><Chip label={v.voucherType.replace(/_/g, ' ')} size="small" color={VOUCHER_TYPE_COLORS[v.voucherType] ?? 'default'} /></TableCell>
-                    <TableCell sx={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis' }} data-label="Description">{v.description ?? '—'}</TableCell>
-                    <TableCell align="right" data-label="Amount">{formatCurrency(v.totalDebit)}</TableCell>
-                    <TableCell data-label="Status"><Chip label={v.status} size="small" color={v.status === 'POSTED' ? 'success' : v.status === 'CANCELLED' ? 'error' : 'default'} /></TableCell>
-                    <TableCell data-label="Created By">{v.createdBy ?? '—'}</TableCell>
-                    <TableCell align="right" data-label="Actions">
+                    <TableCell sx={{ fontWeight: 600 }} data-label={tr('voucherNo')}>{v.jvNumber}</TableCell>
+                    <TableCell data-label={tr('date')}>{formatDate(v.date)}</TableCell>
+                    <TableCell data-label={tr('type')}><Chip label={v.voucherType.replace(/_/g, ' ')} size="small" color={VOUCHER_TYPE_COLORS[v.voucherType] ?? 'default'} /></TableCell>
+                    <TableCell sx={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis' }} data-label={tr('description')}>{v.description ?? '—'}</TableCell>
+                    <TableCell align="right" data-label={tr('amount')}>{formatCurrency(v.totalDebit)}</TableCell>
+                    <TableCell data-label={tr('status')}><Chip label={v.status} size="small" color={v.status === 'POSTED' ? 'success' : v.status === 'CANCELLED' ? 'error' : 'default'} /></TableCell>
+                    <TableCell data-label={tr('createdBy')}>{v.createdBy ?? '—'}</TableCell>
+                    <TableCell align="right" data-label={tr('actions')}>
                       <Stack direction="row" spacing={0.5} justifyContent="flex-end">
                         <CommentsButton entityType="VOUCHER" entityId={v.id} entityLabel={v.jvNumber} url="/vouchers" />
-                        <Tooltip title="View Details"><IconButton size="small" onClick={() => setDetailVoucher(v)}><ViewIcon fontSize="small" /></IconButton></Tooltip>
+                        <Tooltip title={tr('viewDetails')}><IconButton size="small" onClick={() => setDetailVoucher(v)}><ViewIcon fontSize="small" /></IconButton></Tooltip>
                         {v.status === 'POSTED' && canReverseVoucher && (
-                          <Tooltip title="Edit">
+                          <Tooltip title={tr('edit')}>
                             <IconButton size="small" color="primary" onClick={() => editVoucher(v)}>
                               <EditIcon fontSize="small" />
                             </IconButton>
                           </Tooltip>
                         )}
                         {v.status === 'CANCELLED' && canReverseVoucher && (
-                          <Tooltip title="Delete voucher">
+                          <Tooltip title={tr('deleteVoucher')}>
                             <IconButton size="small" color="error" onClick={() => {
-                              if (confirm(`Delete voucher ${v.jvNumber}? The remaining ${v.voucherType} vouchers will be renumbered.`)) {
+                              if (confirm(tr('confirmDelete', { n: v.jvNumber, t: enumLabel(v.voucherType) }))) {
                                 deleteMutation.mutate(v.id);
                               }
                             }}>
@@ -932,16 +934,16 @@ export default function VouchersPage() {
                             </IconButton>
                           </Tooltip>
                         )}
-                        <Tooltip title="Print">
+                        <Tooltip title={tr('print')}>
                           <IconButton size="small" color="secondary" onClick={() => setPrintVoucherId(v.id)}>
                             <PrintIcon fontSize="small" />
                           </IconButton>
                         </Tooltip>
-                        <Tooltip title="Duplicate"><IconButton size="small" onClick={() => duplicateVoucher(v)}><DuplicateIcon fontSize="small" /></IconButton></Tooltip>
+                        <Tooltip title={tr('duplicate')}><IconButton size="small" onClick={() => duplicateVoucher(v)}><DuplicateIcon fontSize="small" /></IconButton></Tooltip>
                         {v.status === 'POSTED' && canReverseVoucher && (
-                          <Tooltip title="Cancel & Reverse">
+                          <Tooltip title={tr('cancelReverse')}>
                             <IconButton size="small" onClick={() => {
-                              if (confirm(`Cancel voucher ${v.jvNumber}? This will reverse all ledger entries.`)) {
+                              if (confirm(tr('confirmCancel', { n: v.jvNumber }))) {
                                 cancelMutation.mutate(v.id);
                               }
                             }}>
@@ -972,9 +974,9 @@ export default function VouchersPage() {
       {/* ── Create/Edit voucher dialog — Tally-style ── */}
       <ResponsiveDialog open={createOpen} onClose={() => { setCreateOpen(false); setEditingVoucherId(null); setPendingProofFile(null); setLinkedPaymentRequest(null); }} maxWidth="md" fullWidth>
         <DialogTitle>
-          {editingVoucherId ? 'Edit' : ''} {VOUCHER_TYPES.find((vt) => vt.value === selectedVoucherType)?.label ?? 'Voucher'}
+          {editingVoucherId ? tr('editTitle', { t: tr(`vt_${selectedVoucherType}`) }) : tr(`vt_${selectedVoucherType}`)}
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-            {VOUCHER_TYPES.find((vt) => vt.value === selectedVoucherType)?.desc}
+            {tr(`vtd_${selectedVoucherType}`)}
           </Typography>
         </DialogTitle>
         <DialogContent>
@@ -982,7 +984,7 @@ export default function VouchersPage() {
 
           {linkedPaymentRequest && (
             <Alert severity="info" sx={{ mb: 2 }}>
-              Posting voucher for payment request <strong>{linkedPaymentRequest.paymentCode}</strong> ({linkedPaymentRequest.type}) — {formatCurrency(linkedPaymentRequest.amount)}.
+              {tr('postingFor')} <strong>{linkedPaymentRequest.paymentCode}</strong> ({linkedPaymentRequest.type}) — {formatCurrency(linkedPaymentRequest.amount)}.
               Saving this voucher marks the request as PAID.
             </Alert>
           )}
@@ -992,18 +994,18 @@ export default function VouchersPage() {
             {editingVoucherId && (
               <TextField
                 size="small"
-                label="Voucher No."
+                label={tr('voucherNo')}
                 value={voucherNumberSuffix}
                 onChange={(e) => setVoucherNumberSuffix(e.target.value.replace(/\D/g, ''))}
                 inputProps={{ inputMode: 'numeric' }}
-                helperText="Saving resequences this voucher type by voucher date"
+                helperText={tr('savingResequencesThisVoucher')}
                 sx={{ width: 220 }}
               />
             )}
             <TextField
               size="small"
               type="date"
-              label="Date"
+              label={tr('date')}
               value={voucherDate}
               onChange={(e) => setVoucherDate(e.target.value)}
               InputLabelProps={{ shrink: true }}
@@ -1022,19 +1024,19 @@ export default function VouchersPage() {
                 /* ── Contra: Transfer from one bank/cash to another ── */
                 <>
                   <Box>
-                    <Typography variant="subtitle2" sx={{ mb: 1 }}>Transfer FROM</Typography>
+                    <Typography variant="subtitle2" sx={{ mb: 1 }}>{tr('transferFrom')}</Typography>
                     <LedgerAutocomplete
                       value={simpleFromLedger}
                       onChange={(id) => setSimpleFromLedger(id)}
                       ledgers={ledgers as LedgerOption[]}
                       allowedGroups={cashBankGroups}
                       autoFocus
-                      placeholder="Select Cash / Bank account to transfer from..."
+                      placeholder={tr('selectCashBankAccount')}
                       onError={(msg) => setError(msg)}
                     />
                   </Box>
                   <Box>
-                    <Typography variant="subtitle2" sx={{ mb: 1 }}>Amount</Typography>
+                    <Typography variant="subtitle2" sx={{ mb: 1 }}>{tr('amount')}</Typography>
                     <TextField
                       fullWidth
                       size="small"
@@ -1050,13 +1052,13 @@ export default function VouchersPage() {
                     )}
                   </Box>
                   <Box>
-                    <Typography variant="subtitle2" sx={{ mb: 1 }}>Transfer TO</Typography>
+                    <Typography variant="subtitle2" sx={{ mb: 1 }}>{tr('transferTo')}</Typography>
                     <LedgerAutocomplete
                       value={simpleToLedger}
                       onChange={(id) => setSimpleToLedger(id)}
                       ledgers={ledgers as LedgerOption[]}
                       allowedGroups={cashBankGroups}
-                      placeholder="Select Cash / Bank account to transfer to..."
+                      placeholder={tr('selectCashBankAccount2')}
                       onError={(msg) => setError(msg)}
                     />
                   </Box>
@@ -1066,7 +1068,7 @@ export default function VouchersPage() {
                 <>
                   <Box>
                     <Typography variant="subtitle2" sx={{ mb: 1 }}>
-                      {selectedVoucherType === VoucherType.PAYMENT ? 'Paid To' : 'Received From'}
+                      {selectedVoucherType === VoucherType.PAYMENT ? tr('paidTo') : tr('receivedFrom')}
                     </Typography>
                     <LedgerAutocomplete
                       value={simplePartyLedger}
@@ -1081,8 +1083,8 @@ export default function VouchersPage() {
                       }
                       autoFocus
                       placeholder={selectedVoucherType === VoucherType.PAYMENT
-                        ? 'Type party / expense name...'
-                        : 'Type party / income name...'}
+                        ? tr('phParty')
+                        : tr('phIncome')}
                       onError={(msg) => setError(msg)}
                     />
                     {/* Show ledger group chip */}
@@ -1111,7 +1113,7 @@ export default function VouchersPage() {
                             onClick={() => setCostCenterPopup({ entryIndex: -1 })}
                             sx={{ textTransform: 'none', fontSize: '0.75rem' }}
                           >
-                            {selectedVoucherType === VoucherType.PAYMENT ? 'Set Budget Head' : selectedVoucherType === VoucherType.RECEIPT ? 'Set Budget Head' : 'Set Cost Center'}
+                            {selectedVoucherType === VoucherType.PAYMENT ? tr('setBudgetHead') : selectedVoucherType === VoucherType.RECEIPT ? tr('setBudgetHead') : tr('setCostCenter')}
                           </Button>
                         )}
                       </Box>
@@ -1119,7 +1121,7 @@ export default function VouchersPage() {
                   </Box>
 
                   <Box>
-                    <Typography variant="subtitle2" sx={{ mb: 1 }}>Amount</Typography>
+                    <Typography variant="subtitle2" sx={{ mb: 1 }}>{tr('amount')}</Typography>
                     <TextField
                       fullWidth
                       size="small"
@@ -1137,14 +1139,14 @@ export default function VouchersPage() {
 
                   <Box>
                     <Typography variant="subtitle2" sx={{ mb: 1 }}>
-                      {selectedVoucherType === VoucherType.PAYMENT ? 'Pay From (Cash / Bank)' : 'Deposit To (Cash / Bank)'}
+                      {selectedVoucherType === VoucherType.PAYMENT ? tr('payFrom') : tr('depositTo')}
                     </Typography>
                     <LedgerAutocomplete
                       value={simpleCashBankLedger}
                       onChange={(id) => setSimpleCashBankLedger(id)}
                       ledgers={ledgers as LedgerOption[]}
                       allowedGroups={cashBankGroups}
-                      placeholder="Select Cash / Bank account..."
+                      placeholder={tr('selectCashBankAccount3')}
                       onError={(msg) => setError(msg)}
                     />
                   </Box>
@@ -1154,7 +1156,7 @@ export default function VouchersPage() {
                     <Box>
                       {billSettlements.length > 0 ? (
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-                          <Typography variant="body2" fontWeight={500}>Bill-wise Settlements:</Typography>
+                          <Typography variant="body2" fontWeight={500}>{tr('billWiseSettlements')}</Typography>
                           {billSettlements.map((bs, idx) => {
                             const inv = pendingInvoices.find((i) => i.id === bs.invoiceId);
                             return inv ? (
@@ -1166,7 +1168,7 @@ export default function VouchersPage() {
                               />
                             ) : null;
                           })}
-                          <Button size="small" onClick={() => setBillPopupOpen(true)}>Edit</Button>
+                          <Button size="small" onClick={() => setBillPopupOpen(true)}>{tr('edit')}</Button>
                         </Box>
                       ) : (
                         <Button
@@ -1174,7 +1176,7 @@ export default function VouchersPage() {
                           variant="outlined"
                           onClick={() => setBillPopupOpen(true)}
                         >
-                          Link to Vendor Invoices (Bill-wise)
+                          {tr('linkToVendorInvoices')}
                         </Button>
                       )}
                     </Box>
@@ -1186,16 +1188,16 @@ export default function VouchersPage() {
               <Stack direction="row" spacing={2} sx={{ flexWrap: 'wrap', gap: 1 }}>
                 <TextField
                   size="small"
-                  label="Cheque Number"
+                  label={tr('chequeNumber2')}
                   value={chequeNumber}
                   onChange={(e) => setChequeNumber(e.target.value)}
-                  placeholder="Optional — e.g. 000045"
+                  placeholder={tr('optionalEG000045')}
                   sx={{ flex: 1 }}
                 />
                 <TextField
                   size="small"
                   type="date"
-                  label="Cheque Date"
+                  label={tr('chequeDate2')}
                   value={chequeDate}
                   onChange={(e) => setChequeDate(e.target.value)}
                   InputLabelProps={{ shrink: true }}
@@ -1208,10 +1210,10 @@ export default function VouchersPage() {
               <TextField
                 fullWidth
                 size="small"
-                label="Narration"
+                label={tr('narration')}
                 value={voucherDescription}
                 onChange={(e) => setVoucherDescription(e.target.value)}
-                placeholder="Enter narration for this voucher..."
+                placeholder={tr('enterNarrationForThis')}
               />
 
               {/* Proof Attachment — optional, after narration */}
@@ -1231,23 +1233,23 @@ export default function VouchersPage() {
                 <Table size="small">
                   <TableHead>
                     <TableRow sx={{ bgcolor: 'grey.50' }}>
-                      <TableCell sx={{ fontWeight: 600, width: '40%' }}>Particulars</TableCell>
-                      <TableCell align="right" sx={{ fontWeight: 600, width: '15%' }}>Debit (Dr)</TableCell>
-                      <TableCell align="right" sx={{ fontWeight: 600, width: '15%' }}>Credit (Cr)</TableCell>
-                      <TableCell sx={{ fontWeight: 600, width: '20%' }}>Cost Center</TableCell>
+                      <TableCell sx={{ fontWeight: 600, width: '40%' }}>{tr('particulars')}</TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 600, width: '15%' }}>{tr('debitDr')}</TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 600, width: '15%' }}>{tr('creditCr')}</TableCell>
+                      <TableCell sx={{ fontWeight: 600, width: '20%' }}>{tr('costCenter')}</TableCell>
                       <TableCell sx={{ width: '10%' }} />
                     </TableRow>
                   </TableHead>
                   <TableBody>
                     {entries.map((entry, index) => (
                       <TableRow key={index} sx={{ '&:hover': { bgcolor: 'action.hover' } }}>
-                        <TableCell data-label="Particulars">
+                        <TableCell data-label={tr('particulars')}>
                           <LedgerAutocomplete
                             value={entry.ledgerId}
                             onChange={(ledgerId, ledger) => selectLedger(index, ledgerId, ledger)}
                             ledgers={ledgers as LedgerOption[]}
                             autoFocus={index === 0}
-                            placeholder="Type ledger name..."
+                            placeholder={tr('typeLedgerName')}
                             onError={(msg) => setError(msg)}
                           />
                           {entry.ledgerGroup && (
@@ -1259,7 +1261,7 @@ export default function VouchersPage() {
                             />
                           )}
                         </TableCell>
-                        <TableCell align="right" data-label="Debit (Dr)">
+                        <TableCell align="right" data-label={tr('debitDr')}>
                           <TextField
                             size="small"
                             value={formatIndianNumber(entry.debit)}
@@ -1268,7 +1270,7 @@ export default function VouchersPage() {
                             inputProps={{ style: { textAlign: 'right' }, inputMode: 'decimal' }}
                           />
                         </TableCell>
-                        <TableCell align="right" data-label="Credit (Cr)">
+                        <TableCell align="right" data-label={tr('creditCr')}>
                           <TextField
                             size="small"
                             value={formatIndianNumber(entry.credit)}
@@ -1277,7 +1279,7 @@ export default function VouchersPage() {
                             inputProps={{ style: { textAlign: 'right' }, inputMode: 'decimal' }}
                           />
                         </TableCell>
-                        <TableCell data-label="Cost Center">
+                        <TableCell data-label={tr('costCenter')}>
                           {entry.budgetHeadId ? (
                             <Chip
                               label={budgetHeads.find((b) => b.id === entry.budgetHeadId)?.particulars ?? 'CC'}
@@ -1292,13 +1294,13 @@ export default function VouchersPage() {
                               onClick={() => setCostCenterPopup({ entryIndex: index })}
                               sx={{ textTransform: 'none', fontSize: '0.75rem' }}
                             >
-                              Set Cost Center
+                              {tr('setCostCenter')}
                             </Button>
                           ) : (
                             <Typography variant="caption" color="text.disabled">—</Typography>
                           )}
                         </TableCell>
-                        <TableCell data-label="Actions">
+                        <TableCell data-label={tr('actions')}>
                           {entries.length > 2 && (
                             <IconButton size="small" onClick={() => removeEntry(index)}><CancelIcon fontSize="small" /></IconButton>
                           )}
@@ -1308,7 +1310,7 @@ export default function VouchersPage() {
                   </TableBody>
                   <TableHead>
                     <TableRow sx={{ borderTop: 2, borderColor: 'divider' }}>
-                      <TableCell sx={{ fontWeight: 700 }}>Total</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }}>{tr('total')}</TableCell>
                       <TableCell align="right" sx={{ fontWeight: 700, color: isBalanced ? 'success.main' : 'error.main' }}>{formatCurrency(totalDebit)}</TableCell>
                       <TableCell align="right" sx={{ fontWeight: 700, color: isBalanced ? 'success.main' : 'error.main' }}>{formatCurrency(totalCredit)}</TableCell>
                       <TableCell />
@@ -1317,7 +1319,7 @@ export default function VouchersPage() {
                     {balanceDiff !== 0 && (
                       <TableRow>
                         <TableCell colSpan={2} align="right" sx={{ color: 'error.main', fontSize: '0.8rem' }}>
-                          {balanceDiff > 0 ? 'Excess Debit:' : 'Excess Credit:'}
+                          {balanceDiff > 0 ? tr('excessDr') : tr('excessCr')}
                         </TableCell>
                         <TableCell align="right" sx={{ color: 'error.main', fontWeight: 600, fontSize: '0.8rem' }}>
                           {formatCurrency(Math.abs(balanceDiff))}
@@ -1336,16 +1338,16 @@ export default function VouchersPage() {
                 </Typography>
               )}
 
-              <Button startIcon={<AddIcon />} onClick={addEntry} sx={{ mt: 1 }}>Add Row</Button>
+              <Button startIcon={<AddIcon />} onClick={addEntry} sx={{ mt: 1 }}>{tr('addRow')}</Button>
 
               <TextField
                 fullWidth
                 size="small"
-                label="Narration"
+                label={tr('narration')}
                 value={voucherDescription}
                 onChange={(e) => setVoucherDescription(e.target.value)}
                 sx={{ mt: 2 }}
-                placeholder="Enter narration for this voucher..."
+                placeholder={tr('enterNarrationForThis')}
               />
 
               {/* Proof Attachment — optional, after narration */}
@@ -1360,13 +1362,13 @@ export default function VouchersPage() {
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => { setCreateOpen(false); setEditingVoucherId(null); setPendingProofFile(null); }}>Cancel</Button>
+          <Button onClick={() => { setCreateOpen(false); setEditingVoucherId(null); setPendingProofFile(null); }}>{tr('cancel')}</Button>
           <Button
             variant="contained"
             onClick={handleCreate}
             disabled={createMutation.isPending || updateMutation.isPending || (isSimpleVoucher ? !(Number(simpleAmount.replace(/,/g, '')) > 0) : !isBalanced)}
           >
-            {(createMutation.isPending || updateMutation.isPending) ? <CircularProgress size={20} /> : (editingVoucherId ? 'Update' : 'Save')}
+            {(createMutation.isPending || updateMutation.isPending) ? <CircularProgress size={20} /> : (editingVoucherId ? tr('update') : tr('save'))}
           </Button>
         </DialogActions>
       </ResponsiveDialog>
@@ -1378,10 +1380,10 @@ export default function VouchersPage() {
         maxWidth="xs"
         fullWidth
       >
-        <DialogTitle>Allocate to Cost Center</DialogTitle>
+        <DialogTitle>{tr('allocateToCostCenter')}</DialogTitle>
         <DialogContent>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            Select a budget head for this expense entry.
+            {tr('selectABudgetHead')}
           </Typography>
           <Select
             fullWidth
@@ -1401,7 +1403,7 @@ export default function VouchersPage() {
             }}
             displayEmpty
           >
-            <MenuItem value=""><em>No budget head</em></MenuItem>
+            <MenuItem value=""><em>{tr('noBudgetHead')}</em></MenuItem>
             {budgetHeads.map((bh) => {
               const allocated = Number(bh.allocatedAmount ?? 0);
               const actual = Number(bh.actualAmount ?? 0);
@@ -1420,12 +1422,12 @@ export default function VouchersPage() {
           </Select>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setCostCenterPopup(null)}>Cancel</Button>
+          <Button onClick={() => setCostCenterPopup(null)}>{tr('cancel')}</Button>
           <Button
             variant="contained"
             onClick={() => setCostCenterPopup(null)}
           >
-            Done
+            {tr('done')}
           </Button>
         </DialogActions>
       </Dialog>
@@ -1437,10 +1439,10 @@ export default function VouchersPage() {
         maxWidth="sm"
         fullWidth
       >
-        <DialogTitle>Bill-wise Settlement</DialogTitle>
+        <DialogTitle>{tr('billWiseSettlement')}</DialogTitle>
         <DialogContent>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            Select which vendor invoices this payment settles. The total should match the payment amount.
+            {tr('selectWhichVendorInvoices')}
           </Typography>
           {pendingInvoices.map((inv) => {
             const existing = billSettlements.find((bs) => bs.invoiceId === inv.id);
@@ -1476,7 +1478,7 @@ export default function VouchersPage() {
           </Typography>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setBillPopupOpen(false)}>Close</Button>
+          <Button onClick={() => setBillPopupOpen(false)}>{tr('close')}</Button>
         </DialogActions>
       </Dialog>
 
@@ -1487,51 +1489,51 @@ export default function VouchersPage() {
             <DialogTitle>
               <Stack direction="row" alignItems="center" justifyContent="space-between">
                 <Box>{detailVoucher.jvNumber}</Box>
-                <Chip label={detailVoucher.voucherType.replace(/_/g, ' ')} size="small" color={VOUCHER_TYPE_COLORS[detailVoucher.voucherType] ?? 'default'} />
+                <Chip label={enumLabel(detailVoucher.voucherType)} size="small" color={VOUCHER_TYPE_COLORS[detailVoucher.voucherType] ?? 'default'} />
               </Stack>
             </DialogTitle>
             <DialogContent>
               <Box sx={{ mb: 2 }}>
-                <Typography variant="body2"><strong>Date:</strong> {formatDate(detailVoucher.date)}</Typography>
-                <Typography variant="body2"><strong>Description:</strong> {detailVoucher.description ?? '—'}</Typography>
+                <Typography variant="body2"><strong>{tr('date2')}</strong> {formatDate(detailVoucher.date)}</Typography>
+                <Typography variant="body2"><strong>{tr('description2')}</strong> {detailVoucher.description ?? '—'}</Typography>
                 {detailVoucher.chequeNumber && (
-                  <Typography variant="body2"><strong>Cheque Number:</strong> {detailVoucher.chequeNumber}</Typography>
+                  <Typography variant="body2"><strong>{tr('chequeNumber')}</strong> {detailVoucher.chequeNumber}</Typography>
                 )}
                 {detailVoucher.chequeDate && (
-                  <Typography variant="body2"><strong>Cheque Date:</strong> {formatDate(detailVoucher.chequeDate)}</Typography>
+                  <Typography variant="body2"><strong>{tr('chequeDate')}</strong> {formatDate(detailVoucher.chequeDate)}</Typography>
                 )}
-                <Typography variant="body2"><strong>Created By:</strong> {detailVoucher.createdBy}</Typography>
+                <Typography variant="body2"><strong>{tr('createdBy2')}</strong> {detailVoucher.createdBy}</Typography>
                 {detailVoucher.updatedBy && (
-                  <Typography variant="body2"><strong>Last Edited By:</strong> {detailVoucher.updatedBy} on {formatDate(detailVoucher.updatedAt)}</Typography>
+                  <Typography variant="body2"><strong>{tr('lastEditedBy')}</strong> {detailVoucher.updatedBy} on {formatDate(detailVoucher.updatedAt)}</Typography>
                 )}
-                <Typography variant="body2"><strong>Status:</strong> <Chip label={detailVoucher.status} size="small" color={detailVoucher.status === 'POSTED' ? 'success' : 'error'} /></Typography>
+                <Typography variant="body2"><strong>{tr('status2')}</strong> <Chip label={enumLabel(detailVoucher.status)} size="small" color={detailVoucher.status === 'POSTED' ? 'success' : 'error'} /></Typography>
               </Box>
               <ResponsiveTable>
               <TableContainer component={Card} variant="outlined" sx={{ overflowX: 'auto' }}>
                 <Table size="small">
                   <TableHead>
                     <TableRow>
-                      <TableCell>Ledger</TableCell>
-                      <TableCell>Group</TableCell>
-                      <TableCell align="right">Debit</TableCell>
-                      <TableCell align="right">Credit</TableCell>
-                      <TableCell>Description</TableCell>
-                      <TableCell>Cost Center</TableCell>
+                      <TableCell>{tr('ledger')}</TableCell>
+                      <TableCell>{tr('group')}</TableCell>
+                      <TableCell align="right">{tr('debit')}</TableCell>
+                      <TableCell align="right">{tr('credit')}</TableCell>
+                      <TableCell>{tr('description')}</TableCell>
+                      <TableCell>{tr('costCenter')}</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
                     {detailVoucher.entries.map((entry, i) => (
                       <TableRow key={i}>
-                        <TableCell sx={{ fontWeight: 500 }} data-label="Ledger">{entry.ledgerName}</TableCell>
-                        <TableCell data-label="Group"><Chip label={entry.ledgerGroup.replace(/_/g, ' ')} size="small" variant="outlined" /></TableCell>
-                        <TableCell align="right" sx={{ color: 'error.main' }} data-label="Debit">{entry.debit > 0 ? formatCurrency(entry.debit) : '—'}</TableCell>
-                        <TableCell align="right" sx={{ color: 'success.main' }} data-label="Credit">{entry.credit > 0 ? formatCurrency(entry.credit) : '—'}</TableCell>
-                        <TableCell data-label="Description">{entry.description ?? '—'}</TableCell>
-                        <TableCell data-label="Cost Center">{entry.budgetHead ? <Chip label={entry.budgetHead.particulars} size="small" color="primary" variant="outlined" /> : '—'}</TableCell>
+                        <TableCell sx={{ fontWeight: 500 }} data-label={tr('ledger')}>{entry.ledgerName}</TableCell>
+                        <TableCell data-label={tr('group')}><Chip label={entry.ledgerGroup.replace(/_/g, ' ')} size="small" variant="outlined" /></TableCell>
+                        <TableCell align="right" sx={{ color: 'error.main' }} data-label={tr('debit')}>{entry.debit > 0 ? formatCurrency(entry.debit) : '—'}</TableCell>
+                        <TableCell align="right" sx={{ color: 'success.main' }} data-label={tr('credit')}>{entry.credit > 0 ? formatCurrency(entry.credit) : '—'}</TableCell>
+                        <TableCell data-label={tr('description')}>{entry.description ?? '—'}</TableCell>
+                        <TableCell data-label={tr('costCenter')}>{entry.budgetHead ? <Chip label={entry.budgetHead.particulars} size="small" color="primary" variant="outlined" /> : '—'}</TableCell>
                       </TableRow>
                     ))}
                     <TableRow>
-                      <TableCell colSpan={2} align="right" sx={{ fontWeight: 600 }}>Total</TableCell>
+                      <TableCell colSpan={2} align="right" sx={{ fontWeight: 600 }}>{tr('total')}</TableCell>
                       <TableCell align="right" sx={{ fontWeight: 600 }}>{formatCurrency(detailVoucher.totalDebit)}</TableCell>
                       <TableCell align="right" sx={{ fontWeight: 600 }}>{formatCurrency(detailVoucher.totalCredit)}</TableCell>
                       <TableCell />
@@ -1550,13 +1552,13 @@ export default function VouchersPage() {
               {/* Bill settlements section */}
               {detailVoucher.billSettlements && detailVoucher.billSettlements.length > 0 && (
                 <Box sx={{ mt: 3 }}>
-                  <Typography variant="subtitle2" gutterBottom>Bill-wise Settlements</Typography>
+                  <Typography variant="subtitle2" gutterBottom>{tr('billWiseSettlements2')}</Typography>
                   <Table size="small">
                     <TableHead>
                       <TableRow>
-                        <TableCell>Voucher</TableCell>
-                        <TableCell>Date</TableCell>
-                        <TableCell align="right">Amount Settled</TableCell>
+                        <TableCell>{tr('voucher')}</TableCell>
+                        <TableCell>{tr('date')}</TableCell>
+                        <TableCell align="right">{tr('amountSettled')}</TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
@@ -1575,32 +1577,32 @@ export default function VouchersPage() {
               {/* Audit history — who created/edited/cancelled and when */}
               {voucherAuditLogs && (voucherAuditLogs.data as AuditLogEntry[])?.length > 0 && (
                 <Box sx={{ mt: 3 }}>
-                  <Typography variant="subtitle2" gutterBottom>Audit History</Typography>
+                  <Typography variant="subtitle2" gutterBottom>{tr('auditHistory')}</Typography>
                   <ResponsiveTable>
                   <TableContainer component={Card} variant="outlined" sx={{ overflowX: 'auto' }}>
                     <Table size="small">
                       <TableHead>
                         <TableRow>
-                          <TableCell sx={{ fontWeight: 600 }}>Action</TableCell>
-                          <TableCell sx={{ fontWeight: 600 }}>By</TableCell>
-                          <TableCell sx={{ fontWeight: 600 }}>When</TableCell>
-                          <TableCell sx={{ fontWeight: 600 }}>Details</TableCell>
+                          <TableCell sx={{ fontWeight: 600 }}>{tr('action')}</TableCell>
+                          <TableCell sx={{ fontWeight: 600 }}>{tr('by')}</TableCell>
+                          <TableCell sx={{ fontWeight: 600 }}>{tr('when')}</TableCell>
+                          <TableCell sx={{ fontWeight: 600 }}>{tr('details')}</TableCell>
                         </TableRow>
                       </TableHead>
                       <TableBody>
                         {(voucherAuditLogs.data as AuditLogEntry[]).map((log) => (
                           <TableRow key={log.id} hover>
-                            <TableCell data-label="Action">
+                            <TableCell data-label={tr('action')}>
                               <Chip
-                                label={log.action}
+                                label={enumLabel(log.action)}
                                 size="small"
                                 color={log.action === 'CREATE' ? 'success' : log.action === 'DELETE' ? 'error' : 'warning'}
                                 variant="outlined"
                               />
                             </TableCell>
-                            <TableCell data-label="By">{log.user?.name ?? '—'}</TableCell>
-                            <TableCell data-label="When">{new Date(log.timestamp).toLocaleString()}</TableCell>
-                            <TableCell data-label="Details">
+                            <TableCell data-label={tr('by')}>{log.user?.name ?? '—'}</TableCell>
+                            <TableCell data-label={tr('when')}>{new Date(log.timestamp).toLocaleString()}</TableCell>
+                            <TableCell data-label={tr('details')}>
                               {log.newValue && Object.keys(log.newValue).length > 0
                                 ? Object.entries(log.newValue)
                                     .filter(([k]) => k !== 'edited')
@@ -1635,12 +1637,12 @@ export default function VouchersPage() {
                   color="error"
                   startIcon={<CancelIcon />}
                   onClick={() => {
-                    if (confirm(`Cancel voucher ${detailVoucher.jvNumber}? This will reverse all ledger entries.`)) {
+                    if (confirm(tr('confirmCancel', { n: detailVoucher.jvNumber }))) {
                       cancelMutation.mutate(detailVoucher.id);
                     }
                   }}
                 >
-                  Cancel & Reverse
+                  {tr('cancelReverse')}
                 </Button>
               )}
               {detailVoucher.status === 'CANCELLED' && canReverseVoucher && (
@@ -1648,12 +1650,12 @@ export default function VouchersPage() {
                   color="error"
                   startIcon={<DeleteIcon />}
                   onClick={() => {
-                    if (confirm(`Delete voucher ${detailVoucher.jvNumber}? The remaining ${detailVoucher.voucherType} vouchers will be renumbered.`)) {
+                    if (confirm(tr('confirmDelete', { n: detailVoucher.jvNumber, t: enumLabel(detailVoucher.voucherType) }))) {
                       deleteMutation.mutate(detailVoucher.id);
                     }
                   }}
                 >
-                  Delete
+                  {tr('delete')}
                 </Button>
               )}
               {detailVoucher.status === 'POSTED' && canReverseVoucher && (
@@ -1662,13 +1664,13 @@ export default function VouchersPage() {
                   startIcon={<EditIcon />}
                   onClick={() => editVoucher(detailVoucher)}
                 >
-                  Edit
+                  {tr('edit')}
                 </Button>
               )}
               <Button startIcon={<DuplicateIcon />} onClick={() => duplicateVoucher(detailVoucher)}>
-                Duplicate
+                {tr('duplicate')}
               </Button>
-              <Button onClick={() => setDetailVoucher(null)}>Close</Button>
+              <Button onClick={() => setDetailVoucher(null)}>{tr('close')}</Button>
             </DialogActions>
           </>
         )}
@@ -1677,10 +1679,10 @@ export default function VouchersPage() {
       {/* Persisted voucher print preview. The preview is separate from the application UI and
           the print stylesheet hides every other element when the browser print command runs. */}
       <Dialog open={!!printVoucherId} onClose={() => setPrintVoucherId(null)} maxWidth="lg" fullWidth>
-        <DialogTitle>{printVoucher?.voucherType === VoucherType.RECEIPT ? 'Receipt Voucher Preview' : printVoucher?.voucherType === VoucherType.JOURNAL ? 'Journal Voucher Preview' : 'Payment Voucher Preview'}</DialogTitle>
+        <DialogTitle>{printVoucher?.voucherType === VoucherType.RECEIPT ? tr('prevReceipt') : printVoucher?.voucherType === VoucherType.JOURNAL ? tr('prevJournal') : tr('prevPayment')}</DialogTitle>
         <DialogContent sx={{ bgcolor: '#eef1f5', p: { xs: 1, sm: 2 } }}>
           {isPrintVoucherLoading && <Box sx={{ py: 8, textAlign: 'center' }}><CircularProgress /></Box>}
-          {isPrintVoucherError && <Alert severity="error">Unable to load the saved voucher for printing.</Alert>}
+          {isPrintVoucherError && <Alert severity="error">{tr('errPrintLoad')}</Alert>}
           {printVoucher && (
             printVoucher.voucherType === VoucherType.RECEIPT
               ? <ReceiptVoucherPrintPreview voucher={printVoucher} template={receiptVoucherTemplate} />
@@ -1690,8 +1692,8 @@ export default function VouchersPage() {
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setPrintVoucherId(null)}>Close</Button>
-          <Button variant="contained" startIcon={<PrintIcon />} disabled={!printVoucher} onClick={printVoucherSheet}>Print Voucher</Button>
+          <Button onClick={() => setPrintVoucherId(null)}>{tr('close')}</Button>
+          <Button variant="contained" startIcon={<PrintIcon />} disabled={!printVoucher} onClick={printVoucherSheet}>{tr('printVoucher')}</Button>
         </DialogActions>
       </Dialog>
     </Box>

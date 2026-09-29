@@ -14,6 +14,7 @@ import {
 import LockIcon from '@mui/icons-material/Lock';
 import api, { extractErrorMessage } from '../config/api';
 import { useAuthStore } from '../stores/authStore';
+import { useTranslation } from 'react-i18next';
 
 interface PinConfirmDialogProps {
   open: boolean;
@@ -32,12 +33,13 @@ interface PinConfirmDialogProps {
  */
 export default function PinConfirmDialog({
   open,
-  title = 'Confirm your PIN',
-  message = 'For security, please enter your PIN to confirm this action.',
-  confirmLabel = 'Confirm',
+  title,
+  message,
+  confirmLabel,
   onConfirm,
   onCancel,
 }: PinConfirmDialogProps) {
+  const { t } = useTranslation();
   const user = useAuthStore((s) => s.user);
   const [pin, setPin] = useState('');
   const [error, setError] = useState('');
@@ -46,11 +48,11 @@ export default function PinConfirmDialog({
   const handleConfirm = async () => {
     setError('');
     if (!pin || pin.length < 4) {
-      setError('Please enter your PIN');
+      setError(t('shared.errEnterPin'));
       return;
     }
     if (!user?.phone) {
-      setError('Unable to verify identity — no phone on file');
+      setError(t('shared.errNoPhone'));
       return;
     }
     setLoading(true);
@@ -75,16 +77,16 @@ export default function PinConfirmDialog({
     <Dialog open={open} onClose={handleClose} maxWidth="xs" fullWidth>
       <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
         <LockIcon color="action" />
-        {title}
+        {title ?? t('shared.confirmPinTitle')}
       </DialogTitle>
       <DialogContent>
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
-          <Typography variant="body2" color="text.secondary">{message}</Typography>
+          <Typography variant="body2" color="text.secondary">{message ?? t('shared.confirmPinMessage')}</Typography>
           {error && <Alert severity="error">{error}</Alert>}
           <TextField
             autoFocus
             fullWidth
-            label="PIN"
+            label={t('shared.pin')}
             type="password"
             value={pin}
             onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
@@ -96,13 +98,13 @@ export default function PinConfirmDialog({
         </Box>
       </DialogContent>
       <DialogActions>
-        <Button onClick={handleClose} disabled={loading}>Cancel</Button>
+        <Button onClick={handleClose} disabled={loading}>{t('shared.cancel')}</Button>
         <Button
           variant="contained"
           onClick={handleConfirm}
           disabled={loading || pin.length < 4}
         >
-          {loading ? <CircularProgress size={20} /> : confirmLabel}
+          {loading ? <CircularProgress size={20} /> : (confirmLabel ?? t('shared.confirm'))}
         </Button>
       </DialogActions>
     </Dialog>

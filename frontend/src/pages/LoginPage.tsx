@@ -22,6 +22,8 @@ import { isConfigured, getFirebase, type FirebaseHandles } from '../config/fireb
 import api, { extractErrorMessage } from '../config/api';
 import { useAuthStore } from '../stores/authStore';
 import loginBg from '../login screen.png';
+import { useTranslation } from 'react-i18next';
+import LanguageToggle from '../components/LanguageToggle';
 
 // ── Animations ──────────────────────────────────────────────
 const fadeInUp = keyframes`
@@ -42,6 +44,7 @@ function formatPhone(raw: string): string {
 }
 
 export default function LoginPage() {
+  const { t } = useTranslation();
   const [mode, setMode] = useState<AuthMode>('signin');
   const [step, setStep] = useState<Step>('phone');
   const [phone, setPhone] = useState('');
@@ -167,7 +170,7 @@ export default function LoginPage() {
   // Step 1: Check if phone has a PIN set
   const handleCheckPhone = useCallback(async () => {
     if (!agreed) {
-      setError('Please agree to the Terms & Conditions and Privacy Policy to continue.');
+      setError(t('login.agreeRequired'));
       return;
     }
     setError('');
@@ -193,12 +196,12 @@ export default function LoginPage() {
     } finally {
       setLoading(false);
     }
-  }, [phone, mode, sendOtp, agreed]);
+  }, [phone, mode, sendOtp, agreed, t]);
 
   // Step 2a: Login with PIN
   const handlePinLogin = useCallback(async () => {
     if (!agreed) {
-      setError('Please agree to the Terms & Conditions and Privacy Policy to continue.');
+      setError(t('login.agreeRequired'));
       return;
     }
     setError('');
@@ -214,7 +217,7 @@ export default function LoginPage() {
     } finally {
       setLoading(false);
     }
-  }, [phone, pin, agreed, setToken, setUser, navigate]);
+  }, [phone, pin, agreed, setToken, setUser, navigate, t]);
 
   // Step 2c: Verify OTP
   const handleVerifyOtp = useCallback(async () => {
@@ -245,7 +248,7 @@ export default function LoginPage() {
       }
 
       if (!confirmationResult) {
-        throw new Error('No confirmation result. Please request OTP again.');
+        throw new Error(t('login.noConfirmation'));
       }
       const userCredential = await confirmationResult.confirm(otp);
       const idToken = await userCredential.user.getIdToken();
@@ -264,12 +267,12 @@ export default function LoginPage() {
     } finally {
       setLoading(false);
     }
-  }, [confirmationResult, otp, phone, name, mode, agreed, setUser]);
+  }, [confirmationResult, otp, phone, name, mode, agreed, setUser, t]);
 
   // Step 3: Set PIN (after OTP verification)
   const handleSetPin = useCallback(async () => {
     if (!agreed) {
-      setError('Please agree to the Terms & Conditions and Privacy Policy to continue.');
+      setError(t('login.agreeRequired'));
       return;
     }
     setError('');
@@ -285,7 +288,7 @@ export default function LoginPage() {
     } finally {
       setLoading(false);
     }
-  }, [phone, pin, agreed, setToken, setUser, navigate]);
+  }, [phone, pin, agreed, setToken, setUser, navigate, t]);
 
   if (isAuthenticated()) {
     return <Navigate to="/" replace />;
@@ -389,13 +392,13 @@ export default function LoginPage() {
         }}
       />
       <Typography variant="body2" sx={{ color: 'rgba(10, 25, 41, 0.7)', lineHeight: 1.5 }}>
-        I agree to the{' '}
+        {t('login.iAgreeTo')}{' '}
         <MuiLink component={RouterLink} to="/terms" underline="always" sx={{ color: '#1565C0', fontWeight: 600 }}>
-          Terms &amp; Conditions
+          {t('login.terms')}
         </MuiLink>{' '}
-        and{' '}
+        {t('login.and')}{' '}
         <MuiLink component={RouterLink} to="/privacy-policy" underline="always" sx={{ color: '#1565C0', fontWeight: 600 }}>
-          Privacy Policy
+          {t('login.privacy')}
         </MuiLink>
       </Typography>
     </Box>
@@ -431,6 +434,11 @@ export default function LoginPage() {
         overflowY: { xs: 'auto', md: 'hidden' },
       }}
     >
+      {/* Language toggle — top right, above the card */}
+      <Box sx={{ position: 'absolute', top: 12, right: 12, zIndex: 2 }}>
+        <LanguageToggle onDark />
+      </Box>
+
       {/* Subtle radial glow — top center, like a soft spotlight */}
       <Box
         sx={{
@@ -495,10 +503,10 @@ export default function LoginPage() {
               }}
             />
             <Typography variant="h4" align="center" gutterBottom fontWeight={700} sx={{ color: '#0a1929', letterSpacing: '-0.5px', fontSize: { xs: '1.45rem', sm: '2rem' } }}>
-              Hospital Construction ERP
+              {t('app.title')}
             </Typography>
             <Typography variant="h6" align="center" sx={{ color: 'rgba(10, 25, 41, 0.6)', fontWeight: 400, fontSize: { xs: '0.95rem', sm: '1.25rem' } }}>
-              Sign in to manage your project
+              {t('login.subtitle')}
             </Typography>
           </Box>
 
@@ -528,7 +536,7 @@ export default function LoginPage() {
                 boxShadow: mode === 'signin' ? '0 2px 8px rgba(0, 0, 0, 0.15)' : 'none',
               }}
             >
-              Sign In
+              {t('login.signIn')}
             </Box>
             <Box
               onClick={() => { setMode('signup'); setStep('phone'); setPin(''); setOtp(''); setError(''); }}
@@ -546,7 +554,7 @@ export default function LoginPage() {
                 boxShadow: mode === 'signup' ? '0 2px 8px rgba(0, 0, 0, 0.15)' : 'none',
               }}
             >
-              Sign Up
+              {t('login.signUp')}
             </Box>
           </Box>
 
@@ -563,10 +571,10 @@ export default function LoginPage() {
             <Box sx={{ animation: stepFadeAnim }}>
               {mode === 'signup' && (
                 <>
-                  <Typography sx={fieldLabelSx}>Full Name</Typography>
+                  <Typography sx={fieldLabelSx}>{t('login.fullName')}</Typography>
                   <TextField
                     fullWidth
-                    placeholder="Enter your full name"
+                    placeholder={t('login.fullNamePlaceholder')}
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     sx={glassInputSx}
@@ -574,7 +582,7 @@ export default function LoginPage() {
                   />
                 </>
               )}
-              <Typography sx={fieldLabelSx}>Phone Number</Typography>
+              <Typography sx={fieldLabelSx}>{t('login.phoneNumber')}</Typography>
               <TextField
                 fullWidth
                 placeholder="9876543210"
@@ -626,7 +634,7 @@ export default function LoginPage() {
                 ]}
               />
               <Typography variant="caption" sx={{ display: 'block', mt: -1.5, mb: 2, color: 'rgba(10, 25, 41, 0.5)', fontSize: '0.72rem' }}>
-                We'll send a verification code to this number.
+                {t('login.phoneHint')}
               </Typography>
               {consentCheckbox}
               <Button
@@ -637,7 +645,7 @@ export default function LoginPage() {
                 disabled={loading || !agreed || phone.length !== 10 || (mode === 'signup' && !name.trim())}
                 sx={glassButtonSx}
               >
-                {loading ? <CircularProgress size={24} color="inherit" /> : 'Continue'}
+                {loading ? <CircularProgress size={24} color="inherit" /> : t('login.continue')}
               </Button>
             </Box>
           )}
@@ -646,10 +654,10 @@ export default function LoginPage() {
           {step === 'pin' && (
             <Box sx={{ animation: stepFadeAnim }}>
               <Alert severity="info" sx={glassAlertSx}>
-                Welcome back! Enter your 4-digit PIN to sign in.
+                {t('login.welcomeBack')}
               </Alert>
               <Typography variant="body2" sx={{ mb: 1, color: 'rgba(10, 25, 41, 0.7)' }}>
-                Phone: <strong>+91 {phone}</strong>
+                {t('login.phoneLabel')} <strong>+91 {phone}</strong>
               </Typography>
               <Box ref={pinInputRef}>
               <Input
@@ -661,7 +669,7 @@ export default function LoginPage() {
                   const digits = e.target.value.replace(/\D/g, '').slice(0, 4);
                   setPin(digits);
                 }}
-                placeholder="4-digit PIN"
+                placeholder={t('login.pinPlaceholder')}
                 sx={glassPinInputSx}
                 inputProps={{ maxLength: 4, inputMode: 'numeric', style: { textAlign: 'center' } }}
                 endAdornment={
@@ -682,7 +690,7 @@ export default function LoginPage() {
                 disabled={loading || !agreed || pin.length !== 4}
                 sx={glassButtonSx}
               >
-                {loading ? <CircularProgress size={24} color="inherit" /> : 'Sign In'}
+                {loading ? <CircularProgress size={24} color="inherit" /> : t('login.signIn')}
               </Button>
               <Button
                 fullWidth
@@ -690,7 +698,7 @@ export default function LoginPage() {
                 sx={{ mt: 1, ...glassTextButtonSx }}
                 onClick={() => { setStep('phone'); setPin(''); setError(''); }}
               >
-                Use a different phone number
+                {t('login.differentPhone')}
               </Button>
               <Button
                 fullWidth
@@ -698,7 +706,7 @@ export default function LoginPage() {
                 sx={{ mt: 0.5, ...glassTextButtonSx }}
                 onClick={() => { setStep('otp'); setError(''); }}
               >
-                Forgot PIN? Verify with OTP
+                {t('login.forgotPin')}
               </Button>
             </Box>
           )}
@@ -707,13 +715,13 @@ export default function LoginPage() {
           {step === 'otp' && (
             <Box sx={{ animation: stepFadeAnim }}>
               <Alert severity="info" sx={glassAlertSx}>
-                OTP sent to +91 {phone}. Enter the 6-digit code to verify your identity.
+                {t('login.otpSent', { phone })}
               </Alert>
               <Box ref={otpInputRef}>
-              <Typography sx={fieldLabelSx}>Enter OTP</Typography>
+              <Typography sx={fieldLabelSx}>{t('login.enterOtp')}</Typography>
               <TextField
                 fullWidth
-                placeholder="6-digit code"
+                placeholder={t('login.otpPlaceholder')}
                 value={otp}
                 onChange={(e) => setOtp(e.target.value)}
                 sx={glassInputSx}
@@ -728,7 +736,7 @@ export default function LoginPage() {
                 disabled={loading || otp.length < 4}
                 sx={glassButtonSx}
               >
-                {loading ? <CircularProgress size={24} color="inherit" /> : 'Verify OTP'}
+                {loading ? <CircularProgress size={24} color="inherit" /> : t('login.verifyOtp')}
               </Button>
               <Button
                 fullWidth
@@ -736,11 +744,11 @@ export default function LoginPage() {
                 sx={{ mt: 1, ...glassTextButtonSx }}
                 onClick={() => { setStep('phone'); setOtp(''); setError(''); }}
               >
-                Change phone number
+                {t('login.changePhone')}
               </Button>
               {isDevMode && (
                 <Alert severity="info" sx={{ ...glassAlertSx, mb: 0, mt: 2 }}>
-                  Dev mode: use OTP <strong>1234</strong>
+                  {t('login.devMode')} <strong>1234</strong>
                 </Alert>
               )}
             </Box>
@@ -750,7 +758,7 @@ export default function LoginPage() {
           {step === 'setPin' && (
             <Box sx={{ animation: stepFadeAnim }}>
               <Alert severity="success" sx={glassAlertSx}>
-                Identity verified! Set a 4-digit PIN for quick login next time.
+                {t('login.identityVerified')}
               </Alert>
               <Box ref={pinInputRef}>
               <Input
@@ -762,7 +770,7 @@ export default function LoginPage() {
                   const digits = e.target.value.replace(/\D/g, '').slice(0, 4);
                   setPin(digits);
                 }}
-                placeholder="Choose a 4-digit PIN"
+                placeholder={t('login.choosePin')}
                 sx={glassPinInputSx}
                 inputProps={{ maxLength: 4, inputMode: 'numeric', style: { textAlign: 'center' } }}
                 endAdornment={
@@ -775,7 +783,7 @@ export default function LoginPage() {
               />
               </Box>
               <Typography variant="caption" sx={{ display: 'block', mb: 2, color: 'rgba(10, 25, 41, 0.5)' }}>
-                You'll use this PIN with your phone number to sign in — no OTP needed.
+                {t('login.pinHint')}
               </Typography>
               {consentCheckbox}
               <Button
@@ -786,7 +794,7 @@ export default function LoginPage() {
                 disabled={loading || !agreed || pin.length !== 4}
                 sx={glassButtonSx}
               >
-                {loading ? <CircularProgress size={24} color="inherit" /> : 'Set PIN & Sign In'}
+                {loading ? <CircularProgress size={24} color="inherit" /> : t('login.setPinSignIn')}
               </Button>
             </Box>
           )}
@@ -839,16 +847,16 @@ export default function LoginPage() {
             }}
           >
             <SupportAgent sx={{ fontSize: 16 }} />
-            Need help? Contact Support
+            {t('login.needHelp')}
           </MuiLink>
         </Box>
         <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.65)' }}>
           <MuiLink component={RouterLink} to="/terms" underline="hover" sx={{ color: 'rgba(255,255,255,0.85)' }}>
-            Terms &amp; Conditions
+            {t('login.terms')}
           </MuiLink>
           {' · '}
           <MuiLink component={RouterLink} to="/privacy-policy" underline="hover" sx={{ color: 'rgba(255,255,255,0.85)' }}>
-            Privacy Policy
+            {t('login.privacy')}
           </MuiLink>
         </Typography>
       </Box>

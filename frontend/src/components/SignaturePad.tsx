@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { Dialog, DialogTitle, DialogContent, DialogActions, Button, Box, Typography, CircularProgress } from '@mui/material';
 
+import { useTranslation } from 'react-i18next';
 const PAD_W = 560;
 const PAD_H = 240;
 
@@ -16,6 +17,7 @@ export default function SignaturePad({ open, title, saving, onClose, onSave }: {
   onClose: () => void;
   onSave: (dataUrl: string) => void;
 }) {
+  const { t } = useTranslation('widgets');
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const drawing = useRef(false);
   const [dirty, setDirty] = useState(false);
@@ -63,10 +65,10 @@ export default function SignaturePad({ open, title, saving, onClose, onSave }: {
 
   return (
     <Dialog open={open} onClose={saving ? undefined : onClose} maxWidth="sm" fullWidth>
-      <DialogTitle sx={{ pb: 1 }}>{title ?? 'Sign Voucher'}</DialogTitle>
+      <DialogTitle sx={{ pb: 1 }}>{title ?? t('sgTitle')}</DialogTitle>
       <DialogContent>
         <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
-          Sign with your finger inside the box, then tap Save.
+          {t('sgHint')}
         </Typography>
         <Box sx={{ border: '1.5px dashed', borderColor: 'divider', borderRadius: 2, overflow: 'hidden', bgcolor: '#fff', touchAction: 'none' }}>
           <Box
@@ -84,14 +86,14 @@ export default function SignaturePad({ open, title, saving, onClose, onSave }: {
         </Box>
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2 }}>
-        <Button onClick={clear} disabled={saving || !dirty}>Clear</Button>
-        <Button onClick={onClose} disabled={saving}>Cancel</Button>
+        <Button onClick={clear} disabled={saving || !dirty}>{t('sgClear')}</Button>
+        <Button onClick={onClose} disabled={saving}>{t('sgCancel')}</Button>
         <Button
           variant="contained"
           disabled={!dirty || saving}
           onClick={() => onSave(canvasRef.current!.toDataURL('image/png'))}
         >
-          {saving ? <CircularProgress size={20} /> : 'Save Signature'}
+          {saving ? <CircularProgress size={20} /> : t('sgSave')}
         </Button>
       </DialogActions>
     </Dialog>

@@ -40,11 +40,12 @@ import {
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { PaymentMode, PaymentStatus, isAdminRole } from '@hospital-erp/shared';
-import { formatCurrency, formatDate, STATUS_COLORS } from '../utils/enumOptions';
+import { formatCurrency, formatDate, STATUS_COLORS, enumLabel } from '../utils/enumOptions';
 import api, { extractErrorMessage } from '../config/api';
 import { useAuthStore } from '../stores/authStore';
 import { downloadFile } from '../utils/file';
 
+import { useTranslation } from 'react-i18next';
 const PAYMENT_MODES = Object.values(PaymentMode);
 
 interface POOption {
@@ -144,6 +145,7 @@ const voucherParty = (v: VoucherOption | null | undefined): string => {
 };
 
 export default function PaymentSheetsTab() {
+  const { t } = useTranslation('psheets');
   const queryClient = useQueryClient();
   const user = useAuthStore((s) => s.user);
   const [date, setDate] = useState(() => {
@@ -205,10 +207,10 @@ export default function PaymentSheetsTab() {
     mutationFn: async () => {
       const fd = new FormData();
       if (sourceType === 'PO') {
-        if (!selectedPO) throw new Error('Select a purchase order first');
+        if (!selectedPO) throw new Error(t('errSelectPo'));
         fd.append('poId', selectedPO.id);
       } else {
-        if (!selectedVoucher) throw new Error('Select a voucher first');
+        if (!selectedVoucher) throw new Error(t('errSelectVoucher'));
         fd.append('voucherId', selectedVoucher.id);
       }
       fd.append('date', date); // land the entry on the sheet's viewed day
@@ -232,7 +234,7 @@ export default function PaymentSheetsTab() {
       setSourceType('PO');
       setForm({ amount: '', paymentMode: PaymentMode.BANK_TRANSFER, reference: '', notes: '', status: PaymentStatus.PENDING });
       setFile(null);
-      setSuccessMsg('Payment sheet entry added.');
+      setSuccessMsg(t('okAdded'));
     },
     onError: (err) => setError(extractErrorMessage(err)),
   });
@@ -244,7 +246,7 @@ export default function PaymentSheetsTab() {
       // A paid entry must leave the register's payable totals immediately
       queryClient.invalidateQueries({ queryKey: ['/transaction-register'] });
       setConfirmApproveId(null);
-      setSuccessMsg('Entry marked done.');
+      setSuccessMsg(t('okDone'));
     },
     onError: (err) => setError(extractErrorMessage(err)),
   });
@@ -255,7 +257,7 @@ export default function PaymentSheetsTab() {
       queryClient.invalidateQueries({ queryKey });
       queryClient.invalidateQueries({ queryKey: ['/transaction-register'] });
       setConfirmDeleteId(null);
-      setSuccessMsg('Entry deleted.');
+      setSuccessMsg(t('okDeleted'));
     },
     onError: (err) => setError(extractErrorMessage(err)),
   });
@@ -274,7 +276,7 @@ export default function PaymentSheetsTab() {
       queryClient.invalidateQueries({ queryKey });
       queryClient.invalidateQueries({ queryKey: ['/transaction-register'] });
       setEditRow(null);
-      setSuccessMsg('Entry updated.');
+      setSuccessMsg(t('okUpdated'));
     },
     onError: (err) => setError(extractErrorMessage(err)),
   });
@@ -284,7 +286,7 @@ export default function PaymentSheetsTab() {
       api.put('/payment-sheets/narration', { date, narration }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey });
-      setSuccessMsg('Narration saved.');
+      setSuccessMsg(t('okNarration'));
     },
     onError: (err) => setError(extractErrorMessage(err)),
   });
@@ -380,7 +382,7 @@ export default function PaymentSheetsTab() {
       <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center', mb: 2 }} className="no-print">
         <TextField
           type="date"
-          label="Date"
+          label={t('date')}
           size="small"
           value={date}
           onChange={(e) => setDate(e.target.value)}
@@ -388,9 +390,9 @@ export default function PaymentSheetsTab() {
         />
         <Box sx={{ flex: 1 }} />
         <RefreshButton onClick={() => queryClient.invalidateQueries({ queryKey })} />
-        <Button variant="outlined" startIcon={<DownloadIcon />} onClick={handleExportPDF}>Export PDF</Button>
-        <Button variant="outlined" startIcon={<PrintIcon />} onClick={handlePrint}>Print</Button>
-        <Button variant="contained" startIcon={<AddIcon />} onClick={() => { setAddOpen(true); setSourceType('PO'); setSelectedPO(null); setPoSearch(''); setSelectedVoucher(null); setVoucherSearch(''); }}>Add Entry</Button>
+        <Button variant="outlined" startIcon={<DownloadIcon />} onClick={handleExportPDF}>{t('exportPdf')}</Button>
+        <Button variant="outlined" startIcon={<PrintIcon />} onClick={handlePrint}>{t('print')}</Button>
+        <Button variant="contained" startIcon={<AddIcon />} onClick={() => { setAddOpen(true); setSourceType('PO'); setSelectedPO(null); setPoSearch(''); setSelectedVoucher(null); setVoucherSearch(''); }}>{t('addEntry')}</Button>
       </Box>
 
       {/* Day summary — visible on print */}
@@ -398,32 +400,32 @@ export default function PaymentSheetsTab() {
         <CardContent>
           <Typography variant="h6">Payment Sheet — {formatDate(date)}</Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-            Daily register of payments made against approved purchase orders and vouchers.
+            {t('intro')}
           </Typography>
           <Divider sx={{ my: 1 }} />
           <Stack direction="row" spacing={4} flexWrap="wrap">
             <Box>
-              <Typography variant="caption" color="text.secondary">Entries</Typography>
+              <Typography variant="caption" color="text.secondary">{t('entries')}</Typography>
               <Typography variant="h6">{rows.length}</Typography>
             </Box>
             <Box>
-              <Typography variant="caption" color="text.secondary">Total Amount</Typography>
+              <Typography variant="caption" color="text.secondary">{t('totalAmount')}</Typography>
               <Typography variant="h6">{formatCurrency(grandTotal)}</Typography>
             </Box>
             <Box>
-              <Typography variant="caption" color="text.secondary">Total Paid Today</Typography>
+              <Typography variant="caption" color="text.secondary">{t('totalPaidToday')}</Typography>
               <Typography variant="h6">{formatCurrency(totalAmount)}</Typography>
             </Box>
             <Box>
-              <Typography variant="caption" color="text.secondary">Total Payable</Typography>
+              <Typography variant="caption" color="text.secondary">{t('totalPayable')}</Typography>
               <Typography variant="h6">{formatCurrency(payableAmount)}</Typography>
             </Box>
           </Stack>
           <Divider sx={{ my: 1.5 }} />
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} alignItems="flex-start" className="no-print">
             <TextField
-              label="Narration"
-              placeholder="e.g. reason for pending payments on this date"
+              label={t('narration')}
+              placeholder={t('narrationPh')}
               size="small"
               multiline
               minRows={1}
@@ -440,7 +442,7 @@ export default function PaymentSheetsTab() {
               disabled={!narrationDirty || narrationMutation.isPending}
               onClick={() => narrationMutation.mutate(narrationText.trim())}
             >
-              {narrationMutation.isPending ? 'Saving…' : 'Save Narration'}
+              {narrationMutation.isPending ? t('saving') : t('saveNarration')}
             </Button>
           </Stack>
         </CardContent>
@@ -452,14 +454,14 @@ export default function PaymentSheetsTab() {
           <Table size="small">
             <TableHead>
               <TableRow>
-                <TableCell sx={{ fontWeight: 600 }}>PO / Voucher</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Vendor / Particulars</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Amount</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Mode</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Reference</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Status</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Created By</TableCell>
-                <TableCell sx={{ fontWeight: 600 }} className="no-print">Actions</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>{t('poVoucher')}</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>{t('vendorParticulars')}</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>{t('amount')}</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>{t('mode')}</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>{t('reference')}</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>{t('status')}</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>{t('createdBy')}</TableCell>
+                <TableCell sx={{ fontWeight: 600 }} className="no-print">{t('actions')}</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -479,14 +481,14 @@ export default function PaymentSheetsTab() {
                   </TableCell>
                   <TableCell>{r.purchaseOrder ? r.purchaseOrder.vendor.name : voucherParty(r.voucher)}</TableCell>
                   <TableCell>{formatCurrency(r.amount)}</TableCell>
-                  <TableCell>{r.paymentMode}</TableCell>
+                  <TableCell>{enumLabel(r.paymentMode)}</TableCell>
                   <TableCell>{r.reference ?? '—'}</TableCell>
-                  <TableCell><Chip size="small" color={STATUS_COLORS[r.status] ?? 'default'} label={r.status} /></TableCell>
+                  <TableCell><Chip size="small" color={STATUS_COLORS[r.status] ?? 'default'} label={enumLabel(r.status)} /></TableCell>
                   <TableCell>{r.createdByUser.name}</TableCell>
                   <TableCell className="no-print">
                     <Stack direction="row" spacing={0.5}>
                       {(r.createdBy === user?.id || isAdminRole(user?.role ?? '')) && (
-                        <IconButton size="small" color="primary" title="Edit" onClick={() => openEdit(r)}>
+                        <IconButton size="small" color="primary" title={t('edit')} onClick={() => openEdit(r)}>
                           <EditIcon fontSize="small" />
                         </IconButton>
                       )}
@@ -495,19 +497,19 @@ export default function PaymentSheetsTab() {
                           <AttachFileIcon fontSize="small" />
                         </IconButton>
                       )}
-                      <IconButton size="small" title="Download PDF" onClick={() => downloadPdf(entryPdfPath(r.id), `payment-sheet-${r.purchaseOrder?.poNumber ?? r.voucher?.jvNumber ?? r.id}.pdf`)}>
+                      <IconButton size="small" title={t('downloadPdf')} onClick={() => downloadPdf(entryPdfPath(r.id), `payment-sheet-${r.purchaseOrder?.poNumber ?? r.voucher?.jvNumber ?? r.id}.pdf`)}>
                         <DownloadIcon fontSize="small" />
                       </IconButton>
-                      <IconButton size="small" title="Print" onClick={() => openPdf(entryPdfPath(r.id))}>
+                      <IconButton size="small" title={t('print')} onClick={() => openPdf(entryPdfPath(r.id))}>
                         <PrintIcon fontSize="small" />
                       </IconButton>
                       {r.status !== PaymentStatus.PAID && r.status !== 'APPROVED' && r.createdBy === user?.id && (
-                        <IconButton size="small" color="success" title="Mark paid" onClick={() => setConfirmApproveId(r.id)}>
+                        <IconButton size="small" color="success" title={t('markPaid')} onClick={() => setConfirmApproveId(r.id)}>
                           <CheckIcon fontSize="small" />
                         </IconButton>
                       )}
                       {r.status !== PaymentStatus.PAID && r.status !== 'APPROVED' && r.createdBy === user?.id && (
-                        <IconButton size="small" color="error" title="Delete" onClick={() => setConfirmDeleteId(r.id)}>
+                        <IconButton size="small" color="error" title={t('delete')} onClick={() => setConfirmDeleteId(r.id)}>
                           <DeleteIcon fontSize="small" />
                         </IconButton>
                       )}
@@ -522,19 +524,19 @@ export default function PaymentSheetsTab() {
 
       {/* Add Entry dialog — pick a purchase order or a voucher as the source */}
       <ResponsiveDialog open={addOpen} onClose={() => setAddOpen(false)} maxWidth="md" fullWidth>
-        <DialogTitle>Add Payment Sheet Entry</DialogTitle>
+        <DialogTitle>{t('addTitle')}</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
             <TextField
               select
-              label="Entry For"
+              label={t('entryFor')}
               size="small"
               value={sourceType}
               onChange={(e) => setSourceType(e.target.value as 'PO' | 'VOUCHER')}
               sx={{ maxWidth: 280 }}
             >
-              <MenuItem value="PO">Purchase Order</MenuItem>
-              <MenuItem value="VOUCHER">Voucher</MenuItem>
+              <MenuItem value="PO">{t('purchaseOrder')}</MenuItem>
+              <MenuItem value="VOUCHER">{t('voucher')}</MenuItem>
             </TextField>
 
             {sourceType === 'PO' ? (
@@ -555,7 +557,7 @@ export default function PaymentSheetsTab() {
                 </li>
               )}
               renderInput={(params) => (
-                <TextField {...params} label="Search Purchase Order" placeholder="PO number or vendor" required
+                <TextField {...params} label={t('searchPurchaseOrder')} placeholder={t('poOrVendor')} required
                   InputProps={{ ...params.InputProps, startAdornment: (<><InputAdornment position="start"><SearchIcon /></InputAdornment>{params.InputProps.startAdornment}</>) }}
                 />
               )}
@@ -564,17 +566,17 @@ export default function PaymentSheetsTab() {
 
             {selectedPO && (
               <Card variant="outlined" sx={{ p: 2 }}>
-                <Typography variant="subtitle2" gutterBottom>PO Details</Typography>
+                <Typography variant="subtitle2" gutterBottom>{t('poDetails')}</Typography>
                 <Stack direction="row" spacing={3} flexWrap="wrap">
-                  <Box><Typography variant="caption" color="text.secondary">PO Number</Typography><Typography>{selectedPO.poNumber}</Typography></Box>
-                  <Box><Typography variant="caption" color="text.secondary">Vendor</Typography><Typography>{selectedPO.vendor.name}</Typography></Box>
-                  <Box><Typography variant="caption" color="text.secondary">Grand Total</Typography><Typography>{formatCurrency(selectedPO.grandTotal)}</Typography></Box>
-                  <Box><Typography variant="caption" color="text.secondary">Net Payable</Typography><Typography>{formatCurrency(selectedPO.netPayable)}</Typography></Box>
+                  <Box><Typography variant="caption" color="text.secondary">{t('poNumber')}</Typography><Typography>{selectedPO.poNumber}</Typography></Box>
+                  <Box><Typography variant="caption" color="text.secondary">{t('vendor')}</Typography><Typography>{selectedPO.vendor.name}</Typography></Box>
+                  <Box><Typography variant="caption" color="text.secondary">{t('grandTotal')}</Typography><Typography>{formatCurrency(selectedPO.grandTotal)}</Typography></Box>
+                  <Box><Typography variant="caption" color="text.secondary">{t('netPayable')}</Typography><Typography>{formatCurrency(selectedPO.netPayable)}</Typography></Box>
                   {selectedPO.paymentType === 'ADVANCE' && Number(selectedPO.advanceAmount) > 0 && (
-                    <Box><Typography variant="caption" color="text.secondary">Advance Amount</Typography><Typography>{formatCurrency(Number(selectedPO.advanceAmount))}</Typography></Box>
+                    <Box><Typography variant="caption" color="text.secondary">{t('advanceAmount')}</Typography><Typography>{formatCurrency(Number(selectedPO.advanceAmount))}</Typography></Box>
                   )}
-                  <Box><Typography variant="caption" color="text.secondary">Payment Type</Typography><Typography>{selectedPO.paymentType}</Typography></Box>
-                  <Box><Typography variant="caption" color="text.secondary">PO Status</Typography><Typography>{selectedPO.status.replace(/_/g, ' ')}</Typography></Box>
+                  <Box><Typography variant="caption" color="text.secondary">{t('paymentType')}</Typography><Typography>{selectedPO.paymentType}</Typography></Box>
+                  <Box><Typography variant="caption" color="text.secondary">{t('poStatus')}</Typography><Typography>{selectedPO.status.replace(/_/g, ' ')}</Typography></Box>
                 </Stack>
               </Card>
             )}
@@ -597,7 +599,7 @@ export default function PaymentSheetsTab() {
                 </li>
               )}
               renderInput={(params) => (
-                <TextField {...params} label="Search Voucher" placeholder={`Voucher no. or description — showing ${formatDate(date)}`} required
+                <TextField {...params} label={t('searchVoucher')} placeholder={t('voucherPh', { d: formatDate(date) })} required
                   InputProps={{ ...params.InputProps, startAdornment: (<><InputAdornment position="start"><SearchIcon /></InputAdornment>{params.InputProps.startAdornment}</>) }}
                 />
               )}
@@ -606,127 +608,127 @@ export default function PaymentSheetsTab() {
 
             {selectedVoucher && (
               <Card variant="outlined" sx={{ p: 2 }}>
-                <Typography variant="subtitle2" gutterBottom>Voucher Details</Typography>
+                <Typography variant="subtitle2" gutterBottom>{t('voucherDetails')}</Typography>
                 <Stack direction="row" spacing={3} flexWrap="wrap">
-                  <Box><Typography variant="caption" color="text.secondary">Voucher No.</Typography><Typography>{selectedVoucher.jvNumber}</Typography></Box>
-                  <Box><Typography variant="caption" color="text.secondary">Type</Typography><Typography>{selectedVoucher.voucherType.replace(/_/g, ' ')}</Typography></Box>
-                  <Box><Typography variant="caption" color="text.secondary">Date</Typography><Typography>{formatDate(selectedVoucher.date)}</Typography></Box>
-                  <Box><Typography variant="caption" color="text.secondary">Particulars</Typography><Typography>{voucherParty(selectedVoucher)}</Typography></Box>
-                  <Box><Typography variant="caption" color="text.secondary">Amount</Typography><Typography>{formatCurrency(Number(selectedVoucher.totalDebit) || Number(selectedVoucher.totalCredit))}</Typography></Box>
-                  <Box><Typography variant="caption" color="text.secondary">Status</Typography><Typography>{selectedVoucher.status.replace(/_/g, ' ')}</Typography></Box>
+                  <Box><Typography variant="caption" color="text.secondary">{t('voucherNo')}</Typography><Typography>{selectedVoucher.jvNumber}</Typography></Box>
+                  <Box><Typography variant="caption" color="text.secondary">{t('type')}</Typography><Typography>{selectedVoucher.voucherType.replace(/_/g, ' ')}</Typography></Box>
+                  <Box><Typography variant="caption" color="text.secondary">{t('date')}</Typography><Typography>{formatDate(selectedVoucher.date)}</Typography></Box>
+                  <Box><Typography variant="caption" color="text.secondary">{t('particulars')}</Typography><Typography>{voucherParty(selectedVoucher)}</Typography></Box>
+                  <Box><Typography variant="caption" color="text.secondary">{t('amount')}</Typography><Typography>{formatCurrency(Number(selectedVoucher.totalDebit) || Number(selectedVoucher.totalCredit))}</Typography></Box>
+                  <Box><Typography variant="caption" color="text.secondary">{t('status')}</Typography><Typography>{selectedVoucher.status.replace(/_/g, ' ')}</Typography></Box>
                 </Stack>
               </Card>
             )}
             </>
             )}
 
-            <TextField label="Amount" type="number" size="small" required value={form.amount}
+            <TextField label={t('amount')} type="number" size="small" required value={form.amount}
               onChange={(e) => setForm({ ...form, amount: e.target.value })} />
 
-            <TextField select label="Payment Mode" size="small" value={form.paymentMode}
+            <TextField select label={t('paymentMode')} size="small" value={form.paymentMode}
               onChange={(e) => setForm({ ...form, paymentMode: e.target.value as PaymentMode })}>
-              {PAYMENT_MODES.map((m) => <MenuItem key={m} value={m}>{m}</MenuItem>)}
+              {PAYMENT_MODES.map((m) => <MenuItem key={m} value={m}>{enumLabel(m)}</MenuItem>)}
             </TextField>
 
-            <TextField select label="Status" size="small" value={form.status}
+            <TextField select label={t('status')} size="small" value={form.status}
               onChange={(e) => setForm({ ...form, status: e.target.value as PaymentStatus })}>
-              <MenuItem value={PaymentStatus.PENDING}>Pending</MenuItem>
-              <MenuItem value={PaymentStatus.PAID}>Paid</MenuItem>
-              <MenuItem value={PaymentStatus.ADVANCE_PAID}>Advance Paid</MenuItem>
+              <MenuItem value={PaymentStatus.PENDING}>{t('pending')}</MenuItem>
+              <MenuItem value={PaymentStatus.PAID}>{t('paid')}</MenuItem>
+              <MenuItem value={PaymentStatus.ADVANCE_PAID}>{t('advancePaid')}</MenuItem>
             </TextField>
 
-            <TextField label="Reference (cheque / UPI / txn no.)" size="small" value={form.reference}
+            <TextField label={t('refPh')} size="small" value={form.reference}
               onChange={(e) => setForm({ ...form, reference: e.target.value })} />
 
-            <TextField label="Notes" size="small" multiline rows={2} value={form.notes}
+            <TextField label={t('notes')} size="small" multiline rows={2} value={form.notes}
               onChange={(e) => setForm({ ...form, notes: e.target.value })} />
 
             <Button variant="outlined" component="label" startIcon={<AttachFileIcon />}>
-              {file ? file.name : 'Attach bill / receipt'}
+              {file ? file.name : t('attach')}
               <input type="file" hidden onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
             </Button>
           </Stack>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setAddOpen(false)}>Cancel</Button>
+          <Button onClick={() => setAddOpen(false)}>{t('cancel')}</Button>
           <Button variant="contained" startIcon={<ReceiptIcon />} disabled={!(sourceType === 'PO' ? selectedPO : selectedVoucher) || !form.amount || createMutation.isPending}
             onClick={() => createMutation.mutate()}>
-            {createMutation.isPending ? <CircularProgress size={20} /> : 'Save Entry'}
+            {createMutation.isPending ? <CircularProgress size={20} /> : t('saveEntry')}
           </Button>
         </DialogActions>
       </ResponsiveDialog>
 
       {/* Edit Entry dialog */}
       <ResponsiveDialog open={!!editRow} onClose={() => setEditRow(null)} maxWidth="sm" fullWidth>
-        <DialogTitle>Edit Payment Sheet Entry</DialogTitle>
+        <DialogTitle>{t('editTitle')}</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
             {editRow && (
               <Card variant="outlined" sx={{ p: 2 }}>
                 <Typography variant="subtitle2" gutterBottom>
                   {editRow.purchaseOrder
-                    ? `PO: ${editRow.purchaseOrder.poNumber} — ${editRow.purchaseOrder.vendor.name}`
-                    : `Voucher: ${editRow.voucher?.jvNumber ?? '—'} — ${voucherParty(editRow.voucher)}`}
+                    ? t('poLine', { n: editRow.purchaseOrder.poNumber, v: editRow.purchaseOrder.vendor.name })
+                    : t('voucherLine', { n: editRow.voucher?.jvNumber ?? '—', p: voucherParty(editRow.voucher) })}
                 </Typography>
               </Card>
             )}
-            <TextField label="Date" type="date" size="small" value={editForm.date}
+            <TextField label={t('date')} type="date" size="small" value={editForm.date}
               onChange={(e) => setEditForm({ ...editForm, date: e.target.value })}
               InputLabelProps={{ shrink: true }} />
-            <TextField label="Amount" type="number" size="small" required value={editForm.amount}
+            <TextField label={t('amount')} type="number" size="small" required value={editForm.amount}
               onChange={(e) => setEditForm({ ...editForm, amount: e.target.value })} />
-            <TextField select label="Payment Mode" size="small" value={editForm.paymentMode}
+            <TextField select label={t('paymentMode')} size="small" value={editForm.paymentMode}
               onChange={(e) => setEditForm({ ...editForm, paymentMode: e.target.value })}>
-              {PAYMENT_MODES.map((m) => <MenuItem key={m} value={m}>{m}</MenuItem>)}
+              {PAYMENT_MODES.map((m) => <MenuItem key={m} value={m}>{enumLabel(m)}</MenuItem>)}
             </TextField>
-            <TextField select label="Status" size="small" value={editForm.status}
+            <TextField select label={t('status')} size="small" value={editForm.status}
               onChange={(e) => setEditForm({ ...editForm, status: e.target.value })}>
-              <MenuItem value={PaymentStatus.PENDING}>Pending</MenuItem>
-              <MenuItem value={PaymentStatus.PAID}>Paid</MenuItem>
-              <MenuItem value={PaymentStatus.ADVANCE_PAID}>Advance Paid</MenuItem>
+              <MenuItem value={PaymentStatus.PENDING}>{t('pending')}</MenuItem>
+              <MenuItem value={PaymentStatus.PAID}>{t('paid')}</MenuItem>
+              <MenuItem value={PaymentStatus.ADVANCE_PAID}>{t('advancePaid')}</MenuItem>
             </TextField>
-            <TextField label="Reference (cheque / UPI / txn no.)" size="small" value={editForm.reference}
+            <TextField label={t('refPh')} size="small" value={editForm.reference}
               onChange={(e) => setEditForm({ ...editForm, reference: e.target.value })} />
-            <TextField label="Notes" size="small" multiline rows={2} value={editForm.notes}
+            <TextField label={t('notes')} size="small" multiline rows={2} value={editForm.notes}
               onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })} />
           </Stack>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setEditRow(null)}>Cancel</Button>
+          <Button onClick={() => setEditRow(null)}>{t('cancel')}</Button>
           <Button variant="contained" disabled={!editForm.amount || updateMutation.isPending}
             onClick={() => editRow && updateMutation.mutate(editRow.id)}>
-            {updateMutation.isPending ? <CircularProgress size={20} /> : 'Save Changes'}
+            {updateMutation.isPending ? <CircularProgress size={20} /> : t('saveChanges')}
           </Button>
         </DialogActions>
       </ResponsiveDialog>
 
       {/* Confirm: mark paid */}
       <ResponsiveDialog open={!!confirmApproveId} onClose={() => setConfirmApproveId(null)} maxWidth="xs" fullWidth>
-        <DialogTitle>Mark entry as paid?</DialogTitle>
+        <DialogTitle>{t('markPaidQ')}</DialogTitle>
         <DialogContent>
           <Typography variant="body2" color="text.secondary">
-            This confirms the payment was made and locks the entry from editing and deletion.
+            {t('markPaidNote')}
           </Typography>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setConfirmApproveId(null)}>Cancel</Button>
+          <Button onClick={() => setConfirmApproveId(null)}>{t('cancel')}</Button>
           <Button variant="contained" color="success" disabled={approveMutation.isPending}
             onClick={() => confirmApproveId && approveMutation.mutate(confirmApproveId)}>
-            {approveMutation.isPending ? <CircularProgress size={20} /> : 'Mark Paid'}
+            {approveMutation.isPending ? <CircularProgress size={20} /> : t('markPaidBtn')}
           </Button>
         </DialogActions>
       </ResponsiveDialog>
 
       {/* Confirm: delete */}
       <ResponsiveDialog open={!!confirmDeleteId} onClose={() => setConfirmDeleteId(null)} maxWidth="xs" fullWidth>
-        <DialogTitle>Delete this entry?</DialogTitle>
+        <DialogTitle>{t('deleteQ')}</DialogTitle>
         <DialogContent>
           <Typography variant="body2" color="text.secondary">
-            The payment sheet entry will be removed from the day's register. This cannot be undone.
+            {t('deleteNote')}
           </Typography>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setConfirmDeleteId(null)}>Cancel</Button>
+          <Button onClick={() => setConfirmDeleteId(null)}>{t('cancel')}</Button>
           <Button variant="contained" color="error" disabled={deleteMutation.isPending}
             onClick={() => confirmDeleteId && deleteMutation.mutate(confirmDeleteId)}>
             {deleteMutation.isPending ? <CircularProgress size={20} /> : 'Delete'}

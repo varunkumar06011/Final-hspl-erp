@@ -38,6 +38,7 @@ import {
   AccountBalance as BankIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { enumLabel } from '../utils/enumOptions';
 import api, { extractErrorMessage } from '../config/api';
 import ResponsiveDialog from '../components/ResponsiveDialog';
 import ResponsiveTable from '../components/ResponsiveTable';
@@ -47,6 +48,7 @@ import { formatCurrency, formatIndianNumber, formatDate, amountToWords, todayLoc
 import { LedgerGroup } from '@hospital-erp/shared';
 import { useDeepLinkRow } from '../hooks/useDeepLinkRow';
 
+import { useTranslation, Trans } from 'react-i18next';
 interface CashAccount {
   id: string;
   name: string;
@@ -73,15 +75,6 @@ interface BankAccount {
   currentBalance: number;
 }
 
-const TXN_TYPE_LABELS: Record<string, string> = {
-  IN: 'Cash In',
-  OUT: 'Cash Out',
-  TRANSFER_IN: 'Transfer In',
-  TRANSFER_OUT: 'Transfer Out',
-  REVERSAL_IN: 'Reversal In',
-  REVERSAL_OUT: 'Reversal Out',
-};
-
 const REF_TYPE_LABELS: Record<string, string> = {
   PAYMENT: 'Payment',
   JOURNAL_VOUCHER: 'Journal Voucher',
@@ -101,6 +94,7 @@ const TXN_TYPE_COLORS: Record<string, 'success' | 'error' | 'info' | 'warning' |
 };
 
 export default function CashAccountsPage() {
+  const { t: tr } = useTranslation('bankcash');
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(20);
   const [search, setSearch] = useState('');
@@ -283,7 +277,7 @@ export default function CashAccountsPage() {
 
   const handleSubmit = () => {
     if (!form.name || String(form.name).trim() === '') {
-      setError('Account name is required');
+      setError(tr('errName'));
       return;
     }
     setError('');
@@ -307,11 +301,11 @@ export default function CashAccountsPage() {
 
   const handleTxnSubmit = () => {
     if (!txnForm.amount || Number(txnForm.amount) <= 0) {
-      setError('Amount must be greater than 0');
+      setError(tr('errAmount'));
       return;
     }
     if (!txnForm.contraLedgerId) {
-      setError(txnType === 'IN' ? 'Select the ledger the money is coming from' : 'Select the ledger the money is going to');
+      setError(txnType === 'IN' ? tr('errFrom') : tr('errTo'));
       return;
     }
     setError('');
@@ -332,15 +326,15 @@ export default function CashAccountsPage() {
 
   const handleTransferSubmit = () => {
     if (!transferForm.fromAccountId || !transferForm.toAccountId) {
-      setError('Select both accounts');
+      setError(tr('errBoth'));
       return;
     }
     if (transferForm.fromAccountId === transferForm.toAccountId) {
-      setError('Cannot transfer to the same account');
+      setError(tr('errSame'));
       return;
     }
     if (!transferForm.amount || Number(transferForm.amount) <= 0) {
-      setError('Amount must be greater than 0');
+      setError(tr('errAmount'));
       return;
     }
     setError('');
@@ -363,11 +357,11 @@ export default function CashAccountsPage() {
 
   const handleBankCashSubmit = () => {
     if (!bankCashForm.bankAccountId || !bankCashForm.cashAccountId) {
-      setError('Select both bank and cash accounts');
+      setError(tr('errBankCash'));
       return;
     }
     if (!bankCashForm.amount || Number(bankCashForm.amount) <= 0) {
-      setError('Amount must be greater than 0');
+      setError(tr('errAmount'));
       return;
     }
     setError('');
@@ -394,14 +388,14 @@ export default function CashAccountsPage() {
     <Box sx={{ minWidth: 0, overflow: 'hidden' }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: { xs: 'flex-start', sm: 'center' }, mb: 2, flexWrap: 'wrap', gap: 1 }}>
         <Typography variant="h5" fontWeight={600} sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' } }}>
-          Cash Accounts
+          {tr('cashTitle')}
         </Typography>
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
           <RefreshButton onClick={() => refetch()} />
-          <Button variant="outlined" startIcon={<BankIcon />} onClick={() => openBankCash('BANK_TO_CASH')}>Bank → Cash</Button>
-          <Button variant="outlined" startIcon={<CashIcon />} onClick={() => openBankCash('CASH_TO_BANK')}>Cash → Bank</Button>
-          <Button variant="outlined" startIcon={<TransferIcon />} onClick={openTransfer}>Transfer</Button>
-          <Button variant="contained" startIcon={<AddIcon />} onClick={openCreate}>New Account</Button>
+          <Button variant="outlined" startIcon={<BankIcon />} onClick={() => openBankCash('BANK_TO_CASH')}>{tr('bankToCash')}</Button>
+          <Button variant="outlined" startIcon={<CashIcon />} onClick={() => openBankCash('CASH_TO_BANK')}>{tr('cashToBank')}</Button>
+          <Button variant="outlined" startIcon={<TransferIcon />} onClick={openTransfer}>{tr('transfer')}</Button>
+          <Button variant="contained" startIcon={<AddIcon />} onClick={openCreate}>{tr('newAccount')}</Button>
         </Box>
       </Box>
 
@@ -411,7 +405,7 @@ export default function CashAccountsPage() {
         <Box sx={{ p: 2 }}>
           <TextField
             size="small"
-            placeholder="Search cash accounts..."
+            placeholder={tr('searchCash')}
             value={search}
             onChange={(e) => { setSearch(e.target.value); setPage(0); }}
             InputProps={{ startAdornment: (<InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment>) }}
@@ -424,11 +418,11 @@ export default function CashAccountsPage() {
           <Table size="small" sx={{ '@media (min-width: 900px)': { minWidth: 'max-content', '& .MuiTableCell-root': { whiteSpace: 'nowrap' } } }}>
             <TableHead>
               <TableRow>
-                <TableCell sx={{ fontWeight: 600 }}>Account Name</TableCell>
-                <TableCell sx={{ fontWeight: 600 }} align="right">Opening</TableCell>
-                <TableCell sx={{ fontWeight: 600 }} align="right">Current Balance</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Status</TableCell>
-                <TableCell align="right" sx={{ fontWeight: 600 }}>Actions</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>{tr('accountName')}</TableCell>
+                <TableCell sx={{ fontWeight: 600 }} align="right">{tr('opening')}</TableCell>
+                <TableCell sx={{ fontWeight: 600 }} align="right">{tr('currentBalance')}</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>{tr('status')}</TableCell>
+                <TableCell align="right" sx={{ fontWeight: 600 }}>{tr('actions')}</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -436,27 +430,27 @@ export default function CashAccountsPage() {
                 <TableRow><TableCell colSpan={5} align="center" sx={{ py: 4 }}><CircularProgress size={32} /></TableCell></TableRow>
               ) : isError ? (
                 <TableRow><TableCell colSpan={5} align="center" sx={{ py: 4 }}>
-                  <Alert severity="error" sx={{ mb: 1 }}>Failed to load data.</Alert>
-                  <Button size="small" onClick={() => refetch()} startIcon={<RefreshIcon />}>Retry</Button>
+                  <Alert severity="error" sx={{ mb: 1 }}>{tr('errLoad')}</Alert>
+                  <Button size="small" onClick={() => refetch()} startIcon={<RefreshIcon />}>{tr('retry')}</Button>
                 </TableCell></TableRow>
               ) : rows.length === 0 ? (
                 <TableRow><TableCell colSpan={5} align="center" sx={{ py: 4 }}>
-                  <Typography color="text.secondary">No cash accounts found. Create "Main Cash" and "Site Cash" to get started.</Typography>
+                  <Typography color="text.secondary">{tr('noCash')}</Typography>
                 </TableCell></TableRow>
               ) : (
                 rows.map((row) => (
                   <TableRow key={row.id} hover ref={rowRef(row.id)} sx={{ ...(highlightId === row.id && { bgcolor: 'warning.light', '&:hover': { bgcolor: 'warning.light' } }) }}>
-                    <TableCell data-label="Account Name" sx={{ fontWeight: 600 }}>{row.name}</TableCell>
-                    <TableCell data-label="Opening" align="right">{formatCurrency(row.openingBalance)}</TableCell>
-                    <TableCell data-label="Current Balance" align="right" sx={{ fontWeight: 600, color: 'success.main' }}>{formatCurrency(row.currentBalance)}</TableCell>
-                    <TableCell data-label="Status"><Chip label={row.isActive ? 'Active' : 'Inactive'} size="small" color={row.isActive ? 'success' : 'default'} /></TableCell>
-                    <TableCell data-label="Actions" align="right">
+                    <TableCell data-label={tr('accountName')} sx={{ fontWeight: 600 }}>{row.name}</TableCell>
+                    <TableCell data-label={tr('opening')} align="right">{formatCurrency(row.openingBalance)}</TableCell>
+                    <TableCell data-label={tr('currentBalance')} align="right" sx={{ fontWeight: 600, color: 'success.main' }}>{formatCurrency(row.currentBalance)}</TableCell>
+                    <TableCell data-label={tr('status')}><Chip label={row.isActive ? tr('active') : tr('inactive')} size="small" color={row.isActive ? 'success' : 'default'} /></TableCell>
+                    <TableCell data-label={tr('actions')} align="right">
                       <Stack direction="row" spacing={0.5} justifyContent="flex-end">
-                        <IconButton size="small" title="Statement" onClick={() => { setStatementAccountId(row.id); setStmtPage(0); }}><StatementIcon fontSize="small" /></IconButton>
-                        <IconButton size="small" title="Cash In" onClick={() => openTxnDialog(row.id, 'IN')}><InIcon fontSize="small" color="success" /></IconButton>
-                        <IconButton size="small" title="Cash Out" onClick={() => openTxnDialog(row.id, 'OUT')}><OutIcon fontSize="small" color="error" /></IconButton>
-                        <IconButton size="small" title="Edit" onClick={() => openEdit(row)}><EditIcon fontSize="small" /></IconButton>
-                        <IconButton size="small" title="Delete" onClick={() => setDeleteConfirm(row.id)}><DeleteIcon fontSize="small" /></IconButton>
+                        <IconButton size="small" title={tr('statement')} onClick={() => { setStatementAccountId(row.id); setStmtPage(0); }}><StatementIcon fontSize="small" /></IconButton>
+                        <IconButton size="small" title={tr('cashIn')} onClick={() => openTxnDialog(row.id, 'IN')}><InIcon fontSize="small" color="success" /></IconButton>
+                        <IconButton size="small" title={tr('cashOut')} onClick={() => openTxnDialog(row.id, 'OUT')}><OutIcon fontSize="small" color="error" /></IconButton>
+                        <IconButton size="small" title={tr('edit')} onClick={() => openEdit(row)}><EditIcon fontSize="small" /></IconButton>
+                        <IconButton size="small" title={tr('delete')} onClick={() => setDeleteConfirm(row.id)}><DeleteIcon fontSize="small" /></IconButton>
                       </Stack>
                     </TableCell>
                   </TableRow>
@@ -480,14 +474,14 @@ export default function CashAccountsPage() {
 
       {/* Create/Edit dialog */}
       <ResponsiveDialog open={dialogOpen} onClose={closeDialog} maxWidth="xs" fullWidth>
-        <DialogTitle>{editing ? 'Edit Cash Account' : 'New Cash Account'}</DialogTitle>
+        <DialogTitle>{editing ? tr('editCash') : tr('newCash')}</DialogTitle>
         <DialogContent>
           {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
-            <TextField label="Account Name" value={form.name ?? ''} onChange={(e) => setForm({ ...form, name: e.target.value })} required size="small" placeholder="e.g. Main Cash, Site Cash" />
+            <TextField label={tr('accountName')} value={form.name ?? ''} onChange={(e) => setForm({ ...form, name: e.target.value })} required size="small" placeholder={tr('nameHint')} />
             {!editing && (
               <TextField
-                label="Opening Balance"
+                label={tr('openingBalance')}
                 type="text"
                 value={formatIndianNumber(form.openingBalance ?? '')}
                 onChange={(e) => setForm({ ...form, openingBalance: e.target.value.replace(/,/g, '') })}
@@ -496,31 +490,31 @@ export default function CashAccountsPage() {
               />
             )}
             {editing && (
-              <TextField select label="Status" value={form.isActive ?? true} onChange={(e) => setForm({ ...form, isActive: e.target.value === 'true' })} size="small">
-                <MenuItem value="true">Active</MenuItem>
-                <MenuItem value="false">Inactive</MenuItem>
+              <TextField select label={tr('status')} value={form.isActive ?? true} onChange={(e) => setForm({ ...form, isActive: e.target.value === 'true' })} size="small">
+                <MenuItem value="true">{tr('active')}</MenuItem>
+                <MenuItem value="false">{tr('inactive')}</MenuItem>
               </TextField>
             )}
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={closeDialog}>Cancel</Button>
+          <Button onClick={closeDialog}>{tr('cancel')}</Button>
           <Button variant="contained" onClick={handleSubmit} disabled={createMutation.isPending || updateMutation.isPending}>
-            {createMutation.isPending || updateMutation.isPending ? <CircularProgress size={20} /> : editing ? 'Update' : 'Create'}
+            {createMutation.isPending || updateMutation.isPending ? <CircularProgress size={20} /> : editing ? tr('update') : tr('create')}
           </Button>
         </DialogActions>
       </ResponsiveDialog>
 
       {/* Cash IN/OUT dialog */}
       <ResponsiveDialog open={txnDialogOpen} onClose={() => setTxnDialogOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>{txnType === 'IN' ? 'Cash In (Receipt)' : 'Cash Out (Payment)'}</DialogTitle>
+        <DialogTitle>{txnType === 'IN' ? tr('cashInRec') : tr('cashOutPay')}</DialogTitle>
         <DialogContent>
           {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
             {/* Contra ledger — the other side of the double entry */}
             <Box>
               <Typography variant="subtitle2" sx={{ mb: 1 }}>
-                {txnType === 'IN' ? 'Received From (Ledger)' : 'Paid To (Ledger)'}
+                {txnType === 'IN' ? tr('recvFrom') : tr('paidTo')}
               </Typography>
               <LedgerAutocomplete
                 value={String(txnForm.contraLedgerId ?? '')}
@@ -530,13 +524,13 @@ export default function CashAccountsPage() {
                   ? [LedgerGroup.SUNDRY_DEBTORS, LedgerGroup.INDIRECT_INCOME, LedgerGroup.DIRECT_INCOME, LedgerGroup.SALES, LedgerGroup.CAPITAL_ACCOUNT, LedgerGroup.BANK]
                   : [LedgerGroup.SUNDRY_CREDITORS, LedgerGroup.DIRECT_EXPENSE, LedgerGroup.INDIRECT_EXPENSE, LedgerGroup.PURCHASE, LedgerGroup.BANK]
                 }
-                placeholder={txnType === 'IN' ? 'Type ledger name (source of money)...' : 'Type ledger name (where money goes)...'}
+                placeholder={txnType === 'IN' ? tr('phSource') : tr('phDest')}
                 onError={(msg) => setError(msg)}
               />
             </Box>
 
             <Box>
-              <Typography variant="subtitle2" sx={{ mb: 1 }}>Amount</Typography>
+              <Typography variant="subtitle2" sx={{ mb: 1 }}>{tr('amount')}</Typography>
               <TextField
                 fullWidth
                 type="text"
@@ -546,7 +540,7 @@ export default function CashAccountsPage() {
                 size="small"
                 inputProps={{ style: { textAlign: 'right' }, inputMode: 'decimal' }}
                 InputProps={{ startAdornment: <InputAdornment position="start">₹</InputAdornment> }}
-                placeholder="0.00"
+                placeholder={tr('000')}
               />
               {Number(txnForm.amount) > 0 && (
                 <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, fontStyle: 'italic' }}>
@@ -555,35 +549,35 @@ export default function CashAccountsPage() {
               )}
             </Box>
 
-            <TextField label="Date" type="date" value={txnForm.date ?? ''} onChange={(e) => setTxnForm({ ...txnForm, date: e.target.value })} size="small" InputLabelProps={{ shrink: true }} inputProps={{ max: todayLocalDate() }} />
+            <TextField label={tr('date')} type="date" value={txnForm.date ?? ''} onChange={(e) => setTxnForm({ ...txnForm, date: e.target.value })} size="small" InputLabelProps={{ shrink: true }} inputProps={{ max: todayLocalDate() }} />
             <Box>
-              <TextField label="Description" value={txnForm.description ?? ''} onChange={(e) => setTxnForm({ ...txnForm, description: e.target.value })} size="small" multiline rows={2} fullWidth />
-              <FormHelperText>Format: <strong>Payee · Item · Ref</strong> (leave blank if not needed)</FormHelperText>
+              <TextField label={tr('description')} value={txnForm.description ?? ''} onChange={(e) => setTxnForm({ ...txnForm, description: e.target.value })} size="small" multiline rows={2} fullWidth />
+              <FormHelperText><Trans t={tr} i18nKey="formatHelp" components={{ b: <strong /> }} /></FormHelperText>
             </Box>
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setTxnDialogOpen(false)}>Cancel</Button>
+          <Button onClick={() => setTxnDialogOpen(false)}>{tr('cancel')}</Button>
           <Button variant="contained" onClick={handleTxnSubmit} disabled={txnMutation.isPending}>
-            {txnMutation.isPending ? <CircularProgress size={20} /> : txnType === 'IN' ? 'Add Cash' : 'Remove Cash'}
+            {txnMutation.isPending ? <CircularProgress size={20} /> : txnType === 'IN' ? tr('addCash') : tr('removeCash')}
           </Button>
         </DialogActions>
       </ResponsiveDialog>
 
       {/* Cash-to-cash transfer dialog */}
       <ResponsiveDialog open={transferOpen} onClose={() => setTransferOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Transfer Between Cash Accounts</DialogTitle>
+        <DialogTitle>{tr('xferCashTitle')}</DialogTitle>
         <DialogContent>
           {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
-            <TextField select label="From Account" value={transferForm.fromAccountId ?? ''} onChange={(e) => setTransferForm({ ...transferForm, fromAccountId: e.target.value })} size="small">
+            <TextField select label={tr('fromAccount')} value={transferForm.fromAccountId ?? ''} onChange={(e) => setTransferForm({ ...transferForm, fromAccountId: e.target.value })} size="small">
               {rows.map((acc) => <MenuItem key={acc.id} value={acc.id}>{acc.name} ({formatCurrency(acc.currentBalance)})</MenuItem>)}
             </TextField>
-            <TextField select label="To Account" value={transferForm.toAccountId ?? ''} onChange={(e) => setTransferForm({ ...transferForm, toAccountId: e.target.value })} size="small">
+            <TextField select label={tr('toAccount')} value={transferForm.toAccountId ?? ''} onChange={(e) => setTransferForm({ ...transferForm, toAccountId: e.target.value })} size="small">
               {rows.map((acc) => <MenuItem key={acc.id} value={acc.id}>{acc.name} ({formatCurrency(acc.currentBalance)})</MenuItem>)}
             </TextField>
             <TextField
-              label="Amount"
+              label={tr('amount')}
               type="text"
               value={formatIndianNumber(transferForm.amount ?? '')}
               onChange={(e) => setTransferForm({ ...transferForm, amount: e.target.value.replace(/,/g, '') })}
@@ -591,15 +585,15 @@ export default function CashAccountsPage() {
               size="small"
               InputProps={{ startAdornment: <InputAdornment position="start">₹</InputAdornment> }}
             />
-            <TextField label="Date" type="date" value={transferForm.date ?? ''} onChange={(e) => setTransferForm({ ...transferForm, date: e.target.value })} size="small" InputLabelProps={{ shrink: true }} inputProps={{ max: todayLocalDate() }} />
+            <TextField label={tr('date')} type="date" value={transferForm.date ?? ''} onChange={(e) => setTransferForm({ ...transferForm, date: e.target.value })} size="small" InputLabelProps={{ shrink: true }} inputProps={{ max: todayLocalDate() }} />
             <Box>
-              <TextField label="Description" value={transferForm.description ?? ''} onChange={(e) => setTransferForm({ ...transferForm, description: e.target.value })} size="small" multiline rows={2} fullWidth />
-              <FormHelperText>Format: <strong>Payee · Item · Ref</strong> (leave blank if not needed)</FormHelperText>
+              <TextField label={tr('description')} value={transferForm.description ?? ''} onChange={(e) => setTransferForm({ ...transferForm, description: e.target.value })} size="small" multiline rows={2} fullWidth />
+              <FormHelperText><Trans t={tr} i18nKey="formatHelp" components={{ b: <strong /> }} /></FormHelperText>
             </Box>
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setTransferOpen(false)}>Cancel</Button>
+          <Button onClick={() => setTransferOpen(false)}>{tr('cancel')}</Button>
           <Button variant="contained" onClick={handleTransferSubmit} disabled={transferMutation.isPending}>
             {transferMutation.isPending ? <CircularProgress size={20} /> : 'Transfer'}
           </Button>
@@ -608,18 +602,18 @@ export default function CashAccountsPage() {
 
       {/* Bank↔Cash transfer dialog */}
       <ResponsiveDialog open={bankCashOpen} onClose={() => setBankCashOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>{bankCashDirection === 'BANK_TO_CASH' ? 'Bank → Cash (Withdraw)' : 'Cash → Bank (Deposit)'}</DialogTitle>
+        <DialogTitle>{bankCashDirection === 'BANK_TO_CASH' ? tr('b2cTitle') : tr('c2bTitle')}</DialogTitle>
         <DialogContent>
           {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
-            <TextField select label="Bank Account" value={bankCashForm.bankAccountId ?? ''} onChange={(e) => setBankCashForm({ ...bankCashForm, bankAccountId: e.target.value })} size="small">
+            <TextField select label={tr('bankAccount')} value={bankCashForm.bankAccountId ?? ''} onChange={(e) => setBankCashForm({ ...bankCashForm, bankAccountId: e.target.value })} size="small">
               {bankAccounts.map((acc) => <MenuItem key={acc.id} value={acc.id}>{acc.accountName} ({formatCurrency(acc.currentBalance)})</MenuItem>)}
             </TextField>
-            <TextField select label="Cash Account" value={bankCashForm.cashAccountId ?? ''} onChange={(e) => setBankCashForm({ ...bankCashForm, cashAccountId: e.target.value })} size="small">
+            <TextField select label={tr('cashAccount')} value={bankCashForm.cashAccountId ?? ''} onChange={(e) => setBankCashForm({ ...bankCashForm, cashAccountId: e.target.value })} size="small">
               {rows.map((acc) => <MenuItem key={acc.id} value={acc.id}>{acc.name} ({formatCurrency(acc.currentBalance)})</MenuItem>)}
             </TextField>
             <TextField
-              label="Amount"
+              label={tr('amount')}
               type="text"
               value={formatIndianNumber(bankCashForm.amount ?? '')}
               onChange={(e) => setBankCashForm({ ...bankCashForm, amount: e.target.value.replace(/,/g, '') })}
@@ -627,17 +621,17 @@ export default function CashAccountsPage() {
               size="small"
               InputProps={{ startAdornment: <InputAdornment position="start">₹</InputAdornment> }}
             />
-            <TextField label="Date" type="date" value={bankCashForm.date ?? ''} onChange={(e) => setBankCashForm({ ...bankCashForm, date: e.target.value })} size="small" InputLabelProps={{ shrink: true }} inputProps={{ max: todayLocalDate() }} />
+            <TextField label={tr('date')} type="date" value={bankCashForm.date ?? ''} onChange={(e) => setBankCashForm({ ...bankCashForm, date: e.target.value })} size="small" InputLabelProps={{ shrink: true }} inputProps={{ max: todayLocalDate() }} />
             <Box>
-              <TextField label="Description" value={bankCashForm.description ?? ''} onChange={(e) => setBankCashForm({ ...bankCashForm, description: e.target.value })} size="small" multiline rows={2} fullWidth />
-              <FormHelperText>Format: <strong>Payee · Item · Ref</strong> (leave blank if not needed)</FormHelperText>
+              <TextField label={tr('description')} value={bankCashForm.description ?? ''} onChange={(e) => setBankCashForm({ ...bankCashForm, description: e.target.value })} size="small" multiline rows={2} fullWidth />
+              <FormHelperText><Trans t={tr} i18nKey="formatHelp" components={{ b: <strong /> }} /></FormHelperText>
             </Box>
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setBankCashOpen(false)}>Cancel</Button>
+          <Button onClick={() => setBankCashOpen(false)}>{tr('cancel')}</Button>
           <Button variant="contained" onClick={handleBankCashSubmit} disabled={bankCashMutation.isPending}>
-            {bankCashMutation.isPending ? <CircularProgress size={20} /> : bankCashDirection === 'BANK_TO_CASH' ? 'Withdraw to Cash' : 'Deposit to Bank'}
+            {bankCashMutation.isPending ? <CircularProgress size={20} /> : bankCashDirection === 'BANK_TO_CASH' ? tr('withdrawCash') : tr('depositBank')}
           </Button>
         </DialogActions>
       </ResponsiveDialog>
@@ -646,7 +640,7 @@ export default function CashAccountsPage() {
       <ResponsiveDialog open={!!statementAccountId} onClose={() => setStatementAccountId(null)} maxWidth="md" fullWidth>
         <DialogTitle>
           <Stack direction="row" alignItems="center" gap={1}>
-            <CashIcon /><Typography variant="h6">Cash Statement</Typography>
+            <CashIcon /><Typography variant="h6">{tr('cashStatement')}</Typography>
           </Stack>
         </DialogTitle>
         <DialogContent>
@@ -660,30 +654,30 @@ export default function CashAccountsPage() {
             <Table size="small">
               <TableHead>
                 <TableRow>
-                  <TableCell sx={{ fontWeight: 600 }}>Date</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>Type</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }} align="right">Amount</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }} align="right">Balance After</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>Description</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>Ref</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>{tr('date')}</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>{tr('type')}</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }} align="right">{tr('amount')}</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }} align="right">{tr('balanceAfter')}</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>{tr('description')}</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>{tr('ref')}</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
                 {stmtLoading ? (
                   <TableRow><TableCell colSpan={6} align="center"><CircularProgress size={24} /></TableCell></TableRow>
                 ) : stmtRows.length === 0 ? (
-                  <TableRow><TableCell colSpan={6} align="center"><Typography color="text.secondary">No transactions</Typography></TableCell></TableRow>
+                  <TableRow><TableCell colSpan={6} align="center"><Typography color="text.secondary">{tr('noTransactions')}</Typography></TableCell></TableRow>
                 ) : (
                   stmtRows.map((txn) => (
                     <TableRow key={txn.id} hover>
-                      <TableCell data-label="Date">{formatDate(txn.date)}</TableCell>
-                      <TableCell data-label="Type"><Chip label={TXN_TYPE_LABELS[txn.type] ?? txn.type} size="small" color={TXN_TYPE_COLORS[txn.type] ?? 'default'} /></TableCell>
-                      <TableCell data-label="Amount" align="right" sx={{ color: ['IN', 'TRANSFER_IN', 'REVERSAL_IN'].includes(txn.type) ? 'success.main' : 'error.main', fontWeight: 600 }}>
+                      <TableCell data-label={tr('date')}>{formatDate(txn.date)}</TableCell>
+                      <TableCell data-label={tr('type')}><Chip label={enumLabel(txn.type)} size="small" color={TXN_TYPE_COLORS[txn.type] ?? 'default'} /></TableCell>
+                      <TableCell data-label={tr('amount')} align="right" sx={{ color: ['IN', 'TRANSFER_IN', 'REVERSAL_IN'].includes(txn.type) ? 'success.main' : 'error.main', fontWeight: 600 }}>
                         {['IN', 'TRANSFER_IN', 'REVERSAL_IN'].includes(txn.type) ? '+' : '−'}{formatCurrency(txn.amount)}
                       </TableCell>
-                      <TableCell data-label="Balance After" align="right">{formatCurrency(txn.balanceAfter)}</TableCell>
-                      <TableCell data-label="Description">{txn.description || '—'}</TableCell>
-                      <TableCell data-label="Ref"><Chip label={REF_TYPE_LABELS[txn.referenceType] ?? txn.referenceType} size="small" variant="outlined" /></TableCell>
+                      <TableCell data-label={tr('balanceAfter')} align="right">{formatCurrency(txn.balanceAfter)}</TableCell>
+                      <TableCell data-label={tr('description')}>{txn.description || '—'}</TableCell>
+                      <TableCell data-label={tr('ref')}><Chip label={tr(`ref_${txn.referenceType}`, { defaultValue: REF_TYPE_LABELS[txn.referenceType] ?? txn.referenceType })} size="small" variant="outlined" /></TableCell>
                     </TableRow>
                   ))
                 )}
@@ -702,17 +696,17 @@ export default function CashAccountsPage() {
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setStatementAccountId(null)}>Close</Button>
+          <Button onClick={() => setStatementAccountId(null)}>{tr('close')}</Button>
         </DialogActions>
       </ResponsiveDialog>
 
       {/* Delete confirmation */}
       <ResponsiveDialog open={!!deleteConfirm} onClose={() => setDeleteConfirm(null)} maxWidth="xs" fullWidth>
-        <DialogTitle>Delete Cash Account?</DialogTitle>
-        <DialogContent><Typography>This will soft-delete the account. Transactions will be preserved.</Typography></DialogContent>
+        <DialogTitle>{tr('delCashQ')}</DialogTitle>
+        <DialogContent><Typography>{tr('deleteNote')}</Typography></DialogContent>
         <DialogActions>
-          <Button onClick={() => setDeleteConfirm(null)}>Cancel</Button>
-          <Button color="error" variant="contained" onClick={() => deleteConfirm && deleteMutation.mutate(deleteConfirm)} disabled={deleteMutation.isPending}>Delete</Button>
+          <Button onClick={() => setDeleteConfirm(null)}>{tr('cancel')}</Button>
+          <Button color="error" variant="contained" onClick={() => deleteConfirm && deleteMutation.mutate(deleteConfirm)} disabled={deleteMutation.isPending}>{tr('delete')}</Button>
         </DialogActions>
       </ResponsiveDialog>
     </Box>

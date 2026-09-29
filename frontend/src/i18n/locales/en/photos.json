@@ -1,0 +1,17 @@
+{
+  "title": "Site Photos",
+  "uploadPhoto": "Upload Photo",
+  "image": "Image",
+  "caption": "Caption",
+  "tag": "Tag",
+  "zone": "Zone",
+  "date": "Date",
+  "none": "No photos found",
+  "cancel": "Cancel",
+  "search": "Search photos...",
+  "errType": "Photo must be a JPEG, PNG, or WebP image smaller than 50 MB",
+  "fileSelected": "✓ File Selected",
+  "chooseImage": "Choose Image",
+  "upload": "Upload",
+  "sitePhoto": "Site Photo"
+}

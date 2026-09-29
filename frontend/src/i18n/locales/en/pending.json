@@ -1,0 +1,32 @@
+{
+  "title": {
+    "payments": "Pending Payments",
+    "quotations": "Pending Quotations",
+    "pos": "Pending Purchase Orders",
+    "invoices": "Pending Invoices",
+    "mprs": "Pending Material Purchase Requests"
+  },
+  "entity": {
+    "payments": "Payment Request",
+    "quotations": "Quotation",
+    "pos": "Purchase Order",
+    "invoices": "Invoice",
+    "mprs": "Material Purchase Request"
+  },
+  "noneTitle": "No {{title}}",
+  "count_one": "{{count}} pending record",
+  "count_other": "{{count}} pending records",
+  "errLoad": "Failed to load pending records. Please try again.",
+  "retry": "Retry",
+  "vendor": "Vendor",
+  "amount": "Amount",
+  "lessLine": "  Less: {{reason}}",
+  "totalDeductions": "Total Deductions",
+  "netPayable": "Net Payable",
+  "date": "Date",
+  "view": "View",
+  "approve": "Approve",
+  "reject": "Reject",
+  "close": "Close",
+  "allTasks": "All Pending Tasks"
+}

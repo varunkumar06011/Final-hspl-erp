@@ -1,0 +1,18 @@
+{
+  "title": "Asset Management",
+  "exportCsv": "Export CSV",
+  "assetItems": "Asset Items",
+  "totalUnits": "Total Units",
+  "warrantyExpiring30d": "Warranty Expiring (30d)",
+  "amcExpiring30d": "AMC Expiring (30d)",
+  "units": "Units",
+  "location": "Location",
+  "name": "Name",
+  "sku": "SKU",
+  "category": "Category",
+  "actions": "Actions",
+  "search": "Search asset items by name or SKU...",
+  "viewUnits": "View units",
+  "uncat": "Uncategorized",
+  "totalValue": "Total Value: ₹{{v}}"
+}

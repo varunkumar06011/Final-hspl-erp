@@ -42,6 +42,7 @@ import { downloadFile } from '../utils/file';
 import ResponsiveTable from '../components/ResponsiveTable';
 import RefreshButton from '../components/RefreshButton';
 
+import { useTranslation } from 'react-i18next';
 interface DocumentRow {
   id: string;
   name: string;
@@ -56,6 +57,7 @@ interface DocumentRow {
 }
 
 export default function DocumentsPage() {
+  const { t: tr } = useTranslation('documents');
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(20);
   const [search, setSearch] = useState('');
@@ -90,7 +92,7 @@ export default function DocumentsPage() {
   const createMutation = useMutation({
     mutationFn: async () => {
       const formData = new FormData();
-      if (!selectedFile) throw new Error('No file selected');
+      if (!selectedFile) throw new Error(tr('errNoFile'));
       formData.append('file', selectedFile);
       formData.append('name', String(form.name ?? ''));
       if (form.description) formData.append('description', String(form.description));
@@ -105,7 +107,7 @@ export default function DocumentsPage() {
       setDialogOpen(false);
       setForm({});
       setSelectedFile(null);
-      setSuccessMsg('Document uploaded successfully.');
+      setSuccessMsg(tr('okUploaded'));
       setTimeout(() => setSuccessMsg(''), 3000);
     },
     onError: (err: unknown) => setError(extractErrorMessage(err)),
@@ -115,7 +117,7 @@ export default function DocumentsPage() {
     mutationFn: async (id: string) => { await api.delete(`/documents/${id}`); },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/documents'] });
-      setSuccessMsg('Document deleted.');
+      setSuccessMsg(tr('okDeleted'));
       setTimeout(() => setSuccessMsg(''), 3000);
     },
     onError: (err: unknown) => setError(extractErrorMessage(err)),
@@ -128,26 +130,26 @@ export default function DocumentsPage() {
   const resolveToOptions = [
     ...(heads as { id: string; name: string; role: string }[] ?? []),
     ...(user && !(heads as { id: string }[] ?? []).some((h) => h.id === user.id)
-      ? [{ id: user.id, name: `${user.name} (Self)`, role: user.role }]
+      ? [{ id: user.id, name: tr('self', { name: user.name }), role: user.role }]
       : []),
   ];
 
   function getNamesForIds(ids: string[]): string {
-    return ids.map((id) => resolveToOptions.find((o) => o.id === id)?.name ?? 'Unknown').join(', ');
+    return ids.map((id) => resolveToOptions.find((o) => o.id === id)?.name ?? tr('unknown')).join(', ');
   }
 
   function handleDownload(id: string, fileName: string) {
-    downloadFile('documents', id, fileName).catch(() => setError('Failed to download file'));
+    downloadFile('documents', id, fileName).catch(() => setError(tr('errDownload')));
   }
 
   return (
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap' }}>
-        <Typography variant="h5" fontWeight={600} sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' } }}>Documents</Typography>
+        <Typography variant="h5" fontWeight={600} sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' } }}>{tr('title')}</Typography>
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', justifyContent: { xs: 'flex-end', md: 'flex-end' }, width: { xs: '100%', md: 'auto' } }}>
           <RefreshButton onClick={() => refetch()} />
           <Button variant="contained" startIcon={<AddIcon />} onClick={() => { setForm({ resolveTo: [] }); setError(''); setSelectedFile(null); setDialogOpen(true); }}>
-            Upload Document
+            {tr('uploadDocument')}
           </Button>
         </Box>
       </Box>
@@ -159,7 +161,7 @@ export default function DocumentsPage() {
         <Box sx={{ p: 2 }}>
           <TextField
             size="small"
-            placeholder="Search documents..."
+            placeholder={tr('search')}
             value={search}
             onChange={(e) => { setSearch(e.target.value); setPage(0); }}
             InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> }}
@@ -172,34 +174,34 @@ export default function DocumentsPage() {
           <Table size="small">
             <TableHead>
               <TableRow>
-                <TableCell sx={{ fontWeight: 600 }}>Name</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Description</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Resolve To</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>File</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Uploaded By</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Date</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Actions</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>{tr('name')}</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>{tr('description')}</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>{tr('resolveTo')}</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>{tr('file')}</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>{tr('uploadedBy')}</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>{tr('date')}</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>{tr('actions')}</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {isLoading ? (
                 <TableRow><TableCell colSpan={7} align="center" sx={{ py: 4 }}><CircularProgress size={32} /></TableCell></TableRow>
               ) : rows.length === 0 ? (
-                <TableRow><TableCell colSpan={7} align="center" sx={{ py: 4 }}><Typography color="text.secondary">No documents found</Typography></TableCell></TableRow>
+                <TableRow><TableCell colSpan={7} align="center" sx={{ py: 4 }}><Typography color="text.secondary">{tr('none')}</Typography></TableCell></TableRow>
               ) : (
                 rows.map((row) => (
                   <TableRow key={row.id} hover>
-                    <TableCell data-label="Name">{row.name}</TableCell>
-                    <TableCell data-label="Description">{row.description ?? '—'}</TableCell>
-                    <TableCell data-label="Resolve To">{getNamesForIds(row.resolveTo)}</TableCell>
-                    <TableCell data-label="File">
+                    <TableCell data-label={tr('name')}>{row.name}</TableCell>
+                    <TableCell data-label={tr('description')}>{row.description ?? '—'}</TableCell>
+                    <TableCell data-label={tr('resolveTo')}>{getNamesForIds(row.resolveTo)}</TableCell>
+                    <TableCell data-label={tr('file')}>
                       <Chip label={row.fileName} size="small" variant="outlined" />
                     </TableCell>
-                    <TableCell data-label="Uploaded By">{row.uploadedByUser?.name ?? '—'}</TableCell>
-                    <TableCell data-label="Date">{formatDate(row.createdAt)}</TableCell>
-                    <TableCell data-label="Actions">
+                    <TableCell data-label={tr('uploadedBy')}>{row.uploadedByUser?.name ?? '—'}</TableCell>
+                    <TableCell data-label={tr('date')}>{formatDate(row.createdAt)}</TableCell>
+                    <TableCell data-label={tr('actions')}>
                       <IconButton size="small" onClick={() => handleDownload(row.id, row.fileName)}><DownloadIcon fontSize="small" /></IconButton>
-                      <IconButton size="small" color="error" onClick={() => { if (confirm('Delete this document?')) deleteMutation.mutate(row.id); }}><DeleteIcon fontSize="small" /></IconButton>
+                      <IconButton size="small" color="error" onClick={() => { if (confirm(tr('confirmDelete'))) deleteMutation.mutate(row.id); }}><DeleteIcon fontSize="small" /></IconButton>
                     </TableCell>
                   </TableRow>
                 ))
@@ -223,19 +225,19 @@ export default function DocumentsPage() {
 
       {/* Upload Dialog */}
       <ResponsiveDialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Upload Document</DialogTitle>
+        <DialogTitle>{tr('uploadDocument')}</DialogTitle>
         <DialogContent>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1, flexWrap: 'wrap' }}>
-            <TextField label="Document Name" required value={String(form.name ?? '')} onChange={(e) => setForm({ ...form, name: e.target.value })} fullWidth size="small" />
-            <TextField label="What is this document?" value={String(form.description ?? '')} onChange={(e) => setForm({ ...form, description: e.target.value })} fullWidth size="small" multiline rows={2} />
+            <TextField label={tr('documentName')} required value={String(form.name ?? '')} onChange={(e) => setForm({ ...form, name: e.target.value })} fullWidth size="small" />
+            <TextField label={tr('whatIs')} value={String(form.description ?? '')} onChange={(e) => setForm({ ...form, description: e.target.value })} fullWidth size="small" multiline rows={2} />
             <FormControl fullWidth size="small">
-              <InputLabel>Resolve To (select multiple)</InputLabel>
+              <InputLabel>{tr('resolveToSelectMultiple')}</InputLabel>
               <Select
                 multiple
                 value={(form.resolveTo as string[]) ?? []}
                 onChange={(e) => setForm({ ...form, resolveTo: e.target.value as string[] })}
                 renderValue={(selected) => getNamesForIds(selected as string[])}
-                label="Resolve To (select multiple)"
+                label={tr('resolveToSelectMultiple')}
               >
                 {resolveToOptions.map((opt) => (
                   <MenuItem key={opt.id} value={opt.id}>
@@ -247,24 +249,24 @@ export default function DocumentsPage() {
             </FormControl>
             <input ref={fileRef} type="file" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files?.[0]; if (f) setSelectedFile(f); }} />
             <Button variant="outlined" onClick={() => fileRef.current?.click()}>
-              {selectedFile ? `✓ ${selectedFile.name}` : 'Choose File'}
+              {selectedFile ? `✓ ${selectedFile.name}` : tr('chooseFile')}
             </Button>
           </Box>
         </DialogContent>
         <DialogActions sx={{ flexWrap: "wrap", gap: 1 }}>
-          <Button onClick={() => setDialogOpen(false)}>Cancel</Button>
+          <Button onClick={() => setDialogOpen(false)}>{tr('cancel')}</Button>
           <Button
             variant="contained"
             onClick={() => {
               setError('');
-              if (!form.name) { setError('Document name is required'); return; }
-              if (!(form.resolveTo as string[])?.length) { setError('Select at least one person to resolve to'); return; }
-              if (!selectedFile) { setError('Please choose a file'); return; }
+              if (!form.name) { setError(tr('errName')); return; }
+              if (!(form.resolveTo as string[])?.length) { setError(tr('errResolve')); return; }
+              if (!selectedFile) { setError(tr('errChoose')); return; }
               createMutation.mutate();
             }}
             disabled={!form.name || !selectedFile || createMutation.isPending}
           >
-            {createMutation.isPending ? <CircularProgress size={20} /> : 'Upload'}
+            {createMutation.isPending ? <CircularProgress size={20} /> : tr('upload')}
           </Button>
         </DialogActions>
       </ResponsiveDialog>

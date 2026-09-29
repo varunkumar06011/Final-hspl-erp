@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { TextField, MenuItem, Box } from '@mui/material';
+import { useTranslation } from 'react-i18next';
 
 interface SelectWithOtherProps {
   label: string;
@@ -18,10 +19,12 @@ export default function SelectWithOther({
   value,
   onChange,
   options,
-  otherLabel = 'Other',
+  otherLabel: otherLabelProp,
   otherFieldLabel,
   required = false,
 }: SelectWithOtherProps) {
+  const { t } = useTranslation();
+  const otherLabel = otherLabelProp ?? t('shared.other');
   const isPredefined = options.some((o) => o.value === value);
   const [selectValue, setSelectValue] = useState(isPredefined ? value : value ? OTHER_VALUE : '');
   const [otherText, setOtherText] = useState(isPredefined ? '' : value);
@@ -60,7 +63,7 @@ export default function SelectWithOther({
       >
         {!required && (
           <MenuItem value="">
-            <em>None</em>
+            <em>{t('shared.none')}</em>
           </MenuItem>
         )}
         {options.map((opt) => (
@@ -72,14 +75,14 @@ export default function SelectWithOther({
       </TextField>
       {selectValue === OTHER_VALUE && (
         <TextField
-          label={otherFieldLabel ?? `${otherLabel} name`}
+          label={otherFieldLabel ?? t('shared.otherName', { other: otherLabel })}
           value={otherText}
           onChange={(e) => handleOtherTextChange(e.target.value)}
           fullWidth
           size="small"
           required={required}
           error={required && otherText.trim() === ''}
-          helperText={required && otherText.trim() === '' ? 'This field is required' : undefined}
+          helperText={required && otherText.trim() === '' ? t('shared.fieldRequired') : undefined}
         />
       )}
     </Box>

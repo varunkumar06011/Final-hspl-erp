@@ -27,10 +27,13 @@ import { Search as SearchIcon, Visibility as ViewIcon } from '@mui/icons-materia
 import { useQuery } from '@tanstack/react-query';
 import { AuditAction } from '@hospital-erp/shared';
 import { enumToOptions } from '../utils/enumOptions';
+import i18n from '../i18n';
+import { enumLabel } from '../utils/enumOptions';
 import api from '../config/api';
 import ResponsiveTable from '../components/ResponsiveTable';
 import RefreshButton from '../components/RefreshButton';
 
+import { useTranslation } from 'react-i18next';
 interface AuditLogRow {
   id: string;
   action: string;
@@ -61,26 +64,26 @@ function formatDetails(row: AuditLogRow): string {
   const entries = Object.entries(value);
   if (entries.length === 0) return '—';
 
-  const entityLabel = ENTITY_LABELS[row.entityType] ?? row.entityType;
+  const entityLabel = entityName(row.entityType);
   const actionLower = row.action.toLowerCase();
 
   // For CREATE actions, summarize what was created
   if (actionLower === 'create') {
     const name = (value as Record<string, unknown>).name ?? (value as Record<string, unknown>).code ?? (value as Record<string, unknown>).invoiceNo ?? (value as Record<string, unknown>).passNumber ?? (value as Record<string, unknown>).title;
-    if (name) return `Created ${entityLabel.toLowerCase()} "${String(name)}"`;
-    return `Created new ${entityLabel.toLowerCase()}`;
+    if (name) return i18n.t('auditlog:created', { e: entityLabel.toLowerCase(), n: String(name) });
+    return i18n.t('auditlog:createdNew', { e: entityLabel.toLowerCase() });
   }
 
   // For DELETE actions, summarize what was deleted
   if (actionLower === 'delete') {
     const name = (value as Record<string, unknown>).name ?? (value as Record<string, unknown>).code ?? (value as Record<string, unknown>).title;
-    if (name) return `Deleted ${entityLabel.toLowerCase()} "${String(name)}"`;
-    return `Deleted ${entityLabel.toLowerCase()}`;
+    if (name) return i18n.t('auditlog:deleted', { e: entityLabel.toLowerCase(), n: String(name) });
+    return i18n.t('auditlog:deletedNoName', { e: entityLabel.toLowerCase() });
   }
 
   // For APPROVE/REJECT, summarize the action
-  if (actionLower === 'approve') return `Approved ${entityLabel.toLowerCase()}`;
-  if (actionLower === 'reject') return `Rejected ${entityLabel.toLowerCase()}`;
+  if (actionLower === 'approve') return i18n.t('auditlog:approved', { e: entityLabel.toLowerCase() });
+  if (actionLower === 'reject') return i18n.t('auditlog:rejected', { e: entityLabel.toLowerCase() });
 
   // For UPDATE actions, show what changed
   const readableParts: string[] = [];
@@ -92,29 +95,16 @@ function formatDetails(row: AuditLogRow): string {
       readableParts.push(`${k}: ${valStr}`);
     }
   }
-  if (readableParts.length === 0) return `${actionLower.charAt(0).toUpperCase() + actionLower.slice(1)}d ${entityLabel.toLowerCase()}`;
+  if (readableParts.length === 0) return i18n.t('auditlog:actionOn', { a: enumLabel(row.action), e: entityLabel.toLowerCase() });
   return readableParts.join('  |  ');
 }
 
-const ENTITY_LABELS: Record<string, string> = {
-  VENDOR_INVOICE: 'Invoice',
-  PURCHASE_ORDER: 'Purchase Order',
-  GATE_PASS: 'Gate Pass',
-  VENDOR: 'Vendor',
-  QUOTATION: 'Quotation',
-  PAYMENT_REQUEST: 'Payment',
-  INVENTORY_ITEM: 'Inventory Item',
-  INVENTORY_TRANSACTION: 'Inventory Transaction',
-  USER: 'User',
-  DOCUMENT: 'Document',
-  SITE_PHOTO: 'Site Photo',
-  ISSUE: 'Issue',
-  INSPECTION: 'Inspection',
-  PROJECT: 'Project',
-  APPROVAL_WORKFLOW: 'Approval Workflow',
-};
+function entityName(type: string): string {
+  return i18n.t(`auditlog:entity_${type}`, { defaultValue: enumLabel(type) });
+}
 
 export default function AuditLogPage() {
+  const { t: tr } = useTranslation('auditlog');
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(20);
   const [search, setSearch] = useState('');
@@ -152,7 +142,7 @@ export default function AuditLogPage() {
   return (
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap' }}>
-        <Typography variant="h5" fontWeight={600} sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' } }}>Audit Log</Typography>
+        <Typography variant="h5" fontWeight={600} sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' } }}>{tr('title')}</Typography>
         <RefreshButton onClick={() => refetch()} />
       </Box>
 
@@ -160,19 +150,19 @@ export default function AuditLogPage() {
         <Box sx={{ p: 2, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
           <TextField
             size="small"
-            placeholder="Search audit log..."
+            placeholder={tr('search')}
             value={search}
             onChange={(e) => { setSearch(e.target.value); setPage(0); }}
             InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> }}
             sx={{ width: { xs: '100%', sm: 300 } }}
           />
-          <TextField select size="small" label="Action" value={action} onChange={(e) => { setAction(e.target.value); setPage(0); }} sx={{ width: { xs: '100%', sm: 180 } }}>
-            <MenuItem value="">All</MenuItem>
+          <TextField select size="small" label={tr('action')} value={action} onChange={(e) => { setAction(e.target.value); setPage(0); }} sx={{ width: { xs: '100%', sm: 180 } }}>
+            <MenuItem value="">{tr('all')}</MenuItem>
             {enumToOptions(AuditAction).map((opt) => <MenuItem key={opt.value} value={opt.value}>{opt.label}</MenuItem>)}
           </TextField>
-          <TextField size="small" type="date" label="From" value={startDate} onChange={(e) => { setStartDate(e.target.value); setPage(0); }} InputLabelProps={{ shrink: true }} sx={{ width: { xs: '100%', sm: 140 } }} />
+          <TextField size="small" type="date" label={tr('from')} value={startDate} onChange={(e) => { setStartDate(e.target.value); setPage(0); }} InputLabelProps={{ shrink: true }} sx={{ width: { xs: '100%', sm: 140 } }} />
           <TextField size="small" type="date" label="To" value={endDate} onChange={(e) => { setEndDate(e.target.value); setPage(0); }} InputLabelProps={{ shrink: true }} sx={{ width: { xs: '100%', sm: 140 } }} />
-          <TextField size="small" placeholder="Filter by user…" value={userFilter} onChange={(e) => { setUserFilter(e.target.value); setPage(0); }} sx={{ width: { xs: '100%', sm: 160 } }} />
+          <TextField size="small" placeholder={tr('filterUser')} value={userFilter} onChange={(e) => { setUserFilter(e.target.value); setPage(0); }} sx={{ width: { xs: '100%', sm: 160 } }} />
         </Box>
 
         <ResponsiveTable>
@@ -180,11 +170,11 @@ export default function AuditLogPage() {
           <Table size="small">
             <TableHead>
               <TableRow>
-                <TableCell sx={{ fontWeight: 600 }}>Date</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>User</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Action</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Entity</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Details</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>{tr('date')}</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>{tr('user')}</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>{tr('action')}</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>{tr('entity')}</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>{tr('details')}</TableCell>
                 <TableCell sx={{ fontWeight: 600 }}> </TableCell>
               </TableRow>
             </TableHead>
@@ -192,21 +182,21 @@ export default function AuditLogPage() {
               {isLoading ? (
                 <TableRow><TableCell colSpan={6} align="center" sx={{ py: 4 }}><CircularProgress size={32} /></TableCell></TableRow>
               ) : isError ? (
-                <TableRow><TableCell colSpan={6} align="center" sx={{ py: 4 }}><Alert severity="error">Failed to load audit log</Alert></TableCell></TableRow>
+                <TableRow><TableCell colSpan={6} align="center" sx={{ py: 4 }}><Alert severity="error">{tr('errLoad')}</Alert></TableCell></TableRow>
               ) : rows.length === 0 ? (
-                <TableRow><TableCell colSpan={6} align="center" sx={{ py: 4 }}><Typography color="text.secondary">No audit entries found</Typography></TableCell></TableRow>
+                <TableRow><TableCell colSpan={6} align="center" sx={{ py: 4 }}><Typography color="text.secondary">{tr('none')}</Typography></TableCell></TableRow>
               ) : (
                 rows.map((row: AuditLogRow) => (
                   <TableRow key={row.id} hover>
-                    <TableCell data-label="Date" sx={{ whiteSpace: 'nowrap' }}>{formatTimestamp(row.timestamp)}</TableCell>
-                    <TableCell data-label="User">{row.user?.name ?? '—'}</TableCell>
-                    <TableCell data-label="Action"><Chip label={row.action} size="small" color={ACTION_COLORS[row.action] ?? 'default'} /></TableCell>
-                    <TableCell data-label="Entity">{ENTITY_LABELS[row.entityType] ?? row.entityType}</TableCell>
-                    <TableCell data-label="Details" sx={{ maxWidth: { xs: '65%', md: 400 }, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: { xs: 'normal', md: 'nowrap' } }}>
+                    <TableCell data-label={tr('date')} sx={{ whiteSpace: 'nowrap' }}>{formatTimestamp(row.timestamp)}</TableCell>
+                    <TableCell data-label={tr('user')}>{row.user?.name ?? '—'}</TableCell>
+                    <TableCell data-label={tr('action')}><Chip label={enumLabel(row.action)} size="small" color={ACTION_COLORS[row.action] ?? 'default'} /></TableCell>
+                    <TableCell data-label={tr('entity')}>{entityName(row.entityType)}</TableCell>
+                    <TableCell data-label={tr('details')} sx={{ maxWidth: { xs: '65%', md: 400 }, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: { xs: 'normal', md: 'nowrap' } }}>
                       {formatDetails(row)}
                     </TableCell>
-                    <TableCell data-label="View">
-                      <Button size="small" startIcon={<ViewIcon fontSize="small" />} onClick={() => setDetailRow(row)}>View</Button>
+                    <TableCell data-label={tr('view')}>
+                      <Button size="small" startIcon={<ViewIcon fontSize="small" />} onClick={() => setDetailRow(row)}>{tr('view')}</Button>
                     </TableCell>
                   </TableRow>
                 ))
@@ -231,7 +221,7 @@ export default function AuditLogPage() {
       {/* Diff viewer dialog */}
       <Dialog open={!!detailRow} onClose={() => setDetailRow(null)} maxWidth="md" fullWidth>
         <DialogTitle>
-          {detailRow && `${detailRow.action} — ${ENTITY_LABELS[detailRow.entityType] ?? detailRow.entityType}`}
+          {detailRow && `${enumLabel(detailRow.action)} — ${entityName(detailRow.entityType)}`}
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
             {detailRow && `${detailRow.user?.name ?? '—'} · ${formatTimestamp(detailRow.timestamp)}`}
           </Typography>
@@ -244,9 +234,9 @@ export default function AuditLogPage() {
                 <Table size="small">
                   <TableHead>
                     <TableRow>
-                      <TableCell sx={{ fontWeight: 600 }}>Field</TableCell>
-                      <TableCell sx={{ fontWeight: 600 }}>Old Value</TableCell>
-                      <TableCell sx={{ fontWeight: 600 }}>New Value</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>{tr('field')}</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>{tr('oldValue')}</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>{tr('newValue')}</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
@@ -274,7 +264,7 @@ export default function AuditLogPage() {
                 <Stack spacing={2}>
                   {detailRow.newValue && (
                     <Box>
-                      <Typography variant="overline" color="text.secondary">New Value</Typography>
+                      <Typography variant="overline" color="text.secondary">{tr('newValue')}</Typography>
                       <Box component="pre" sx={{ bgcolor: 'background.default', p: 1.5, borderRadius: 1, fontSize: 12, fontFamily: 'monospace', overflow: 'auto', maxHeight: 300, m: 0 }}>
                         {JSON.stringify(detailRow.newValue, null, 2)}
                       </Box>
@@ -282,14 +272,14 @@ export default function AuditLogPage() {
                   )}
                   {detailRow.oldValue && (
                     <Box>
-                      <Typography variant="overline" color="text.secondary">Old Value</Typography>
+                      <Typography variant="overline" color="text.secondary">{tr('oldValue')}</Typography>
                       <Box component="pre" sx={{ bgcolor: 'background.default', p: 1.5, borderRadius: 1, fontSize: 12, fontFamily: 'monospace', overflow: 'auto', maxHeight: 300, m: 0 }}>
                         {JSON.stringify(detailRow.oldValue, null, 2)}
                       </Box>
                     </Box>
                   )}
                   {!detailRow.newValue && !detailRow.oldValue && (
-                    <Typography color="text.secondary">No data recorded for this action.</Typography>
+                    <Typography color="text.secondary">{tr('noData')}</Typography>
                   )}
                 </Stack>
               )}
@@ -297,7 +287,7 @@ export default function AuditLogPage() {
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDetailRow(null)}>Close</Button>
+          <Button onClick={() => setDetailRow(null)}>{tr('close')}</Button>
         </DialogActions>
       </Dialog>
     </Box>

@@ -27,7 +27,8 @@ import ResponsiveTable from '../components/ResponsiveTable';
 import AttachmentUpload from '../components/AttachmentUpload';
 import api, { extractErrorMessage } from '../config/api';
 import { GoodsReceiptStatus, InventoryItemType } from '@hospital-erp/shared';
-import { formatDate, STATUS_COLORS } from '../utils/enumOptions';
+import { formatDate, STATUS_COLORS, enumLabel } from '../utils/enumOptions';
+import { useTranslation } from 'react-i18next';
 import CommentsButton from '../components/CommentsButton';
 
 interface ReceiptItem {
@@ -109,10 +110,11 @@ function money(v: string | number | null | undefined): string {
 
 function statusLabel(s: string | null): string {
   if (!s) return '—';
-  return s.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+  return enumLabel(s);
 }
 
 function GRNDetailDialog({ id, open, onClose }: { id: string | null; open: boolean; onClose: () => void }) {
+  const { t } = useTranslation('grn');
   const navigate = useNavigate();
   const { data, isLoading } = useQuery<GRNDetail>({
     queryKey: ['/goods-receipts', id],
@@ -125,93 +127,93 @@ function GRNDetailDialog({ id, open, onClose }: { id: string | null; open: boole
 
   return (
     <ResponsiveDialog open={open} onClose={onClose} maxWidth="lg" fullWidth>
-      <DialogTitle>{isLoading ? 'Goods Receipt Details' : data ? `GRN ${data.receiptNumber}` : 'Goods Receipt Details'}</DialogTitle>
+      <DialogTitle>{isLoading ? t('detailsTitle') : data ? t('grnTitle', { n: data.receiptNumber }) : t('detailsTitle')}</DialogTitle>
       <DialogContent>
         {isLoading ? (
           <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress /></Box>
         ) : !data ? (
-          <Typography color="text.secondary">Receipt not found.</Typography>
+          <Typography color="text.secondary">{t('notFound')}</Typography>
         ) : (
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
             {/* Header */}
             <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr 1fr' }, gap: 1 }}>
               <Box>
-                <Typography variant="caption" color="text.secondary">Status</Typography>
+                <Typography variant="caption" color="text.secondary">{t('status')}</Typography>
                 <Chip size="small" label={statusLabel(data.status)} color={(STATUS_COLORS[data.status] ?? 'default') as never} />
               </Box>
               <Box>
-                <Typography variant="caption" color="text.secondary">Created</Typography>
+                <Typography variant="caption" color="text.secondary">{t('created')}</Typography>
                 <Typography variant="body2">{formatDate(data.createdAt)}</Typography>
               </Box>
               <Box>
-                <Typography variant="caption" color="text.secondary">Posted</Typography>
+                <Typography variant="caption" color="text.secondary">{t('posted')}</Typography>
                 <Typography variant="body2">{data.postedAt ? formatDate(data.postedAt) : '—'}</Typography>
               </Box>
               <Box>
-                <Typography variant="caption" color="text.secondary">Created By</Typography>
+                <Typography variant="caption" color="text.secondary">{t('createdBy')}</Typography>
                 <Typography variant="body2">{data.createdByUser?.name ?? '—'}</Typography>
               </Box>
               <Box>
-                <Typography variant="caption" color="text.secondary">Inspected By</Typography>
+                <Typography variant="caption" color="text.secondary">{t('inspectedBy')}</Typography>
                 <Typography variant="body2">{data.inspectedByUser?.name ?? '—'}</Typography>
               </Box>
               <Box>
-                <Typography variant="caption" color="text.secondary">Posted By</Typography>
+                <Typography variant="caption" color="text.secondary">{t('postedBy')}</Typography>
                 <Typography variant="body2">{data.postedByUser?.name ?? '—'}</Typography>
               </Box>
             </Box>
 
             {/* Purchase Order */}
             <Card variant="outlined" sx={{ p: 2 }}>
-              <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>Purchase Order</Typography>
+              <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>{t('purchaseOrder')}</Typography>
               <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1 }}>
-                <Box><Typography variant="caption" color="text.secondary">PO Number</Typography><Typography variant="body2">{data.purchaseOrder.poNumber}</Typography></Box>
-                <Box><Typography variant="caption" color="text.secondary">Date</Typography><Typography variant="body2">{formatDate(data.purchaseOrder.date)}</Typography></Box>
-                <Box><Typography variant="caption" color="text.secondary">Vendor</Typography><Typography variant="body2">{data.purchaseOrder.vendor.name} ({data.purchaseOrder.vendor.vendorCode})</Typography></Box>
-                <Box><Typography variant="caption" color="text.secondary">Referred By</Typography><Typography variant="body2">{data.purchaseOrder.vendor.referenceBy ?? '—'}</Typography></Box>
-                <Box><Typography variant="caption" color="text.secondary">Payment Type</Typography><Typography variant="body2">{statusLabel(data.purchaseOrder.paymentType)}</Typography></Box>
-                <Box><Typography variant="caption" color="text.secondary">Grand Total</Typography><Typography variant="body2">{money(data.purchaseOrder.grandTotal)}</Typography></Box>
-                {data.purchaseOrder.budgetHead && <Box><Typography variant="caption" color="text.secondary">Budget Head</Typography><Typography variant="body2">{data.purchaseOrder.budgetHead.particulars}</Typography></Box>}
+                <Box><Typography variant="caption" color="text.secondary">{t('poNumber')}</Typography><Typography variant="body2">{data.purchaseOrder.poNumber}</Typography></Box>
+                <Box><Typography variant="caption" color="text.secondary">{t('date')}</Typography><Typography variant="body2">{formatDate(data.purchaseOrder.date)}</Typography></Box>
+                <Box><Typography variant="caption" color="text.secondary">{t('vendor')}</Typography><Typography variant="body2">{data.purchaseOrder.vendor.name} ({data.purchaseOrder.vendor.vendorCode})</Typography></Box>
+                <Box><Typography variant="caption" color="text.secondary">{t('referredBy')}</Typography><Typography variant="body2">{data.purchaseOrder.vendor.referenceBy ?? '—'}</Typography></Box>
+                <Box><Typography variant="caption" color="text.secondary">{t('paymentType')}</Typography><Typography variant="body2">{statusLabel(data.purchaseOrder.paymentType)}</Typography></Box>
+                <Box><Typography variant="caption" color="text.secondary">{t('grandTotal')}</Typography><Typography variant="body2">{money(data.purchaseOrder.grandTotal)}</Typography></Box>
+                {data.purchaseOrder.budgetHead && <Box><Typography variant="caption" color="text.secondary">{t('budgetHead')}</Typography><Typography variant="body2">{data.purchaseOrder.budgetHead.particulars}</Typography></Box>}
               </Box>
             </Card>
 
             {/* Gate Pass */}
             <Card variant="outlined" sx={{ p: 2 }}>
-              <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>Gate Pass</Typography>
+              <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>{t('gatePass')}</Typography>
               <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1 }}>
-                <Box><Typography variant="caption" color="text.secondary">Pass Number</Typography><Typography variant="body2">{data.gatePass.passNumber}</Typography></Box>
-                <Box><Typography variant="caption" color="text.secondary">Date</Typography><Typography variant="body2">{formatDate(data.gatePass.date)}</Typography></Box>
-                <Box><Typography variant="caption" color="text.secondary">Type</Typography><Typography variant="body2">{statusLabel(data.gatePass.gatePassType)}</Typography></Box>
-                <Box><Typography variant="caption" color="text.secondary">Vehicle</Typography><Typography variant="body2">{data.gatePass.vehicleNumber ?? '—'}</Typography></Box>
-                <Box><Typography variant="caption" color="text.secondary">Driver</Typography><Typography variant="body2">{data.gatePass.driverName ? `${data.gatePass.driverName} ${data.gatePass.driverMobile || ''}` : '—'}</Typography></Box>
+                <Box><Typography variant="caption" color="text.secondary">{t('passNumber')}</Typography><Typography variant="body2">{data.gatePass.passNumber}</Typography></Box>
+                <Box><Typography variant="caption" color="text.secondary">{t('date')}</Typography><Typography variant="body2">{formatDate(data.gatePass.date)}</Typography></Box>
+                <Box><Typography variant="caption" color="text.secondary">{t('type')}</Typography><Typography variant="body2">{statusLabel(data.gatePass.gatePassType)}</Typography></Box>
+                <Box><Typography variant="caption" color="text.secondary">{t('vehicle')}</Typography><Typography variant="body2">{data.gatePass.vehicleNumber ?? '—'}</Typography></Box>
+                <Box><Typography variant="caption" color="text.secondary">{t('driver')}</Typography><Typography variant="body2">{data.gatePass.driverName ? `${data.gatePass.driverName} ${data.gatePass.driverMobile || ''}` : '—'}</Typography></Box>
               </Box>
             </Card>
 
             {/* Items */}
             <Box>
-              <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>Receipt Items</Typography>
+              <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>{t('receiptItems')}</Typography>
               <ResponsiveTable>
               <TableContainer component={Card} variant="outlined" sx={{ overflowX: 'auto' }}>
                 <Table size="small">
                   <TableHead>
                     <TableRow>
-                      <TableCell sx={{ fontWeight: 600 }}>Material</TableCell>
-                      <TableCell sx={{ fontWeight: 600 }}>Delivered</TableCell>
-                      <TableCell sx={{ fontWeight: 600 }}>Accepted</TableCell>
-                      <TableCell sx={{ fontWeight: 600 }}>Rejected</TableCell>
-                      <TableCell sx={{ fontWeight: 600 }}>Reason</TableCell>
-                      <TableCell sx={{ fontWeight: 600 }}>Type</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>{t('material')}</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>{t('delivered')}</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>{t('accepted')}</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>{t('rejected')}</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>{t('reason')}</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>{t('type')}</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
                     {data.items.map((item) => (
                       <TableRow key={item.id}>
-                        <TableCell data-label="Material">{item.materialName}</TableCell>
-                        <TableCell data-label="Delivered">{item.deliveredQty}</TableCell>
-                        <TableCell data-label="Accepted" sx={{ color: 'success.main' }}>{item.acceptedQty}</TableCell>
-                        <TableCell data-label="Rejected" sx={{ color: item.rejectedQty > 0 ? 'error.main' : 'text.secondary' }}>{item.rejectedQty}</TableCell>
-                        <TableCell data-label="Reason">{item.rejectionReason ?? '—'}</TableCell>
-                        <TableCell data-label="Type"><Chip size="small" label={statusLabel(item.itemType)} /></TableCell>
+                        <TableCell data-label={t('material')}>{item.materialName}</TableCell>
+                        <TableCell data-label={t('delivered')}>{item.deliveredQty}</TableCell>
+                        <TableCell data-label={t('accepted')} sx={{ color: 'success.main' }}>{item.acceptedQty}</TableCell>
+                        <TableCell data-label={t('rejected')} sx={{ color: item.rejectedQty > 0 ? 'error.main' : 'text.secondary' }}>{item.rejectedQty}</TableCell>
+                        <TableCell data-label={t('reason')}>{item.rejectionReason ?? '—'}</TableCell>
+                        <TableCell data-label={t('type')}><Chip size="small" label={statusLabel(item.itemType)} /></TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -223,29 +225,29 @@ function GRNDetailDialog({ id, open, onClose }: { id: string | null; open: boole
             {/* Assets */}
             {data.assets.length > 0 && (
               <Box>
-                <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>Assets Generated ({data.assets.length})</Typography>
+                <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>{t('assetsGenerated', { n: data.assets.length })}</Typography>
                 <ResponsiveTable>
                 <TableContainer component={Card} variant="outlined" sx={{ overflowX: 'auto' }}>
                   <Table size="small">
                     <TableHead>
                       <TableRow>
-                        <TableCell sx={{ fontWeight: 600 }}>Asset ID</TableCell>
-                        <TableCell sx={{ fontWeight: 600 }}>Item</TableCell>
-                        <TableCell sx={{ fontWeight: 600 }}>Serial</TableCell>
-                        <TableCell sx={{ fontWeight: 600 }}>Status</TableCell>
-                        <TableCell sx={{ fontWeight: 600 }}>Location</TableCell>
-                        <TableCell sx={{ fontWeight: 600 }}>Cost</TableCell>
+                        <TableCell sx={{ fontWeight: 600 }}>{t('assetId')}</TableCell>
+                        <TableCell sx={{ fontWeight: 600 }}>{t('item')}</TableCell>
+                        <TableCell sx={{ fontWeight: 600 }}>{t('serial')}</TableCell>
+                        <TableCell sx={{ fontWeight: 600 }}>{t('status')}</TableCell>
+                        <TableCell sx={{ fontWeight: 600 }}>{t('location')}</TableCell>
+                        <TableCell sx={{ fontWeight: 600 }}>{t('cost')}</TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
                       {data.assets.map((asset) => (
                         <TableRow key={asset.id} hover sx={{ cursor: 'pointer' }} onClick={() => navigate(`/scan/${asset.assetId}`)}>
-                          <TableCell data-label="Asset ID"><strong>{asset.assetId}</strong></TableCell>
-                          <TableCell data-label="Item">{asset.inventoryItem.name}</TableCell>
-                          <TableCell data-label="Serial">{asset.serialNumber ?? '—'}</TableCell>
-                          <TableCell data-label="Status"><Chip size="small" label={statusLabel(asset.status)} color={(STATUS_COLORS[asset.status] ?? 'default') as never} /></TableCell>
-                          <TableCell data-label="Location">{asset.location}</TableCell>
-                          <TableCell data-label="Cost">{money(asset.totalCost)}</TableCell>
+                          <TableCell data-label={t('assetId')}><strong>{asset.assetId}</strong></TableCell>
+                          <TableCell data-label={t('item')}>{asset.inventoryItem.name}</TableCell>
+                          <TableCell data-label={t('serial')}>{asset.serialNumber ?? '—'}</TableCell>
+                          <TableCell data-label={t('status')}><Chip size="small" label={statusLabel(asset.status)} color={(STATUS_COLORS[asset.status] ?? 'default') as never} /></TableCell>
+                          <TableCell data-label={t('location')}>{asset.location}</TableCell>
+                          <TableCell data-label={t('cost')}>{money(asset.totalCost)}</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
@@ -258,13 +260,14 @@ function GRNDetailDialog({ id, open, onClose }: { id: string | null; open: boole
         )}
       </DialogContent>
       <DialogActions>
-        <Button onClick={onClose}>Close</Button>
+        <Button onClick={onClose}>{t('close')}</Button>
       </DialogActions>
     </ResponsiveDialog>
   );
 }
 
 export default function GoodsReceiptsPage() {
+  const { t } = useTranslation('grn');
   const [createOpen, setCreateOpen] = useState(false);
   const [inspectReceipt, setInspectReceipt] = useState<Receipt | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
@@ -387,9 +390,9 @@ export default function GoodsReceiptsPage() {
   return (
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap', gap: 1 }}>
-        <Typography variant="h5" fontWeight={600} sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' } }}>Goods Receipts</Typography>
+        <Typography variant="h5" fontWeight={600} sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' } }}>{t('title')}</Typography>
         <Button variant="contained" startIcon={<AddIcon />} onClick={() => { setError(''); setCreateOpen(true); }}>
-          New Receipt
+          {t('newReceipt')}
         </Button>
       </Box>
       {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
@@ -398,45 +401,45 @@ export default function GoodsReceiptsPage() {
         <TableContainer sx={{ overflowX: 'auto' }}>
           <Table size="small">
             <TableHead><TableRow>
-              <TableCell>Receipt</TableCell><TableCell>PO</TableCell><TableCell>Gatepass</TableCell>
-              <TableCell>Vendor</TableCell><TableCell>Budget Head</TableCell><TableCell>Item Types</TableCell><TableCell>Status</TableCell><TableCell>Actions</TableCell>
+              <TableCell>{t('colReceipt')}</TableCell><TableCell>{t('colPO')}</TableCell><TableCell>{t('colGatepass')}</TableCell>
+              <TableCell>{t('vendor')}</TableCell><TableCell>{t('budgetHead')}</TableCell><TableCell>{t('itemTypes')}</TableCell><TableCell>{t('status')}</TableCell><TableCell>{t('actions')}</TableCell>
             </TableRow></TableHead>
             <TableBody>
               {receiptsQuery.isLoading ? (
                 <TableRow><TableCell colSpan={8} align="center"><CircularProgress size={28} /></TableCell></TableRow>
               ) : receipts.length === 0 ? (
-                <TableRow><TableCell colSpan={8} align="center">No goods receipts found</TableCell></TableRow>
+                <TableRow><TableCell colSpan={8} align="center">{t('noReceipts')}</TableCell></TableRow>
               ) : receipts.map((receipt) => {
                 const types = new Set(receipt.items.map((i) => i.itemType || 'CONSUMABLE'));
                 return (
                 <TableRow key={receipt.id} hover>
-                  <TableCell data-label="Receipt">{receipt.receiptNumber}</TableCell>
-                  <TableCell data-label="PO">{receipt.purchaseOrder.poNumber}</TableCell>
-                  <TableCell data-label="Gatepass">{receipt.gatePass.passNumber}</TableCell>
-                  <TableCell data-label="Vendor">{receipt.purchaseOrder.vendor.name}</TableCell>
-                  <TableCell data-label="Budget Head">
+                  <TableCell data-label={t('colReceipt')}>{receipt.receiptNumber}</TableCell>
+                  <TableCell data-label={t('colPO')}>{receipt.purchaseOrder.poNumber}</TableCell>
+                  <TableCell data-label={t('colGatepass')}>{receipt.gatePass.passNumber}</TableCell>
+                  <TableCell data-label={t('vendor')}>{receipt.purchaseOrder.vendor.name}</TableCell>
+                  <TableCell data-label={t('budgetHead')}>
                     {receipt.purchaseOrder.budgetHead
                       ? <Chip size="small" variant="outlined" color="primary" label={receipt.purchaseOrder.budgetHead.particulars} />
                       : <Typography variant="caption" color="text.secondary">—</Typography>}
                   </TableCell>
-                  <TableCell data-label="Item Types">
+                  <TableCell data-label={t('itemTypes')}>
                     <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
-                      {types.has('ASSET') && <Chip size="small" label="Asset" color="secondary" variant="outlined" />}
-                      {types.has('CONSUMABLE') && <Chip size="small" label="Consumable" color="primary" variant="outlined" />}
+                      {types.has('ASSET') && <Chip size="small" label={t('asset')} color="secondary" variant="outlined" />}
+                      {types.has('CONSUMABLE') && <Chip size="small" label={t('consumable')} color="primary" variant="outlined" />}
                     </Box>
                   </TableCell>
-                  <TableCell data-label="Status"><Chip size="small" label={receipt.status.replace(/_/g, ' ')} /></TableCell>
-                  <TableCell data-label="Actions">
-                    <Button size="small" startIcon={<ViewIcon />} onClick={() => setDetailId(receipt.id)}>Details</Button>
+                  <TableCell data-label={t('status')}><Chip size="small" label={enumLabel(receipt.status)} /></TableCell>
+                  <TableCell data-label={t('actions')}>
+                    <Button size="small" startIcon={<ViewIcon />} onClick={() => setDetailId(receipt.id)}>{t('details')}</Button>
                     <CommentsButton entityType="GOODS_RECEIPT" entityId={receipt.id} entityLabel={receipt.receiptNumber} url="/goods-receipts" />
                     {receipt.status === GoodsReceiptStatus.PENDING_INSPECTION && (
-                      <Button size="small" startIcon={<InspectIcon />} onClick={() => openInspection(receipt)}>Inspect</Button>
+                      <Button size="small" startIcon={<InspectIcon />} onClick={() => openInspection(receipt)}>{t('inspect')}</Button>
                     )}
                     {receipt.status === GoodsReceiptStatus.READY_TO_POST && (
                       <>
-                        <Button size="small" startIcon={<InspectIcon />} onClick={() => openInspection(receipt)}>Edit Inspection</Button>
+                        <Button size="small" startIcon={<InspectIcon />} onClick={() => openInspection(receipt)}>{t('editInspection')}</Button>
                         <Button size="small" color="success" startIcon={<PostIcon />} onClick={() => postMutation.mutate(receipt.id)} disabled={postMutation.isPending}>
-                          Post to Inventory
+                          {t('postToInventory')}
                         </Button>
                       </>
                     )}
@@ -451,9 +454,9 @@ export default function GoodsReceiptsPage() {
       </Card>
 
       <ResponsiveDialog open={createOpen} onClose={() => setCreateOpen(false)} maxWidth="md" fullWidth>
-        <DialogTitle>Create Goods Receipt</DialogTitle>
+        <DialogTitle>{t('createTitle')}</DialogTitle>
         <DialogContent>
-          <TextField select fullWidth size="small" label="Approved Gatepass" value={selectedGatepassId} onChange={(event) => { setSelectedGatepassId(event.target.value); setDeliveredQty({}); }} sx={{ mt: 1 }}>
+          <TextField select fullWidth size="small" label={t('approvedGatepass')} value={selectedGatepassId} onChange={(event) => { setSelectedGatepassId(event.target.value); setDeliveredQty({}); }} sx={{ mt: 1 }}>
             {gatepassesQuery.data?.map((gatepass) => (
               <MenuItem key={gatepass.id} value={gatepass.id}>
                 {gatepass.passNumber} — {gatepass.purchaseOrder.poNumber} — {gatepass.purchaseOrder.vendor.name}
@@ -462,25 +465,25 @@ export default function GoodsReceiptsPage() {
           </TextField>
           {selectedGatepass && <Box sx={{ mt: 2 }}>
             <Typography variant="body2" fontWeight={600} sx={{ mb: 1 }}>
-              Enter the actual quantity delivered for each item:
+              {t('enterDelivered')}
             </Typography>
             <ResponsiveTable>
             <TableContainer component={Card} variant="outlined" sx={{ overflowX: 'auto' }}>
               <Table size="small">
                 <TableHead>
                   <TableRow>
-                    <TableCell sx={{ fontWeight: 600 }}>Material</TableCell>
-                    <TableCell sx={{ fontWeight: 600 }}>Expected</TableCell>
-                    <TableCell sx={{ fontWeight: 600 }}>Delivered</TableCell>
-                    <TableCell sx={{ fontWeight: 600 }}>Unit</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>{t('material')}</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>{t('expected')}</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>{t('delivered')}</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>{t('unit')}</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
                   {selectedGatepass.purchaseOrder.items.map((item) => (
                     <TableRow key={item.id}>
-                      <TableCell data-label="Material">{item.materialName}</TableCell>
-                      <TableCell data-label="Expected">{Number(item.quantity)}</TableCell>
-                      <TableCell data-label="Delivered">
+                      <TableCell data-label={t('material')}>{item.materialName}</TableCell>
+                      <TableCell data-label={t('expected')}>{Number(item.quantity)}</TableCell>
+                      <TableCell data-label={t('delivered')}>
                         <TextField
                           type="number"
                           size="small"
@@ -491,7 +494,7 @@ export default function GoodsReceiptsPage() {
                           placeholder="0"
                         />
                       </TableCell>
-                      <TableCell data-label="Unit">{item.unit ?? '—'}</TableCell>
+                      <TableCell data-label={t('unit')}>{item.unit ?? '—'}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -499,14 +502,14 @@ export default function GoodsReceiptsPage() {
             </TableContainer>
             </ResponsiveTable>
             <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-              Expected = quantity from the purchase order. Delivered = actual quantity that arrived. If less than expected, the PO will be marked as partially delivered.
+              {t('expectedHelp')}
             </Typography>
           </Box>}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setCreateOpen(false)}>Cancel</Button>
+          <Button onClick={() => setCreateOpen(false)}>{t('cancel')}</Button>
           <Button variant="contained" onClick={() => createMutation.mutate()} disabled={!selectedGatepassId || createMutation.isPending}>
-            {createMutation.isPending ? <CircularProgress size={20} /> : 'Create Receipt'}
+            {createMutation.isPending ? <CircularProgress size={20} /> : t('createReceipt')}
           </Button>
         </DialogActions>
       </ResponsiveDialog>
@@ -518,30 +521,30 @@ export default function GoodsReceiptsPage() {
       />
 
       <ResponsiveDialog open={!!inspectReceipt} onClose={() => setInspectReceipt(null)} maxWidth="md" fullWidth>
-        <DialogTitle>Inspect {inspectReceipt?.receiptNumber}</DialogTitle>
+        <DialogTitle>{t('inspectTitle', { n: inspectReceipt?.receiptNumber })}</DialogTitle>
         <DialogContent>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            Accepted quantities will be posted to usable inventory. Rejected quantities remain outside usable stock. Entering a rejected quantity automatically reduces the accepted quantity. Mark each item as Consumable or Asset — assets get individual unit tracking with QR codes.
+            {t('inspectHelp')}
           </Typography>
           {inspectReceipt && <AttachmentUpload entityType="GOODS_RECEIPT" entityId={inspectReceipt.id} />}
           {inspectReceipt?.items.map((item) => {
             const disposition = dispositions[item.id] ?? { acceptedQty: 0, rejectedQty: 0, rejectionReason: '', itemType: InventoryItemType.CONSUMABLE };
             return <Box key={item.id} sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1.5fr 1fr 1fr 1.5fr 1.5fr' }, gap: 1, mb: 1, alignItems: 'center' }}>
               <Typography variant="body2">{item.materialName} ({item.deliveredQty})</Typography>
-              <TextField size="small" label="Accepted" type="number" value={disposition.acceptedQty} onChange={(event) => updateDisposition(item.id, 'acceptedQty', event.target.value)} inputProps={{ min: 0, max: item.deliveredQty }} />
-              <TextField size="small" label="Rejected" type="number" value={disposition.rejectedQty} onChange={(event) => updateDisposition(item.id, 'rejectedQty', event.target.value)} inputProps={{ min: 0, max: item.deliveredQty }} />
-              <TextField size="small" label="Rejection reason" value={disposition.rejectionReason} onChange={(event) => updateDisposition(item.id, 'rejectionReason', event.target.value)} />
-              <TextField select size="small" label="Item Type" value={disposition.itemType} onChange={(event) => updateDisposition(item.id, 'itemType', event.target.value)}>
-                <MenuItem value={InventoryItemType.CONSUMABLE}>Consumable</MenuItem>
-                <MenuItem value={InventoryItemType.ASSET}>Asset</MenuItem>
+              <TextField size="small" label={t('accepted')} type="number" value={disposition.acceptedQty} onChange={(event) => updateDisposition(item.id, 'acceptedQty', event.target.value)} inputProps={{ min: 0, max: item.deliveredQty }} />
+              <TextField size="small" label={t('rejected')} type="number" value={disposition.rejectedQty} onChange={(event) => updateDisposition(item.id, 'rejectedQty', event.target.value)} inputProps={{ min: 0, max: item.deliveredQty }} />
+              <TextField size="small" label={t('rejectionReason')} value={disposition.rejectionReason} onChange={(event) => updateDisposition(item.id, 'rejectionReason', event.target.value)} />
+              <TextField select size="small" label={t('itemType')} value={disposition.itemType} onChange={(event) => updateDisposition(item.id, 'itemType', event.target.value)}>
+                <MenuItem value={InventoryItemType.CONSUMABLE}>{t('consumable')}</MenuItem>
+                <MenuItem value={InventoryItemType.ASSET}>{t('asset')}</MenuItem>
               </TextField>
             </Box>;
           })}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setInspectReceipt(null)}>Cancel</Button>
+          <Button onClick={() => setInspectReceipt(null)}>{t('cancel')}</Button>
           <Button variant="contained" onClick={() => inspectMutation.mutate()} disabled={inspectMutation.isPending}>
-            {inspectMutation.isPending ? <CircularProgress size={20} /> : 'Complete Inspection'}
+            {inspectMutation.isPending ? <CircularProgress size={20} /> : t('completeInspection')}
           </Button>
         </DialogActions>
       </ResponsiveDialog>

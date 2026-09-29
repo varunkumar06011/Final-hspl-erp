@@ -12,7 +12,8 @@ import ResponsiveDialog from '../components/ResponsiveDialog';
 import ResponsiveTable from '../components/ResponsiveTable';
 import VendorHistoryDialog from '../components/VendorHistoryDialog';
 import api from '../config/api';
-import { formatDate, formatCurrency, formatIndianNumber, STATUS_COLORS } from '../utils/enumOptions';
+import { formatDate, formatCurrency, formatIndianNumber, STATUS_COLORS, enumLabel } from '../utils/enumOptions';
+import { useTranslation } from 'react-i18next';
 
 interface VendorTrace {
   id: string;
@@ -35,10 +36,11 @@ interface VendorTrace {
   paymentRequests: { id: string; requestNumber: string; amount: string; status: string; type: string; createdAt: string }[];
 }
 
-const statusLabel = (s: string) => s.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+const statusLabel = (s: string) => enumLabel(s);
 
 // ── Vendor Statement Dialog — Tally-style statement with running balance ──
 function VendorStatementDialog({ vendorId, open, onClose }: { vendorId: string | null; open: boolean; onClose: () => void }) {
+  const { t } = useTranslation('vendors');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
 
@@ -57,27 +59,27 @@ function VendorStatementDialog({ vendorId, open, onClose }: { vendorId: string |
   return (
     <ResponsiveDialog open={open} onClose={onClose} maxWidth="lg" fullWidth>
       <DialogTitle>
-        {isLoading || !data ? 'Vendor Statement' : `Statement — ${data.vendor.name} (${data.vendor.vendorCode})`}
+        {isLoading || !data ? t('statement') : t('statementTitle', { name: data.vendor.name, code: data.vendor.vendorCode })}
       </DialogTitle>
       <DialogContent>
         {/* Date filters */}
         <Box sx={{ display: 'flex', gap: 2, mb: 2, mt: 1 }}>
-          <TextField size="small" type="date" label="From" value={startDate} onChange={(e) => setStartDate(e.target.value)} InputLabelProps={{ shrink: true }} sx={{ width: 180 }} />
-          <TextField size="small" type="date" label="To" value={endDate} onChange={(e) => setEndDate(e.target.value)} InputLabelProps={{ shrink: true }} sx={{ width: 180 }} />
+          <TextField size="small" type="date" label={t('from')} value={startDate} onChange={(e) => setStartDate(e.target.value)} InputLabelProps={{ shrink: true }} sx={{ width: 180 }} />
+          <TextField size="small" type="date" label={t('to')} value={endDate} onChange={(e) => setEndDate(e.target.value)} InputLabelProps={{ shrink: true }} sx={{ width: 180 }} />
         </Box>
 
         {isLoading ? (
           <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress /></Box>
         ) : !data ? (
-          <Typography color="text.secondary">No data available.</Typography>
+          <Typography color="text.secondary">{t('noData')}</Typography>
         ) : (
           <>
             {/* Summary */}
             <Stack direction="row" spacing={1} sx={{ mb: 2, flexWrap: 'wrap', gap: 1 }}>
-              <Chip label={`Opening: ${formatCurrency(data.summary.openingBalance)}`} variant="outlined" />
-              <Chip label={`Total Invoices: ${formatCurrency(data.summary.totalDebit)}`} color="error" variant="outlined" />
-              <Chip label={`Total Paid: ${formatCurrency(data.summary.totalCredit)}`} color="success" variant="outlined" />
-              <Chip label={`Closing: ${formatCurrency(data.summary.closingBalance)}`} color="primary" />
+              <Chip label={t('opening', { v: formatCurrency(data.summary.openingBalance) })} variant="outlined" />
+              <Chip label={t('totalInvoices', { v: formatCurrency(data.summary.totalDebit) })} color="error" variant="outlined" />
+              <Chip label={t('totalPaid', { v: formatCurrency(data.summary.totalCredit) })} color="success" variant="outlined" />
+              <Chip label={t('closing', { v: formatCurrency(data.summary.closingBalance) })} color="primary" />
             </Stack>
 
             {/* Statement table */}
@@ -86,19 +88,19 @@ function VendorStatementDialog({ vendorId, open, onClose }: { vendorId: string |
               <Table size="small">
                 <TableHead>
                   <TableRow sx={{ bgcolor: 'grey.50' }}>
-                    <TableCell sx={{ fontWeight: 600 }}>Date</TableCell>
-                    <TableCell sx={{ fontWeight: 600 }}>Type</TableCell>
-                    <TableCell sx={{ fontWeight: 600 }}>Reference</TableCell>
-                    <TableCell align="right" sx={{ fontWeight: 600 }}>Debit (Invoice)</TableCell>
-                    <TableCell align="right" sx={{ fontWeight: 600 }}>Credit (Paid)</TableCell>
-                    <TableCell align="right" sx={{ fontWeight: 600 }}>Balance</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>{t('colDate')}</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>{t('colType')}</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>{t('colReference')}</TableCell>
+                    <TableCell align="right" sx={{ fontWeight: 600 }}>{t('debitInvoice')}</TableCell>
+                    <TableCell align="right" sx={{ fontWeight: 600 }}>{t('creditPaid')}</TableCell>
+                    <TableCell align="right" sx={{ fontWeight: 600 }}>{t('balance')}</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
                   {data.rows.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={6} align="center" sx={{ py: 3 }}>
-                        <Typography color="text.secondary">No transactions in this period</Typography>
+                        <Typography color="text.secondary">{t('noTxn')}</Typography>
                       </TableCell>
                     </TableRow>
                   ) : (
@@ -108,19 +110,19 @@ function VendorStatementDialog({ vendorId, open, onClose }: { vendorId: string |
                         // Highlight invoice and payment rows
                         bgcolor: row.type === 'Invoice' ? 'error.lightest' : row.type === 'Payment' ? 'success.lightest' : 'inherit',
                       }}>
-                        <TableCell data-label="Date">{row.date ? formatDate(row.date) : '—'}</TableCell>
-                        <TableCell data-label="Type">
-                          <Typography variant="body2" fontWeight={500}>{row.type}</Typography>
-                          {row.status && <Chip label={row.status} size="small" sx={{ ml: 0.5, fontSize: '0.65rem', height: 16 }} />}
+                        <TableCell data-label={t('colDate')}>{row.date ? formatDate(row.date) : '—'}</TableCell>
+                        <TableCell data-label={t('colType')}>
+                          <Typography variant="body2" fontWeight={500}>{row.type === 'Invoice' ? t('rowInvoice') : row.type === 'Payment' ? t('rowPayment') : row.type}</Typography>
+                          {row.status && <Chip label={enumLabel(row.status)} size="small" sx={{ ml: 0.5, fontSize: '0.65rem', height: 16 }} />}
                         </TableCell>
-                        <TableCell data-label="Reference">{row.reference}</TableCell>
-                        <TableCell data-label="Debit (Invoice)" align="right" sx={{ color: row.debit > 0 ? 'error.main' : 'text.disabled' }}>
+                        <TableCell data-label={t('colReference')}>{row.reference}</TableCell>
+                        <TableCell data-label={t('debitInvoice')} align="right" sx={{ color: row.debit > 0 ? 'error.main' : 'text.disabled' }}>
                           {row.debit > 0 ? formatIndianNumber(row.debit) : '—'}
                         </TableCell>
-                        <TableCell data-label="Credit (Paid)" align="right" sx={{ color: row.credit > 0 ? 'success.main' : 'text.disabled' }}>
+                        <TableCell data-label={t('creditPaid')} align="right" sx={{ color: row.credit > 0 ? 'success.main' : 'text.disabled' }}>
                           {row.credit > 0 ? formatIndianNumber(row.credit) : '—'}
                         </TableCell>
-                        <TableCell data-label="Balance" align="right" sx={{ fontWeight: 600 }}>
+                        <TableCell data-label={t('balance')} align="right" sx={{ fontWeight: 600 }}>
                           {formatIndianNumber(row.runningBalance)}
                         </TableCell>
                       </TableRow>
@@ -128,7 +130,7 @@ function VendorStatementDialog({ vendorId, open, onClose }: { vendorId: string |
                   )}
                   {/* Totals row */}
                   <TableRow sx={{ borderTop: 2, borderColor: 'divider' }}>
-                    <TableCell colSpan={3} sx={{ fontWeight: 700 }}>Total</TableCell>
+                    <TableCell colSpan={3} sx={{ fontWeight: 700 }}>{t('total')}</TableCell>
                     <TableCell align="right" sx={{ fontWeight: 700, color: 'error.main' }}>{formatCurrency(data.summary.totalDebit)}</TableCell>
                     <TableCell align="right" sx={{ fontWeight: 700, color: 'success.main' }}>{formatCurrency(data.summary.totalCredit)}</TableCell>
                     <TableCell align="right" sx={{ fontWeight: 700 }}>{formatCurrency(data.summary.closingBalance)}</TableCell>
@@ -141,20 +143,21 @@ function VendorStatementDialog({ vendorId, open, onClose }: { vendorId: string |
             {/* Ledger info */}
             {data.ledger && (
               <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
-                Ledger: {data.ledger.name} · Current Ledger Balance: {formatCurrency(data.ledger.currentBalance)}
+                {t('ledgerInfo', { name: data.ledger.name, v: formatCurrency(data.ledger.currentBalance) })}
               </Typography>
             )}
           </>
         )}
       </DialogContent>
       <DialogActions>
-        <Button onClick={onClose}>Close</Button>
+        <Button onClick={onClose}>{t('close')}</Button>
       </DialogActions>
     </ResponsiveDialog>
   );
 }
 
 function VendorLinkedDialog({ vendorId, open, onClose }: { vendorId: string | null; open: boolean; onClose: () => void }) {
+  const { t } = useTranslation('vendors');
   const navigate = useNavigate();
   const [tab, setTab] = useState(0);
   const { data, isLoading } = useQuery<VendorTrace>({
@@ -168,32 +171,32 @@ function VendorLinkedDialog({ vendorId, open, onClose }: { vendorId: string | nu
 
   const chips = data
     ? [
-        { label: `Quotations (${data.quotations.length})` },
-        { label: `Purchase Orders (${data.purchaseOrders.length})` },
-        { label: `Assets (${data.assets.length})` },
-        { label: `Invoices (${data.invoices.length})` },
-        { label: `Payments (${data.paymentRequests.length})` },
+        { label: t('tabQuotations', { n: data.quotations.length }) },
+        { label: t('tabPOs', { n: data.purchaseOrders.length }) },
+        { label: t('tabAssets', { n: data.assets.length }) },
+        { label: t('tabInvoices', { n: data.invoices.length }) },
+        { label: t('tabPayments', { n: data.paymentRequests.length }) },
       ]
     : [];
 
   return (
     <ResponsiveDialog open={open} onClose={onClose} maxWidth="lg" fullWidth>
       <DialogTitle>
-        {isLoading || !data ? 'Linked Records' : `Linked Records — ${data.name} (${data.vendorCode})`}
+        {isLoading || !data ? t('linkedRecords') : t('linkedTitle', { name: data.name, code: data.vendorCode })}
       </DialogTitle>
       <DialogContent>
         {isLoading ? (
           <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress /></Box>
         ) : !data ? (
-          <Typography color="text.secondary">No data available.</Typography>
+          <Typography color="text.secondary">{t('noData')}</Typography>
         ) : (
           <>
             <Box sx={{ mb: 2 }}>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
-                Category: {data.category ?? '—'} • Status: <Chip size="small" label={statusLabel(data.status ?? 'ACTIVE')} color={(STATUS_COLORS[data.status ?? ''] ?? 'default') as never} />
-                {data.referenceBy ? ` • Referred By: ${data.referenceBy}` : ''}
+                {t('categoryLine', { v: data.category ? enumLabel(data.category) : '—' })} <Chip size="small" label={statusLabel(data.status ?? 'ACTIVE')} color={(STATUS_COLORS[data.status ?? ''] ?? 'default') as never} />
+                {data.referenceBy ? t('referredLine', { v: data.referenceBy }) : ''}
               </Typography>
-              {data.gstNumber && <Typography variant="body2" color="text.secondary">GST: {data.gstNumber}</Typography>}
+              {data.gstNumber && <Typography variant="body2" color="text.secondary">{t('gstLine', { v: data.gstNumber })}</Typography>}
             </Box>
             <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}>
               <Tabs value={tab} onChange={(_, v) => setTab(v)} variant="scrollable" scrollButtons="auto">
@@ -202,53 +205,53 @@ function VendorLinkedDialog({ vendorId, open, onClose }: { vendorId: string | nu
             </Box>
 
             {tab === 0 && (
-              <RecordTable section="Quotations" data={data.quotations} columns={[
-                { key: 'quotationNumber', label: 'Quotation #' },
-                { key: 'date', label: 'Date', render: (r) => formatDate(r.date) },
-                { key: 'status', label: 'Status', chip: true },
-                { key: 'grandTotal', label: 'Grand Total', render: (r) => `₹${Number(r.grandTotal).toLocaleString('en-IN')}` },
+              <RecordTable section={t('secQuotations')} data={data.quotations} columns={[
+                { key: 'quotationNumber', label: t('quotationNo') },
+                { key: 'date', label: t('colDate'), render: (r) => formatDate(r.date) },
+                { key: 'status', label: t('status'), chip: true },
+                { key: 'grandTotal', label: t('grandTotal'), render: (r) => `₹${Number(r.grandTotal).toLocaleString('en-IN')}` },
               ]} />
             )}
             {tab === 1 && (
-              <RecordTable section="Purchase Orders" data={data.purchaseOrders} columns={[
-                { key: 'poNumber', label: 'PO #' },
-                { key: 'date', label: 'Date', render: (r) => formatDate(r.date) },
-                { key: 'status', label: 'Status', chip: true },
-                { key: 'budgetHead', label: 'Budget Head', render: (r) => r.budgetHead?.particulars ?? '—' },
-                { key: 'grandTotal', label: 'Grand Total', render: (r) => `₹${Number(r.grandTotal).toLocaleString('en-IN')}` },
+              <RecordTable section={t('secPOs')} data={data.purchaseOrders} columns={[
+                { key: 'poNumber', label: t('poNo') },
+                { key: 'date', label: t('colDate'), render: (r) => formatDate(r.date) },
+                { key: 'status', label: t('status'), chip: true },
+                { key: 'budgetHead', label: t('budgetHead'), render: (r) => r.budgetHead?.particulars ?? '—' },
+                { key: 'grandTotal', label: t('grandTotal'), render: (r) => `₹${Number(r.grandTotal).toLocaleString('en-IN')}` },
               ]} />
             )}
             {tab === 2 && (
-              <RecordTable section="Assets" data={data.assets} columns={[
-                { key: 'assetId', label: 'Asset ID', render: (r) => <strong>{r.assetId}</strong> },
-                { key: 'itemName', label: 'Item', render: (r) => r.inventoryItem.name },
-                { key: 'status', label: 'Status', chip: true },
-                { key: 'location', label: 'Location' },
-                { key: 'totalCost', label: 'Cost', render: (r) => r.totalCost ? `₹${Number(r.totalCost).toLocaleString('en-IN')}` : '—' },
+              <RecordTable section={t('secAssets')} data={data.assets} columns={[
+                { key: 'assetId', label: t('assetId'), render: (r) => <strong>{r.assetId}</strong> },
+                { key: 'itemName', label: t('item'), render: (r) => r.inventoryItem.name },
+                { key: 'status', label: t('status'), chip: true },
+                { key: 'location', label: t('location') },
+                { key: 'totalCost', label: t('cost'), render: (r) => r.totalCost ? `₹${Number(r.totalCost).toLocaleString('en-IN')}` : '—' },
               ]} onRowClick={(r) => navigate(`/scan/${r.assetId}`)} />
             )}
             {tab === 3 && (
-              <RecordTable section="Invoices" data={data.invoices} columns={[
-                { key: 'invoiceNumber', label: 'Invoice #' },
-                { key: 'date', label: 'Date', render: (r) => formatDate(r.date) },
-                { key: 'stockStatus', label: 'Stock', chip: true },
-                { key: 'totalAmount', label: 'Amount', render: (r) => `₹${Number(r.totalAmount).toLocaleString('en-IN')}` },
+              <RecordTable section={t('secInvoices')} data={data.invoices} columns={[
+                { key: 'invoiceNumber', label: t('invoiceNo') },
+                { key: 'date', label: t('colDate'), render: (r) => formatDate(r.date) },
+                { key: 'stockStatus', label: t('stock'), chip: true },
+                { key: 'totalAmount', label: t('amount'), render: (r) => `₹${Number(r.totalAmount).toLocaleString('en-IN')}` },
               ]} />
             )}
             {tab === 4 && (
-              <RecordTable section="Payments" data={data.paymentRequests} columns={[
-                { key: 'requestNumber', label: 'Request #' },
-                { key: 'createdAt', label: 'Date', render: (r) => formatDate(r.createdAt) },
-                { key: 'type', label: 'Type', chip: true },
-                { key: 'status', label: 'Status', chip: true },
-                { key: 'amount', label: 'Amount', render: (r) => `₹${Number(r.amount).toLocaleString('en-IN')}` },
+              <RecordTable section={t('secPayments')} data={data.paymentRequests} columns={[
+                { key: 'requestNumber', label: t('requestNo') },
+                { key: 'createdAt', label: t('colDate'), render: (r) => formatDate(r.createdAt) },
+                { key: 'type', label: t('colType'), chip: true },
+                { key: 'status', label: t('status'), chip: true },
+                { key: 'amount', label: t('amount'), render: (r) => `₹${Number(r.amount).toLocaleString('en-IN')}` },
               ]} />
             )}
           </>
         )}
       </DialogContent>
       <DialogActions>
-        <Button onClick={onClose}>Close</Button>
+        <Button onClick={onClose}>{t('close')}</Button>
       </DialogActions>
     </ResponsiveDialog>
   );
@@ -272,7 +275,8 @@ function RecordTable({
   columns: RecordTableColumn[];
   onRowClick?: (row: Record<string, any>) => void;
 }) {
-  if (data.length === 0) return <Typography variant="body2" color="text.secondary">No {section.toLowerCase()} found.</Typography>;
+  const { t } = useTranslation('vendors');
+  if (data.length === 0) return <Typography variant="body2" color="text.secondary">{t('noneFound', { section: section.toLowerCase() })}</Typography>;
 
   return (
     <ResponsiveTable>
@@ -310,6 +314,7 @@ function RecordTable({
 }
 
 export default function VendorsPage() {
+  const { t } = useTranslation('vendors');
   const [linkedId, setLinkedId] = useState<string | null>(null);
   const [statementId, setStatementId] = useState<string | null>(null);
   const [historyId, setHistoryId] = useState<string | null>(null);
@@ -317,30 +322,30 @@ export default function VendorsPage() {
   return (
     <>
       <EntityPage
-        title="Vendors"
+        title={t('title')}
         endpoint="/vendors"
-        entityName="Vendor"
+        entityName={t('entity')}
         entityType="VENDOR"
         deepLinkField="name"
         cardLayout
-        rowClickLabel="History"
+        rowClickLabel={t('history')}
         onRowClick={(row) => setHistoryId(String(row.id))}
         columns={[
-          { key: 'vendorCode', label: 'Vendor ID' },
-          { key: 'name', label: 'Vendor Name' },
-          { key: 'vendorType', label: 'Type', render: (r) => r.vendorType === 'NON_VENDOR' ? 'Non-Vendor' : 'Vendor' },
-          { key: 'category', label: 'Category' },
-          { key: 'gstNumber', label: 'GST No' },
-          { key: 'createdAt', label: 'Date', render: (r) => formatDate(r.createdAt) },
-          { key: 'phone', label: 'Phone' },
-          { key: 'referenceBy', label: 'Referred By' },
-          { key: 'description', label: 'Description' },
-          { key: 'totalBilled', label: 'Total Bill', render: (r) => `₹${Number(r.totalBilled ?? 0).toLocaleString('en-IN')}` },
-          { key: 'totalPaid', label: 'Paid', render: (r) => `₹${Number(r.totalPaid ?? 0).toLocaleString('en-IN')}` },
-          { key: 'outstanding', label: 'Outstanding', render: (r) => `₹${Number(r.outstanding ?? 0).toLocaleString('en-IN')}` },
-          { key: 'weOwe', label: 'We Owe (Ledger)', render: (r) => r.ledgerId ? `₹${Number(r.weOwe ?? 0).toLocaleString('en-IN')}` : '—' },
-          { key: 'theyOwe', label: 'They Owe (Ledger)', render: (r) => r.ledgerId ? `₹${Number(r.theyOwe ?? 0).toLocaleString('en-IN')}` : '—' },
-          { key: 'status', label: 'Status' },
+          { key: 'vendorCode', label: t('vendorId') },
+          { key: 'name', label: t('vendorName') },
+          { key: 'vendorType', label: t('type'), render: (r) => r.vendorType === 'NON_VENDOR' ? t('nonVendor') : t('vendor') },
+          { key: 'category', label: t('category'), render: (r) => r.category ? enumLabel(r.category) : '—' },
+          { key: 'gstNumber', label: t('gstNo') },
+          { key: 'createdAt', label: t('date'), render: (r) => formatDate(r.createdAt) },
+          { key: 'phone', label: t('phone') },
+          { key: 'referenceBy', label: t('referredBy') },
+          { key: 'description', label: t('description') },
+          { key: 'totalBilled', label: t('totalBill'), render: (r) => `₹${Number(r.totalBilled ?? 0).toLocaleString('en-IN')}` },
+          { key: 'totalPaid', label: t('paid'), render: (r) => `₹${Number(r.totalPaid ?? 0).toLocaleString('en-IN')}` },
+          { key: 'outstanding', label: t('outstanding'), render: (r) => `₹${Number(r.outstanding ?? 0).toLocaleString('en-IN')}` },
+          { key: 'weOwe', label: t('weOwe'), render: (r) => r.ledgerId ? `₹${Number(r.weOwe ?? 0).toLocaleString('en-IN')}` : '—' },
+          { key: 'theyOwe', label: t('theyOwe'), render: (r) => r.ledgerId ? `₹${Number(r.theyOwe ?? 0).toLocaleString('en-IN')}` : '—' },
+          { key: 'status', label: t('status') },
         ]}
         statusKey="status"
         statusColors={STATUS_COLORS}
@@ -359,39 +364,30 @@ export default function VendorsPage() {
           { key: 'status', label: 'Status' },
         ]}
         fields={[
-          { name: 'name', label: 'Vendor Name', type: 'text', required: true },
-          { name: 'vendorType', label: 'Vendor Type', type: 'select', required: true, options: [
-            { value: 'VENDOR', label: 'Vendor (recurring — Quotation → PO)' },
-            { value: 'NON_VENDOR', label: 'Non-Vendor (one-time — e.g. transport)' },
+          { name: 'name', label: t('vendorName'), type: 'text', required: true },
+          { name: 'vendorType', label: t('vendorType'), type: 'select', required: true, options: [
+            { value: 'VENDOR', label: t('vendorTypeVendor') },
+            { value: 'NON_VENDOR', label: t('vendorTypeNon') },
           ], defaultValue: 'VENDOR' },
-          { name: 'phone', label: 'Phone', type: 'text' },
-          { name: 'gstNumber', label: 'GST Number', type: 'text' },
-          { name: 'category', label: 'Vendor Category', type: 'select', required: true, dropdownType: 'VENDOR_CATEGORY', createOptionLabel: 'New Category', options: [
-            { value: 'LABOUR_SUPPLIER', label: 'Labour Supplier' },
-            { value: 'ELECTRICAL_CONTRACTOR', label: 'Electrical Contractor' },
-            { value: 'WOOD_WORK_CONTRACTOR', label: 'Wood Work Contractor' },
-            { value: 'MACHINERY_SUPPLIER', label: 'Machinery Supplier' },
-            { value: 'TOOL_SUPPLIER', label: 'Tool Supplier' },
-            { value: 'MATERIAL_SUPPLIER', label: 'Material Supplier' },
-            { value: 'SUBCONTRACTOR', label: 'Subcontractor' },
-            { value: 'SERVICE_PROVIDER', label: 'Service Provider' },
-            { value: 'EQUIPMENT_SUPPLIER', label: 'Equipment Supplier' },
-            { value: 'OTHER', label: 'Other' },
+          { name: 'phone', label: t('phone'), type: 'text' },
+          { name: 'gstNumber', label: t('gstNumber'), type: 'text' },
+          { name: 'category', label: t('vendorCategory'), type: 'select', required: true, dropdownType: 'VENDOR_CATEGORY', createOptionLabel: t('newCategory'), options: [
+            ...['LABOUR_SUPPLIER', 'ELECTRICAL_CONTRACTOR', 'WOOD_WORK_CONTRACTOR', 'MACHINERY_SUPPLIER', 'TOOL_SUPPLIER', 'MATERIAL_SUPPLIER', 'SUBCONTRACTOR', 'SERVICE_PROVIDER', 'EQUIPMENT_SUPPLIER', 'OTHER'].map((v) => ({ value: v, label: enumLabel(v) })),
           ], defaultValue: 'LABOUR_SUPPLIER' },
-          { name: 'referenceBy', label: 'Referred By', type: 'select', options: [
+          { name: 'referenceBy', label: t('referredBy'), type: 'select', options: [
             { value: 'Nagarjuna Sir', label: 'Nagarjuna Sir' },
             { value: 'Ashok Sir', label: 'Ashok Sir' },
             { value: 'Kaushal Sir', label: 'Kaushal Sir' },
             { value: 'Vinod Sir', label: 'Vinod Sir' },
           ] },
-          { name: 'materials', label: 'Materials Supplied', type: 'materials-list' },
-          { name: 'panNumber', label: 'PAN Number', type: 'text' },
-          { name: 'bankName', label: 'Bank Name', type: 'text' },
-          { name: 'bankAccountNumber', label: 'Account Number', type: 'text' },
-          { name: 'ifscCode', label: 'IFSC Code', type: 'text' },
-          { name: 'address', label: 'Address', type: 'textarea' },
-          { name: 'email', label: 'Email', type: 'text' },
-          { name: 'description', label: 'Description', type: 'textarea' },
+          { name: 'materials', label: t('materialsSupplied'), type: 'materials-list' },
+          { name: 'panNumber', label: t('panNumber'), type: 'text' },
+          { name: 'bankName', label: t('bankName'), type: 'text' },
+          { name: 'bankAccountNumber', label: t('accountNumber'), type: 'text' },
+          { name: 'ifscCode', label: t('ifsc'), type: 'text' },
+          { name: 'address', label: t('address'), type: 'textarea' },
+          { name: 'email', label: t('email'), type: 'text' },
+          { name: 'description', label: t('description'), type: 'textarea' },
         ]}
         rowActions={(row) => (
           <Stack direction="row" spacing={0.5}>
@@ -400,14 +396,14 @@ export default function VendorsPage() {
               startIcon={<LinkIcon />}
               onClick={(e) => { e.stopPropagation(); setLinkedId(String(row.id)); }}
             >
-              Linked
+              {t('linked')}
             </Button>
             <Button
               size="small"
               startIcon={<StatementIcon />}
               onClick={(e) => { e.stopPropagation(); setStatementId(String(row.id)); }}
             >
-              Statement
+              {t('statement')}
             </Button>
           </Stack>
         )}

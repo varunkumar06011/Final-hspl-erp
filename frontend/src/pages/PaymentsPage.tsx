@@ -52,7 +52,8 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { PaymentStatus, PaymentMode, UserRole, POPaymentType, isAdminRole } from '@hospital-erp/shared';
-import { formatCurrency, formatIndianNumber, STATUS_COLORS, todayLocalDate } from '../utils/enumOptions';
+import { enumLabel, formatCurrency, formatIndianNumber, STATUS_COLORS, todayLocalDate } from '../utils/enumOptions';
+import { dateLocale } from '../i18n';
 import api, { extractErrorMessage } from '../config/api';
 import { useAuthStore } from '../stores/authStore';
 import { downloadFile } from '../utils/file';
@@ -65,6 +66,7 @@ import { useUrlFilters } from '../hooks/useUrlFilters';
 import { shareOnWhatsApp, buildPaymentShareMessage } from '../utils/whatsappShare';
 import CommentsButton from '../components/CommentsButton';
 
+import { useTranslation, Trans } from 'react-i18next';
 interface ApprovalStep {
   id: string;
   stepNumber: number;
@@ -180,6 +182,7 @@ const EXPENSE_CATEGORIES = [
 const PAYMENT_MODES = Object.values(PaymentMode);
 
 export default function PaymentsPage() {
+  const { t: tr } = useTranslation('payments');
   const [tab, setTab] = useState(0);
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(20);
@@ -536,30 +539,30 @@ export default function PaymentsPage() {
   }
 
   function handleDownload(id: string, fileName: string) {
-    downloadFile('payments', id, fileName).catch(() => setError('Failed to download file'));
+    downloadFile('payments', id, fileName).catch(() => setError(tr('errDownload')));
   }
 
   function validateExpenseForm(): boolean {
     const payee = String(expenseForm.payee ?? '').trim();
     const item = String(expenseForm.item ?? '').trim();
     if (!payee || !item) {
-      setError('Payee and Item are required (format: Payee · Item · Ref)');
+      setError(tr('errPayee'));
       return false;
     }
     if (!String(expenseForm.category ?? '').trim()) {
-      setError('Category is required');
+      setError(tr('errCat'));
       return false;
     }
     if (!expenseForm.budgetHeadId || String(expenseForm.budgetHeadId).trim() === '') {
-      setError('Budget Head is required');
+      setError(tr('errBudget'));
       return false;
     }
     if (!Number.isFinite(Number(expenseForm.amount)) || Number(expenseForm.amount) <= 0) {
-      setError('Expense amount must be greater than zero');
+      setError(tr('errAmt'));
       return false;
     }
     if (expenseFile && (!['application/pdf', 'image/jpeg', 'image/png', 'image/webp'].includes(expenseFile.type) || expenseFile.size > 50 * 1024 * 1024)) {
-      setError('Receipt must be a PDF or image smaller than 50 MB');
+      setError(tr('errReceipt'));
       return false;
     }
     return true;
@@ -568,11 +571,11 @@ export default function PaymentsPage() {
   return (
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap' }}>
-        <Typography variant="h5" fontWeight={600} sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' } }}>Payments</Typography>
+        <Typography variant="h5" fontWeight={600} sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' } }}>{tr('title')}</Typography>
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', justifyContent: { xs: 'flex-end', md: 'flex-end' }, width: { xs: '100%', md: 'auto' } }}>
           <RefreshButton onClick={() => refetch()} />
-          <Button variant="outlined" startIcon={<ReceiptIcon />} onClick={() => setTab(0)}>Pending Invoices</Button>
-          <Button variant="contained" startIcon={<AddIcon />} onClick={() => { setExpenseForm({}); setExpenseFile(null); setExpenseOpen(true); }}>Add Daily Expense</Button>
+          <Button variant="outlined" startIcon={<ReceiptIcon />} onClick={() => setTab(0)}>{tr('pendingInvoices')}</Button>
+          <Button variant="contained" startIcon={<AddIcon />} onClick={() => { setExpenseForm({}); setExpenseFile(null); setExpenseOpen(true); }}>{tr('addDailyExpense')}</Button>
         </Box>
       </Box>
 
@@ -580,64 +583,64 @@ export default function PaymentsPage() {
       {successMsg && <Alert severity="success" sx={{ mb: 2 }} onClose={() => setSuccessMsg('')}>{successMsg}</Alert>}
 
       <Tabs value={tab} onChange={(_e, v) => setTab(v)} sx={{ mb: 2 }} variant="scrollable" scrollButtons="auto" allowScrollButtonsMobile>
-        <Tab label={`Pending Invoices (${pendingInvoicesData.length})`} />
-        <Tab label={`Advance Payments (${pendingPOsData.length})`} />
-        <Tab label="All Payment Requests" />
-        <Tab label="Payment Sheets" />
+        <Tab label={tr('tabPending', { n: pendingInvoicesData.length })} />
+        <Tab label={tr('tabAdvance', { n: pendingPOsData.length })} />
+        <Tab label={tr('allPaymentRequests')} />
+        <Tab label={tr('paymentSheets')} />
       </Tabs>
 
       {/* Tab 0: Pending Invoices */}
       {tab === 0 && (
         <Card>
           <CardContent>
-            <Typography variant="h6" gutterBottom>Verified Invoices Awaiting Payment</Typography>
+            <Typography variant="h6" gutterBottom>{tr('verifiedInvoicesAwaitingPayment')}</Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-              These invoices have been approved and are ready for payment. Pay in full or in installments.
+              {tr('theseInvoicesHaveBeen')}
             </Typography>
             {pendingInvoicesData.length === 0 ? (
-              <Typography color="text.secondary" sx={{ py: 3, textAlign: 'center' }}>No invoices awaiting payment. All verified invoices are fully paid or have active payment requests.</Typography>
+              <Typography color="text.secondary" sx={{ py: 3, textAlign: 'center' }}>{tr('noInvoices')}</Typography>
             ) : (
               <ResponsiveTable>
               <TableContainer sx={{ overflowX: 'auto' }}>
                 <Table size="small">
                   <TableHead>
                     <TableRow>
-                      <TableCell sx={{ fontWeight: 600 }}>Invoice Code</TableCell>
-                      <TableCell sx={{ fontWeight: 600 }}>Invoice No</TableCell>
-                      <TableCell sx={{ fontWeight: 600 }}>Vendor</TableCell>
-                      <TableCell sx={{ fontWeight: 600 }}>Total</TableCell>
-                      <TableCell sx={{ fontWeight: 600 }}>Advance</TableCell>
-                      <TableCell sx={{ fontWeight: 600 }}>Installments</TableCell>
-                      <TableCell sx={{ fontWeight: 600 }}>Paid to Date</TableCell>
-                      <TableCell sx={{ fontWeight: 600 }}>Outstanding</TableCell>
-                      <TableCell sx={{ fontWeight: 600 }}>After Current Request</TableCell>
-                      <TableCell sx={{ fontWeight: 600 }}>Created By</TableCell>
-                      <TableCell sx={{ fontWeight: 600 }}>Actions</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>{tr('invoiceCode')}</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>{tr('invoiceNo')}</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>{tr('vendor')}</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>{tr('total')}</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>{tr('advance')}</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>{tr('installments')}</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>{tr('paidToDate')}</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>{tr('outstanding')}</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>{tr('afterCurrentRequest')}</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>{tr('createdBy')}</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>{tr('actions')}</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
                     {pendingInvoicesData.map((inv) => (
                       <TableRow key={inv.id} hover>
-                        <TableCell data-label="Invoice Code">{inv.invoiceCode}</TableCell>
-                        <TableCell data-label="Invoice No">{inv.invoiceNumber}</TableCell>
-                        <TableCell data-label="Vendor">{inv.vendor?.vendorCode} - {inv.vendor?.name}</TableCell>
-                        <TableCell data-label="Total">{formatCurrency(inv.totalAmount)}</TableCell>
-                        <TableCell data-label="Advance">{inv.advancePaid > 0 ? formatCurrency(inv.advancePaid) : '—'}</TableCell>
-                        <TableCell data-label="Installments">{inv.installmentsPaid > 0 ? formatCurrency(inv.installmentsPaid) : '—'}</TableCell>
-                        <TableCell data-label="Paid to Date">{formatCurrency(inv.paidToDate)}</TableCell>
-                        <TableCell data-label="Outstanding"><strong>{formatCurrency(inv.outstanding)}</strong></TableCell>
-                        <TableCell data-label="After Current Request">
+                        <TableCell data-label={tr('invoiceCode')}>{inv.invoiceCode}</TableCell>
+                        <TableCell data-label={tr('invoiceNo')}>{inv.invoiceNumber}</TableCell>
+                        <TableCell data-label={tr('vendor')}>{inv.vendor?.vendorCode} - {inv.vendor?.name}</TableCell>
+                        <TableCell data-label={tr('total')}>{formatCurrency(inv.totalAmount)}</TableCell>
+                        <TableCell data-label={tr('advance')}>{inv.advancePaid > 0 ? formatCurrency(inv.advancePaid) : '—'}</TableCell>
+                        <TableCell data-label={tr('installments')}>{inv.installmentsPaid > 0 ? formatCurrency(inv.installmentsPaid) : '—'}</TableCell>
+                        <TableCell data-label={tr('paidToDate')}>{formatCurrency(inv.paidToDate)}</TableCell>
+                        <TableCell data-label={tr('outstanding')}><strong>{formatCurrency(inv.outstanding)}</strong></TableCell>
+                        <TableCell data-label={tr('afterCurrentRequest')}>
                           {inv.activePaymentRequest
                             ? formatCurrency(Math.max(0, inv.outstanding - inv.activePaymentRequest.amount))
                             : '—'}
                         </TableCell>
-                        <TableCell data-label="Created By">{inv.createdBy}</TableCell>
-                        <TableCell data-label="Actions">
+                        <TableCell data-label={tr('createdBy')}>{inv.createdBy}</TableCell>
+                        <TableCell data-label={tr('actions')}>
                           {inv.activePaymentRequest ? (
                             <Chip
                               size="small"
                               color="warning"
-                              label={`Request ${inv.activePaymentRequest.status}`}
+                              label={tr('reqStatus', { status: enumLabel(inv.activePaymentRequest.status) })}
                             />
                           ) : (
                             <Button
@@ -654,7 +657,7 @@ export default function PaymentsPage() {
                               });
                             }}
                           >
-                            Create Payment
+                            {tr('createPayment')}
                             </Button>
                           )}
                         </TableCell>
@@ -673,55 +676,55 @@ export default function PaymentsPage() {
       {tab === 1 && (
         <Card>
           <CardContent>
-            <Typography variant="h6" gutterBottom>POs Awaiting Advance Payment</Typography>
+            <Typography variant="h6" gutterBottom>{tr('posAwaitingAdvancePayment')}</Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-              These purchase orders were created with an advance or full payment type. Record the advance payment with proof for approval.
+              {tr('thesePurchaseOrdersWere')}
             </Typography>
             {pendingPOsData.length === 0 ? (
-              <Typography color="text.secondary" sx={{ py: 3, textAlign: 'center' }}>No POs awaiting advance payment. All advance-type POs are fully paid or have active payment requests.</Typography>
+              <Typography color="text.secondary" sx={{ py: 3, textAlign: 'center' }}>{tr('noPOs')}</Typography>
             ) : (
               <ResponsiveTable>
               <TableContainer sx={{ overflowX: 'auto' }}>
                 <Table size="small">
                   <TableHead>
                     <TableRow>
-                      <TableCell sx={{ fontWeight: 600 }}>PO No</TableCell>
-                      <TableCell sx={{ fontWeight: 600 }}>Vendor</TableCell>
-                      <TableCell sx={{ fontWeight: 600 }}>Payment Type</TableCell>
-                      <TableCell sx={{ fontWeight: 600 }}>Grand Total</TableCell>
-                      <TableCell sx={{ fontWeight: 600 }}>Advance Paid</TableCell>
-                      <TableCell sx={{ fontWeight: 600 }}>Outstanding</TableCell>
-                      <TableCell sx={{ fontWeight: 600 }}>Actions</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>{tr('poNo')}</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>{tr('vendor')}</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>{tr('paymentType')}</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>{tr('grandTotal')}</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>{tr('advancePaid')}</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>{tr('outstanding')}</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>{tr('actions')}</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
                     {pendingPOsData.map((po) => (
                       <TableRow key={po.id} hover>
-                        <TableCell data-label="PO No">{po.poNumber}</TableCell>
-                        <TableCell data-label="Vendor">{po.vendor?.vendorCode} - {po.vendor?.name}</TableCell>
-                        <TableCell data-label="Payment Type">
+                        <TableCell data-label={tr('poNo')}>{po.poNumber}</TableCell>
+                        <TableCell data-label={tr('vendor')}>{po.vendor?.vendorCode} - {po.vendor?.name}</TableCell>
+                        <TableCell data-label={tr('paymentType')}>
                           <Chip
                             size="small"
-                            label={po.paymentType === POPaymentType.ADVANCE ? 'Advance' : 'Full Payment'}
+                            label={po.paymentType === POPaymentType.ADVANCE ? tr('advance') : tr('fullPayment')}
                             color={po.paymentType === POPaymentType.ADVANCE ? 'warning' : 'success'}
                             variant="outlined"
                           />
                         </TableCell>
-                        <TableCell data-label="Grand Total">{formatCurrency(po.grandTotal)}</TableCell>
-                        <TableCell data-label="Advance Paid">{po.advancePaidToDate > 0 ? formatCurrency(po.advancePaidToDate) : '—'}</TableCell>
-                        <TableCell data-label="Outstanding"><strong>{formatCurrency(po.outstanding)}</strong></TableCell>
-                        <TableCell data-label="Actions">
+                        <TableCell data-label={tr('grandTotal')}>{formatCurrency(po.grandTotal)}</TableCell>
+                        <TableCell data-label={tr('advancePaid')}>{po.advancePaidToDate > 0 ? formatCurrency(po.advancePaidToDate) : '—'}</TableCell>
+                        <TableCell data-label={tr('outstanding')}><strong>{formatCurrency(po.outstanding)}</strong></TableCell>
+                        <TableCell data-label={tr('actions')}>
                           {po.activePaymentRequest ? (
                             <Chip
                               size="small"
                               color="warning"
-                              label={`Request ${po.activePaymentRequest.status}`}
+                              label={tr('reqStatus', { status: enumLabel(po.activePaymentRequest.status) })}
                             />
                           ) : po.outstanding <= 0 ? (
                             <Chip
                               size="small"
                               color="success"
-                              label="Paid"
+                              label={tr('paid')}
                             />
                           ) : (
                             <Button
@@ -741,7 +744,7 @@ export default function PaymentsPage() {
                                 setAdvanceFile(null);
                               }}
                             >
-                              Record Payment
+                              {tr('recordPayment')}
                             </Button>
                           )}
                         </TableCell>
@@ -762,25 +765,25 @@ export default function PaymentsPage() {
           <Box sx={{ p: 2, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
             <TextField
               size="small"
-              placeholder="Search..."
+              placeholder={tr('search')}
               value={search}
               onChange={(e) => { setSearch(e.target.value); setPage(0); }}
               InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> }}
               sx={{ width: { xs: '100%', sm: 250 } }}
             />
-            <TextField select size="small" label="Type" value={typeFilter} onChange={(e) => { setTypeFilter(e.target.value); setPage(0); }} sx={{ width: 150 }}>
-              <MenuItem value="">All</MenuItem>
-              <MenuItem value="INVOICE">Invoice</MenuItem>
-              <MenuItem value="EXPENSE">Expense</MenuItem>
-              <MenuItem value="ADVANCE">Advance</MenuItem>
+            <TextField select size="small" label={tr('type')} value={typeFilter} onChange={(e) => { setTypeFilter(e.target.value); setPage(0); }} sx={{ width: 150 }}>
+              <MenuItem value="">{tr('all')}</MenuItem>
+              <MenuItem value="INVOICE">{tr('invoice')}</MenuItem>
+              <MenuItem value="EXPENSE">{tr('expense')}</MenuItem>
+              <MenuItem value="ADVANCE">{tr('advance')}</MenuItem>
             </TextField>
-            <TextField select size="small" label="Status" value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(0); }} sx={{ width: 150 }}>
-              <MenuItem value="">All</MenuItem>
+            <TextField select size="small" label={tr('status')} value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(0); }} sx={{ width: 150 }}>
+              <MenuItem value="">{tr('all')}</MenuItem>
               {Object.values(PaymentStatus).map((s) => <MenuItem key={s} value={s}>{s}</MenuItem>)}
             </TextField>
             <TextField
               size="small"
-              label="Payment Date"
+              label={tr('paymentDate')}
               type="date"
               value={paymentDate}
               onChange={(e) => { setPaymentDate(e.target.value); setPage(0); }}
@@ -795,94 +798,94 @@ export default function PaymentsPage() {
             <Table size="small">
               <TableHead>
                 <TableRow>
-                  <TableCell sx={{ fontWeight: 600 }}>Code</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>Type</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>Description / Invoice</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>Vendor</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>Amount</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>Budget Head</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>Approvals</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>Approval Comments</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>Status</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>File</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>Actions</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>{tr('code')}</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>{tr('type')}</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>{tr('descriptionInvoice')}</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>{tr('vendor')}</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>{tr('amount')}</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>{tr('budgetHead')}</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>{tr('approvals')}</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>{tr('approvalComments')}</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>{tr('status')}</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>{tr('file')}</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>{tr('actions')}</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
                 {isLoading ? (
                   <TableRow><TableCell colSpan={11} align="center" sx={{ py: 4 }}><CircularProgress size={32} /></TableCell></TableRow>
                 ) : rows.length === 0 ? (
-                  <TableRow><TableCell colSpan={11} align="center" sx={{ py: 4 }}><Typography color="text.secondary">No payment requests found</Typography></TableCell></TableRow>
+                  <TableRow><TableCell colSpan={11} align="center" sx={{ py: 4 }}><Typography color="text.secondary">{tr('noPaymentRequestsFound')}</Typography></TableCell></TableRow>
                 ) : (
                   rows.map((row) => (
                     <TableRow key={row.id} hover ref={rowRef(row.id)} sx={{ ...(highlightId === row.id && { bgcolor: 'warning.light', '&:hover': { bgcolor: 'warning.light' } }) }}>
-                      <TableCell data-label="Code">{row.paymentCode}</TableCell>
-                      <TableCell data-label="Type"><Chip label={row.type} size="small" color={row.type === 'EXPENSE' ? 'secondary' : row.type === 'ADVANCE' ? 'warning' : 'primary'} variant="outlined" /></TableCell>
-                      <TableCell data-label="Description / Invoice / PO">
+                      <TableCell data-label={tr('code')}>{row.paymentCode}</TableCell>
+                      <TableCell data-label={tr('type')}><Chip label={enumLabel(row.type)} size="small" color={row.type === 'EXPENSE' ? 'secondary' : row.type === 'ADVANCE' ? 'warning' : 'primary'} variant="outlined" /></TableCell>
+                      <TableCell data-label={tr('descriptionInvoicePo')}>
                         {row.type === 'EXPENSE'
                           ? `${row.description ?? '—'}${row.category ? ` (${row.category})` : ''}`
                           : row.type === 'ADVANCE'
-                            ? `PO: ${row.purchaseOrder?.poNumber ?? '—'}`
+                            ? tr('poN', { n: row.purchaseOrder?.poNumber ?? '—' })
                             : row.invoice?.invoiceCode ?? '—'}
                       </TableCell>
-                      <TableCell data-label="Vendor">{row.vendor ? `${row.vendor.vendorCode} - ${row.vendor.name}` : '—'}</TableCell>
-                      <TableCell data-label="Amount">{formatCurrency(row.amount)}</TableCell>
-                      <TableCell data-label="Budget Head">
+                      <TableCell data-label={tr('vendor')}>{row.vendor ? `${row.vendor.vendorCode} - ${row.vendor.name}` : '—'}</TableCell>
+                      <TableCell data-label={tr('amount')}>{formatCurrency(row.amount)}</TableCell>
+                      <TableCell data-label={tr('budgetHead')}>
                         {row.budgetHead
                           ? <Chip label={row.budgetHead.particulars} size="small" variant="outlined" color="primary" />
                           : <Typography variant="caption" color="text.secondary">—</Typography>}
                       </TableCell>
-                      <TableCell data-label="Approvals">
+                      <TableCell data-label={tr('approvals')}>
                         {row.approvalWorkflow
                           ? `${getApprovalCount(row)}/2`
                           : '—'}
                       </TableCell>
-                      <TableCell data-label="Approval Comments" sx={{ maxWidth: 260 }}>
+                      <TableCell data-label={tr('approvalComments')} sx={{ maxWidth: 260 }}>
                         {row.approvalWorkflow?.steps
                           ? <ApprovalCommentsInline steps={row.approvalWorkflow.steps} />
                           : <Typography variant="caption" color="text.secondary">—</Typography>}
                       </TableCell>
-                      <TableCell data-label="Status">
+                      <TableCell data-label={tr('status')}>
                         <Stack spacing={0.5} alignItems="flex-start">
-                          <Chip label={row.status} size="small" color={STATUS_COLORS[row.status] ?? 'default'} />
+                          <Chip label={enumLabel(row.status)} size="small" color={STATUS_COLORS[row.status] ?? 'default'} />
                           {row.status === PaymentStatus.PAID && row.payments[0] && (
                             <Typography variant="caption" color="text.secondary">
-                              {row.payments[0].bankAccount ? `via ${row.payments[0].bankAccount.accountName}` : row.payments[0].cashAccount ? `via ${row.payments[0].cashAccount.name}` : `via ${row.payments[0].mode}`}
+                              {row.payments[0].bankAccount ? tr('via', { v: row.payments[0].bankAccount.accountName }) : row.payments[0].cashAccount ? tr('via', { v: row.payments[0].cashAccount.name }) : tr('via', { v: enumLabel(row.payments[0].mode) })}
                             </Typography>
                           )}
                         </Stack>
                       </TableCell>
-                      <TableCell data-label="File">
+                      <TableCell data-label={tr('file')}>
                         {row.filePath
                           ? <IconButton size="small" onClick={() => handleDownload(row.id, row.fileName ?? 'file')}><DownloadIcon fontSize="small" /></IconButton>
                           : '—'}
                       </TableCell>
-                      <TableCell data-label="Actions">
+                      <TableCell data-label={tr('actions')}>
                         <Box sx={{ display: 'flex', gap: 0.5 }}>
                           <CommentsButton entityType="PAYMENT_REQUEST" entityId={row.id} entityLabel={row.requestNumber} url="/payments" />
-                          <IconButton size="small" sx={{ color: '#25D366' }} onClick={() => shareOnWhatsApp(buildPaymentShareMessage({ paymentCode: row.paymentCode, requestNumber: row.requestNumber, vendorName: row.vendor?.name, amount: Number(row.amount), status: row.status, type: row.type, description: row.description ?? undefined }))} title="Share on WhatsApp"><WhatsAppIcon fontSize="small" /></IconButton>
-                          <IconButton size="small" color="primary" onClick={() => openEdit(row)} title="Edit payment details"><EditIcon fontSize="small" /></IconButton>
+                          <IconButton size="small" sx={{ color: '#25D366' }} onClick={() => shareOnWhatsApp(buildPaymentShareMessage({ paymentCode: row.paymentCode, requestNumber: row.requestNumber, vendorName: row.vendor?.name, amount: Number(row.amount), status: row.status, type: row.type, description: row.description ?? undefined }))} title={tr('shareOnWhatsapp')}><WhatsAppIcon fontSize="small" /></IconButton>
+                          <IconButton size="small" color="primary" onClick={() => openEdit(row)} title={tr('editPaymentDetails')}><EditIcon fontSize="small" /></IconButton>
                           {canApprove(row) && (
                             <>
-                              <IconButton size="small" color="success" onClick={() => setApprovalAction({ row, action: 'approve' })} title="Approve"><CheckIcon fontSize="small" /></IconButton>
-                              <IconButton size="small" color="error" onClick={() => setApprovalAction({ row, action: 'reject' })} title="Reject"><CloseIcon fontSize="small" /></IconButton>
+                              <IconButton size="small" color="success" onClick={() => setApprovalAction({ row, action: 'approve' })} title={tr('approve')}><CheckIcon fontSize="small" /></IconButton>
+                              <IconButton size="small" color="error" onClick={() => setApprovalAction({ row, action: 'reject' })} title={tr('reject')}><CloseIcon fontSize="small" /></IconButton>
                             </>
                           )}
                           {row.status === PaymentStatus.APPROVED && row.payments.length === 0 && (
                             <>
                               <Button size="small" variant="outlined" startIcon={<PaymentsIcon />}
                                 onClick={() => navigate(`/vouchers?paymentRequest=${row.id}`)}>
-                                Post to Ledgers
+                                {tr('postToLedgers')}
                               </Button>
                               <Button size="small" variant="outlined" startIcon={<LinkIcon />}
                                 onClick={() => { setLinkVoucherRow(row); setSelectedVoucherId(''); }}>
-                                Link Voucher
+                                {tr('linkVoucher')}
                               </Button>
                             </>
                           )}
                           {row.payments.length > 0 && (
                             <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center', flexWrap: 'wrap' }}>
-                              <Chip label="Paid" size="small" color="success" />
+                              <Chip label={tr('paid')} size="small" color="success" />
                               {row.payments.map((p) =>
                                 p.journalVoucher?.jvNumber ? (
                                   <Chip
@@ -892,14 +895,14 @@ export default function PaymentsPage() {
                                     variant="outlined"
                                     color="primary"
                                     sx={{ fontSize: '0.7rem' }}
-                                    title="Posted to ledger"
+                                    title={tr('postedToLedger')}
                                   />
                                 ) : null,
                               )}
                             </Box>
                           )}
                           {row.status !== PaymentStatus.APPROVED && row.status !== PaymentStatus.PAID && (
-                            <IconButton size="small" color="error" onClick={() => setDeleteRow(row)} title="Delete"><DeleteIcon fontSize="small" /></IconButton>
+                            <IconButton size="small" color="error" onClick={() => setDeleteRow(row)} title={tr('delete')}><DeleteIcon fontSize="small" /></IconButton>
                           )}
                         </Box>
                       </TableCell>
@@ -927,11 +930,11 @@ export default function PaymentsPage() {
       {/* Approval details accordion */}
       {tab === 2 && rows.length > 0 && rows.some((r) => r.approvalWorkflow) && (
         <Box sx={{ mt: 2 }}>
-          <Typography variant="h6" fontWeight={600} sx={{ mb: 1 }}>Approval Status</Typography>
+          <Typography variant="h6" fontWeight={600} sx={{ mb: 1 }}>{tr('approvalStatus')}</Typography>
           {rows.filter((r) => r.approvalWorkflow).map((row) => (
             <Accordion key={row.id}>
               <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                <Typography><strong>{row.paymentCode}</strong> — {row.type === 'EXPENSE' ? row.description : row.type === 'ADVANCE' ? `PO: ${row.purchaseOrder?.poNumber}` : row.invoice?.invoiceCode} — {getApprovalCount(row)}/2 approved — <Chip label={row.status} size="small" color={STATUS_COLORS[row.status] ?? 'default'} /></Typography>
+                <Typography><strong>{row.paymentCode}</strong> — {row.type === 'EXPENSE' ? row.description : row.type === 'ADVANCE' ? tr('poN', { n: row.purchaseOrder?.poNumber }) : row.invoice?.invoiceCode} — {tr('approvedN', { n: getApprovalCount(row) })} — <Chip label={enumLabel(row.status)} size="small" color={STATUS_COLORS[row.status] ?? 'default'} /></Typography>
               </AccordionSummary>
               <AccordionDetails>
                 <ApprovalStepsDisplay steps={row.approvalWorkflow!.steps} />
@@ -946,40 +949,40 @@ export default function PaymentsPage() {
 
       {/* Create Invoice Payment Dialog */}
       <ResponsiveDialog open={!!invoicePayOpen} onClose={() => setInvoicePayOpen(null)} maxWidth="sm" fullWidth>
-        <DialogTitle>Create Payment Request for {invoicePayOpen?.invoiceCode}</DialogTitle>
+        <DialogTitle>{tr('createTitle', { code: invoicePayOpen?.invoiceCode })}</DialogTitle>
         <DialogContent>
           {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
-            <Typography variant="body2">Vendor: <strong>{invoicePayOpen?.vendor?.name}</strong></Typography>
+            <Typography variant="body2">{tr('vendor2')} <strong>{invoicePayOpen?.vendor?.name}</strong></Typography>
             <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1 }}>
-              <Typography variant="body2">Invoice Total: <strong>{invoicePayOpen ? formatCurrency(invoicePayOpen.totalAmount) : ''}</strong></Typography>
+              <Typography variant="body2">{tr('invoiceTotal')} <strong>{invoicePayOpen ? formatCurrency(invoicePayOpen.totalAmount) : ''}</strong></Typography>
               {invoicePayOpen && invoicePayOpen.advancePaid > 0 && (
-                <Typography variant="body2">Advance Paid: <strong>{formatCurrency(invoicePayOpen.advancePaid)}</strong></Typography>
+                <Typography variant="body2">{tr('advancePaid2')} <strong>{formatCurrency(invoicePayOpen.advancePaid)}</strong></Typography>
               )}
               {invoicePayOpen && invoicePayOpen.installmentsPaid > 0 && (
-                <Typography variant="body2">Installments Paid: <strong>{formatCurrency(invoicePayOpen.installmentsPaid)}</strong></Typography>
+                <Typography variant="body2">{tr('installmentsPaid')} <strong>{formatCurrency(invoicePayOpen.installmentsPaid)}</strong></Typography>
               )}
-              <Typography variant="body2">Paid to Date: <strong>{invoicePayOpen ? formatCurrency(invoicePayOpen.paidToDate) : ''}</strong></Typography>
+              <Typography variant="body2">{tr('paidToDate2')} <strong>{invoicePayOpen ? formatCurrency(invoicePayOpen.paidToDate) : ''}</strong></Typography>
             </Box>
-            <Typography variant="body2" color="primary.main">Outstanding Balance: <strong>{invoicePayOpen ? formatCurrency(invoicePayOpen.outstanding) : ''}</strong></Typography>
+            <Typography variant="body2" color="primary.main">{tr('outstandingBalance')} <strong>{invoicePayOpen ? formatCurrency(invoicePayOpen.outstanding) : ''}</strong></Typography>
             <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
               <Button
                 size="small"
                 variant="outlined"
                 onClick={() => setInvoicePayForm({ ...invoicePayForm, amount: invoicePayOpen?.outstanding ?? 0 })}
               >
-                Pay Full Outstanding
+                {tr('payFullOutstanding')}
               </Button>
               <Button
                 size="small"
                 variant="text"
                 onClick={() => setInvoicePayForm({ ...invoicePayForm, amount: 0 })}
               >
-                Custom Installment
+                {tr('customInstallment')}
               </Button>
             </Box>
             <TextField
-              label="Request Number"
+              label={tr('requestNumber')}
               value={String(invoicePayForm.requestNumber ?? '')}
               onChange={(e) => setInvoicePayForm({ ...invoicePayForm, requestNumber: e.target.value })}
               fullWidth
@@ -987,7 +990,7 @@ export default function PaymentsPage() {
               required
             />
             <TextField
-              label="Payment Amount"
+              label={tr('paymentAmount')}
               type="text"
               value={formatIndianNumber(invoicePayForm.amount ?? '')}
               onChange={(e) => {
@@ -1022,7 +1025,7 @@ export default function PaymentsPage() {
                 }}
               >
                 <Typography variant="body2" color="text.secondary">
-                  Outstanding After This Payment
+                  {tr('outstandingAfterThisPayment')}
                 </Typography>
                 <Typography variant="h6" color="primary.main" fontWeight={600}>
                   {formatCurrency(Math.max(0, invoicePayOpen.outstanding - (Number(invoicePayForm.amount) || 0)))}
@@ -1031,17 +1034,17 @@ export default function PaymentsPage() {
             )}
             <TextField
               select
-              label="Payment Mode"
+              label={tr('paymentMode')}
               value={String(invoicePayForm.paymentMode ?? PaymentMode.BANK_TRANSFER)}
               onChange={(e) => setInvoicePayForm({ ...invoicePayForm, paymentMode: e.target.value })}
               fullWidth
               size="small"
             >
-              {PAYMENT_MODES.map((m) => <MenuItem key={m} value={m}>{m.replace(/_/g, ' ')}</MenuItem>)}
+              {PAYMENT_MODES.map((m) => <MenuItem key={m} value={m}>{enumLabel(m)}</MenuItem>)}
             </TextField>
             {String(invoicePayForm.paymentMode ?? '') === PaymentMode.CHEQUE && (
               <TextField
-                label="Cheque Number"
+                label={tr('chequeNumber')}
                 value={String(invoicePayForm.chequeNumber ?? '')}
                 onChange={(e) => setInvoicePayForm({ ...invoicePayForm, chequeNumber: e.target.value })}
                 fullWidth
@@ -1051,7 +1054,7 @@ export default function PaymentsPage() {
             )}
             <TextField
               select
-              label="Budget Head (optional)"
+              label={tr('budgetHeadOptional')}
               value={String(invoicePayForm.budgetHeadId ?? '')}
               onChange={(e) => setInvoicePayForm({ ...invoicePayForm, budgetHeadId: e.target.value })}
               fullWidth
@@ -1061,7 +1064,7 @@ export default function PaymentsPage() {
               {budgetHeads.map((h) => <MenuItem key={h.id} value={h.id}>{h.particulars}</MenuItem>)}
             </TextField>
             <TextField
-              label="Notes"
+              label={tr('notes')}
               value={String(invoicePayForm.notes ?? '')}
               onChange={(e) => setInvoicePayForm({ ...invoicePayForm, notes: e.target.value })}
               fullWidth
@@ -1072,7 +1075,7 @@ export default function PaymentsPage() {
           </Box>
         </DialogContent>
         <DialogActions sx={{ flexWrap: "wrap", gap: 1 }}>
-          <Button onClick={() => setInvoicePayOpen(null)}>Cancel</Button>
+          <Button onClick={() => setInvoicePayOpen(null)}>{tr('cancel')}</Button>
           <Button
             variant="contained"
             onClick={() => {
@@ -1091,35 +1094,35 @@ export default function PaymentsPage() {
             }}
             disabled={createInvoicePaymentMutation.isPending || !invoicePayForm.amount || Number(invoicePayForm.amount) <= 0 || (invoicePayForm.paymentMode === PaymentMode.CHEQUE && !String(invoicePayForm.chequeNumber ?? '').trim())}
           >
-            {createInvoicePaymentMutation.isPending ? <CircularProgress size={20} /> : 'Create Payment Request'}
+            {createInvoicePaymentMutation.isPending ? <CircularProgress size={20} /> : tr('createRequest')}
           </Button>
         </DialogActions>
       </ResponsiveDialog>
 
       {/* Create Advance Payment Dialog */}
       <ResponsiveDialog open={!!advancePayOpen} onClose={() => { setAdvancePayOpen(null); setAdvanceFile(null); setAdvanceAcknowledged(false); if (advanceFileRef.current) advanceFileRef.current.value = ''; }} maxWidth="sm" fullWidth>
-        <DialogTitle>Record Payment for {advancePayOpen?.poNumber}</DialogTitle>
+        <DialogTitle>{tr('recordTitle', { code: advancePayOpen?.poNumber })}</DialogTitle>
         <DialogContent>
           {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
-            <Typography variant="body2">Vendor: <strong>{advancePayOpen?.vendor?.name}</strong></Typography>
+            <Typography variant="body2">{tr('vendor2')} <strong>{advancePayOpen?.vendor?.name}</strong></Typography>
             <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1 }}>
-              <Typography variant="body2">PO Grand Total: <strong>{advancePayOpen ? formatCurrency(advancePayOpen.grandTotal) : ''}</strong></Typography>
-              <Typography variant="body2">Payment Type: <strong>{advancePayOpen?.paymentType === POPaymentType.ADVANCE ? 'Against Advance' : 'Against Full Payment'}</strong></Typography>
+              <Typography variant="body2">{tr('poGrandTotal')} <strong>{advancePayOpen ? formatCurrency(advancePayOpen.grandTotal) : ''}</strong></Typography>
+              <Typography variant="body2">{tr('paymentType2')} <strong>{advancePayOpen?.paymentType === POPaymentType.ADVANCE ? tr('againstAdvance') : tr('againstFull')}</strong></Typography>
               {advancePayOpen && advancePayOpen.totalDeductions > 0 && (
-                <Typography variant="body2">Deductions: <strong>{formatCurrency(advancePayOpen.totalDeductions)}</strong></Typography>
+                <Typography variant="body2">{tr('deductions')} <strong>{formatCurrency(advancePayOpen.totalDeductions)}</strong></Typography>
               )}
-              <Typography variant="body2">Net Payable: <strong>{advancePayOpen ? formatCurrency(advancePayOpen.netPayable) : ''}</strong></Typography>
+              <Typography variant="body2">{tr('netPayable')} <strong>{advancePayOpen ? formatCurrency(advancePayOpen.netPayable) : ''}</strong></Typography>
               {advancePayOpen && advancePayOpen.advanceAmount !== null && advancePayOpen.advanceAmount > 0 && (
-                <Typography variant="body2">Agreed Advance: <strong>{formatCurrency(advancePayOpen.advanceAmount)}</strong></Typography>
+                <Typography variant="body2">{tr('agreedAdvance')} <strong>{formatCurrency(advancePayOpen.advanceAmount)}</strong></Typography>
               )}
               {advancePayOpen && advancePayOpen.advancePaidToDate > 0 && (
-                <Typography variant="body2">Advance Paid: <strong>{formatCurrency(advancePayOpen.advancePaidToDate)}</strong></Typography>
+                <Typography variant="body2">{tr('advancePaid2')} <strong>{formatCurrency(advancePayOpen.advancePaidToDate)}</strong></Typography>
               )}
             </Box>
-            <Typography variant="body2" color="primary.main">Outstanding Balance: <strong>{advancePayOpen ? formatCurrency(advancePayOpen.outstanding) : ''}</strong></Typography>
+            <Typography variant="body2" color="primary.main">{tr('outstandingBalance')} <strong>{advancePayOpen ? formatCurrency(advancePayOpen.outstanding) : ''}</strong></Typography>
             <TextField
-              label="Request Number"
+              label={tr('requestNumber')}
               value={String(advancePayForm.requestNumber ?? '')}
               onChange={(e) => setAdvancePayForm({ ...advancePayForm, requestNumber: e.target.value })}
               fullWidth
@@ -1127,7 +1130,7 @@ export default function PaymentsPage() {
               required
             />
             <TextField
-              label="Advance Amount"
+              label={tr('advanceAmount')}
               type="text"
               value={formatIndianNumber(advancePayForm.amount ?? '')}
               onChange={(e) => {
@@ -1165,23 +1168,23 @@ export default function PaymentsPage() {
                   variant="outlined"
                   onClick={() => setAdvancePayForm({ ...advancePayForm, amount: advancePayOpen.outstanding })}
                 >
-                  Pay Full Outstanding
+                  {tr('payFullOutstanding')}
                 </Button>
               </Box>
             )}
             <TextField
               select
-              label="Payment Mode"
+              label={tr('paymentMode')}
               value={String(advancePayForm.paymentMode ?? PaymentMode.BANK_TRANSFER)}
               onChange={(e) => setAdvancePayForm({ ...advancePayForm, paymentMode: e.target.value })}
               fullWidth
               size="small"
             >
-              {PAYMENT_MODES.map((m) => <MenuItem key={m} value={m}>{m.replace(/_/g, ' ')}</MenuItem>)}
+              {PAYMENT_MODES.map((m) => <MenuItem key={m} value={m}>{enumLabel(m)}</MenuItem>)}
             </TextField>
             {String(advancePayForm.paymentMode ?? '') === PaymentMode.CHEQUE && (
               <TextField
-                label="Cheque Number"
+                label={tr('chequeNumber')}
                 value={String(advancePayForm.chequeNumber ?? '')}
                 onChange={(e) => setAdvancePayForm({ ...advancePayForm, chequeNumber: e.target.value })}
                 fullWidth
@@ -1191,7 +1194,7 @@ export default function PaymentsPage() {
             )}
             <TextField
               select
-              label="Budget Head (optional)"
+              label={tr('budgetHeadOptional')}
               value={String(advancePayForm.budgetHeadId ?? '')}
               onChange={(e) => setAdvancePayForm({ ...advancePayForm, budgetHeadId: e.target.value })}
               fullWidth
@@ -1201,7 +1204,7 @@ export default function PaymentsPage() {
               {budgetHeads.map((h) => <MenuItem key={h.id} value={h.id}>{h.particulars}</MenuItem>)}
             </TextField>
             <TextField
-              label="Notes"
+              label={tr('notes')}
               value={String(advancePayForm.notes ?? '')}
               onChange={(e) => setAdvancePayForm({ ...advancePayForm, notes: e.target.value })}
               fullWidth
@@ -1210,7 +1213,7 @@ export default function PaymentsPage() {
               rows={2}
             />
             <Box>
-              <Typography variant="body2" sx={{ mb: 1 }}>Proof of Payment (bank transfer receipt, cheque, etc.)</Typography>
+              <Typography variant="body2" sx={{ mb: 1 }}>{tr('proofOfPaymentBank')}</Typography>
               <input
                 ref={advanceFileRef}
                 type="file"
@@ -1235,7 +1238,7 @@ export default function PaymentsPage() {
           </Box>
         </DialogContent>
         <DialogActions sx={{ flexWrap: "wrap", gap: 1 }}>
-          <Button onClick={() => { setAdvancePayOpen(null); setAdvanceFile(null); setAdvanceAcknowledged(false); if (advanceFileRef.current) advanceFileRef.current.value = ''; }}>Cancel</Button>
+          <Button onClick={() => { setAdvancePayOpen(null); setAdvanceFile(null); setAdvanceAcknowledged(false); if (advanceFileRef.current) advanceFileRef.current.value = ''; }}>{tr('cancel')}</Button>
           <Button
             variant="contained"
             onClick={() => {
@@ -1244,21 +1247,21 @@ export default function PaymentsPage() {
             }}
             disabled={createAdvancePaymentMutation.isPending || !advancePayForm.amount || Number(advancePayForm.amount) <= 0 || !advanceAcknowledged || (advancePayForm.paymentMode === PaymentMode.CHEQUE && !String(advancePayForm.chequeNumber ?? '').trim())}
           >
-            {createAdvancePaymentMutation.isPending ? <CircularProgress size={20} /> : 'Record Payment'}
+            {createAdvancePaymentMutation.isPending ? <CircularProgress size={20} /> : tr('recordPayment')}
           </Button>
         </DialogActions>
       </ResponsiveDialog>
 
       {/* Create Daily Expense Dialog */}
       <ResponsiveDialog open={expenseOpen} onClose={() => setExpenseOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Add Daily Expense</DialogTitle>
+        <DialogTitle>{tr('addDailyExpense')}</DialogTitle>
         <DialogContent>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
             <Box>
               <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 1 }}>
                 <TextField
-                  label="Payee"
-                  placeholder="e.g. Sri Ambica Plastic"
+                  label={tr('payee')}
+                  placeholder={tr('eGSriAmbica')}
                   value={String(expenseForm.payee ?? '')}
                   onChange={(e) => setExpenseForm({ ...expenseForm, payee: e.target.value })}
                   fullWidth
@@ -1267,8 +1270,8 @@ export default function PaymentsPage() {
                   inputProps={{ maxLength: 40 }}
                 />
                 <TextField
-                  label="Item"
-                  placeholder="e.g. Green Mats"
+                  label={tr('item')}
+                  placeholder={tr('eGGreenMats')}
                   value={String(expenseForm.item ?? '')}
                   onChange={(e) => setExpenseForm({ ...expenseForm, item: e.target.value })}
                   fullWidth
@@ -1277,8 +1280,8 @@ export default function PaymentsPage() {
                   inputProps={{ maxLength: 40 }}
                 />
                 <TextField
-                  label="Ref (optional)"
-                  placeholder="e.g. BILL-39"
+                  label={tr('refOptional')}
+                  placeholder={tr('eGBill39')}
                   value={String(expenseForm.ref ?? '')}
                   onChange={(e) => setExpenseForm({ ...expenseForm, ref: e.target.value })}
                   size="small"
@@ -1287,12 +1290,12 @@ export default function PaymentsPage() {
                 />
               </Box>
               <FormHelperText sx={{ mt: 0.25 }}>
-                Standard format: <strong>Payee · Item · Ref</strong> — no verbs, dates, or amounts in the description.
+                <Trans t={tr} i18nKey="stdFormat" components={{ b: <strong /> }} />
               </FormHelperText>
             </Box>
             <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, flexWrap: 'wrap' }}>
               <TextField
-                label="Amount"
+                label={tr('amount')}
                 type="text"
                 value={formatIndianNumber(expenseForm.amount ?? '')}
                 onChange={(e) => setExpenseForm({ ...expenseForm, amount: e.target.value === '' ? '' : Number(e.target.value.replace(/,/g, '')) })}
@@ -1304,7 +1307,7 @@ export default function PaymentsPage() {
               />
               <TextField
                 select
-                label="Category"
+                label={tr('category')}
                 value={String(expenseForm.category ?? '')}
                 onChange={(e) => setExpenseForm({ ...expenseForm, category: e.target.value })}
                 size="small"
@@ -1316,7 +1319,7 @@ export default function PaymentsPage() {
             </Box>
             <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, flexWrap: 'wrap' }}>
               <TextField
-                label="Date"
+                label={tr('date')}
                 type="date"
                 value={String(expenseForm.expenseDate ?? '')}
                 onChange={(e) => setExpenseForm({ ...expenseForm, expenseDate: e.target.value })}
@@ -1327,17 +1330,17 @@ export default function PaymentsPage() {
               />
               <TextField
                 select
-                label="Payment Mode"
+                label={tr('paymentMode')}
                 value={String(expenseForm.paymentMode ?? PaymentMode.CASH)}
                 onChange={(e) => setExpenseForm({ ...expenseForm, paymentMode: e.target.value })}
                 size="small"
                 sx={{ flex: 1, minWidth: 0 }}
               >
-                {PAYMENT_MODES.map((m) => <MenuItem key={m} value={m}>{m.replace(/_/g, ' ')}</MenuItem>)}
+                {PAYMENT_MODES.map((m) => <MenuItem key={m} value={m}>{enumLabel(m)}</MenuItem>)}
               </TextField>
               <TextField
                 select
-                label="Budget Head"
+                label={tr('budgetHead')}
                 value={String(expenseForm.budgetHeadId ?? '')}
                 onChange={(e) => setExpenseForm({ ...expenseForm, budgetHeadId: e.target.value })}
                 size="small"
@@ -1352,26 +1355,26 @@ export default function PaymentsPage() {
                 const file = e.target.files?.[0];
                 if (!file) return;
                 if (!['application/pdf', 'image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 50 * 1024 * 1024) {
-                  setError('Receipt must be a PDF or image smaller than 50 MB');
+                  setError(tr('errReceipt'));
                   return;
                 }
                 setError('');
                 setExpenseFile(file);
               }} />
               <Button variant="outlined" onClick={() => fileRef.current?.click()} startIcon={<AddIcon />}>
-                {expenseFile ? `✓ ${expenseFile.name}` : 'Upload Receipt Photo'}
+                {expenseFile ? `✓ ${expenseFile.name}` : tr('uploadReceipt')}
               </Button>
             </Box>
           </Box>
         </DialogContent>
         <DialogActions sx={{ flexWrap: "wrap", gap: 1 }}>
-          <Button onClick={() => setExpenseOpen(false)}>Cancel</Button>
+          <Button onClick={() => setExpenseOpen(false)}>{tr('cancel')}</Button>
           <Button
             variant="contained"
             onClick={() => { setError(''); if (validateExpenseForm()) createExpenseMutation.mutate(); }}
             disabled={createExpenseMutation.isPending}
           >
-            {createExpenseMutation.isPending ? <CircularProgress size={20} /> : 'Create Expense'}
+            {createExpenseMutation.isPending ? <CircularProgress size={20} /> : tr('createExpense')}
           </Button>
         </DialogActions>
       </ResponsiveDialog>
@@ -1396,31 +1399,29 @@ export default function PaymentsPage() {
 
       {/* Link Existing Voucher Dialog — payment already posted to ledgers */}
       <ResponsiveDialog open={!!linkVoucherRow} onClose={() => { setLinkVoucherRow(null); setSelectedVoucherId(''); }} maxWidth="sm" fullWidth>
-        <DialogTitle>Link Existing Voucher — {linkVoucherRow?.paymentCode}</DialogTitle>
+        <DialogTitle>{tr('linkTitle', { code: linkVoucherRow?.paymentCode })}</DialogTitle>
         <DialogContent>
           {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
             <Typography variant="body2" color="text.secondary">
-              The payment of <strong>{formatCurrency(Number(linkVoucherRow?.amount ?? 0))}</strong> was already posted
-              to the ledgers. Select the posted voucher that recorded it — this request will be marked as paid
-              without posting a new voucher (avoids double-entry).
+              <Trans t={tr} i18nKey="linkNote" values={{ v: formatCurrency(Number(linkVoucherRow?.amount ?? 0)) }} components={{ b: <strong /> }} />
             </Typography>
             {linkVouchersLoading ? (
               <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}><CircularProgress size={28} /></Box>
             ) : (
               <TextField
                 select
-                label="Posted Payment Voucher"
+                label={tr('postedPaymentVoucher')}
                 value={selectedVoucherId}
                 onChange={(e) => setSelectedVoucherId(e.target.value)}
                 fullWidth
                 size="small"
                 required
-                helperText={linkableVouchers.length === 0 ? 'No unlinked posted vouchers found for this amount' : `${linkableVouchers.length} voucher(s) found for this amount`}
+                helperText={linkableVouchers.length === 0 ? tr('noVouchers') : tr('vouchersFound', { n: linkableVouchers.length })}
               >
                 {linkableVouchers.map((v) => (
                   <MenuItem key={v.id} value={v.id}>
-                    {v.jvNumber} — {new Date(v.date).toLocaleDateString('en-IN')}{v.description ? ` — ${v.description}` : ''}
+                    {v.jvNumber} — {new Date(v.date).toLocaleDateString(dateLocale())}{v.description ? ` — ${v.description}` : ''}
                   </MenuItem>
                 ))}
               </TextField>
@@ -1428,13 +1429,13 @@ export default function PaymentsPage() {
           </Box>
         </DialogContent>
         <DialogActions sx={{ flexWrap: "wrap", gap: 1 }}>
-          <Button onClick={() => { setLinkVoucherRow(null); setSelectedVoucherId(''); }}>Cancel</Button>
+          <Button onClick={() => { setLinkVoucherRow(null); setSelectedVoucherId(''); }}>{tr('cancel')}</Button>
           <Button
             variant="contained"
             disabled={!selectedVoucherId || linkVoucherMutation.isPending}
             onClick={() => { setError(''); linkVoucherMutation.mutate(); }}
           >
-            {linkVoucherMutation.isPending ? <CircularProgress size={20} /> : 'Mark as Paid'}
+            {linkVoucherMutation.isPending ? <CircularProgress size={20} /> : tr('markPaid')}
           </Button>
         </DialogActions>
       </ResponsiveDialog>
@@ -1442,16 +1443,16 @@ export default function PaymentsPage() {
       {/* Edit payment details — direct save, no re-approval. Financial fields
           lock once the request has been posted to a voucher. */}
       <ResponsiveDialog open={editRow !== null} onClose={() => setEditRow(null)} maxWidth="sm" fullWidth>
-        <DialogTitle>Edit Payment — {editRow?.paymentCode}</DialogTitle>
+        <DialogTitle>{tr('editTitle', { code: editRow?.paymentCode })}</DialogTitle>
         <DialogContent>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
             {editRow && (editRow.payments.length > 0 || editRow.status === PaymentStatus.PAID) && (
               <FormHelperText sx={{ m: 0 }}>
-                This payment is already posted — saving updates the linked voucher, account balances and budget head to match.
+                {tr('thisPaymentIsAlready')}
               </FormHelperText>
             )}
             <TextField
-              label="Payment Date"
+              label={tr('paymentDate')}
               type="date"
               value={String(editForm.expenseDate ?? '')}
               onChange={(e) => setEditForm({ ...editForm, expenseDate: e.target.value })}
@@ -1460,7 +1461,7 @@ export default function PaymentsPage() {
               inputProps={{ max: todayLocalDate() }}
             />
             <TextField
-              label="Description"
+              label={tr('description')}
               value={String(editForm.description ?? '')}
               onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
               size="small"
@@ -1468,7 +1469,7 @@ export default function PaymentsPage() {
               inputProps={{ maxLength: 200 }}
             />
             <TextField
-              label="Notes (optional)"
+              label={tr('notesOptional')}
               value={String(editForm.notes ?? '')}
               onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })}
               size="small"
@@ -1479,7 +1480,7 @@ export default function PaymentsPage() {
             />
             <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, flexWrap: 'wrap' }}>
               <TextField
-                label="Amount"
+                label={tr('amount')}
                 type="text"
                 value={formatIndianNumber(String(editForm.amount ?? ''))}
                 onChange={(e) => setEditForm({ ...editForm, amount: e.target.value === '' ? '' : Number(e.target.value.replace(/,/g, '')) })}
@@ -1490,18 +1491,18 @@ export default function PaymentsPage() {
               />
               <TextField
                 select
-                label="Payment Mode"
+                label={tr('paymentMode')}
                 value={String(editForm.paymentMode ?? '')}
                 onChange={(e) => setEditForm({ ...editForm, paymentMode: e.target.value })}
                 size="small"
                 sx={{ flex: 1, minWidth: 0 }}
               >
-                {PAYMENT_MODES.map((m) => <MenuItem key={m} value={m}>{m.replace(/_/g, ' ')}</MenuItem>)}
+                {PAYMENT_MODES.map((m) => <MenuItem key={m} value={m}>{enumLabel(m)}</MenuItem>)}
               </TextField>
             </Box>
             {String(editForm.paymentMode ?? '') === PaymentMode.CHEQUE && (
               <TextField
-                label="Cheque Number"
+                label={tr('chequeNumber')}
                 value={String(editForm.chequeNumber ?? '')}
                 onChange={(e) => setEditForm({ ...editForm, chequeNumber: e.target.value })}
                 size="small"
@@ -1511,7 +1512,7 @@ export default function PaymentsPage() {
             <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, flexWrap: 'wrap' }}>
               <TextField
                 select
-                label="Category"
+                label={tr('category')}
                 value={String(editForm.category ?? '')}
                 onChange={(e) => setEditForm({ ...editForm, category: e.target.value })}
                 size="small"
@@ -1522,7 +1523,7 @@ export default function PaymentsPage() {
               </TextField>
               <TextField
                 select
-                label="Budget Head"
+                label={tr('budgetHead')}
                 value={String(editForm.budgetHeadId ?? '')}
                 onChange={(e) => setEditForm({ ...editForm, budgetHeadId: e.target.value })}
                 size="small"
@@ -1535,7 +1536,7 @@ export default function PaymentsPage() {
           </Box>
         </DialogContent>
         <DialogActions sx={{ flexWrap: 'wrap', gap: 1 }}>
-          <Button onClick={() => setEditRow(null)}>Cancel</Button>
+          <Button onClick={() => setEditRow(null)}>{tr('cancel')}</Button>
           <Button
             variant="contained"
             disabled={editMutation.isPending}
@@ -1543,7 +1544,7 @@ export default function PaymentsPage() {
               if (!editRow) return;
               setError('');
               const amt = Number(editForm.amount);
-              if (!Number.isFinite(amt) || amt <= 0) { setError('Enter a valid amount'); return; }
+              if (!Number.isFinite(amt) || amt <= 0) { setError(tr('errValidAmt')); return; }
               const payload: Record<string, unknown> = {
                 expenseDate: editForm.expenseDate || null,
                 description: editForm.description ?? null,
@@ -1557,21 +1558,21 @@ export default function PaymentsPage() {
               editMutation.mutate({ id: editRow.id, payload });
             }}
           >
-            {editMutation.isPending ? <CircularProgress size={20} /> : 'Save Changes'}
+            {editMutation.isPending ? <CircularProgress size={20} /> : tr('saveChanges')}
           </Button>
         </DialogActions>
       </ResponsiveDialog>
 
       <ResponsiveDialog open={deleteRow !== null} onClose={() => setDeleteRow(null)} maxWidth="xs" fullWidth>
-        <DialogTitle>Delete Payment Request</DialogTitle>
+        <DialogTitle>{tr('deletePaymentRequest')}</DialogTitle>
         <DialogContent>
-          <Typography>Are you sure you want to delete payment request <strong>{deleteRow?.paymentCode}</strong>?</Typography>
+          <Typography><Trans t={tr} i18nKey="deleteQ" values={{ code: deleteRow?.paymentCode }} components={{ b: <strong /> }} /></Typography>
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
-            This action cannot be undone. Only payment requests that are not approved or paid can be deleted.
+            {tr('thisActionCannotBe')}
           </Typography>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDeleteRow(null)}>Cancel</Button>
+          <Button onClick={() => setDeleteRow(null)}>{tr('cancel')}</Button>
           <Button color="error" variant="contained" disabled={deleteMutation.isPending} onClick={() => deleteRow && deleteMutation.mutate(deleteRow.id)}>
             {deleteMutation.isPending ? <CircularProgress size={20} /> : 'Delete'}
           </Button>

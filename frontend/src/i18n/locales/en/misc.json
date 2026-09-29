@@ -1,0 +1,44 @@
+{
+  "cashflow": {
+    "title": "Cash Flow Forecast",
+    "subtitle": "Projected bank balance over the next 90 days",
+    "currentBalance": "Current Balance",
+    "warning": "<b>Warning:</b> Projected to run out of cash on {{d}}. Minimum balance: {{v}}",
+    "healthy": "Cash position looks healthy. Minimum projected balance: {{v}} on {{d}}.",
+    "loading": "Loading forecast…",
+    "balance": "Balance",
+    "zero": "Zero",
+    "pendingPayments": "Pending Payments",
+    "pendingInvoices": "Pending Invoices",
+    "minProjected": "Min Projected Balance"
+  },
+  "error": {
+    "somethingWrong": "Something went wrong",
+    "unexpectedRender": "An unexpected error occurred while rendering this page.",
+    "tryAgain": "Try Again",
+    "notFoundTitle": "Page Not Found",
+    "notFoundMsg": "The page you're looking for doesn't exist or has been moved.",
+    "offlineTitle": "You're Offline",
+    "offlineMsg": "Please check your internet connection and try again.",
+    "genericTitle": "Something Went Wrong",
+    "genericMsg": "An unexpected error occurred. Please try again.",
+    "reload": "Reload",
+    "goHome": "Go Home",
+    "stillOffline": "Still offline. The page will load automatically once your connection is back."
+  },
+  "offline": {
+    "dismiss": "Dismiss",
+    "title": "Network error",
+    "message": "We couldn't reach the server. Please check your connection."
+  },
+  "bell": {
+    "title": "Notifications",
+    "markAllRead": "Mark all read",
+    "none": "No notifications yet",
+    "clickToView": "Click to view →",
+    "daysAgo": "{{n}}d ago",
+    "hoursAgo": "{{n}}h ago",
+    "minutesAgo": "{{n}}m ago",
+    "justNow": "just now"
+  }
+}

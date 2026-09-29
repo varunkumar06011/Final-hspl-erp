@@ -2,8 +2,11 @@ import { useMemo, useState } from 'react';
 import { Box, Typography, Card, CardContent, Tooltip, CircularProgress, ToggleButtonGroup, ToggleButton } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import api from '../config/api';
+import { dateLocale } from '../i18n';
+import { enumLabel } from '../utils/enumOptions';
 import { useColorMode } from '../config/ColorModeContext';
 
+import { useTranslation } from 'react-i18next';
 interface Activity {
   id: string;
   name: string;
@@ -30,16 +33,10 @@ const STATUS_COLORS: Record<string, string> = {
   ON_HOLD: '#F44336',
 };
 
-const STATUS_LABELS: Record<string, string> = {
-  NOT_STARTED: 'Not Started',
-  IN_PROGRESS: 'In Progress',
-  COMPLETED: 'Completed',
-  ON_HOLD: 'On Hold',
-};
-
 type ViewMode = 'phases' | 'activities';
 
 export default function GanttChart() {
+  const { t } = useTranslation('widgets');
   const { mode } = useColorMode();
   const [viewMode, setViewMode] = useState<ViewMode>('phases');
   const textColor = mode === 'dark' ? '#ddd' : '#333';
@@ -138,7 +135,7 @@ export default function GanttChart() {
       if (i % 7 === 0 || i === totalDays) {
         markers.push({
           x,
-          label: d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }),
+          label: d.toLocaleDateString(dateLocale(), { day: '2-digit', month: 'short' }),
           isWeekend,
         });
       }
@@ -151,9 +148,9 @@ export default function GanttChart() {
       <CardContent>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1, mb: 2 }}>
           <Box>
-            <Typography variant="h6">Project Timeline</Typography>
+            <Typography variant="h6">{t('ganttTitle')}</Typography>
             <Typography variant="body2" color="text.secondary">
-              Visual Gantt chart of phases and activities
+              {t('ganttSubtitle')}
             </Typography>
           </Box>
           <ToggleButtonGroup
@@ -162,8 +159,8 @@ export default function GanttChart() {
             exclusive
             onChange={(_, v) => v && setViewMode(v)}
           >
-            <ToggleButton value="phases">Phases</ToggleButton>
-            <ToggleButton value="activities">Activities</ToggleButton>
+            <ToggleButton value="phases">{t('ganttPhases')}</ToggleButton>
+            <ToggleButton value="activities">{t('ganttActivities')}</ToggleButton>
           </ToggleButtonGroup>
         </Box>
 
@@ -173,7 +170,7 @@ export default function GanttChart() {
           </Box>
         ) : rows.length === 0 ? (
           <Typography color="text.secondary" sx={{ textAlign: 'center', py: 4 }}>
-            No phases or activities with dates yet.
+            {t('ganttEmpty')}
           </Typography>
         ) : (
           <Box sx={{ width: '100%', overflowX: 'auto' }}>
@@ -209,7 +206,7 @@ export default function GanttChart() {
                         {row.isPhase ? '📁 ' : '   '}{row.name}
                       </text>
                       <text x={labelWidth + 10} y={y + rowHeight / 2 + 4} fill={textColor} fontSize={10} opacity={0.5}>
-                        No dates
+                        {t('ganttNoDates')}
                       </text>
                     </g>
                   );
@@ -228,7 +225,7 @@ export default function GanttChart() {
 
                     {/* Label */}
                     <Tooltip
-                      title={`${row.name} — ${STATUS_LABELS[row.status] ?? row.status} (${row.progress}%)`}
+                      title={`${row.name} — ${enumLabel(row.status)} (${row.progress}%)`}
                       arrow
                     >
                       <text
@@ -290,7 +287,7 @@ export default function GanttChart() {
               <Box key={status} sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                 <Box sx={{ width: 12, height: 12, borderRadius: 1, bgcolor: color, opacity: 0.7 }} />
                 <Typography variant="caption" color="text.secondary">
-                  {STATUS_LABELS[status] ?? status}
+                  {enumLabel(status)}
                 </Typography>
               </Box>
             ))}

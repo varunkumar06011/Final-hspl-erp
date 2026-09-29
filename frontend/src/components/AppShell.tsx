@@ -42,6 +42,7 @@ import {
   ArrowBack as ArrowBackIcon,
   RequestQuote as PaymentReportIcon,
   ChatBubbleOutline as CommentsNavIcon,
+  History as ActivityNavIcon,
 } from '@mui/icons-material';
 import { useAuthStore } from '../stores/authStore';
 import { hasPermission, Permission, UserRole, isAdminRole } from '@hospital-erp/shared';
@@ -54,6 +55,9 @@ import GlobalSearch from './GlobalSearch';
 import NLQueryBar from './NLQueryBar';
 import PresenceBar from './PresenceBar';
 import { useTrackPageView } from '../hooks/useTrackPageView';
+import { useTranslation } from 'react-i18next';
+import LanguageToggle from './LanguageToggle';
+import type { TFunction } from 'i18next';
 
 
 const NAV_ITEMS = [
@@ -94,10 +98,11 @@ const NAV_ITEMS = [
   { label: 'Documents', icon: <DocumentIcon />, path: '/documents', permission: Permission.MANAGE_DOCUMENTS, section: 'Site Operations' },
   { label: 'Contracts', icon: <ContractIcon />, path: '/contracts', permission: Permission.MANAGE_CONTRACTS, section: 'Site Operations' },
   // ── Admin ──
+  { label: 'Comments', icon: <CommentsNavIcon />, path: '/comments', section: 'Admin' },
+  { label: 'Activity Log', icon: <ActivityNavIcon />, path: '/activity-log', section: 'Admin' },
   { label: 'Audit Log', icon: <AuditIcon />, path: '/audit', permission: Permission.VIEW_AUDIT_LOG, section: 'Admin' },
   { label: 'Users', icon: <PeopleIcon />, path: '/users', permission: Permission.MANAGE_USERS, section: 'Admin' },
   { label: 'Settings', icon: <SettingsIcon />, path: '/settings', section: 'Admin' },
-  { label: 'Comments', icon: <CommentsNavIcon />, path: '/comments', section: 'Admin' },
 ];
 
 // ── Admin-only navigation (ADMIN + ADMIN_2) ──────────────────────────
@@ -141,10 +146,11 @@ const ADMIN_NAV_ITEMS = [
   { label: 'Finance Reports', icon: <ReportsIcon />, path: '/finance-reports', permission: Permission.VIEW_FINANCIALS, section: 'Reports' },
   { label: 'Payment Report', icon: <PaymentReportIcon />, path: '/payment-reports', permission: Permission.VIEW_FINANCIALS, section: 'Reports' },
   // ── Admin ──
+  { label: 'Comments', icon: <CommentsNavIcon />, path: '/comments', section: 'Admin' },
+  { label: 'Activity Log', icon: <ActivityNavIcon />, path: '/activity-log', section: 'Admin' },
   { label: 'Audit Log', icon: <AuditIcon />, path: '/audit', permission: Permission.VIEW_AUDIT_LOG, section: 'Admin' },
   { label: 'Users', icon: <PeopleIcon />, path: '/users', permission: Permission.MANAGE_USERS, section: 'Admin' },
   { label: 'Settings', icon: <SettingsIcon />, path: '/settings', section: 'Admin' },
-  { label: 'Comments', icon: <CommentsNavIcon />, path: '/comments', section: 'Admin' },
 ];
 
 const ROLE_COLORS: Record<string, string> = {
@@ -165,23 +171,23 @@ function getRoleColor(role: string): string {
   return '#546E7A';
 }
 
-const ROLE_LABELS: Record<string, string> = {
-  [UserRole.SUPERVISOR]: 'Supervisor',
-  [UserRole.ACCOUNTANT]: 'Accountant',
-  [UserRole.SITE_SUPERVISOR]: 'Site Supervisor',
-  [UserRole.PROJECT_HEAD]: 'Project Head',
-  [UserRole.HEAD_OF_CONSTRUCTION]: 'Head of Construction',
-  [UserRole.ACCOUNTS_HEAD]: 'Accounts Head',
-  [UserRole.ADMIN]: 'Admin 1',
-  [UserRole.ADMIN_2]: 'Admin 2',
-};
+const TRANSLATED_ROLES: string[] = [
+  UserRole.SUPERVISOR,
+  UserRole.ACCOUNTANT,
+  UserRole.SITE_SUPERVISOR,
+  UserRole.PROJECT_HEAD,
+  UserRole.HEAD_OF_CONSTRUCTION,
+  UserRole.ACCOUNTS_HEAD,
+  UserRole.ADMIN,
+  UserRole.ADMIN_2,
+];
 
-function getRoleLabelLocal(role: string): string {
-  if (ROLE_LABELS[role]) return ROLE_LABELS[role];
+function getRoleLabelLocal(role: string, t: TFunction): string {
+  if (TRANSLATED_ROLES.includes(role)) return t(`roles.${role}`);
   // Dynamic admin roles (ADMIN_3, ADMIN_4, ...) → "Admin 3", "Admin 4", etc.
   if (isAdminRole(role)) {
     const num = role.split('_')[1];
-    return `Admin ${num}`;
+    return t('roles.adminN', { num });
   }
   return role;
 }
@@ -193,6 +199,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [nlQueryOpen, setNlQueryOpen] = useState(false);
+  const { t } = useTranslation();
   const { mode, toggle: toggleColorMode } = useColorMode();
   useTrackPageView();
   // Auto-logout disabled — user stays logged in until manual logout.
@@ -239,16 +246,18 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     const path = location.pathname;
     // Use the admin nav items for breadcrumb resolution if the user sees the admin dashboard
     const navSource = (isAdminRole(user?.role ?? '') || user?.role === UserRole.ACCOUNTANT) ? ADMIN_NAV_ITEMS : NAV_ITEMS;
-    if (path === '/') return [{ label: 'Dashboard', path: '/' }];
+    const navLabel = (label: string) => t(`nav.${label}`, label);
+    const home = { label: navLabel('Dashboard'), path: '/' };
+    if (path === '/') return [home];
     const navItem = navSource.find((item) => item.path === path);
-    if (navItem) return [{ label: 'Dashboard', path: '/' }, { label: navItem.label, path }];
+    if (navItem) return [home, { label: navLabel(navItem.label), path }];
     const partial = navSource.filter((item) => path.startsWith(item.path + '/') || path === item.path);
     if (partial.length > 0) {
       const best = partial[partial.length - 1];
-      return [{ label: 'Dashboard', path: '/' }, { label: best.label, path: best.path }, { label: 'Details', path }];
+      return [home, { label: navLabel(best.label), path: best.path }, { label: t('common.details'), path }];
     }
-    return [{ label: 'Dashboard', path: '/' }, { label: path.split('/')[1] ?? 'Page', path }];
-  }, [location.pathname, user?.role]);
+    return [home, { label: path.split('/')[1] ?? 'Page', path }];
+  }, [location.pathname, user?.role, t]);
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
@@ -262,13 +271,13 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       if (sentAt > 0 && ageMs > 2 * 60 * 1000) {
         return;
       }
-      const title = payload.notification?.title || payload.data?.title || 'New Notification';
+      const title = payload.notification?.title || payload.data?.title || t('common.newNotification');
       const body = payload.notification?.body || payload.data?.body || '';
       const url = payload.data?.url;
       setFgNotification({ open: true, title, body, url });
     });
     return unsubscribe;
-  }, []);
+  }, [t]);
 
   // Auto-enable notifications on login — request permission and register FCM token
   // Runs once when the user is authenticated. If permission is denied, do nothing.
@@ -414,7 +423,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                       letterSpacing: '0.08em',
                     }}
                   >
-                    {item.section}
+                    {t(`sections.${item.section}`, item.section)}
                   </Typography>
                 )}
                 <ListItem
@@ -431,7 +440,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                   }}
                 >
                   <ListItemIcon sx={{ minWidth: 40 }}>{item.icon}</ListItemIcon>
-                  <ListItemText primary={item.label} primaryTypographyProps={{ fontSize: 14 }} />
+                  <ListItemText primary={t(`nav.${item.label}`, item.label)}primaryTypographyProps={{ fontSize: 14 }} />
                 </ListItem>
               </Box>
             );
@@ -470,20 +479,23 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             component="div"
             sx={{ flexGrow: 1, fontSize: { xs: '1rem', sm: '1.25rem' }, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
           >
-            Hospital Construction ERP
+            {t('app.title')}
           </Typography>
-          <IconButton color="inherit" onClick={() => setNlQueryOpen(true)} title="Ask ERP (Ctrl+J)" sx={{ display: { xs: 'none', sm: 'inline-flex' } }}>
+          <Box sx={{ mr: 1 }}>
+            <LanguageToggle onDark />
+          </Box>
+          <IconButton color="inherit" onClick={() => setNlQueryOpen(true)} title={t('shell.askErp')} sx={{ display: { xs: 'none', sm: 'inline-flex' } }}>
             <AutoAwesomeIcon />
           </IconButton>
           {!isAdminRole(user?.role ?? '') && (
-            <IconButton color="inherit" onClick={toggleColorMode} title={mode === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}>
+            <IconButton color="inherit" onClick={toggleColorMode} title={mode === 'dark' ? t('shell.switchToLight') : t('shell.switchToDark')}>
               {mode === 'dark' ? <LightModeIcon /> : <DarkModeIcon />}
             </IconButton>
           )}
-          <IconButton color="inherit" onClick={handleManualRefresh} title="Refresh" disabled={manualRefreshing}>
+          <IconButton color="inherit" onClick={handleManualRefresh} title={t('common.refresh')} disabled={manualRefreshing}>
             {manualRefreshing ? <CircularProgress size={20} color="inherit" /> : <RefreshIcon />}
           </IconButton>
-          <IconButton color="inherit" onClick={() => setSearchOpen(true)} title="Search (Ctrl+K)">
+          <IconButton color="inherit" onClick={() => setSearchOpen(true)} title={t('common.search')}>
             <SearchIcon />
           </IconButton>
           <Box sx={{ display: { xs: 'none', sm: 'inline-flex' } }}>
@@ -492,7 +504,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           {user && (
             <>
               <Chip
-                label={getRoleLabelLocal(user.role)}
+                label={getRoleLabelLocal(user.role, t)}
                 size="small"
                 sx={{
                   mr: 1,
@@ -515,7 +527,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                   <Typography variant="body2" color="text.secondary">{user.phone}</Typography>
                 </MenuItem>
                 <MenuItem onClick={handleLogout}>
-                  <LogoutIcon fontSize="small" sx={{ mr: 1 }} /> Logout
+                  <LogoutIcon fontSize="small" sx={{ mr: 1 }} /> {t('common.logout')}
                 </MenuItem>
               </Menu>
             </>
@@ -575,7 +587,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               minHeight: 44,
               touchAction: 'manipulation',
             }}
-            aria-label="Back"
+            aria-label={t('common.back')}
           >
             <ArrowBackIcon />
           </IconButton>
@@ -624,7 +636,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         >
           <Typography variant="subtitle2">{fgNotification.title}</Typography>
           <Typography variant="body2">{fgNotification.body}</Typography>
-          {fgNotification.url && <Typography variant="caption" color="primary">Tap to view →</Typography>}
+          {fgNotification.url && <Typography variant="caption" color="primary">{t('common.tapToView')}</Typography>}
         </Alert>
       </Snackbar>
 

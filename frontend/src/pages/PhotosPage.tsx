@@ -30,6 +30,7 @@ import {
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { PhotoTag } from '@hospital-erp/shared';
+import { enumLabel } from '../utils/enumOptions';
 import { enumToOptions, formatDate, STATUS_COLORS } from '../utils/enumOptions';
 import api, { extractErrorMessage } from '../config/api';
 import { SecureImage } from '../components/SecureImage';
@@ -37,7 +38,9 @@ import CreatableSelect from '../components/CreatableSelect';
 import ResponsiveTable from '../components/ResponsiveTable';
 import RefreshButton from '../components/RefreshButton';
 
+import { useTranslation } from 'react-i18next';
 export default function PhotosPage() {
+  const { t } = useTranslation('photos');
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(20);
   const [search, setSearch] = useState('');
@@ -82,7 +85,7 @@ export default function PhotosPage() {
 
   const handleFileSelect = (file: File) => {
     if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 50 * 1024 * 1024) {
-      setError('Photo must be a JPEG, PNG, or WebP image smaller than 50 MB');
+      setError(t('errType'));
       return;
     }
     setError('');
@@ -96,11 +99,11 @@ export default function PhotosPage() {
   return (
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap' }}>
-        <Typography variant="h5" fontWeight={600} sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' } }}>Site Photos</Typography>
+        <Typography variant="h5" fontWeight={600} sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' } }}>{t('title')}</Typography>
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', justifyContent: { xs: 'flex-end', md: 'flex-end' }, width: { xs: '100%', md: 'auto' } }}>
           <RefreshButton onClick={() => refetch()} />
           <Button variant="contained" startIcon={<AddIcon />} onClick={() => { setForm({ tag: PhotoTag.DURING }); setError(''); setDialogOpen(true); }}>
-            Upload Photo
+            {t('uploadPhoto')}
           </Button>
         </Box>
       </Box>
@@ -111,7 +114,7 @@ export default function PhotosPage() {
         <Box sx={{ p: 2 }}>
           <TextField
             size="small"
-            placeholder="Search photos..."
+            placeholder={t('search')}
             value={search}
             onChange={(e) => { setSearch(e.target.value); setPage(0); }}
             InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> }}
@@ -124,22 +127,22 @@ export default function PhotosPage() {
           <Table size="small">
             <TableHead>
               <TableRow>
-                <TableCell sx={{ fontWeight: 600 }}>Image</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Caption</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Tag</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Zone</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Date</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>{t('image')}</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>{t('caption')}</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>{t('tag')}</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>{t('zone')}</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>{t('date')}</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {isLoading ? (
                 <TableRow><TableCell colSpan={5} align="center" sx={{ py: 4 }}><CircularProgress size={32} /></TableCell></TableRow>
               ) : rows.length === 0 ? (
-                <TableRow><TableCell colSpan={5} align="center" sx={{ py: 4 }}><Typography color="text.secondary">No photos found</Typography></TableCell></TableRow>
+                <TableRow><TableCell colSpan={5} align="center" sx={{ py: 4 }}><Typography color="text.secondary">{t('none')}</Typography></TableCell></TableRow>
               ) : (
                 rows.map((row: Record<string, unknown>) => (
                   <TableRow key={row.id as string} hover>
-                    <TableCell data-label="Image">
+                    <TableCell data-label={t('image')}>
                       <Box
                         onClick={() => setPreviewPhoto(row)}
                         sx={{ cursor: 'pointer', '&:hover': { opacity: 0.8 }, borderRadius: 1, overflow: 'hidden', display: 'inline-block' }}
@@ -147,10 +150,10 @@ export default function PhotosPage() {
                         <SecureImage route="photos" id={row.id as string} alt={String(row.caption ?? '')} sx={{ width: 60, height: 60 }} />
                       </Box>
                     </TableCell>
-                    <TableCell data-label="Caption">{String(row.caption ?? '—')}</TableCell>
-                    <TableCell data-label="Tag"><Chip label={String(row.tag ?? '')} size="small" color={STATUS_COLORS[String(row.tag)] ?? 'default'} /></TableCell>
-                    <TableCell data-label="Zone">{String(row.zone ?? '—')}</TableCell>
-                    <TableCell data-label="Date">{formatDate(row.takenAt)}</TableCell>
+                    <TableCell data-label={t('caption')}>{String(row.caption ?? '—')}</TableCell>
+                    <TableCell data-label={t('tag')}><Chip label={enumLabel(row.tag)} size="small" color={STATUS_COLORS[String(row.tag)] ?? 'default'} /></TableCell>
+                    <TableCell data-label={t('zone')}>{String(row.zone ?? '—')}</TableCell>
+                    <TableCell data-label={t('date')}>{formatDate(row.takenAt)}</TableCell>
                   </TableRow>
                 ))
               )}
@@ -172,30 +175,30 @@ export default function PhotosPage() {
       </Card>
 
       <ResponsiveDialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Upload Photo</DialogTitle>
+        <DialogTitle>{t('uploadPhoto')}</DialogTitle>
         <DialogContent>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
             <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFileSelect(f); }} />
             <Button variant="outlined" onClick={() => fileRef.current?.click()}>
-              {selectedFile ? '✓ File Selected' : 'Choose Image'}
+              {selectedFile ? t('fileSelected') : t('chooseImage')}
             </Button>
             {selectedFile && (
               <Box component="img" src={URL.createObjectURL(selectedFile)} sx={{ width: '100%', maxHeight: 200, objectFit: 'contain', borderRadius: 1 }} />
             )}
-            <TextField label="Caption" value={form.caption ?? ''} onChange={(e) => setForm({ ...form, caption: e.target.value })} fullWidth size="small" />
-            <CreatableSelect label="Tag" value={String(form.tag ?? PhotoTag.DURING)} onChange={(v) => setForm({ ...form, tag: v })} staticOptions={enumToOptions(PhotoTag)} dropdownType="PHOTO_TAG" />
-            <TextField label="Zone" value={form.zone ?? ''} onChange={(e) => setForm({ ...form, zone: e.target.value })} fullWidth size="small" />
+            <TextField label={t('caption')} value={form.caption ?? ''} onChange={(e) => setForm({ ...form, caption: e.target.value })} fullWidth size="small" />
+            <CreatableSelect label={t('tag')} value={String(form.tag ?? PhotoTag.DURING)} onChange={(v) => setForm({ ...form, tag: v })} staticOptions={enumToOptions(PhotoTag)} dropdownType="PHOTO_TAG" />
+            <TextField label={t('zone')} value={form.zone ?? ''} onChange={(e) => setForm({ ...form, zone: e.target.value })} fullWidth size="small" />
           </Box>
         </DialogContent>
         <DialogActions sx={{ flexWrap: "wrap", gap: 1 }}>
-          <Button onClick={() => setDialogOpen(false)}>Cancel</Button>
+          <Button onClick={() => setDialogOpen(false)}>{t('cancel')}</Button>
           <Button variant="contained" onClick={() => createMutation.mutate({
             file: selectedFile,
             caption: form.caption || undefined,
             tag: form.tag,
             zone: form.zone || undefined,
           })} disabled={!selectedFile || createMutation.isPending}>
-            {createMutation.isPending ? <CircularProgress size={20} /> : 'Upload'}
+            {createMutation.isPending ? <CircularProgress size={20} /> : t('upload')}
           </Button>
         </DialogActions>
       </ResponsiveDialog>
@@ -210,7 +213,7 @@ export default function PhotosPage() {
       >
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', pr: 1 }}>
           <Typography variant="h6" component="span" fontWeight={600}>
-            {previewPhoto ? String(previewPhoto.caption ?? 'Site Photo') : ''}
+            {previewPhoto ? String(previewPhoto.caption ?? t('sitePhoto')) : ''}
           </Typography>
           <IconButton onClick={() => setPreviewPhoto(null)} size="small">
             <CloseIcon />

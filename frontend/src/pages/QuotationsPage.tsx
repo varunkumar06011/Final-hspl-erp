@@ -39,7 +39,8 @@ import {
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { QuotationStatus, GST_RATES, ApprovalStatus, isAdminRole, isApproverRole } from '@hospital-erp/shared';
-import { formatCurrency, formatDate, STATUS_COLORS, QTY_UNIT_OPTIONS } from '../utils/enumOptions';
+import { formatCurrency, formatDate, STATUS_COLORS, QTY_UNIT_OPTIONS, enumLabel, unitLabel } from '../utils/enumOptions';
+import { useTranslation, Trans } from 'react-i18next';
 import { num, gstMult, toIncGst, toPreTax, round2 } from '../utils/taxCalc';
 import api, { extractErrorMessage } from '../config/api';
 import { useAuthStore } from '../stores/authStore';
@@ -52,19 +53,6 @@ import RefreshButton from '../components/RefreshButton';
 import QuotationTimelineDialog from '../components/QuotationTimelineDialog';
 import { useApprovalDeepLink } from '../utils/useApprovalDeepLink';
 import CommentsButton from '../components/CommentsButton';
-
-const VENDOR_CATEGORY_LABELS: Record<string, string> = {
-  LABOUR_SUPPLIER: 'Labour Supplier',
-  ELECTRICAL_CONTRACTOR: 'Electrical Contractor',
-  WOOD_WORK_CONTRACTOR: 'Wood Work Contractor',
-  MACHINERY_SUPPLIER: 'Machinery Supplier',
-  TOOL_SUPPLIER: 'Tool Supplier',
-  MATERIAL_SUPPLIER: 'Material Supplier',
-  SUBCONTRACTOR: 'Subcontractor',
-  SERVICE_PROVIDER: 'Service Provider',
-  EQUIPMENT_SUPPLIER: 'Equipment Supplier',
-  OTHER: 'Other',
-};
 
 interface QuotationItem {
   id?: string;
@@ -133,6 +121,7 @@ interface QuotationRow {
 
 export default function QuotationsPage() {
   const theme = useTheme();
+  const { t } = useTranslation('quotations');
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(20);
   const [search, setSearch] = useState('');
@@ -319,27 +308,27 @@ export default function QuotationsPage() {
   const validateQuotationForm = (): boolean => {
     const items = lineItems.filter((item) => selectedMaterialNames.has(item.materialName));
     if (!selectedVendorId) {
-      setError('Please select a vendor');
+      setError(t('errVendor'));
       return false;
     }
     if (items.length === 0) {
-      setError('Add at least one material');
+      setError(t('errAddMaterial'));
       return false;
     }
     if (items.some((item) => !item.materialName.trim() || !Number.isFinite(Number(item.quantity)) || Number(item.quantity) <= 0)) {
-      setError('Each material must have a name and a quantity greater than zero');
+      setError(t('errMaterialQty'));
       return false;
     }
     if (items.some((item) => !Number.isFinite(Number(item.unitPrice)) || Number(item.unitPrice) < 0)) {
-      setError('Unit price cannot be negative or invalid');
+      setError(t('errUnitPrice'));
       return false;
     }
     if (!editOpen && !acknowledged) {
-      setError('Please acknowledge the quotation before creating it');
+      setError(t('errAcknowledge'));
       return false;
     }
     if (selectedFile && (!['application/pdf', 'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/bmp', 'image/tiff'].includes(selectedFile.type) || selectedFile.size > 100 * 1024 * 1024)) {
-      setError('Quotation file must be a PDF or image (JPG, PNG, GIF, WebP, BMP, TIFF) smaller than 100 MB');
+      setError(t('errFile'));
       return false;
     }
     return true;
@@ -436,7 +425,7 @@ export default function QuotationsPage() {
         setRequestedQtyMap(qtyMap);
         setLineItems(prefillItems);
         setSelectedMaterialNames(new Set(prefillItems.map((i) => i.materialName)));
-      }).catch(() => setError('Failed to load the Material Purchase Request'));
+      }).catch(() => setError(t('errLoadMpr')));
     }
     setCreateOpen(true);
     // Clean the URL so a refresh doesn't re-trigger.
@@ -575,7 +564,7 @@ export default function QuotationsPage() {
   }
 
   function handleDownload(id: string, fileName: string) {
-    downloadFile('quotations', id, fileName).catch(() => setError('Failed to download file'));
+    downloadFile('quotations', id, fileName).catch(() => setError(t('errDownload')));
   }
 
   function downloadQuotationPDF(quotationId: string, quotationNumber: string) {
@@ -591,7 +580,7 @@ export default function QuotationsPage() {
         a.click();
         window.URL.revokeObjectURL(objUrl);
       })
-      .catch(() => setError('Failed to download PDF'));
+      .catch(() => setError(t('errPdf')));
   }
 
   function previewQuotationPDF(quotationId: string) {
@@ -601,7 +590,7 @@ export default function QuotationsPage() {
     const url = `${api.defaults.baseURL}/quotations/${quotationId}/pdf?_t=${Date.now()}`;
     const newWindow = window.open('', '_blank');
     if (newWindow) {
-      newWindow.document.write('<html><head><title>Quotation PDF Loading...</title></head><body style="display:flex;align-items:center;justify-content:center;height:100vh;margin:0;font-family:sans-serif;"><div style="text-align:center;"><div style="border:4px solid #f3f3f3;border-top:4px solid #1976d2;border-radius:50%;width:40px;height:40px;animation:spin 1s linear infinite;margin:0 auto 16px;"></div><style>@keyframes spin{0%{transform:rotate(0)}100%{transform:rotate(360deg)}}</style><p>Loading PDF...</p></div></body></html>');
+      newWindow.document.write(`<html><head><title>${t('pdfLoadingTitle')}</title></head><body style="display:flex;align-items:center;justify-content:center;height:100vh;margin:0;font-family:sans-serif;"><div style="text-align:center;"><div style="border:4px solid #f3f3f3;border-top:4px solid #1976d2;border-radius:50%;width:40px;height:40px;animation:spin 1s linear infinite;margin:0 auto 16px;"></div><style>@keyframes spin{0%{transform:rotate(0)}100%{transform:rotate(360deg)}}</style><p>${t('pdfLoadingText')}</p></div></body></html>`);
     }
     fetch(url, { headers: { Authorization: `Bearer ${token}` } })
       .then((res) => res.blob())
@@ -615,7 +604,7 @@ export default function QuotationsPage() {
       })
       .catch(() => {
         if (newWindow && !newWindow.closed) newWindow.close();
-        setError('Failed to preview PDF');
+        setError(t('errPreview'));
       })
       .finally(() => setPdfLoading(false));
   }
@@ -626,7 +615,7 @@ export default function QuotationsPage() {
     const text = [
       `*Quotation ${row.quotationNumber}*`,
       `Vendor: ${row.vendor?.vendorCode} - ${row.vendor?.name ?? '—'}`,
-      row.vendor?.category ? `Category: ${VENDOR_CATEGORY_LABELS[row.vendor.category] ?? row.vendor.category}` : '',
+      row.vendor?.category ? `Category: ${enumLabel(row.vendor.category)}` : '',
       `Date: ${formatDate(row.date)}`,
       materials ? `Materials:\n${materials}` : '',
       `Total: ${formatCurrency(row.totalAmount)}`,
@@ -734,7 +723,7 @@ export default function QuotationsPage() {
       setSelectedMaterialNames(allSelected);
 
       if (newItems.length > 0) {
-        setError(`${newItems.length} new item(s) extracted from the document and added. Review and tick the ones you need.`);
+        setError(t('ocrExtracted', { n: newItems.length }));
       }
     }
     if (data.vendorId) {
@@ -745,10 +734,10 @@ export default function QuotationsPage() {
   return (
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap' }}>
-        <Typography variant="h5" fontWeight={600} sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' } }}>Quotations</Typography>
+        <Typography variant="h5" fontWeight={600} sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' } }}>{t('title')}</Typography>
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', justifyContent: { xs: 'flex-end', md: 'flex-end' }, width: { xs: '100%', md: 'auto' } }}>
           <RefreshButton onClick={() => refetch()} />
-          <Button variant="contained" startIcon={<AddIcon />} onClick={openCreate}>Add Quotation</Button>
+          <Button variant="contained" startIcon={<AddIcon />} onClick={openCreate}>{t('add')}</Button>
         </Box>
       </Box>
 
@@ -758,15 +747,15 @@ export default function QuotationsPage() {
         <Box sx={{ p: 2, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
           <TextField
             size="small"
-            placeholder="Search quotations..."
+            placeholder={t('searchPlaceholder')}
             value={search}
             onChange={(e) => { setSearch(e.target.value); setPage(0); }}
             InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> }}
             sx={{ width: { xs: '100%', sm: 300 } }}
           />
-          <TextField select size="small" label="Status" value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(0); }} sx={{ width: { xs: '100%', sm: 180 } }}>
-            <MenuItem value="">All</MenuItem>
-            {Object.values(QuotationStatus).map((s) => <MenuItem key={s} value={s}>{s.replace(/_/g, ' ')}</MenuItem>)}
+          <TextField select size="small" label={t('status')} value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(0); }} sx={{ width: { xs: '100%', sm: 180 } }}>
+            <MenuItem value="">{t('all')}</MenuItem>
+            {Object.values(QuotationStatus).map((s) => <MenuItem key={s} value={s}>{enumLabel(s)}</MenuItem>)}
           </TextField>
         </Box>
 
@@ -774,7 +763,7 @@ export default function QuotationsPage() {
         {isLoading ? (
           <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress size={32} /></Box>
         ) : rows.length === 0 ? (
-          <Box sx={{ textAlign: 'center', py: 4 }}><Typography color="text.secondary">No quotations found</Typography></Box>
+          <Box sx={{ textAlign: 'center', py: 4 }}><Typography color="text.secondary">{t('noneFound')}</Typography></Box>
         ) : (
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
             {rows.map((row) => {
@@ -838,9 +827,9 @@ export default function QuotationsPage() {
                   >
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap', minWidth: 0 }}>
                       <Typography component="span" sx={{ fontSize: { xs: '0.82rem', sm: '0.9rem' } }}>
-                        <strong>{row.quotationNumber}</strong> — {row.vendor?.name ?? '—'} — Status:
+                        <strong>{row.quotationNumber}</strong> — {row.vendor?.name ?? '—'} — {t('statusColon')}
                       </Typography>
-                      <Chip label={approvalStatus.replace(/_/g, ' ')} size="small" color={STATUS_COLORS[approvalStatus] ?? 'default'} />
+                      <Chip label={enumLabel(approvalStatus)} size="small" color={STATUS_COLORS[approvalStatus] ?? 'default'} />
                       {agingLabel && displayAgingStatus !== 'APPROVED' && displayAgingStatus !== 'REJECTED' && (
                         <Typography variant="caption" sx={{ color: displayAgingStatus === 'OVERDUE' ? 'error.main' : (theme.palette.mode === 'dark' ? 'warning.light' : 'warning.dark'), fontWeight: displayAgingStatus === 'OVERDUE' ? 700 : 500 }}>
                           {agingLabel}
@@ -853,7 +842,7 @@ export default function QuotationsPage() {
                   {/* Status bar */}
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 0.75, pb: 0.75, borderBottom: '1px solid', borderColor: 'action.hover' }}>
                     <Chip
-                      label={effectiveStatus.replace(/_/g, ' ')}
+                      label={enumLabel(effectiveStatus)}
                       size="small"
                       color={
                         displayAgingStatus === 'DELETED' ? 'error' :
@@ -882,31 +871,31 @@ export default function QuotationsPage() {
                     gap: { xs: 0.25, sm: '2px 12px' },
                     alignItems: 'baseline',
                   }}>
-                    <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>Quotation No</Typography>
+                    <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>{t('quotationNo')}</Typography>
                     <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem' }}>{row.quotationNumber}</Typography>
 
-                    <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>Vendor</Typography>
+                    <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>{t('vendor')}</Typography>
                     <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem' }}>{row.vendor?.vendorCode} - {row.vendor?.name ?? '—'}</Typography>
 
-                    <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>Category</Typography>
-                    <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem' }}>{row.vendor?.category ? (VENDOR_CATEGORY_LABELS[row.vendor.category] ?? row.vendor.category) : '—'}</Typography>
+                    <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>{t('category')}</Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem' }}>{row.vendor?.category ? enumLabel(row.vendor.category) : '—'}</Typography>
 
-                    <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>Quotation Date</Typography>
+                    <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>{t('quotationDate')}</Typography>
                     <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem' }}>{formatDate(row.date)}</Typography>
 
-                    <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>Generated On</Typography>
+                    <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>{t('generatedOn')}</Typography>
                     <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem' }}>{formatDate(row.createdAt)}</Typography>
 
-                    <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>Total</Typography>
+                    <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>{t('total')}</Typography>
                     <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem' }}>{formatCurrency(row.totalAmount)}</Typography>
 
-                    <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>GST</Typography>
+                    <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>{t('gst')}</Typography>
                     <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem' }}>{formatCurrency(row.gstAmount)}</Typography>
 
-                    <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>Grand Total</Typography>
+                    <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>{t('grandTotal')}</Typography>
                     <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem' }}>{formatCurrency(row.grandTotal)}</Typography>
 
-                    <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>Created By</Typography>
+                    <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>{t('createdBy')}</Typography>
                     <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem' }}>{row.createdByUser?.name ?? '—'}</Typography>
                   </Box>
 
@@ -914,7 +903,7 @@ export default function QuotationsPage() {
                   {row.items && row.items.length > 0 && (
                     <Box sx={{ mt: 0.5 }}>
                       <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem', display: 'block', mb: 0.5 }}>
-                        Materials{row.mpr ? ` — raised against MPR ${row.mpr.mprNumber}` : ''}
+                        {row.mpr ? t('materialsMpr', { n: row.mpr.mprNumber }) : t('materials')}
                       </Typography>
                       {/* On narrow phones the fixed-width money columns can't shrink below
                           their content — give the table a floor and let it scroll sideways
@@ -923,14 +912,14 @@ export default function QuotationsPage() {
                       <Box component="table" sx={{ width: '100%', minWidth: 430, borderCollapse: 'collapse', fontSize: '0.8rem' }}>
                         <Box component="thead">
                           <Box component="tr" sx={{ borderBottom: '1px solid', borderColor: 'divider' }}>
-                            <Box component="th" sx={{ textAlign: 'left', py: 0.25, px: 0.5, fontWeight: 600, fontSize: '0.7rem', color: 'text.secondary', textTransform: 'uppercase' }}>Material</Box>
+                            <Box component="th" sx={{ textAlign: 'left', py: 0.25, px: 0.5, fontWeight: 600, fontSize: '0.7rem', color: 'text.secondary', textTransform: 'uppercase' }}>{t('colMaterial')}</Box>
                             {row.mpr && (
-                              <Box component="th" sx={{ textAlign: 'right', py: 0.25, px: 0.5, fontWeight: 600, fontSize: '0.7rem', color: 'text.secondary', textTransform: 'uppercase' }}>Requested</Box>
+                              <Box component="th" sx={{ textAlign: 'right', py: 0.25, px: 0.5, fontWeight: 600, fontSize: '0.7rem', color: 'text.secondary', textTransform: 'uppercase' }}>{t('colRequested')}</Box>
                             )}
-                            <Box component="th" sx={{ textAlign: 'right', py: 0.25, px: 0.5, fontWeight: 600, fontSize: '0.7rem', color: 'text.secondary', textTransform: 'uppercase' }}>Qty</Box>
-                            <Box component="th" sx={{ textAlign: 'right', py: 0.25, px: 0.5, fontWeight: 600, fontSize: '0.7rem', color: 'text.secondary', textTransform: 'uppercase' }}>Unit Price</Box>
-                            <Box component="th" sx={{ textAlign: 'right', py: 0.25, px: 0.5, fontWeight: 600, fontSize: '0.7rem', color: 'text.secondary', textTransform: 'uppercase' }}>GST</Box>
-                            <Box component="th" sx={{ textAlign: 'right', py: 0.25, px: 0.5, fontWeight: 600, fontSize: '0.7rem', color: 'text.secondary', textTransform: 'uppercase' }}>Amount (Inc. GST)</Box>
+                            <Box component="th" sx={{ textAlign: 'right', py: 0.25, px: 0.5, fontWeight: 600, fontSize: '0.7rem', color: 'text.secondary', textTransform: 'uppercase' }}>{t('colQty')}</Box>
+                            <Box component="th" sx={{ textAlign: 'right', py: 0.25, px: 0.5, fontWeight: 600, fontSize: '0.7rem', color: 'text.secondary', textTransform: 'uppercase' }}>{t('colUnitPrice')}</Box>
+                            <Box component="th" sx={{ textAlign: 'right', py: 0.25, px: 0.5, fontWeight: 600, fontSize: '0.7rem', color: 'text.secondary', textTransform: 'uppercase' }}>{t('colGst')}</Box>
+                            <Box component="th" sx={{ textAlign: 'right', py: 0.25, px: 0.5, fontWeight: 600, fontSize: '0.7rem', color: 'text.secondary', textTransform: 'uppercase' }}>{t('colAmountInc')}</Box>
                           </Box>
                         </Box>
                         <Box component="tbody">
@@ -961,34 +950,34 @@ export default function QuotationsPage() {
                   {/* File + Actions — bottom row */}
                   <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, mt: 1, pt: 1, borderTop: '1px solid', borderColor: 'divider' }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>File</Typography>
+                      <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>{t('file')}</Typography>
                       {row.filePath ? (
-                        <Button size="small" startIcon={<DownloadIcon />} onClick={() => handleDownload(row.id, row.fileName ?? 'quotation')}>Download attachment</Button>
+                        <Button size="small" startIcon={<DownloadIcon />} onClick={() => handleDownload(row.id, row.fileName ?? 'quotation')}>{t('downloadAttachment')}</Button>
                       ) : <Typography variant="caption" sx={{ fontSize: '0.75rem' }}>—</Typography>}
                     </Box>
                     <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
-                      <Button size="small" variant="outlined" startIcon={pdfLoading ? <CircularProgress size={16} /> : <PdfIcon />} onClick={() => previewQuotationPDF(row.id)} disabled={pdfLoading}>Open</Button>
-                      <Button size="small" variant="outlined" startIcon={<TimelineIcon />} onClick={() => setTimelineRow(row)}>View</Button>
+                      <Button size="small" variant="outlined" startIcon={pdfLoading ? <CircularProgress size={16} /> : <PdfIcon />} onClick={() => previewQuotationPDF(row.id)} disabled={pdfLoading}>{t('open')}</Button>
+                      <Button size="small" variant="outlined" startIcon={<TimelineIcon />} onClick={() => setTimelineRow(row)}>{t('view')}</Button>
                       <CommentsButton entityType="QUOTATION" entityId={row.id} entityLabel={row.quotationNumber} url="/quotations" />
-                      <Button size="small" variant="outlined" startIcon={<DownloadIcon />} onClick={() => downloadQuotationPDF(row.id, row.quotationNumber)}>Download PDF</Button>
-                      <Button size="small" variant="outlined" startIcon={<ShareIcon />} onClick={() => handleShareWhatsApp(row)}>Share</Button>
+                      <Button size="small" variant="outlined" startIcon={<DownloadIcon />} onClick={() => downloadQuotationPDF(row.id, row.quotationNumber)}>{t('downloadPdf')}</Button>
+                      <Button size="small" variant="outlined" startIcon={<ShareIcon />} onClick={() => handleShareWhatsApp(row)}>{t('share')}</Button>
                       {effectiveStatus !== QuotationStatus.DELETED && (
                         <>
                           {isAdmin && effectiveStatus !== QuotationStatus.CONVERTED_TO_PO ? (
-                            <Button size="small" startIcon={<EditIcon />} onClick={() => openEdit(row, true)}>Re-edit & Resend</Button>
+                            <Button size="small" startIcon={<EditIcon />} onClick={() => openEdit(row, true)}>{t('reEditResend')}</Button>
                           ) : effectiveStatus === QuotationStatus.SUBMITTED || effectiveStatus === QuotationStatus.UNDER_REVIEW ? (
-                            <Button size="small" startIcon={<EditIcon />} onClick={() => openEdit(row)}>Edit</Button>
+                            <Button size="small" startIcon={<EditIcon />} onClick={() => openEdit(row)}>{t('edit')}</Button>
                           ) : (
-                            <Button size="small" startIcon={<EditIcon />} onClick={() => { setNotesEditRow(row); setNotesEditValue(row.notes ?? ''); }}>Edit Description</Button>
+                            <Button size="small" startIcon={<EditIcon />} onClick={() => { setNotesEditRow(row); setNotesEditValue(row.notes ?? ''); }}>{t('editDescription')}</Button>
                           )}
                           {pendingStep && (
                             <>
-                              <Button size="small" color="success" startIcon={<CheckIcon />} onClick={() => setApprovalAction({ row, step: pendingStep, action: 'approve' })}>Approve</Button>
-                              <Button size="small" color="error" startIcon={<CloseIcon />} onClick={() => setApprovalAction({ row, step: pendingStep, action: 'reject' })}>Reject</Button>
+                              <Button size="small" color="success" startIcon={<CheckIcon />} onClick={() => setApprovalAction({ row, step: pendingStep, action: 'approve' })}>{t('approve')}</Button>
+                              <Button size="small" color="error" startIcon={<CloseIcon />} onClick={() => setApprovalAction({ row, step: pendingStep, action: 'reject' })}>{t('reject')}</Button>
                             </>
                           )}
                           {effectiveStatus !== QuotationStatus.APPROVED && effectiveStatus !== QuotationStatus.CONVERTED_TO_PO && (
-                            <Button size="small" color="error" startIcon={<DeleteIcon />} onClick={() => setDeleteRow(row)}>Delete</Button>
+                            <Button size="small" color="error" startIcon={<DeleteIcon />} onClick={() => setDeleteRow(row)}>{t('delete')}</Button>
                           )}
                         </>
                       )}
@@ -997,7 +986,7 @@ export default function QuotationsPage() {
                   {row.approvalWorkflow && (
                     <Box sx={{ mt: 1.5 }}>
                       {/* Approval details accordion for each quotation with a workflow */}
-                      <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>Approval Status</Typography>
+                      <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>{t('approvalStatus')}</Typography>
                       <ApprovalStepsDisplay steps={row.approvalWorkflow.steps} />
                     </Box>
                   )}
@@ -1023,24 +1012,24 @@ export default function QuotationsPage() {
 
       {/* Create / Edit Dialog */}
       <ResponsiveDialog open={createOpen || editOpen} onClose={() => { setCreateOpen(false); setEditOpen(false); setEditing(null); }} maxWidth="md" fullWidth sx={{ '& .MuiDialog-paper': { margin: { xs: 1 } } }}>
-        <DialogTitle>{editOpen ? (reviseMode ? `Re-edit & Resend — ${editing?.quotationNumber ?? ''}` : `Edit Quotation ${editing?.quotationNumber ?? ''}`) : 'Create Quotation'}</DialogTitle>
+        <DialogTitle>{editOpen ? (reviseMode ? t('reviseTitle', { n: editing?.quotationNumber ?? '' }) : t('editTitle', { n: editing?.quotationNumber ?? '' })) : t('createTitle')}</DialogTitle>
         <DialogContent>
           {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
           {editOpen && reviseMode && (
             <Alert severity="info" sx={{ mb: 2 }}>
-              This quotation will be updated and resent for approval with the same quotation number ({editing?.quotationNumber}). Previous approvals will be reset.
+              {t('reviseInfo', { n: editing?.quotationNumber })}
             </Alert>
           )}
           {!editOpen && mprNumber && (
             <Alert severity="info" sx={{ mb: 2 }}>
-              Raising this quotation against Material Purchase Request <strong>{mprNumber}</strong>. Requested quantities are shown below each item — adjust quantity/price to match what the vendor is actually quoting.
+              <Trans t={t} i18nKey="mprInfo" values={{ n: mprNumber }} components={{ b: <strong /> }} />
             </Alert>
           )}
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1, flexWrap: 'wrap' }}>
             {/* Vendor Selection */}
             <TextField
               select
-              label="Vendor"
+              label={t('vendorLabel')}
               value={selectedVendorId}
               onChange={(e) => { setSelectedVendorId(e.target.value); setLineItems([]); setSelectedMaterialNames(new Set()); }}
               fullWidth
@@ -1057,15 +1046,15 @@ export default function QuotationsPage() {
             {selectedVendorId && (
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <Typography variant="body2" fontWeight={600}>Materials (tick the ones you need)</Typography>
+                  <Typography variant="body2" fontWeight={600}>{t('materialsTick')}</Typography>
                   <Button size="small" startIcon={<AddIcon />} onClick={() => {
                     const newItem: QuotationItem = { materialName: '', quantity: '', unit: 'nos', unitPrice: '', amount: 0, gstRate: 0 };
                     setLineItems([...lineItems, newItem]);
                     setSelectedMaterialNames(new Set([...selectedMaterialNames, '']));
-                  }}>Add Row</Button>
+                  }}>{t('addRow')}</Button>
                 </Box>
                 {selectedVendor?.materials?.length === 0 && lineItems.length === 0 && (
-                  <Alert severity="info">This vendor has no materials registered. Use "Add Row" to add items manually.</Alert>
+                  <Alert severity="info">{t('noVendorMaterials')}</Alert>
                 )}
                 {lineItems.map((item, index) => {
                   const checked = selectedMaterialNames.has(item.materialName);
@@ -1096,7 +1085,7 @@ export default function QuotationsPage() {
                           sx={{ flexShrink: 0 }}
                         />
                         <TextField
-                          label="Material"
+                          label={t('material')}
                           value={item.materialName}
                           onChange={isManualRow ? (e) => updateLineItem(index, 'materialName', e.target.value) : undefined}
                           size="small"
@@ -1110,14 +1099,14 @@ export default function QuotationsPage() {
                             const newSet = new Set(selectedMaterialNames);
                             newSet.delete(item.materialName);
                             setSelectedMaterialNames(newSet);
-                          }} title="Remove row">
+                          }} title={t('removeRow')}>
                             <DeleteIcon fontSize="small" />
                           </IconButton>
                         )}
                       </Box>
                       <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', pl: { xs: 5.5, sm: 0 }, flexWrap: { xs: 'wrap', sm: 'nowrap' } }}>
                         <TextField
-                          label="Qty"
+                          label={t('qty')}
                           type="text"
                           value={item.quantity}
                           onChange={(e) => updateLineItem(index, 'quantity', e.target.value.replace(/,/g, ''))}
@@ -1129,8 +1118,8 @@ export default function QuotationsPage() {
                             const requested = requestedQtyMap[item.materialName.trim().toLowerCase()];
                             if (!requested) return undefined;
                             const diff = num(item.quantity) - requested.quantity;
-                            if (diff === 0) return `Requested: ${requested.quantity}`;
-                            return `Requested: ${requested.quantity} (${diff > 0 ? '+' : ''}${round2(diff)})`;
+                            if (diff === 0) return t('requestedQty', { q: requested.quantity });
+                            return t('requestedQtyDiff', { q: requested.quantity, diff: `${diff > 0 ? '+' : ''}${round2(diff)}` });
                           })()}
                           FormHelperTextProps={{
                             sx: {
@@ -1144,18 +1133,18 @@ export default function QuotationsPage() {
                         />
                         <TextField
                           select
-                          label="Unit"
+                          label={t('unit')}
                           value={item.unit ?? 'nos'}
                           onChange={(e) => updateLineItem(index, 'unit', e.target.value)}
                           size="small"
                           sx={{ flex: { xs: '1 1 100px', sm: '0 0 120px' }, minWidth: 100 }}
                         >
                           {QTY_UNIT_OPTIONS.map((opt) => (
-                            <MenuItem key={opt.value} value={opt.value}>{opt.label}</MenuItem>
+                            <MenuItem key={opt.value} value={opt.value}>{unitLabel(opt.value)}</MenuItem>
                           ))}
                         </TextField>
                         <TextField
-                          label="Unit Price"
+                          label={t('unitPrice')}
                           type="text"
                           value={item.unitPrice}
                           onChange={(e) => updateLineItem(index, 'unitPrice', e.target.value.replace(/,/g, ''))}
@@ -1166,7 +1155,7 @@ export default function QuotationsPage() {
                         />
                         <TextField
                           select
-                          label="GST %"
+                          label={t('gstPct')}
                           value={item.gstRate}
                           onChange={(e) => updateLineItem(index, 'gstRate', Number(e.target.value))}
                           size="small"
@@ -1177,7 +1166,7 @@ export default function QuotationsPage() {
                           ))}
                         </TextField>
                         <TextField
-                          label="Amount (Inc. GST)"
+                          label={t('amountInc')}
                           type="text"
                           value={item.amount}
                           onChange={(e) => updateLineItem(index, 'amount', e.target.value.replace(/,/g, ''))}
@@ -1193,9 +1182,9 @@ export default function QuotationsPage() {
 
                 {/* Totals */}
                 <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: { xs: 'stretch', sm: 'flex-end' }, gap: 1, mt: 1 }}>
-                  <Typography variant="body2" sx={{ textAlign: { xs: 'left', sm: 'right' } }}>Total: <strong>{formatCurrency(totalAmount)}</strong></Typography>
-                  <Typography variant="body2" sx={{ textAlign: { xs: 'left', sm: 'right' } }}>GST (auto-calculated): <strong>{formatCurrency(gstAmount)}</strong></Typography>
-                  <Typography variant="body2" sx={{ textAlign: { xs: 'left', sm: 'right' } }}>Grand Total: <strong>{formatCurrency(grandTotal)}</strong></Typography>
+                  <Typography variant="body2" sx={{ textAlign: { xs: 'left', sm: 'right' } }}>{t('totalLine')} <strong>{formatCurrency(totalAmount)}</strong></Typography>
+                  <Typography variant="body2" sx={{ textAlign: { xs: 'left', sm: 'right' } }}>{t('gstAuto')} <strong>{formatCurrency(gstAmount)}</strong></Typography>
+                  <Typography variant="body2" sx={{ textAlign: { xs: 'left', sm: 'right' } }}>{t('grandTotalLine')} <strong>{formatCurrency(grandTotal)}</strong></Typography>
                 </Box>
               </Box>
             )}
@@ -1204,7 +1193,7 @@ export default function QuotationsPage() {
               <AcknowledgementCheckbox
                 checked={acknowledged}
                 onChange={setAcknowledged}
-                entityLabel="quotation"
+                entityLabel={t('entityQuotation')}
               />
             )}
 
@@ -1212,10 +1201,10 @@ export default function QuotationsPage() {
             <Box>
               <input ref={fileRef} type="file" accept="image/*,application/pdf" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files?.[0]; if (f) setSelectedFile(f); }} />
               <Button variant="outlined" onClick={() => fileRef.current?.click()} startIcon={<AddIcon />}>
-                {selectedFile ? `✓ ${selectedFile.name}` : 'Upload Photo/PDF'}
+                {selectedFile ? `✓ ${selectedFile.name}` : t('uploadPhotoPdf')}
               </Button>
               {editing?.fileName && !selectedFile && (
-                <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>Current: {editing.fileName}</Typography>
+                <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>{t('currentFile', { n: editing.fileName })}</Typography>
               )}
               <OcrAutoFill
                 file={selectedFile}
@@ -1225,14 +1214,14 @@ export default function QuotationsPage() {
               />
               {!selectedVendorId && selectedFile && (
                 <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                  Select a vendor first to auto-fill line items
+                  {t('selectVendorFirst')}
                 </Typography>
               )}
             </Box>
 
             {/* Description / Notes */}
             <TextField
-              label="Description / Notes"
+              label={t('notesLabel')}
               value={quotationNotes}
               onChange={(e) => setQuotationNotes(e.target.value)}
               fullWidth
@@ -1240,13 +1229,13 @@ export default function QuotationsPage() {
               multiline
               minRows={2}
               maxRows={4}
-              placeholder="Optional description or notes for this quotation"
+              placeholder={t('notesPlaceholder')}
               sx={{ mt: 2 }}
             />
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => { setCreateOpen(false); setEditOpen(false); setEditing(null); resetForm(); }}>Cancel</Button>
+          <Button onClick={() => { setCreateOpen(false); setEditOpen(false); setEditing(null); resetForm(); }}>{t('cancel')}</Button>
           <Button
             variant="contained"
             onClick={editOpen
@@ -1254,7 +1243,7 @@ export default function QuotationsPage() {
               : handleCreateQuotation}
             disabled={createMutation.isPending || updateMutation.isPending || reviseMutation.isPending || (!editOpen && (!acknowledged || createSubmissionLocked.current))}
           >
-            {(createMutation.isPending || updateMutation.isPending || reviseMutation.isPending) ? <CircularProgress size={20} /> : editOpen ? (reviseMode ? 'Update & Resend' : 'Update') : 'Create'}
+            {(createMutation.isPending || updateMutation.isPending || reviseMutation.isPending) ? <CircularProgress size={20} /> : editOpen ? (reviseMode ? t('updateResend') : t('update')) : t('create')}
           </Button>
         </DialogActions>
       </ResponsiveDialog>
@@ -1262,7 +1251,7 @@ export default function QuotationsPage() {
       <ApprovalActionDialog
         open={approvalAction !== null}
         action={approvalAction?.action ?? 'approve'}
-        entityLabel="Quotation"
+        entityLabel={t('entityQuotationCap')}
         pending={approveMutation.isPending || rejectMutation.isPending}
         error={error}
         onClearError={() => setError('')}
@@ -1286,17 +1275,17 @@ export default function QuotationsPage() {
       />
 
       <ResponsiveDialog open={deleteRow !== null} onClose={() => setDeleteRow(null)} maxWidth="xs" fullWidth>
-        <DialogTitle>Delete Quotation</DialogTitle>
+        <DialogTitle>{t('deleteTitle')}</DialogTitle>
         <DialogContent>
-          <Typography>Are you sure you want to delete quotation <strong>{deleteRow?.quotationNumber}</strong>?</Typography>
+          <Typography><Trans t={t} i18nKey="deleteConfirm" values={{ n: deleteRow?.quotationNumber }} components={{ b: <strong /> }} /></Typography>
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
-            This action cannot be undone. Only quotations that are not approved or converted to a PO can be deleted.
+            {t('deleteNote')}
           </Typography>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDeleteRow(null)}>Cancel</Button>
+          <Button onClick={() => setDeleteRow(null)}>{t('cancel')}</Button>
           <Button color="error" variant="contained" disabled={deleteMutation.isPending} onClick={() => deleteRow && deleteMutation.mutate(deleteRow.id)}>
-            {deleteMutation.isPending ? <CircularProgress size={20} /> : 'Delete'}
+            {deleteMutation.isPending ? <CircularProgress size={20} /> : t('delete')}
           </Button>
         </DialogActions>
       </ResponsiveDialog>
@@ -1309,29 +1298,29 @@ export default function QuotationsPage() {
 
       {/* Edit Description/Notes only (for approved quotations) */}
       <ResponsiveDialog open={notesEditRow !== null} onClose={() => { setNotesEditRow(null); setNotesEditValue(''); }} maxWidth="sm" fullWidth>
-        <DialogTitle>Edit Description — {notesEditRow?.quotationNumber}</DialogTitle>
+        <DialogTitle>{t('editDescTitle', { n: notesEditRow?.quotationNumber })}</DialogTitle>
         <DialogContent>
           {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
           <TextField
-            label="Description / Notes"
+            label={t('notesLabel')}
             value={notesEditValue}
             onChange={(e) => setNotesEditValue(e.target.value)}
             fullWidth
             multiline
             minRows={3}
             maxRows={6}
-            placeholder="Description or notes for this quotation"
+            placeholder={t('notesPlaceholder2')}
             sx={{ mt: 1 }}
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => { setNotesEditRow(null); setNotesEditValue(''); }}>Cancel</Button>
+          <Button onClick={() => { setNotesEditRow(null); setNotesEditValue(''); }}>{t('cancel')}</Button>
           <Button
             variant="contained"
             disabled={updateNotesMutation.isPending}
             onClick={() => updateNotesMutation.mutate()}
           >
-            {updateNotesMutation.isPending ? <CircularProgress size={20} /> : 'Save'}
+            {updateNotesMutation.isPending ? <CircularProgress size={20} /> : t('save')}
           </Button>
         </DialogActions>
       </ResponsiveDialog>

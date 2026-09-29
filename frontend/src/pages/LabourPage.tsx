@@ -42,6 +42,7 @@ import api, { extractErrorMessage } from '../config/api';
 import ResponsiveTable from '../components/ResponsiveTable';
 import RefreshButton from '../components/RefreshButton';
 
+import { useTranslation } from 'react-i18next';
 interface Staff {
   id: string;
   name: string;
@@ -75,6 +76,7 @@ interface SummaryRow {
 }
 
 export default function AttendancePage() {
+  const { t: tr } = useTranslation('labour');
   const [tab, setTab] = useState(0);
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(20);
@@ -160,7 +162,7 @@ export default function AttendancePage() {
       setStaffDialogOpen(false);
       setEditingStaff(null);
       setStaffForm({});
-      setSuccessMsg(editingStaff ? 'Staff updated.' : 'Staff added.');
+      setSuccessMsg(editingStaff ? tr('okUpdated') : tr('okAdded'));
       setTimeout(() => setSuccessMsg(''), 3000);
     },
     onError: (err: unknown) => setError(extractErrorMessage(err)),
@@ -170,7 +172,7 @@ export default function AttendancePage() {
     mutationFn: async (id: string) => { await api.delete(`/labour/staff/${id}`); },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/labour/staff'] });
-      setSuccessMsg('Staff deleted.');
+      setSuccessMsg(tr('okDeleted'));
       setTimeout(() => setSuccessMsg(''), 3000);
     },
     onError: (err: unknown) => setError(extractErrorMessage(err)),
@@ -193,7 +195,7 @@ export default function AttendancePage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/labour/attendance'] });
-      setSuccessMsg(`Attendance marked for ${attendanceDate}.`);
+      setSuccessMsg(tr('okMarked', { d: attendanceDate }));
       setTimeout(() => setSuccessMsg(''), 3000);
     },
     onError: (err: unknown) => setError(extractErrorMessage(err)),
@@ -222,10 +224,10 @@ export default function AttendancePage() {
   return (
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap' }}>
-        <Typography variant="h5" fontWeight={600} sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' } }}>Attendance</Typography>
+        <Typography variant="h5" fontWeight={600} sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' } }}>{tr('title')}</Typography>
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', justifyContent: { xs: 'flex-end', md: 'flex-end' }, width: { xs: '100%', md: 'auto' } }}>
           <RefreshButton onClick={() => { refetchStaff(); refetchAttendance(); refetchSummary(); }} />
-          <Button variant="contained" startIcon={<AddIcon />} onClick={openCreateStaff}>Add Staff</Button>
+          <Button variant="contained" startIcon={<AddIcon />} onClick={openCreateStaff}>{tr('addStaff')}</Button>
         </Box>
       </Box>
 
@@ -233,10 +235,10 @@ export default function AttendancePage() {
       {successMsg && <Alert severity="success" sx={{ mb: 2 }} onClose={() => setSuccessMsg('')}>{successMsg}</Alert>}
 
       <Tabs value={tab} onChange={(_e, v) => setTab(v)} sx={{ mb: 2 }} variant="scrollable" scrollButtons="auto" allowScrollButtonsMobile>
-        <Tab label="Staff" />
-        <Tab label="Mark Attendance" />
-        <Tab label="Attendance Log" />
-        <Tab label="Summary" />
+        <Tab label={tr('staff')} />
+        <Tab label={tr('markAttendance')} />
+        <Tab label={tr('attendanceLog')} />
+        <Tab label={tr('summary')} />
       </Tabs>
 
       {/* Tab 0: Staff Management */}
@@ -245,21 +247,21 @@ export default function AttendancePage() {
           <Box sx={{ p: 2, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
             <TextField
               size="small"
-              placeholder="Search staff..."
+              placeholder={tr('search')}
               value={search}
               onChange={(e) => { setSearch(e.target.value); setPage(0); }}
               InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> }}
               sx={{ width: { xs: '100%', sm: 250 } }}
             />
-            <TextField select size="small" label="Type" value={typeFilter} onChange={(e) => { setTypeFilter(e.target.value); setPage(0); }} sx={{ width: 150 }}>
-              <MenuItem value="">All</MenuItem>
-              <MenuItem value="COMPANY">Company</MenuItem>
-              <MenuItem value="LABOUR">Labour</MenuItem>
+            <TextField select size="small" label={tr('type')} value={typeFilter} onChange={(e) => { setTypeFilter(e.target.value); setPage(0); }} sx={{ width: 150 }}>
+              <MenuItem value="">{tr('all')}</MenuItem>
+              <MenuItem value="COMPANY">{tr('company')}</MenuItem>
+              <MenuItem value="LABOUR">{tr('labour')}</MenuItem>
             </TextField>
-            <TextField select size="small" label="Active" value={activeFilter} onChange={(e) => { setActiveFilter(e.target.value); setPage(0); }} sx={{ width: 120 }}>
-              <MenuItem value="">All</MenuItem>
-              <MenuItem value="true">Active</MenuItem>
-              <MenuItem value="false">Inactive</MenuItem>
+            <TextField select size="small" label={tr('active')} value={activeFilter} onChange={(e) => { setActiveFilter(e.target.value); setPage(0); }} sx={{ width: 120 }}>
+              <MenuItem value="">{tr('all')}</MenuItem>
+              <MenuItem value="true">{tr('active')}</MenuItem>
+              <MenuItem value="false">{tr('inactive')}</MenuItem>
             </TextField>
           </Box>
           <ResponsiveTable>
@@ -267,13 +269,13 @@ export default function AttendancePage() {
             <Table size="small">
               <TableHead>
                 <TableRow>
-                  <TableCell sx={{ fontWeight: 600 }}>Name</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>Type</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>Role</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>Phone</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>Base Salary</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>Status</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>Actions</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>{tr('name')}</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>{tr('type')}</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>{tr('role')}</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>{tr('phone')}</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>{tr('baseSalary')}</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>{tr('status')}</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>{tr('actions')}</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -284,15 +286,15 @@ export default function AttendancePage() {
                 ) : (
                   staffRows.map((s) => (
                     <TableRow key={s.id} hover>
-                      <TableCell data-label="Name">{s.name}</TableCell>
-                      <TableCell data-label="Type"><Chip label={s.type} size="small" color={s.type === 'COMPANY' ? 'primary' : 'secondary'} variant="outlined" /></TableCell>
-                      <TableCell data-label="Role">{s.role ?? '—'}</TableCell>
-                      <TableCell data-label="Phone">{s.phone ?? '—'}</TableCell>
-                      <TableCell data-label="Base Salary">{formatCurrency(s.baseSalary)}</TableCell>
-                      <TableCell data-label="Status"><Chip label={s.active ? 'Active' : 'Inactive'} size="small" color={s.active ? 'success' : 'default'} /></TableCell>
-                      <TableCell data-label="Actions">
+                      <TableCell data-label={tr('name')}>{s.name}</TableCell>
+                      <TableCell data-label={tr('type')}><Chip label={s.type} size="small" color={s.type === 'COMPANY' ? 'primary' : 'secondary'} variant="outlined" /></TableCell>
+                      <TableCell data-label={tr('role')}>{s.role ?? '—'}</TableCell>
+                      <TableCell data-label={tr('phone')}>{s.phone ?? '—'}</TableCell>
+                      <TableCell data-label={tr('baseSalary')}>{formatCurrency(s.baseSalary)}</TableCell>
+                      <TableCell data-label={tr('status')}><Chip label={s.active ? 'Active' : 'Inactive'} size="small" color={s.active ? 'success' : 'default'} /></TableCell>
+                      <TableCell data-label={tr('actions')}>
                         <IconButton size="small" onClick={() => openEditStaff(s)}><EditIcon fontSize="small" /></IconButton>
-                        <IconButton size="small" color="error" onClick={() => { if (confirm(`Delete ${s.name}?`)) deleteStaffMutation.mutate(s.id); }}><DeleteIcon fontSize="small" /></IconButton>
+                        <IconButton size="small" color="error" onClick={() => { if (confirm(tr('confirmDelete', { n: s.name }))) deleteStaffMutation.mutate(s.id); }}><DeleteIcon fontSize="small" /></IconButton>
                       </TableCell>
                     </TableRow>
                   ))
@@ -320,7 +322,7 @@ export default function AttendancePage() {
           <CardContent>
             <Box sx={{ display: 'flex', gap: 2, mb: 3, flexWrap: 'wrap' }}>
               <TextField
-                label="Date"
+                label={tr('date')}
                 type="date"
                 value={attendanceDate}
                 onChange={(e) => setAttendanceDate(e.target.value)}
@@ -329,17 +331,17 @@ export default function AttendancePage() {
               />
               <TextField
                 select
-                label="Staff Type"
+                label={tr('staffType')}
                 value={attendanceType}
                 onChange={(e) => { setAttendanceType(e.target.value as 'COMPANY' | 'LABOUR'); setAttendanceRecords({}); }}
                 size="small"
                 sx={{ width: 150 }}
               >
-                <MenuItem value="COMPANY">Company</MenuItem>
-                <MenuItem value="LABOUR">Labour</MenuItem>
+                <MenuItem value="COMPANY">{tr('company')}</MenuItem>
+                <MenuItem value="LABOUR">{tr('labour')}</MenuItem>
               </TextField>
               <Button variant="contained" onClick={() => { setError(''); markAttendanceMutation.mutate(); }} disabled={markAttendanceMutation.isPending || !attendanceStaff?.length || Object.keys(attendanceRecords).length === 0}>
-                {markAttendanceMutation.isPending ? <CircularProgress size={20} /> : `Save Attendance${Object.keys(attendanceRecords).length > 0 ? ` (${Object.keys(attendanceRecords).length} marked)` : ''}`}
+                {markAttendanceMutation.isPending ? <CircularProgress size={20} /> : (Object.keys(attendanceRecords).length > 0 ? tr('saveAttN', { n: Object.keys(attendanceRecords).length }) : tr('saveAtt'))}
               </Button>
             </Box>
 
@@ -353,10 +355,10 @@ export default function AttendancePage() {
                 <Table size="small">
                   <TableHead>
                     <TableRow>
-                      <TableCell sx={{ fontWeight: 600 }}>Name</TableCell>
-                      <TableCell sx={{ fontWeight: 600 }}>Role</TableCell>
-                      <TableCell sx={{ fontWeight: 600 }}>Present</TableCell>
-                      <TableCell sx={{ fontWeight: 600 }}>Notes</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>{tr('name')}</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>{tr('role')}</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>{tr('present')}</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>{tr('notes')}</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
@@ -365,9 +367,9 @@ export default function AttendancePage() {
                       const isPresent = attendanceRecords[s.id]?.present === true;
                       return (
                         <TableRow key={s.id}>
-                          <TableCell data-label="Name">{s.name}</TableCell>
-                          <TableCell data-label="Role">{s.role ?? '—'}</TableCell>
-                          <TableCell data-label="Present">
+                          <TableCell data-label={tr('name')}>{s.name}</TableCell>
+                          <TableCell data-label={tr('role')}>{s.role ?? '—'}</TableCell>
+                          <TableCell data-label={tr('present')}>
                             <ToggleButtonGroup
                               exclusive
                               size="small"
@@ -381,14 +383,14 @@ export default function AttendancePage() {
                               }}
                             >
                               <ToggleButton value="present" sx={{ '&.Mui-selected': { color: '#27ae60', backgroundColor: 'rgba(39,174,96,0.1)' } }}>
-                                <PresentIcon fontSize="small" sx={{ mr: 0.5 }} /> Present
+                                <PresentIcon fontSize="small" sx={{ mr: 0.5 }} /> {tr('present')}
                               </ToggleButton>
                               <ToggleButton value="absent" sx={{ '&.Mui-selected': { color: '#e74c3c', backgroundColor: 'rgba(231,76,60,0.1)' } }}>
-                                <AbsentIcon fontSize="small" sx={{ mr: 0.5 }} /> Absent
+                                <AbsentIcon fontSize="small" sx={{ mr: 0.5 }} /> {tr('absent')}
                               </ToggleButton>
                             </ToggleButtonGroup>
                           </TableCell>
-                          <TableCell data-label="Notes">
+                          <TableCell data-label={tr('notes')}>
                             <TextField
                               size="small"
                               value={attendanceRecords[s.id]?.notes ?? ''}
@@ -396,7 +398,7 @@ export default function AttendancePage() {
                                 ...attendanceRecords,
                                 [s.id]: { present: attendanceRecords[s.id]?.present ?? false, notes: e.target.value },
                               })}
-                              placeholder="Optional notes"
+                              placeholder={tr('optionalNotes')}
                               disabled={!marked}
                             />
                           </TableCell>
@@ -416,10 +418,10 @@ export default function AttendancePage() {
       {tab === 2 && (
         <Card>
           <Box sx={{ p: 2, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-            <TextField select size="small" label="Type" value={typeFilter} onChange={(e) => { setTypeFilter(e.target.value); setPage(0); }} sx={{ width: 150 }}>
-              <MenuItem value="">All</MenuItem>
-              <MenuItem value="COMPANY">Company</MenuItem>
-              <MenuItem value="LABOUR">Labour</MenuItem>
+            <TextField select size="small" label={tr('type')} value={typeFilter} onChange={(e) => { setTypeFilter(e.target.value); setPage(0); }} sx={{ width: 150 }}>
+              <MenuItem value="">{tr('all')}</MenuItem>
+              <MenuItem value="COMPANY">{tr('company')}</MenuItem>
+              <MenuItem value="LABOUR">{tr('labour')}</MenuItem>
             </TextField>
           </Box>
           <ResponsiveTable>
@@ -427,30 +429,30 @@ export default function AttendancePage() {
             <Table size="small">
               <TableHead>
                 <TableRow>
-                  <TableCell sx={{ fontWeight: 600 }}>Date</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>Name</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>Type</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>Role</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>Status</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>Notes</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>Marked By</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>{tr('date')}</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>{tr('name')}</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>{tr('type')}</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>{tr('role')}</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>{tr('status')}</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>{tr('notes')}</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>{tr('markedBy')}</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
                 {attendanceLoading ? (
                   <TableRow><TableCell colSpan={7} align="center" sx={{ py: 4 }}><CircularProgress size={32} /></TableCell></TableRow>
                 ) : attendanceRows.length === 0 ? (
-                  <TableRow><TableCell colSpan={7} align="center" sx={{ py: 4 }}><Typography color="text.secondary">No attendance records found</Typography></TableCell></TableRow>
+                  <TableRow><TableCell colSpan={7} align="center" sx={{ py: 4 }}><Typography color="text.secondary">{tr('none')}</Typography></TableCell></TableRow>
                 ) : (
                   attendanceRows.map((row) => (
                     <TableRow key={row.id} hover>
-                      <TableCell data-label="Date">{formatDate(row.date)}</TableCell>
-                      <TableCell data-label="Name">{row.staff?.name}</TableCell>
-                      <TableCell data-label="Type"><Chip label={row.staff?.type} size="small" variant="outlined" /></TableCell>
-                      <TableCell data-label="Role">{row.staff?.role ?? '—'}</TableCell>
-                      <TableCell data-label="Status"><Chip label={row.present ? 'Present' : 'Absent'} size="small" color={row.present ? 'success' : 'error'} /></TableCell>
-                      <TableCell data-label="Notes">{row.notes ?? '—'}</TableCell>
-                      <TableCell data-label="Marked By">{row.marker?.name ?? '—'}</TableCell>
+                      <TableCell data-label={tr('date')}>{formatDate(row.date)}</TableCell>
+                      <TableCell data-label={tr('name')}>{row.staff?.name}</TableCell>
+                      <TableCell data-label={tr('type')}><Chip label={row.staff?.type} size="small" variant="outlined" /></TableCell>
+                      <TableCell data-label={tr('role')}>{row.staff?.role ?? '—'}</TableCell>
+                      <TableCell data-label={tr('status')}><Chip label={row.present ? 'Present' : 'Absent'} size="small" color={row.present ? 'success' : 'error'} /></TableCell>
+                      <TableCell data-label={tr('notes')}>{row.notes ?? '—'}</TableCell>
+                      <TableCell data-label={tr('markedBy')}>{row.marker?.name ?? '—'}</TableCell>
                     </TableRow>
                   ))
                 )}
@@ -475,12 +477,12 @@ export default function AttendancePage() {
       {tab === 3 && (
         <Card>
           <Box sx={{ p: 2, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-            <TextField label="Start Date" type="date" value={summaryStart} onChange={(e) => setSummaryStart(e.target.value)} size="small" InputLabelProps={{ shrink: true }} />
-            <TextField label="End Date" type="date" value={summaryEnd} onChange={(e) => setSummaryEnd(e.target.value)} size="small" InputLabelProps={{ shrink: true }} />
-            <TextField select size="small" label="Type" value={summaryType} onChange={(e) => setSummaryType(e.target.value)} sx={{ width: 150 }}>
-              <MenuItem value="">All</MenuItem>
-              <MenuItem value="COMPANY">Company</MenuItem>
-              <MenuItem value="LABOUR">Labour</MenuItem>
+            <TextField label={tr('startDate')} type="date" value={summaryStart} onChange={(e) => setSummaryStart(e.target.value)} size="small" InputLabelProps={{ shrink: true }} />
+            <TextField label={tr('endDate')} type="date" value={summaryEnd} onChange={(e) => setSummaryEnd(e.target.value)} size="small" InputLabelProps={{ shrink: true }} />
+            <TextField select size="small" label={tr('type')} value={summaryType} onChange={(e) => setSummaryType(e.target.value)} sx={{ width: 150 }}>
+              <MenuItem value="">{tr('all')}</MenuItem>
+              <MenuItem value="COMPANY">{tr('company')}</MenuItem>
+              <MenuItem value="LABOUR">{tr('labour')}</MenuItem>
             </TextField>
           </Box>
           <ResponsiveTable>
@@ -488,32 +490,32 @@ export default function AttendancePage() {
             <Table size="small">
               <TableHead>
                 <TableRow>
-                  <TableCell sx={{ fontWeight: 600 }}>Name</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>Type</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>Role</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>Base Salary</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>Present</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>Absent</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>Total Days</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>Salary (Pro-rated)</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>{tr('name')}</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>{tr('type')}</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>{tr('role')}</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>{tr('baseSalary')}</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>{tr('present')}</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>{tr('absent')}</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>{tr('totalDays')}</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>{tr('salaryProRated')}</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
                 {summaryLoading ? (
                   <TableRow><TableCell colSpan={8} align="center" sx={{ py: 4 }}><CircularProgress size={32} /></TableCell></TableRow>
                 ) : summaryRows.length === 0 ? (
-                  <TableRow><TableCell colSpan={8} align="center" sx={{ py: 4 }}><Typography color="text.secondary">No data for selected period</Typography></TableCell></TableRow>
+                  <TableRow><TableCell colSpan={8} align="center" sx={{ py: 4 }}><Typography color="text.secondary">{tr('noPeriod')}</Typography></TableCell></TableRow>
                 ) : (
                   summaryRows.map((row) => (
                     <TableRow key={row.id} hover>
-                      <TableCell data-label="Name">{row.name}</TableCell>
-                      <TableCell data-label="Type"><Chip label={row.type} size="small" variant="outlined" /></TableCell>
-                      <TableCell data-label="Role">{row.role ?? '—'}</TableCell>
-                      <TableCell data-label="Base Salary">{formatCurrency(row.baseSalary)}</TableCell>
-                      <TableCell data-label="Present"><Chip label={row.presentDays} size="small" color="success" /></TableCell>
-                      <TableCell data-label="Absent"><Chip label={row.absentDays} size="small" color="error" /></TableCell>
-                      <TableCell data-label="Total Days">{row.totalDays}</TableCell>
-                      <TableCell data-label="Salary (Pro-rated)"><strong>{formatCurrency(row.salaryForPeriod)}</strong></TableCell>
+                      <TableCell data-label={tr('name')}>{row.name}</TableCell>
+                      <TableCell data-label={tr('type')}><Chip label={row.type} size="small" variant="outlined" /></TableCell>
+                      <TableCell data-label={tr('role')}>{row.role ?? '—'}</TableCell>
+                      <TableCell data-label={tr('baseSalary')}>{formatCurrency(row.baseSalary)}</TableCell>
+                      <TableCell data-label={tr('present')}><Chip label={row.presentDays} size="small" color="success" /></TableCell>
+                      <TableCell data-label={tr('absent')}><Chip label={row.absentDays} size="small" color="error" /></TableCell>
+                      <TableCell data-label={tr('totalDays')}>{row.totalDays}</TableCell>
+                      <TableCell data-label={tr('salaryProRated')}><strong>{formatCurrency(row.salaryForPeriod)}</strong></TableCell>
                     </TableRow>
                   ))
                 )}
@@ -526,51 +528,51 @@ export default function AttendancePage() {
 
       {/* Add/Edit Staff Dialog */}
       <ResponsiveDialog open={staffDialogOpen} onClose={() => setStaffDialogOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>{editingStaff ? 'Edit Staff' : 'Add Staff'}</DialogTitle>
+        <DialogTitle>{editingStaff ? tr('editTitle') : 'Add Staff'}</DialogTitle>
         <DialogContent>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
-            <TextField label="Name" required value={String(staffForm.name ?? '')} onChange={(e) => setStaffForm({ ...staffForm, name: e.target.value })} fullWidth size="small" />
+            <TextField label={tr('name')} required value={String(staffForm.name ?? '')} onChange={(e) => setStaffForm({ ...staffForm, name: e.target.value })} fullWidth size="small" />
             <TextField
               select
-              label="Type"
+              label={tr('type')}
               required
               value={String(staffForm.type ?? 'COMPANY')}
               onChange={(e) => setStaffForm({ ...staffForm, type: e.target.value })}
               fullWidth
               size="small"
               disabled={!!editingStaff}
-              helperText="Company = base salary staff, Labour = temporary workers"
+              helperText={tr('typeHelp')}
             >
-              <MenuItem value="COMPANY">Company (Salaried)</MenuItem>
-              <MenuItem value="LABOUR">Labour (Temporary)</MenuItem>
+              <MenuItem value="COMPANY">{tr('companySalaried')}</MenuItem>
+              <MenuItem value="LABOUR">{tr('labourTemporary')}</MenuItem>
             </TextField>
-            <TextField label="Role" value={String(staffForm.role ?? '')} onChange={(e) => setStaffForm({ ...staffForm, role: e.target.value })} fullWidth size="small" />
-            <TextField label="Phone" value={String(staffForm.phone ?? '')} onChange={(e) => setStaffForm({ ...staffForm, phone: e.target.value })} fullWidth size="small" />
-            <TextField label="Base Salary" type="text" required value={formatIndianNumber(staffForm.baseSalary ?? '')} onChange={(e) => setStaffForm({ ...staffForm, baseSalary: e.target.value === '' ? '' : Number(e.target.value.replace(/,/g, '')) })} inputMode="decimal" inputProps={{ min: 0, step: 0.01 }} fullWidth size="small" />
+            <TextField label={tr('role')} value={String(staffForm.role ?? '')} onChange={(e) => setStaffForm({ ...staffForm, role: e.target.value })} fullWidth size="small" />
+            <TextField label={tr('phone')} value={String(staffForm.phone ?? '')} onChange={(e) => setStaffForm({ ...staffForm, phone: e.target.value })} fullWidth size="small" />
+            <TextField label={tr('baseSalary')} type="text" required value={formatIndianNumber(staffForm.baseSalary ?? '')} onChange={(e) => setStaffForm({ ...staffForm, baseSalary: e.target.value === '' ? '' : Number(e.target.value.replace(/,/g, '')) })} inputMode="decimal" inputProps={{ min: 0, step: 0.01 }} fullWidth size="small" />
             {editingStaff && (
-              <TextField select label="Status" value={staffForm.active === false ? 'false' : 'true'} onChange={(e) => setStaffForm({ ...staffForm, active: e.target.value === 'true' })} fullWidth size="small">
-                <MenuItem value="true">Active</MenuItem>
-                <MenuItem value="false">Inactive</MenuItem>
+              <TextField select label={tr('status')} value={staffForm.active === false ? 'false' : 'true'} onChange={(e) => setStaffForm({ ...staffForm, active: e.target.value === 'true' })} fullWidth size="small">
+                <MenuItem value="true">{tr('active')}</MenuItem>
+                <MenuItem value="false">{tr('inactive')}</MenuItem>
               </TextField>
             )}
           </Box>
         </DialogContent>
         <DialogActions sx={{ flexWrap: "wrap", gap: 1 }}>
-          <Button onClick={() => setStaffDialogOpen(false)}>Cancel</Button>
+          <Button onClick={() => setStaffDialogOpen(false)}>{tr('cancel')}</Button>
           <Button
             variant="contained"
             onClick={() => {
               setError('');
               if (!String(staffForm.name ?? '').trim()) {
-                setError('Staff name is required');
+                setError(tr('errName'));
                 return;
               }
               if (!Number.isFinite(Number(staffForm.baseSalary)) || Number(staffForm.baseSalary) < 0) {
-                setError('Base salary must be zero or greater');
+                setError(tr('errSalary'));
                 return;
               }
               if (staffForm.phone && !/^[0-9+() .-]{7,20}$/.test(String(staffForm.phone).trim())) {
-                setError('Enter a valid phone number');
+                setError(tr('errPhone'));
                 return;
               }
               createStaffMutation.mutate({
@@ -584,7 +586,7 @@ export default function AttendancePage() {
             }}
             disabled={!staffForm.name || createStaffMutation.isPending}
           >
-            {createStaffMutation.isPending ? <CircularProgress size={20} /> : editingStaff ? 'Update' : 'Add'}
+            {createStaffMutation.isPending ? <CircularProgress size={20} /> : editingStaff ? tr('update') : tr('add')}
           </Button>
         </DialogActions>
       </ResponsiveDialog>

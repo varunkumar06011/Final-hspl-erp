@@ -28,8 +28,10 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { WorkTaskType, WorkTaskStatus, WorkTaskPriority } from '@hospital-erp/shared';
 import { enumToOptions, STATUS_COLORS } from '../utils/enumOptions';
+import { dateLocale } from '../i18n';
 import api, { extractErrorMessage } from '../config/api';
 
+import { useTranslation } from 'react-i18next';
 interface WorkTask {
   id: string;
   title: string;
@@ -70,10 +72,6 @@ interface LinkablePo {
 }
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-const MONTHS = [
-  'January', 'February', 'March', 'April', 'May', 'June',
-  'July', 'August', 'September', 'October', 'November', 'December',
-];
 
 const TYPE_COLORS: Record<string, 'default' | 'primary' | 'secondary' | 'error' | 'info' | 'success' | 'warning'> = {
   PROCUREMENT: 'primary',
@@ -105,6 +103,7 @@ function todayKey(): string {
 }
 
 export default function WorkCalendarPage() {
+  const { t: tr } = useTranslation('workcal');
   const [cursor, setCursor] = useState(() => new Date());
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [formOpen, setFormOpen] = useState(false);
@@ -200,7 +199,7 @@ export default function WorkCalendarPage() {
       setFormOpen(false);
       setEditingId(null);
       setForm({});
-      setSuccessMsg(editingId ? 'Work task updated.' : 'Work task created.');
+      setSuccessMsg(editingId ? tr('okUpdated') : tr('okCreated'));
       setTimeout(() => setSuccessMsg(''), 3000);
     },
     onError: (err: unknown) => setError(extractErrorMessage(err)),
@@ -210,7 +209,7 @@ export default function WorkCalendarPage() {
     mutationFn: async (id: string) => { await api.delete(`/work-tasks/${id}`); },
     onSuccess: () => {
       invalidateAll();
-      setSuccessMsg('Work task deleted.');
+      setSuccessMsg(tr('okDeleted'));
       setTimeout(() => setSuccessMsg(''), 3000);
     },
     onError: (err: unknown) => setError(extractErrorMessage(err)),
@@ -265,7 +264,7 @@ export default function WorkCalendarPage() {
   function submitForm() {
     setError('');
     if (!form.title || !form.scheduledDate) {
-      setError('Title and date are required');
+      setError(tr('errRequired'));
       return;
     }
     const payload: Record<string, unknown> = {
@@ -321,7 +320,7 @@ export default function WorkCalendarPage() {
           <Box sx={{ display: 'flex', flexShrink: 0 }}>
             <IconButton size="small" onClick={() => openEdit(task)}><EditIcon fontSize="small" /></IconButton>
             <IconButton size="small" color="error" onClick={() => {
-              if (confirm('Delete this work task?')) deleteMutation.mutate(task.id);
+              if (confirm(tr('confirmDelete'))) deleteMutation.mutate(task.id);
             }}><DeleteIcon fontSize="small" /></IconButton>
           </Box>
         </Box>
@@ -334,20 +333,20 @@ export default function WorkCalendarPage() {
 
         <Box sx={{ display: 'flex', gap: 2, mt: 0.75, flexWrap: 'wrap', fontSize: 12, color: 'text.secondary' }}>
           {isDeadlineRow ? (
-            <span>Scheduled: <strong>{new Date(task.scheduledDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' })}</strong></span>
+            <span>{tr('scheduled')} <strong>{new Date(task.scheduledDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' })}</strong></span>
           ) : (
             task.deadlineDate && (
-              <span>Deadline: <strong>{new Date(task.deadlineDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' })}</strong></span>
+              <span>{tr('deadline')} <strong>{new Date(task.deadlineDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' })}</strong></span>
             )
           )}
           {task.assignedToUser && (
-            <span>Assigned: <strong>{task.assignedToUser.name}</strong></span>
+            <span>{tr('assigned')} <strong>{task.assignedToUser.name}</strong></span>
           )}
           {task.linkedQuotation && (
-            <span>Quotation: <strong>{task.linkedQuotation.quotationNumber}</strong> ({task.linkedQuotation.vendor.name})</span>
+            <span>{tr('quotation')} <strong>{task.linkedQuotation.quotationNumber}</strong> ({task.linkedQuotation.vendor.name})</span>
           )}
           {task.linkedPo && (
-            <span>PO: <strong>{task.linkedPo.poNumber}</strong> ({task.linkedPo.vendor.name})</span>
+            <span>{tr('po')} <strong>{task.linkedPo.poNumber}</strong> ({task.linkedPo.vendor.name})</span>
           )}
         </Box>
 
@@ -373,11 +372,11 @@ export default function WorkCalendarPage() {
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap', gap: 1 }}>
         <Typography variant="h5" fontWeight={600} sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' } }}>
-          Work Calendar
+          {tr('title')}
         </Typography>
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', justifyContent: { xs: 'flex-end', md: 'flex-end' }, width: { xs: '100%', md: 'auto' } }}>
           <RefreshButton onClick={() => refetch()} />
-          <Button variant="contained" startIcon={<AddIcon />} onClick={openCreate}>New Task</Button>
+          <Button variant="contained" startIcon={<AddIcon />} onClick={openCreate}>{tr('newTask')}</Button>
         </Box>
       </Box>
 
@@ -391,13 +390,13 @@ export default function WorkCalendarPage() {
             <PrevIcon />
           </IconButton>
           <Typography variant="h6" sx={{ minWidth: 180, textAlign: 'center' }}>
-            {MONTHS[cursorMonth]} {cursorYear}
+            {new Date(2000, cursorMonth, 1).toLocaleString(dateLocale(), { month: 'long' })} {cursorYear}
           </Typography>
           <IconButton onClick={() => setCursor(new Date(cursorYear, cursorMonth + 1, 1))} size="small">
             <NextIcon />
           </IconButton>
         </Box>
-        <Button size="small" onClick={() => setCursor(new Date())}>Today</Button>
+        <Button size="small" onClick={() => setCursor(new Date())}>{tr('today')}</Button>
       </Box>
 
       {/* Legend */}
@@ -419,9 +418,9 @@ export default function WorkCalendarPage() {
           <Box sx={{ minWidth: 700 }}>
             {/* Weekday header */}
             <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 0.5, mb: 0.5 }}>
-              {WEEKDAYS.map((d) => (
+              {WEEKDAYS.map((d, wi) => (
                 <Box key={d} sx={{ textAlign: 'center', py: 0.5 }}>
-                  <Typography variant="caption" fontWeight={600} color="text.secondary">{d}</Typography>
+                  <Typography variant="caption" fontWeight={600} color="text.secondary">{new Date(2024, 0, 7 + wi).toLocaleString(dateLocale(), { weekday: 'short' })}</Typography>
                 </Box>
               ))}
             </Box>
@@ -520,9 +519,9 @@ export default function WorkCalendarPage() {
                     )}
                     {(overflow > 0 || deadlineOverflow > 0) && (
                       <Typography variant="caption" color="text.secondary" sx={{ fontSize: 10 }}>
-                        {overflow > 0 && `+${overflow} task${overflow > 1 ? 's' : ''}`}
+                        {overflow > 0 && tr('moreTasks', { count: overflow })}
                         {overflow > 0 && deadlineOverflow > 0 && ' · '}
-                        {deadlineOverflow > 0 && `+${deadlineOverflow} deadline${deadlineOverflow > 1 ? 's' : ''}`}
+                        {deadlineOverflow > 0 && tr('moreDeadlines', { count: deadlineOverflow })}
                       </Typography>
                     )}
                   </Box>
@@ -547,7 +546,7 @@ export default function WorkCalendarPage() {
             })}
           </Box>
           <Button size="small" startIcon={<AddIcon />} onClick={openCreate} variant="outlined">
-            Add
+            {tr('add')}
           </Button>
         </DialogTitle>
         <DialogContent dividers>
@@ -559,7 +558,7 @@ export default function WorkCalendarPage() {
             <Stack spacing={2}>
               {selectedTasks.length > 0 && (
                 <Box>
-                  <Typography variant="overline" color="text.secondary">Scheduled</Typography>
+                  <Typography variant="overline" color="text.secondary">{tr('scheduled2')}</Typography>
                   <Stack spacing={1.5} sx={{ mt: 0.5 }}>
                     {selectedTasks.map((task) => renderTaskCard(task, false))}
                   </Stack>
@@ -568,7 +567,7 @@ export default function WorkCalendarPage() {
               {selectedDeadlineOnly.length > 0 && (
                 <Box>
                   <Typography variant="overline" color="error.main" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                    <DeadlineIcon sx={{ fontSize: 14 }} /> Deadlines due
+                    <DeadlineIcon sx={{ fontSize: 14 }} /> {tr('deadlinesDue')}
                   </Typography>
                   <Stack spacing={1.5} sx={{ mt: 0.5 }}>
                     {selectedDeadlineOnly.map((task) => renderTaskCard(task, true))}
@@ -579,7 +578,7 @@ export default function WorkCalendarPage() {
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setSelectedDate(null)}>Close</Button>
+          <Button onClick={() => setSelectedDate(null)}>{tr('close')}</Button>
         </DialogActions>
       </ResponsiveDialog>
 
@@ -590,12 +589,12 @@ export default function WorkCalendarPage() {
         maxWidth="sm"
         fullWidth
       >
-        <DialogTitle>{editingId ? 'Edit Work Task' : 'New Work Task'}</DialogTitle>
+        <DialogTitle>{editingId ? tr('editTitle') : tr('newTitle')}</DialogTitle>
         <DialogContent dividers>
           {isLoading && <CircularProgress size={20} sx={{ mb: 1 }} />}
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 0.5 }}>
             <TextField
-              label="Title"
+              label={tr('title2')}
               required
               value={String(form.title ?? '')}
               onChange={(e) => setForm({ ...form, title: e.target.value })}
@@ -604,7 +603,7 @@ export default function WorkCalendarPage() {
             />
             <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
               <TextField
-                label="Date"
+                label={tr('date')}
                 type="date"
                 required
                 value={String(form.scheduledDate ?? '')}
@@ -614,7 +613,7 @@ export default function WorkCalendarPage() {
                 InputLabelProps={{ shrink: true }}
               />
               <TextField
-                label="Deadline (optional)"
+                label={tr('deadlineOptional')}
                 type="date"
                 value={String(form.deadlineDate ?? '')}
                 onChange={(e) => setForm({ ...form, deadlineDate: e.target.value })}
@@ -626,7 +625,7 @@ export default function WorkCalendarPage() {
             <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
               <TextField
                 select
-                label="Type"
+                label={tr('type')}
                 value={String(form.type ?? WorkTaskType.OTHER)}
                 onChange={(e) => setForm({ ...form, type: e.target.value })}
                 size="small"
@@ -638,7 +637,7 @@ export default function WorkCalendarPage() {
               </TextField>
               <TextField
                 select
-                label="Priority"
+                label={tr('priority')}
                 value={String(form.priority ?? WorkTaskPriority.MEDIUM)}
                 onChange={(e) => setForm({ ...form, priority: e.target.value })}
                 size="small"
@@ -650,7 +649,7 @@ export default function WorkCalendarPage() {
               </TextField>
               <TextField
                 select
-                label="Status"
+                label={tr('status')}
                 value={String(form.status ?? WorkTaskStatus.PLANNED)}
                 onChange={(e) => setForm({ ...form, status: e.target.value })}
                 size="small"
@@ -663,13 +662,13 @@ export default function WorkCalendarPage() {
             </Box>
             <TextField
               select
-              label="Assign to"
+              label={tr('assignTo')}
               value={String(form.assignedTo ?? '')}
               onChange={(e) => setForm({ ...form, assignedTo: e.target.value })}
               size="small"
               fullWidth
             >
-              <MenuItem value="">Unassigned</MenuItem>
+              <MenuItem value="">{tr('unassigned')}</MenuItem>
               {(assignableUsers as AssignableUser[] ?? []).map((u) => (
                 <MenuItem key={u.id} value={u.id}>
                   {u.name} ({u.role.replace(/_/g, ' ')})
@@ -678,13 +677,13 @@ export default function WorkCalendarPage() {
             </TextField>
             <TextField
               select
-              label="Link to Quotation"
+              label={tr('linkToQuotation')}
               value={String(form.linkedQuotationId ?? '')}
               onChange={(e) => setForm({ ...form, linkedQuotationId: e.target.value })}
               size="small"
               fullWidth
             >
-              <MenuItem value="">None</MenuItem>
+              <MenuItem value="">{tr('none')}</MenuItem>
               {(linkableQuotations as LinkableQuotation[] ?? []).map((q) => (
                 <MenuItem key={q.id} value={q.id}>
                   {q.quotationNumber} — {q.vendor.name} ({q.status.replace(/_/g, ' ')})
@@ -693,13 +692,13 @@ export default function WorkCalendarPage() {
             </TextField>
             <TextField
               select
-              label="Link to Purchase Order"
+              label={tr('linkToPurchaseOrder')}
               value={String(form.linkedPoId ?? '')}
               onChange={(e) => setForm({ ...form, linkedPoId: e.target.value })}
               size="small"
               fullWidth
             >
-              <MenuItem value="">None</MenuItem>
+              <MenuItem value="">{tr('none')}</MenuItem>
               {(linkablePos as LinkablePo[] ?? []).map((p) => (
                 <MenuItem key={p.id} value={p.id}>
                   {p.poNumber} — {p.vendor.name} ({p.status.replace(/_/g, ' ')})
@@ -707,7 +706,7 @@ export default function WorkCalendarPage() {
               ))}
             </TextField>
             <TextField
-              label="Notes"
+              label={tr('notes')}
               value={String(form.description ?? '')}
               onChange={(e) => setForm({ ...form, description: e.target.value })}
               fullWidth
@@ -718,13 +717,13 @@ export default function WorkCalendarPage() {
           </Box>
         </DialogContent>
         <DialogActions sx={{ flexWrap: 'wrap', gap: 1 }}>
-          <Button onClick={() => { setFormOpen(false); setEditingId(null); }}>Cancel</Button>
+          <Button onClick={() => { setFormOpen(false); setEditingId(null); }}>{tr('cancel')}</Button>
           <Button
             variant="contained"
             onClick={submitForm}
             disabled={!form.title || !form.scheduledDate || saveMutation.isPending}
           >
-            {saveMutation.isPending ? <CircularProgress size={20} /> : editingId ? 'Update' : 'Create'}
+            {saveMutation.isPending ? <CircularProgress size={20} /> : editingId ? tr('update') : tr('create')}
           </Button>
         </DialogActions>
       </ResponsiveDialog>

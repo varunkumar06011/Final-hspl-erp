@@ -1,4 +1,5 @@
 import { Box, Typography, Tooltip, Chip } from '@mui/material';
+import { roleLabel } from '../utils/enumOptions';
 
 interface ApprovalStep {
   id: string;
@@ -29,7 +30,7 @@ export default function ApprovalCommentsInline({ steps }: { steps: ApprovalStep[
       {decided.map((step) => (
         <Tooltip
           key={step.id}
-          title={`${step.approverUser?.name ?? '—'} (${step.approverRole.replace(/_/g, ' ')}): ${step.comments}`}
+          title={`${step.approverUser?.name ?? '—'} (${roleLabel(step.approverRole)}): ${step.comments}`}
           arrow
         >
           <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 0.5, minWidth: 0 }}>

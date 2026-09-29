@@ -1,4 +1,5 @@
 import { useState, ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Box,
   IconButton,
@@ -41,8 +42,9 @@ export default function LandscapeExcelTable({
   children,
   search,
   onSearchChange,
-  searchPlaceholder = 'Search...',
+  searchPlaceholder,
 }: LandscapeExcelTableProps) {
+  const { t } = useTranslation();
   const [zoom, setZoom] = useState(1);
 
   const zoomIn = () => setZoom((z) => Math.min(1.6, +(z + 0.1).toFixed(2)));
@@ -77,7 +79,7 @@ export default function LandscapeExcelTable({
         {onSearchChange && (
           <TextField
             size="small"
-            placeholder={searchPlaceholder}
+            placeholder={searchPlaceholder ?? t('shared.search')}
             value={search ?? ''}
             onChange={(e) => onSearchChange(e.target.value)}
             InputProps={{
@@ -91,7 +93,7 @@ export default function LandscapeExcelTable({
           />
         )}
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexShrink: 0 }}>
-          <Tooltip title="Zoom out">
+          <Tooltip title={t('shared.zoomOut')}>
             <IconButton size="small" onClick={zoomOut} disabled={zoom <= 0.6}>
               <ZoomOutIcon fontSize="small" />
             </IconButton>
@@ -99,12 +101,12 @@ export default function LandscapeExcelTable({
           <Typography variant="caption" sx={{ minWidth: 32, textAlign: 'center' }}>
             {Math.round(zoom * 100)}%
           </Typography>
-          <Tooltip title="Zoom in">
+          <Tooltip title={t('shared.zoomIn')}>
             <IconButton size="small" onClick={zoomIn} disabled={zoom >= 1.6}>
               <ZoomInIcon fontSize="small" />
             </IconButton>
           </Tooltip>
-          <Tooltip title="Reset zoom">
+          <Tooltip title={t('shared.resetZoom')}>
             <IconButton size="small" onClick={resetZoom}>
               <ResetZoomIcon fontSize="small" />
             </IconButton>

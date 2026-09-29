@@ -1,0 +1,18 @@
+{
+  "title": "Contracts & Work Orders",
+  "entity": "Contract",
+  "vendor": "Vendor",
+  "start": "Start",
+  "value": "Value",
+  "status": "Status",
+  "contractType": "Contract Type",
+  "startDate": "Start Date",
+  "endDate": "End Date",
+  "contractValue": "Contract Value",
+  "advance": "Advance %",
+  "retention": "Retention %",
+  "name": "Name",
+  "contract": "Contract #",
+  "type": "Type",
+  "end": "End"
+}

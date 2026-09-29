@@ -52,3 +52,12 @@ Unit/logic tests mock Prisma; only the `e2e-real-*` / `vitest.real.config.ts` su
 - Env vars: backend `.env` (`DATABASE_URL`, Firebase admin creds, `SUPABASE_*`, `STORAGE_MODE`, `JWT_SECRET`, `FRONTEND_URL`); frontend `.env.local` (`VITE_API_URL`, Firebase web config). `.env` files are gitignored.
 - `backend/` contains many stray scratch files (`_prodtest*.txt`, `_checkdata.js`, `nul`); ignore them.
 - `QA_Test_Plan.md` has manual/API/E2E test cases and role/user setup; DB backup/DR procedures are in `docs/`.
+
+## Internationalization (English / Telugu)
+
+The frontend is bilingual via `react-i18next` (`frontend/src/i18n/`). A language toggle sits in the AppShell top bar and on the login page; the choice persists in `localStorage` (`appLanguage`).
+
+- Never hardcode visible English in JSX. Use `useTranslation('<ns>')` and add the key to **both** `frontend/src/i18n/locales/en/<ns>.json` and `te/<ns>.json` (shared strings live in `locales/en.json` / `te.json`).
+- Enum/status values go through `enumLabel()`, roles through `roleLabel()`, ledger groups through `ledgerGroupLabel()` (all in `utils/enumOptions.ts`). Use `dateLocale()` for `toLocaleString`/`toLocaleDateString`.
+- Run `npm run i18n:check` before finishing UI work. It fails on en/te key mismatches or missing keys, and warns on hardcoded English (`--strict` makes warnings fail).
+- Out of scope by design: PDF/CSV/print output, WhatsApp share text, legal pages, backend-supplied strings.

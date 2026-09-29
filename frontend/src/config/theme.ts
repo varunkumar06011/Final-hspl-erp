@@ -2,7 +2,7 @@ import { createTheme, type ThemeOptions } from '@mui/material/styles';
 
 const sharedOverrides: ThemeOptions = {
   typography: {
-    fontFamily: '"Roboto", "Helvetica", "Arial", sans-serif',
+    fontFamily: '"Roboto", "Noto Sans Telugu", "Helvetica", "Arial", sans-serif',
     h5: { fontWeight: 600 },
     h6: { fontWeight: 600 },
   },

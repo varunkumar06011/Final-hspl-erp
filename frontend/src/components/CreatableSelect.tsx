@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import { Autocomplete, Box, Button, TextField, Chip } from '@mui/material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../config/api';
+import { useTranslation } from 'react-i18next';
 
 interface CreatableSelectProps {
   label: string;
@@ -30,6 +31,7 @@ export default function CreatableSelect({
   placeholder,
   createButtonLabel,
 }: CreatableSelectProps) {
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [inputValue, setInputValue] = useState('');
 
@@ -108,7 +110,7 @@ export default function CreatableSelect({
 
   const handleCreateButton = () => {
     if (!dropdownType || !createButtonLabel) return;
-    const newValue = window.prompt(`Enter ${createButtonLabel.toLowerCase()}`)?.trim();
+    const newValue = window.prompt(t('shared.enterNew', { what: createButtonLabel.toLowerCase() }))?.trim();
     if (!newValue) return;
     createOptionMutation.mutate(newValue);
     onChange(newValue);
@@ -155,13 +157,13 @@ export default function CreatableSelect({
         ) {
           filtered.push({
             value: `__create__${params.inputValue}`,
-            label: `Create "${params.inputValue}"`,
+            label: t('shared.createOption', { v: params.inputValue }),
           });
         }
         return filtered;
       }}
       renderOption={(props, option) => {
-        const isCreateOption = option.label.startsWith('Create "');
+        const isCreateOption = option.value.startsWith('__create__');
         return (
           <li {...props} style={{ fontWeight: isCreateOption ? 600 : 400, whiteSpace: 'normal', overflowWrap: 'break-word' }}>
             {isCreateOption ? (
@@ -178,7 +180,7 @@ export default function CreatableSelect({
           label={label}
           required={required}
           placeholder={placeholder}
-          helperText={isLoading ? 'Loading...' : undefined}
+          helperText={isLoading ? t('shared.loading') : undefined}
         />
       )}
       renderTags={(tagValue, getTagProps) =>

@@ -13,8 +13,11 @@ import {
 import api from '../config/api';
 import { formatCurrency } from '../utils/enumOptions';
 import { useColorMode } from '../config/ColorModeContext';
+import { useTranslation, Trans } from 'react-i18next';
+import { dateLocale } from '../i18n';
 
 export default function CashFlowForecast() {
+  const { t } = useTranslation('misc');
   const { mode } = useColorMode();
   const chartTextColor = mode === 'dark' ? '#aaa' : '#666';
   const chartGridColor = mode === 'dark' ? '#333' : '#e0e0e0';
@@ -31,7 +34,7 @@ export default function CashFlowForecast() {
   const chartData = (data?.projection ?? [])
     .filter((_: unknown, i: number) => i % 3 === 0)
     .map((d: { date: string; balance: number }) => ({
-      date: new Date(d.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }),
+      date: new Date(d.date).toLocaleDateString(dateLocale(), { day: '2-digit', month: 'short' }),
       balance: d.balance,
     }));
 
@@ -43,14 +46,14 @@ export default function CashFlowForecast() {
       <CardContent>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 1, mb: 2 }}>
           <Box>
-            <Typography variant="h6">Cash Flow Forecast</Typography>
+            <Typography variant="h6">{t('cashflow.title')}</Typography>
             <Typography variant="body2" color="text.secondary">
-              Projected bank balance over the next 90 days
+              {t('cashflow.subtitle')}
             </Typography>
           </Box>
           {!isLoading && data && (
             <Box sx={{ textAlign: 'right' }}>
-              <Typography variant="caption" color="text.secondary">Current Balance</Typography>
+              <Typography variant="caption" color="text.secondary">{t('cashflow.currentBalance')}</Typography>
               <Typography variant="h6" color="primary.main">{formatCurrency(data.currentBalance)}</Typography>
             </Box>
           )}
@@ -58,22 +61,19 @@ export default function CashFlowForecast() {
 
         {!isLoading && data && isNegative && (
           <Alert severity="error" sx={{ mb: 2 }}>
-            <strong>Warning:</strong> Projected to run out of cash on{' '}
-            {new Date(data.minBalanceDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}.
-            Minimum balance: {formatCurrency(data.minBalance)}
+            <Trans t={t} i18nKey="cashflow.warning" values={{ d: new Date(data.minBalanceDate).toLocaleDateString(dateLocale(), { day: '2-digit', month: 'short', year: 'numeric' }), v: formatCurrency(data.minBalance) }} components={{ b: <strong /> }} />
           </Alert>
         )}
 
         {!isLoading && data && !isNegative && (
           <Alert severity="success" sx={{ mb: 2 }}>
-            Cash position looks healthy. Minimum projected balance: {formatCurrency(data.minBalance)} on{' '}
-            {new Date(data.minBalanceDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}.
+            {t('cashflow.healthy', { v: formatCurrency(data.minBalance), d: new Date(data.minBalanceDate).toLocaleDateString(dateLocale(), { day: '2-digit', month: 'short' }) })}
           </Alert>
         )}
 
         {isLoading ? (
           <Box sx={{ height: 280, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Typography color="text.secondary">Loading forecast…</Typography>
+            <Typography color="text.secondary">{t('cashflow.loading')}</Typography>
           </Box>
         ) : (
           <ResponsiveContainer width="100%" height={280}>
@@ -91,11 +91,11 @@ export default function CashFlowForecast() {
                 tickFormatter={(v) => `₹${Math.abs(Number(v) / 1000).toFixed(0)}k`}
               />
               <RechartsTooltip
-                formatter={(value) => [formatCurrency(Number(value)), 'Balance']}
+                formatter={(value) => [formatCurrency(Number(value)), t('cashflow.balance')]}
                 contentStyle={{ background: mode === 'dark' ? '#1E1E1E' : '#fff', border: '1px solid #ccc', borderRadius: 8, fontSize: 13 }}
                 labelStyle={{ color: chartTextColor }}
               />
-              <ReferenceLine y={0} stroke="#F44336" strokeDasharray="5 5" label={{ value: 'Zero', fill: '#F44336', fontSize: 10 }} />
+              <ReferenceLine y={0} stroke="#F44336" strokeDasharray="5 5" label={{ value: t('cashflow.zero'), fill: '#F44336', fontSize: 10 }} />
               <Area
                 type="monotone"
                 dataKey="balance"
@@ -110,19 +110,19 @@ export default function CashFlowForecast() {
         {!isLoading && data && (
           <Box sx={{ display: 'flex', gap: 3, mt: 2, flexWrap: 'wrap' }}>
             <Box>
-              <Typography variant="caption" color="text.secondary">Pending Payments</Typography>
+              <Typography variant="caption" color="text.secondary">{t('cashflow.pendingPayments')}</Typography>
               <Typography variant="body2" fontWeight={600} color="error.main">
                 {formatCurrency(data.totalPendingPayments)}
               </Typography>
             </Box>
             <Box>
-              <Typography variant="caption" color="text.secondary">Pending Invoices</Typography>
+              <Typography variant="caption" color="text.secondary">{t('cashflow.pendingInvoices')}</Typography>
               <Typography variant="body2" fontWeight={600} color="warning.main">
                 {formatCurrency(data.totalPendingInvoices)}
               </Typography>
             </Box>
             <Box>
-              <Typography variant="caption" color="text.secondary">Min Projected Balance</Typography>
+              <Typography variant="caption" color="text.secondary">{t('cashflow.minProjected')}</Typography>
               <Typography variant="body2" fontWeight={600} color={isNegative ? 'error.main' : 'success.main'}>
                 {formatCurrency(data.minBalance)}
               </Typography>

@@ -4,6 +4,7 @@ import PhoneOutlinedIcon from '@mui/icons-material/PhoneOutlined';
 import { Link as RouterLink } from 'react-router-dom';
 import LegalLayout from '../components/LegalLayout';
 
+import { useTranslation } from 'react-i18next';
 const contactCardSx = {
   display: 'flex',
   alignItems: 'center',
@@ -15,12 +16,11 @@ const contactCardSx = {
 };
 
 export default function SupportPage() {
+  const { t } = useTranslation('support');
   return (
-    <LegalLayout title="Support">
+    <LegalLayout title={t('support')}>
       <Typography variant="body1" paragraph>
-        Need help with the Hospital Construction ERP? Reach the VGRAND Health Care
-        support team through either channel below, or contact your project
-        administrator for account access issues.
+        {t('intro')}
       </Typography>
 
       <Box
@@ -35,7 +35,7 @@ export default function SupportPage() {
           <EmailOutlinedIcon sx={{ color: '#1565C0', fontSize: 28 }} />
           <Box>
             <Typography variant="body2" sx={{ color: 'rgba(10,25,41,0.55)' }}>
-              Email
+              {t('email')}
             </Typography>
             <MuiLink
               href="mailto:vgrandhealthcare@gmail.com"
@@ -50,7 +50,7 @@ export default function SupportPage() {
           <PhoneOutlinedIcon sx={{ color: '#1565C0', fontSize: 28 }} />
           <Box>
             <Typography variant="body2" sx={{ color: 'rgba(10,25,41,0.55)' }}>
-              Phone / WhatsApp
+              {t('phoneWhatsapp')}
             </Typography>
             <MuiLink
               href="tel:+919381872579"
@@ -63,25 +63,22 @@ export default function SupportPage() {
         </Box>
       </Box>
 
-      <Typography variant="h5" fontWeight={600}>Before you contact us</Typography>
+      <Typography variant="h5" fontWeight={600}>{t('beforeYouContactUs')}</Typography>
       <ul>
-        <li>For account access, role, or permission issues, contact your project
-          administrator first — they can reset your PIN or adjust your access.</li>
-        <li>Include your registered phone number and project name so we can
-          locate your account quickly.</li>
-        <li>For OTP delivery problems, wait a minute and use "Resend OTP" on the
-          sign-in screen before reaching out.</li>
+        <li>{t('tip1')}</li>
+        <li>{t('tip2')}</li>
+        <li>{t('tip3')}</li>
       </ul>
 
-      <Typography variant="h5" fontWeight={600}>Legal</Typography>
+      <Typography variant="h5" fontWeight={600}>{t('legal')}</Typography>
       <Typography variant="body1" paragraph>
-        Please also review our{' '}
+        {t('legalIntro')}{' '}
         <MuiLink component={RouterLink} to="/terms" underline="hover">
-          Terms &amp; Conditions
+          {t('termsConditions')}
         </MuiLink>{' '}
-        and{' '}
+        {t('and')}{' '}
         <MuiLink component={RouterLink} to="/privacy-policy" underline="hover">
-          Privacy Policy
+          {t('privacyPolicy')}
         </MuiLink>
         .
       </Typography>

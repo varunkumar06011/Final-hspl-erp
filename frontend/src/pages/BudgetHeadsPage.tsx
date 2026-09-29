@@ -40,6 +40,7 @@ import {
   TableChart as TableChartIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { enumLabel } from '../utils/enumOptions';
 import api, { extractErrorMessage } from '../config/api';
 import ResponsiveDialog from '../components/ResponsiveDialog';
 import ResponsiveTable from '../components/ResponsiveTable';
@@ -50,7 +51,9 @@ import { formatCurrency, formatIndianNumber, formatDate } from '../utils/enumOpt
 import { useDeepLinkRow } from '../hooks/useDeepLinkRow';
 import { useMobileLandscape, useMobilePortrait } from '../hooks/useMobileLandscape';
 
+import { useTranslation } from 'react-i18next';
 export default function BudgetHeadsPage() {
+  const { t: tr } = useTranslation('budget');
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(50);
   const [search, setSearch] = useState('');
@@ -258,11 +261,11 @@ export default function BudgetHeadsPage() {
 
   const handleSubmit = () => {
     if (!form.particulars || String(form.particulars).trim() === '') {
-      setError('Particulars is required');
+      setError(tr('errPart'));
       return;
     }
     if (!form.allocatedAmount || Number(form.allocatedAmount) <= 0) {
-      setError('Allocated amount must be greater than 0');
+      setError(tr('errAlloc'));
       return;
     }
     setError('');
@@ -294,7 +297,7 @@ export default function BudgetHeadsPage() {
       }));
       importMutation.mutate(items);
     } catch {
-      setError('Invalid JSON format');
+      setError(tr('errJson'));
     }
   };
 
@@ -312,15 +315,15 @@ export default function BudgetHeadsPage() {
       <Table size="small" sx={{ '@media (min-width: 900px)': { minWidth: 'max-content', '& .MuiTableCell-root': { whiteSpace: 'nowrap' } } }}>
         <TableHead>
           <TableRow>
-            <TableCell sx={{ fontWeight: 600 }}>Sl. No.</TableCell>
-            <TableCell sx={{ fontWeight: 600 }}>Particulars</TableCell>
-            <TableCell sx={{ fontWeight: 600 }} align="right">Allocated</TableCell>
-            <TableCell sx={{ fontWeight: 600 }} align="right">Committed</TableCell>
-            <TableCell sx={{ fontWeight: 600 }} align="right">Utilized</TableCell>
-            <TableCell sx={{ fontWeight: 600 }} align="right">Available</TableCell>
-            <TableCell sx={{ fontWeight: 600 }}>Utilization</TableCell>
-            <TableCell sx={{ fontWeight: 600 }}>Status</TableCell>
-            <TableCell align="right" sx={{ fontWeight: 600 }}>Actions</TableCell>
+            <TableCell sx={{ fontWeight: 600 }}>{tr('slNo')}</TableCell>
+            <TableCell sx={{ fontWeight: 600 }}>{tr('particulars')}</TableCell>
+            <TableCell sx={{ fontWeight: 600 }} align="right">{tr('allocated')}</TableCell>
+            <TableCell sx={{ fontWeight: 600 }} align="right">{tr('committed')}</TableCell>
+            <TableCell sx={{ fontWeight: 600 }} align="right">{tr('utilized')}</TableCell>
+            <TableCell sx={{ fontWeight: 600 }} align="right">{tr('available')}</TableCell>
+            <TableCell sx={{ fontWeight: 600 }}>{tr('utilization')}</TableCell>
+            <TableCell sx={{ fontWeight: 600 }}>{tr('status')}</TableCell>
+            <TableCell align="right" sx={{ fontWeight: 600 }}>{tr('actions')}</TableCell>
           </TableRow>
         </TableHead>
         <TableBody>
@@ -328,12 +331,12 @@ export default function BudgetHeadsPage() {
             <TableRow><TableCell colSpan={9} align="center" sx={{ py: 4 }}><CircularProgress size={32} /></TableCell></TableRow>
           ) : isError ? (
             <TableRow><TableCell colSpan={9} align="center" sx={{ py: 4 }}>
-              <Alert severity="error" sx={{ mb: 1 }}>Failed to load data.</Alert>
-              <Button size="small" onClick={() => refetch()} startIcon={<RefreshIcon />}>Retry</Button>
+              <Alert severity="error" sx={{ mb: 1 }}>{tr('errLoad')}</Alert>
+              <Button size="small" onClick={() => refetch()} startIcon={<RefreshIcon />}>{tr('retry')}</Button>
             </TableCell></TableRow>
           ) : rows.length === 0 ? (
             <TableRow><TableCell colSpan={9} align="center" sx={{ py: 4 }}>
-              <Typography color="text.secondary">No budget heads found. Click "New Budget Head" to create one.</Typography>
+              <Typography color="text.secondary">{tr('none')}</Typography>
             </TableCell></TableRow>
           ) : (
             rows.map((row: Record<string, unknown>) => {
@@ -350,15 +353,15 @@ export default function BudgetHeadsPage() {
                   sx={{ ...(highlightId === row.id && { bgcolor: 'warning.light', '&:hover': { bgcolor: 'warning.light' } }), cursor: 'pointer' }}
                   onClick={() => setUsageHeadId(row.id as string)}
                 >
-                  <TableCell data-label="Sl. No.">{String(row.slNo)}</TableCell>
-                  <TableCell data-label="Particulars">{String(row.particulars ?? '—')}</TableCell>
-                  <TableCell data-label="Allocated" align="right">{formatCurrency(row.allocatedAmount)}</TableCell>
-                  <TableCell data-label="Committed" align="right">{formatCurrency(row.committedAmount)}</TableCell>
-                  <TableCell data-label="Utilized" align="right">{formatCurrency(row.actualAmount)}</TableCell>
-                  <TableCell data-label="Available" align="right" sx={{ fontWeight: 600, color: available < 0 ? 'error.main' : 'success.main' }}>
+                  <TableCell data-label={tr('slNo')}>{String(row.slNo)}</TableCell>
+                  <TableCell data-label={tr('particulars')}>{String(row.particulars ?? '—')}</TableCell>
+                  <TableCell data-label={tr('allocated')} align="right">{formatCurrency(row.allocatedAmount)}</TableCell>
+                  <TableCell data-label={tr('committed')} align="right">{formatCurrency(row.committedAmount)}</TableCell>
+                  <TableCell data-label={tr('utilized')} align="right">{formatCurrency(row.actualAmount)}</TableCell>
+                  <TableCell data-label={tr('available')} align="right" sx={{ fontWeight: 600, color: available < 0 ? 'error.main' : 'success.main' }}>
                     {formatCurrency(available)}
                   </TableCell>
-                  <TableCell data-label="Utilization" sx={{ minWidth: 100 }}>
+                  <TableCell data-label={tr('utilization')} sx={{ minWidth: 100 }}>
                     <Stack spacing={0.5}>
                       <LinearProgress
                         variant="determinate"
@@ -371,13 +374,13 @@ export default function BudgetHeadsPage() {
                       </Typography>
                     </Stack>
                   </TableCell>
-                  <TableCell data-label="Status">
+                  <TableCell data-label={tr('status')}>
                     <Chip label={String(row.status ?? 'ACTIVE')} size="small" color={row.status === 'CLOSED' ? 'default' : 'success'} />
                   </TableCell>
-                  <TableCell data-label="Actions" align="right" onClick={(e) => e.stopPropagation()}>
-                    <IconButton size="small" onClick={() => setUsageHeadId(row.id as string)} title="Usage Details"><VisibilityIcon fontSize="small" /></IconButton>
-                    <IconButton size="small" onClick={() => openRevisionDialog(row)} title="Request Edit"><EditIcon fontSize="small" /></IconButton>
-                    <IconButton size="small" onClick={() => { setHistoryHeadId(row.id as string); setHistoryOpen(true); }} title="Revision History"><HistoryIcon fontSize="small" /></IconButton>
+                  <TableCell data-label={tr('actions')} align="right" onClick={(e) => e.stopPropagation()}>
+                    <IconButton size="small" onClick={() => setUsageHeadId(row.id as string)} title={tr('usageDetails')}><VisibilityIcon fontSize="small" /></IconButton>
+                    <IconButton size="small" onClick={() => openRevisionDialog(row)} title={tr('requestEdit')}><EditIcon fontSize="small" /></IconButton>
+                    <IconButton size="small" onClick={() => { setHistoryHeadId(row.id as string); setHistoryOpen(true); }} title={tr('revisionHistory')}><HistoryIcon fontSize="small" /></IconButton>
                     <IconButton size="small" onClick={() => setDeleteConfirm(row.id as string)}><DeleteIcon fontSize="small" /></IconButton>
                   </TableCell>
                 </TableRow>
@@ -393,7 +396,7 @@ export default function BudgetHeadsPage() {
     <Box sx={{ minWidth: 0, overflow: 'hidden' }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: { xs: 'flex-start', sm: 'center' }, mb: 2, flexWrap: 'wrap', gap: 1 }}>
         <Typography variant="h5" fontWeight={600} sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' } }}>
-          Budget Heads
+          {tr('title')}
         </Typography>
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
           {isMobile && (
@@ -402,9 +405,9 @@ export default function BudgetHeadsPage() {
               size="small"
               startIcon={<TableChartIcon />}
               onClick={toggleExcelView}
-              title="Toggle Excel-style table view"
+              title={tr('toggleTable')}
             >
-              {isMobileLandscape ? 'Card View' : 'Table View'}
+              {isMobileLandscape ? tr('cardView') : tr('tableView')}
             </Button>
           )}
           <RefreshButton onClick={() => refetch()} />
@@ -419,10 +422,10 @@ export default function BudgetHeadsPage() {
             </Button>
           )}
           <Button variant="outlined" startIcon={<UploadIcon />} onClick={() => setImportOpen(true)}>
-            Import
+            {tr('import')}
           </Button>
           <Button variant="contained" startIcon={<AddIcon />} onClick={openCreate}>
-            New Budget Head
+            {tr('newBudgetHead')}
           </Button>
         </Box>
       </Box>
@@ -436,41 +439,41 @@ export default function BudgetHeadsPage() {
         <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', md: actualDiffersFromPaid ? '1fr 1fr 1fr 1fr 1fr' : '1fr 1fr 1fr 1fr' }, gap: 1, mb: 2 }}>
           {[
             {
-              label: 'Allocated',
+              label: tr('allocated'),
               value: summary.totalAllocated,
               color: 'primary.main',
-              hint: 'Total budget allocated across all budget heads. This is the money you have set aside for spending.',
-              short: 'Sum of all heads',
+              hint: tr('hintAllocated'),
+              short: tr('shortAllocated'),
             },
             {
-              label: 'Committed',
+              label: tr('committed'),
               value: summary.totalCommitted,
               color: 'info.main',
-              hint: 'Money earmarked by approved POs that has not yet been paid. Goes UP when a PO is approved, goes DOWN when a payment is made against the PO.',
-              short: 'Approved POs, not yet paid',
+              hint: tr('hintCommitted'),
+              short: tr('shortCommitted'),
             },
             ...(actualDiffersFromPaid ? [{
-              label: 'Actual',
+              label: tr('actual'),
               value: actual,
               color: 'warning.main',
-              hint: 'Money actually spent (payments posted or direct expense).',
-              short: 'Payments / expense incurred',
+              hint: tr('hintActual'),
+              short: tr('shortActual'),
             }] : []),
             {
               label: 'Paid',
               value: paid,
               color: 'success.main',
               hint: actualDiffersFromPaid
-                ? 'Money actually paid out via bank/cash.'
-                : 'Money paid out via bank/cash. Equals Actual — all posted payments are reflected here.',
-              short: 'Paid out via bank/cash',
+                ? tr('hintPaid1')
+                : tr('hintPaid2'),
+              short: tr('shortPaid'),
             },
             {
-              label: 'Available',
+              label: tr('available'),
               value: summary.totalUncommittedAvailable ?? summary.totalAvailable,
               color: 'secondary.main',
-              hint: 'Allocated − Committed − Actual. The uncommitted balance still free to spend on new POs.',
-              short: 'Allocated − Committed − Actual',
+              hint: tr('hintAvail'),
+              short: tr('shortAvail'),
             },
           ].map((card) => (
             <Card key={card.label} sx={{ p: 1.5 }}>
@@ -505,9 +508,9 @@ export default function BudgetHeadsPage() {
         <Card sx={{ p: 4, textAlign: 'center' }}>
           <Typography variant="h6" sx={{ mb: 2 }}>↻ Rotate your phone horizontally to view the table</Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-            The Excel-style table requires a landscape orientation. Please rotate your phone to see all columns, zoom controls, and search.
+            {tr('rotateBody')}
           </Typography>
-          <Button variant="outlined" onClick={toggleExcelView}>Back to Card View</Button>
+          <Button variant="outlined" onClick={toggleExcelView}>{tr('backToCardView')}</Button>
         </Card>
       ) : (
       <Card sx={{ overflow: 'hidden' }}>
@@ -516,7 +519,7 @@ export default function BudgetHeadsPage() {
             <LandscapeExcelTable
               search={search}
               onSearchChange={(v) => { setSearch(v); setPage(0); }}
-              searchPlaceholder="Search budget heads..."
+              searchPlaceholder={tr('search')}
             >
               {tableNode}
             </LandscapeExcelTable>
@@ -526,7 +529,7 @@ export default function BudgetHeadsPage() {
             <Box sx={{ p: 2 }}>
               <TextField
                 size="small"
-                placeholder="Search budget heads..."
+                placeholder={tr('search')}
                 value={search}
                 onChange={(e) => { setSearch(e.target.value); setPage(0); }}
                 InputProps={{ startAdornment: (<InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment>) }}
@@ -554,18 +557,18 @@ export default function BudgetHeadsPage() {
 
       {/* Create/Edit dialog */}
       <ResponsiveDialog open={dialogOpen} onClose={closeDialog} maxWidth="sm" fullWidth>
-        <DialogTitle>{editing ? 'Edit Budget Head' : 'New Budget Head'}</DialogTitle>
+        <DialogTitle>{editing ? tr('editHead') : 'New Budget Head'}</DialogTitle>
         <DialogContent>
           {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
             {!editing && (
               <Alert severity="info" sx={{ py: 0.5 }}>
-                Sl. No. will be auto-assigned (next available number).
+                {tr('slAuto')}
               </Alert>
             )}
             {editing && (
               <TextField
-                label="Sl. No."
+                label={tr('slNo')}
                 type="number"
                 value={formatIndianNumber(form.slNo ?? '')}
                 onChange={(e) => setForm({ ...form, slNo: e.target.value.replace(/,/g, '') })}
@@ -574,14 +577,14 @@ export default function BudgetHeadsPage() {
               />
             )}
             <TextField
-              label="Particulars"
+              label={tr('particulars')}
               value={form.particulars ?? ''}
               onChange={(e) => setForm({ ...form, particulars: e.target.value })}
               required
               size="small"
             />
             <TextField
-              label="Allocated Amount"
+              label={tr('allocatedAmount')}
               type="text"
               value={formatIndianNumber(form.allocatedAmount ?? '')}
               onChange={(e) => setForm({ ...form, allocatedAmount: e.target.value.replace(/,/g, '') })}
@@ -592,20 +595,20 @@ export default function BudgetHeadsPage() {
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={closeDialog}>Cancel</Button>
+          <Button onClick={closeDialog}>{tr('cancel')}</Button>
           <Button variant="contained" onClick={handleSubmit} disabled={submitting}>
-            {submitting ? <CircularProgress size={20} /> : editing ? 'Update' : 'Create'}
+            {submitting ? <CircularProgress size={20} /> : editing ? tr('update') : tr('create')}
           </Button>
         </DialogActions>
       </ResponsiveDialog>
 
       {/* Import dialog */}
       <ResponsiveDialog open={importOpen} onClose={() => setImportOpen(false)} maxWidth="md" fullWidth>
-        <DialogTitle>Import Budget from JSON</DialogTitle>
+        <DialogTitle>{tr('importBudgetFromJson')}</DialogTitle>
         <DialogContent>
           {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
           <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-            Paste your draft budget JSON here. Expected format: <code>{'{ "budget_items": [{ "sl_no": 1, "particulars": "...", "amount": 1000000 }] }'}</code>
+            {tr('importHint')} <code>{'{ "budget_items": [{ "sl_no": 1, "particulars": "...", "amount": 1000000 }] }'}</code>
           </Typography>
           <TextField
             multiline
@@ -613,16 +616,16 @@ export default function BudgetHeadsPage() {
             fullWidth
             value={importText}
             onChange={(e) => setImportText(e.target.value)}
-            placeholder='Paste JSON here...'
+            placeholder={tr('pasteJson')}
             size="small"
             sx={{ fontFamily: 'monospace' }}
           />
           <Alert severity="info" sx={{ mt: 1 }}>
-            Budget heads are upserted by Sl. No. — existing heads keep their IDs and transaction history.
+            {tr('importNote')}
           </Alert>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setImportOpen(false)}>Cancel</Button>
+          <Button onClick={() => setImportOpen(false)}>{tr('cancel')}</Button>
           <Button variant="contained" onClick={handleImport} disabled={importMutation.isPending} startIcon={<UploadIcon />}>
             {importMutation.isPending ? <CircularProgress size={20} /> : 'Import'}
           </Button>
@@ -631,47 +634,47 @@ export default function BudgetHeadsPage() {
 
       {/* Delete confirmation */}
       <ResponsiveDialog open={!!deleteConfirm} onClose={() => setDeleteConfirm(null)} maxWidth="xs" fullWidth>
-        <DialogTitle>Delete Budget Head?</DialogTitle>
+        <DialogTitle>{tr('deleteBudgetHead')}</DialogTitle>
         <DialogContent>
-          <Typography>This will soft-delete the budget head. This action can be undone.</Typography>
+          <Typography>{tr('deleteNote')}</Typography>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDeleteConfirm(null)}>Cancel</Button>
+          <Button onClick={() => setDeleteConfirm(null)}>{tr('cancel')}</Button>
           <Button color="error" variant="contained" onClick={() => deleteConfirm && deleteMutation.mutate(deleteConfirm)} disabled={deleteMutation.isPending}>
-            Delete
+            {tr('delete')}
           </Button>
         </DialogActions>
       </ResponsiveDialog>
 
       {/* ── Request Revision Dialog ── */}
       <ResponsiveDialog open={revisionDialogOpen} onClose={() => setRevisionDialogOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Request Budget Head Edit</DialogTitle>
+        <DialogTitle>{tr('requestBudgetHeadEdit')}</DialogTitle>
         <DialogContent>
           {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
           {revisionTarget && (
             <Alert severity="info" sx={{ mb: 2 }}>
-              Requesting edit for: <strong>{String(revisionTarget.particulars)}</strong> (Sl. No. {String(revisionTarget.slNo)})
+              {tr('requestingEditFor')} <strong>{String(revisionTarget.particulars)}</strong> (Sl. No. {String(revisionTarget.slNo)})
               <br />Current allocated: {formatCurrency(revisionTarget.allocatedAmount)}
-              <br />This request will be sent to Admin for approval before changes are applied.
+              <br />{tr('reqNote')}
             </Alert>
           )}
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
             <TextField
-              label="New Sl. No."
+              label={tr('newSlNo')}
               type="number"
               value={formatIndianNumber(revisionForm.newSlNo ?? '')}
               onChange={(e) => setRevisionForm({ ...revisionForm, newSlNo: e.target.value.replace(/,/g, '') })}
               size="small"
-              helperText="Leave unchanged if not modifying"
+              helperText={tr('leave')}
             />
             <TextField
-              label="New Particulars"
+              label={tr('newParticulars')}
               value={revisionForm.newParticulars ?? ''}
               onChange={(e) => setRevisionForm({ ...revisionForm, newParticulars: e.target.value })}
               size="small"
             />
             <TextField
-              label="New Allocated Amount"
+              label={tr('newAllocatedAmount')}
               type="text"
               value={formatIndianNumber(revisionForm.newAllocated ?? '')}
               onChange={(e) => setRevisionForm({ ...revisionForm, newAllocated: e.target.value.replace(/,/g, '') })}
@@ -680,16 +683,16 @@ export default function BudgetHeadsPage() {
             />
             <TextField
               select
-              label="New Status"
+              label={tr('newStatus')}
               value={String(revisionForm.newStatus ?? 'ACTIVE')}
               onChange={(e) => setRevisionForm({ ...revisionForm, newStatus: e.target.value })}
               size="small"
             >
-              <MenuItem value="ACTIVE">ACTIVE</MenuItem>
-              <MenuItem value="CLOSED">CLOSED</MenuItem>
+              <MenuItem value="ACTIVE">{tr('st_active')}</MenuItem>
+              <MenuItem value="CLOSED">{tr('st_closed')}</MenuItem>
             </TextField>
             <TextField
-              label="Reason for Edit (required, min 5 chars)"
+              label={tr('reasonLabel')}
               value={revisionForm.reason ?? ''}
               onChange={(e) => setRevisionForm({ ...revisionForm, reason: e.target.value })}
               size="small"
@@ -700,13 +703,13 @@ export default function BudgetHeadsPage() {
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setRevisionDialogOpen(false)}>Cancel</Button>
+          <Button onClick={() => setRevisionDialogOpen(false)}>{tr('cancel')}</Button>
           <Button
             variant="contained"
             onClick={() => {
               if (!revisionTarget) return;
               if (!revisionForm.reason || String(revisionForm.reason).trim().length < 5) {
-                setError('Reason must be at least 5 characters');
+                setError(tr('errReason'));
                 return;
               }
               const payload: Record<string, unknown> = {
@@ -721,54 +724,54 @@ export default function BudgetHeadsPage() {
             }}
             disabled={requestRevisionMutation.isPending}
           >
-            {requestRevisionMutation.isPending ? <CircularProgress size={20} /> : 'Submit Request'}
+            {requestRevisionMutation.isPending ? <CircularProgress size={20} /> : tr('submitReq')}
           </Button>
         </DialogActions>
       </ResponsiveDialog>
 
       {/* ── Revision History Dialog ── */}
       <ResponsiveDialog open={historyOpen} onClose={() => { setHistoryOpen(false); setHistoryHeadId(null); }} maxWidth="md" fullWidth>
-        <DialogTitle>Revision History</DialogTitle>
+        <DialogTitle>{tr('revisionHistory')}</DialogTitle>
         <DialogContent>
           {historyLoading ? (
             <Box sx={{ py: 4, textAlign: 'center' }}><CircularProgress /></Box>
           ) : (revisionHistory?.data ?? []).length === 0 ? (
-            <Typography color="text.secondary" sx={{ py: 2, textAlign: 'center' }}>No revisions recorded for this budget head.</Typography>
+            <Typography color="text.secondary" sx={{ py: 2, textAlign: 'center' }}>{tr('noRevs')}</Typography>
           ) : (
             <ResponsiveTable>
             <TableContainer component={Card} variant="outlined">
               <Table size="small">
                 <TableHead>
                   <TableRow>
-                    <TableCell sx={{ fontWeight: 600 }}>Date</TableCell>
-                    <TableCell sx={{ fontWeight: 600 }}>Requested By</TableCell>
-                    <TableCell sx={{ fontWeight: 600 }}>Changes</TableCell>
-                    <TableCell sx={{ fontWeight: 600 }}>Reason</TableCell>
-                    <TableCell sx={{ fontWeight: 600 }}>Status</TableCell>
-                    <TableCell sx={{ fontWeight: 600 }}>Reviewed By</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>{tr('date')}</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>{tr('requestedBy')}</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>{tr('changes')}</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>{tr('reason')}</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>{tr('status')}</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>{tr('reviewedBy')}</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
                   {(revisionHistory?.data ?? []).map((rev: Record<string, unknown>) => {
                     const changes: string[] = [];
-                    if (rev.newSlNo !== null && rev.newSlNo !== undefined) changes.push(`Sl: ${String(rev.oldSlNo)} → ${String(rev.newSlNo)}`);
-                    if (rev.newParticulars) changes.push(`Name: "${String(rev.oldParticulars)}" → "${String(rev.newParticulars)}"`);
-                    if (rev.newAllocated !== null && rev.newAllocated !== undefined) changes.push(`Allocated: ${formatCurrency(Number(rev.oldAllocated))} → ${formatCurrency(Number(rev.newAllocated))}`);
-                    if (rev.newStatus) changes.push(`Status: ${String(rev.oldStatus)} → ${String(rev.newStatus)}`);
+                    if (rev.newSlNo !== null && rev.newSlNo !== undefined) changes.push(tr('chSl', { o: String(rev.oldSlNo), n: String(rev.newSlNo) }));
+                    if (rev.newParticulars) changes.push(tr('chName', { o: String(rev.oldParticulars), n: String(rev.newParticulars) }));
+                    if (rev.newAllocated !== null && rev.newAllocated !== undefined) changes.push(tr('chAlloc', { o: formatCurrency(Number(rev.oldAllocated)), n: formatCurrency(Number(rev.newAllocated)) }));
+                    if (rev.newStatus) changes.push(tr('chStatus', { o: enumLabel(String(rev.oldStatus)), n: enumLabel(String(rev.newStatus)) }));
                     return (
                       <TableRow key={rev.id as string} hover>
-                        <TableCell data-label="Date">{new Date(String(rev.requestedAt)).toLocaleDateString('en-IN')}</TableCell>
-                        <TableCell data-label="Requested By">{String((rev.requestedByUser as Record<string, unknown>)?.name ?? '—')}</TableCell>
-                        <TableCell data-label="Changes" sx={{ fontSize: '0.75rem' }}>{changes.join(', ') || '—'}</TableCell>
-                        <TableCell data-label="Reason" sx={{ fontSize: '0.75rem' }}>{String(rev.reason ?? '—')}</TableCell>
-                        <TableCell data-label="Status">
+                        <TableCell data-label={tr('date')}>{new Date(String(rev.requestedAt)).toLocaleDateString('en-IN')}</TableCell>
+                        <TableCell data-label={tr('requestedBy')}>{String((rev.requestedByUser as Record<string, unknown>)?.name ?? '—')}</TableCell>
+                        <TableCell data-label={tr('changes')} sx={{ fontSize: '0.75rem' }}>{changes.join(', ') || '—'}</TableCell>
+                        <TableCell data-label={tr('reason')} sx={{ fontSize: '0.75rem' }}>{String(rev.reason ?? '—')}</TableCell>
+                        <TableCell data-label={tr('status')}>
                           <Chip
                             label={String(rev.status)}
                             size="small"
                             color={rev.status === 'APPLIED' ? 'success' : rev.status === 'REJECTED' ? 'error' : rev.status === 'PENDING' ? 'warning' : 'default'}
                           />
                         </TableCell>
-                        <TableCell data-label="Reviewed By">{String((rev.reviewedByUser as Record<string, unknown>)?.name ?? '—')}</TableCell>
+                        <TableCell data-label={tr('reviewedBy')}>{String((rev.reviewedByUser as Record<string, unknown>)?.name ?? '—')}</TableCell>
                       </TableRow>
                     );
                   })}
@@ -779,7 +782,7 @@ export default function BudgetHeadsPage() {
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => { setHistoryOpen(false); setHistoryHeadId(null); }}>Close</Button>
+          <Button onClick={() => { setHistoryOpen(false); setHistoryHeadId(null); }}>{tr('close')}</Button>
         </DialogActions>
       </ResponsiveDialog>
 
@@ -789,47 +792,47 @@ export default function BudgetHeadsPage() {
         <DialogContent>
           {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
           {(pendingRevisions?.data ?? []).length === 0 ? (
-            <Typography color="text.secondary" sx={{ py: 2, textAlign: 'center' }}>No pending revisions.</Typography>
+            <Typography color="text.secondary" sx={{ py: 2, textAlign: 'center' }}>{tr('noPending')}</Typography>
           ) : (
             <ResponsiveTable>
             <TableContainer component={Card} variant="outlined">
               <Table size="small">
                 <TableHead>
                   <TableRow>
-                    <TableCell sx={{ fontWeight: 600 }}>Budget Head</TableCell>
-                    <TableCell sx={{ fontWeight: 600 }}>Requested By</TableCell>
-                    <TableCell sx={{ fontWeight: 600 }}>Changes</TableCell>
-                    <TableCell sx={{ fontWeight: 600 }}>Reason</TableCell>
-                    <TableCell sx={{ fontWeight: 600 }}>Actions</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>{tr('budgetHead')}</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>{tr('requestedBy')}</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>{tr('changes')}</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>{tr('reason')}</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>{tr('actions')}</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
                   {(pendingRevisions?.data ?? []).map((rev: Record<string, unknown>) => {
                     const changes: string[] = [];
-                    if (rev.newSlNo !== null && rev.newSlNo !== undefined) changes.push(`Sl: ${String(rev.oldSlNo)} → ${String(rev.newSlNo)}`);
-                    if (rev.newParticulars) changes.push(`Name → "${String(rev.newParticulars)}"`);
-                    if (rev.newAllocated !== null && rev.newAllocated !== undefined) changes.push(`Allocated → ${formatCurrency(Number(rev.newAllocated))}`);
-                    if (rev.newStatus) changes.push(`Status → ${String(rev.newStatus)}`);
+                    if (rev.newSlNo !== null && rev.newSlNo !== undefined) changes.push(tr('chSl', { o: String(rev.oldSlNo), n: String(rev.newSlNo) }));
+                    if (rev.newParticulars) changes.push(tr('chName2', { n: String(rev.newParticulars) }));
+                    if (rev.newAllocated !== null && rev.newAllocated !== undefined) changes.push(tr('chAlloc2', { n: formatCurrency(Number(rev.newAllocated)) }));
+                    if (rev.newStatus) changes.push(tr('chStatus2', { n: enumLabel(String(rev.newStatus)) }));
                     return (
                       <TableRow key={rev.id as string} hover>
-                        <TableCell data-label="Budget Head">{String((rev.budgetHead as Record<string, unknown>)?.particulars ?? '—')}</TableCell>
-                        <TableCell data-label="Requested By">{String((rev.requestedByUser as Record<string, unknown>)?.name ?? '—')}</TableCell>
-                        <TableCell data-label="Changes" sx={{ fontSize: '0.75rem' }}>{changes.join(', ')}</TableCell>
-                        <TableCell data-label="Reason" sx={{ fontSize: '0.75rem' }}>{String(rev.reason ?? '—')}</TableCell>
-                        <TableCell data-label="Actions">
+                        <TableCell data-label={tr('budgetHead')}>{String((rev.budgetHead as Record<string, unknown>)?.particulars ?? '—')}</TableCell>
+                        <TableCell data-label={tr('requestedBy')}>{String((rev.requestedByUser as Record<string, unknown>)?.name ?? '—')}</TableCell>
+                        <TableCell data-label={tr('changes')} sx={{ fontSize: '0.75rem' }}>{changes.join(', ')}</TableCell>
+                        <TableCell data-label={tr('reason')} sx={{ fontSize: '0.75rem' }}>{String(rev.reason ?? '—')}</TableCell>
+                        <TableCell data-label={tr('actions')}>
                           {reviewTarget?.id === rev.id ? (
                             <Stack direction="row" spacing={1}>
-                              <IconButton size="small" color="success" title="Approve"
+                              <IconButton size="small" color="success" title={tr('approve')}
                                 onClick={() => reviewRevisionMutation.mutate({ id: rev.id as string, approved: true, comments: reviewComments || undefined })}
                                 disabled={reviewRevisionMutation.isPending}
                               ><CheckIcon fontSize="small" /></IconButton>
-                              <IconButton size="small" color="error" title="Reject"
+                              <IconButton size="small" color="error" title={tr('reject')}
                                 onClick={() => reviewRevisionMutation.mutate({ id: rev.id as string, approved: false, comments: reviewComments || undefined })}
                                 disabled={reviewRevisionMutation.isPending}
                               ><CloseIcon fontSize="small" /></IconButton>
                             </Stack>
                           ) : (
-                            <Button size="small" variant="outlined" onClick={() => { setReviewTarget(rev); setReviewComments(''); }}>Review</Button>
+                            <Button size="small" variant="outlined" onClick={() => { setReviewTarget(rev); setReviewComments(''); }}>{tr('review')}</Button>
                           )}
                         </TableCell>
                       </TableRow>
@@ -842,7 +845,7 @@ export default function BudgetHeadsPage() {
           )}
           {reviewTarget && (
             <TextField
-              label="Review Comments (optional)"
+              label={tr('reviewCommentsOptional')}
               value={reviewComments}
               onChange={(e) => setReviewComments(e.target.value)}
               size="small"
@@ -854,7 +857,7 @@ export default function BudgetHeadsPage() {
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => { setPendingOpen(false); setReviewTarget(null); }}>Close</Button>
+          <Button onClick={() => { setPendingOpen(false); setReviewTarget(null); }}>{tr('close')}</Button>
         </DialogActions>
       </ResponsiveDialog>
 
@@ -872,16 +875,16 @@ export default function BudgetHeadsPage() {
           {usageLoading ? (
             <Box sx={{ py: 4, textAlign: 'center' }}><CircularProgress /></Box>
           ) : !usageData ? (
-            <Typography color="text.secondary" sx={{ py: 2, textAlign: 'center' }}>No data available.</Typography>
+            <Typography color="text.secondary" sx={{ py: 2, textAlign: 'center' }}>{tr('noData')}</Typography>
           ) : (
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-              {/* Summary cards — one consolidated "Utilized" amount, matching the dashboard's single expenditure figure */}
+              {/* Summary cards — one consolidated tr('utilized') amount, matching the dashboard's single expenditure figure */}
               <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', sm: '1fr 1fr 1fr 1fr' }, gap: 1 }}>
                 {[
-                  { label: 'Allocated', value: Number(usageData.budgetHead.allocatedAmount), color: 'primary.main' },
-                  { label: 'Committed', value: Number(usageData.budgetHead.committedAmount), color: 'info.main' },
-                  { label: 'Utilized', value: Number(usageData.budgetHead.actualAmount), color: 'warning.main' },
-                  { label: 'Remaining', value: Number(usageData.budgetHead.available), color: Number(usageData.budgetHead.available) < 0 ? 'error.main' : 'success.main' },
+                  { label: tr('allocated'), value: Number(usageData.budgetHead.allocatedAmount), color: 'primary.main' },
+                  { label: tr('committed'), value: Number(usageData.budgetHead.committedAmount), color: 'info.main' },
+                  { label: tr('utilized'), value: Number(usageData.budgetHead.actualAmount), color: 'warning.main' },
+                  { label: tr('remaining'), value: Number(usageData.budgetHead.available), color: Number(usageData.budgetHead.available) < 0 ? 'error.main' : 'success.main' },
                 ].map((card) => (
                   <Card key={card.label} sx={{ p: 1.5 }}>
                     <Typography variant="caption" color="text.secondary">{card.label}</Typography>
@@ -896,7 +899,7 @@ export default function BudgetHeadsPage() {
               {Number(usageData.budgetHead.allocatedAmount) > 0 && (
                 <Box>
                   <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 0.5 }}>
-                    <Typography variant="caption" color="text.secondary">Utilization</Typography>
+                    <Typography variant="caption" color="text.secondary">{tr('utilization')}</Typography>
                     <Typography variant="caption" color="text.secondary" fontWeight={700}>
                       {((Number(usageData.budgetHead.actualAmount) / Number(usageData.budgetHead.allocatedAmount)) * 100).toFixed(1)}%
                     </Typography>
@@ -915,7 +918,7 @@ export default function BudgetHeadsPage() {
                 <Typography variant="subtitle2" sx={{ mb: 1 }}>Related Expenditures ({usageData.transactions.length})</Typography>
                 {usageData.transactions.length === 0 ? (
                   <Typography color="text.secondary" sx={{ py: 2, textAlign: 'center' }}>
-                    No transactions recorded against this budget head yet.
+                    {tr('noTxn')}
                   </Typography>
                 ) : (
                   <ResponsiveTable>
@@ -923,23 +926,23 @@ export default function BudgetHeadsPage() {
                       <Table size="small">
                         <TableHead>
                           <TableRow>
-                            <TableCell sx={{ fontWeight: 600 }}>Date</TableCell>
-                            <TableCell sx={{ fontWeight: 600 }}>Type</TableCell>
-                            <TableCell sx={{ fontWeight: 600 }}>Reference</TableCell>
-                            <TableCell sx={{ fontWeight: 600 }}>Description</TableCell>
-                            <TableCell sx={{ fontWeight: 600 }} align="right">Committed</TableCell>
-                            <TableCell sx={{ fontWeight: 600 }} align="right">Actual</TableCell>
-                            <TableCell sx={{ fontWeight: 600 }} align="right">Paid</TableCell>
-                            <TableCell sx={{ fontWeight: 600 }} align="right">Received</TableCell>
+                            <TableCell sx={{ fontWeight: 600 }}>{tr('date')}</TableCell>
+                            <TableCell sx={{ fontWeight: 600 }}>{tr('type')}</TableCell>
+                            <TableCell sx={{ fontWeight: 600 }}>{tr('reference')}</TableCell>
+                            <TableCell sx={{ fontWeight: 600 }}>{tr('description')}</TableCell>
+                            <TableCell sx={{ fontWeight: 600 }} align="right">{tr('committed')}</TableCell>
+                            <TableCell sx={{ fontWeight: 600 }} align="right">{tr('actual')}</TableCell>
+                            <TableCell sx={{ fontWeight: 600 }} align="right">{tr('paid')}</TableCell>
+                            <TableCell sx={{ fontWeight: 600 }} align="right">{tr('received')}</TableCell>
                           </TableRow>
                         </TableHead>
                         <TableBody>
                           {usageData.transactions.map((txn: Record<string, unknown>, idx: number) => (
                             <TableRow key={idx} hover>
-                              <TableCell data-label="Date">{formatDate(String(txn.date))}</TableCell>
-                              <TableCell data-label="Type">{String(txn.type)}</TableCell>
-                              <TableCell data-label="Reference">{String(txn.reference)}</TableCell>
-                              <TableCell data-label="Description" sx={{ fontSize: '0.75rem' }}>
+                              <TableCell data-label={tr('date')}>{formatDate(String(txn.date))}</TableCell>
+                              <TableCell data-label={tr('type')}>{String(txn.type)}</TableCell>
+                              <TableCell data-label={tr('reference')}>{String(txn.reference)}</TableCell>
+                              <TableCell data-label={tr('description')} sx={{ fontSize: '0.75rem' }}>
                                 {/* Wrap, never sideways-scroll: 2 lines on desktop, 3 on phone. */}
                                 <Box
                                   component="span"
@@ -956,10 +959,10 @@ export default function BudgetHeadsPage() {
                                   {String(txn.description)}
                                 </Box>
                               </TableCell>
-                              <TableCell data-label="Committed" align="right">{Number(txn.committed) !== 0 ? formatCurrency(Number(txn.committed)) : '—'}</TableCell>
-                              <TableCell data-label="Actual" align="right">{Number(txn.actual) !== 0 ? formatCurrency(Number(txn.actual)) : '—'}</TableCell>
-                              <TableCell data-label="Paid" align="right">{Number(txn.paid) !== 0 ? formatCurrency(Number(txn.paid)) : '—'}</TableCell>
-                              <TableCell data-label="Received" align="right">{Number(txn.allocated) !== 0 ? formatCurrency(Number(txn.allocated)) : '—'}</TableCell>
+                              <TableCell data-label={tr('committed')} align="right">{Number(txn.committed) !== 0 ? formatCurrency(Number(txn.committed)) : '—'}</TableCell>
+                              <TableCell data-label={tr('actual')} align="right">{Number(txn.actual) !== 0 ? formatCurrency(Number(txn.actual)) : '—'}</TableCell>
+                              <TableCell data-label={tr('paid')} align="right">{Number(txn.paid) !== 0 ? formatCurrency(Number(txn.paid)) : '—'}</TableCell>
+                              <TableCell data-label={tr('received')} align="right">{Number(txn.allocated) !== 0 ? formatCurrency(Number(txn.allocated)) : '—'}</TableCell>
                             </TableRow>
                           ))}
                         </TableBody>
@@ -972,7 +975,7 @@ export default function BudgetHeadsPage() {
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setUsageHeadId(null)}>Close</Button>
+          <Button onClick={() => setUsageHeadId(null)}>{tr('close')}</Button>
         </DialogActions>
       </ResponsiveDialog>
     </Box>

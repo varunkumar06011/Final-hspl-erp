@@ -31,6 +31,7 @@ import {
   QrCode as QrCodeIcon,
 } from '@mui/icons-material';
 import { useQuery } from '@tanstack/react-query';
+import { enumLabel } from '../utils/enumOptions';
 import api, { extractErrorMessage } from '../config/api';
 import RefreshButton from '../components/RefreshButton';
 import ResponsiveTable from '../components/ResponsiveTable';
@@ -38,18 +39,12 @@ import WarrantySavingsWidget from '../components/WarrantySavingsWidget';
 import WarrantyExpiringWidget from '../components/WarrantyExpiringWidget';
 import { usePrefetchDetail } from '../hooks/usePrefetchDetail';
 
+import { useTranslation } from 'react-i18next';
 const STATUS_COLORS: Record<string, 'success' | 'warning' | 'info' | 'error' | 'default'> = {
   ACTIVE: 'success',
   ISSUED: 'warning',
   UNDER_MAINTENANCE: 'info',
   RETIRED: 'error',
-};
-
-const STATUS_LABELS: Record<string, string> = {
-  ACTIVE: 'Active',
-  ISSUED: 'Issued',
-  UNDER_MAINTENANCE: 'Under Maintenance',
-  RETIRED: 'Retired',
 };
 
 interface InventoryItemRow {
@@ -63,6 +58,7 @@ interface InventoryItemRow {
 }
 
 export default function AssetsPage() {
+  const { t: tr } = useTranslation('assets');
   const navigate = useNavigate();
   const prefetchAsset = usePrefetchDetail('/assets');
   const [page, setPage] = useState(0);
@@ -114,11 +110,11 @@ export default function AssetsPage() {
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, flexWrap: 'wrap' }}>
         <DevicesIcon color="primary" />
         <Typography variant="h5" fontWeight={600} sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' } }}>
-          Asset Management
+          {tr('title')}
         </Typography>
         <Box sx={{ flexGrow: 1 }} />
         <RefreshButton onClick={() => refetch()} />
-        <Button variant="outlined" startIcon={<DownloadIcon />} onClick={handleExport} size="small">Export CSV</Button>
+        <Button variant="outlined" startIcon={<DownloadIcon />} onClick={handleExport} size="small">{tr('exportCsv')}</Button>
       </Box>
 
       {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
@@ -130,7 +126,7 @@ export default function AssetsPage() {
             <Card variant="outlined">
               <CardContent sx={{ textAlign: 'center', py: 1.5 }}>
                 <Typography variant="h4" fontWeight={700} color="primary">{pagination.total}</Typography>
-                <Typography variant="caption" color="text.secondary">Asset Items</Typography>
+                <Typography variant="caption" color="text.secondary">{tr('assetItems')}</Typography>
               </CardContent>
             </Card>
           </Grid>
@@ -138,7 +134,7 @@ export default function AssetsPage() {
             <Card variant="outlined">
               <CardContent sx={{ textAlign: 'center', py: 1.5 }}>
                 <Typography variant="h4" fontWeight={700} color="success.main">{statsData.total}</Typography>
-                <Typography variant="caption" color="text.secondary">Total Units</Typography>
+                <Typography variant="caption" color="text.secondary">{tr('totalUnits')}</Typography>
               </CardContent>
             </Card>
           </Grid>
@@ -148,7 +144,7 @@ export default function AssetsPage() {
                 <Typography variant="h4" fontWeight={700} color={statsData.warrantyExpiring > 0 ? 'warning.main' : 'text.secondary'}>
                   {statsData.warrantyExpiring ?? 0}
                 </Typography>
-                <Typography variant="caption" color="text.secondary">Warranty Expiring (30d)</Typography>
+                <Typography variant="caption" color="text.secondary">{tr('warrantyExpiring30d')}</Typography>
               </CardContent>
             </Card>
           </Grid>
@@ -158,7 +154,7 @@ export default function AssetsPage() {
                 <Typography variant="h4" fontWeight={700} color={statsData.amcExpiring > 0 ? 'warning.main' : 'text.secondary'}>
                   {statsData.amcExpiring ?? 0}
                 </Typography>
-                <Typography variant="caption" color="text.secondary">AMC Expiring (30d)</Typography>
+                <Typography variant="caption" color="text.secondary">{tr('amcExpiring30d')}</Typography>
               </CardContent>
             </Card>
           </Grid>
@@ -171,14 +167,14 @@ export default function AssetsPage() {
           {Object.entries(statsData.statusCounts ?? {}).map(([status, count]) => (
             <Chip
               key={status}
-              label={`${STATUS_LABELS[status] ?? status}: ${count}`}
+              label={`${enumLabel(status)}: ${count}`}
               color={STATUS_COLORS[status] ?? 'default'}
               size="small"
               variant="outlined"
             />
           ))}
           {statsData.totalValue > 0 && (
-            <Chip label={`Total Value: ₹${Number(statsData.totalValue).toLocaleString('en-IN')}`} color="primary" variant="outlined" size="small" />
+            <Chip label={tr('totalValue', { v: Number(statsData.totalValue).toLocaleString('en-IN') })} color="primary" variant="outlined" size="small" />
           )}
         </Box>
       )}
@@ -197,7 +193,7 @@ export default function AssetsPage() {
       <Box sx={{ display: 'flex', gap: 1, mb: 2, flexWrap: 'wrap', alignItems: 'center' }}>
         <TextField
           size="small"
-          placeholder="Search asset items by name or SKU..."
+          placeholder={tr('search')}
           value={search}
           onChange={(e) => { setSearch(e.target.value); setPage(0); }}
           sx={{ width: { xs: '100%', sm: 320 } }}
@@ -242,16 +238,16 @@ export default function AssetsPage() {
                         <Typography variant="h6" fontWeight={700} noWrap>{item.name}</Typography>
                         <QrCodeIcon color="action" />
                       </Box>
-                      <Typography variant="caption" color="text.secondary">{item.category ?? 'Uncategorized'}</Typography>
+                      <Typography variant="caption" color="text.secondary">{item.category ?? tr('uncat')}</Typography>
                       <Typography variant="caption" color="text.secondary" display="block">SKU: {item.sku ?? '—'}</Typography>
                       <Divider sx={{ my: 1 }} />
                       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <Box>
-                          <Typography variant="caption" color="text.secondary" display="block">Units</Typography>
+                          <Typography variant="caption" color="text.secondary" display="block">{tr('units')}</Typography>
                           <Typography variant="h6" fontWeight={700} color="primary">{unitCount}</Typography>
                         </Box>
                         <Box sx={{ textAlign: 'right' }}>
-                          <Typography variant="caption" color="text.secondary" display="block">Location</Typography>
+                          <Typography variant="caption" color="text.secondary" display="block">{tr('location')}</Typography>
                           <Typography variant="body2">{item.location ?? '—'}</Typography>
                         </Box>
                       </Box>
@@ -279,12 +275,12 @@ export default function AssetsPage() {
             <Table size="small">
               <TableHead>
                 <TableRow>
-                  <TableCell sx={{ fontWeight: 600 }}>Name</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>SKU</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>Category</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>Units</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>Location</TableCell>
-                  <TableCell align="right" sx={{ fontWeight: 600 }}>Actions</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>{tr('name')}</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>{tr('sku')}</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>{tr('category')}</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>{tr('units')}</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>{tr('location')}</TableCell>
+                  <TableCell align="right" sx={{ fontWeight: 600 }}>{tr('actions')}</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -292,13 +288,13 @@ export default function AssetsPage() {
                   const unitCount = Number(item.currentStock);
                   return (
                     <TableRow key={item.id} hover sx={{ cursor: 'pointer' }} onClick={() => navigate(`/assets/${item.id}`)} onMouseEnter={() => prefetchAsset(item.id)}>
-                      <TableCell data-label="Name"><strong>{item.name}</strong></TableCell>
-                      <TableCell data-label="SKU">{item.sku ?? '—'}</TableCell>
-                      <TableCell data-label="Category">{item.category ?? '—'}</TableCell>
-                      <TableCell data-label="Units">{unitCount}</TableCell>
-                      <TableCell data-label="Location">{item.location ?? '—'}</TableCell>
-                      <TableCell align="right" data-label="Actions" onClick={(e) => e.stopPropagation()}>
-                        <IconButton size="small" onClick={() => navigate(`/assets/${item.id}`)} title="View units"><QrCodeIcon fontSize="small" /></IconButton>
+                      <TableCell data-label={tr('name')}><strong>{item.name}</strong></TableCell>
+                      <TableCell data-label={tr('sku')}>{item.sku ?? '—'}</TableCell>
+                      <TableCell data-label={tr('category')}>{item.category ?? '—'}</TableCell>
+                      <TableCell data-label={tr('units')}>{unitCount}</TableCell>
+                      <TableCell data-label={tr('location')}>{item.location ?? '—'}</TableCell>
+                      <TableCell align="right" data-label={tr('actions')} onClick={(e) => e.stopPropagation()}>
+                        <IconButton size="small" onClick={() => navigate(`/assets/${item.id}`)} title={tr('viewUnits')}><QrCodeIcon fontSize="small" /></IconButton>
                       </TableCell>
                     </TableRow>
                   );

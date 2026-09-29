@@ -58,9 +58,11 @@ import {
   type LedgerStatementMeta,
 } from '../utils/ledgerStatementExport';
 import { LedgerGroup, isDebitNatureGroup } from '@hospital-erp/shared';
+import { ledgerGroupLabel } from '../utils/enumOptions';
 import { useDeepLinkRow } from '../hooks/useDeepLinkRow';
 import { useUrlFilters } from '../hooks/useUrlFilters';
 
+import { useTranslation } from 'react-i18next';
 interface Ledger {
   id: string;
   name: string;
@@ -84,25 +86,6 @@ interface SyncStatus {
   missingSystem: string[];
   existingLedgerCount: number;
 }
-
-const GROUP_LABELS: Record<string, string> = {
-  FIXED_ASSET: 'Fixed Assets',
-  CURRENT_ASSET: 'Current Assets',
-  BANK: 'Bank Accounts',
-  CASH: 'Cash-in-Hand',
-  CURRENT_LIABILITY: 'Current Liabilities',
-  LOAN: 'Loans (Liability)',
-  DUTIES_TAXES: 'Duties & Taxes',
-  CAPITAL_ACCOUNT: 'Capital Account',
-  SUNDRY_CREDITORS: 'Sundry Creditors',
-  SUNDRY_DEBTORS: 'Sundry Debtors',
-  DIRECT_EXPENSE: 'Direct Expenses',
-  INDIRECT_EXPENSE: 'Indirect Expenses',
-  PURCHASE: 'Purchase Accounts',
-  DIRECT_INCOME: 'Direct Incomes',
-  INDIRECT_INCOME: 'Indirect Incomes',
-  SALES: 'Sales Accounts',
-};
 
 const GROUP_ORDER = [
   'FIXED_ASSET', 'CURRENT_ASSET', 'BANK', 'CASH', 'SUNDRY_DEBTORS',
@@ -131,6 +114,7 @@ const GROUP_COLORS: Record<string, 'primary' | 'secondary' | 'info' | 'success' 
 };
 
 export default function LedgersPage() {
+  const { t: tr } = useTranslation('ledgers');
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(100);
   const [search, setSearch] = useState('');
@@ -199,7 +183,7 @@ export default function LedgersPage() {
   // date range) — they do NOT re-fetch or change any filtering/calculation.
   const buildStatementMeta = (): LedgerStatementMeta => ({
     ledgerName: statementLedger?.name ?? 'Ledger',
-    ledgerGroup: GROUP_LABELS[statementLedger?.group ?? ''] ?? statementLedger?.group ?? '',
+    ledgerGroup: ledgerGroupLabel(statementLedger?.group ?? ''),
     startDate: stmtStartDate,
     endDate: stmtEndDate,
   });
@@ -255,7 +239,7 @@ export default function LedgersPage() {
       queryClient.invalidateQueries({ queryKey: ['/ledgers'] });
       queryClient.invalidateQueries({ queryKey: ['/ledgers/sync/status'] });
       setDialogOpen(false);
-      setSuccessMsg(editing ? 'Ledger updated' : 'Ledger created');
+      setSuccessMsg(editing ? tr('okUpd') : tr('okCre'));
       setTimeout(() => setSuccessMsg(''), 3000);
     },
     onError: (err: unknown) => setError(extractErrorMessage(err)),
@@ -267,7 +251,7 @@ export default function LedgersPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/ledgers'] });
-      setSuccessMsg('Ledger deleted');
+      setSuccessMsg(tr('okDel'));
       setTimeout(() => setSuccessMsg(''), 3000);
     },
     onError: (err: unknown) => setError(extractErrorMessage(err)),
@@ -281,7 +265,7 @@ export default function LedgersPage() {
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['/ledgers'] });
       queryClient.invalidateQueries({ queryKey: ['/ledgers/sync/status'] });
-      setSuccessMsg(`Sync complete: ${data.createdCount} created, ${data.skippedCount} already exist`);
+      setSuccessMsg(tr('syncDone', { c: data.createdCount, s: data.skippedCount }));
       setTimeout(() => setSuccessMsg(''), 5000);
     },
     onError: (err: unknown) => setError(extractErrorMessage(err)),
@@ -297,8 +281,8 @@ export default function LedgersPage() {
   });
   const customGroups: { id: string; name: string; parentGroup: string }[] = customGroupsData?.data ?? [];
   const ledgerGroupOptions = [
-    ...GROUP_ORDER.map((value) => ({ value, label: GROUP_LABELS[value] })),
-    ...customGroups.map((group) => ({ value: group.name, label: `${group.name} (under ${GROUP_LABELS[group.parentGroup] ?? group.parentGroup})` })),
+    ...GROUP_ORDER.map((value) => ({ value, label: ledgerGroupLabel(value) })),
+    ...customGroups.map((group) => ({ value: group.name, label: tr('underLine', { name: group.name, parent: ledgerGroupLabel(group.parentGroup) }) })),
   ];
 
   const createGroupMutation = useMutation({
@@ -311,7 +295,7 @@ export default function LedgersPage() {
       setGroupDialogOpen(false);
       setGroupForm({ name: '', parentGroup: LedgerGroup.INDIRECT_EXPENSE });
       setGroupError('');
-      setSuccessMsg('Group created');
+      setSuccessMsg(tr('gCre'));
       setTimeout(() => setSuccessMsg(''), 3000);
     },
     onError: (err: unknown) => setGroupError(extractErrorMessage(err)),
@@ -329,7 +313,7 @@ export default function LedgersPage() {
       setEditingGroup(null);
       setGroupForm({ name: '', parentGroup: LedgerGroup.INDIRECT_EXPENSE });
       setGroupError('');
-      setSuccessMsg('Group updated');
+      setSuccessMsg(tr('gUpd'));
       setTimeout(() => setSuccessMsg(''), 3000);
     },
     onError: (err: unknown) => setGroupError(extractErrorMessage(err)),
@@ -341,7 +325,7 @@ export default function LedgersPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/ledgers/groups'] });
-      setSuccessMsg('Group deleted');
+      setSuccessMsg(tr('gDel'));
       setTimeout(() => setSuccessMsg(''), 3000);
     },
     onError: (err: unknown) => setError(extractErrorMessage(err)),
@@ -363,7 +347,7 @@ export default function LedgersPage() {
 
   const handleSave = () => {
     if (!form.name) {
-      setError('Ledger name is required');
+      setError(tr('errName'));
       return;
     }
     setError('');
@@ -411,42 +395,42 @@ export default function LedgersPage() {
 
   const renderLedgerRow = (ledger: Ledger) => (
     <TableRow key={ledger.id} hover ref={ledgerRowRef(ledger.id)} sx={{ ...(ledgerHighlightId === ledger.id && { bgcolor: 'warning.light', '&:hover': { bgcolor: 'warning.light' } }) }}>
-      <TableCell sx={{ fontWeight: 500 }} data-label="Ledger Name">
+      <TableCell sx={{ fontWeight: 500 }} data-label={tr('ledgerName')}>
         {ledger.name}
-        {ledger.isSystem && <Chip label="System" size="small" variant="outlined" sx={{ ml: 1 }} />}
+        {ledger.isSystem && <Chip label={tr('system')} size="small" variant="outlined" sx={{ ml: 1 }} />}
       </TableCell>
-      <TableCell data-label="Type">
+      <TableCell data-label={tr('type')}>
         <Typography variant="caption" color="text.secondary">
-          {ledger.linkedEntityType === 'VENDOR' ? 'Vendor' :
-           ledger.linkedEntityType === 'BANK_ACCOUNT' ? 'Bank' :
-           ledger.linkedEntityType === 'CASH_ACCOUNT' ? 'Cash' :
-           ledger.linkedEntityType === 'OWNER_ACCOUNT' ? 'Owner' : 'Manual'}
+          {ledger.linkedEntityType === 'VENDOR' ? tr('lt_vendor') :
+           ledger.linkedEntityType === 'BANK_ACCOUNT' ? tr('lt_bank') :
+           ledger.linkedEntityType === 'CASH_ACCOUNT' ? tr('lt_cash') :
+           ledger.linkedEntityType === 'OWNER_ACCOUNT' ? tr('lt_owner') : tr('lt_manual')}
         </Typography>
       </TableCell>
-      <TableCell align="right" data-label="Opening">{formatCurrency(ledger.openingBalance)}</TableCell>
-      <TableCell align="right" sx={{ fontWeight: 600 }} data-label="Current Balance">
+      <TableCell align="right" data-label={tr('opening')}>{formatCurrency(ledger.openingBalance)}</TableCell>
+      <TableCell align="right" sx={{ fontWeight: 600 }} data-label={tr('currentBalance')}>
         {formatBalance(ledger.currentBalance, ledger.group)}
       </TableCell>
-      <TableCell data-label="Status">
-        <Chip label={ledger.isActive ? 'Active' : 'Inactive'} size="small" color={ledger.isActive ? 'success' : 'default'} />
+      <TableCell data-label={tr('status')}>
+        <Chip label={ledger.isActive ? tr('active') : tr('inactive')} size="small" color={ledger.isActive ? 'success' : 'default'} />
       </TableCell>
-      <TableCell align="right" data-label="Actions">
+      <TableCell align="right" data-label={tr('actions')}>
         <Stack direction="row" spacing={0.5} justifyContent="flex-end">
-          <Tooltip title="View Ledger Statement">
+          <Tooltip title={tr('viewLedgerStatement')}>
             <IconButton size="small" onClick={() => { setStatementLedger(ledger); setStmtStartDate(''); setStmtEndDate(''); }}>
               <StatementIcon fontSize="small" />
             </IconButton>
           </Tooltip>
           {!ledger.isSystem && (
             <>
-              <Tooltip title="Edit">
+              <Tooltip title={tr('edit')}>
                 <IconButton size="small" onClick={() => openEdit(ledger)}>
                   <EditIcon fontSize="small" />
                 </IconButton>
               </Tooltip>
-              <Tooltip title="Delete">
+              <Tooltip title={tr('delete')}>
                 <IconButton size="small" onClick={() => {
-                  if (confirm(`Delete ledger "${ledger.name}"? This cannot be undone.`)) deleteMutation.mutate(ledger.id);
+                  if (confirm(tr('confirmDelLedger', { n: ledger.name }))) deleteMutation.mutate(ledger.id);
                 }}>
                   <DeleteIcon fontSize="small" />
                 </IconButton>
@@ -462,21 +446,21 @@ export default function LedgersPage() {
     <Box sx={{ minWidth: 0, overflow: 'hidden' }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: { xs: 'flex-start', sm: 'center' }, mb: 2, flexWrap: 'wrap', gap: 1 }}>
         <Typography variant="h5" fontWeight={600} sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' } }}>
-          Chart of Accounts
+          {tr('title')}
         </Typography>
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
           <RefreshButton onClick={() => refetch()} />
-          <Tooltip title="Auto-create ledgers for existing vendors, banks, cash, owners + seed GST/expense ledgers">
+          <Tooltip title={tr('syncTip')}>
             <Button
               variant="outlined"
               startIcon={<SyncIcon />}
               onClick={() => syncMutation.mutate()}
               disabled={syncMutation.isPending}
             >
-              Sync Ledgers
+              {tr('syncLedgers')}
             </Button>
           </Tooltip>
-          <Button variant="contained" startIcon={<AddIcon />} onClick={openCreate}>New Ledger</Button>
+          <Button variant="contained" startIcon={<AddIcon />} onClick={openCreate}>{tr('newLedger')}</Button>
         </Box>
       </Box>
 
@@ -484,22 +468,22 @@ export default function LedgersPage() {
       {successMsg && <Alert severity="success" sx={{ mb: 2 }} onClose={() => setSuccessMsg('')}>{successMsg}</Alert>}
 
       <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 2, borderBottom: 1, borderColor: 'divider' }} variant="scrollable" scrollButtons="auto" allowScrollButtonsMobile>
-        <Tab label="Ledgers" value="ledgers" />
-        <Tab label="Groups" value="groups" />
+        <Tab label={tr('tabLedgers')} value="ledgers" />
+        <Tab label={tr('tabGroups')} value="groups" />
       </Tabs>
 
       {/* Sync status banner */}
       {tab === 'ledgers' && syncStatus && !syncStatus.isSynced && (
         <Alert severity="info" sx={{ mb: 2 }} icon={<SyncIcon />}>
           <Typography variant="body2">
-            {syncStatus.totalMissing} ledgers need to be created. Click "Sync Ledgers" to auto-create ledgers for:
+            {tr('needSync', { n: syncStatus.totalMissing })}
             {' '}
             {[
-              syncStatus.missingVendors.length > 0 && `${syncStatus.missingVendors.length} vendors`,
-              syncStatus.missingBanks.length > 0 && `${syncStatus.missingBanks.length} bank accounts`,
-              syncStatus.missingCash.length > 0 && `${syncStatus.missingCash.length} cash accounts`,
-              syncStatus.missingOwners.length > 0 && `${syncStatus.missingOwners.length} owner accounts`,
-              syncStatus.missingSystem.length > 0 && `${syncStatus.missingSystem.length} system ledgers (GST/expense)`,
+              syncStatus.missingVendors.length > 0 && tr('mVendors', { n: syncStatus.missingVendors.length }),
+              syncStatus.missingBanks.length > 0 && tr('mBanks', { n: syncStatus.missingBanks.length }),
+              syncStatus.missingCash.length > 0 && tr('mCash', { n: syncStatus.missingCash.length }),
+              syncStatus.missingOwners.length > 0 && tr('mOwners', { n: syncStatus.missingOwners.length }),
+              syncStatus.missingSystem.length > 0 && tr('mSystem', { n: syncStatus.missingSystem.length }),
             ].filter(Boolean).join(', ')}.
           </Typography>
         </Alert>
@@ -510,14 +494,14 @@ export default function LedgersPage() {
           <Box sx={{ p: 2, display: 'flex', gap: 1, flexWrap: 'wrap' }}>
             <TextField
               size="small"
-              placeholder="Search ledger name..."
+              placeholder={tr('search')}
               value={search}
               onChange={(e) => { setSearch(e.target.value); setPage(0); }}
               InputProps={{ startAdornment: (<InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment>) }}
               sx={{ width: { xs: '100%', sm: 250 } }}
             />
-            <TextField select size="small" label="Group" value={groupFilter} onChange={(e) => { setGroupFilter(e.target.value); setPage(0); }} sx={{ width: 200 }}>
-              <MenuItem value="">All Groups</MenuItem>
+            <TextField select size="small" label={tr('group')} value={groupFilter} onChange={(e) => { setGroupFilter(e.target.value); setPage(0); }} sx={{ width: 200 }}>
+              <MenuItem value="">{tr('allGroups')}</MenuItem>
               {ledgerGroupOptions.map((group) => <MenuItem key={group.value} value={group.value}>{group.label}</MenuItem>)}
             </TextField>
           </Box>
@@ -529,23 +513,23 @@ export default function LedgersPage() {
         <Box>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap', gap: 1 }}>
             <Typography variant="body2" color="text.secondary">
-              Predefined groups are Tally's 15 primary groups. Custom groups are sub-groups you create under a primary group for finer classification.
+              {tr('groupsNote')}
             </Typography>
             <Button variant="contained" startIcon={<AddIcon />} onClick={() => { setGroupForm({ name: '', parentGroup: LedgerGroup.INDIRECT_EXPENSE }); setGroupError(''); setGroupDialogOpen(true); }}>
-              New Subgroup
+              {tr('newSubgroup')}
             </Button>
           </Box>
 
-          <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 1 }}>Predefined Groups (15 Primary)</Typography>
+          <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 1 }}>{tr('predefinedGroups15Primary')}</Typography>
           <Card sx={{ overflow: 'hidden', mb: 3 }}>
             <ResponsiveTable>
             <TableContainer>
               <Table size="small">
                 <TableHead>
                   <TableRow>
-                    <TableCell sx={{ fontWeight: 600 }}>Group Name</TableCell>
-                    <TableCell sx={{ fontWeight: 600 }}>Nature</TableCell>
-                    <TableCell sx={{ fontWeight: 600 }}>Appears In</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>{tr('groupName')}</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>{tr('nature')}</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>{tr('appearsIn')}</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -554,9 +538,9 @@ export default function LedgersPage() {
                     const isBS = ['FIXED_ASSET', 'CURRENT_ASSET', 'BANK', 'CASH', 'SUNDRY_DEBTORS', 'CURRENT_LIABILITY', 'LOAN', 'DUTIES_TAXES', 'CAPITAL_ACCOUNT', 'SUNDRY_CREDITORS'].includes(g);
                     return (
                       <TableRow key={g} hover>
-                        <TableCell sx={{ fontWeight: 500 }} data-label="Group Name">{GROUP_LABELS[g]}</TableCell>
-                        <TableCell data-label="Nature"><Chip label={isDebit ? 'Debit' : 'Credit'} size="small" color={isDebit ? 'info' : 'warning'} variant="outlined" /></TableCell>
-                        <TableCell data-label="Appears In"><Chip label={isBS ? 'Balance Sheet' : 'Profit & Loss'} size="small" variant="outlined" /></TableCell>
+                        <TableCell sx={{ fontWeight: 500 }} data-label={tr('groupName')}>{ledgerGroupLabel(g)}</TableCell>
+                        <TableCell data-label={tr('nature')}><Chip label={isDebit ? tr('debitWord') : tr('credit')} size="small" color={isDebit ? 'info' : 'warning'} variant="outlined" /></TableCell>
+                        <TableCell data-label={tr('appearsIn')}><Chip label={isBS ? tr('bs') : tr('pl')} size="small" variant="outlined" /></TableCell>
                       </TableRow>
                     );
                   })}
@@ -566,15 +550,15 @@ export default function LedgersPage() {
             </ResponsiveTable>
           </Card>
 
-          <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 1 }}>Custom Groups (Sub-groups)</Typography>
+          <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 1 }}>{tr('customGroupsSubGroups')}</Typography>
           {customGroups.length === 0 ? (
             <Card sx={{ p: 4, textAlign: 'center' }}>
               <GroupsIcon sx={{ fontSize: 48, color: 'text.secondary', mb: 1 }} />
               <Typography color="text.secondary" sx={{ mb: 2 }}>
-                No custom groups yet. Create a sub-group (e.g. "Travel Expenses" under "Indirect Expenses") for finer classification in reports.
+                {tr('noCustom')}
               </Typography>
               <Button variant="contained" startIcon={<AddIcon />} onClick={() => { setGroupForm({ name: '', parentGroup: LedgerGroup.INDIRECT_EXPENSE }); setGroupError(''); setGroupDialogOpen(true); }}>
-                Create First Subgroup
+                {tr('createFirstSubgroup')}
               </Button>
             </Card>
           ) : (
@@ -584,21 +568,21 @@ export default function LedgersPage() {
                 <Table size="small">
                   <TableHead>
                     <TableRow>
-                      <TableCell sx={{ fontWeight: 600 }}>Group Name</TableCell>
-                      <TableCell sx={{ fontWeight: 600 }}>Under (Parent Group)</TableCell>
-                      <TableCell align="right" sx={{ fontWeight: 600 }}>Actions</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>{tr('groupName')}</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>{tr('underParentGroup')}</TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 600 }}>{tr('actions')}</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
                     {customGroups.map((g) => (
                       <TableRow key={g.id} hover>
-                        <TableCell sx={{ fontWeight: 500 }} data-label="Group Name">{g.name}</TableCell>
-                        <TableCell data-label="Under (Parent Group)"><Chip label={GROUP_LABELS[g.parentGroup] ?? g.parentGroup} size="small" variant="outlined" /></TableCell>
-                        <TableCell align="right" data-label="Actions">
+                        <TableCell sx={{ fontWeight: 500 }} data-label={tr('groupName')}>{g.name}</TableCell>
+                        <TableCell data-label={tr('underParentGroup')}><Chip label={ledgerGroupLabel(g.parentGroup)} size="small" variant="outlined" /></TableCell>
+                        <TableCell align="right" data-label={tr('actions')}>
                           <IconButton size="small" color="primary" onClick={() => { setEditingGroup(g); setGroupForm({ name: g.name, parentGroup: g.parentGroup }); setGroupError(''); setGroupDialogOpen(true); }}>
                             <EditIcon fontSize="small" />
                           </IconButton>
-                          <IconButton size="small" color="error" onClick={() => { if (confirm(`Delete group "${g.name}"? Ledgers using it will need to be reclassified.`)) deleteGroupMutation.mutate(g.id); }}>
+                          <IconButton size="small" color="error" onClick={() => { if (confirm(tr('confirmDelGroup', { n: g.name }))) deleteGroupMutation.mutate(g.id); }}>
                             <DeleteIcon fontSize="small" />
                           </IconButton>
                         </TableCell>
@@ -615,38 +599,38 @@ export default function LedgersPage() {
 
       {/* Group create/edit dialog */}
       <ResponsiveDialog open={groupDialogOpen} onClose={() => { setGroupDialogOpen(false); setEditingGroup(null); }} maxWidth="xs" fullWidth>
-        <DialogTitle>{editingGroup ? 'Edit Subgroup' : 'New Subgroup'}</DialogTitle>
+        <DialogTitle>{editingGroup ? tr('editSub') : 'New Subgroup'}</DialogTitle>
         <DialogContent>
           {groupError && <Alert severity="error" sx={{ mb: 2 }}>{groupError}</Alert>}
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
             <TextField
               size="small"
-              label="Subgroup Name"
+              label={tr('subgroupName')}
               value={groupForm.name}
               onChange={(e) => setGroupForm({ ...groupForm, name: e.target.value })}
               fullWidth
-              helperText="e.g. Travel Expenses, Office Expenses, Bank Charges"
+              helperText={tr('subHint')}
               autoFocus
             />
             <TextField
               select
               size="small"
-              label="Under (Parent Group)"
+              label={tr('underParentGroup')}
               value={groupForm.parentGroup}
               onChange={(e) => setGroupForm({ ...groupForm, parentGroup: e.target.value })}
               fullWidth
-              helperText="The parent group determines P&L vs Balance Sheet classification"
+              helperText={tr('parentHelp')}
             >
-              {GROUP_ORDER.map((g) => <MenuItem key={g} value={g}>{GROUP_LABELS[g]}</MenuItem>)}
+              {GROUP_ORDER.map((g) => <MenuItem key={g} value={g}>{ledgerGroupLabel(g)}</MenuItem>)}
             </TextField>
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => { setGroupDialogOpen(false); setEditingGroup(null); }}>Cancel</Button>
+          <Button onClick={() => { setGroupDialogOpen(false); setEditingGroup(null); }}>{tr('cancel')}</Button>
           <Button
             variant="contained"
             onClick={() => {
-              if (!groupForm.name.trim()) { setGroupError('Enter a group name'); return; }
+              if (!groupForm.name.trim()) { setGroupError(tr('errGroup')); return; }
               if (editingGroup) {
                 updateGroupMutation.mutate({ id: editingGroup.id, ...groupForm });
               } else {
@@ -655,7 +639,7 @@ export default function LedgersPage() {
             }}
             disabled={createGroupMutation.isPending || updateGroupMutation.isPending}
           >
-            {(createGroupMutation.isPending || updateGroupMutation.isPending) ? <CircularProgress size={20} /> : editingGroup ? 'Update Group' : 'Create Group'}
+            {(createGroupMutation.isPending || updateGroupMutation.isPending) ? <CircularProgress size={20} /> : editingGroup ? tr('updGroup') : tr('creGroup')}
           </Button>
         </DialogActions>
       </ResponsiveDialog>
@@ -664,16 +648,15 @@ export default function LedgersPage() {
       {tab === 'ledgers' && (isLoading ? (
         <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress /></Box>
       ) : isError ? (
-        <Alert severity="error" sx={{ mb: 2 }}>Failed to load ledgers. <Button size="small" onClick={() => refetch()}>Retry</Button></Alert>
+        <Alert severity="error" sx={{ mb: 2 }}>{tr('errLoad')} <Button size="small" onClick={() => refetch()}>{tr('retry')}</Button></Alert>
       ) : rows.length === 0 && customGroups.length === 0 ? (
         <Card sx={{ p: 4, textAlign: 'center' }}>
           <LedgerIcon sx={{ fontSize: 48, color: 'text.secondary', mb: 1 }} />
           <Typography color="text.secondary" sx={{ mb: 2 }}>
-            No ledgers found. Click "Sync Ledgers" to auto-create ledgers for your existing vendors, banks, and owners,
-            or click "New Ledger" to create one manually.
+            {tr('noLedgers')}
           </Typography>
           <Button variant="contained" startIcon={<SyncIcon />} onClick={() => syncMutation.mutate()} disabled={syncMutation.isPending}>
-            Sync Now
+            {tr('syncNow')}
           </Button>
         </Card>
       ) : (
@@ -687,10 +670,10 @@ export default function LedgersPage() {
               <Accordion key={group} defaultExpanded>
                 <AccordionSummary expandIcon={<ExpandMoreIcon />}>
                   <Stack direction="row" spacing={1.5} alignItems="center" sx={{ flex: 1 }}>
-                    <Chip label={GROUP_LABELS[group] ?? group} size="small" color={GROUP_COLORS[group] ?? 'default'} />
+                    <Chip label={ledgerGroupLabel(group)} size="small" color={GROUP_COLORS[group] ?? 'default'} />
                     <Typography variant="caption" color="text.secondary">
-                      {groupLedgers.length + childLedgers.length} ledger{groupLedgers.length + childLedgers.length !== 1 ? 's' : ''}
-                      {childGroups.length > 0 && ` · ${childGroups.length} subgroup${childGroups.length !== 1 ? 's' : ''}`}
+                      {tr('nLedgers', { count: groupLedgers.length + childLedgers.length })}
+                      {childGroups.length > 0 && ` · ${tr('nSubs', { count: childGroups.length })}`}
                     </Typography>
                     <Box sx={{ flex: 1 }} />
                     <Typography variant="body2" fontWeight={600}>
@@ -704,12 +687,12 @@ export default function LedgersPage() {
                     <Table size="small">
                       <TableHead>
                         <TableRow>
-                          <TableCell sx={{ fontWeight: 600 }}>Ledger Name</TableCell>
-                          <TableCell sx={{ fontWeight: 600 }}>Type</TableCell>
-                          <TableCell align="right" sx={{ fontWeight: 600 }}>Opening</TableCell>
-                          <TableCell align="right" sx={{ fontWeight: 600 }}>Current Balance</TableCell>
-                          <TableCell sx={{ fontWeight: 600 }}>Status</TableCell>
-                          <TableCell align="right" sx={{ fontWeight: 600 }}>Actions</TableCell>
+                          <TableCell sx={{ fontWeight: 600 }}>{tr('ledgerName')}</TableCell>
+                          <TableCell sx={{ fontWeight: 600 }}>{tr('type')}</TableCell>
+                          <TableCell align="right" sx={{ fontWeight: 600 }}>{tr('opening')}</TableCell>
+                          <TableCell align="right" sx={{ fontWeight: 600 }}>{tr('currentBalance')}</TableCell>
+                          <TableCell sx={{ fontWeight: 600 }}>{tr('status')}</TableCell>
+                          <TableCell align="right" sx={{ fontWeight: 600 }}>{tr('actions')}</TableCell>
                         </TableRow>
                       </TableHead>
                       <TableBody>
@@ -732,7 +715,7 @@ export default function LedgersPage() {
                               {childGroupLedgers.length > 0 ? childGroupLedgers.map(renderLedgerRow) : (
                                 <TableRow>
                                   <TableCell colSpan={6} sx={{ pl: 7, color: 'text.secondary', fontStyle: 'italic' }}>
-                                    No ledgers in this subgroup yet
+                                    {tr('noInSub')}
                                   </TableCell>
                                 </TableRow>
                               )}
@@ -761,26 +744,26 @@ export default function LedgersPage() {
 
       {/* Create/Edit dialog */}
       <ResponsiveDialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>{editing ? 'Edit Ledger' : 'New Ledger'}</DialogTitle>
+        <DialogTitle>{editing ? tr('editLedger') : 'New Ledger'}</DialogTitle>
         <DialogContent>
           {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
             <TextField
               size="small"
-              label="Ledger Name"
+              label={tr('ledgerName')}
               value={form.name as string ?? ''}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
               fullWidth
-              helperText="e.g. Rent Expense, Owner A, ABC Suppliers"
+              helperText={tr('ledgerHint')}
             />
             <TextField
               select
               size="small"
-              label="Group"
+              label={tr('group')}
               value={form.group as string ?? ''}
               onChange={(e) => setForm({ ...form, group: e.target.value })}
               fullWidth
-              helperText="Determines P&L vs Balance Sheet classification"
+              helperText={tr('groupHelp')}
             >
               {ledgerGroupOptions.map((group) => <MenuItem key={group.value} value={group.value}>{group.label}</MenuItem>)}
             </TextField>
@@ -788,30 +771,30 @@ export default function LedgersPage() {
               <TextField
                 size="small"
                 type="number"
-                label="Opening Balance"
+                label={tr('openingBalance')}
                 value={form.openingBalance as number ?? 0}
                 onChange={(e) => setForm({ ...form, openingBalance: e.target.value })}
                 fullWidth
-                helperText="Enter as positive. Debit-nature groups (assets/expenses) show as Dr; credit-nature (liabilities/capital/income) as Cr."
+                helperText={tr('openingHelp')}
               />
             )}
             <TextField
               select
               size="small"
-              label="Status"
+              label={tr('status')}
               value={form.isActive as boolean ?? true}
               onChange={(e) => setForm({ ...form, isActive: e.target.value === 'true' })}
               fullWidth
             >
-              <MenuItem value="true">Active</MenuItem>
-              <MenuItem value="false">Inactive</MenuItem>
+              <MenuItem value="true">{tr('active')}</MenuItem>
+              <MenuItem value="false">{tr('inactive')}</MenuItem>
             </TextField>
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDialogOpen(false)}>Cancel</Button>
+          <Button onClick={() => setDialogOpen(false)}>{tr('cancel')}</Button>
           <Button variant="contained" onClick={handleSave} disabled={createMutation.isPending}>
-            {createMutation.isPending ? <CircularProgress size={20} /> : editing ? 'Update' : 'Create'}
+            {createMutation.isPending ? <CircularProgress size={20} /> : editing ? tr('update') : tr('create')}
           </Button>
         </DialogActions>
       </ResponsiveDialog>
@@ -820,11 +803,11 @@ export default function LedgersPage() {
       <ResponsiveDialog open={!!statementLedger} onClose={() => setStatementLedger(null)} maxWidth="md" fullWidth>
         <DialogTitle>
           Ledger Statement — {statementLedger?.name}
-          <Chip label={GROUP_LABELS[statementLedger?.group ?? ''] ?? statementLedger?.group} size="small" sx={{ ml: 1 }} />
+          <Chip label={ledgerGroupLabel(statementLedger?.group ?? '')} size="small" sx={{ ml: 1 }} />
         </DialogTitle>
         <DialogContent>
           <Box sx={{ display: 'flex', gap: 1, mb: 2, mt: 1, flexWrap: 'wrap' }}>
-            <TextField size="small" type="date" label="From" value={stmtStartDate} onChange={(e) => setStmtStartDate(e.target.value)} InputLabelProps={{ shrink: true }} />
+            <TextField size="small" type="date" label={tr('from')} value={stmtStartDate} onChange={(e) => setStmtStartDate(e.target.value)} InputLabelProps={{ shrink: true }} />
             <TextField size="small" type="date" label="To" value={stmtEndDate} onChange={(e) => setStmtEndDate(e.target.value)} InputLabelProps={{ shrink: true }} />
           </Box>
 
@@ -834,14 +817,14 @@ export default function LedgersPage() {
             <>
               <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
                 <Card sx={{ p: 1.5, flex: 1 }}>
-                  <Typography variant="caption" color="text.secondary">Opening Balance</Typography>
+                  <Typography variant="caption" color="text.secondary">{tr('openingBalance')}</Typography>
                   <Typography variant="h6" fontWeight={600}>
                     {formatCurrency(Math.abs(statementData.openingBalance))}
                     {statementData.openingBalance !== 0 && (statementData.ledger.isDebitNature ? (statementData.openingBalance >= 0 ? ' Dr' : ' Cr') : (statementData.openingBalance >= 0 ? ' Dr' : ' Cr'))}
                   </Typography>
                 </Card>
                 <Card sx={{ p: 1.5, flex: 1 }}>
-                  <Typography variant="caption" color="text.secondary">Closing Balance</Typography>
+                  <Typography variant="caption" color="text.secondary">{tr('closingBalance')}</Typography>
                   <Typography variant="h6" fontWeight={600}>
                     {formatCurrency(Math.abs(statementData.closingBalance))}
                     {statementData.closingBalance !== 0 && (statementData.ledger.isDebitNature ? (statementData.closingBalance >= 0 ? ' Dr' : ' Cr') : (statementData.closingBalance >= 0 ? ' Dr' : ' Cr'))}
@@ -854,19 +837,19 @@ export default function LedgersPage() {
                 <Table size="small">
                   <TableHead>
                     <TableRow>
-                      <TableCell sx={{ fontWeight: 600 }}>Date</TableCell>
-                      <TableCell sx={{ fontWeight: 600 }}>Voucher</TableCell>
-                      <TableCell sx={{ fontWeight: 600 }}>Type</TableCell>
-                      <TableCell sx={{ fontWeight: 600 }}>Description</TableCell>
-                      <TableCell align="right" sx={{ fontWeight: 600 }}>Debit</TableCell>
-                      <TableCell align="right" sx={{ fontWeight: 600 }}>Credit</TableCell>
-                      <TableCell align="right" sx={{ fontWeight: 600 }}>Balance</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>{tr('date')}</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>{tr('voucher')}</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>{tr('type')}</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>{tr('description')}</TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 600 }}>{tr('debit')}</TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 600 }}>{tr('credit')}</TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 600 }}>{tr('balance')}</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
                     <TableRow>
-                      <TableCell colSpan={6} sx={{ fontWeight: 600, color: 'text.secondary' }}>Opening Balance</TableCell>
-                      <TableCell align="right" sx={{ fontWeight: 600 }} data-label="Balance">
+                      <TableCell colSpan={6} sx={{ fontWeight: 600, color: 'text.secondary' }}>{tr('openingBalance')}</TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 600 }} data-label={tr('balance')}>
                         {formatCurrency(Math.abs(statementData.openingBalance))}
                         {statementData.openingBalance !== 0 && (statementData.ledger.isDebitNature ? (statementData.openingBalance >= 0 ? ' Dr' : ' Cr') : (statementData.openingBalance >= 0 ? ' Dr' : ' Cr'))}
                       </TableCell>
@@ -874,19 +857,19 @@ export default function LedgersPage() {
                     {statementData.data.length === 0 ? (
                       <TableRow>
                         <TableCell colSpan={7} align="center" sx={{ py: 3 }}>
-                          <Typography color="text.secondary">No transactions in this period</Typography>
+                          <Typography color="text.secondary">{tr('noTxn')}</Typography>
                         </TableCell>
                       </TableRow>
                     ) : (
                       statementData.data.map((entry: any) => (
                         <TableRow key={entry.id} hover>
-                          <TableCell data-label="Date">{formatDate(entry.voucherDate)}</TableCell>
-                          <TableCell sx={{ fontWeight: 600 }} data-label="Voucher">{entry.voucherNumber}</TableCell>
-                          <TableCell data-label="Type"><Chip label={entry.voucherType.replace(/_/g, ' ')} size="small" variant="outlined" /></TableCell>
-                          <TableCell data-label="Description">{entry.description ?? '—'}</TableCell>
-                          <TableCell align="right" sx={{ color: 'error.main' }} data-label="Debit">{entry.debit > 0 ? formatCurrency(entry.debit) : '—'}</TableCell>
-                          <TableCell align="right" sx={{ color: 'success.main' }} data-label="Credit">{entry.credit > 0 ? formatCurrency(entry.credit) : '—'}</TableCell>
-                          <TableCell align="right" sx={{ fontWeight: 600 }} data-label="Balance">
+                          <TableCell data-label={tr('date')}>{formatDate(entry.voucherDate)}</TableCell>
+                          <TableCell sx={{ fontWeight: 600 }} data-label={tr('voucher')}>{entry.voucherNumber}</TableCell>
+                          <TableCell data-label={tr('type')}><Chip label={entry.voucherType.replace(/_/g, ' ')} size="small" variant="outlined" /></TableCell>
+                          <TableCell data-label={tr('description')}>{entry.description ?? '—'}</TableCell>
+                          <TableCell align="right" sx={{ color: 'error.main' }} data-label={tr('debit')}>{entry.debit > 0 ? formatCurrency(entry.debit) : '—'}</TableCell>
+                          <TableCell align="right" sx={{ color: 'success.main' }} data-label={tr('credit')}>{entry.credit > 0 ? formatCurrency(entry.credit) : '—'}</TableCell>
+                          <TableCell align="right" sx={{ fontWeight: 600 }} data-label={tr('balance')}>
                             {formatCurrency(Math.abs(entry.balance))}
                             {entry.balance !== 0 && (statementData.ledger.isDebitNature ? (entry.balance >= 0 ? ' Dr' : ' Cr') : (entry.balance >= 0 ? ' Dr' : ' Cr'))}
                           </TableCell>
@@ -899,7 +882,7 @@ export default function LedgersPage() {
               </ResponsiveTable>
             </>
           ) : (
-            <Typography color="text.secondary">No data</Typography>
+            <Typography color="text.secondary">{tr('noData')}</Typography>
           )}
         </DialogContent>
         <DialogActions sx={{ flexWrap: 'wrap', gap: 1 }}>
@@ -909,24 +892,24 @@ export default function LedgersPage() {
             onClick={() => { setExportError(''); setExportFormatOpen(true); }}
             disabled={!statementData || stmtLoading}
           >
-            Export
+            {tr('export')}
           </Button>
           <Button
             startIcon={<PrintIcon />}
             onClick={handlePrint}
             disabled={!statementData || stmtLoading}
           >
-            Print
+            {tr('print')}
           </Button>
-          <Button onClick={() => setStatementLedger(null)}>Close</Button>
+          <Button onClick={() => setStatementLedger(null)}>{tr('close')}</Button>
         </DialogActions>
       </ResponsiveDialog>
 
       {/* Export format selection dialog */}
       <ResponsiveDialog open={exportFormatOpen} onClose={exportBusy ? undefined : () => setExportFormatOpen(false)} maxWidth="xs" fullWidth>
-        <DialogTitle>Export Ledger Statement</DialogTitle>
+        <DialogTitle>{tr('exportLedgerStatement')}</DialogTitle>
         <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '12px !important' }}>
-          <Typography variant="body2" color="text.secondary">Choose export format</Typography>
+          <Typography variant="body2" color="text.secondary">{tr('chooseExportFormat')}</Typography>
           <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
             <Button
               variant="outlined"
@@ -935,7 +918,7 @@ export default function LedgersPage() {
               disabled={exportBusy}
               sx={{ flex: '1 1 120px' }}
             >
-              PDF
+              {tr('pdf')}
             </Button>
             <Button
               variant="outlined"
@@ -944,12 +927,12 @@ export default function LedgersPage() {
               disabled={exportBusy}
               sx={{ flex: '1 1 120px' }}
             >
-              Excel
+              {tr('excel')}
             </Button>
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setExportFormatOpen(false)} disabled={exportBusy}>Cancel</Button>
+          <Button onClick={() => setExportFormatOpen(false)} disabled={exportBusy}>{tr('cancel')}</Button>
         </DialogActions>
       </ResponsiveDialog>
     </Box>

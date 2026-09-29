@@ -78,7 +78,7 @@ export default function ResponsiveTable({ children }: { children: React.ReactNod
           },
           // Action buttons flow left-aligned under the label, wrapping onto
           // a second line on narrow screens.
-          '& .MuiTableBody-root .MuiTableCell-root[data-label="Actions"]': {
+          '& .MuiTableBody-root .MuiTableCell-root[data-label="Actions"], & .MuiTableBody-root .MuiTableCell-root[data-label="చర్యలు"]': {
             '& > *': {
               display: 'flex',
               gap: 0.5,

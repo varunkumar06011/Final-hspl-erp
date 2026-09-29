@@ -13,7 +13,9 @@ import { TrendingUp, TrendingDown, TrendingFlat } from '@mui/icons-material';
 import { useQuery } from '@tanstack/react-query';
 import api from '../config/api';
 import { formatCurrency } from '../utils/enumOptions';
+import { dateLocale } from '../i18n';
 
+import { useTranslation } from 'react-i18next';
 // ── Types matching the backend GET /dashboard/rate-tracker response ──
 interface RateTrackerMaterial {
   materialName: string;
@@ -46,7 +48,7 @@ interface RateTrackerResponse {
 function formatDate(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '—';
-  return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' });
+  return d.toLocaleDateString(dateLocale(), { day: '2-digit', month: 'short', year: '2-digit' });
 }
 
 function docRoute(docType: string): string | null {
@@ -73,6 +75,7 @@ const NUM_FONT = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro T
  * appeared on more than one Quotation or PO. Read-only dashboard add-on.
  */
 export default function RateTrackerWidget() {
+  const { t } = useTranslation('widgets');
   // Always sort by % increase (default) — toggle removed per request
   const sort = 'inc';
 
@@ -100,23 +103,23 @@ export default function RateTrackerWidget() {
             </Box>
             <Box>
               <Typography sx={{ fontSize: '0.82rem', fontWeight: 800, color: D.text, lineHeight: 1.15 }}>
-                Material Rate Tracker
+                {t('rateTitle')}
               </Typography>
-              <Typography sx={{ fontSize: '0.62rem', color: D.dim }}>Track material price changes</Typography>
+              <Typography sx={{ fontSize: '0.62rem', color: D.dim }}>{t('rateSubtitle')}</Typography>
             </Box>
           </Stack>
           {!isLoading && summary && (
             <Stack direction="row" spacing={0.5} flexWrap="wrap" sx={{ gap: 0.5 }}>
-              <Chip size="small" variant="outlined" icon={<TrendingUp sx={{ fontSize: 14, color: D.red }} />} label={`${summary.increased} up`} sx={{ height: 20, fontSize: '0.65rem', color: D.red, borderColor: 'rgba(255,92,122,.4)' }} />
-              <Chip size="small" variant="outlined" icon={<TrendingDown sx={{ fontSize: 14, color: D.teal }} />} label={`${summary.decreased} down`} sx={{ height: 20, fontSize: '0.65rem', color: D.teal, borderColor: 'rgba(47,217,164,.4)' }} />
-              <Chip size="small" variant="outlined" label={`${summary.totalWithChange} tracked`} sx={{ height: 20, fontSize: '0.65rem', color: D.dim, borderColor: D.border }} />
+              <Chip size="small" variant="outlined" icon={<TrendingUp sx={{ fontSize: 14, color: D.red }} />} label={t('rateUp', { n: summary.increased })} sx={{ height: 20, fontSize: '0.65rem', color: D.red, borderColor: 'rgba(255,92,122,.4)' }} />
+              <Chip size="small" variant="outlined" icon={<TrendingDown sx={{ fontSize: 14, color: D.teal }} />} label={t('rateDown', { n: summary.decreased })} sx={{ height: 20, fontSize: '0.65rem', color: D.teal, borderColor: 'rgba(47,217,164,.4)' }} />
+              <Chip size="small" variant="outlined" label={t('rateTracked', { n: summary.totalWithChange })} sx={{ height: 20, fontSize: '0.65rem', color: D.dim, borderColor: D.border }} />
             </Stack>
           )}
         </Stack>
 
         {isError && (
           <Alert severity="warning" sx={{ mb: 1, py: 0.5 }}>
-            Could not load rate tracker data.
+            {t('rateError')}
           </Alert>
         )}
 
@@ -128,7 +131,7 @@ export default function RateTrackerWidget() {
           </Box>
         ) : materials.length === 0 ? (
           <Typography variant="caption" sx={{ color: D.dim }}>
-            No rate changes yet. Materials appear here once they show up on more than one Quotation or PO.
+            {t('rateEmpty')}
           </Typography>
         ) : (
           // Stacked material rows — the whole record fits the card width; the

@@ -24,8 +24,10 @@ import {
 } from '@mui/icons-material';
 import { useQuery } from '@tanstack/react-query';
 import api from '../config/api';
+import { dateLocale } from '../i18n';
 import { formatCurrency } from '../utils/enumOptions';
 
+import { useTranslation } from 'react-i18next';
 // ── Types matching the backend GET /assets/warranty-tracker response ──
 type RepairType = 'WARRANTY_CLAIM' | 'PAID_REPAIR' | 'WARRANTY_EXPIRED' | 'PENDING';
 
@@ -70,19 +72,19 @@ interface WarrantyTrackerResponse {
 
 const REPAIR_TYPE_CONFIG: Record<
   RepairType,
-  { label: string; color: 'success' | 'error' | 'warning' | 'default'; icon: typeof WarrantyIcon }
+  { labelKey: string; color: 'success' | 'error' | 'warning' | 'default'; icon: typeof WarrantyIcon }
 > = {
-  WARRANTY_CLAIM: { label: 'Warranty Claim (Free)', color: 'success', icon: WarrantyIcon },
-  PAID_REPAIR: { label: 'Paid Repair', color: 'error', icon: BuildIcon },
-  WARRANTY_EXPIRED: { label: 'Warranty Expired — Paid', color: 'warning', icon: WarningIcon },
-  PENDING: { label: 'Pending', color: 'default', icon: PendingIcon },
+  WARRANTY_CLAIM: { labelKey: 'rtWarrantyClaim', color: 'success', icon: WarrantyIcon },
+  PAID_REPAIR: { labelKey: 'rtPaidRepair', color: 'error', icon: BuildIcon },
+  WARRANTY_EXPIRED: { labelKey: 'rtExpiredPaid', color: 'warning', icon: WarningIcon },
+  PENDING: { labelKey: 'rtPending', color: 'default', icon: PendingIcon },
 };
 
 function formatDate(iso: string | null): string {
   if (!iso) return '—';
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '—';
-  return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' });
+  return d.toLocaleDateString(dateLocale(), { day: '2-digit', month: 'short', year: '2-digit' });
 }
 
 /**
@@ -92,6 +94,7 @@ function formatDate(iso: string | null): string {
  * Read-only add-on for the Assets page. Does not modify any data.
  */
 export default function WarrantySavingsWidget() {
+  const { t } = useTranslation('widgets');
   const { data, isLoading, isError } = useQuery({
     queryKey: ['/assets/warranty-tracker'],
     queryFn: async () => {
@@ -112,10 +115,10 @@ export default function WarrantySavingsWidget() {
           <SavingsIcon color="success" />
           <Box>
             <Typography variant="h6" fontWeight={600}>
-              Warranty Claims vs Paid Repairs
+              {t('wsTitle')}
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              How much you saved by claiming warranty instead of paying out of pocket
+              {t('wsSubtitle')}
             </Typography>
           </Box>
         </Stack>
@@ -129,7 +132,7 @@ export default function WarrantySavingsWidget() {
                   <Typography variant="h5" fontWeight={700}>
                     {formatCurrency(summary.totalSavings)}
                   </Typography>
-                  <Typography variant="caption">Total Saved via Warranty</Typography>
+                  <Typography variant="caption">{t('wsSaved')}</Typography>
                 </CardContent>
               </Card>
             </Grid>
@@ -139,7 +142,7 @@ export default function WarrantySavingsWidget() {
                   <Typography variant="h5" fontWeight={700} color="success.main">
                     {summary.warrantyClaimsCount}
                   </Typography>
-                  <Typography variant="caption">Warranty Claims (Free)</Typography>
+                  <Typography variant="caption">{t('wsClaims')}</Typography>
                 </CardContent>
               </Card>
             </Grid>
@@ -149,7 +152,7 @@ export default function WarrantySavingsWidget() {
                   <Typography variant="h5" fontWeight={700} color="error.main">
                     {summary.paidRepairsCount}
                   </Typography>
-                  <Typography variant="caption">Paid Repairs</Typography>
+                  <Typography variant="caption">{t('wsPaid')}</Typography>
                 </CardContent>
               </Card>
             </Grid>
@@ -159,7 +162,7 @@ export default function WarrantySavingsWidget() {
                   <Typography variant="h5" fontWeight={700} color="warning.main">
                     {summary.expiredWarrantyRepairCount}
                   </Typography>
-                  <Typography variant="caption">Warranty Expired (Paid)</Typography>
+                  <Typography variant="caption">{t('wsExpiredPaid')}</Typography>
                 </CardContent>
               </Card>
             </Grid>
@@ -169,7 +172,7 @@ export default function WarrantySavingsWidget() {
                   <Typography variant="h6" fontWeight={700} color="error.main">
                     {formatCurrency(summary.totalPaidRepairCost)}
                   </Typography>
-                  <Typography variant="caption">Total Paid for Repairs</Typography>
+                  <Typography variant="caption">{t('wsTotalPaid')}</Typography>
                 </CardContent>
               </Card>
             </Grid>
@@ -179,16 +182,16 @@ export default function WarrantySavingsWidget() {
         {/* Warranty status chips */}
         {!isLoading && summary && (
           <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ mb: 2, gap: 1 }}>
-            <Chip size="small" color="success" icon={<WarrantyIcon />} label={`Under Warranty: ${summary.assetsUnderWarranty}`} />
-            <Chip size="small" color="warning" icon={<WarningIcon />} label={`Warranty Expired: ${summary.assetsWarrantyExpired}`} />
-            <Chip size="small" color="default" label={`No Warranty Set: ${summary.assetsNoWarranty}`} />
-            <Chip size="small" color="info" icon={<PendingIcon />} label={`Pending Repairs: ${summary.pendingCount}`} />
+            <Chip size="small" color="success" icon={<WarrantyIcon />} label={t('wsUnder', { n: summary.assetsUnderWarranty })} />
+            <Chip size="small" color="warning" icon={<WarningIcon />} label={t('wsExpired', { n: summary.assetsWarrantyExpired })} />
+            <Chip size="small" color="default" label={t('wsNoSet', { n: summary.assetsNoWarranty })} />
+            <Chip size="small" color="info" icon={<PendingIcon />} label={t('wsPendingRepairs', { n: summary.pendingCount })} />
           </Stack>
         )}
 
         {isError && (
           <Alert severity="warning" sx={{ mb: 2 }}>
-            Could not load warranty tracker data. Make sure the backend is running.
+            {t('wsError')}
           </Alert>
         )}
 
@@ -208,15 +211,15 @@ export default function WarrantySavingsWidget() {
             <Table size="small" stickyHeader>
               <TableHead>
                 <TableRow>
-                  <TableCell>Asset</TableCell>
-                  <TableCell>Repair Type</TableCell>
-                  <TableCell>Reason</TableCell>
-                  <TableCell align="right">Est. Cost</TableCell>
-                  <TableCell align="right">Final Cost</TableCell>
-                  <TableCell align="right">Saved</TableCell>
-                  <TableCell>Warranty Expiry</TableCell>
-                  <TableCell>Sent Date</TableCell>
-                  <TableCell>Vendor / Tech</TableCell>
+                  <TableCell>{t('colAsset')}</TableCell>
+                  <TableCell>{t('colRepairType')}</TableCell>
+                  <TableCell>{t('colReason')}</TableCell>
+                  <TableCell align="right">{t('colEstCost')}</TableCell>
+                  <TableCell align="right">{t('colFinalCost')}</TableCell>
+                  <TableCell align="right">{t('colSaved')}</TableCell>
+                  <TableCell>{t('colWarrantyExpiry')}</TableCell>
+                  <TableCell>{t('colSentDate')}</TableCell>
+                  <TableCell>{t('colVendorTech')}</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -228,7 +231,7 @@ export default function WarrantySavingsWidget() {
                       <TableCell>
                         <Typography variant="body2" fontWeight={600}>{r.assetName}</Typography>
                         <Typography variant="caption" color="text.secondary" component="div">
-                          {r.assetId}{r.serialNumber ? ` · S/N: ${r.serialNumber}` : ''}
+                          {r.assetId}{r.serialNumber ? ` · ${t('wsSerial', { v: r.serialNumber })}` : ''}
                         </Typography>
                       </TableCell>
                       <TableCell>
@@ -236,7 +239,7 @@ export default function WarrantySavingsWidget() {
                           size="small"
                           color={config.color}
                           icon={<Icon />}
-                          label={config.label}
+                          label={t(config.labelKey)}
                         />
                       </TableCell>
                       <TableCell>
@@ -262,7 +265,7 @@ export default function WarrantySavingsWidget() {
                             {formatDate(r.warrantyExpiry)}
                           </Typography>
                         ) : (
-                          <Typography variant="caption" color="text.secondary">No warranty</Typography>
+                          <Typography variant="caption" color="text.secondary">{t('wsNoWarranty')}</Typography>
                         )}
                       </TableCell>
                       <TableCell>{formatDate(r.sentAt)}</TableCell>

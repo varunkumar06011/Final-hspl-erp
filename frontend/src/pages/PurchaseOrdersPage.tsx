@@ -53,7 +53,8 @@ import {
 import LedgerAutocomplete, { LedgerOption } from '../components/LedgerAutocomplete';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { POStatus, UserRole, POPaymentType, GST_RATES, ApprovalStatus, isAdminRole } from '@hospital-erp/shared';
-import { formatCurrency, formatDate, formatIndianNumber, STATUS_COLORS, QTY_UNIT_OPTIONS } from '../utils/enumOptions';
+import { formatCurrency, formatDate, formatIndianNumber, STATUS_COLORS, QTY_UNIT_OPTIONS, enumLabel, unitLabel } from '../utils/enumOptions';
+import { useTranslation, Trans } from 'react-i18next';
 import { num, toIncGst, round2 } from '../utils/taxCalc';
 import api, { extractErrorMessage } from '../config/api';
 import { useAuthStore } from '../stores/authStore';
@@ -167,6 +168,7 @@ const HEAD_ROLES = [UserRole.PROJECT_HEAD, UserRole.HEAD_OF_CONSTRUCTION, UserRo
 
 export default function PurchaseOrdersPage() {
   const theme = useTheme();
+  const { t } = useTranslation('po');
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(20);
   const [search, setSearch] = useState('');
@@ -544,7 +546,7 @@ export default function PurchaseOrdersPage() {
   function handleCreatePO() {
     if (createSubmissionLocked.current || createMutation.isPending) return;
     if (!selectedBudgetHeadId) {
-      setError('Budget head is required');
+      setError(t('errBudgetHead'));
       return;
     }
     createSubmissionLocked.current = true;
@@ -565,7 +567,7 @@ export default function PurchaseOrdersPage() {
         a.click();
         window.URL.revokeObjectURL(url);
       })
-      .catch(() => setError('Failed to download PDF'));
+      .catch(() => setError(t('errPdf')));
   }
 
   function previewPDF(poId: string) {
@@ -576,7 +578,7 @@ export default function PurchaseOrdersPage() {
     // Open blank window synchronously to avoid popup blockers, then set URL after fetch
     const newWindow = window.open('', '_blank');
     if (newWindow) {
-      newWindow.document.write('<html><head><title>PO PDF Loading...</title></head><body style="display:flex;align-items:center;justify-content:center;height:100vh;margin:0;font-family:sans-serif;"><div style="text-align:center;"><div style="border:4px solid #f3f3f3;border-top:4px solid #1976d2;border-radius:50%;width:40px;height:40px;animation:spin 1s linear infinite;margin:0 auto 16px;"></div><style>@keyframes spin{0%{transform:rotate(0)}100%{transform:rotate(360deg)}}</style><p>Loading PDF...</p></div></body></html>');
+      newWindow.document.write(`<html><head><title>${t('pdfLoadingTitle')}</title></head><body style="display:flex;align-items:center;justify-content:center;height:100vh;margin:0;font-family:sans-serif;"><div style="text-align:center;"><div style="border:4px solid #f3f3f3;border-top:4px solid #1976d2;border-radius:50%;width:40px;height:40px;animation:spin 1s linear infinite;margin:0 auto 16px;"></div><style>@keyframes spin{0%{transform:rotate(0)}100%{transform:rotate(360deg)}}</style><p>${t('pdfLoadingText')}</p></div></body></html>`);
     }
     fetch(url, { headers: { Authorization: `Bearer ${token}` } })
       .then((res) => res.blob())
@@ -591,7 +593,7 @@ export default function PurchaseOrdersPage() {
       })
       .catch(() => {
         if (newWindow && !newWindow.closed) newWindow.close();
-        setError('Failed to preview PDF');
+        setError(t('errPreview'));
       })
       .finally(() => setPdfLoading(false));
   }
@@ -599,7 +601,7 @@ export default function PurchaseOrdersPage() {
   return (
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap' }}>
-        <Typography variant="h5" fontWeight={600} sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' } }}>Purchase Orders</Typography>
+        <Typography variant="h5" fontWeight={600} sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' } }}>{t('title')}</Typography>
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', justifyContent: { xs: 'flex-end', md: 'flex-end' }, width: { xs: '100%', md: 'auto' } }}>
           {isMobile && (
             <Button
@@ -607,13 +609,13 @@ export default function PurchaseOrdersPage() {
               size="small"
               startIcon={<TableChartIcon />}
               onClick={toggleExcelView}
-              title="Toggle Excel-style table view"
+              title={t('toggleTable')}
             >
-              {isMobileLandscape ? 'Card View' : 'Table View'}
+              {isMobileLandscape ? t('cardView') : t('tableView')}
             </Button>
           )}
           <RefreshButton onClick={() => refetch()} />
-          <Button variant="contained" startIcon={<AddIcon />} onClick={() => { resetForm(); setCreateOpen(true); }}>Create PO</Button>
+          <Button variant="contained" startIcon={<AddIcon />} onClick={() => { resetForm(); setCreateOpen(true); }}>{t('createPo')}</Button>
         </Box>
       </Box>
 
@@ -622,11 +624,11 @@ export default function PurchaseOrdersPage() {
       {/* Rotate instruction — shown when user tapped Table View but is still in portrait */}
       {showRotateHint ? (
         <Card sx={{ p: 4, textAlign: 'center' }}>
-          <Typography variant="h6" sx={{ mb: 2 }}>↻ Rotate your phone horizontally to view the table</Typography>
+          <Typography variant="h6" sx={{ mb: 2 }}>{t('rotateTitle')}</Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-            The Excel-style table requires a landscape orientation. Please rotate your phone to see all columns, zoom controls, and search.
+            {t('rotateBody')}
           </Typography>
-          <Button variant="outlined" onClick={toggleExcelView}>Back to Card View</Button>
+          <Button variant="outlined" onClick={toggleExcelView}>{t('backToCard')}</Button>
         </Card>
       ) : (
       <>
@@ -635,20 +637,20 @@ export default function PurchaseOrdersPage() {
           <Box sx={{ p: 2, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
             <TextField
               size="small"
-              placeholder="Search POs..."
+              placeholder={t('searchPlaceholder')}
               value={search}
               onChange={(e) => { setSearch(e.target.value); setPage(0); }}
               InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> }}
               sx={{ width: { xs: '100%', sm: 300 } }}
             />
-            <TextField select size="small" label="Status" value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(0); }} sx={{ width: { xs: '100%', sm: 180 } }}>
-              <MenuItem value="">All</MenuItem>
-              {Object.values(POStatus).map((s) => <MenuItem key={s} value={s}>{s.replace(/_/g, ' ')}</MenuItem>)}
+            <TextField select size="small" label={t('status')} value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(0); }} sx={{ width: { xs: '100%', sm: 180 } }}>
+              <MenuItem value="">{t('all')}</MenuItem>
+              {Object.values(POStatus).map((s) => <MenuItem key={s} value={s}>{enumLabel(s)}</MenuItem>)}
             </TextField>
             <TextField
               size="small"
-              label="Amount"
-              placeholder="Exact grand total"
+              label={t('amount')}
+              placeholder={t('exactGrandTotal')}
               value={minAmount}
               onChange={(e) => {
                 const v = e.target.value;
@@ -675,33 +677,33 @@ export default function PurchaseOrdersPage() {
             <LandscapeExcelTable
               search={search}
               onSearchChange={(v) => { setSearch(v); setPage(0); }}
-              searchPlaceholder="Search POs..."
+              searchPlaceholder={t('searchPlaceholder')}
             >
               <TableContainer sx={{ overflowX: 'auto' }}>
                 <Table size="small">
                   <TableHead>
                     <TableRow>
-                      <TableCell sx={{ fontWeight: 700 }}>SL. No.</TableCell>
-                      <TableCell sx={{ fontWeight: 700 }}>PO No</TableCell>
-                      <TableCell sx={{ fontWeight: 700 }}>Quotation No</TableCell>
-                      <TableCell sx={{ fontWeight: 700 }}>PO Date</TableCell>
-                      <TableCell sx={{ fontWeight: 700 }}>Vendor Name</TableCell>
-                      <TableCell sx={{ fontWeight: 700 }}>Item Description</TableCell>
-                      <TableCell sx={{ fontWeight: 700 }}>Payment Type</TableCell>
-                      <TableCell sx={{ fontWeight: 700 }} align="right">Total</TableCell>
-                      <TableCell sx={{ fontWeight: 700 }} align="right">GST</TableCell>
-                      <TableCell sx={{ fontWeight: 700 }} align="right">Grand Total</TableCell>
-                      <TableCell sx={{ fontWeight: 700 }} align="right">Net Payable</TableCell>
-                      <TableCell sx={{ fontWeight: 700 }} align="right">Paid</TableCell>
-                      <TableCell sx={{ fontWeight: 700 }} align="right">To Pay</TableCell>
-                      <TableCell sx={{ fontWeight: 700 }} align="right">Actions</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }}>{t('slNo')}</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }}>{t('poNo')}</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }}>{t('quotationNo')}</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }}>{t('poDate')}</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }}>{t('vendorName')}</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }}>{t('itemDescription')}</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }}>{t('paymentType')}</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }} align="right">{t('total')}</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }} align="right">{t('gst')}</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }} align="right">{t('grandTotal')}</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }} align="right">{t('netPayable')}</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }} align="right">{t('paid')}</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }} align="right">{t('toPay')}</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }} align="right">{t('actions')}</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
                     {isLoading ? (
                       <TableRow><TableCell colSpan={14} align="center" sx={{ py: 4 }}><CircularProgress size={32} /></TableCell></TableRow>
                     ) : rows.length === 0 ? (
-                      <TableRow><TableCell colSpan={14} align="center" sx={{ py: 4 }}><Typography color="text.secondary">No purchase orders found</Typography></TableCell></TableRow>
+                      <TableRow><TableCell colSpan={14} align="center" sx={{ py: 4 }}><Typography color="text.secondary">{t('noPOs')}</Typography></TableCell></TableRow>
                     ) : (
                       rows.map((row, idx) => (
                         <TableRow
@@ -719,11 +721,7 @@ export default function PurchaseOrdersPage() {
                           <TableCell>
                             <Chip
                               size="small"
-                              label={row.paymentType === POPaymentType.ADVANCE
-                                ? 'Advance'
-                                : row.paymentType === POPaymentType.FULL_PAYMENT
-                                  ? 'Full Payment'
-                                  : 'After Delivery'}
+                              label={enumLabel(row.paymentType)}
                               color={row.paymentType === POPaymentType.ADVANCE
                                 ? 'warning'
                                 : row.paymentType === POPaymentType.FULL_PAYMENT
@@ -751,25 +749,25 @@ export default function PurchaseOrdersPage() {
                           <TableCell align="right">
                             <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'flex-end' }}>
                               <CommentsButton entityType="PURCHASE_ORDER" entityId={row.id} entityLabel={row.poNumber} url="/pos" />
-                              <IconButton size="small" onClick={() => previewPDF(row.id)} title="Preview PDF" disabled={pdfLoading}>{pdfLoading ? <CircularProgress size={16} /> : <PdfIcon fontSize="small" />}</IconButton>
-                              <IconButton size="small" onClick={() => downloadPDF(row.id, row.poNumber)} title="Download PDF"><DownloadIcon fontSize="small" /></IconButton>
+                              <IconButton size="small" onClick={() => previewPDF(row.id)} title={t('previewPdf')} disabled={pdfLoading}>{pdfLoading ? <CircularProgress size={16} /> : <PdfIcon fontSize="small" />}</IconButton>
+                              <IconButton size="small" onClick={() => downloadPDF(row.id, row.poNumber)} title={t('downloadPdf')}><DownloadIcon fontSize="small" /></IconButton>
                               {canApprove(row) && (
                                 <>
-                                  <IconButton size="small" color="success" onClick={() => setApprovalAction({ row, action: 'approve' })} title="Approve"><CheckIcon fontSize="small" /></IconButton>
-                                  <IconButton size="small" color="error" onClick={() => setApprovalAction({ row, action: 'reject' })} title="Reject"><CloseIcon fontSize="small" /></IconButton>
+                                  <IconButton size="small" color="success" onClick={() => setApprovalAction({ row, action: 'approve' })} title={t('approve')}><CheckIcon fontSize="small" /></IconButton>
+                                  <IconButton size="small" color="error" onClick={() => setApprovalAction({ row, action: 'reject' })} title={t('reject')}><CloseIcon fontSize="small" /></IconButton>
                                 </>
                               )}
                               {(row.status === POStatus.APPROVED || row.status === POStatus.DELIVERED || row.status === POStatus.PARTIALLY_DELIVERED) && (
-                                <IconButton size="small" onClick={() => { setNotesEditRow(row); setNotesEditValue(row.notes ?? ''); setReferredByEditValue(row.referredBy ?? ''); }} title="Edit PO Details"><EditIcon fontSize="small" /></IconButton>
+                                <IconButton size="small" onClick={() => { setNotesEditRow(row); setNotesEditValue(row.notes ?? ''); setReferredByEditValue(row.referredBy ?? ''); }} title={t('editPoDetails')}><EditIcon fontSize="small" /></IconButton>
                               )}
                               {(row.status === POStatus.APPROVED || row.status === POStatus.DELIVERED || row.status === POStatus.PARTIALLY_DELIVERED) && user && (isAdminRole(user.role) || user.role === UserRole.ACCOUNTANT) && (
-                                <IconButton size="small" color="secondary" onClick={() => setPostLedgerRow(row)} title="Post to Ledger"><PostLedgerIcon fontSize="small" /></IconButton>
+                                <IconButton size="small" color="secondary" onClick={() => setPostLedgerRow(row)} title={t('postToLedger')}><PostLedgerIcon fontSize="small" /></IconButton>
                               )}
                               {row.status === POStatus.APPROVED && (
-                                <IconButton size="small" color="secondary" onClick={() => setPaymentTypeRow(row)} title="Change Payment Type"><PaymentIcon fontSize="small" /></IconButton>
+                                <IconButton size="small" color="secondary" onClick={() => setPaymentTypeRow(row)} title={t('changePaymentType')}><PaymentIcon fontSize="small" /></IconButton>
                               )}
                               {(row.status === POStatus.PENDING_APPROVAL || row.status === POStatus.REJECTED || (row.status === POStatus.APPROVED && !!user && isAdminRole(user.role))) && (
-                                <IconButton size="small" color="primary" onClick={() => setEditUnapprovedRow(row)} title="Edit PO"><EditIcon fontSize="small" /></IconButton>
+                                <IconButton size="small" color="primary" onClick={() => setEditUnapprovedRow(row)} title={t('editPo')}><EditIcon fontSize="small" /></IconButton>
                               )}
                             </Box>
                           </TableCell>
@@ -788,7 +786,7 @@ export default function PurchaseOrdersPage() {
           isLoading ? (
             <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress size={32} /></Box>
           ) : rows.length === 0 ? (
-            <Box sx={{ textAlign: 'center', py: 4 }}><Typography color="text.secondary">No purchase orders found</Typography></Box>
+            <Box sx={{ textAlign: 'center', py: 4 }}><Typography color="text.secondary">{t('noPOs')}</Typography></Box>
           ) : (
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, px: 1, pb: 1 }}>
               {rows.map((row) => {
@@ -809,10 +807,10 @@ export default function PurchaseOrdersPage() {
                     ? Number(row.advanceAmount)
                     : Number(row.grandTotal);
                 const netPayableCaption = hasDeductions
-                  ? 'Net Payable'
+                  ? t('netPayable')
                   : row.advanceAmount && Number(row.advanceAmount) > 0
-                    ? `Advance: ${formatCurrency(Number(row.advanceAmount))}`
-                    : 'Grand Total';
+                    ? t('advanceLine', { v: formatCurrency(Number(row.advanceAmount)) })
+                    : t('grandTotal');
                 const approverNames = row.approvalWorkflow?.steps?.some((s) => s.status === 'APPROVED' && s.approverUser)
                   ? row.approvalWorkflow!.steps.filter((s) => s.status === 'APPROVED' && s.approverUser).map((s) => s.approverUser!.name).join(', ')
                   : '—';
@@ -841,16 +839,16 @@ export default function PurchaseOrdersPage() {
                     >
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap', minWidth: 0 }}>
                         <Typography component="span" sx={{ fontSize: { xs: '0.82rem', sm: '0.9rem' } }}>
-                          <strong>{row.poNumber}</strong> — {row.vendor?.name ?? '—'} — {formatCurrency(row.grandTotal)} — Status:
+                          <strong>{row.poNumber}</strong> — {row.vendor?.name ?? '—'} — {formatCurrency(row.grandTotal)} — {t('statusColon')}
                         </Typography>
                         <Chip
-                          label={effectiveStatus.replace(/_/g, ' ')}
+                          label={enumLabel(effectiveStatus)}
                           size="small"
                           color={effectiveStatus === POStatus.DELETED ? 'error' : (STATUS_COLORS[effectiveStatus] ?? 'default')}
                           sx={effectiveStatus === POStatus.DELETED ? { bgcolor: '#d32f2f', color: '#fff', textDecoration: 'line-through' } : undefined}
                         />
                         {row.editReason && (
-                          <Typography variant="caption" color="warning.main" title={row.editReason}>edited</Typography>
+                          <Typography variant="caption" color="warning.main" title={row.editReason}>{t('edited')}</Typography>
                         )}
                       </Box>
                     </AccordionSummary>
@@ -859,14 +857,14 @@ export default function PurchaseOrdersPage() {
                         {/* Status bar */}
                         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 0.75, pb: 0.75, borderBottom: '1px solid', borderColor: 'action.hover', gap: 1, flexWrap: 'wrap' }}>
                           <Chip
-                            label={effectiveStatus.replace(/_/g, ' ')}
+                            label={enumLabel(effectiveStatus)}
                             size="small"
                             color={effectiveStatus === POStatus.DELETED ? 'error' : (STATUS_COLORS[effectiveStatus] ?? 'default')}
                             sx={effectiveStatus === POStatus.DELETED ? { bgcolor: '#d32f2f', color: '#fff', textDecoration: 'line-through' } : undefined}
                           />
                           <Chip
                             size="small"
-                            label={row.paymentType === POPaymentType.ADVANCE ? 'Advance' : row.paymentType === POPaymentType.FULL_PAYMENT ? 'Full Payment' : 'After Delivery'}
+                            label={enumLabel(row.paymentType)}
                             color={row.paymentType === POPaymentType.ADVANCE ? 'warning' : row.paymentType === POPaymentType.FULL_PAYMENT ? 'success' : 'info'}
                             variant="outlined"
                           />
@@ -879,79 +877,79 @@ export default function PurchaseOrdersPage() {
                           gap: { xs: 0.25, sm: '2px 12px' },
                           alignItems: 'baseline',
                         }}>
-                          <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>PO No</Typography>
+                          <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>{t('poNo')}</Typography>
                           <Typography component="div" variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem', minWidth: 0 }}>
                             {row.poNumber}
                             {row.parentPo && (
-                              <Typography component="span" variant="caption" color="text.secondary" sx={{ display: 'block' }}>from {row.parentPo.poNumber}</Typography>
+                              <Typography component="span" variant="caption" color="text.secondary" sx={{ display: 'block' }}>{t('fromPo', { n: row.parentPo.poNumber })}</Typography>
                             )}
                             {row.childPos && row.childPos.length > 0 && (
-                              <Typography component="span" variant="caption" color="secondary.main" sx={{ display: 'block' }}>regen → {row.childPos.map((c) => c.poNumber).join(', ')}</Typography>
+                              <Typography component="span" variant="caption" color="secondary.main" sx={{ display: 'block' }}>{t('regenLine', { list: row.childPos.map((c) => c.poNumber).join(', ') })}</Typography>
                             )}
                           </Typography>
 
-                          <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>Vendor</Typography>
+                          <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>{t('vendor')}</Typography>
                           <Typography component="div" variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem', minWidth: 0 }}>{row.vendor?.vendorCode} - {row.vendor?.name ?? '—'}</Typography>
 
-                          <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>Quotation No</Typography>
+                          <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>{t('quotationNo')}</Typography>
                           <Typography component="div" variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem', minWidth: 0 }}>{row.quotation?.quotationNumber ?? '—'}</Typography>
 
-                          <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>PO Date</Typography>
+                          <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>{t('poDate')}</Typography>
                           <Typography component="div" variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem', minWidth: 0 }}>
                             {row.quotation && new Date(row.date) < new Date(row.quotation.date) ? (
                               <>
                                 <Box component="span" sx={{ color: 'error.main', fontWeight: 600 }}>{formatDate(row.date)}</Box>
-                                <Typography component="span" variant="caption" color="error" sx={{ display: 'block' }}>Before quotation ({formatDate(row.quotation.date)})</Typography>
+                                <Typography component="span" variant="caption" color="error" sx={{ display: 'block' }}>{t('beforeQuotation', { d: formatDate(row.quotation.date) })}</Typography>
                               </>
                             ) : formatDate(row.date)}
                           </Typography>
 
-                          <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>Payment Type</Typography>
+                          <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>{t('paymentType')}</Typography>
                           <Typography component="div" variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem', minWidth: 0 }}>
-                            {row.paymentType === POPaymentType.ADVANCE ? 'Advance' : row.paymentType === POPaymentType.FULL_PAYMENT ? 'Full Payment' : 'After Delivery'}
+                            {enumLabel(row.paymentType)}
                           </Typography>
 
-                          <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>Budget Head</Typography>
+                          <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>{t('budgetHead')}</Typography>
                           <Typography component="div" variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem', minWidth: 0 }}>{row.budgetHead?.particulars ?? '—'}</Typography>
 
-                          <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>Total</Typography>
+                          <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>{t('total')}</Typography>
                           <Typography component="div" variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem', minWidth: 0 }}>{formatCurrency(row.totalAmount)}</Typography>
 
-                          <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>GST</Typography>
+                          <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>{t('gst')}</Typography>
                           <Typography component="div" variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem', minWidth: 0 }}>{formatCurrency(row.gstAmount)}</Typography>
 
-                          <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>Grand Total</Typography>
+                          <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>{t('grandTotal')}</Typography>
                           <Typography component="div" variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem', minWidth: 0 }}>{formatCurrency(row.grandTotal)}</Typography>
 
-                          <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>Net Payable</Typography>
+                          <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>{t('netPayable')}</Typography>
                           <Typography component="div" variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem', minWidth: 0 }}>
                             {formatCurrency(netPayable)}
                             <Typography component="span" variant="caption" color="text.secondary" sx={{ display: 'block' }}>({netPayableCaption})</Typography>
                           </Typography>
 
-                          <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>Paid</Typography>
+                          <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>{t('paid')}</Typography>
                           <Typography component="div" variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem', minWidth: 0, color: 'success.main' }}>{formatCurrency(Number(row.paidToDate ?? 0))}</Typography>
 
-                          <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>To Pay Now</Typography>
+                          <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>{t('toPayNow')}</Typography>
                           <Typography component="div" variant="body2" sx={{ fontWeight: 700, fontSize: '0.85rem', minWidth: 0, color: Number(row.amountToPayNow ?? 0) > 0 ? 'error.main' : 'text.secondary' }}>{formatCurrency(Number(row.amountToPayNow ?? 0))}</Typography>
 
-                          <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>Created By</Typography>
+                          <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>{t('createdBy')}</Typography>
                           <Typography component="div" variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem', minWidth: 0 }}>{row.createdByUser?.name ?? '—'}</Typography>
 
-                          <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>Approved By</Typography>
+                          <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>{t('approvedBy')}</Typography>
                           <Typography component="div" variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem', minWidth: 0 }}>{approverNames}</Typography>
 
-                          <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>Referred By</Typography>
+                          <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>{t('referredBy')}</Typography>
                           <Typography component="div" variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem', minWidth: 0 }}>{row.referredBy ?? '—'}</Typography>
 
-                          <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>Description</Typography>
+                          <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>{t('description')}</Typography>
                           <Typography component="div" variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem', minWidth: 0, overflowWrap: 'break-word' }}>{row.notes || '—'}</Typography>
                         </Box>
 
                         {/* Deductions */}
                         {hasDeductions && (
                           <Box sx={{ mt: 0.75 }}>
-                            <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem', display: 'block', mb: 0.25 }}>Deductions</Typography>
+                            <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem', display: 'block', mb: 0.25 }}>{t('deductions')}</Typography>
                             <Typography color="error" fontWeight={600} variant="body2">-{formatCurrency(Number(row.totalDeductions ?? 0))}</Typography>
                             {row.deductions!.map((d, i) => (
                               <Typography key={i} variant="caption" color="text.secondary" display="block">
@@ -967,26 +965,26 @@ export default function PurchaseOrdersPage() {
                         {row.items && row.items.length > 0 && (
                           <Box sx={{ mt: 0.5 }}>
                             <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem', display: 'block', mb: 0.5 }}>
-                              Items{row.quotation?.mpr ? ` — from Quotation ${row.quotation.quotationNumber} (MPR ${row.quotation.mpr.mprNumber})` : row.quotation ? ` — from Quotation ${row.quotation.quotationNumber}` : ''}
+                              {row.quotation?.mpr ? t('itemsFromQuotationMpr', { q: row.quotation.quotationNumber, m: row.quotation.mpr.mprNumber }) : row.quotation ? t('itemsFromQuotationOnly', { q: row.quotation.quotationNumber }) : t('items')}
                             </Typography>
                             <Box sx={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', mx: -0.5, px: 0.5 }}>
                             <Box component="table" sx={{ width: '100%', minWidth: 430, borderCollapse: 'collapse', fontSize: '0.8rem' }}>
                               <Box component="thead">
                                 <Box component="tr" sx={{ borderBottom: '1px solid', borderColor: 'divider' }}>
-                                  <Box component="th" sx={{ textAlign: 'left', py: 0.25, px: 0.5, fontWeight: 600, fontSize: '0.7rem', color: 'text.secondary', textTransform: 'uppercase' }}>Material</Box>
+                                  <Box component="th" sx={{ textAlign: 'left', py: 0.25, px: 0.5, fontWeight: 600, fontSize: '0.7rem', color: 'text.secondary', textTransform: 'uppercase' }}>{t('material')}</Box>
                                   {row.quotation?.mpr && (
-                                    <Box component="th" sx={{ textAlign: 'right', py: 0.25, px: 0.5, fontWeight: 600, fontSize: '0.7rem', color: 'text.secondary', textTransform: 'uppercase' }}>Requested</Box>
+                                    <Box component="th" sx={{ textAlign: 'right', py: 0.25, px: 0.5, fontWeight: 600, fontSize: '0.7rem', color: 'text.secondary', textTransform: 'uppercase' }}>{t('requested')}</Box>
                                   )}
                                   {row.quotation?.items && (
                                     <>
-                                      <Box component="th" sx={{ textAlign: 'right', py: 0.25, px: 0.5, fontWeight: 600, fontSize: '0.7rem', color: 'text.secondary', textTransform: 'uppercase' }}>Quoted Qty</Box>
-                                      <Box component="th" sx={{ textAlign: 'right', py: 0.25, px: 0.5, fontWeight: 600, fontSize: '0.7rem', color: 'text.secondary', textTransform: 'uppercase' }}>Quoted Price</Box>
+                                      <Box component="th" sx={{ textAlign: 'right', py: 0.25, px: 0.5, fontWeight: 600, fontSize: '0.7rem', color: 'text.secondary', textTransform: 'uppercase' }}>{t('quotedQty')}</Box>
+                                      <Box component="th" sx={{ textAlign: 'right', py: 0.25, px: 0.5, fontWeight: 600, fontSize: '0.7rem', color: 'text.secondary', textTransform: 'uppercase' }}>{t('quotedPrice')}</Box>
                                     </>
                                   )}
-                                  <Box component="th" sx={{ textAlign: 'right', py: 0.25, px: 0.5, fontWeight: 600, fontSize: '0.7rem', color: 'text.secondary', textTransform: 'uppercase' }}>Ordered Qty</Box>
-                                  <Box component="th" sx={{ textAlign: 'right', py: 0.25, px: 0.5, fontWeight: 600, fontSize: '0.7rem', color: 'text.secondary', textTransform: 'uppercase' }}>Unit Price</Box>
-                                  <Box component="th" sx={{ textAlign: 'right', py: 0.25, px: 0.5, fontWeight: 600, fontSize: '0.7rem', color: 'text.secondary', textTransform: 'uppercase' }}>GST</Box>
-                                  <Box component="th" sx={{ textAlign: 'right', py: 0.25, px: 0.5, fontWeight: 600, fontSize: '0.7rem', color: 'text.secondary', textTransform: 'uppercase' }}>Amount (Inc. GST)</Box>
+                                  <Box component="th" sx={{ textAlign: 'right', py: 0.25, px: 0.5, fontWeight: 600, fontSize: '0.7rem', color: 'text.secondary', textTransform: 'uppercase' }}>{t('orderedQty')}</Box>
+                                  <Box component="th" sx={{ textAlign: 'right', py: 0.25, px: 0.5, fontWeight: 600, fontSize: '0.7rem', color: 'text.secondary', textTransform: 'uppercase' }}>{t('unitPrice')}</Box>
+                                  <Box component="th" sx={{ textAlign: 'right', py: 0.25, px: 0.5, fontWeight: 600, fontSize: '0.7rem', color: 'text.secondary', textTransform: 'uppercase' }}>{t('gst')}</Box>
+                                  <Box component="th" sx={{ textAlign: 'right', py: 0.25, px: 0.5, fontWeight: 600, fontSize: '0.7rem', color: 'text.secondary', textTransform: 'uppercase' }}>{t('amountInc')}</Box>
                                 </Box>
                               </Box>
                               <Box component="tbody">
@@ -1033,46 +1031,46 @@ export default function PurchaseOrdersPage() {
 
                         {/* Actions — bottom row */}
                         <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, mt: 1, pt: 1, borderTop: '1px solid', borderColor: 'divider' }}>
-                          <Button size="small" variant="outlined" startIcon={pdfLoading ? <CircularProgress size={16} /> : <PdfIcon />} onClick={() => previewPDF(row.id)} disabled={pdfLoading}>Open</Button>
-                          <Button size="small" variant="outlined" startIcon={<DownloadIcon />} onClick={() => downloadPDF(row.id, row.poNumber)}>PDF</Button>
-                          <Button size="small" variant="outlined" startIcon={<WhatsAppIcon />} onClick={() => shareOnWhatsApp(buildPOShareMessage({ poNumber: row.poNumber, vendorName: row.vendor?.name, grandTotal: Number(row.grandTotal), status: row.status, date: row.date, totalDeductions: Number(row.totalDeductions ?? 0), netPayable: Number(row.netPayable ?? row.grandTotal), deductions: row.deductions ?? undefined, notes: row.notes ?? undefined }))}>Share</Button>
+                          <Button size="small" variant="outlined" startIcon={pdfLoading ? <CircularProgress size={16} /> : <PdfIcon />} onClick={() => previewPDF(row.id)} disabled={pdfLoading}>{t('open')}</Button>
+                          <Button size="small" variant="outlined" startIcon={<DownloadIcon />} onClick={() => downloadPDF(row.id, row.poNumber)}>{t('pdf')}</Button>
+                          <Button size="small" variant="outlined" startIcon={<WhatsAppIcon />} onClick={() => shareOnWhatsApp(buildPOShareMessage({ poNumber: row.poNumber, vendorName: row.vendor?.name, grandTotal: Number(row.grandTotal), status: row.status, date: row.date, totalDeductions: Number(row.totalDeductions ?? 0), netPayable: Number(row.netPayable ?? row.grandTotal), deductions: row.deductions ?? undefined, notes: row.notes ?? undefined }))}>{t('share')}</Button>
                           {row.status !== POStatus.DELETED && (
                             <>
                               {canApprove(row) && (
                                 <>
-                                  <Button size="small" color="success" startIcon={<CheckIcon />} onClick={() => setApprovalAction({ row, action: 'approve' })}>Approve</Button>
-                                  <Button size="small" color="error" startIcon={<CloseIcon />} onClick={() => setApprovalAction({ row, action: 'reject' })}>Reject</Button>
+                                  <Button size="small" color="success" startIcon={<CheckIcon />} onClick={() => setApprovalAction({ row, action: 'approve' })}>{t('approve')}</Button>
+                                  <Button size="small" color="error" startIcon={<CloseIcon />} onClick={() => setApprovalAction({ row, action: 'reject' })}>{t('reject')}</Button>
                                 </>
                               )}
                               {(row.status === POStatus.APPROVED || row.status === POStatus.PARTIALLY_DELIVERED) && (
-                                <Button size="small" color="primary" startIcon={<GatePassIcon />} onClick={() => navigate('/gate-passes')}>Gate Pass</Button>
+                                <Button size="small" color="primary" startIcon={<GatePassIcon />} onClick={() => navigate('/gate-passes')}>{t('gatePass')}</Button>
                               )}
                               {(row.status === POStatus.APPROVED || row.status === POStatus.PARTIALLY_DELIVERED || row.status === POStatus.DELIVERED) && (
-                                <Button size="small" startIcon={<TimelineIcon />} onClick={() => setTrailRow(row)}>Trail</Button>
+                                <Button size="small" startIcon={<TimelineIcon />} onClick={() => setTrailRow(row)}>{t('trail')}</Button>
                               )}
                               {row.status === POStatus.PARTIALLY_DELIVERED && !row.parentPoId && (
-                                <Button size="small" color="warning" startIcon={<EditIcon />} onClick={() => setEditRow(row)}>Match Delivered</Button>
+                                <Button size="small" color="warning" startIcon={<EditIcon />} onClick={() => setEditRow(row)}>{t('matchDelivered')}</Button>
                               )}
                               {(row.status === POStatus.PENDING_APPROVAL || row.status === POStatus.REJECTED || (row.status === POStatus.APPROVED && !!user && isAdminRole(user.role))) && (
-                                <Button size="small" color="primary" startIcon={<EditIcon />} onClick={() => setEditUnapprovedRow(row)}>Edit PO</Button>
+                                <Button size="small" color="primary" startIcon={<EditIcon />} onClick={() => setEditUnapprovedRow(row)}>{t('editPo')}</Button>
                               )}
                               {(row.status === POStatus.APPROVED || row.status === POStatus.DELIVERED || row.status === POStatus.PARTIALLY_DELIVERED) && (
-                                <Button size="small" startIcon={<EditIcon />} onClick={() => { setNotesEditRow(row); setNotesEditValue(row.notes ?? ''); setReferredByEditValue(row.referredBy ?? ''); }}>Edit Details</Button>
+                                <Button size="small" startIcon={<EditIcon />} onClick={() => { setNotesEditRow(row); setNotesEditValue(row.notes ?? ''); setReferredByEditValue(row.referredBy ?? ''); }}>{t('editDetails')}</Button>
                               )}
                               {(row.status === POStatus.APPROVED || row.status === POStatus.DELIVERED || row.status === POStatus.PARTIALLY_DELIVERED) && user && (isAdminRole(user.role) || user.role === UserRole.ACCOUNTANT) && (
-                                <Button size="small" color="secondary" startIcon={<PostLedgerIcon />} onClick={() => setPostLedgerRow(row)}>Post Ledger</Button>
+                                <Button size="small" color="secondary" startIcon={<PostLedgerIcon />} onClick={() => setPostLedgerRow(row)}>{t('postLedger')}</Button>
                               )}
                               {(row.status === POStatus.APPROVED || row.status === POStatus.DELIVERED || row.status === POStatus.PARTIALLY_DELIVERED) && row.budgetHeadId && user && isAdminRole(user.role) && (
-                                <Button size="small" color="info" startIcon={<SwapBudgetIcon />} onClick={() => { setBudgetHeadRow(row); setNewBudgetHeadId(''); setBudgetHeadReason(''); }}>Budget Head</Button>
+                                <Button size="small" color="info" startIcon={<SwapBudgetIcon />} onClick={() => { setBudgetHeadRow(row); setNewBudgetHeadId(''); setBudgetHeadReason(''); }}>{t('budgetHead')}</Button>
                               )}
                               {row.status === POStatus.APPROVED && (
-                                <Button size="small" color="secondary" startIcon={<PaymentIcon />} onClick={() => setPaymentTypeRow(row)}>Payment Type</Button>
+                                <Button size="small" color="secondary" startIcon={<PaymentIcon />} onClick={() => setPaymentTypeRow(row)}>{t('paymentType')}</Button>
                               )}
                               {row.status === POStatus.DELIVERED && !row.parentPoId && Array.isArray(row.regenerationData) && (row.regenerationData as unknown[]).length > 0 && (!row.childPos || row.childPos.length === 0) && (
-                                <Button size="small" color="secondary" startIcon={<AutoRenewIcon />} onClick={() => setRegenRow(row)}>Regen PO</Button>
+                                <Button size="small" color="secondary" startIcon={<AutoRenewIcon />} onClick={() => setRegenRow(row)}>{t('regenPo')}</Button>
                               )}
                               {row.status !== POStatus.APPROVED && row.status !== POStatus.PARTIALLY_DELIVERED && row.status !== POStatus.DELIVERED && (
-                                <Button size="small" color="error" startIcon={<DeleteIcon />} onClick={() => setDeleteRow(row)}>Delete</Button>
+                                <Button size="small" color="error" startIcon={<DeleteIcon />} onClick={() => setDeleteRow(row)}>{t('delete')}</Button>
                               )}
                             </>
                           )}
@@ -1080,7 +1078,7 @@ export default function PurchaseOrdersPage() {
 
                         {row.approvalWorkflow && (
                           <Box sx={{ mt: 1.5 }}>
-                            <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>Approval Status</Typography>
+                            <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>{t('approvalStatus')}</Typography>
                             <ApprovalStepsDisplay steps={row.approvalWorkflow.steps} />
                           </Box>
                         )}
@@ -1109,14 +1107,14 @@ export default function PurchaseOrdersPage() {
 
       {/* Create PO Dialog */}
       <ResponsiveDialog open={createOpen} onClose={() => { setCreateOpen(false); resetForm(); }} maxWidth="md" fullWidth sx={{ '& .MuiDialog-paper': { margin: { xs: 1 } } }}>
-        <DialogTitle>Create Purchase Order</DialogTitle>
+        <DialogTitle>{t('createTitle')}</DialogTitle>
         <DialogContent>
           {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1, flexWrap: 'wrap' }}>
             {/* Vendor Selection */}
             <TextField
               select
-              label="Vendor"
+              label={t('vendor')}
               value={selectedVendorId}
               onChange={(e) => { setSelectedVendorId(e.target.value); setSelectedQuotationId(''); }}
               fullWidth
@@ -1132,7 +1130,7 @@ export default function PurchaseOrdersPage() {
             {selectedVendorId && (
               <TextField
                 select
-                label="Quotation (approved only)"
+                label={t('quotationApproved')}
                 value={selectedQuotationId}
                 onChange={(e) => {
                   const quotationId = e.target.value;
@@ -1141,7 +1139,7 @@ export default function PurchaseOrdersPage() {
                 fullWidth
                 size="small"
                 required
-                helperText={approvedQuotations?.length === 0 ? 'No approved quotations for this vendor' : undefined}
+                helperText={approvedQuotations?.length === 0 ? t('noApprovedQuotations') : undefined}
               >
                 {approvedQuotations?.map((q) => (
                   <MenuItem key={q.id} value={q.id}>{q.quotationNumber} — {formatCurrency(q.grandTotal)}</MenuItem>
@@ -1152,7 +1150,7 @@ export default function PurchaseOrdersPage() {
             {/* Payment Type Selection */}
             <TextField
               select
-              label="Payment Type"
+              label={t('paymentType')}
               value={paymentType}
               onChange={(e) => {
                 const next = e.target.value;
@@ -1167,17 +1165,17 @@ export default function PurchaseOrdersPage() {
               fullWidth
               size="small"
               required
-              helperText="Controls when payment happens and whether a gate pass needs an invoice"
+              helperText={t('paymentTypeHelp')}
             >
-              <MenuItem value={POPaymentType.ADVANCE}>Against Advance — pay before delivery</MenuItem>
-              <MenuItem value={POPaymentType.AFTER_DELIVERY}>After Delivery — pay after goods arrive + invoice</MenuItem>
-              <MenuItem value={POPaymentType.FULL_PAYMENT}>Against Full Payment — full payment done, goods follow</MenuItem>
+              <MenuItem value={POPaymentType.ADVANCE}>{t('ptAdvanceOpt')}</MenuItem>
+              <MenuItem value={POPaymentType.AFTER_DELIVERY}>{t('ptAfterOpt')}</MenuItem>
+              <MenuItem value={POPaymentType.FULL_PAYMENT}>{t('ptFullOpt')}</MenuItem>
             </TextField>
 
             {/* Advance Amount — only for ADVANCE / FULL_PAYMENT */}
             {(paymentType === POPaymentType.ADVANCE || paymentType === POPaymentType.FULL_PAYMENT) && (
               <TextField
-                label={paymentType === POPaymentType.ADVANCE ? 'Advance Amount' : 'Full Payment Amount'}
+                label={paymentType === POPaymentType.ADVANCE ? t('advanceAmount') : t('fullPaymentAmount')}
                 type="text"
                 value={formatIndianNumber(advanceAmount)}
                 onChange={(e) => {
@@ -1196,21 +1194,21 @@ export default function PurchaseOrdersPage() {
                 fullWidth
                 size="small"
                 required
-                helperText={grandTotal > 0 ? `Maximum: ${formatCurrency(grandTotal)}` : 'Select a quotation first'}
+                helperText={grandTotal > 0 ? t('maxLine', { v: formatCurrency(grandTotal) }) : t('selectQuotationFirst')}
               />
             )}
 
             <TextField
-              label="Payment Terms"
+              label={t('paymentTerms')}
               value={paymentTerms}
               onChange={(e) => setPaymentTerms(e.target.value)}
               fullWidth
               size="small"
-              helperText="E.g. After Delivery & Inspection"
+              helperText={t('paymentTermsHelp')}
             />
 
             <TextField
-              label="Delivery Due Date"
+              label={t('deliveryDue')}
               type="date"
               value={deliveryDate}
               onChange={(e) => setDeliveryDate(e.target.value)}
@@ -1222,21 +1220,21 @@ export default function PurchaseOrdersPage() {
             {/* Budget Head Selection */}
             <TextField
               select
-              label="Budget Head *"
+              label={t('budgetHeadLabel')}
               value={selectedBudgetHeadId}
               onChange={(e) => setSelectedBudgetHeadId(e.target.value)}
               fullWidth
               size="small"
               required
-              helperText="Tag this PO to a budget head for commitment tracking"
+              helperText={t('budgetHeadHelp')}
             >
-              <MenuItem value="">— Select Budget Head —</MenuItem>
+              <MenuItem value="">{t('selectBudgetHead')}</MenuItem>
               {budgetHeads.map((h) => <MenuItem key={h.id} value={h.id}>{h.particulars}</MenuItem>)}
             </TextField>
 
             {/* Item Description / Notes */}
             <TextField
-              label="Item Description"
+              label={t('itemDescLabel')}
               value={poNotes}
               onChange={(e) => setPoNotes(e.target.value)}
               fullWidth
@@ -1244,7 +1242,7 @@ export default function PurchaseOrdersPage() {
               multiline
               minRows={2}
               maxRows={4}
-              placeholder="Optional item description for this PO (shown highlighted in PDF)"
+              placeholder={t('itemDescPlaceholder')}
             />
 
             {/* Referred By — existing user names + creatable custom names */}
@@ -1254,25 +1252,25 @@ export default function PurchaseOrdersPage() {
             {selectedQuotation && (
               <Box>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
-                  <Typography variant="body2" fontWeight={600}>Deductions (optional)</Typography>
+                  <Typography variant="body2" fontWeight={600}>{t('deductionsOptional')}</Typography>
                   <Button
                     size="small"
                     startIcon={<AddIcon />}
                     onClick={() => setDeductions([...deductions, { amount: '', reason: '' }])}
                   >
-                    Add Deduction
+                    {t('addDeduction')}
                   </Button>
                 </Box>
                 {deductions.length === 0 ? (
                   <Typography variant="caption" color="text.secondary">
-                    No deductions. Add TDS, retention, advance adjustment, or other deductions to reduce the net payable.
+                    {t('noDeductions')}
                   </Typography>
                 ) : (
                   <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
                     {deductions.map((d, idx) => (
                       <Box key={idx} sx={{ display: 'flex', gap: 1, alignItems: 'flex-start', flexWrap: { xs: 'wrap', sm: 'nowrap' } }}>
                         <TextField
-                          label="Amount"
+                          label={t('amount')}
                           type="text"
                           value={formatIndianNumber(d.amount)}
                           onChange={(e) => {
@@ -1287,7 +1285,7 @@ export default function PurchaseOrdersPage() {
                           sx={{ width: { xs: '100%', sm: 150 }, flexShrink: 0 }}
                         />
                         <TextField
-                          label="Reason"
+                          label={t('reason')}
                           value={d.reason}
                           onChange={(e) => {
                             const updated = [...deductions];
@@ -1296,13 +1294,13 @@ export default function PurchaseOrdersPage() {
                           }}
                           size="small"
                           fullWidth
-                          placeholder="E.g. TDS, retention, advance adjustment"
+                          placeholder={t('reasonPlaceholder')}
                         />
                         <IconButton
                           size="small"
                           color="error"
                           onClick={() => setDeductions(deductions.filter((_, i) => i !== idx))}
-                          title="Remove"
+                          title={t('remove')}
                         >
                           <CloseIcon fontSize="small" />
                         </IconButton>
@@ -1316,18 +1314,18 @@ export default function PurchaseOrdersPage() {
             {/* Items from quotation (read-only) */}
             {selectedQuotation?.items && selectedQuotation.items.length > 0 && (
               <Box>
-                <Typography variant="body2" fontWeight={600} sx={{ mb: 1 }}>Items (from quotation)</Typography>
+                <Typography variant="body2" fontWeight={600} sx={{ mb: 1 }}>{t('itemsFromQuotation')}</Typography>
                 <TableContainer component={Card} variant="outlined" sx={{ display: { xs: 'none', sm: 'block' } }}>
                   <Table size="small">
                     <TableHead>
                       <TableRow>
-                        <TableCell sx={{ fontWeight: 600 }}>S.no</TableCell>
-                        <TableCell sx={{ fontWeight: 600 }}>Material</TableCell>
-                        <TableCell sx={{ fontWeight: 600 }}>Qty</TableCell>
-                        <TableCell sx={{ fontWeight: 600 }}>Unit</TableCell>
-                        <TableCell sx={{ fontWeight: 600 }}>Unit Price</TableCell>
-                        <TableCell sx={{ fontWeight: 600 }}>GST</TableCell>
-                        <TableCell sx={{ fontWeight: 600 }}>Amount (Inc. GST)</TableCell>
+                        <TableCell sx={{ fontWeight: 600 }}>{t('sno')}</TableCell>
+                        <TableCell sx={{ fontWeight: 600 }}>{t('material')}</TableCell>
+                        <TableCell sx={{ fontWeight: 600 }}>{t('qty')}</TableCell>
+                        <TableCell sx={{ fontWeight: 600 }}>{t('unit')}</TableCell>
+                        <TableCell sx={{ fontWeight: 600 }}>{t('unitPrice')}</TableCell>
+                        <TableCell sx={{ fontWeight: 600 }}>{t('gst')}</TableCell>
+                        <TableCell sx={{ fontWeight: 600 }}>{t('amountInc')}</TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
@@ -1358,19 +1356,19 @@ export default function PurchaseOrdersPage() {
                       </Box>
                       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'repeat(2, 1fr)', sm: 'repeat(4, minmax(0, 1fr))' }, gap: 1 }}>
                         <Box>
-                          <Typography variant="caption" color="text.secondary">Quantity</Typography>
+                          <Typography variant="caption" color="text.secondary">{t('quantity')}</Typography>
                           <Typography variant="body2" fontWeight={600}>{item.quantity}</Typography>
                         </Box>
                         <Box>
-                          <Typography variant="caption" color="text.secondary">Unit</Typography>
+                          <Typography variant="caption" color="text.secondary">{t('unit')}</Typography>
                           <Typography variant="body2" fontWeight={600}>{item.unit ?? '—'}</Typography>
                         </Box>
                         <Box>
-                          <Typography variant="caption" color="text.secondary">Unit Price</Typography>
+                          <Typography variant="caption" color="text.secondary">{t('unitPrice')}</Typography>
                           <Typography variant="body2" fontWeight={600}>{formatCurrency(item.unitPrice)}</Typography>
                         </Box>
                         <Box>
-                          <Typography variant="caption" color="text.secondary">GST</Typography>
+                          <Typography variant="caption" color="text.secondary">{t('gst')}</Typography>
                           <Typography variant="body2" fontWeight={600}>{Number(item.gstRate ?? 0)}% ({formatCurrency(Number(item.amount) * Number(item.gstRate ?? 0) / 100)})</Typography>
                         </Box>
                       </Box>
@@ -1378,16 +1376,16 @@ export default function PurchaseOrdersPage() {
                   ))}
                 </Box>
                 <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: { xs: 'stretch', sm: 'flex-end' }, gap: 1, mt: 1 }}>
-                  <Typography variant="body2" sx={{ textAlign: { xs: 'left', sm: 'right' } }}>Total: <strong>{formatCurrency(quotationTotal)}</strong></Typography>
-                  <Typography variant="body2" sx={{ textAlign: { xs: 'left', sm: 'right' } }}>GST (auto-calculated): <strong>{formatCurrency(gstAmount)}</strong></Typography>
-                  <Typography variant="body2" sx={{ textAlign: { xs: 'left', sm: 'right' } }}>Grand Total: <strong>{formatCurrency(grandTotal)}</strong></Typography>
+                  <Typography variant="body2" sx={{ textAlign: { xs: 'left', sm: 'right' } }}>{t('totalLine')} <strong>{formatCurrency(quotationTotal)}</strong></Typography>
+                  <Typography variant="body2" sx={{ textAlign: { xs: 'left', sm: 'right' } }}>{t('gstAuto')} <strong>{formatCurrency(gstAmount)}</strong></Typography>
+                  <Typography variant="body2" sx={{ textAlign: { xs: 'left', sm: 'right' } }}>{t('grandTotalLine')} <strong>{formatCurrency(grandTotal)}</strong></Typography>
                   {totalDeductions > 0 && (
                     <>
                       <Typography variant="body2" color="error" sx={{ textAlign: { xs: 'left', sm: 'right' } }}>
-                        Less Deductions: <strong>-{formatCurrency(totalDeductions)}</strong>
+                        {t('lessDeductions')} <strong>-{formatCurrency(totalDeductions)}</strong>
                       </Typography>
                       <Typography variant="body2" sx={{ textAlign: { xs: 'left', sm: 'right' }, fontWeight: 700, fontSize: '1rem' }}>
-                        Net Payable: {formatCurrency(netPayable)}
+                        {t('netPayableLine', { v: formatCurrency(netPayable) })}
                       </Typography>
                     </>
                   )}
@@ -1397,18 +1395,18 @@ export default function PurchaseOrdersPage() {
             <AcknowledgementCheckbox
               checked={acknowledged}
               onChange={setAcknowledged}
-              entityLabel="purchase order"
+              entityLabel={t('entityPO')}
             />
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => { setCreateOpen(false); resetForm(); }}>Cancel</Button>
+          <Button onClick={() => { setCreateOpen(false); resetForm(); }}>{t('cancel')}</Button>
           <Button
             variant="contained"
             onClick={handleCreatePO}
             disabled={(!selectedVendorId || !selectedQuotationId || !selectedBudgetHeadId || !acknowledged || ((paymentType === POPaymentType.ADVANCE || paymentType === POPaymentType.FULL_PAYMENT) && (!advanceAmount || Number(advanceAmount) <= 0))) || createMutation.isPending || createSubmissionLocked.current}
           >
-            {createMutation.isPending ? <CircularProgress size={20} /> : 'Create PO'}
+            {createMutation.isPending ? <CircularProgress size={20} /> : t('createPoBtn')}
           </Button>
         </DialogActions>
       </ResponsiveDialog>
@@ -1422,13 +1420,13 @@ export default function PurchaseOrdersPage() {
       >
         <Alert onClose={dismissApprovalPopup} severity="success" sx={{ width: '100%' }}>
           <Typography variant="body2">
-            <strong>Your Purchase Order {approvalPopup?.poNumber} has been APPROVED!</strong>
+            <strong>{t('approvedPopupTitle', { n: approvalPopup?.poNumber })}</strong>
           </Typography>
           <Typography variant="caption">
-            Vendor: {approvalPopup?.vendor?.name} — Grand Total: {approvalPopup ? formatCurrency(approvalPopup.grandTotal) : ''}
+            {t('approvedPopupLine', { vendor: approvalPopup?.vendor?.name, total: approvalPopup ? formatCurrency(approvalPopup.grandTotal) : '' })}
           </Typography>
           <Typography variant="caption" display="block">
-            You can now create a Gate Pass for this PO.
+            {t('approvedPopupNote')}
           </Typography>
         </Alert>
       </Snackbar>
@@ -1436,7 +1434,7 @@ export default function PurchaseOrdersPage() {
       <ApprovalActionDialog
         open={approvalAction !== null}
         action={approvalAction?.action ?? 'approve'}
-        entityLabel="Purchase Order"
+        entityLabel={t('entityPOCap')}
         pending={approveMutation.isPending || rejectMutation.isPending}
         error={error}
         onClearError={() => setError('')}
@@ -1465,17 +1463,17 @@ export default function PurchaseOrdersPage() {
 
       {/* Delete Confirmation Dialog */}
       <ResponsiveDialog open={deleteRow !== null} onClose={() => setDeleteRow(null)} maxWidth="xs" fullWidth>
-        <DialogTitle>Delete Purchase Order</DialogTitle>
+        <DialogTitle>{t('deleteTitle')}</DialogTitle>
         <DialogContent>
-          <Typography>Are you sure you want to delete purchase order <strong>{deleteRow?.poNumber}</strong>?</Typography>
+          <Typography><Trans t={t} i18nKey="deleteConfirm" values={{ n: deleteRow?.poNumber }} components={{ b: <strong /> }} /></Typography>
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
-            This action cannot be undone. Only purchase orders that are not approved, partially delivered, or delivered can be deleted.
+            {t('deleteNote')}
           </Typography>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDeleteRow(null)}>Cancel</Button>
+          <Button onClick={() => setDeleteRow(null)}>{t('cancel')}</Button>
           <Button color="error" variant="contained" disabled={deleteMutation.isPending} onClick={() => deleteRow && deleteMutation.mutate(deleteRow.id)}>
-            {deleteMutation.isPending ? <CircularProgress size={20} /> : 'Delete'}
+            {deleteMutation.isPending ? <CircularProgress size={20} /> : t('delete')}
           </Button>
         </DialogActions>
       </ResponsiveDialog>
@@ -1485,47 +1483,46 @@ export default function PurchaseOrdersPage() {
 
       {/* Deactivate Confirmation Dialog (Admin only — works on any PO status) */}
       <ResponsiveDialog open={deactivateRow !== null} onClose={() => setDeactivateRow(null)} maxWidth="xs" fullWidth>
-        <DialogTitle>Deactivate Purchase Order</DialogTitle>
+        <DialogTitle>{t('deactivateTitle')}</DialogTitle>
         <DialogContent>
-          <Typography>Are you sure you want to deactivate purchase order <strong>{deactivateRow?.poNumber}</strong>?</Typography>
+          <Typography><Trans t={t} i18nKey="deactivateConfirm" values={{ n: deactivateRow?.poNumber }} components={{ b: <strong /> }} /></Typography>
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
-            This will mark the PO as DELETED. It will no longer appear in the active PO list or Action Required.
-            The record remains in the database for audit purposes.
+            {t('deactivateNote')}
           </Typography>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDeactivateRow(null)}>Cancel</Button>
+          <Button onClick={() => setDeactivateRow(null)}>{t('cancel')}</Button>
           <Button color="error" variant="contained" disabled={deactivateMutation.isPending} onClick={() => deactivateRow && deactivateMutation.mutate(deactivateRow.id)}>
-            {deactivateMutation.isPending ? <CircularProgress size={20} /> : 'Deactivate'}
+            {deactivateMutation.isPending ? <CircularProgress size={20} /> : t('deactivate')}
           </Button>
         </DialogActions>
       </ResponsiveDialog>
 
       {/* Edit Item Description + Referred By (for approved/delivered POs) */}
       <ResponsiveDialog open={notesEditRow !== null} onClose={() => { setNotesEditRow(null); setNotesEditValue(''); setReferredByEditValue(''); }} maxWidth="sm" fullWidth>
-        <DialogTitle>Edit PO Details — {notesEditRow?.poNumber}</DialogTitle>
+        <DialogTitle>{t('editDetailsTitle', { n: notesEditRow?.poNumber })}</DialogTitle>
         <DialogContent>
           {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
           <TextField
-            label="Item Description"
+            label={t('itemDescLabel')}
             value={notesEditValue}
             onChange={(e) => setNotesEditValue(e.target.value)}
             fullWidth
             multiline
             minRows={3}
             maxRows={6}
-            placeholder="Item description for this PO"
+            placeholder={t('itemDescPlaceholder2')}
             sx={{ mt: 1 }}
           />
           <Box sx={{ mt: 2 }}>
             <ReferredBySelect value={referredByEditValue} onChange={setReferredByEditValue} />
           </Box>
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
-            Only the Item Description and Referred By can be edited after approval. Financial details cannot be modified.
+            {t('editAfterApprovalNote')}
           </Typography>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => { setNotesEditRow(null); setNotesEditValue(''); setReferredByEditValue(''); }}>Cancel</Button>
+          <Button onClick={() => { setNotesEditRow(null); setNotesEditValue(''); setReferredByEditValue(''); }}>{t('cancel')}</Button>
           {user && isAdminRole(user.role) && notesEditRow && (
             <Button
               color="error"
@@ -1533,7 +1530,7 @@ export default function PurchaseOrdersPage() {
               disabled={deactivateMutation.isPending}
               onClick={() => setDeactivateRow(notesEditRow)}
             >
-              Deactivate PO
+              {t('deactivatePo')}
             </Button>
           )}
           <Button
@@ -1541,31 +1538,29 @@ export default function PurchaseOrdersPage() {
             disabled={updateNotesMutation.isPending}
             onClick={() => updateNotesMutation.mutate()}
           >
-            {updateNotesMutation.isPending ? <CircularProgress size={20} /> : 'Save'}
+            {updateNotesMutation.isPending ? <CircularProgress size={20} /> : t('save')}
           </Button>
         </DialogActions>
       </ResponsiveDialog>
 
       {/* Change Budget Head (admin-only, for approved/delivered POs) */}
       <ResponsiveDialog open={budgetHeadRow !== null} onClose={() => { setBudgetHeadRow(null); setNewBudgetHeadId(''); setBudgetHeadReason(''); }} maxWidth="sm" fullWidth>
-        <DialogTitle>Change Budget Head — {budgetHeadRow?.poNumber}</DialogTitle>
+        <DialogTitle>{t('changeBudgetTitle', { n: budgetHeadRow?.poNumber })}</DialogTitle>
         <DialogContent>
           {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
             <Alert severity="info" sx={{ mb: 1 }}>
-              This will move <strong>{formatCurrency(Number(budgetHeadRow?.grandTotal ?? 0))}</strong> from the current budget head
-              {' "'}<strong>{budgetHeadRow?.budgetHead?.particulars ?? '—'}</strong>{'" '} to the new one.
-              The old head gets its money back; the new head is charged.
+              <Trans t={t} i18nKey="moveInfo" values={{ amount: formatCurrency(Number(budgetHeadRow?.grandTotal ?? 0)), from: budgetHeadRow?.budgetHead?.particulars ?? '—' }} components={{ b: <strong /> }} />
             </Alert>
             <TextField
               select
-              label="New Budget Head"
+              label={t('newBudgetHead')}
               value={newBudgetHeadId}
               onChange={(e) => setNewBudgetHeadId(e.target.value)}
               fullWidth
               size="small"
               required
-              helperText={newBudgetHeadId === budgetHeadRow?.budgetHeadId ? 'Select a different budget head' : undefined}
+              helperText={newBudgetHeadId === budgetHeadRow?.budgetHeadId ? t('selectDifferent') : undefined}
               error={newBudgetHeadId === budgetHeadRow?.budgetHeadId}
             >
               {budgetHeads
@@ -1575,7 +1570,7 @@ export default function PurchaseOrdersPage() {
                 ))}
             </TextField>
             <TextField
-              label="Reason (optional)"
+              label={t('reasonOptional')}
               value={budgetHeadReason}
               onChange={(e) => setBudgetHeadReason(e.target.value)}
               fullWidth
@@ -1583,19 +1578,19 @@ export default function PurchaseOrdersPage() {
               multiline
               minRows={2}
               maxRows={4}
-              placeholder="Why is the budget head being changed?"
+              placeholder={t('reasonBudgetPlaceholder')}
             />
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => { setBudgetHeadRow(null); setNewBudgetHeadId(''); setBudgetHeadReason(''); }}>Cancel</Button>
+          <Button onClick={() => { setBudgetHeadRow(null); setNewBudgetHeadId(''); setBudgetHeadReason(''); }}>{t('cancel')}</Button>
           <Button
             variant="contained"
             color="info"
             disabled={!newBudgetHeadId || newBudgetHeadId === budgetHeadRow?.budgetHeadId || changeBudgetHeadMutation.isPending}
             onClick={() => changeBudgetHeadMutation.mutate()}
           >
-            {changeBudgetHeadMutation.isPending ? <CircularProgress size={20} /> : 'Change Budget Head'}
+            {changeBudgetHeadMutation.isPending ? <CircularProgress size={20} /> : t('changeBudgetBtn')}
           </Button>
         </DialogActions>
       </ResponsiveDialog>
@@ -1611,6 +1606,7 @@ export default function PurchaseOrdersPage() {
 // the item's amount is posted immediately (Dr ledger / Cr vendor). The dialog
 // refetches the PO so posted items show their voucher + ledger chips live.
 function PostToLedgerDialog({ row, onClose }: { row: PORow | null; onClose: () => void }) {
+  const { t } = useTranslation('po');
   const queryClient = useQueryClient();
   const [selectedItem, setSelectedItem] = useState<POItem | null>(null);
   const [selectedLedgerId, setSelectedLedgerId] = useState('');
@@ -1654,7 +1650,7 @@ function PostToLedgerDialog({ row, onClose }: { row: PORow | null; onClose: () =
       return response.data;
     },
     onSuccess: (data) => {
-      setSuccessMsg(data.message ?? 'Item posted to ledger');
+      setSuccessMsg(data.message ?? t('itemPosted'));
       setDialogError('');
       setSelectedItem(null);
       setSelectedLedgerId('');
@@ -1683,7 +1679,7 @@ function PostToLedgerDialog({ row, onClose }: { row: PORow | null; onClose: () =
 
   return (
     <ResponsiveDialog open={row !== null} onClose={resetAndClose} maxWidth="sm" fullWidth>
-      <DialogTitle>Post to Ledger — {po?.poNumber}</DialogTitle>
+      <DialogTitle>{t('postLedgerTitle', { n: po?.poNumber })}</DialogTitle>
       <DialogContent>
         {dialogError && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setDialogError('')}>{dialogError}</Alert>}
         {successMsg && <Alert severity="success" sx={{ mb: 2 }} onClose={() => setSuccessMsg('')}>{successMsg}</Alert>}
@@ -1691,7 +1687,7 @@ function PostToLedgerDialog({ row, onClose }: { row: PORow | null; onClose: () =
         {!selectedItem ? (
           <>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
-              Select the item to post to a ledger.
+              {t('selectItemPost')}
             </Typography>
             {(po?.items ?? []).map((item, idx) => {
               const info = postedInfo(item);
@@ -1717,7 +1713,7 @@ function PostToLedgerDialog({ row, onClose }: { row: PORow | null; onClose: () =
                     </Box>
                     <Typography variant="caption" color="text.secondary">
                       {Number(item.quantity)} {item.unit ?? ''} × {formatCurrency(item.unitPrice)}
-                      {Number(item.gstRate ?? 0) > 0 ? ` + ${item.gstRate}% GST` : ''}
+                      {Number(item.gstRate ?? 0) > 0 ? t('gstPlus', { r: item.gstRate }) : ''}
                     </Typography>
                     {(item.ledgerPosts ?? []).length > 0 && (
                       <Box sx={{ mt: 0.5, display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
@@ -1727,16 +1723,16 @@ function PostToLedgerDialog({ row, onClose }: { row: PORow | null; onClose: () =
                             size="small"
                             color="success"
                             variant="outlined"
-                            label={`${p.ledger?.name ?? 'Ledger'} · ${formatCurrency(Number(p.taxableAmount) + Number(p.gstAmount))} · ${p.journalVoucher?.jvNumber ?? ''}`}
+                            label={`${p.ledger?.name ?? t('ledgerFallback')} · ${formatCurrency(Number(p.taxableAmount) + Number(p.gstAmount))} · ${p.journalVoucher?.jvNumber ?? ''}`}
                           />
                         ))}
                       </Box>
                     )}
                     {info.fully ? (
-                      <Chip size="small" color="success" label="Fully posted" sx={{ mt: 0.5 }} />
+                      <Chip size="small" color="success" label={t('fullyPosted')} sx={{ mt: 0.5 }} />
                     ) : info.posted > 0 ? (
                       <Typography variant="caption" color="warning.dark" sx={{ display: 'block', mt: 0.5 }}>
-                        Remaining to post: {formatCurrency(info.remaining)}
+                        {t('remainingToPost', { v: formatCurrency(info.remaining) })}
                       </Typography>
                     ) : null}
                   </Box>
@@ -1749,31 +1745,31 @@ function PostToLedgerDialog({ row, onClose }: { row: PORow | null; onClose: () =
             <Card variant="outlined" sx={{ p: 1.5, mb: 2, bgcolor: 'action.hover' }}>
               <Typography fontWeight={600}>{selectedItem.materialName}</Typography>
               <Typography variant="caption" color="text.secondary">
-                Amount to post: {formatCurrency(postedInfo(selectedItem).remaining)}
-                {Number(selectedItem.gstRate ?? 0) > 0 ? ` (+ ${selectedItem.gstRate}% GST → Input GST ledger)` : ''}
+                {t('amountToPost', { v: formatCurrency(postedInfo(selectedItem).remaining) })}
+                {Number(selectedItem.gstRate ?? 0) > 0 ? t('gstInputNote', { r: selectedItem.gstRate }) : ''}
               </Typography>
             </Card>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-              Search and select the ledger:
+              {t('searchLedger')}
             </Typography>
             <LedgerAutocomplete
-              label="Ledger"
+              label={t('ledgerLabel')}
               value={selectedLedgerId}
               onChange={(id, ledger) => { setSelectedLedgerId(id); setSelectedLedger(ledger); }}
               ledgers={ledgers}
               autoFocus
             />
             <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1.5 }}>
-              Posting: Dr {selectedLedger?.name ?? 'selected ledger'} / Cr {po?.vendor?.name ?? 'Vendor'} (sundry creditor).
+              {t('postingLine', { dr: selectedLedger?.name ?? t('selectedLedgerFallback'), cr: po?.vendor?.name ?? t('vendorFallback') })}
             </Typography>
           </>
         )}
       </DialogContent>
       <DialogActions>
         {selectedItem && (
-          <Button onClick={() => { setSelectedItem(null); setSelectedLedgerId(''); setSelectedLedger(null); }}>Back</Button>
+          <Button onClick={() => { setSelectedItem(null); setSelectedLedgerId(''); setSelectedLedger(null); }}>{t('back')}</Button>
         )}
-        <Button onClick={resetAndClose}>Close</Button>
+        <Button onClick={resetAndClose}>{t('close')}</Button>
         {selectedItem && (
           <Button
             variant="contained"
@@ -1782,7 +1778,7 @@ function PostToLedgerDialog({ row, onClose }: { row: PORow | null; onClose: () =
           >
             {postMutation.isPending
               ? <CircularProgress size={20} />
-              : `Post ${formatCurrency(postedInfo(selectedItem).remaining)} to ${selectedLedger?.name ?? 'Ledger'}`}
+              : t('postBtn', { v: formatCurrency(postedInfo(selectedItem).remaining), ledger: selectedLedger?.name ?? t('ledgerFallback') })}
           </Button>
         )}
       </DialogActions>
@@ -1835,6 +1831,7 @@ interface DeliveryTrailData {
 }
 
 function DeliveryTrailDialog({ poId, poNumber, onClose }: { poId: string | null; poNumber: string; onClose: () => void }) {
+  const { t } = useTranslation('po');
   const navigate = useNavigate();
   const { data, isLoading } = useQuery<DeliveryTrailData>({
     queryKey: ['/pos', poId, 'delivery-trail'],
@@ -1848,7 +1845,7 @@ function DeliveryTrailDialog({ poId, poNumber, onClose }: { poId: string | null;
 
   return (
     <ResponsiveDialog open={!!poId} onClose={onClose} maxWidth="md" fullWidth>
-      <DialogTitle>Delivery Trail — {poNumber}</DialogTitle>
+      <DialogTitle>{t('deliveryTrailTitle', { n: poNumber })}</DialogTitle>
       <DialogContent>
         {isLoading ? (
           <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress /></Box>
@@ -1856,16 +1853,16 @@ function DeliveryTrailDialog({ poId, poNumber, onClose }: { poId: string | null;
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3, pt: 1 }}>
             {/* Item Summary */}
             <Box>
-              <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>Item Summary</Typography>
+              <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>{t('itemSummary')}</Typography>
               <TableContainer component={Card} variant="outlined" sx={{ overflowX: 'auto' }}>
                 <Table size="small">
                   <TableHead>
                     <TableRow>
-                      <TableCell sx={{ fontWeight: 600 }}>Material</TableCell>
-                      <TableCell sx={{ fontWeight: 600 }}>Ordered</TableCell>
-                      <TableCell sx={{ fontWeight: 600 }}>Accepted</TableCell>
-                      <TableCell sx={{ fontWeight: 600 }}>Remaining</TableCell>
-                      <TableCell sx={{ fontWeight: 600 }}>Unit</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>{t('material')}</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>{t('ordered')}</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>{t('accepted')}</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>{t('remaining')}</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>{t('unit')}</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
@@ -1886,30 +1883,30 @@ function DeliveryTrailDialog({ poId, poNumber, onClose }: { poId: string | null;
             {/* Delivery Instances */}
             <Box>
               <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>
-                Delivery Instances ({data.deliveries.length})
+                {t('deliveryInstances', { n: data.deliveries.length })}
               </Typography>
               {data.deliveries.length === 0 ? (
-                <Typography variant="body2" color="text.secondary">No deliveries yet.</Typography>
+                <Typography variant="body2" color="text.secondary">{t('noDeliveries')}</Typography>
               ) : (
                 data.deliveries.map((delivery, idx) => (
                   <Accordion key={delivery.gatePassId} defaultExpanded={idx === data.deliveries.length - 1}>
                     <AccordionSummary expandIcon={<ExpandMoreIcon />}>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
                         <Chip size="small" label={delivery.passNumber} color="primary" />
-                        <Chip size="small" label={delivery.gatePassStatus.replace(/_/g, ' ')} color={STATUS_COLORS[delivery.gatePassStatus] ?? 'default'} />
+                        <Chip size="small" label={enumLabel(delivery.gatePassStatus)} color={STATUS_COLORS[delivery.gatePassStatus] ?? 'default'} />
                         <Typography variant="caption" color="text.secondary">{formatDate(delivery.gatePassDate)}</Typography>
                       </Box>
                     </AccordionSummary>
                     <AccordionDetails>
                       {/* Gate Pass Items */}
-                      <Typography variant="caption" fontWeight={600} color="text.secondary">GATE PASS ITEMS (delivered to gate)</Typography>
+                      <Typography variant="caption" fontWeight={600} color="text.secondary">{t('gatePassItems')}</Typography>
                       <TableContainer component={Card} variant="outlined" sx={{ overflowX: 'auto', mb: 2 }}>
                         <Table size="small">
                           <TableHead>
                             <TableRow>
-                              <TableCell sx={{ fontWeight: 600 }}>Material</TableCell>
-                              <TableCell sx={{ fontWeight: 600 }}>Delivered Qty</TableCell>
-                              <TableCell sx={{ fontWeight: 600 }}>Unit</TableCell>
+                              <TableCell sx={{ fontWeight: 600 }}>{t('material')}</TableCell>
+                              <TableCell sx={{ fontWeight: 600 }}>{t('deliveredQty')}</TableCell>
+                              <TableCell sx={{ fontWeight: 600 }}>{t('unit')}</TableCell>
                             </TableRow>
                           </TableHead>
                           <TableBody>
@@ -1929,17 +1926,17 @@ function DeliveryTrailDialog({ poId, poNumber, onClose }: { poId: string | null;
                         delivery.goodsReceipts.map((gr, grIdx) => (
                           <Box key={grIdx} sx={{ mt: grIdx > 0 ? 2 : 0 }}>
                             <Typography variant="caption" fontWeight={600} color="text.secondary">
-                              GOODS RECEIPT — {gr.receiptNumber} ({gr.receiptStatus.replace(/_/g, ' ')})
+                              {t('goodsReceiptLine', { n: gr.receiptNumber, s: enumLabel(gr.receiptStatus) })}
                             </Typography>
                             <TableContainer component={Card} variant="outlined" sx={{ overflowX: 'auto' }}>
                               <Table size="small">
                                 <TableHead>
                                   <TableRow>
-                                    <TableCell sx={{ fontWeight: 600 }}>Material</TableCell>
-                                    <TableCell sx={{ fontWeight: 600 }}>Delivered</TableCell>
-                                    <TableCell sx={{ fontWeight: 600 }}>Accepted</TableCell>
-                                    <TableCell sx={{ fontWeight: 600 }}>Rejected</TableCell>
-                                    <TableCell sx={{ fontWeight: 600 }}>Reason</TableCell>
+                                    <TableCell sx={{ fontWeight: 600 }}>{t('material')}</TableCell>
+                                    <TableCell sx={{ fontWeight: 600 }}>{t('delivered')}</TableCell>
+                                    <TableCell sx={{ fontWeight: 600 }}>{t('accepted')}</TableCell>
+                                    <TableCell sx={{ fontWeight: 600 }}>{t('rejected')}</TableCell>
+                                    <TableCell sx={{ fontWeight: 600 }}>{t('reason')}</TableCell>
                                   </TableRow>
                                 </TableHead>
                                 <TableBody>
@@ -1957,15 +1954,15 @@ function DeliveryTrailDialog({ poId, poNumber, onClose }: { poId: string | null;
                             </TableContainer>
                             {gr.inspectedAt && (
                               <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
-                                Inspected: {formatDate(gr.inspectedAt)}
-                                {gr.postedAt && ` • Posted: ${formatDate(gr.postedAt)}`}
+                                {t('inspectedLine', { d: formatDate(gr.inspectedAt) })}
+                                {gr.postedAt && t('postedLine', { d: formatDate(gr.postedAt) })}
                               </Typography>
                             )}
                           </Box>
                         ))
                       ) : (
                         <Alert severity="info" sx={{ mt: 1 }}>
-                          No Goods Receipt created yet for this gate pass. The material has arrived at the gate but has not been inspected or posted to inventory.
+                          {t('noGrn')}
                         </Alert>
                       )}
                     </AccordionDetails>
@@ -1977,20 +1974,20 @@ function DeliveryTrailDialog({ poId, poNumber, onClose }: { poId: string | null;
             {/* Assets Generated */}
             <Box>
               <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>
-                Assets Generated ({data.assets?.length ?? 0})
+                {t('assetsGenerated', { n: data.assets?.length ?? 0 })}
               </Typography>
               {data.assets && data.assets.length > 0 ? (
                 <TableContainer component={Card} variant="outlined" sx={{ overflowX: 'auto' }}>
                   <Table size="small">
                     <TableHead>
                       <TableRow>
-                        <TableCell sx={{ fontWeight: 600 }}>Asset ID</TableCell>
-                        <TableCell sx={{ fontWeight: 600 }}>Item</TableCell>
-                        <TableCell sx={{ fontWeight: 600 }}>Serial</TableCell>
-                        <TableCell sx={{ fontWeight: 600 }}>Status</TableCell>
-                        <TableCell sx={{ fontWeight: 600 }}>Location</TableCell>
-                        <TableCell sx={{ fontWeight: 600 }}>GRN</TableCell>
-                        <TableCell sx={{ fontWeight: 600 }}>Cost</TableCell>
+                        <TableCell sx={{ fontWeight: 600 }}>{t('assetId')}</TableCell>
+                        <TableCell sx={{ fontWeight: 600 }}>{t('item')}</TableCell>
+                        <TableCell sx={{ fontWeight: 600 }}>{t('serial')}</TableCell>
+                        <TableCell sx={{ fontWeight: 600 }}>{t('status')}</TableCell>
+                        <TableCell sx={{ fontWeight: 600 }}>{t('location')}</TableCell>
+                        <TableCell sx={{ fontWeight: 600 }}>{t('grn')}</TableCell>
+                        <TableCell sx={{ fontWeight: 600 }}>{t('cost')}</TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
@@ -1999,7 +1996,7 @@ function DeliveryTrailDialog({ poId, poNumber, onClose }: { poId: string | null;
                           <TableCell><strong>{a.assetId}</strong></TableCell>
                           <TableCell>{a.itemName}</TableCell>
                           <TableCell>{a.serialNumber ?? '—'}</TableCell>
-                          <TableCell><Chip size="small" label={a.status.replace(/_/g, ' ')} color={(STATUS_COLORS[a.status] ?? 'default') as never} /></TableCell>
+                          <TableCell><Chip size="small" label={enumLabel(a.status)} color={(STATUS_COLORS[a.status] ?? 'default') as never} /></TableCell>
                           <TableCell>{a.location}</TableCell>
                           <TableCell>{a.receiptNumber ?? '—'}</TableCell>
                           <TableCell>{a.totalCost != null ? `₹${a.totalCost.toLocaleString('en-IN')}` : '—'}</TableCell>
@@ -2009,16 +2006,16 @@ function DeliveryTrailDialog({ poId, poNumber, onClose }: { poId: string | null;
                   </Table>
                 </TableContainer>
               ) : (
-                <Typography variant="body2" color="text.secondary">No individual asset records generated from this PO.</Typography>
+                <Typography variant="body2" color="text.secondary">{t('noAssets')}</Typography>
               )}
             </Box>
           </Box>
         ) : (
-          <Typography color="text.secondary">No data available.</Typography>
+          <Typography color="text.secondary">{t('noData')}</Typography>
         )}
       </DialogContent>
       <DialogActions>
-        <Button onClick={onClose}>Close</Button>
+        <Button onClick={onClose}>{t('close')}</Button>
       </DialogActions>
     </ResponsiveDialog>
   );
@@ -2037,6 +2034,7 @@ interface EditItem {
 }
 
 function EditPODialog({ row, onClose, onSuccess }: { row: PORow | null; onClose: () => void; onSuccess: () => void }) {
+  const { t } = useTranslation('po');
   const queryClient = useQueryClient();
   const [items, setItems] = useState<EditItem[]>([]);
   const [editReason, setEditReason] = useState('');
@@ -2077,8 +2075,8 @@ function EditPODialog({ row, onClose, onSuccess }: { row: PORow | null; onClose:
   const mutation = useMutation({
     mutationFn: async () => {
       const selectedItems = items.filter((i) => i.selected);
-      if (selectedItems.length === 0) throw new Error('At least one item must be selected');
-      if (!editReason.trim()) throw new Error('Edit reason is required');
+      if (selectedItems.length === 0) throw new Error(t('errSelectItem'));
+      if (!editReason.trim()) throw new Error(t('errEditReason'));
       await api.post(`/purchase-orders/${row!.id}/edit`, {
         items: selectedItems.map((i) => ({
           poItemId: i.id,
@@ -2106,24 +2104,23 @@ function EditPODialog({ row, onClose, onSuccess }: { row: PORow | null; onClose:
 
   return (
     <ResponsiveDialog open={!!row} onClose={onClose} maxWidth="md" fullWidth>
-      <DialogTitle>Edit PO — {row?.poNumber}</DialogTitle>
+      <DialogTitle>{t('editPoTitle', { n: row?.poNumber })}</DialogTitle>
       <DialogContent>
         {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
         <Alert severity="warning" sx={{ mb: 2 }}>
-          This PO was partially delivered. Edit quantities to match what was actually received.
-          The PO will go for re-approval. After re-approval, a "Generate Regenerated PO" button will appear for the remaining items.
+          {t('partialWarn')}
         </Alert>
         <TableContainer component={Card} variant="outlined" sx={{ overflowX: 'auto', mb: 2 }}>
           <Table size="small">
             <TableHead>
               <TableRow>
                 <TableCell padding="checkbox" />
-                <TableCell sx={{ fontWeight: 600 }}>Material</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Accepted</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Qty</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Unit</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Unit Price</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>GST %</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>{t('material')}</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>{t('accepted')}</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>{t('qty')}</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>{t('unit')}</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>{t('unitPrice')}</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>{t('gstPct')}</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -2163,7 +2160,7 @@ function EditPODialog({ row, onClose, onSuccess }: { row: PORow | null; onClose:
                       }}
                       sx={{ width: 80 }}
                       error={item.selected && Number(item.quantity) < item.accepted}
-                      helperText={item.selected && Number(item.quantity) < item.accepted ? `Min: ${item.accepted}` : ''}
+                      helperText={item.selected && Number(item.quantity) < item.accepted ? t('minLine', { n: item.accepted }) : ''}
                     />
                   </TableCell>
                   <TableCell>
@@ -2179,7 +2176,7 @@ function EditPODialog({ row, onClose, onSuccess }: { row: PORow | null; onClose:
                       sx={{ width: 120 }}
                     >
                       {QTY_UNIT_OPTIONS.map((opt) => (
-                        <MenuItem key={opt.value} value={opt.value}>{opt.label}</MenuItem>
+                        <MenuItem key={opt.value} value={opt.value}>{unitLabel(opt.value)}</MenuItem>
                       ))}
                     </TextField>
                   </TableCell>
@@ -2219,34 +2216,34 @@ function EditPODialog({ row, onClose, onSuccess }: { row: PORow | null; onClose:
 
         {/* Summary */}
         <Box sx={{ display: 'flex', gap: 2, mb: 2, flexWrap: 'wrap' }}>
-          <Chip label={`Total: ₹${totalAmount.toLocaleString('en-IN')}`} />
-          <Chip label={`GST: ₹${gstAmount.toLocaleString('en-IN')}`} />
-          <Chip label={`Grand Total: ₹${grandTotal.toLocaleString('en-IN')}`} color="primary" />
+          <Chip label={t('chipTotal', { v: totalAmount.toLocaleString('en-IN') })} />
+          <Chip label={t('chipGst', { v: gstAmount.toLocaleString('en-IN') })} />
+          <Chip label={t('chipGrand', { v: grandTotal.toLocaleString('en-IN') })} color="primary" />
           {remainingItems.length > 0 && (
-            <Chip label={`${remainingItems.length} item(s) will be available for regeneration`} color="secondary" variant="outlined" />
+            <Chip label={t('chipRegen', { n: remainingItems.length })} color="secondary" variant="outlined" />
           )}
         </Box>
 
         <TextField
-          label="Edit Reason (required)"
+          label={t('editReasonLabel')}
           value={editReason}
           onChange={(e) => setEditReason(e.target.value)}
           fullWidth
           size="small"
           multiline
           rows={2}
-          placeholder="e.g. Vendor delivered 70 out of 100, closing PO at delivered quantity"
+          placeholder={t('editReasonPlaceholder')}
         />
       </DialogContent>
       <DialogActions sx={{ flexWrap: 'wrap', gap: 1 }}>
-        <Button onClick={onClose}>Cancel</Button>
+        <Button onClick={onClose}>{t('cancel')}</Button>
         <Button
           variant="contained"
           color="warning"
           onClick={() => mutation.mutate()}
           disabled={mutation.isPending}
         >
-          {mutation.isPending ? <CircularProgress size={20} /> : 'Edit & Send for Re-approval'}
+          {mutation.isPending ? <CircularProgress size={20} /> : t('editSend')}
         </Button>
       </DialogActions>
     </ResponsiveDialog>
@@ -2257,6 +2254,7 @@ function EditPODialog({ row, onClose, onSuccess }: { row: PORow | null; onClose:
 // Approved POs only. Saving sends the PO back for re-approval; once approved
 // again it is treated as the new type (advance payments / invoice flow).
 function ChangePaymentTypeDialog({ row, onClose, onSuccess }: { row: PORow | null; onClose: () => void; onSuccess: () => void }) {
+  const { t } = useTranslation('po');
   const queryClient = useQueryClient();
   const [newType, setNewType] = useState('');
   const [advAmount, setAdvAmount] = useState('');
@@ -2290,38 +2288,37 @@ function ChangePaymentTypeDialog({ row, onClose, onSuccess }: { row: PORow | nul
 
   return (
     <ResponsiveDialog open={!!row} onClose={onClose} maxWidth="sm" fullWidth>
-      <DialogTitle>Change Payment Type — {row?.poNumber}</DialogTitle>
+      <DialogTitle>{t('changePtTitle', { n: row?.poNumber })}</DialogTitle>
       <DialogContent>
         {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
         <Alert severity="info" sx={{ mb: 2 }}>
-          Changing the payment type sends the PO back for re-approval.
-          Once approved again, it is treated as the new type.
+          {t('changePtInfo')}
         </Alert>
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
           <TextField
-            label="Current Payment Type"
-            value={row?.paymentType ? row.paymentType.replace(/_/g, ' ') : ''}
+            label={t('currentPt')}
+            value={row?.paymentType ? enumLabel(row.paymentType) : ''}
             size="small"
             fullWidth
             InputProps={{ readOnly: true }}
           />
           <TextField
             select
-            label="New Payment Type"
+            label={t('newPt')}
             value={newType}
             onChange={(e) => setNewType(e.target.value)}
             size="small"
             fullWidth
             required
           >
-            <MenuItem value="">— Select —</MenuItem>
+            <MenuItem value="">{t('select')}</MenuItem>
             {[POPaymentType.ADVANCE, POPaymentType.AFTER_DELIVERY, POPaymentType.FULL_PAYMENT]
-              .filter((t) => t !== row?.paymentType)
-              .map((t) => <MenuItem key={t} value={t}>{t.replace(/_/g, ' ')}</MenuItem>)}
+              .filter((pt) => pt !== row?.paymentType)
+              .map((pt) => <MenuItem key={pt} value={pt}>{enumLabel(pt)}</MenuItem>)}
           </TextField>
           {needsAdvance && (
             <TextField
-              label={newType === POPaymentType.ADVANCE ? 'Advance Amount' : 'Full Payment Amount'}
+              label={newType === POPaymentType.ADVANCE ? t('advanceAmount') : t('fullPaymentAmount')}
               type="text"
               value={formatIndianNumber(advAmount)}
               onChange={(e) => setAdvAmount(e.target.value.replace(/,/g, ''))}
@@ -2329,11 +2326,11 @@ function ChangePaymentTypeDialog({ row, onClose, onSuccess }: { row: PORow | nul
               size="small"
               fullWidth
               required
-              helperText={`PO grand total: ${formatCurrency(Number(row?.grandTotal ?? 0))}`}
+              helperText={t('poGrandTotalHelp', { v: formatCurrency(Number(row?.grandTotal ?? 0)) })}
             />
           )}
           <TextField
-            label="Reason (required)"
+            label={t('reasonRequired')}
             value={reason}
             onChange={(e) => setReason(e.target.value)}
             size="small"
@@ -2345,9 +2342,9 @@ function ChangePaymentTypeDialog({ row, onClose, onSuccess }: { row: PORow | nul
         </Box>
       </DialogContent>
       <DialogActions>
-        <Button onClick={onClose}>Cancel</Button>
+        <Button onClick={onClose}>{t('cancel')}</Button>
         <Button variant="contained" onClick={() => mutation.mutate()} disabled={!canSubmit || mutation.isPending}>
-          {mutation.isPending ? <CircularProgress size={20} /> : 'Save & Send for Re-approval'}
+          {mutation.isPending ? <CircularProgress size={20} /> : t('saveSend')}
         </Button>
       </DialogActions>
     </ResponsiveDialog>
@@ -2356,6 +2353,7 @@ function ChangePaymentTypeDialog({ row, onClose, onSuccess }: { row: PORow | nul
 
 // ─── Edit Unapproved PO Dialog ────────────────────────────
 function EditUnapprovedPODialog({ row, onClose, onSuccess }: { row: PORow | null; onClose: () => void; onSuccess: () => void }) {
+  const { t } = useTranslation('po');
   const queryClient = useQueryClient();
   const [items, setItems] = useState<EditItem[]>([]);
   const [paymentTerms, setPaymentTerms] = useState('');
@@ -2423,28 +2421,26 @@ function EditUnapprovedPODialog({ row, onClose, onSuccess }: { row: PORow | null
 
   return (
     <ResponsiveDialog open={!!row} onClose={onClose} maxWidth="md" fullWidth>
-      <DialogTitle>Edit PO — {row?.poNumber}</DialogTitle>
+      <DialogTitle>{t('editPoTitle', { n: row?.poNumber })}</DialogTitle>
       <DialogContent>
         {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
         <Alert severity={row?.status === POStatus.APPROVED ? 'warning' : 'info'} sx={{ mb: 2 }}>
-          {row?.status === POStatus.APPROVED
-            ? 'This PO is already approved. Saving changes returns it to Pending Re-Approval — it must be approved again before it counts as approved. Payment type is fixed at creation.'
-            : 'This PO has not been approved yet. You can edit items, payment terms, delivery date, and budget head. Payment type is fixed at creation and cannot be changed. The PO will remain pending approval after saving.'}
+          {row?.status === POStatus.APPROVED ? t('alertApproved') : t('alertNotApproved')}
         </Alert>
 
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mb: 2 }}>
           <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
             <TextField
-              label="Payment Type"
-              value={row?.paymentType ? row.paymentType.replace(/_/g, ' ') : ''}
+              label={t('paymentType')}
+              value={row?.paymentType ? enumLabel(row.paymentType) : ''}
               fullWidth
               size="small"
               InputProps={{ readOnly: true }}
-              helperText="Cannot be changed after creation"
+              helperText={t('cannotChange')}
             />
             {row?.advanceAmount !== null && row?.advanceAmount !== undefined && Number(row.advanceAmount) > 0 && (
               <TextField
-                label="Agreed Advance"
+                label={t('agreedAdvance')}
                 value={formatCurrency(Number(row.advanceAmount))}
                 size="small"
                 InputProps={{ readOnly: true }}
@@ -2454,7 +2450,7 @@ function EditUnapprovedPODialog({ row, onClose, onSuccess }: { row: PORow | null
           </Box>
 
           <TextField
-            label="Payment Terms"
+            label={t('paymentTerms')}
             value={paymentTerms}
             onChange={(e) => setPaymentTerms(e.target.value)}
             fullWidth
@@ -2464,7 +2460,7 @@ function EditUnapprovedPODialog({ row, onClose, onSuccess }: { row: PORow | null
           />
 
           <TextField
-            label="Delivery Date"
+            label={t('deliveryDate')}
             type="date"
             value={deliveryDate}
             onChange={(e) => setDeliveryDate(e.target.value)}
@@ -2475,42 +2471,42 @@ function EditUnapprovedPODialog({ row, onClose, onSuccess }: { row: PORow | null
 
           <TextField
             select
-            label="Budget Head *"
+            label={t('budgetHeadLabel')}
             value={budgetHeadId}
             onChange={(e) => setBudgetHeadId(e.target.value)}
             fullWidth
             size="small"
             required
           >
-            <MenuItem value="">— Select Budget Head —</MenuItem>
+            <MenuItem value="">{t('selectBudgetHead')}</MenuItem>
             {budgetHeads.map((h) => <MenuItem key={h.id} value={h.id}>{h.particulars}</MenuItem>)}
           </TextField>
 
           <TextField
-            label="Item Description"
+            label={t('itemDescription')}
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             fullWidth
             size="small"
             multiline
             rows={2}
-            placeholder="Item description for this PO (shown in the table and PDF)"
+            placeholder={t('itemDescPlaceholder3')}
           />
 
           <ReferredBySelect value={referredBy} onChange={setReferredBy} />
         </Box>
 
-        <Typography variant="subtitle2" sx={{ mb: 1 }}>Items</Typography>
+        <Typography variant="subtitle2" sx={{ mb: 1 }}>{t('items')}</Typography>
         <TableContainer component={Card} variant="outlined" sx={{ overflowX: 'auto', mb: 2 }}>
           <Table size="small">
             <TableHead>
               <TableRow>
-                <TableCell>Material</TableCell>
-                <TableCell align="right">Qty</TableCell>
-                <TableCell>Unit</TableCell>
-                <TableCell align="right">Unit Price</TableCell>
-                <TableCell align="right">GST %</TableCell>
-                <TableCell align="right">Amount</TableCell>
+                <TableCell>{t('material')}</TableCell>
+                <TableCell align="right">{t('qty')}</TableCell>
+                <TableCell>{t('unit')}</TableCell>
+                <TableCell align="right">{t('unitPrice')}</TableCell>
+                <TableCell align="right">{t('gstPct')}</TableCell>
+                <TableCell align="right">{t('amount')}</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -2554,7 +2550,7 @@ function EditUnapprovedPODialog({ row, onClose, onSuccess }: { row: PORow | null
                       sx={{ width: 120 }}
                     >
                       {QTY_UNIT_OPTIONS.map((opt) => (
-                        <MenuItem key={opt.value} value={opt.value}>{opt.label}</MenuItem>
+                        <MenuItem key={opt.value} value={opt.value}>{unitLabel(opt.value)}</MenuItem>
                       ))}
                     </TextField>
                   </TableCell>
@@ -2597,19 +2593,19 @@ function EditUnapprovedPODialog({ row, onClose, onSuccess }: { row: PORow | null
         </TableContainer>
 
         <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 3 }}>
-          <Typography variant="body2">Total: <strong>{formatCurrency(totalAmount)}</strong></Typography>
-          <Typography variant="body2">GST: <strong>{formatCurrency(gstAmount)}</strong></Typography>
-          <Typography variant="body2">Grand Total: <strong>{formatCurrency(grandTotal)}</strong></Typography>
+          <Typography variant="body2">{t('totalLine')} <strong>{formatCurrency(totalAmount)}</strong></Typography>
+          <Typography variant="body2">{t('gstLine')} <strong>{formatCurrency(gstAmount)}</strong></Typography>
+          <Typography variant="body2">{t('grandTotalLine')} <strong>{formatCurrency(grandTotal)}</strong></Typography>
         </Box>
       </DialogContent>
       <DialogActions>
-        <Button onClick={onClose}>Cancel</Button>
+        <Button onClick={onClose}>{t('cancel')}</Button>
         <Button
           variant="contained"
           onClick={() => mutation.mutate()}
           disabled={mutation.isPending || !budgetHeadId || items.length === 0}
         >
-          {mutation.isPending ? <CircularProgress size={20} /> : 'Save Changes'}
+          {mutation.isPending ? <CircularProgress size={20} /> : t('saveChanges')}
         </Button>
       </DialogActions>
     </ResponsiveDialog>
@@ -2618,6 +2614,7 @@ function EditUnapprovedPODialog({ row, onClose, onSuccess }: { row: PORow | null
 
 // ─── Regenerate PO Dialog ─────────────────────────────────
 function RegeneratePODialog({ row, onClose, onSuccess }: { row: PORow | null; onClose: () => void; onSuccess: () => void }) {
+  const { t } = useTranslation('po');
   const queryClient = useQueryClient();
   const [error, setError] = useState('');
   const remainingItems = (row?.regenerationData as { materialName: string; quantity: number; unit: string; unitPrice: number; gstRate: number }[] | null) ?? [];
@@ -2639,22 +2636,21 @@ function RegeneratePODialog({ row, onClose, onSuccess }: { row: PORow | null; on
 
   return (
     <ResponsiveDialog open={!!row} onClose={onClose} maxWidth="sm" fullWidth>
-      <DialogTitle>Generate Regenerated PO — {row?.poNumber}</DialogTitle>
+      <DialogTitle>{t('regenTitle', { n: row?.poNumber })}</DialogTitle>
       <DialogContent>
         {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
         <Alert severity="info" sx={{ mb: 2 }}>
-          This will create a new PO with the remaining items from the original PO.
-          The new PO will need its own approval.
+          {t('regenInfo')}
         </Alert>
         <TableContainer component={Card} variant="outlined" sx={{ overflowX: 'auto', mb: 2 }}>
           <Table size="small">
             <TableHead>
               <TableRow>
-                <TableCell sx={{ fontWeight: 600 }}>Material</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Qty</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Unit</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Unit Price</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>GST %</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>{t('material')}</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>{t('qty')}</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>{t('unit')}</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>{t('unitPrice')}</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>{t('gstPct')}</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -2671,20 +2667,20 @@ function RegeneratePODialog({ row, onClose, onSuccess }: { row: PORow | null; on
           </Table>
         </TableContainer>
         <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-          <Chip label={`Total: ₹${totalAmount.toLocaleString('en-IN')}`} />
-          <Chip label={`GST: ₹${gstAmount.toLocaleString('en-IN')}`} />
-          <Chip label={`Grand Total: ₹${grandTotal.toLocaleString('en-IN')}`} color="primary" />
+          <Chip label={t('chipTotal', { v: totalAmount.toLocaleString('en-IN') })} />
+          <Chip label={t('chipGst', { v: gstAmount.toLocaleString('en-IN') })} />
+          <Chip label={t('chipGrand', { v: grandTotal.toLocaleString('en-IN') })} color="primary" />
         </Box>
       </DialogContent>
       <DialogActions sx={{ flexWrap: 'wrap', gap: 1 }}>
-        <Button onClick={onClose}>Cancel</Button>
+        <Button onClick={onClose}>{t('cancel')}</Button>
         <Button
           variant="contained"
           color="secondary"
           onClick={() => mutation.mutate()}
           disabled={mutation.isPending}
         >
-          {mutation.isPending ? <CircularProgress size={20} /> : 'Generate Regenerated PO'}
+          {mutation.isPending ? <CircularProgress size={20} /> : t('generateRegen')}
         </Button>
       </DialogActions>
     </ResponsiveDialog>
@@ -2695,6 +2691,7 @@ function RegeneratePODialog({ row, onClose, onSuccess }: { row: PORow | null; on
  * previously created via the PO_REFERRED_BY dropdown options, and lets the
  * user create a new custom name inline (persisted for next time). */
 function ReferredBySelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const { t } = useTranslation('po');
   const { data } = useQuery<{ data: string[] }>({
     queryKey: ['/auth/users/names'],
     queryFn: async () => (await api.get('/auth/users/names')).data,
@@ -2703,13 +2700,13 @@ function ReferredBySelect({ value, onChange }: { value: string; onChange: (v: st
   const staticOptions = (data?.data ?? []).map((n) => ({ value: n, label: n }));
   return (
     <CreatableSelect
-      label="Referred By"
+      label={t('referredBy')}
       value={value}
       onChange={onChange}
       dropdownType="PO_REFERRED_BY"
       staticOptions={staticOptions}
-      placeholder="Select a user or type a new name"
-      createButtonLabel="New Name"
+      placeholder={t('refPlaceholder')}
+      createButtonLabel={t('newName')}
     />
   );
 }

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Button, CircularProgress, Box, Alert } from '@mui/material';
 import { AutoFixHigh as AutoFixIcon } from '@mui/icons-material';
 import api, { extractErrorMessage } from '../config/api';
+import { useTranslation } from 'react-i18next';
 
 export interface OcrQuotationData {
   vendorName: string | null;
@@ -33,6 +34,7 @@ interface OcrAutoFillProps<T extends OcrQuotationData | OcrInvoiceData> {
 }
 
 export default function OcrAutoFill<T extends OcrQuotationData | OcrInvoiceData>({ file, documentType, onExtract, disabled }: OcrAutoFillProps<T>) {
+  const { t } = useTranslation();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -68,7 +70,7 @@ export default function OcrAutoFill<T extends OcrQuotationData | OcrInvoiceData>
         disabled={loading || disabled}
         sx={{ mt: 1 }}
       >
-        {loading ? 'Reading document...' : 'Auto-fill from document'}
+        {loading ? t('shared.reading') : t('shared.autoFill')}
       </Button>
       {error && (
         <Alert severity="error" sx={{ mt: 1 }} onClose={() => setError('')}>

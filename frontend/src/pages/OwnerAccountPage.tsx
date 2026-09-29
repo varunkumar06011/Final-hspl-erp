@@ -41,6 +41,7 @@ import ResponsiveTable from '../components/ResponsiveTable';
 import { formatCurrency, formatIndianNumber, formatDate, todayLocalDate } from '../utils/enumOptions';
 import { useDeepLinkRow } from '../hooks/useDeepLinkRow';
 
+import { useTranslation } from 'react-i18next';
 interface OwnerAccount {
   id: string;
   ownerName: string;
@@ -69,6 +70,7 @@ interface StatementEntry {
 }
 
 export default function OwnerAccountPage() {
+  const { t: tr } = useTranslation('owner');
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(20);
   const [search, setSearch] = useState('');
@@ -188,7 +190,7 @@ export default function OwnerAccountPage() {
 
   const handleSubmit = () => {
     if (!form.ownerName || String(form.ownerName).trim() === '') {
-      setError('Owner name is required');
+      setError(tr('errName'));
       return;
     }
     setError('');
@@ -211,11 +213,11 @@ export default function OwnerAccountPage() {
 
   const handleContribSubmit = () => {
     if (!contribForm.bankAccountId) {
-      setError('Select a bank account');
+      setError(tr('errBank'));
       return;
     }
     if (!contribForm.amount || Number(contribForm.amount) <= 0) {
-      setError('Amount must be greater than 0');
+      setError(tr('errAmount'));
       return;
     }
     setError('');
@@ -240,17 +242,17 @@ export default function OwnerAccountPage() {
     <Box sx={{ minWidth: 0, overflow: 'hidden' }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: { xs: 'flex-start', sm: 'center' }, mb: 2, flexWrap: 'wrap', gap: 1 }}>
         <Typography variant="h5" fontWeight={600} sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' } }}>
-          Owner Account
+          {tr('title')}
         </Typography>
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
           <RefreshButton onClick={() => refetch()} />
-          <Button variant="contained" startIcon={<AddIcon />} onClick={openCreate}>New Owner</Button>
+          <Button variant="contained" startIcon={<AddIcon />} onClick={openCreate}>{tr('newOwner')}</Button>
         </Box>
       </Box>
 
       <Alert severity="info" sx={{ mb: 2 }}>
-        <strong>Positive balance</strong> = company owes owner (owner put in more than taken out).
-        <strong> Negative balance</strong> = owner owes company.
+        <strong>{tr('posBal')}</strong> = company owes owner (owner put in more than taken out).
+        <strong> {tr('negBal')}</strong> = owner owes company.
       </Alert>
 
       {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
@@ -259,7 +261,7 @@ export default function OwnerAccountPage() {
         <Box sx={{ p: 2 }}>
           <TextField
             size="small"
-            placeholder="Search owner accounts..."
+            placeholder={tr('search')}
             value={search}
             onChange={(e) => { setSearch(e.target.value); setPage(0); }}
             InputProps={{ startAdornment: (<InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment>) }}
@@ -272,12 +274,12 @@ export default function OwnerAccountPage() {
           <Table size="small" sx={{ '@media (min-width: 900px)': { minWidth: 'max-content', '& .MuiTableCell-root': { whiteSpace: 'nowrap' } } }}>
             <TableHead>
               <TableRow>
-                <TableCell sx={{ fontWeight: 600 }}>Owner Name</TableCell>
-                <TableCell sx={{ fontWeight: 600 }} align="right">Opening</TableCell>
-                <TableCell sx={{ fontWeight: 600 }} align="right">Current Balance</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Meaning</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Status</TableCell>
-                <TableCell align="right" sx={{ fontWeight: 600 }}>Actions</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>{tr('ownerName')}</TableCell>
+                <TableCell sx={{ fontWeight: 600 }} align="right">{tr('opening')}</TableCell>
+                <TableCell sx={{ fontWeight: 600 }} align="right">{tr('currentBalance')}</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>{tr('meaning')}</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>{tr('status')}</TableCell>
+                <TableCell align="right" sx={{ fontWeight: 600 }}>{tr('actions')}</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -285,37 +287,37 @@ export default function OwnerAccountPage() {
                 <TableRow><TableCell colSpan={6} align="center" sx={{ py: 4 }}><CircularProgress size={32} /></TableCell></TableRow>
               ) : isError ? (
                 <TableRow><TableCell colSpan={6} align="center" sx={{ py: 4 }}>
-                  <Alert severity="error" sx={{ mb: 1 }}>Failed to load data.</Alert>
-                  <Button size="small" onClick={() => refetch()} startIcon={<RefreshIcon />}>Retry</Button>
+                  <Alert severity="error" sx={{ mb: 1 }}>{tr('errLoad')}</Alert>
+                  <Button size="small" onClick={() => refetch()} startIcon={<RefreshIcon />}>{tr('retry')}</Button>
                 </TableCell></TableRow>
               ) : rows.length === 0 ? (
                 <TableRow><TableCell colSpan={6} align="center" sx={{ py: 4 }}>
-                  <Typography color="text.secondary">No owner accounts found. Create one to track owner funding.</Typography>
+                  <Typography color="text.secondary">{tr('none')}</Typography>
                 </TableCell></TableRow>
               ) : (
                 rows.map((row) => {
                   const balance = Number(row.currentBalance);
                   return (
                     <TableRow key={row.id} hover ref={rowRef(row.id)} sx={{ ...(highlightId === row.id && { bgcolor: 'warning.light', '&:hover': { bgcolor: 'warning.light' } }) }}>
-                      <TableCell data-label="Owner Name" sx={{ fontWeight: 600 }}>{row.ownerName}</TableCell>
-                      <TableCell data-label="Opening" align="right">{formatCurrency(row.openingBalance)}</TableCell>
-                      <TableCell data-label="Current Balance" align="right" sx={{ fontWeight: 600, color: balance > 0 ? 'error.main' : balance < 0 ? 'success.main' : 'text.primary' }}>
+                      <TableCell data-label={tr('ownerName')} sx={{ fontWeight: 600 }}>{row.ownerName}</TableCell>
+                      <TableCell data-label={tr('opening')} align="right">{formatCurrency(row.openingBalance)}</TableCell>
+                      <TableCell data-label={tr('currentBalance')} align="right" sx={{ fontWeight: 600, color: balance > 0 ? 'error.main' : balance < 0 ? 'success.main' : 'text.primary' }}>
                         {formatCurrency(balance)}
                       </TableCell>
-                      <TableCell data-label="Meaning">
+                      <TableCell data-label={tr('meaning')}>
                         <Chip
-                          label={balance > 0 ? 'Company owes owner' : balance < 0 ? 'Owner owes company' : 'Settled'}
+                          label={balance > 0 ? tr('coOwes') : balance < 0 ? tr('ownerOwes') : tr('settled')}
                           size="small"
                           color={balance > 0 ? 'warning' : balance < 0 ? 'info' : 'success'}
                         />
                       </TableCell>
-                      <TableCell data-label="Status"><Chip label={row.isActive ? 'Active' : 'Inactive'} size="small" color={row.isActive ? 'success' : 'default'} /></TableCell>
-                      <TableCell data-label="Actions" align="right">
+                      <TableCell data-label={tr('status')}><Chip label={row.isActive ? tr('active') : tr('inactive')} size="small" color={row.isActive ? 'success' : 'default'} /></TableCell>
+                      <TableCell data-label={tr('actions')} align="right">
                         <Stack direction="row" spacing={0.5} justifyContent="flex-end">
-                          <IconButton size="small" title="Statement" onClick={() => setStatementAccountId(row.id)}><StatementIcon fontSize="small" /></IconButton>
-                          <IconButton size="small" title="Add Contribution" onClick={() => openContrib(row.id)}><ContributionIcon fontSize="small" color="success" /></IconButton>
-                          <IconButton size="small" title="Edit" onClick={() => openEdit(row)}><EditIcon fontSize="small" /></IconButton>
-                          <IconButton size="small" title="Delete" onClick={() => setDeleteConfirm(row.id)}><DeleteIcon fontSize="small" /></IconButton>
+                          <IconButton size="small" title={tr('statement')} onClick={() => setStatementAccountId(row.id)}><StatementIcon fontSize="small" /></IconButton>
+                          <IconButton size="small" title={tr('addContribution')} onClick={() => openContrib(row.id)}><ContributionIcon fontSize="small" color="success" /></IconButton>
+                          <IconButton size="small" title={tr('edit')} onClick={() => openEdit(row)}><EditIcon fontSize="small" /></IconButton>
+                          <IconButton size="small" title={tr('delete')} onClick={() => setDeleteConfirm(row.id)}><DeleteIcon fontSize="small" /></IconButton>
                         </Stack>
                       </TableCell>
                     </TableRow>
@@ -340,14 +342,14 @@ export default function OwnerAccountPage() {
 
       {/* Create/Edit dialog */}
       <ResponsiveDialog open={dialogOpen} onClose={closeDialog} maxWidth="xs" fullWidth>
-        <DialogTitle>{editing ? 'Edit Owner Account' : 'New Owner Account'}</DialogTitle>
+        <DialogTitle>{editing ? tr('editTitle') : tr('newTitle')}</DialogTitle>
         <DialogContent>
           {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
-            <TextField label="Owner Name" value={form.ownerName ?? ''} onChange={(e) => setForm({ ...form, ownerName: e.target.value })} required size="small" />
+            <TextField label={tr('ownerName')} value={form.ownerName ?? ''} onChange={(e) => setForm({ ...form, ownerName: e.target.value })} required size="small" />
             {!editing && (
               <TextField
-                label="Opening Balance"
+                label={tr('openingBalance')}
                 type="text"
                 value={formatIndianNumber(form.openingBalance ?? '')}
                 onChange={(e) => setForm({ ...form, openingBalance: e.target.value.replace(/,/g, '') })}
@@ -356,35 +358,35 @@ export default function OwnerAccountPage() {
               />
             )}
             {editing && (
-              <TextField select label="Status" value={form.isActive ?? true} onChange={(e) => setForm({ ...form, isActive: e.target.value === 'true' })} size="small">
-                <MenuItem value="true">Active</MenuItem>
-                <MenuItem value="false">Inactive</MenuItem>
+              <TextField select label={tr('status')} value={form.isActive ?? true} onChange={(e) => setForm({ ...form, isActive: e.target.value === 'true' })} size="small">
+                <MenuItem value="true">{tr('active')}</MenuItem>
+                <MenuItem value="false">{tr('inactive')}</MenuItem>
               </TextField>
             )}
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={closeDialog}>Cancel</Button>
+          <Button onClick={closeDialog}>{tr('cancel')}</Button>
           <Button variant="contained" onClick={handleSubmit} disabled={createMutation.isPending || updateMutation.isPending}>
-            {createMutation.isPending || updateMutation.isPending ? <CircularProgress size={20} /> : editing ? 'Update' : 'Create'}
+            {createMutation.isPending || updateMutation.isPending ? <CircularProgress size={20} /> : editing ? tr('update') : tr('create')}
           </Button>
         </DialogActions>
       </ResponsiveDialog>
 
       {/* Contribution dialog */}
       <ResponsiveDialog open={contribOpen} onClose={() => setContribOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Owner Contribution (Money into Company Bank)</DialogTitle>
+        <DialogTitle>{tr('ownerContributionMoneyInto')}</DialogTitle>
         <DialogContent>
           {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
           <Alert severity="info" sx={{ mb: 2 }}>
-            This deposits money into the selected bank account AND increases the owner's balance (company owes owner more).
+            {tr('contribNote')}
           </Alert>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
-            <TextField select label="Bank Account" value={contribForm.bankAccountId ?? ''} onChange={(e) => setContribForm({ ...contribForm, bankAccountId: e.target.value })} size="small">
+            <TextField select label={tr('bankAccount')} value={contribForm.bankAccountId ?? ''} onChange={(e) => setContribForm({ ...contribForm, bankAccountId: e.target.value })} size="small">
               {bankAccounts.map((acc) => <MenuItem key={acc.id} value={acc.id}>{acc.accountName} ({formatCurrency(acc.currentBalance)})</MenuItem>)}
             </TextField>
             <TextField
-              label="Amount"
+              label={tr('amount')}
               type="text"
               value={formatIndianNumber(contribForm.amount ?? '')}
               onChange={(e) => setContribForm({ ...contribForm, amount: e.target.value.replace(/,/g, '') })}
@@ -392,12 +394,12 @@ export default function OwnerAccountPage() {
               size="small"
               InputProps={{ startAdornment: <InputAdornment position="start">₹</InputAdornment> }}
             />
-            <TextField label="Date" type="date" value={contribForm.date ?? ''} onChange={(e) => setContribForm({ ...contribForm, date: e.target.value })} size="small" InputLabelProps={{ shrink: true }} inputProps={{ max: todayLocalDate() }} />
-            <TextField label="Description" value={contribForm.description ?? ''} onChange={(e) => setContribForm({ ...contribForm, description: e.target.value })} size="small" multiline rows={2} />
+            <TextField label={tr('date')} type="date" value={contribForm.date ?? ''} onChange={(e) => setContribForm({ ...contribForm, date: e.target.value })} size="small" InputLabelProps={{ shrink: true }} inputProps={{ max: todayLocalDate() }} />
+            <TextField label={tr('description')} value={contribForm.description ?? ''} onChange={(e) => setContribForm({ ...contribForm, description: e.target.value })} size="small" multiline rows={2} />
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setContribOpen(false)}>Cancel</Button>
+          <Button onClick={() => setContribOpen(false)}>{tr('cancel')}</Button>
           <Button variant="contained" onClick={handleContribSubmit} disabled={contribMutation.isPending}>
             {contribMutation.isPending ? <CircularProgress size={20} /> : 'Add Contribution'}
           </Button>
@@ -408,13 +410,13 @@ export default function OwnerAccountPage() {
       <ResponsiveDialog open={!!statementAccountId} onClose={() => setStatementAccountId(null)} maxWidth="md" fullWidth>
         <DialogTitle>
           <Stack direction="row" alignItems="center" gap={1}>
-            <PersonIcon /><Typography variant="h6">Owner Account Statement</Typography>
+            <PersonIcon /><Typography variant="h6">{tr('ownerAccountStatement')}</Typography>
           </Stack>
         </DialogTitle>
         <DialogContent>
           {statementData?.account && (
             <Alert severity="info" sx={{ mb: 2 }}>
-              <strong>{statementData.account.ownerName}</strong> — Current Balance: {formatCurrency(statementData.account.currentBalance)} ({Number(statementData.account.currentBalance) > 0 ? 'Company owes owner' : 'Owner owes company'})
+              <strong>{statementData.account.ownerName}</strong> — {tr('stmtLine', { v: formatCurrency(statementData.account.currentBalance), m: Number(statementData.account.currentBalance) > 0 ? tr('coOwes') : tr('ownerOwes') })}
             </Alert>
           )}
           <ResponsiveTable>
@@ -422,30 +424,30 @@ export default function OwnerAccountPage() {
             <Table size="small">
               <TableHead>
                 <TableRow>
-                  <TableCell sx={{ fontWeight: 600 }}>Date</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>JV Number</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>Type</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }} align="right">Debit</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }} align="right">Credit</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }} align="right">Balance</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>Description</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>{tr('date')}</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>{tr('jvNumber')}</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>{tr('type')}</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }} align="right">{tr('debit')}</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }} align="right">{tr('credit')}</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }} align="right">{tr('balance')}</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>{tr('description')}</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
                 {stmtLoading ? (
                   <TableRow><TableCell colSpan={7} align="center"><CircularProgress size={24} /></TableCell></TableRow>
                 ) : statement.length === 0 ? (
-                  <TableRow><TableCell colSpan={7} align="center"><Typography color="text.secondary">No transactions yet</Typography></TableCell></TableRow>
+                  <TableRow><TableCell colSpan={7} align="center"><Typography color="text.secondary">{tr('noTransactionsYet')}</Typography></TableCell></TableRow>
                 ) : (
                   statement.map((entry) => (
                     <TableRow key={entry.id} hover>
-                      <TableCell data-label="Date">{formatDate(entry.date)}</TableCell>
-                      <TableCell data-label="JV Number">{entry.jvNumber}</TableCell>
-                      <TableCell data-label="Type"><Chip label={entry.type.replace(/_/g, ' ')} size="small" variant="outlined" /></TableCell>
-                      <TableCell data-label="Debit" align="right" sx={{ color: 'error.main' }}>{entry.debit > 0 ? formatCurrency(entry.debit) : '—'}</TableCell>
-                      <TableCell data-label="Credit" align="right" sx={{ color: 'success.main' }}>{entry.credit > 0 ? formatCurrency(entry.credit) : '—'}</TableCell>
-                      <TableCell data-label="Balance" align="right" sx={{ fontWeight: 600 }}>{formatCurrency(entry.balanceAfter)}</TableCell>
-                      <TableCell data-label="Description">{entry.description}</TableCell>
+                      <TableCell data-label={tr('date')}>{formatDate(entry.date)}</TableCell>
+                      <TableCell data-label={tr('jvNumber')}>{entry.jvNumber}</TableCell>
+                      <TableCell data-label={tr('type')}><Chip label={entry.type.replace(/_/g, ' ')} size="small" variant="outlined" /></TableCell>
+                      <TableCell data-label={tr('debit')} align="right" sx={{ color: 'error.main' }}>{entry.debit > 0 ? formatCurrency(entry.debit) : '—'}</TableCell>
+                      <TableCell data-label={tr('credit')} align="right" sx={{ color: 'success.main' }}>{entry.credit > 0 ? formatCurrency(entry.credit) : '—'}</TableCell>
+                      <TableCell data-label={tr('balance')} align="right" sx={{ fontWeight: 600 }}>{formatCurrency(entry.balanceAfter)}</TableCell>
+                      <TableCell data-label={tr('description')}>{entry.description}</TableCell>
                     </TableRow>
                   ))
                 )}
@@ -455,17 +457,17 @@ export default function OwnerAccountPage() {
           </ResponsiveTable>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setStatementAccountId(null)}>Close</Button>
+          <Button onClick={() => setStatementAccountId(null)}>{tr('close')}</Button>
         </DialogActions>
       </ResponsiveDialog>
 
       {/* Delete confirmation */}
       <ResponsiveDialog open={!!deleteConfirm} onClose={() => setDeleteConfirm(null)} maxWidth="xs" fullWidth>
-        <DialogTitle>Delete Owner Account?</DialogTitle>
-        <DialogContent><Typography>This will soft-delete the account. JV history will be preserved.</Typography></DialogContent>
+        <DialogTitle>{tr('deleteOwnerAccount')}</DialogTitle>
+        <DialogContent><Typography>{tr('deleteNote')}</Typography></DialogContent>
         <DialogActions>
-          <Button onClick={() => setDeleteConfirm(null)}>Cancel</Button>
-          <Button color="error" variant="contained" onClick={() => deleteConfirm && deleteMutation.mutate(deleteConfirm)} disabled={deleteMutation.isPending}>Delete</Button>
+          <Button onClick={() => setDeleteConfirm(null)}>{tr('cancel')}</Button>
+          <Button color="error" variant="contained" onClick={() => deleteConfirm && deleteMutation.mutate(deleteConfirm)} disabled={deleteMutation.isPending}>{tr('delete')}</Button>
         </DialogActions>
       </ResponsiveDialog>
     </Box>

@@ -47,6 +47,8 @@ import PinConfirmDialog from './PinConfirmDialog';
 import { exportToCsv, type CsvColumn } from '../utils/csvExport';
 import { useUrlState } from '../hooks/useUrlState';
 import { useDeepLinkRow } from '../hooks/useDeepLinkRow';
+import { useTranslation } from 'react-i18next';
+import { enumLabel } from '../utils/enumOptions';
 import CommentsButton from './CommentsButton';
 
 export interface MaterialEntry {
@@ -119,9 +121,10 @@ export default function EntityPage({
   csvFilename,
   deepLinkField,
   cardLayout = false,
-  rowClickLabel = 'View',
+  rowClickLabel,
 }: EntityPageProps) {
   const theme = useTheme();
+  const { t } = useTranslation();
   const [page, setPage] = useUrlState<number>('page', 0, Number);
   const [pageSize, setPageSize] = useUrlState<number>('pageSize', 20, Number);
   const [search, setSearch] = useUrlState<string>('search', '');
@@ -246,20 +249,20 @@ export default function EntityPage({
   const handleSubmit = useCallback(() => {
     const missingFields = fields.filter((f) => f.required && (form[f.name] === undefined || form[f.name] === null || String(form[f.name]).trim() === ''));
     if (missingFields.length > 0) {
-      setError(`Required fields missing: ${missingFields.map((f) => f.label).join(', ')}`);
+      setError(t('entity.requiredMissing', { fields: missingFields.map((f) => f.label).join(', ') }));
       return;
     }
 
     const invalidNumber = fields.find((f) => f.type === 'number' && form[f.name] !== undefined && form[f.name] !== '' && (!Number.isFinite(Number(form[f.name])) || Number(form[f.name]) < 0));
     if (invalidNumber) {
-      setError(`${invalidNumber.label} cannot be negative or invalid`);
+      setError(t('entity.negativeInvalid', { field: invalidNumber.label }));
       return;
     }
 
     const startDate = form.startDate ?? form.plannedStart;
     const endDate = form.endDate ?? form.plannedEnd;
     if (startDate && endDate && new Date(String(endDate)) < new Date(String(startDate))) {
-      setError('End date cannot be before start date');
+      setError(t('entity.endBeforeStart'));
       return;
     }
 
@@ -269,7 +272,7 @@ export default function EntityPage({
     } else {
       createMutation.mutate(form);
     }
-  }, [editing, form, fields, updateMutation, createMutation]);
+  }, [editing, form, fields, updateMutation, createMutation, t]);
 
   const rows = data?.data ?? [];
   const pagination = data?.pagination ?? { page: 1, pageSize: 20, total: 0, totalPages: 0 };
@@ -292,7 +295,7 @@ export default function EntityPage({
       : col.key === statusKey
         ? (
             <Chip
-              label={String(row[col.key] ?? '')}
+              label={enumLabel(row[col.key])}
               size="small"
               color={statusColors?.[String(row[col.key])] ?? 'default'}
             />
@@ -324,12 +327,12 @@ export default function EntityPage({
               }}
               disabled={exporting}
             >
-              Export
+              {t('entity.export')}
             </Button>
           )}
           {canCreate && (
             <Button variant="contained" startIcon={<AddIcon />} onClick={openCreate}>
-              New {entityName}
+              {t('entity.new', { name: entityName })}
             </Button>
           )}
         </Box>
@@ -345,7 +348,7 @@ export default function EntityPage({
         <Box sx={{ p: 2 }}>
           <TextField
             size="small"
-            placeholder={`Search ${title.toLowerCase()}...`}
+            placeholder={t('entity.search', { title: title.toLowerCase() })}
             value={searchInput}
             onChange={(e) => handleSearchChange(e.target.value)}
             InputProps={{
@@ -365,11 +368,11 @@ export default function EntityPage({
             <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress size={32} /></Box>
           ) : isError ? (
             <Box sx={{ textAlign: 'center', py: 4 }}>
-              <Alert severity="error" sx={{ mb: 1 }}>Failed to load data. Check your connection and try again.</Alert>
-              <Button size="small" onClick={() => refetch()} startIcon={<RefreshIcon />}>Retry</Button>
+              <Alert severity="error" sx={{ mb: 1 }}>{t('entity.loadFailed')}</Alert>
+              <Button size="small" onClick={() => refetch()} startIcon={<RefreshIcon />}>{t('entity.retry')}</Button>
             </Box>
           ) : rows.length === 0 ? (
-            <Box sx={{ textAlign: 'center', py: 4 }}><Typography color="text.secondary">No {title.toLowerCase()} found</Typography></Box>
+            <Box sx={{ textAlign: 'center', py: 4 }}><Typography color="text.secondary">{t('entity.noneFound', { title: title.toLowerCase() })}</Typography></Box>
           ) : (
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, px: 2, pb: 2 }}>
               {rows.map((row: Record<string, unknown>) => (
@@ -398,11 +401,11 @@ export default function EntityPage({
                       <Typography component="span" sx={{ fontSize: { xs: '0.82rem', sm: '0.9rem' } }}>
                         <strong>{String(row[columns[0]?.key] ?? '—')}</strong>
                         {columns[1] && <> — {String(row[columns[1].key] ?? '—')}</>}
-                        {statusKey && ' — Status:'}
+                        {statusKey && ` — ${t('entity.statusColon')}`}
                       </Typography>
                       {statusKey && (
                         <Chip
-                          label={String(row[statusKey] ?? '').replace(/_/g, ' ')}
+                          label={enumLabel(row[statusKey])}
                           size="small"
                           color={statusColors?.[String(row[statusKey])] ?? 'default'}
                         />
@@ -433,14 +436,14 @@ export default function EntityPage({
                       {/* Actions */}
                       <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, mt: 1, pt: 1, borderTop: '1px solid', borderColor: 'divider' }}>
                         {onRowClick && (
-                          <Button size="small" variant="outlined" onClick={() => onRowClick(row)}>{rowClickLabel}</Button>
+                          <Button size="small" variant="outlined" onClick={() => onRowClick(row)}>{rowClickLabel ?? t('entity.view')}</Button>
                         )}
                         {rowActions?.(row)}
                         <CommentsButton entityType={entityType} entityId={row.id as string} entityLabel={String(row.name ?? row.title ?? row.code ?? "")} url={window.location.pathname} />
                         {canCreate && (
                           <>
-                            <Button size="small" startIcon={<EditIcon />} onClick={() => openEdit(row)}>Edit</Button>
-                            <Button size="small" color="error" startIcon={<DeleteIcon />} onClick={() => setDeleteConfirm(row.id as string)}>Delete</Button>
+                            <Button size="small" startIcon={<EditIcon />} onClick={() => openEdit(row)}>{t('entity.edit')}</Button>
+                            <Button size="small" color="error" startIcon={<DeleteIcon />} onClick={() => setDeleteConfirm(row.id as string)}>{t('entity.delete')}</Button>
                           </>
                         )}
                       </Box>
@@ -461,7 +464,7 @@ export default function EntityPage({
                     {col.label}
                   </TableCell>
                 ))}
-                {canCreate && <TableCell align="right" sx={{ fontWeight: 600 }}>Actions</TableCell>}
+                {canCreate && <TableCell align="right" sx={{ fontWeight: 600 }}>{t('entity.actions')}</TableCell>}
               </TableRow>
             </TableHead>
             <TableBody>
@@ -474,14 +477,14 @@ export default function EntityPage({
               ) : isError ? (
                 <TableRow>
                   <TableCell colSpan={columns.length + 1} align="center" sx={{ py: 4 }}>
-                    <Alert severity="error" sx={{ mb: 1 }}>Failed to load data. Check your connection and try again.</Alert>
-                    <Button size="small" onClick={() => refetch()} startIcon={<RefreshIcon />}>Retry</Button>
+                    <Alert severity="error" sx={{ mb: 1 }}>{t('entity.loadFailed')}</Alert>
+                    <Button size="small" onClick={() => refetch()} startIcon={<RefreshIcon />}>{t('entity.retry')}</Button>
                   </TableCell>
                 </TableRow>
               ) : rows.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={columns.length + 1} align="center" sx={{ py: 4 }}>
-                    <Typography color="text.secondary">No {title.toLowerCase()} found</Typography>
+                    <Typography color="text.secondary">{t('entity.noneFound', { title: title.toLowerCase() })}</Typography>
                   </TableCell>
                 </TableRow>
               ) : (
@@ -502,13 +505,13 @@ export default function EntityPage({
                       </TableCell>
                     ))}
                     {canCreate && (
-                      <TableCell align="right" data-label="Actions" onClick={(e) => e.stopPropagation()}>
+                      <TableCell align="right" data-label={t('entity.actions')} onClick={(e) => e.stopPropagation()}>
                         {rowActions?.(row)}
                         <CommentsButton entityType={entityType} entityId={row.id as string} entityLabel={String(row.name ?? row.title ?? row.code ?? "")} url={window.location.pathname} />
-                        <IconButton size="small" title="Edit" onClick={() => openEdit(row)}>
+                        <IconButton size="small" title={t('entity.edit')} onClick={() => openEdit(row)}>
                           <EditIcon fontSize="small" />
                         </IconButton>
-                        <IconButton size="small" color="error" title="Delete" onClick={() => setDeleteConfirm(row.id as string)}>
+                        <IconButton size="small" color="error" title={t('entity.delete')} onClick={() => setDeleteConfirm(row.id as string)}>
                           <DeleteIcon fontSize="small" />
                         </IconButton>
                       </TableCell>
@@ -538,7 +541,7 @@ export default function EntityPage({
       </Card>
 
       <ResponsiveDialog open={dialogOpen} onClose={closeDialog} maxWidth="sm" fullWidth sx={{ '& .MuiDialog-paper': { margin: { xs: 1 } } }}>
-        <DialogTitle>{editing ? `Edit ${entityName}` : `New ${entityName}`}</DialogTitle>
+        <DialogTitle>{editing ? t('entity.editName', { name: entityName }) : t('entity.new', { name: entityName })}</DialogTitle>
         <DialogContent>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1, flexWrap: 'wrap' }}>
             {fields.map((field) => {
@@ -589,15 +592,15 @@ export default function EntityPage({
                   <Box key={field.name} sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <Typography variant="body2" fontWeight={600}>{field.label}</Typography>
-                      <Button size="small" startIcon={<AddIcon />} onClick={addMaterial}>Add Material</Button>
+                      <Button size="small" startIcon={<AddIcon />} onClick={addMaterial}>{t('entity.addMaterial')}</Button>
                     </Box>
                     {materials.length === 0 && (
-                      <Typography variant="caption" color="text.secondary">No materials added yet.</Typography>
+                      <Typography variant="caption" color="text.secondary">{t('entity.noMaterials')}</Typography>
                     )}
                     {materials.map((mat, index) => (
                       <Box key={index} sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 1, alignItems: { xs: 'stretch', sm: 'center' } }}>
                         <TextField
-                          label="Material Name"
+                          label={t('entity.materialName')}
                           value={mat.name ?? ''}
                           onChange={(e) => updateMaterial(index, 'name', e.target.value)}
                           size="small"
@@ -617,7 +620,7 @@ export default function EntityPage({
                   <TextField
                     key={field.name}
                     label={field.label}
-                    value={form[field.name] !== undefined && form[field.name] !== null ? String(form[field.name]) : 'Auto-generated'}
+                    value={form[field.name] !== undefined && form[field.name] !== null ? String(form[field.name]) : t('entity.autoGenerated')}
                     fullWidth
                     size="small"
                     disabled
@@ -669,22 +672,22 @@ export default function EntityPage({
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={closeDialog}>Cancel</Button>
+          <Button onClick={closeDialog}>{t('entity.cancel')}</Button>
           <Button
             variant="contained"
             onClick={handleSubmit}
             disabled={submitting}
           >
-            {submitting ? <CircularProgress size={20} /> : editing ? 'Update' : 'Create'}
+            {submitting ? <CircularProgress size={20} /> : editing ? t('entity.update') : t('entity.create')}
           </Button>
         </DialogActions>
       </ResponsiveDialog>
 
       <PinConfirmDialog
         open={!!deleteConfirm}
-        title={`Delete ${entityName}?`}
-        message="This action cannot be undone. The record will be soft-deleted. Enter your PIN to confirm."
-        confirmLabel="Delete"
+        title={t('entity.deleteTitle', { name: entityName })}
+        message={t('entity.deleteMessage')}
+        confirmLabel={t('entity.delete')}
         onConfirm={() => {
           if (deleteConfirm) deleteMutation.mutate(deleteConfirm);
           setDeleteConfirm(null);

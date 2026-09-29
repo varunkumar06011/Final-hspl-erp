@@ -1,0 +1,11 @@
+{
+  "expenditure": "Expenditure",
+  "date": "Date",
+  "account": "Account",
+  "budgetHead": "Budget Head",
+  "description": "Description",
+  "amount": "Amount",
+  "none": "No expenditure transactions found",
+  "search": "Search by account, description, budget head...",
+  "count": "{{n}} transactions"
+}

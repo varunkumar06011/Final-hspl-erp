@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Box, IconButton, Tooltip, Typography } from '@mui/material';
 import { Refresh as RefreshIcon } from '@mui/icons-material';
+import { useTranslation } from 'react-i18next';
 
 const COOLDOWN_SECONDS = 10;
 
@@ -17,6 +18,7 @@ interface RefreshButtonProps {
  * they can refresh again.
  */
 export default function RefreshButton({ onClick, size = 'small' }: RefreshButtonProps) {
+  const { t } = useTranslation();
   const [remaining, setRemaining] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -51,7 +53,7 @@ export default function RefreshButton({ onClick, size = 'small' }: RefreshButton
 
   return (
     <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-      <Tooltip title={coolingDown ? `Refresh available in ${remaining}s` : 'Refresh'}>
+      <Tooltip title={coolingDown ? t('shared.refreshIn', { s: remaining }) : t('shared.refresh')}>
         <span>
           <IconButton
             onClick={handleClick}

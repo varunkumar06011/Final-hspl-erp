@@ -22,6 +22,7 @@ import {
 import api, { extractErrorMessage } from '../config/api';
 import { fetchFileUrl, downloadFile } from '../utils/file';
 
+import { useTranslation } from 'react-i18next';
 // ── Types ──────────────────────────────────────────────────
 interface SavedAttachment {
   id: string;
@@ -64,6 +65,7 @@ export default function VoucherProofAttachment({
   pendingFile,
   onPendingFileChange,
 }: VoucherProofAttachmentProps) {
+  const { t } = useTranslation('vouchers');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
 
@@ -124,12 +126,12 @@ export default function VoucherProofAttachment({
 
     const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'application/pdf'];
     if (!validTypes.includes(file.type)) {
-      setError('Unsupported file type. Please upload JPG, JPEG, PNG, WEBP, or PDF.');
+      setError(t('proofBadType'));
       return;
     }
 
     if (file.size > MAX_FILE_SIZE) {
-      setError(`File too large (${formatFileSize(file.size)}). Maximum allowed: ${formatFileSize(MAX_FILE_SIZE)}.`);
+      setError(t('proofTooLarge', { size: formatFileSize(file.size), max: formatFileSize(MAX_FILE_SIZE) }));
       return;
     }
 
@@ -172,11 +174,11 @@ export default function VoucherProofAttachment({
     setError('');
     const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'application/pdf'];
     if (!validTypes.includes(file.type)) {
-      setError('Unsupported file type. Please upload JPG, JPEG, PNG, WEBP, or PDF.');
+      setError(t('proofBadType'));
       return;
     }
     if (file.size > MAX_FILE_SIZE) {
-      setError(`File too large (${formatFileSize(file.size)}). Maximum allowed: ${formatFileSize(MAX_FILE_SIZE)}.`);
+      setError(t('proofTooLarge', { size: formatFileSize(file.size), max: formatFileSize(MAX_FILE_SIZE) }));
       return;
     }
     uploadDirectly(file);
@@ -186,7 +188,7 @@ export default function VoucherProofAttachment({
 
   // ── Delete a saved attachment ──
   const deleteAttachment = async (attachmentId: string) => {
-    if (!confirm('Delete this attachment?')) return;
+    if (!confirm(t('proofConfirmDelete'))) return;
     setError('');
     try {
       await api.delete(`/attachments/${attachmentId}`);
@@ -236,7 +238,7 @@ export default function VoucherProofAttachment({
   return (
     <Box>
       <Typography variant="subtitle2" sx={{ mb: 1 }}>
-        Proof Attachment <Typography component="span" variant="caption" color="text.secondary">(Optional)</Typography>
+        {t('proofTitle')} <Typography component="span" variant="caption" color="text.secondary">(Optional)</Typography>
       </Typography>
 
       {error && <Alert severity="error" sx={{ mb: 1.5 }} onClose={() => setError('')}>{error}</Alert>}
@@ -288,12 +290,12 @@ export default function VoucherProofAttachment({
             <Typography variant="caption" color="text.secondary">{formatFileSize(pendingFile!.size)}</Typography>
           </Box>
 
-          <Tooltip title="Preview">
+          <Tooltip title={t('proofPreview')}>
             <IconButton size="small" onClick={() => pendingPreviewUrl && window.open(pendingPreviewUrl, '_blank')}>
               <PreviewIcon fontSize="small" />
             </IconButton>
           </Tooltip>
-          <Tooltip title="Remove">
+          <Tooltip title={t('proofRemove')}>
             <IconButton size="small" color="error" onClick={removePendingFile}>
               <RemoveIcon fontSize="small" />
             </IconButton>
@@ -305,10 +307,10 @@ export default function VoucherProofAttachment({
       {!showPending && (
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
           <Button size="small" variant="outlined" startIcon={<AttachFileIcon />} onClick={() => fileInputRef.current?.click()}>
-            Upload Proof
+            {t('proofUpload')}
           </Button>
           <Button size="small" variant="outlined" startIcon={<CameraIcon />} onClick={() => cameraInputRef.current?.click()}>
-            Camera
+            {t('proofCamera')}
           </Button>
         </Box>
       )}
@@ -317,7 +319,7 @@ export default function VoucherProofAttachment({
       {uploadingNew && (
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 1 }}>
           <CircularProgress size={16} />
-          <Typography variant="caption" color="text.secondary">Uploading attachment...</Typography>
+          <Typography variant="caption" color="text.secondary">{t('proofUploading')}</Typography>
         </Box>
       )}
 
@@ -327,7 +329,7 @@ export default function VoucherProofAttachment({
           {loadingAttachments && (
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 1 }}>
               <CircularProgress size={16} />
-              <Typography variant="caption" color="text.secondary">Loading attachments...</Typography>
+              <Typography variant="caption" color="text.secondary">{t('proofLoading')}</Typography>
             </Box>
           )}
 
@@ -371,21 +373,21 @@ export default function VoucherProofAttachment({
                       </Link>
                     </Typography>
                     <Typography variant="caption" color="text.secondary">
-                      {att.fileType === 'IMAGE' ? 'Image' : 'Document'}
+                      {att.fileType === 'IMAGE' ? t('proofImage') : t('proofDoc')}
                     </Typography>
                   </Box>
 
-                  <Tooltip title="Preview / Open">
+                  <Tooltip title={t('proofOpen')}>
                     <IconButton size="small" onClick={() => previewAttachment(att)}>
                       <PreviewIcon fontSize="small" />
                     </IconButton>
                   </Tooltip>
-                  <Tooltip title="Download">
+                  <Tooltip title={t('proofDownload')}>
                     <IconButton size="small" onClick={() => downloadAttachment(att)}>
                       <DownloadIcon fontSize="small" />
                     </IconButton>
                   </Tooltip>
-                  <Tooltip title="Delete">
+                  <Tooltip title={t('proofDelete')}>
                     <IconButton size="small" color="error" onClick={() => deleteAttachment(att.id)}>
                       <DeleteIcon fontSize="small" />
                     </IconButton>
@@ -397,7 +399,7 @@ export default function VoucherProofAttachment({
 
           {!loadingAttachments && attachments.length === 0 && !showPending && (
             <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
-              No proof attachment uploaded for this voucher.
+              {t('proofNone')}
             </Typography>
           )}
         </>

@@ -12,6 +12,7 @@ import AmountUsedTodayWidget from '../components/AmountUsedTodayWidget';
 import DocumentSummaryCard from '../components/DocumentSummaryCard';
 import FinanceSummaryCard from '../components/FinanceSummaryCard';
 import { useAuthStore } from '../stores/authStore';
+import { useTranslation } from 'react-i18next';
 // Admin dashboard pulls in recharts (~300KB) — lazy-load it so non-admin
 // dashboards don't pay the chart-library cost on every load.
 const AdminDashboardPage = lazy(() => import('./AdminDashboardPage'));
@@ -19,6 +20,7 @@ const AdminDashboardPage = lazy(() => import('./AdminDashboardPage'));
 type PendingType = 'payments' | 'quotations' | 'pos' | 'invoices';
 
 export default function DashboardPage() {
+  const { t } = useTranslation();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
@@ -63,13 +65,13 @@ export default function DashboardPage() {
   return (
     <Box>
       <Typography variant="h5" gutterBottom fontWeight={600} sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' } }}>
-        Dashboard
+        {t('dashboard.title')}
       </Typography>
 
       {summary?.project && (
         <Box sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
           <Typography variant="body2" color="text.secondary" component="span">
-            Project: <strong>{summary.project.name}</strong>
+            {t('dashboard.project')} <strong>{summary.project.name}</strong>
           </Typography>
           <Chip label={summary.project.status} size="small" />
         </Box>
@@ -78,25 +80,25 @@ export default function DashboardPage() {
       <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 2, mb: 3 }}>
         <Card>
           <CardContent>
-            <Typography color="text.secondary" variant="body2" gutterBottom>Budget Heads</Typography>
+            <Typography color="text.secondary" variant="body2" gutterBottom>{t('dashboard.budgetHeads')}</Typography>
             {isLoading ? <Skeleton variant="text" width={120} height={40} /> : <Typography variant="h5"><AnimatedNumber value={summary?.totalBudget ?? 0} format={(n) => formatCurrency(n)} /></Typography>}
           </CardContent>
         </Card>
         <Card>
           <CardContent>
-            <Typography color="text.secondary" variant="body2" gutterBottom>Committed (POs)</Typography>
+            <Typography color="text.secondary" variant="body2" gutterBottom>{t('dashboard.committedPOs')}</Typography>
             {isLoading ? <Skeleton variant="text" width={120} height={40} /> : <Typography variant="h5"><AnimatedNumber value={summary?.committed ?? 0} format={(n) => formatCurrency(n)} delay={150} /></Typography>}
           </CardContent>
         </Card>
         <Card>
           <CardContent>
-            <Typography color="text.secondary" variant="body2" gutterBottom>Paid</Typography>
+            <Typography color="text.secondary" variant="body2" gutterBottom>{t('dashboard.paid')}</Typography>
             {isLoading ? <Skeleton variant="text" width={120} height={40} /> : <Typography variant="h5"><AnimatedNumber value={summary?.paid ?? 0} format={(n) => formatCurrency(n)} delay={300} /></Typography>}
           </CardContent>
         </Card>
         <Card>
           <CardContent>
-            <Typography color="text.secondary" variant="body2" gutterBottom>Remaining</Typography>
+            <Typography color="text.secondary" variant="body2" gutterBottom>{t('dashboard.remaining')}</Typography>
             {isLoading ? <Skeleton variant="text" width={120} height={40} /> : <Typography variant="h5"><AnimatedNumber value={summary?.remaining ?? 0} format={(n) => formatCurrency(n)} delay={450} /></Typography>}
           </CardContent>
         </Card>
@@ -109,7 +111,7 @@ export default function DashboardPage() {
           sx={{ cursor: 'pointer', transition: 'box-shadow 0.2s, border-color 0.2s', '&:hover': { boxShadow: 3, borderColor: 'primary.main' } }}
         >
           <CardContent>
-            <Typography color="text.secondary" variant="body2" gutterBottom>Pending Payments</Typography>
+            <Typography color="text.secondary" variant="body2" gutterBottom>{t('dashboard.pendingPayments')}</Typography>
             {isLoading ? <Skeleton variant="text" width={60} height={30} /> : <Typography variant="h4" color="warning.main"><AnimatedNumber value={summary?.pendingPayments ?? 0} delay={600} /></Typography>}
           </CardContent>
         </Card>
@@ -120,7 +122,7 @@ export default function DashboardPage() {
           sx={{ cursor: 'pointer', transition: 'box-shadow 0.2s, border-color 0.2s', '&:hover': { boxShadow: 3, borderColor: 'primary.main' } }}
         >
           <CardContent>
-            <Typography color="text.secondary" variant="body2" gutterBottom>Pending Quotations</Typography>
+            <Typography color="text.secondary" variant="body2" gutterBottom>{t('dashboard.pendingQuotations')}</Typography>
             {isLoading ? <Skeleton variant="text" width={60} height={30} /> : <Typography variant="h4" color="warning.main"><AnimatedNumber value={summary?.pendingQuotations ?? 0} delay={800} /></Typography>}
           </CardContent>
         </Card>
@@ -128,7 +130,7 @@ export default function DashboardPage() {
         {/* Pending Quotation Value — not clickable (it's a value, not a count) */}
         <Card>
           <CardContent>
-            <Typography color="text.secondary" variant="body2" gutterBottom>Pending Quotation Value</Typography>
+            <Typography color="text.secondary" variant="body2" gutterBottom>{t('dashboard.pendingQuotationValue')}</Typography>
             {isLoading ? <Skeleton variant="text" width={120} height={30} /> : <Typography variant="h6" color="warning.main"><AnimatedNumber value={summary?.pendingQuotationValue ?? 0} format={(n) => formatCurrency(n)} delay={900} /></Typography>}
           </CardContent>
         </Card>
@@ -139,7 +141,7 @@ export default function DashboardPage() {
           sx={{ cursor: 'pointer', transition: 'box-shadow 0.2s, border-color 0.2s', '&:hover': { boxShadow: 3, borderColor: 'primary.main' } }}
         >
           <CardContent>
-            <Typography color="text.secondary" variant="body2" gutterBottom>Pending POs</Typography>
+            <Typography color="text.secondary" variant="body2" gutterBottom>{t('dashboard.pendingPOs')}</Typography>
             {isLoading ? <Skeleton variant="text" width={60} height={30} /> : <Typography variant="h4" color="warning.main"><AnimatedNumber value={summary?.pendingPOs ?? 0} delay={1000} /></Typography>}
           </CardContent>
         </Card>
@@ -150,7 +152,7 @@ export default function DashboardPage() {
           sx={{ cursor: 'pointer', transition: 'box-shadow 0.2s, border-color 0.2s', '&:hover': { boxShadow: 3, borderColor: 'primary.main' } }}
         >
           <CardContent>
-            <Typography color="text.secondary" variant="body2" gutterBottom>Pending Invoices</Typography>
+            <Typography color="text.secondary" variant="body2" gutterBottom>{t('dashboard.pendingInvoices')}</Typography>
             {isLoading ? <Skeleton variant="text" width={60} height={30} /> : <Typography variant="h4" color="warning.main"><AnimatedNumber value={summary?.pendingInvoices ?? 0} delay={1100} /></Typography>}
           </CardContent>
         </Card>
@@ -196,7 +198,7 @@ export default function DashboardPage() {
 
       {isError && (
         <Alert severity="warning" sx={{ mb: 2 }}>
-          Dashboard data will appear once the backend API is connected and seeded.
+          {t('dashboard.backendNotice')}
         </Alert>
       )}
 

@@ -1,7 +1,9 @@
 import { Box, Typography, Card, CardContent } from '@mui/material';
 import { Construction as ConstructionIcon } from '@mui/icons-material';
 
+import { useTranslation } from 'react-i18next';
 export default function PlaceholderPage({ title }: { title: string }) {
+  const { t } = useTranslation('support');
   return (
     <Box>
       <Typography variant="h5" gutterBottom fontWeight={600}>
@@ -11,10 +13,10 @@ export default function PlaceholderPage({ title }: { title: string }) {
         <CardContent sx={{ textAlign: 'center', py: 8 }}>
           <ConstructionIcon sx={{ fontSize: 64, color: 'text.secondary', mb: 2 }} />
           <Typography variant="h6" color="text.secondary">
-            {title} module — coming in the next build step
+            {t('placeholderTitle', { title })}
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-            This page will be built with live API data when its phase is implemented.
+            {t('placeholderNote')}
           </Typography>
         </CardContent>
       </Card>

@@ -1,0 +1,42 @@
+{
+  "finance": {
+    "title": "Finance Dashboard",
+    "totalBudgetAllocated": "Total Budget (Allocated)",
+    "utilization": "Utilization",
+    "budgetHeads": "Budget Heads",
+    "liquidity": "Liquidity",
+    "viewDetails": "View Details →",
+    "financialDetails": "Financial Details",
+    "close": "close",
+    "loadError": "Could not load finance data. Make sure the backend is running.",
+    "totalAllocatedBudget": "Total Allocated (Budget)",
+    "headsLine": "{{n}} budget heads · Utilization: {{p}}%",
+    "bankBalance": "Bank Balance",
+    "cashBalance": "Cash Balance",
+    "totalLiquidity": "Total Liquidity",
+    "bankPlusCash": "Bank + Cash",
+    "allocationBreakdown": "Allocation Breakdown",
+    "allocation": "Allocation",
+    "amount": "Amount",
+    "allocated": "Allocated",
+    "bank": "Bank",
+    "cash": "Cash",
+    "actualSpent": "Actual Spent",
+    "availableRemaining": "Available / Remaining",
+    "formula": "Available / Remaining = Total Allocated − Actual Spent"
+  },
+  "docs": {
+    "title": "Document Summary",
+    "invoicesCount": "{{n}} Invoices",
+    "loadError": "Could not load document summary.",
+    "quotations": "Quotations",
+    "purchaseOrders": "Purchase Orders",
+    "invoices": "Invoices",
+    "totalInvoiceValue": "Total Invoice Value",
+    "viewDetails": "View Details →",
+    "close": "close",
+    "total": "Total",
+    "totalInvoices": "Total Invoices",
+    "totalValue": "Total Value"
+  }
+}

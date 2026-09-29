@@ -25,7 +25,9 @@ import {
 import { useQuery, useMutation } from '@tanstack/react-query';
 import api, { extractErrorMessage } from '../config/api';
 import { formatCurrency } from '../utils/enumOptions';
+import { dateLocale } from '../i18n';
 
+import { useTranslation } from 'react-i18next';
 // ── Types matching the backend GET /assets/warranty-expiring response ──
 interface WarrantyExpiringAsset {
   id: string;
@@ -53,7 +55,7 @@ interface WarrantyExpiringResponse {
 function formatDate(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '—';
-  return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' });
+  return d.toLocaleDateString(dateLocale(), { day: '2-digit', month: 'short', year: '2-digit' });
 }
 
 function daysLeftColor(days: number): 'error' | 'warning' | 'success' {
@@ -68,12 +70,13 @@ function daysLeftColor(days: number): 'error' | 'warning' | 'success' {
  * coverage ends.
  *
  * The backend auto-sends push notifications to admins when this data is
- * fetched (once per day per project). This widget also has a "Notify Admins"
+ * fetched (once per day per project). This widget also has a t('wexNotify')
  * button for manual reminders.
  *
  * Read-only add-on. Does not modify any data.
  */
 export default function WarrantyExpiringWidget() {
+  const { t } = useTranslation('widgets');
   const [snack, setSnack] = useState<{ open: boolean; msg: string; severity: 'success' | 'error' }>({
     open: false,
     msg: '',
@@ -99,7 +102,7 @@ export default function WarrantyExpiringWidget() {
       setSnack({
         open: true,
         severity: 'success',
-        msg: result.message || `Push sent to ${result.notifiedCount} admin(s)`,
+        msg: result.message || t('wexPushSent', { n: result.notifiedCount }),
       });
       refetch();
     },
@@ -124,10 +127,10 @@ export default function WarrantyExpiringWidget() {
               <WarningIcon color={hasExpiring ? 'warning' : 'action'} />
               <Box>
                 <Typography variant="h6" fontWeight={600}>
-                  Warranty Expiring Soon
+                  {t('wexTitle')}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
-                  Assets with warranty ending in the next 30 days — claim free repairs before coverage ends
+                  {t('wexSubtitle')}
                 </Typography>
               </Box>
             </Stack>
@@ -140,7 +143,7 @@ export default function WarrantyExpiringWidget() {
                 onClick={() => notifyMutation.mutate()}
                 disabled={notifyMutation.isPending}
               >
-                {notifyMutation.isPending ? 'Sending...' : 'Notify Admins'}
+                {notifyMutation.isPending ? t('wexSending') : t('wexNotify')}
               </Button>
             )}
           </Stack>
@@ -153,7 +156,7 @@ export default function WarrantyExpiringWidget() {
                   size="small"
                   color="success"
                   icon={<NotifyIcon />}
-                  label={`Auto-push sent to ${data.autoPushResult?.notifiedCount ?? 0} admin(s) just now`}
+                  label={t('wexAutoPush', { n: data.autoPushResult?.notifiedCount ?? 0 })}
                 />
               )}
               {data.alreadyNotifiedToday && !data.autoPushSent && (
@@ -161,21 +164,21 @@ export default function WarrantyExpiringWidget() {
                   size="small"
                   color="default"
                   icon={<NotifyIcon />}
-                  label="Admins already notified today"
+                  label={t('wexNotified')}
                 />
               )}
               <Chip
                 size="small"
                 color={hasExpiring ? 'warning' : 'success'}
                 icon={<WarrantyIcon />}
-                label={hasExpiring ? `${count} asset${count === 1 ? '' : 's'} expiring` : 'All warranties valid'}
+                label={hasExpiring ? t('wexCount', { count }) : t('wexAllValid')}
               />
             </Stack>
           )}
 
           {isError && (
             <Alert severity="warning" sx={{ mb: 2 }}>
-              Could not load warranty expiring data. Make sure the backend is running.
+              {t('wexError')}
             </Alert>
           )}
 
@@ -187,20 +190,20 @@ export default function WarrantyExpiringWidget() {
             </Box>
           ) : !hasExpiring ? (
             <Alert severity="success" icon={<WarrantyIcon />}>
-              No assets have warranty expiring in the next 30 days. All assets are covered.
+              {t('wexEmpty')}
             </Alert>
           ) : (
             <TableContainer sx={{ maxHeight: 400, overflowX: 'auto' }}>
               <Table size="small" stickyHeader>
                 <TableHead>
                   <TableRow>
-                    <TableCell>Asset</TableCell>
-                    <TableCell>Category</TableCell>
-                    <TableCell>Location</TableCell>
-                    <TableCell align="right">Days Left</TableCell>
-                    <TableCell>Warranty Expiry</TableCell>
-                    <TableCell>Vendor</TableCell>
-                    <TableCell align="right">Purchase Cost</TableCell>
+                    <TableCell>{t('colAsset')}</TableCell>
+                    <TableCell>{t('colCategory')}</TableCell>
+                    <TableCell>{t('colLocation')}</TableCell>
+                    <TableCell align="right">{t('colDaysLeft')}</TableCell>
+                    <TableCell>{t('colWarrantyExpiry')}</TableCell>
+                    <TableCell>{t('colVendor')}</TableCell>
+                    <TableCell align="right">{t('colPurchaseCost')}</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -220,7 +223,7 @@ export default function WarrantyExpiringWidget() {
                           <Chip
                             size="small"
                             color={chipColor}
-                            label={`${a.daysLeft} day${a.daysLeft === 1 ? '' : 's'}`}
+                            label={t('wexDays', { count: a.daysLeft })}
                           />
                         </TableCell>
                         <TableCell>{formatDate(a.warrantyExpiry)}</TableCell>
