@@ -221,6 +221,8 @@ export const editPOSchema = z.object({
 export const editUnapprovedPOSchema = z.object({
   params: z.object({ id: uuid }),
   body: z.object({
+    paymentType: z.nativeEnum(POPaymentType).optional(),
+    advanceAmount: money.optional(),
     paymentTerms: z.string().max(500).optional(),
     deliveryDate: z.coerce.date().optional().or(z.literal('').transform(() => undefined)),
     budgetHeadId: uuid,

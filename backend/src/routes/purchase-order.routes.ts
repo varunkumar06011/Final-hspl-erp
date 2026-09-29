@@ -1113,11 +1113,24 @@ router.post(
       }
       const netPayable = grandTotal - totalDeductions;
 
-      // Payment type is fixed at creation — not editable here. If the PO has an
-      // agreed advance amount, ensure the edited grand total still covers it.
-      if (po.advanceAmount !== null && Number(po.advanceAmount) > grandTotal) {
-        res.status(400).json({ error: `Edited grand total (${grandTotal}) is less than the agreed advance amount (${Number(po.advanceAmount)}). Increase the items or reduce the advance.` });
-        return;
+      // Payment type is editable here (keeps existing value when omitted).
+      // ADVANCE / FULL_PAYMENT need an agreed advance amount ≤ grandTotal;
+      // AFTER_DELIVERY carries none.
+      const newPaymentType: string = req.body.paymentType ?? po.paymentType;
+      let newAdvanceAmount: number | null;
+      if (newPaymentType === POPaymentType.ADVANCE || newPaymentType === POPaymentType.FULL_PAYMENT) {
+        const amt = Number(req.body.advanceAmount ?? po.advanceAmount ?? (newPaymentType === POPaymentType.FULL_PAYMENT ? grandTotal : 0));
+        if (!Number.isFinite(amt) || amt <= 0) {
+          res.status(400).json({ error: 'Advance amount is required for advance / full payment POs' });
+          return;
+        }
+        if (amt > grandTotal) {
+          res.status(400).json({ error: `Advance amount (${amt}) cannot exceed the edited grand total (${grandTotal})` });
+          return;
+        }
+        newAdvanceAmount = amt;
+      } else {
+        newAdvanceAmount = null;
       }
 
       // Snapshot old values for audit
@@ -1183,6 +1196,8 @@ router.post(
         const updated = await tx.purchaseOrder.update({
           where: { id: po.id },
           data: {
+            paymentType: newPaymentType,
+            advanceAmount: newAdvanceAmount,
             paymentTerms: paymentTerms ?? null,
             deliveryDate: deliveryDate ? new Date(deliveryDate) : null,
             notes: notes === undefined ? po.notes : (notes || null),

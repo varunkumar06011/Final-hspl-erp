@@ -2410,6 +2410,8 @@ function EditUnapprovedPODialog({ row, onClose, onSuccess }: { row: PORow | null
   const [budgetHeadId, setBudgetHeadId] = useState('');
   const [notes, setNotes] = useState('');
   const [referredBy, setReferredBy] = useState('');
+  const [paymentType, setPaymentType] = useState<string>(POPaymentType.AFTER_DELIVERY);
+  const [advanceAmount, setAdvanceAmount] = useState('');
   const [error, setError] = useState('');
 
   const { data: budgetHeadsData } = useQuery({
@@ -2437,12 +2439,16 @@ function EditUnapprovedPODialog({ row, onClose, onSuccess }: { row: PORow | null
     setBudgetHeadId(row.budgetHeadId ?? '');
     setNotes(row.notes ?? '');
     setReferredBy(row.referredBy ?? '');
+    setPaymentType(row.paymentType);
+    setAdvanceAmount(row.advanceAmount ? String(Number(row.advanceAmount)) : '');
     setError('');
   }, [row]);
 
   const mutation = useMutation({
     mutationFn: async () => {
       await api.post(`/purchase-orders/${row!.id}/edit-unapproved`, {
+        paymentType,
+        advanceAmount: (paymentType === POPaymentType.ADVANCE || paymentType === POPaymentType.FULL_PAYMENT) ? Number(advanceAmount) : undefined,
         paymentTerms: paymentTerms || undefined,
         deliveryDate: deliveryDate || undefined,
         budgetHeadId,
@@ -2480,19 +2486,31 @@ function EditUnapprovedPODialog({ row, onClose, onSuccess }: { row: PORow | null
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mb: 2 }}>
           <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
             <TextField
+              select
               label={t('paymentType')}
-              value={row?.paymentType ? enumLabel(row.paymentType) : ''}
+              value={paymentType}
+              onChange={(e) => {
+                const next = e.target.value;
+                setPaymentType(next);
+                if (next === POPaymentType.FULL_PAYMENT) setAdvanceAmount(String(grandTotal || 0));
+                else if (next === POPaymentType.AFTER_DELIVERY) setAdvanceAmount('');
+              }}
               fullWidth
               size="small"
-              InputProps={{ readOnly: true }}
-              helperText={t('cannotChange')}
-            />
-            {row?.advanceAmount !== null && row?.advanceAmount !== undefined && Number(row.advanceAmount) > 0 && (
+              required
+            >
+              <MenuItem value={POPaymentType.ADVANCE}>{t('ptAdvanceOpt')}</MenuItem>
+              <MenuItem value={POPaymentType.AFTER_DELIVERY}>{t('ptAfterOpt')}</MenuItem>
+              <MenuItem value={POPaymentType.FULL_PAYMENT}>{t('ptFullOpt')}</MenuItem>
+            </TextField>
+            {(paymentType === POPaymentType.ADVANCE || paymentType === POPaymentType.FULL_PAYMENT) && (
               <TextField
-                label={t('agreedAdvance')}
-                value={formatCurrency(Number(row.advanceAmount))}
+                label={paymentType === POPaymentType.ADVANCE ? t('advanceAmount') : t('fullPaymentAmount')}
+                type="number"
+                value={advanceAmount}
+                onChange={(e) => setAdvanceAmount(e.target.value)}
                 size="small"
-                InputProps={{ readOnly: true }}
+                required
                 sx={{ width: { xs: '100%', sm: 200 } }}
               />
             )}
