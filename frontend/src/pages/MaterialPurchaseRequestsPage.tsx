@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  Box, Typography, Button, Card, CardContent, Chip, IconButton, Dialog, DialogTitle, DialogContent, DialogActions,
+  Box, Typography, Button, Card, CardContent, Chip, IconButton, DialogTitle, DialogContent, DialogActions,
   TextField, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, CircularProgress,
   MenuItem, InputAdornment, Grid, Alert, ToggleButtonGroup, ToggleButton, Divider, Autocomplete, Tabs, Tab,
 } from '@mui/material';
@@ -854,7 +854,7 @@ export default function MaterialPurchaseRequestsPage() {
       )}
 
       {/* Create / Edit Dialog */}
-      <Dialog open={createOpen} onClose={() => setCreateOpen(false)} maxWidth="lg" fullWidth>
+      <ResponsiveDialog open={createOpen} onClose={() => setCreateOpen(false)} maxWidth="lg" fullWidth>
         <DialogTitle>{editRow ? t('editTitle', { n: editRow.mprNumber }) : (isServiceTab ? t('newService') : t('newMaterialFull'))}</DialogTitle>
         <DialogContent dividers>
           {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
@@ -1158,7 +1158,7 @@ export default function MaterialPurchaseRequestsPage() {
             {editRow ? t('updateMpr') : t('createMpr')}
           </Button>
         </DialogActions>
-      </Dialog>
+      </ResponsiveDialog>
 
       {/* Approve / Reject Dialog */}
       <ApprovalActionDialog

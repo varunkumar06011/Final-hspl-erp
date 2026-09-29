@@ -16,13 +16,13 @@ import {
   CircularProgress,
   MenuItem,
   InputAdornment,
-  Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
   Button,
   Stack,
 } from '@mui/material';
+import ResponsiveDialog from '../components/ResponsiveDialog';
 import { Search as SearchIcon, Visibility as ViewIcon } from '@mui/icons-material';
 import { useQuery } from '@tanstack/react-query';
 import { AuditAction } from '@hospital-erp/shared';
@@ -219,7 +219,7 @@ export default function AuditLogPage() {
       </Card>
 
       {/* Diff viewer dialog */}
-      <Dialog open={!!detailRow} onClose={() => setDetailRow(null)} maxWidth="md" fullWidth>
+      <ResponsiveDialog open={!!detailRow} onClose={() => setDetailRow(null)} maxWidth="md" fullWidth>
         <DialogTitle>
           {detailRow && `${enumLabel(detailRow.action)} — ${entityName(detailRow.entityType)}`}
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
@@ -289,7 +289,7 @@ export default function AuditLogPage() {
         <DialogActions>
           <Button onClick={() => setDetailRow(null)}>{tr('close')}</Button>
         </DialogActions>
-      </Dialog>
+      </ResponsiveDialog>
     </Box>
   );
 }

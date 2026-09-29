@@ -31,7 +31,7 @@ export default function AllPendingTasksDialog({ open, user, onClose, counts, ini
   const totalCount = TAB_ORDER.reduce((sum, t) => sum + (counts[t] ?? 0), 0);
 
   return (
-    <ResponsiveDialog open={open} onClose={onClose} fullWidth maxWidth="sm">
+    <ResponsiveDialog hideCloseButton open={open} onClose={onClose} fullWidth maxWidth="sm">
       <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', pr: 1 }}>
         <Typography variant="h6" component="span" fontWeight={600}>
           {tr('allTasks')} {totalCount > 0 ? `(${totalCount})` : ''}

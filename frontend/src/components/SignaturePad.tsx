@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
-import { Dialog, DialogTitle, DialogContent, DialogActions, Button, Box, Typography, CircularProgress } from '@mui/material';
+import { DialogTitle, DialogContent, DialogActions, Button, Box, Typography, CircularProgress } from '@mui/material';
+import ResponsiveDialog from './ResponsiveDialog';
 
 import { useTranslation } from 'react-i18next';
 const PAD_W = 560;
@@ -64,7 +65,7 @@ export default function SignaturePad({ open, title, saving, onClose, onSave }: {
   };
 
   return (
-    <Dialog open={open} onClose={saving ? undefined : onClose} maxWidth="sm" fullWidth>
+    <ResponsiveDialog open={open} onClose={saving ? undefined : onClose} maxWidth="sm" fullWidth>
       <DialogTitle sx={{ pb: 1 }}>{title ?? t('sgTitle')}</DialogTitle>
       <DialogContent>
         <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
@@ -96,6 +97,6 @@ export default function SignaturePad({ open, title, saving, onClose, onSave }: {
           {saving ? <CircularProgress size={20} /> : t('sgSave')}
         </Button>
       </DialogActions>
-    </Dialog>
+    </ResponsiveDialog>
   );
 }

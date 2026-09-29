@@ -170,7 +170,7 @@ export default function DocumentSummaryCard({ compact = false }: { compact?: boo
       )}
 
       {/* Detail Modal — no page navigation */}
-      <ResponsiveDialog
+      <ResponsiveDialog hideCloseButton
         open={open}
         onClose={() => setOpen(false)}
         maxWidth="sm"

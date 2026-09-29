@@ -2,7 +2,6 @@ import { useState, useMemo } from 'react';
 import {
   Autocomplete,
   Box,
-  Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
@@ -14,6 +13,7 @@ import {
   Typography,
   Collapse,
 } from '@mui/material';
+import ResponsiveDialog from './ResponsiveDialog';
 import { Add as AddIcon } from '@mui/icons-material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import api, { extractErrorMessage } from '../config/api';
@@ -266,7 +266,7 @@ export default function LedgerAutocomplete({
       />
 
       {/* Quick-create ledger dialog (Tally Alt+C style) */}
-      <Dialog open={createOpen} onClose={() => setCreateOpen(false)} maxWidth="xs" fullWidth>
+      <ResponsiveDialog open={createOpen} onClose={() => setCreateOpen(false)} maxWidth="xs" fullWidth>
         <DialogTitle>{t('laCreateLedger')}</DialogTitle>
         <DialogContent>
           {createError && (
@@ -372,7 +372,7 @@ export default function LedgerAutocomplete({
             {t('laCreateSelect')}
           </Button>
         </DialogActions>
-      </Dialog>
+      </ResponsiveDialog>
     </Box>
   );
 }

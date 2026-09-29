@@ -462,7 +462,7 @@ interface PendingItemsDialogProps {
 export default function PendingItemsDialog({ open, entityType, user, onClose }: PendingItemsDialogProps) {
   const { t } = useTranslation('pending');
   return (
-    <ResponsiveDialog open={open} onClose={onClose} fullWidth maxWidth="sm">
+    <ResponsiveDialog hideCloseButton open={open} onClose={onClose} fullWidth maxWidth="sm">
       <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', pr: 1 }}>
         <Typography variant="h6" component="span" fontWeight={600}>{t(`title.${entityType}`)}</Typography>
         <IconButton onClick={onClose} size="small" aria-label={t('close')}>

@@ -160,7 +160,7 @@ export default function FinanceSummaryCard({ compact = false }: { compact?: bool
       )}
 
       {/* Detail Modal — no page navigation */}
-      <ResponsiveDialog
+      <ResponsiveDialog hideCloseButton
         open={open}
         onClose={() => setOpen(false)}
         maxWidth="sm"

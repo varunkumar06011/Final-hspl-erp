@@ -1,5 +1,6 @@
 import { ReactNode } from 'react';
-import { Box, Container, Typography, Link as MuiLink, Divider } from '@mui/material';
+import { Box, Container, Typography, Link as MuiLink, Divider, IconButton } from '@mui/material';
+import { ArrowBack as ArrowBackIcon } from '@mui/icons-material';
 import { Link as RouterLink } from 'react-router-dom';
 
 interface LegalLayoutProps {
@@ -16,6 +17,22 @@ interface LegalLayoutProps {
 export default function LegalLayout({ title, effectiveDate, children }: LegalLayoutProps) {
   return (
     <Box sx={{ minHeight: '100dvh', backgroundColor: '#f5f7fa', py: { xs: 3, sm: 6 } }}>
+      <IconButton
+        component={RouterLink}
+        to="/login"
+        aria-label="Back to sign in"
+        sx={{
+          position: 'fixed',
+          top: 'calc(8px + env(safe-area-inset-top))',
+          left: 8,
+          zIndex: 10,
+          bgcolor: '#fff',
+          boxShadow: '0 1px 6px rgba(0,0,0,0.15)',
+          '&:hover': { bgcolor: '#fff' },
+        }}
+      >
+        <ArrowBackIcon />
+      </IconButton>
       <Container maxWidth="md">
         <Box
           sx={{

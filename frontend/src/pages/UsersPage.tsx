@@ -6,7 +6,6 @@ import {
   Card,
   Chip,
   CircularProgress,
-  Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
@@ -22,6 +21,7 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
+import ResponsiveDialog from '../components/ResponsiveDialog';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { UserRole, isAdminRole } from '@hospital-erp/shared';
 import { roleLabel } from '../utils/enumOptions';
@@ -253,7 +253,7 @@ export default function UsersPage() {
       </Card>
 
       {/* Create New Admin Dialog */}
-      <Dialog open={createAdminOpen} onClose={() => setCreateAdminOpen(false)} fullWidth maxWidth="sm">
+      <ResponsiveDialog open={createAdminOpen} onClose={() => setCreateAdminOpen(false)} fullWidth maxWidth="sm">
         <DialogTitle>{tr('createNewAdmin')}</DialogTitle>
         <DialogContent>
           <Box sx={{ mt: 1 }}>
@@ -308,7 +308,7 @@ export default function UsersPage() {
             {assignAdminMutation.isPending ? <CircularProgress size={18} /> : tr('assign', { r: nextAdminLabel || tr('adminWord') })}
           </Button>
         </DialogActions>
-      </Dialog>
+      </ResponsiveDialog>
     </Box>
   );
 }

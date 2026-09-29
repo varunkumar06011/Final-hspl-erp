@@ -316,7 +316,7 @@ export default function FinanceDashboardPage() {
 
       {/* Total Allocated detail modal — reuses the same live /finance-reports/dashboard
           values already fetched above. No new API call, no duplicated calculation. */}
-      <ResponsiveDialog
+      <ResponsiveDialog hideCloseButton
         open={allocatedModalOpen}
         onClose={() => setAllocatedModalOpen(false)}
         maxWidth="sm"

@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Box, Typography, Dialog, DialogTitle, DialogContent, DialogActions, Button, CircularProgress, Alert } from '@mui/material';
+import { Box, Typography, DialogTitle, DialogContent, DialogActions, Button, CircularProgress, Alert } from '@mui/material';
+import ResponsiveDialog from './ResponsiveDialog';
 import { Print as PrintIcon, Draw as DrawIcon } from '@mui/icons-material';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import api, { extractErrorMessage } from '../config/api';
@@ -394,7 +395,7 @@ export function VoucherPreviewDialog({ voucherId, onClose }: { voucherId: string
   });
 
   return (
-    <Dialog open={!!voucherId} onClose={onClose} maxWidth="lg" fullWidth
+    <ResponsiveDialog open={!!voucherId} onClose={onClose} maxWidth="lg" fullWidth
       sx={{ '& .MuiDialog-paper': { m: { xs: 0.5, sm: 4 }, width: { xs: 'calc(100% - 8px)' }, maxHeight: { xs: 'calc(100% - 16px)' } } }}>
       <DialogTitle sx={{ py: { xs: 1, sm: 2 } }}>{voucher?.voucherType === VoucherType.RECEIPT ? t('previewReceipt') : voucher?.voucherType === VoucherType.JOURNAL ? t('previewJournal') : t('previewPayment')}</DialogTitle>
       <DialogContent sx={{ bgcolor: '#eef1f5', p: { xs: 0.5, sm: 2 } }}>
@@ -425,6 +426,6 @@ export function VoucherPreviewDialog({ voucherId, onClose }: { voucherId: string
         onSave={(dataUrl) => signMutation.mutate(dataUrl)}
         title={t('signTitle', { n: voucher?.jvNumber ?? t('voucherWord') })}
       />
-    </Dialog>
+    </ResponsiveDialog>
   );
 }

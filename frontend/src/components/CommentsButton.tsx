@@ -20,7 +20,6 @@ import {
 } from '@mui/material';
 import {
   ChatBubbleOutline as CommentIcon,
-  Close as CloseIcon,
   Delete as DeleteIcon,
   Edit as EditIcon,
   Send as SendIcon,
@@ -313,15 +312,7 @@ function CommentsDialog({
 
   return (
     <ResponsiveDialog open onClose={onClose} maxWidth="sm" fullWidth>
-      <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, pr: 1 }}>
-        <Box component="span" sx={{ flex: 1, minWidth: 0 }}>
-          {tr('comments')}
-          {entityLabel ? ` — ${entityLabel}` : ''}
-        </Box>
-        <IconButton aria-label={tr('close')} onClick={onClose} edge="end">
-          <CloseIcon />
-        </IconButton>
-      </DialogTitle>
+      <DialogTitle>{tr('comments')}{entityLabel ? ` — ${entityLabel}` : ''}</DialogTitle>
       <DialogContent dividers sx={{ minHeight: 200 }}>
         {isLoading ? (
           <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>

@@ -25,7 +25,6 @@ import {
   Select,
   Stack,
   Tooltip,
-  Dialog,
   Divider,
 } from '@mui/material';
 import {
@@ -1374,7 +1373,7 @@ export default function VouchersPage() {
       </ResponsiveDialog>
 
       {/* ── Cost center popup (Tally-style: appears when allocating expense) ── */}
-      <Dialog
+      <ResponsiveDialog
         open={costCenterPopup !== null}
         onClose={() => setCostCenterPopup(null)}
         maxWidth="xs"
@@ -1430,10 +1429,10 @@ export default function VouchersPage() {
             {tr('done')}
           </Button>
         </DialogActions>
-      </Dialog>
+      </ResponsiveDialog>
 
       {/* ── Bill-wise settlement popup (Tally-style: appears when paying a vendor) ── */}
-      <Dialog
+      <ResponsiveDialog
         open={billPopupOpen}
         onClose={() => setBillPopupOpen(false)}
         maxWidth="sm"
@@ -1480,7 +1479,7 @@ export default function VouchersPage() {
         <DialogActions>
           <Button onClick={() => setBillPopupOpen(false)}>{tr('close')}</Button>
         </DialogActions>
-      </Dialog>
+      </ResponsiveDialog>
 
       {/* Detail dialog */}
       <ResponsiveDialog open={!!detailVoucher} onClose={() => setDetailVoucher(null)} maxWidth="md" fullWidth>
@@ -1678,7 +1677,7 @@ export default function VouchersPage() {
 
       {/* Persisted voucher print preview. The preview is separate from the application UI and
           the print stylesheet hides every other element when the browser print command runs. */}
-      <Dialog open={!!printVoucherId} onClose={() => setPrintVoucherId(null)} maxWidth="lg" fullWidth>
+      <ResponsiveDialog open={!!printVoucherId} onClose={() => setPrintVoucherId(null)} maxWidth="lg" fullWidth>
         <DialogTitle>{printVoucher?.voucherType === VoucherType.RECEIPT ? tr('prevReceipt') : printVoucher?.voucherType === VoucherType.JOURNAL ? tr('prevJournal') : tr('prevPayment')}</DialogTitle>
         <DialogContent sx={{ bgcolor: '#eef1f5', p: { xs: 1, sm: 2 } }}>
           {isPrintVoucherLoading && <Box sx={{ py: 8, textAlign: 'center' }}><CircularProgress /></Box>}
@@ -1695,7 +1694,7 @@ export default function VouchersPage() {
           <Button onClick={() => setPrintVoucherId(null)}>{tr('close')}</Button>
           <Button variant="contained" startIcon={<PrintIcon />} disabled={!printVoucher} onClick={printVoucherSheet}>{tr('printVoucher')}</Button>
         </DialogActions>
-      </Dialog>
+      </ResponsiveDialog>
     </Box>
   );
 }

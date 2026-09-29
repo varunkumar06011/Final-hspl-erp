@@ -165,7 +165,7 @@ export default function QuotationTimelineDialog({
   const errMsg = errorMsg || (error ? extractErrorMessage(error) : '');
 
   return (
-    <ResponsiveDialog
+    <ResponsiveDialog hideCloseButton
       open={open}
       onClose={onClose}
       maxWidth="md"

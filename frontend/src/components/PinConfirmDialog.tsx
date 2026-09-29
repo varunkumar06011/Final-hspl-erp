@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import {
-  Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
@@ -11,6 +10,7 @@ import {
   Typography,
   Box,
 } from '@mui/material';
+import ResponsiveDialog from './ResponsiveDialog';
 import LockIcon from '@mui/icons-material/Lock';
 import api, { extractErrorMessage } from '../config/api';
 import { useAuthStore } from '../stores/authStore';
@@ -74,7 +74,7 @@ export default function PinConfirmDialog({
   };
 
   return (
-    <Dialog open={open} onClose={handleClose} maxWidth="xs" fullWidth>
+    <ResponsiveDialog open={open} onClose={handleClose} maxWidth="xs" fullWidth>
       <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
         <LockIcon color="action" />
         {title ?? t('shared.confirmPinTitle')}
@@ -107,6 +107,6 @@ export default function PinConfirmDialog({
           {loading ? <CircularProgress size={20} /> : (confirmLabel ?? t('shared.confirm'))}
         </Button>
       </DialogActions>
-    </Dialog>
+    </ResponsiveDialog>
   );
 }

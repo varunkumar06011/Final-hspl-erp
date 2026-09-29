@@ -13,6 +13,17 @@ interface Props {
   showReload?: boolean;
 }
 
+// lottie-web (~300KB) and the animation JSON are separate lazy chunks. If they
+// are first requested while offline the fetch fails and the animation never
+// shows, so App warms them while online; once loaded, import() resolves from
+// the module map with no network.
+const loadAnimation = () =>
+  Promise.all([import('lottie-web'), import('../assets/lottie-error.json')]);
+
+export function preloadErrorAnimation() {
+  loadAnimation().catch(() => undefined);
+}
+
 const COPY_KEYS: Record<ErrorVariant, { title: string; message: string }> = {
   '404': { title: 'error.notFoundTitle', message: 'error.notFoundMsg' },
   offline: { title: 'error.offlineTitle', message: 'error.offlineMsg' },
@@ -42,12 +53,10 @@ export default function ErrorScreen({
 
   useEffect(() => {
     if (!containerRef.current) return;
-    // lottie-web is ~300KB — lazy-import it so it isn't in the boot bundle
-    // just for an error screen that rarely renders.
     let anim: { destroy: () => void } | undefined;
     let cancelled = false;
-    void Promise.all([import('lottie-web'), import('../assets/lottie-error.json')]).then(
-      ([{ default: lottie }, { default: animationData }]) => {
+    loadAnimation()
+      .then(([{ default: lottie }, { default: animationData }]) => {
         if (cancelled || !containerRef.current) return;
         anim = lottie.loadAnimation({
           container: containerRef.current,
@@ -56,8 +65,8 @@ export default function ErrorScreen({
           autoplay: true,
           animationData,
         });
-      },
-    );
+      })
+      .catch(() => undefined);
     return () => {
       cancelled = true;
       anim?.destroy();
