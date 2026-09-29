@@ -296,3 +296,24 @@ export async function notifyAdmins(
 
   return { notifiedCount: admins.length, deviceCount: tokens.length };
 }
+
+// ─── Notify an explicit set of users ──────────────────────
+// Used by comments: tagged users only, or everyone when nobody is tagged.
+
+export async function notifyUsers(
+  userIds: string[],
+  payload: NotificationPayload,
+  eventType: string = 'comment'
+): Promise<void> {
+  const tokens = await getTokensForUsers(userIds, eventType);
+  if (tokens.length === 0) return;
+
+  await sendPushToTokens(tokens, payload.title, payload.body, {
+    type: eventType,
+    entityType: payload.entityType,
+    entityId: payload.entityId,
+    title: payload.title,
+    body: payload.body,
+    url: payload.url,
+  });
+}

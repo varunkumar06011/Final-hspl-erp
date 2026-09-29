@@ -63,6 +63,7 @@ import { useApprovalDeepLink } from '../utils/useApprovalDeepLink';
 import { useDeepLinkRow } from '../hooks/useDeepLinkRow';
 import { useUrlFilters } from '../hooks/useUrlFilters';
 import { shareOnWhatsApp, buildPaymentShareMessage } from '../utils/whatsappShare';
+import CommentsButton from '../components/CommentsButton';
 
 interface ApprovalStep {
   id: string;
@@ -858,6 +859,7 @@ export default function PaymentsPage() {
                       </TableCell>
                       <TableCell data-label="Actions">
                         <Box sx={{ display: 'flex', gap: 0.5 }}>
+                          <CommentsButton entityType="PAYMENT_REQUEST" entityId={row.id} entityLabel={row.requestNumber} url="/payments" />
                           <IconButton size="small" sx={{ color: '#25D366' }} onClick={() => shareOnWhatsApp(buildPaymentShareMessage({ paymentCode: row.paymentCode, requestNumber: row.requestNumber, vendorName: row.vendor?.name, amount: Number(row.amount), status: row.status, type: row.type, description: row.description ?? undefined }))} title="Share on WhatsApp"><WhatsAppIcon fontSize="small" /></IconButton>
                           <IconButton size="small" color="primary" onClick={() => openEdit(row)} title="Edit payment details"><EditIcon fontSize="small" /></IconButton>
                           {canApprove(row) && (

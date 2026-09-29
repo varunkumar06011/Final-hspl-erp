@@ -58,6 +58,7 @@ import RefreshButton from '../components/RefreshButton';
 import { useApprovalDeepLink } from '../utils/useApprovalDeepLink';
 import { useDeepLinkRow } from '../hooks/useDeepLinkRow';
 import { useUrlFilters } from '../hooks/useUrlFilters';
+import CommentsButton from '../components/CommentsButton';
 
 interface POItem {
   id?: string;
@@ -718,6 +719,7 @@ export default function InvoicesPage() {
                     </TableCell>
                     <TableCell data-label="Actions">
                       <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
+                        <CommentsButton entityType="INVOICE" entityId={row.id} entityLabel={row.invoiceCode} url="/invoices" />
                         {canApprove(row) && (
                           <>
                             <IconButton size="small" color="success" onClick={() => setApprovalAction({ row, action: 'approve' })} title="Approve"><CheckIcon fontSize="small" /></IconButton>

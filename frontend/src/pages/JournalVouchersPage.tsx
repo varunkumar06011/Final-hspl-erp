@@ -43,6 +43,7 @@ import ResponsiveDialog from '../components/ResponsiveDialog';
 import ResponsiveTable from '../components/ResponsiveTable';
 import RefreshButton from '../components/RefreshButton';
 import { formatCurrency, formatIndianNumber, formatDate, todayLocalDate } from '../utils/enumOptions';
+import CommentsButton from '../components/CommentsButton';
 
 interface JournalEntry {
   id: string;
@@ -455,6 +456,7 @@ export default function JournalVouchersPage() {
                     <TableCell data-label="Created By">{jv.createdByUser?.name ?? '—'}</TableCell>
                     <TableCell align="right" data-label="Actions">
                       <Stack direction="row" spacing={0.5} justifyContent="flex-end">
+                        <CommentsButton entityType="JOURNAL_VOUCHER" entityId={jv.id} entityLabel={jv.jvNumber} url="/vouchers" />
                         <Tooltip title="View Details"><IconButton size="small" onClick={() => setDetailJv(jv)}><ViewIcon fontSize="small" /></IconButton></Tooltip>
                         {jv.status === 'DRAFT' && (
                           <Tooltip title="Submit for Approval"><IconButton size="small" onClick={() => submitMutation.mutate(jv.id)}><SubmitIcon fontSize="small" color="info" /></IconButton></Tooltip>

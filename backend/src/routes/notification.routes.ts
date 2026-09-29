@@ -13,7 +13,7 @@ const router = Router();
 router.use(authMiddleware);
 
 // Allowed notification event types (matches push.service send categories).
-const NOTIFICATION_EVENT_TYPES = ['entity_created', 'approval_request', 'approval_result'] as const;
+const NOTIFICATION_EVENT_TYPES = ['entity_created', 'approval_request', 'approval_result', 'comment'] as const;
 const updatePrefsSchema = z.object({
   body: z.object({
     prefs: z.record(z.enum(NOTIFICATION_EVENT_TYPES), z.boolean()),

@@ -41,6 +41,7 @@ import {
   AutoAwesome as AutoAwesomeIcon,
   ArrowBack as ArrowBackIcon,
   RequestQuote as PaymentReportIcon,
+  ChatBubbleOutline as CommentsNavIcon,
 } from '@mui/icons-material';
 import { useAuthStore } from '../stores/authStore';
 import { hasPermission, Permission, UserRole, isAdminRole } from '@hospital-erp/shared';
@@ -96,6 +97,7 @@ const NAV_ITEMS = [
   { label: 'Audit Log', icon: <AuditIcon />, path: '/audit', permission: Permission.VIEW_AUDIT_LOG, section: 'Admin' },
   { label: 'Users', icon: <PeopleIcon />, path: '/users', permission: Permission.MANAGE_USERS, section: 'Admin' },
   { label: 'Settings', icon: <SettingsIcon />, path: '/settings', section: 'Admin' },
+  { label: 'Comments', icon: <CommentsNavIcon />, path: '/comments', section: 'Admin' },
 ];
 
 // ── Admin-only navigation (ADMIN + ADMIN_2) ──────────────────────────
@@ -142,6 +144,7 @@ const ADMIN_NAV_ITEMS = [
   { label: 'Audit Log', icon: <AuditIcon />, path: '/audit', permission: Permission.VIEW_AUDIT_LOG, section: 'Admin' },
   { label: 'Users', icon: <PeopleIcon />, path: '/users', permission: Permission.MANAGE_USERS, section: 'Admin' },
   { label: 'Settings', icon: <SettingsIcon />, path: '/settings', section: 'Admin' },
+  { label: 'Comments', icon: <CommentsNavIcon />, path: '/comments', section: 'Admin' },
 ];
 
 const ROLE_COLORS: Record<string, string> = {

@@ -74,6 +74,7 @@ const InwardFundsPage = lazyWithRetry(() => import('./pages/InwardFundsPage'));
 const ExpenditurePage = lazyWithRetry(() => import('./pages/ExpenditurePage'));
 const MaterialPurchaseRequestsPage = lazyWithRetry(() => import('./pages/MaterialPurchaseRequestsPage'));
 const TransactionRegisterPage = lazyWithRetry(() => import('./pages/TransactionRegisterPage'));
+const CommentsPage = lazyWithRetry(() => import('./pages/CommentsPage'));
 // Public legal/support pages — must be reachable without a session (login
 // checkbox links here; Apple also requires working privacy-policy and
 // support URLs pre-login).
@@ -140,6 +141,7 @@ const ROUTES = [
   { path: '/documents', element: <DocumentsPage /> },
   { path: '/contracts', element: <ContractsPage /> },
   { path: '/audit', element: <AuditLogPage /> },
+  { path: '/comments', element: <CommentsPage /> },
   { path: '/users', element: <UsersPage /> },
   { path: '/settings', element: <SettingsPage /> },
   // ── Admin-only pages (additive — visible to all roles with permission, used by admin dashboard) ──

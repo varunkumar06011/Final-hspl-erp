@@ -34,6 +34,7 @@ model User {
 
   project                 Project?               @relation(fields: [projectId], references: [id])
   auditLogs               AuditLog[]
+  comments                Comment[]
   approvalSteps           ApprovalStep[]
   createdVendors          Vendor[]               @relation("VendorCreatedBy")
   createdQuotations       Quotation[]            @relation("QuotationCreatedBy")
@@ -1757,4 +1758,29 @@ model MaterialPurchaseRequestItem {
 
   @@index([mprId])
   @@map("material_purchase_request_items")
+}
+
+// ═══════════════════════════════════════════════════════════
+// Comments — generic thread on any record (quotation, PO, voucher, MPR, ...)
+// ═══════════════════════════════════════════════════════════
+
+model Comment {
+  id          String   @id @default(uuid()) @db.Uuid
+  projectId   String?  @db.Uuid
+  entityType  String // e.g., "QUOTATION", "PURCHASE_ORDER", "VOUCHER"
+  entityId    String   @db.Uuid
+  entityLabel String? // human-readable reference shown in the comments module (e.g. "PO-0012")
+  url         String? // frontend route of the page holding the record
+  authorId    String   @db.Uuid
+  body        String
+  // Tagged users: [{ "id": "<userId>", "name": "<display name>" }]. Empty = untagged (notifies everyone).
+  mentions    Json     @default("[]")
+  createdAt   DateTime @default(now())
+
+  author User @relation(fields: [authorId], references: [id])
+
+  @@index([entityType, entityId])
+  @@index([projectId, createdAt])
+  @@index([authorId])
+  @@map("comments")
 }

@@ -66,6 +66,7 @@ import { useApprovalDeepLink } from '../utils/useApprovalDeepLink';
 import { useDeepLinkRow } from '../hooks/useDeepLinkRow';
 import { useUrlFilters } from '../hooks/useUrlFilters';
 import { shareOnWhatsApp, buildPOShareMessage } from '../utils/whatsappShare';
+import CommentsButton from '../components/CommentsButton';
 
 interface POItemLedgerPost {
   id: string;
@@ -749,6 +750,7 @@ export default function PurchaseOrdersPage() {
                           <TableCell align="right" sx={{ fontWeight: 700, color: Number(row.amountToPayNow ?? 0) > 0 ? 'error.main' : 'text.secondary' }}>{formatCurrency(Number(row.amountToPayNow ?? 0))}</TableCell>
                           <TableCell align="right">
                             <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'flex-end' }}>
+                              <CommentsButton entityType="PURCHASE_ORDER" entityId={row.id} entityLabel={row.poNumber} url="/pos" />
                               <IconButton size="small" onClick={() => previewPDF(row.id)} title="Preview PDF" disabled={pdfLoading}>{pdfLoading ? <CircularProgress size={16} /> : <PdfIcon fontSize="small" />}</IconButton>
                               <IconButton size="small" onClick={() => downloadPDF(row.id, row.poNumber)} title="Download PDF"><DownloadIcon fontSize="small" /></IconButton>
                               {canApprove(row) && (

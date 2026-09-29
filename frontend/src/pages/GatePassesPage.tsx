@@ -38,6 +38,7 @@ import { formatDate } from '../utils/enumOptions';
 import api, { extractErrorMessage } from '../config/api';
 import ResponsiveTable from '../components/ResponsiveTable';
 import RefreshButton from '../components/RefreshButton';
+import CommentsButton from '../components/CommentsButton';
 
 interface GatePassItem {
   materialName: string;
@@ -560,6 +561,7 @@ export default function GatePassesPage() {
                       </TableCell>
                       <TableCell data-label="Actions">
                         <Box sx={{ display: 'flex', gap: 0.5 }}>
+                          <CommentsButton entityType="GATE_PASS" entityId={row.id} entityLabel={row.passNumber} url="/gate-passes" />
                           <IconButton
                             size="small"
                             title="Download PDF"

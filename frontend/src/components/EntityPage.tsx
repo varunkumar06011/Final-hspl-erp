@@ -47,6 +47,7 @@ import PinConfirmDialog from './PinConfirmDialog';
 import { exportToCsv, type CsvColumn } from '../utils/csvExport';
 import { useUrlState } from '../hooks/useUrlState';
 import { useDeepLinkRow } from '../hooks/useDeepLinkRow';
+import CommentsButton from './CommentsButton';
 
 export interface MaterialEntry {
   id?: string;
@@ -435,6 +436,7 @@ export default function EntityPage({
                           <Button size="small" variant="outlined" onClick={() => onRowClick(row)}>{rowClickLabel}</Button>
                         )}
                         {rowActions?.(row)}
+                        <CommentsButton entityType={entityType} entityId={row.id as string} entityLabel={String(row.name ?? row.title ?? row.code ?? "")} url={window.location.pathname} />
                         {canCreate && (
                           <>
                             <Button size="small" startIcon={<EditIcon />} onClick={() => openEdit(row)}>Edit</Button>
@@ -502,6 +504,7 @@ export default function EntityPage({
                     {canCreate && (
                       <TableCell align="right" data-label="Actions" onClick={(e) => e.stopPropagation()}>
                         {rowActions?.(row)}
+                        <CommentsButton entityType={entityType} entityId={row.id as string} entityLabel={String(row.name ?? row.title ?? row.code ?? "")} url={window.location.pathname} />
                         <IconButton size="small" title="Edit" onClick={() => openEdit(row)}>
                           <EditIcon fontSize="small" />
                         </IconButton>

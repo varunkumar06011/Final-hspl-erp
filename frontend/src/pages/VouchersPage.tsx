@@ -64,6 +64,7 @@ import {
 import voucherTemplate from '../vochuer.png';
 import receiptVoucherTemplate from '../Receipt.png';
 import journalVoucherTemplate from '../Journal voucher.png';
+import CommentsButton from '../components/CommentsButton';
 
 interface Ledger {
   id: string;
@@ -911,6 +912,7 @@ export default function VouchersPage() {
                     <TableCell data-label="Created By">{v.createdBy ?? '—'}</TableCell>
                     <TableCell align="right" data-label="Actions">
                       <Stack direction="row" spacing={0.5} justifyContent="flex-end">
+                        <CommentsButton entityType="VOUCHER" entityId={v.id} entityLabel={v.jvNumber} url="/vouchers" />
                         <Tooltip title="View Details"><IconButton size="small" onClick={() => setDetailVoucher(v)}><ViewIcon fontSize="small" /></IconButton></Tooltip>
                         {v.status === 'POSTED' && canReverseVoucher && (
                           <Tooltip title="Edit">

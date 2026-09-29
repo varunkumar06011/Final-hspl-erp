@@ -28,6 +28,7 @@ import AttachmentUpload from '../components/AttachmentUpload';
 import api, { extractErrorMessage } from '../config/api';
 import { GoodsReceiptStatus, InventoryItemType } from '@hospital-erp/shared';
 import { formatDate, STATUS_COLORS } from '../utils/enumOptions';
+import CommentsButton from '../components/CommentsButton';
 
 interface ReceiptItem {
   id: string;
@@ -427,6 +428,7 @@ export default function GoodsReceiptsPage() {
                   <TableCell data-label="Status"><Chip size="small" label={receipt.status.replace(/_/g, ' ')} /></TableCell>
                   <TableCell data-label="Actions">
                     <Button size="small" startIcon={<ViewIcon />} onClick={() => setDetailId(receipt.id)}>Details</Button>
+                    <CommentsButton entityType="GOODS_RECEIPT" entityId={receipt.id} entityLabel={receipt.receiptNumber} url="/goods-receipts" />
                     {receipt.status === GoodsReceiptStatus.PENDING_INSPECTION && (
                       <Button size="small" startIcon={<InspectIcon />} onClick={() => openInspection(receipt)}>Inspect</Button>
                     )}

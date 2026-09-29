@@ -28,6 +28,7 @@ import ApprovalStepsDisplay from '../components/ApprovalStepsDisplay';
 import ApprovalActionDialog from '../components/ApprovalActionDialog';
 import ResponsiveDialog from '../components/ResponsiveDialog';
 import { useDeepLinkRow } from '../hooks/useDeepLinkRow';
+import CommentsButton from '../components/CommentsButton';
 
 interface MPRItem {
   materialName: string;
@@ -759,6 +760,7 @@ export default function MaterialPurchaseRequestsPage() {
                     <IconButton size="small" onClick={() => previewPDF(row.id)} title="Preview PDF" disabled={pdfLoading}>
                       {pdfLoading ? <CircularProgress size={16} /> : <PdfIcon fontSize="small" />}
                     </IconButton>
+                    <CommentsButton entityType="MATERIAL_PURCHASE_REQUEST" entityId={row.id} entityLabel={row.mprNumber} url="/material-purchase-requests" />
                     <IconButton size="small" onClick={() => downloadPDF(row.id, row.mprNumber)} title="Download PDF">
                       <DownloadIcon fontSize="small" />
                     </IconButton>

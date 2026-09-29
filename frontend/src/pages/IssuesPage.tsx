@@ -45,6 +45,7 @@ import { useUrlFilters } from '../hooks/useUrlFilters';
 import { useAuthStore } from '../stores/authStore';
 import ResponsiveTable from '../components/ResponsiveTable';
 import RefreshButton from '../components/RefreshButton';
+import CommentsButton from '../components/CommentsButton';
 
 interface IssueRow {
   id: string;
@@ -322,6 +323,7 @@ export default function IssuesPage() {
                       {row.status === IssueStatus.CLOSED && row.closurePhotoUrl && (
                         <IconButton size="small" title="View photo proof" onClick={() => openProof(row)}><PhotoIcon fontSize="small" /></IconButton>
                       )}
+                      <CommentsButton entityType="ISSUE" entityId={row.id} entityLabel={row.title} url="/issues" />
                       <IconButton size="small" onClick={() => openEdit(row)}><EditIcon fontSize="small" /></IconButton>
                       <IconButton size="small" color="error" onClick={() => { if (confirm('Delete this issue?')) deleteMutation.mutate(row.id); }}><DeleteIcon fontSize="small" /></IconButton>
                     </TableCell>

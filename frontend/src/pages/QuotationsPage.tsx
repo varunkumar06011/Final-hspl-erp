@@ -51,6 +51,7 @@ import OcrAutoFill, { type OcrQuotationData } from '../components/OcrAutoFill';
 import RefreshButton from '../components/RefreshButton';
 import QuotationTimelineDialog from '../components/QuotationTimelineDialog';
 import { useApprovalDeepLink } from '../utils/useApprovalDeepLink';
+import CommentsButton from '../components/CommentsButton';
 
 const VENDOR_CATEGORY_LABELS: Record<string, string> = {
   LABOUR_SUPPLIER: 'Labour Supplier',
@@ -968,6 +969,7 @@ export default function QuotationsPage() {
                     <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
                       <Button size="small" variant="outlined" startIcon={pdfLoading ? <CircularProgress size={16} /> : <PdfIcon />} onClick={() => previewQuotationPDF(row.id)} disabled={pdfLoading}>Open</Button>
                       <Button size="small" variant="outlined" startIcon={<TimelineIcon />} onClick={() => setTimelineRow(row)}>View</Button>
+                      <CommentsButton entityType="QUOTATION" entityId={row.id} entityLabel={row.quotationNumber} url="/quotations" />
                       <Button size="small" variant="outlined" startIcon={<DownloadIcon />} onClick={() => downloadQuotationPDF(row.id, row.quotationNumber)}>Download PDF</Button>
                       <Button size="small" variant="outlined" startIcon={<ShareIcon />} onClick={() => handleShareWhatsApp(row)}>Share</Button>
                       {effectiveStatus !== QuotationStatus.DELETED && (
