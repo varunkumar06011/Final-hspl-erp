@@ -907,11 +907,16 @@ router.get(
             paidAmount: true,
           },
         }),
-        // Pending counts — all records not yet approved/verified/rejected/cancelled
-        prisma.paymentRequest.count({ where: { projectId, status: { notIn: ['APPROVED', 'REJECTED', 'PAID'] }, deletedAt: null } }),
-        prisma.quotation.count({ where: { projectId, status: { notIn: ['APPROVED', 'REJECTED', 'CONVERTED_TO_PO'] }, deletedAt: null, approvalWorkflow: { steps: { none: { status: 'REJECTED' } } } } }),
-        prisma.purchaseOrder.count({ where: { projectId, status: { notIn: ['APPROVED', 'REJECTED', 'CANCELLED', 'DELIVERED', 'PARTIALLY_DELIVERED'] }, deletedAt: null } }),
-        prisma.vendorInvoice.count({ where: { projectId, verificationStatus: { notIn: ['VERIFIED', 'REJECTED'] }, deletedAt: null } }),
+        // Pending counts — must match the exact status set the "Action Required"
+        // popup treats as actionable (ENTITY_CONFIGS.pendingStatuses in
+        // PendingItemsDialog.tsx). DRAFT records aren't awaiting anyone's
+        // approval yet, and CANCELLED/other terminal statuses must never be
+        // counted as pending — otherwise the badge count and the popup's
+        // actual record count drift apart.
+        prisma.paymentRequest.count({ where: { projectId, status: 'PENDING', deletedAt: null } }),
+        prisma.quotation.count({ where: { projectId, status: { in: ['SUBMITTED', 'UNDER_REVIEW'] }, deletedAt: null, approvalWorkflow: { steps: { none: { status: 'REJECTED' } } } } }),
+        prisma.purchaseOrder.count({ where: { projectId, status: 'PENDING_APPROVAL', deletedAt: null } }),
+        prisma.vendorInvoice.count({ where: { projectId, verificationStatus: 'PENDING', deletedAt: null } }),
         prisma.materialPurchaseRequest.count({ where: { projectId, status: 'SUBMITTED', deletedAt: null } }),
         // Recent bank transactions (last 15 — enough for the scrollable dashboard list)
         prisma.bankTransaction.findMany({
@@ -1111,16 +1116,17 @@ router.get(
           return sum + (t.type === 'REVERSAL_IN' ? -amount : amount);
         }, 0);
 
-      // Action Required items — all recent records that are NOT yet approved/verified,
-      // NOT rejected, and NOT cancelled. This includes DRAFT, SUBMITTED, UNDER_REVIEW
-      // quotations and DRAFT, PENDING_APPROVAL POs, so the admin sees everything
-      // that still needs action. Sorted most-recent first.
+      // Action Required items — must mirror the exact "pending" status sets used
+      // above and in the All Pending Tasks popup (ENTITY_CONFIGS.pendingStatuses
+      // in PendingItemsDialog.tsx), so the badge count, this list, and the popup
+      // always agree. DRAFT records aren't awaiting approval yet and terminal
+      // statuses (CANCELLED, etc.) must never resurface here. Sorted most-recent first.
       const [actionQuotations, actionPOs, actionInvoices, actionPayments, actionMPRs] = await Promise.all([
         prisma.quotation.findMany({
           where: {
             projectId,
             deletedAt: null,
-            status: { notIn: ['APPROVED', 'REJECTED', 'CONVERTED_TO_PO', 'DELETED'] },
+            status: { in: ['SUBMITTED', 'UNDER_REVIEW'] },
             // Also exclude quotations where any approval step has been rejected —
             // the top-level status may not have been updated for older records.
             approvalWorkflow: {
@@ -1132,19 +1138,19 @@ router.get(
           take: 5,
         }),
         prisma.purchaseOrder.findMany({
-          where: { projectId, deletedAt: null, status: { notIn: ['APPROVED', 'REJECTED', 'CANCELLED', 'DELIVERED', 'PARTIALLY_DELIVERED', 'DELETED'] } },
+          where: { projectId, deletedAt: null, status: 'PENDING_APPROVAL' },
           select: { id: true, poNumber: true, status: true, createdAt: true },
           orderBy: { createdAt: 'desc' },
           take: 5,
         }),
         prisma.vendorInvoice.findMany({
-          where: { projectId, deletedAt: null, verificationStatus: { notIn: ['VERIFIED', 'REJECTED'] } },
+          where: { projectId, deletedAt: null, verificationStatus: 'PENDING' },
           select: { id: true, invoiceCode: true, invoiceNumber: true, verificationStatus: true, createdAt: true },
           orderBy: { createdAt: 'desc' },
           take: 5,
         }),
         prisma.paymentRequest.findMany({
-          where: { projectId, deletedAt: null, status: { notIn: ['APPROVED', 'REJECTED', 'PAID'] } },
+          where: { projectId, deletedAt: null, status: 'PENDING' },
           select: { id: true, paymentCode: true, status: true, createdAt: true },
           orderBy: { createdAt: 'desc' },
           take: 5,

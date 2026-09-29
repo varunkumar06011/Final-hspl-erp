@@ -21,6 +21,8 @@ export async function streamMprPdf(res: NodeJS.WritableStream, mpr: any) {
   const border = '#B0BEC5';
 
   const text = (v: unknown) => (v === null || v === undefined || v === '' ? '—' : String(v));
+  const isService = mpr.requestType === 'SERVICE';
+  const fmtDate = (d: unknown) => (d ? new Date(d as string).toLocaleDateString('en-IN') : '—');
 
   // ── Load logo if present (existing V Grand letterhead) ──
   let logoBuffer: Buffer | null = null;
@@ -85,7 +87,7 @@ export async function streamMprPdf(res: NodeJS.WritableStream, mpr: any) {
   // ═══════════════════════════════════════════════════════════
   // 2. FORM TITLE
   // ═══════════════════════════════════════════════════════════
-  doc.fillColor(primary).font('Helvetica-Bold').fontSize(16).text('MATERIAL REQUEST FORM', left, y, { width, align: 'center' });
+  doc.fillColor(primary).font('Helvetica-Bold').fontSize(16).text(isService ? 'SERVICE REQUEST FORM' : 'MATERIAL REQUEST FORM', left, y, { width, align: 'center' });
   y += 24;
   // Clean horizontal line underneath
   doc.moveTo(left, y).lineTo(right, y).strokeColor(primary).lineWidth(1.5).stroke();
@@ -111,6 +113,12 @@ export async function streamMprPdf(res: NodeJS.WritableStream, mpr: any) {
     ['Department', text(mpr.department), 'Priority', priorityLabel],
     ['Requested By', text(mpr.createdByUser?.name ?? projectHead?.name), 'Request Raised By', text(mpr.requestRaisedBy?.name)],
   ];
+  if (isService) {
+    infoRows.push([
+      'Service Category', text(mpr.serviceCategory),
+      'Service Period', (mpr.servicePeriodStart || mpr.servicePeriodEnd) ? `${fmtDate(mpr.servicePeriodStart)} to ${fmtDate(mpr.servicePeriodEnd)}` : '—',
+    ]);
+  }
 
   for (const row of infoRows) {
     // Label cell 1
@@ -186,7 +194,7 @@ export async function streamMprPdf(res: NodeJS.WritableStream, mpr: any) {
   // ═══════════════════════════════════════════════════════════
   // 5. MATERIAL DETAILS TABLE
   // ═══════════════════════════════════════════════════════════
-  doc.fillColor(primary).font('Helvetica-Bold').fontSize(10).text('MATERIAL DETAILS', left, y);
+  doc.fillColor(primary).font('Helvetica-Bold').fontSize(10).text(isService ? 'SERVICE DETAILS' : 'MATERIAL DETAILS', left, y);
   y += 18;
 
   // Column widths — must fit within page width (511px)
@@ -213,9 +221,9 @@ export async function streamMprPdf(res: NodeJS.WritableStream, mpr: any) {
   doc.rect(left, y, width, headerRowH).fill(primary);
   doc.fillColor('#fff').font('Helvetica-Bold').fontSize(7.5);
   doc.text('SL.', colSl, y + 8, { width: wSl, align: 'center' });
-  doc.text('MATERIAL CODE', colCode + 2, y + 8, { width: wCode - 4, align: 'center' });
-  doc.text('MATERIAL / ITEM DESCRIPTION', colDesc + 2, y + 8, { width: wDesc - 4 });
-  doc.text('SPECIFICATION / GRADE', colSpec + 2, y + 8, { width: wSpec - 4 });
+  doc.text(isService ? 'SERVICE CODE' : 'MATERIAL CODE', colCode + 2, y + 8, { width: wCode - 4, align: 'center' });
+  doc.text(isService ? 'SERVICE DESCRIPTION' : 'MATERIAL / ITEM DESCRIPTION', colDesc + 2, y + 8, { width: wDesc - 4 });
+  doc.text(isService ? 'SCOPE OF WORK' : 'SPECIFICATION / GRADE', colSpec + 2, y + 8, { width: wSpec - 4 });
   doc.text('QTY', colQty, y + 8, { width: wQty, align: 'center' });
   doc.text('UNIT', colUnit, y + 8, { width: wUnit, align: 'center' });
   doc.text('REQUIRED DATE', colReqDate + 2, y + 8, { width: wReqDate - 4, align: 'center' });

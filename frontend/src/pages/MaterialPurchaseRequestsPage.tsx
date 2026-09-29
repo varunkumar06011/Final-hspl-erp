@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Box, Typography, Button, Card, CardContent, Chip, IconButton, Dialog, DialogTitle, DialogContent, DialogActions,
   TextField, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, CircularProgress,
-  MenuItem, InputAdornment, Grid, Alert, ToggleButtonGroup, ToggleButton, Divider, Autocomplete,
+  MenuItem, InputAdornment, Grid, Alert, ToggleButtonGroup, ToggleButton, Divider, Autocomplete, Tabs, Tab,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -20,8 +20,8 @@ import {
   Balance as VarianceIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { MPRStatus, isApproverRole } from '@hospital-erp/shared';
-import { formatDate, STATUS_COLORS, QTY_UNIT_OPTIONS } from '../utils/enumOptions';
+import { MPRStatus, MPRRequestType, isApproverRole } from '@hospital-erp/shared';
+import { formatDate, STATUS_COLORS, QTY_UNIT_OPTIONS, SERVICE_UNIT_OPTIONS, SERVICE_CATEGORY_OPTIONS } from '../utils/enumOptions';
 import api, { extractErrorMessage } from '../config/api';
 import { useAuthStore } from '../stores/authStore';
 import ApprovalStepsDisplay from '../components/ApprovalStepsDisplay';
@@ -53,6 +53,10 @@ interface MPRRow {
   id: string;
   mprNumber: string;
   date: string;
+  requestType?: string;
+  serviceCategory?: string | null;
+  servicePeriodStart?: string | null;
+  servicePeriodEnd?: string | null;
   requiredBy?: string | null;
   department?: string | null;
   priority?: string | null;
@@ -111,6 +115,8 @@ export default function MaterialPurchaseRequestsPage() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const { user } = useAuthStore();
+  const [requestTypeTab, setRequestTypeTab] = useState<MPRRequestType>(MPRRequestType.MATERIAL);
+  const isServiceTab = requestTypeTab === MPRRequestType.SERVICE;
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [createOpen, setCreateOpen] = useState(false);
@@ -175,6 +181,15 @@ export default function MaterialPurchaseRequestsPage() {
   const [technicalRequirements, setTechnicalRequirements] = useState(() => {
     try { return JSON.parse(localStorage.getItem(MPR_DRAFT_KEY) || '{}').technicalRequirements ?? ''; } catch { return ''; }
   });
+  const [serviceCategory, setServiceCategory] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(MPR_DRAFT_KEY) || '{}').serviceCategory ?? ''; } catch { return ''; }
+  });
+  const [servicePeriodStart, setServicePeriodStart] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(MPR_DRAFT_KEY) || '{}').servicePeriodStart ?? ''; } catch { return ''; }
+  });
+  const [servicePeriodEnd, setServicePeriodEnd] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(MPR_DRAFT_KEY) || '{}').servicePeriodEnd ?? ''; } catch { return ''; }
+  });
   const [items, setItems] = useState<MPRItem[]>(() => {
     try {
       const saved = JSON.parse(localStorage.getItem(MPR_DRAFT_KEY) || '{}').items;
@@ -197,17 +212,18 @@ export default function MaterialPurchaseRequestsPage() {
   useEffect(() => {
     if (editRow) return; // Don't save when editing an existing MPR
     const draft = {
+      requestType: requestTypeTab, serviceCategory, servicePeriodStart, servicePeriodEnd,
       requiredBy, department, priority, description, deliveryAddress,
       contactPerson, contactNumber, billingAddress, stateCode,
       requestRaisedById, technicalRequirements, items, selectedVendorId,
     };
     try { localStorage.setItem(MPR_DRAFT_KEY, JSON.stringify(draft)); } catch { /* ignore quota errors */ }
-  }, [requiredBy, department, priority, description, deliveryAddress, contactPerson, contactNumber, billingAddress, stateCode, requestRaisedById, technicalRequirements, items, selectedVendorId, editRow]);
+  }, [requestTypeTab, serviceCategory, servicePeriodStart, servicePeriodEnd, requiredBy, department, priority, description, deliveryAddress, contactPerson, contactNumber, billingAddress, stateCode, requestRaisedById, technicalRequirements, items, selectedVendorId, editRow]);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['mprs', search, statusFilter],
+    queryKey: ['mprs', requestTypeTab, search, statusFilter],
     queryFn: async () => {
-      const params: Record<string, string> = {};
+      const params: Record<string, string> = { requestType: requestTypeTab };
       if (search) params.search = search;
       if (statusFilter) params.status = statusFilter;
       const res = await api.get('/material-purchase-requests', { params });
@@ -248,6 +264,24 @@ export default function MaterialPurchaseRequestsPage() {
   // to and briefly highlights the matching card.
   const { highlightId, rowRef } = useDeepLinkRow<MPRRow>('/material-purchase-requests', mprs, 'mprNumber', setSearch);
 
+  // A deep-linked row (from a notification / global search) may live on the
+  // other tab — switch to its tab first so useDeepLinkRow above can find it.
+  const [searchParams] = useSearchParams();
+  useEffect(() => {
+    const targetId = searchParams.get('id');
+    if (!targetId) return;
+    if (mprs.some((m) => m.id === targetId)) return; // already visible on this tab
+    api.get(`/material-purchase-requests/${targetId}`)
+      .then((res) => {
+        const rt = res.data?.requestType;
+        if (rt === MPRRequestType.SERVICE || rt === MPRRequestType.MATERIAL) {
+          setRequestTypeTab(rt);
+        }
+      })
+      .catch(() => { /* ignore — useDeepLinkRow will clear the param */ });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams.get('id')]);
+
   function resetForm() {
     setRequiredBy('');
     setDepartment('');
@@ -260,7 +294,10 @@ export default function MaterialPurchaseRequestsPage() {
     setStateCode('');
     setRequestRaisedById('');
     setTechnicalRequirements('');
-    setItems([{ materialName: '', materialCode: '', quantity: '', unit: 'nos', requiredDate: '', remarks: '' }]);
+    setServiceCategory('');
+    setServicePeriodStart('');
+    setServicePeriodEnd('');
+    setItems([{ materialName: '', materialCode: '', quantity: '', unit: isServiceTab ? 'hrs' : 'nos', requiredDate: '', remarks: '' }]);
     setVendorMode('existing');
     setSelectedVendorId('');
     setNewVendorName('');
@@ -293,6 +330,9 @@ export default function MaterialPurchaseRequestsPage() {
     setStateCode(row.stateCode ?? '');
     setRequestRaisedById(row.requestRaisedById ?? '');
     setTechnicalRequirements(row.technicalRequirements ?? '');
+    setServiceCategory(row.serviceCategory ?? '');
+    setServicePeriodStart(row.servicePeriodStart ? new Date(row.servicePeriodStart).toISOString().slice(0, 10) : '');
+    setServicePeriodEnd(row.servicePeriodEnd ? new Date(row.servicePeriodEnd).toISOString().slice(0, 10) : '');
     setItems(row.items.map((i) => ({
       materialName: i.materialName,
       materialCode: i.materialCode ?? '',
@@ -317,7 +357,7 @@ export default function MaterialPurchaseRequestsPage() {
   }
 
   function addItem() {
-    setItems([...items, { materialName: '', materialCode: '', quantity: '', unit: 'nos', requiredDate: '', remarks: '' }]);
+    setItems([...items, { materialName: '', materialCode: '', quantity: '', unit: isServiceTab ? 'hrs' : 'nos', requiredDate: '', remarks: '' }]);
   }
 
   function removeItem(index: number) {
@@ -327,6 +367,10 @@ export default function MaterialPurchaseRequestsPage() {
   const createMutation = useMutation({
     mutationFn: async () => {
       const payload: Record<string, unknown> = {
+        requestType: requestTypeTab,
+        serviceCategory: isServiceTab ? (serviceCategory || undefined) : undefined,
+        servicePeriodStart: isServiceTab ? (servicePeriodStart || undefined) : undefined,
+        servicePeriodEnd: isServiceTab ? (servicePeriodEnd || undefined) : undefined,
         requiredBy: requiredBy || undefined,
         department: department || undefined,
         priority: priority || undefined,
@@ -379,6 +423,8 @@ export default function MaterialPurchaseRequestsPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['mprs'] });
+      queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['pending-items', 'mprs'] });
     },
     onError: (err: unknown) => {
       setError(extractErrorMessage(err));
@@ -391,6 +437,8 @@ export default function MaterialPurchaseRequestsPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['mprs'] });
+      queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['pending-items', 'mprs'] });
     },
     onError: (err: unknown) => {
       setError(extractErrorMessage(err));
@@ -403,6 +451,8 @@ export default function MaterialPurchaseRequestsPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['mprs'] });
+      queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['pending-items', 'mprs'] });
     },
     onError: (err: unknown) => {
       setError(extractErrorMessage(err));
@@ -415,6 +465,8 @@ export default function MaterialPurchaseRequestsPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['mprs'] });
+      queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['pending-items', 'mprs'] });
     },
     onError: (err: unknown) => {
       setError(extractErrorMessage(err));
@@ -427,6 +479,8 @@ export default function MaterialPurchaseRequestsPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['mprs'] });
+      queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['pending-items', 'mprs'] });
       setApprovalAction(null);
     },
     onError: (err: unknown) => setError(extractErrorMessage(err)),
@@ -438,6 +492,8 @@ export default function MaterialPurchaseRequestsPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['mprs'] });
+      queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['pending-items', 'mprs'] });
       setApprovalAction(null);
     },
     onError: (err: unknown) => setError(extractErrorMessage(err)),
@@ -554,9 +610,18 @@ export default function MaterialPurchaseRequestsPage() {
   return (
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap', gap: 1 }}>
-        <Typography variant="h5" fontWeight={700}>Material Purchase Requests</Typography>
-        <Button variant="contained" startIcon={<AddIcon />} onClick={openCreate}>New MPR</Button>
+        <Typography variant="h5" fontWeight={700}>{isServiceTab ? 'Service Requests' : 'Material Purchase Requests'}</Typography>
+        <Button variant="contained" startIcon={<AddIcon />} onClick={openCreate}>{isServiceTab ? 'New Service Request' : 'New MPR'}</Button>
       </Box>
+
+      <Tabs
+        value={requestTypeTab}
+        onChange={(_e, v) => setRequestTypeTab(v)}
+        sx={{ mb: 2, borderBottom: 1, borderColor: 'divider' }}
+      >
+        <Tab label="Material Requests" value="MATERIAL" />
+        <Tab label="Service Requests" value="SERVICE" />
+      </Tabs>
 
       {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
 
@@ -589,7 +654,9 @@ export default function MaterialPurchaseRequestsPage() {
         <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress size={32} /></Box>
       ) : mprs.length === 0 ? (
         <Paper sx={{ p: 4, textAlign: 'center' }}>
-          <Typography variant="body2" color="text.secondary">No Material Purchase Requests found. Click "New MPR" to create one.</Typography>
+          <Typography variant="body2" color="text.secondary">
+            {isServiceTab ? 'No Service Requests found. Click "New Service Request" to create one.' : 'No Material Purchase Requests found. Click "New MPR" to create one.'}
+          </Typography>
         </Paper>
       ) : (
         <Grid container spacing={2}>
@@ -629,6 +696,12 @@ export default function MaterialPurchaseRequestsPage() {
                           />
                         )}
                       </Typography>
+                      {row.requestType === 'SERVICE' && (row.serviceCategory || row.servicePeriodStart || row.servicePeriodEnd) && (
+                        <Typography variant="body2" color="text.secondary">
+                          {row.serviceCategory ?? '—'}
+                          {(row.servicePeriodStart || row.servicePeriodEnd) && ` | Period: ${row.servicePeriodStart ? formatDate(row.servicePeriodStart) : '—'} to ${row.servicePeriodEnd ? formatDate(row.servicePeriodEnd) : '—'}`}
+                        </Typography>
+                      )}
                       {row.description && (
                         <Typography variant="body2" sx={{ mt: 0.5, color: 'text.primary' }}>{row.description}</Typography>
                       )}
@@ -734,7 +807,7 @@ export default function MaterialPurchaseRequestsPage() {
 
       {/* Create / Edit Dialog */}
       <Dialog open={createOpen} onClose={() => setCreateOpen(false)} maxWidth="lg" fullWidth>
-        <DialogTitle>{editRow ? `Edit ${editRow.mprNumber}` : 'New Material Purchase Request'}</DialogTitle>
+        <DialogTitle>{editRow ? `Edit ${editRow.mprNumber}` : (isServiceTab ? 'New Service Request' : 'New Material Purchase Request')}</DialogTitle>
         <DialogContent dividers>
           {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
 
@@ -848,6 +921,46 @@ export default function MaterialPurchaseRequestsPage() {
             </Grid>
           </Grid>
 
+          {isServiceTab && (
+            <Grid container spacing={2} sx={{ mb: 2 }}>
+              <Grid item xs={12} sm={6} md={4}>
+                <Autocomplete
+                  freeSolo
+                  fullWidth
+                  size="small"
+                  options={[...SERVICE_CATEGORY_OPTIONS]}
+                  value={serviceCategory}
+                  inputValue={serviceCategory}
+                  onInputChange={(_e, newValue) => setServiceCategory(newValue)}
+                  onChange={(_e, newValue) => setServiceCategory(newValue ?? '')}
+                  renderInput={(params) => <TextField {...params} label="Service Category" />}
+                />
+              </Grid>
+              <Grid item xs={12} sm={3} md={4}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  type="date"
+                  label="Service Period — From"
+                  value={servicePeriodStart}
+                  onChange={(e) => setServicePeriodStart(e.target.value)}
+                  InputLabelProps={{ shrink: true }}
+                />
+              </Grid>
+              <Grid item xs={12} sm={3} md={4}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  type="date"
+                  label="Service Period — To"
+                  value={servicePeriodEnd}
+                  onChange={(e) => setServicePeriodEnd(e.target.value)}
+                  InputLabelProps={{ shrink: true }}
+                />
+              </Grid>
+            </Grid>
+          )}
+
           {/* Delivery & Billing Information */}
           <Typography variant="subtitle2" sx={{ mt: 1, mb: 1 }}>Delivery & Billing Information</Typography>
           <Grid container spacing={2} sx={{ mb: 2 }}>
@@ -879,17 +992,17 @@ export default function MaterialPurchaseRequestsPage() {
           />
 
           {/* Items table */}
-          <Typography variant="subtitle2" sx={{ mb: 1 }}>Material Details</Typography>
+          <Typography variant="subtitle2" sx={{ mb: 1 }}>{isServiceTab ? 'Service Details' : 'Material Details'}</Typography>
           <TableContainer component={Paper} variant="outlined" sx={{ mb: 2, overflowX: 'auto' }}>
             <Table size="small">
               <TableHead>
                 <TableRow>
-                  <TableCell>Material / Item Description</TableCell>
-                  <TableCell>Material Code</TableCell>
-                  <TableCell>Specification / Grade</TableCell>
+                  <TableCell>{isServiceTab ? 'Service Description' : 'Material / Item Description'}</TableCell>
+                  <TableCell>{isServiceTab ? 'Service Code' : 'Material Code'}</TableCell>
+                  <TableCell>{isServiceTab ? 'Scope of Work' : 'Specification / Grade'}</TableCell>
                   <TableCell align="right">Qty</TableCell>
                   <TableCell>Unit</TableCell>
-                  <TableCell>Required Date</TableCell>
+                  <TableCell>{isServiceTab ? 'Service Date' : 'Required Date'}</TableCell>
                   <TableCell>Remarks</TableCell>
                   <TableCell></TableCell>
                 </TableRow>
@@ -935,11 +1048,11 @@ export default function MaterialPurchaseRequestsPage() {
                       <TextField
                         select
                         size="small"
-                        value={item.unit ?? 'nos'}
+                        value={item.unit ?? (isServiceTab ? 'hrs' : 'nos')}
                         onChange={(e) => updateItem(index, 'unit', e.target.value)}
                         sx={{ width: 90 }}
                       >
-                        {QTY_UNIT_OPTIONS.map((opt) => (
+                        {(isServiceTab ? SERVICE_UNIT_OPTIONS : QTY_UNIT_OPTIONS).map((opt) => (
                           <MenuItem key={opt.value} value={opt.value}>{opt.label}</MenuItem>
                         ))}
                       </TextField>
@@ -976,7 +1089,7 @@ export default function MaterialPurchaseRequestsPage() {
           <Button size="small" startIcon={<AddIcon />} onClick={addItem} sx={{ mb: 2 }}>Add Item</Button>
 
           {/* Technical Requirements */}
-          <Typography variant="subtitle2" sx={{ mb: 1 }}>Technical / Purchase Requirements</Typography>
+          <Typography variant="subtitle2" sx={{ mb: 1 }}>{isServiceTab ? 'Terms / Service Requirements' : 'Technical / Purchase Requirements'}</Typography>
           <TextField
             fullWidth
             size="small"
@@ -984,7 +1097,9 @@ export default function MaterialPurchaseRequestsPage() {
             minRows={3}
             value={technicalRequirements}
             onChange={(e) => setTechnicalRequirements(e.target.value)}
-            placeholder="e.g. Material must conform to project specifications. Vendor quotation should mention brand/make, taxes, freight, delivery and payment terms. MTC/test certificates where required."
+            placeholder={isServiceTab
+              ? 'e.g. Service must conform to project SLA. Vendor quotation should mention rate basis (per hour/visit/lumpsum), taxes, and payment terms.'
+              : 'e.g. Material must conform to project specifications. Vendor quotation should mention brand/make, taxes, freight, delivery and payment terms. MTC/test certificates where required.'}
           />
         </DialogContent>
         <DialogActions>
@@ -1004,7 +1119,7 @@ export default function MaterialPurchaseRequestsPage() {
       <ApprovalActionDialog
         open={approvalAction !== null}
         action={approvalAction?.action ?? 'approve'}
-        entityLabel="Material Purchase Request"
+        entityLabel={approvalAction?.row.requestType === 'SERVICE' ? 'Service Request' : 'Material Purchase Request'}
         pending={approveMutation.isPending || rejectMutation.isPending}
         error={error}
         onClearError={() => setError('')}

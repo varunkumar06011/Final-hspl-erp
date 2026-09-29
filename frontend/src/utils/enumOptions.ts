@@ -194,3 +194,28 @@ export const QTY_UNIT_OPTIONS = [
   { value: 'ltr', label: 'Ltr (liters)' },
   { value: 'set', label: 'Set (kit/set)' },
 ] as const;
+
+// Units for Service Request items — hrs/nos are shared with QTY_UNIT_OPTIONS above.
+export const SERVICE_UNIT_OPTIONS = [
+  { value: 'hrs', label: 'Hrs (hours)' },
+  { value: 'day', label: 'Day(s)' },
+  { value: 'visit', label: 'Visit(s)' },
+  { value: 'job', label: 'Job (per job)' },
+  { value: 'lumpsum', label: 'Lumpsum' },
+  { value: 'nos', label: 'Nos (units)' },
+] as const;
+
+// Suggested Service Category values for the free-text Autocomplete —
+// professional service-request forms typically classify the request this way.
+export const SERVICE_CATEGORY_OPTIONS = [
+  'AMC / Annual Maintenance Contract',
+  'Repair & Maintenance',
+  'Installation & Commissioning',
+  'Consultancy / Professional Services',
+  'Manpower / Labour Supply',
+  'Transportation / Logistics',
+  'Housekeeping Services',
+  'Security Services',
+  'IT / Software Services',
+  'Other',
+] as const;

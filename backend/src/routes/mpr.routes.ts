@@ -130,8 +130,11 @@ router.get(
       const status = req.query.status as string | undefined;
       const vendorId = req.query.vendorId as string | undefined;
 
+      const requestType = req.query.requestType as string | undefined;
+
       const where: Record<string, unknown> = { projectId, deletedAt: null };
       if (status) where.status = status;
+      if (requestType) where.requestType = requestType;
       if (vendorId) where.vendorId = vendorId;
       if (search) where.mprNumber = { contains: search, mode: 'insensitive' };
 
@@ -301,6 +304,10 @@ router.post(
           projectId,
           mprNumber,
           vendorId,
+          requestType: req.body.requestType || 'MATERIAL',
+          serviceCategory: req.body.serviceCategory || null,
+          servicePeriodStart: req.body.servicePeriodStart ? new Date(req.body.servicePeriodStart) : null,
+          servicePeriodEnd: req.body.servicePeriodEnd ? new Date(req.body.servicePeriodEnd) : null,
           requiredBy: req.body.requiredBy ? new Date(req.body.requiredBy) : null,
           department: req.body.department || null,
           priority: req.body.priority || null,
@@ -371,6 +378,9 @@ router.put(
       }
 
       const updateData: Record<string, unknown> = {};
+      if (req.body.serviceCategory !== undefined) updateData.serviceCategory = req.body.serviceCategory || null;
+      if (req.body.servicePeriodStart !== undefined) updateData.servicePeriodStart = req.body.servicePeriodStart ? new Date(req.body.servicePeriodStart) : null;
+      if (req.body.servicePeriodEnd !== undefined) updateData.servicePeriodEnd = req.body.servicePeriodEnd ? new Date(req.body.servicePeriodEnd) : null;
       if (req.body.requiredBy !== undefined) updateData.requiredBy = req.body.requiredBy ? new Date(req.body.requiredBy) : null;
       if (req.body.department !== undefined) updateData.department = req.body.department || null;
       if (req.body.priority !== undefined) updateData.priority = req.body.priority || null;

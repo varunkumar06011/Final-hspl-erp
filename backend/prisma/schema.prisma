@@ -1692,6 +1692,10 @@ model MaterialPurchaseRequest {
   requiredBy      DateTime?
   department      String?
   status          String   @default("DRAFT") // MPRStatus enum: DRAFT | SUBMITTED | APPROVED | REJECTED | QUOTATIONS_RECEIVED | CLOSED | CANCELLED
+  requestType     String   @default("MATERIAL") // MPRRequestType enum: MATERIAL | SERVICE
+  serviceCategory String? // e.g. AMC, Repair & Maintenance, Installation, Consultancy — SERVICE requests only
+  servicePeriodStart DateTime? // SERVICE requests only
+  servicePeriodEnd   DateTime? // SERVICE requests only
   vendorId        String?  @db.Uuid // vendor this request is raised against (existing or inline-created)
   description     String?
   deliveryAddress String?
@@ -1730,6 +1734,7 @@ model MaterialPurchaseRequest {
   @@unique([projectId, mprNumber])
   @@index([projectId, deletedAt])
   @@index([projectId, status, date])
+  @@index([projectId, requestType])
   @@index([vendorId])
   @@map("material_purchase_requests")
 }

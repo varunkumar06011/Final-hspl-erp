@@ -1624,6 +1624,10 @@ const mprItemInput = z.object({
 
 export const createMPRSchema = z.object({
   body: z.object({
+    requestType: z.enum(['MATERIAL', 'SERVICE']).default('MATERIAL'),
+    serviceCategory: z.string().trim().max(100).optional(),
+    servicePeriodStart: mprDateStr.optional(),
+    servicePeriodEnd: mprDateStr.optional(),
     requiredBy: mprDateStr.optional(),
     department: z.string().trim().max(100).optional(),
     priority: z.string().trim().max(20).optional(),
@@ -1648,6 +1652,10 @@ export const createMPRSchema = z.object({
 export const updateMPRSchema = z.object({
   params: z.object({ id: uuid }),
   body: z.object({
+    requestType: z.enum(['MATERIAL', 'SERVICE']).optional(),
+    serviceCategory: z.string().trim().max(100).optional(),
+    servicePeriodStart: mprDateStr.optional(),
+    servicePeriodEnd: mprDateStr.optional(),
     requiredBy: mprDateStr.optional(),
     department: z.string().trim().max(100).optional(),
     priority: z.string().trim().max(20).optional(),
@@ -1670,6 +1678,7 @@ export const listMPRSchema = z.object({
   query: pagination.extend({
     search: z.string().optional(),
     status: z.string().optional(),
+    requestType: z.enum(['MATERIAL', 'SERVICE']).optional(),
     vendorId: uuid.optional(),
   }),
 });

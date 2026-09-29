@@ -61,8 +61,7 @@ import AcknowledgementCheckbox from '../components/AcknowledgementCheckbox';
 import ApprovalActionDialog from '../components/ApprovalActionDialog';
 import CreatableSelect from '../components/CreatableSelect';
 import LandscapeExcelTable from '../components/LandscapeExcelTable';
-import PortraitRotateHint from '../components/PortraitRotateHint';
-import { useMobileLandscape, useMobilePortrait } from '../hooks/useMobileLandscape';
+import { useMobileLandscape } from '../hooks/useMobileLandscape';
 import { useApprovalDeepLink } from '../utils/useApprovalDeepLink';
 import { useDeepLinkRow } from '../hooks/useDeepLinkRow';
 import { useUrlFilters } from '../hooks/useUrlFilters';
@@ -171,8 +170,7 @@ export default function PurchaseOrdersPage() {
   const [pageSize, setPageSize] = useState(20);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
-  const { excelView: isMobileLandscape, isMobile, wantsTable, showRotateHint, toggleExcelView } = useMobileLandscape();
-  const isMobilePortrait = useMobilePortrait();
+  const { excelView: isMobileLandscape, isMobile, showRotateHint, toggleExcelView } = useMobileLandscape();
   const [minAmount, setMinAmount] = useState('');
   const [maxAmount, setMaxAmount] = useState('');
   const [dateFilter, setDateFilter] = useState('');
@@ -631,8 +629,6 @@ export default function PurchaseOrdersPage() {
         </Card>
       ) : (
       <>
-      {isMobilePortrait && !wantsTable && <PortraitRotateHint />}
-
       <Card>
         {!isMobileLandscape && (
           <Box sx={{ p: 2, display: 'flex', gap: 2, flexWrap: 'wrap' }}>

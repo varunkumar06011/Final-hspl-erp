@@ -158,6 +158,14 @@ export enum MPRStatus {
   CANCELLED = 'CANCELLED',
 }
 
+// Whether an MPR is requesting physical materials or a service/labour
+// engagement — same workflow (approval → vendor → PO/receipt), different
+// form fields and PDF wording.
+export enum MPRRequestType {
+  MATERIAL = 'MATERIAL',
+  SERVICE = 'SERVICE',
+}
+
 export enum InvoiceVerificationStatus {
   PENDING = 'PENDING',
   VERIFIED = 'VERIFIED',
