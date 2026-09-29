@@ -175,7 +175,9 @@ export const listQuotationsSchema = z.object({
 export const createPOSchema = z.object({
   body: z.object({
     vendorId: uuid,
-    quotationId: uuid,
+    // Required for VENDOR suppliers; NON_VENDOR POs have no quotation and are raised from an approved MPR instead.
+    quotationId: uuid.optional(),
+    mprId: uuid.optional(),
     paymentType: z.nativeEnum(POPaymentType),
     // Agreed advance payable — required for ADVANCE / FULL_PAYMENT, must be 0/omitted for AFTER_DELIVERY.
     // Backend re-validates against the PO grand total.
@@ -183,7 +185,7 @@ export const createPOSchema = z.object({
     paymentTerms: z.string().max(500).optional(),
     deliveryDate: z.coerce.date().optional().or(z.literal('').transform(() => undefined)),
     acknowledged: acknowledgement,
-    budgetHeadId: uuid,
+    budgetHeadId: uuid.optional(),
     // Optional PO-level description / notes
     notes: z.string().trim().max(1000).optional(),
     // Optional referrer — existing user name or a newly created custom name

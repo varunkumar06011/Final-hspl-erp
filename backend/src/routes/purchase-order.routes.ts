@@ -1,5 +1,5 @@
 import { Router, Response, NextFunction } from 'express';
-import { Permission, POStatus, POPaymentType, AuditAction, UserRole, GoodsReceiptStatus, isAdminRole, VoucherType, GST_LEDGER_NAMES } from '@hospital-erp/shared';
+import { Permission, POStatus, POPaymentType, AuditAction, UserRole, GoodsReceiptStatus, isAdminRole, VoucherType, GST_LEDGER_NAMES, VendorType, MPRStatus } from '@hospital-erp/shared';
 import { createPOSchema, listPOsSchema, approvalActionSchema, editPOSchema, editUnapprovedPOSchema, regeneratePOSchema, changePOPaymentTypeSchema } from '@hospital-erp/shared';
 import { prisma } from '../config/prisma';
 import { Prisma } from '@prisma/client';
@@ -7,12 +7,12 @@ import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middl
 import { rbacMiddleware } from '../middleware/rbac';
 import { validateMiddleware } from '../middleware/validate';
 import { logAudit } from '../services/audit.service';
-import { generateSequenceNumber } from '../services/sequence.service';
 import * as approvalService from '../services/approval.service';
 import { notifyApprovers } from '../services/push.service';
 import { streamPurchaseOrderPdf } from '../services/purchase-order-pdf.service';
 import { ensureVendorLedger, findLedgerByName } from './ledger.routes';
 import { postVoucher, generateVoucherNumber } from './voucher.routes';
+import { getActiveAdminRoles, generatePONumber, createNonVendorPoFromMpr, findLivePoForMpr } from '../services/non-vendor-po.service';
 
 const router = Router();
 router.use(authMiddleware);
@@ -65,28 +65,6 @@ function isPoApprover(role: string): boolean {
 }
 
 /**
- * Fetch all active admin roles (ADMIN, ADMIN_2, ADMIN_3, ...) for a project.
- * Used to create approval workflow steps so dynamic admins can also approve.
- */
-async function getActiveAdminRoles(projectId: string): Promise<string[]> {
-  const users = await prisma.user.findMany({
-    where: { projectId, isActive: true },
-    select: { role: true },
-  });
-  const adminRoles = users.map((u) => u.role).filter((r) => isAdminRole(r));
-  // Deduplicate and sort: ADMIN, ADMIN_2, ADMIN_3, ...
-  return Array.from(new Set(adminRoles)).sort((a, b) => {
-    const na = a === 'ADMIN' ? 1 : parseInt(a.split('_')[1] ?? '0', 10);
-    const nb = b === 'ADMIN' ? 1 : parseInt(b.split('_')[1] ?? '0', 10);
-    return na - nb;
-  });
-}
-
-async function generatePONumber(projectId: string): Promise<string> {
-  return generateSequenceNumber('purchaseOrder', 'poNumber', 'VGH-PO', 3, { projectId });
-}
-
-/**
  * Generate a regenerated PO number: VGH-REGPO{originalNum}/{regenSeq}
  * e.g. original VGH-PO004 → first regen VGH-REGPO004/1, second VGH-REGPO004/2
  */
@@ -129,6 +107,7 @@ const poInclude = {
       mpr: { select: { id: true, mprNumber: true, items: { select: { materialName: true, quantity: true, unit: true, estimatedRate: true } } } },
     },
   },
+  mpr: { select: { id: true, mprNumber: true } },
   items: {
     include: {
       ledgerPosts: {
@@ -424,7 +403,57 @@ router.post(
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const projectId = requireProjectId(req);
-      const { vendorId, quotationId, paymentType, paymentTerms, deliveryDate, budgetHeadId, advanceAmount, deductions, notes, referredBy } = req.body;
+      const { vendorId, quotationId, mprId, paymentType, paymentTerms, deliveryDate, budgetHeadId, advanceAmount, deductions, notes, referredBy } = req.body;
+
+      const orderVendor = await prisma.vendor.findFirst({ where: { id: vendorId }, select: { vendorType: true } });
+      if (!orderVendor) {
+        res.status(400).json({ error: 'Vendor not found' });
+        return;
+      }
+
+      // NON_VENDOR suppliers have no quotation: the PO is raised straight from
+      // the approved Material Purchase Request with amount 0, and the amounts
+      // are filled in by editing the PO afterwards.
+      if (orderVendor.vendorType === VendorType.NON_VENDOR) {
+        if (!mprId) {
+          res.status(400).json({ error: 'Select the approved material request for this non-vendor purchase order' });
+          return;
+        }
+        const mpr = await prisma.materialPurchaseRequest.findFirst({
+          where: { id: mprId, projectId, deletedAt: null },
+          select: { status: true, vendorId: true },
+        });
+        if (!mpr) {
+          res.status(400).json({ error: 'Material Purchase Request not found' });
+          return;
+        }
+        if (mpr.status !== MPRStatus.APPROVED) {
+          res.status(400).json({ error: 'The Material Purchase Request must be approved before a purchase order can be raised' });
+          return;
+        }
+        if (mpr.vendorId !== vendorId) {
+          res.status(400).json({ error: 'Vendor does not match the vendor on the Material Purchase Request' });
+          return;
+        }
+        const existingMprPo = await findLivePoForMpr(mprId);
+        if (existingMprPo) {
+          res.status(400).json({ error: `Purchase Order ${existingMprPo.poNumber} already exists for this request` });
+          return;
+        }
+        const created = await createNonVendorPoFromMpr(mprId, projectId, req.user!.id);
+        const nonVendorPo = created && await prisma.purchaseOrder.findUnique({ where: { id: created.id }, include: poInclude });
+        res.status(201).json(nonVendorPo);
+        return;
+      }
+
+      if (!quotationId) {
+        res.status(400).json({ error: 'An approved quotation is required' });
+        return;
+      }
+      if (!budgetHeadId) {
+        res.status(400).json({ error: 'Budget head is required' });
+        return;
+      }
 
       // Validate quotation exists, belongs to project, is approved, and matches vendor
       const quotation = await prisma.quotation.findFirst({
@@ -767,6 +796,13 @@ router.post(
       );
       if (alreadyApproved) {
         res.status(400).json({ error: 'You have already approved this purchase order' });
+        return;
+      }
+
+      // Non-vendor POs start at amount 0 — prices and budget head must be
+      // filled in (Edit) before the PO can be approved.
+      if (po.mprId && !po.quotationId && (Number(po.grandTotal) <= 0 || !po.budgetHeadId)) {
+        res.status(400).json({ error: 'Enter the item prices and budget head on this non-vendor purchase order (Edit) before approving it' });
         return;
       }
 

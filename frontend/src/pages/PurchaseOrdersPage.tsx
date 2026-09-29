@@ -125,6 +125,7 @@ interface PORow {
   vendor: { id: string; name: string; vendorCode: string; phone?: string; address?: string };
   quotationId: string;
   quotation: QuotationSummary;
+  mpr?: { id: string; mprNumber: string } | null;
   date: string;
   createdAt: string;
   status: string;
@@ -181,6 +182,7 @@ export default function PurchaseOrdersPage() {
   const [error, setError] = useState('');
   const [selectedVendorId, setSelectedVendorId] = useState('');
   const [selectedQuotationId, setSelectedQuotationId] = useState('');
+  const [selectedMprId, setSelectedMprId] = useState('');
   const [paymentType, setPaymentType] = useState<string>(POPaymentType.AFTER_DELIVERY);
   const [advanceAmount, setAdvanceAmount] = useState<string>('');
   const [paymentTerms, setPaymentTerms] = useState('');
@@ -280,6 +282,19 @@ export default function PurchaseOrdersPage() {
     enabled: !!selectedVendorId,
   });
 
+  const isNonVendor = (vendorsData?.data ?? []).find((v: { id: string }) => v.id === selectedVendorId)?.vendorType === 'NON_VENDOR';
+
+  // Non-vendor suppliers have no quotation — list their approved material
+  // requests that don't have a live PO yet.
+  const { data: approvedMprs } = useQuery<{ id: string; mprNumber: string; purchaseOrders?: { id: string }[] }[]>({
+    queryKey: ['/material-purchase-requests', 'approved', selectedVendorId],
+    queryFn: async () => {
+      const response = await api.get('/material-purchase-requests', { params: { vendorId: selectedVendorId, status: 'APPROVED', limit: 100 } });
+      return (response.data?.data ?? []).filter((m: { purchaseOrders?: unknown[] }) => !m.purchaseOrders?.length);
+    },
+    enabled: !!selectedVendorId && isNonVendor,
+  });
+
   const { data: budgetHeadsData } = useQuery({
     queryKey: ['/budget-heads', 'all'],
     queryFn: async () => {
@@ -303,6 +318,16 @@ export default function PurchaseOrdersPage() {
 
   const createMutation = useMutation({
     mutationFn: async () => {
+      if (isNonVendor) {
+        // No quotation: PO is raised from the approved MPR at amount 0; prices are filled in via Edit.
+        const response = await api.post('/purchase-orders', {
+          vendorId: selectedVendorId,
+          mprId: selectedMprId,
+          paymentType: POPaymentType.AFTER_DELIVERY,
+          acknowledged,
+        });
+        return response.data;
+      }
       const response = await api.post('/purchase-orders', {
         vendorId: selectedVendorId,
         quotationId: selectedQuotationId,
@@ -514,6 +539,7 @@ export default function PurchaseOrdersPage() {
   function resetForm() {
     setSelectedVendorId('');
     setSelectedQuotationId('');
+    setSelectedMprId('');
     setPaymentType(POPaymentType.AFTER_DELIVERY);
     setAdvanceAmount('');
     setPaymentTerms('');
@@ -545,7 +571,7 @@ export default function PurchaseOrdersPage() {
 
   function handleCreatePO() {
     if (createSubmissionLocked.current || createMutation.isPending) return;
-    if (!selectedBudgetHeadId) {
+    if (!isNonVendor && !selectedBudgetHeadId) {
       setError(t('errBudgetHead'));
       return;
     }
@@ -714,7 +740,7 @@ export default function PurchaseOrdersPage() {
                         >
                           <TableCell>{page * pageSize + idx + 1}</TableCell>
                           <TableCell>{row.poNumber}</TableCell>
-                          <TableCell>{row.quotation?.quotationNumber ?? '—'}</TableCell>
+                          <TableCell>{row.quotation?.quotationNumber ?? row.mpr?.mprNumber ?? '—'}</TableCell>
                           <TableCell>{formatDate(row.date)}</TableCell>
                           <TableCell>{row.vendor?.vendorCode} - {row.vendor?.name ?? '—'}</TableCell>
                           <TableCell className="truncate-cell" title={row.notes ?? ''}>{row.notes || '—'}</TableCell>
@@ -892,7 +918,7 @@ export default function PurchaseOrdersPage() {
                           <Typography component="div" variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem', minWidth: 0 }}>{row.vendor?.vendorCode} - {row.vendor?.name ?? '—'}</Typography>
 
                           <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>{t('quotationNo')}</Typography>
-                          <Typography component="div" variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem', minWidth: 0 }}>{row.quotation?.quotationNumber ?? '—'}</Typography>
+                          <Typography component="div" variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem', minWidth: 0 }}>{row.quotation?.quotationNumber ?? row.mpr?.mprNumber ?? '—'}</Typography>
 
                           <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>{t('poDate')}</Typography>
                           <Typography component="div" variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem', minWidth: 0 }}>
@@ -1116,7 +1142,7 @@ export default function PurchaseOrdersPage() {
               select
               label={t('vendor')}
               value={selectedVendorId}
-              onChange={(e) => { setSelectedVendorId(e.target.value); setSelectedQuotationId(''); }}
+              onChange={(e) => { setSelectedVendorId(e.target.value); setSelectedQuotationId(''); setSelectedMprId(''); }}
               fullWidth
               size="small"
               required
@@ -1126,8 +1152,29 @@ export default function PurchaseOrdersPage() {
               ))}
             </TextField>
 
+            {/* Non-vendor: no quotation — pick the approved material request instead */}
+            {selectedVendorId && isNonVendor && (
+              <>
+                <Alert severity="info">{t('nonVendorPoInfo')}</Alert>
+                <TextField
+                  select
+                  label={t('approvedMpr')}
+                  value={selectedMprId}
+                  onChange={(e) => setSelectedMprId(e.target.value)}
+                  fullWidth
+                  size="small"
+                  required
+                  helperText={approvedMprs?.length === 0 ? t('noApprovedMprs') : undefined}
+                >
+                  {approvedMprs?.map((m) => (
+                    <MenuItem key={m.id} value={m.id}>{m.mprNumber}</MenuItem>
+                  ))}
+                </TextField>
+              </>
+            )}
+
             {/* Quotation Selection (only approved quotations for this vendor) */}
-            {selectedVendorId && (
+            {selectedVendorId && !isNonVendor && (
               <TextField
                 select
                 label={t('quotationApproved')}
@@ -1147,6 +1194,7 @@ export default function PurchaseOrdersPage() {
               </TextField>
             )}
 
+            {!isNonVendor && (<>
             {/* Payment Type Selection */}
             <TextField
               select
@@ -1392,6 +1440,7 @@ export default function PurchaseOrdersPage() {
                 </Box>
               </Box>
             )}
+            </>)}
             <AcknowledgementCheckbox
               checked={acknowledged}
               onChange={setAcknowledged}
@@ -1404,7 +1453,7 @@ export default function PurchaseOrdersPage() {
           <Button
             variant="contained"
             onClick={handleCreatePO}
-            disabled={(!selectedVendorId || !selectedQuotationId || !selectedBudgetHeadId || !acknowledged || ((paymentType === POPaymentType.ADVANCE || paymentType === POPaymentType.FULL_PAYMENT) && (!advanceAmount || Number(advanceAmount) <= 0))) || createMutation.isPending || createSubmissionLocked.current}
+            disabled={(!selectedVendorId || (isNonVendor ? !selectedMprId : (!selectedQuotationId || !selectedBudgetHeadId)) || !acknowledged || (!isNonVendor && (paymentType === POPaymentType.ADVANCE || paymentType === POPaymentType.FULL_PAYMENT) && (!advanceAmount || Number(advanceAmount) <= 0))) || createMutation.isPending || createSubmissionLocked.current}
           >
             {createMutation.isPending ? <CircularProgress size={20} /> : t('createPoBtn')}
           </Button>

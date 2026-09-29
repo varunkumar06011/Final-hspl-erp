@@ -267,6 +267,8 @@ model PurchaseOrder {
   projectId          String    @db.Uuid
   vendorId           String    @db.Uuid
   quotationId        String?   @db.Uuid
+  // NON_VENDOR POs skip the Quotation step and are raised straight from the approved MPR
+  mprId              String?   @db.Uuid
   phaseId            String?   @db.Uuid
   poNumber           String
   date               DateTime  @default(now())
@@ -301,6 +303,7 @@ model PurchaseOrder {
   project          Project           @relation(fields: [projectId], references: [id])
   vendor           Vendor            @relation(fields: [vendorId], references: [id])
   quotation        Quotation?        @relation(fields: [quotationId], references: [id])
+  mpr              MaterialPurchaseRequest? @relation(fields: [mprId], references: [id])
   phase            Phase?            @relation(fields: [phaseId], references: [id])
   createdByUser    User              @relation("POCreatedBy", fields: [createdBy], references: [id])
   editedByUser     User?             @relation("POEditedBy", fields: [editedBy], references: [id])
@@ -320,6 +323,7 @@ model PurchaseOrder {
   @@unique([projectId, poNumber])
   @@index([projectId, deletedAt])
   @@index([projectId, status, date])
+  @@index([mprId])
   @@map("purchase_orders")
 }
 
@@ -1731,6 +1735,7 @@ model MaterialPurchaseRequest {
   approvalWorkflow ApprovalWorkflow? @relation(fields: [approvalWorkflowId], references: [id])
   items         MaterialPurchaseRequestItem[]
   quotations    Quotation[]
+  purchaseOrders PurchaseOrder[]
 
   @@unique([projectId, mprNumber])
   @@index([projectId, deletedAt])

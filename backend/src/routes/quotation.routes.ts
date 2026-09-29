@@ -417,7 +417,7 @@ router.post(
           return;
         }
         if (mpr.vendor?.vendorType === 'NON_VENDOR') {
-          res.status(400).json({ error: 'Non-vendor requests skip the Quotation step — upload a receipt directly on the MPR instead' });
+          res.status(400).json({ error: 'Non-vendor requests skip the Quotation step — a Purchase Order is raised directly from the approved request' });
           return;
         }
       }

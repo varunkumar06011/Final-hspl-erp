@@ -7,6 +7,7 @@ import {
 } from '@mui/material';
 import {
   Add as AddIcon,
+  SwapHoriz as SwitchIcon,
   Delete as DeleteIcon,
   Edit as EditIcon,
   Download as DownloadIcon,
@@ -79,6 +80,7 @@ interface MPRRow {
   quotations?: { id: string; quotationNumber: string; status: string; grandTotal: number }[];
   approvalWorkflowId?: string | null;
   approvalWorkflow?: { id: string; status: string; currentStep: number; steps: ApprovalStep[] } | null;
+  purchaseOrders?: { id: string; poNumber: string; status: string }[];
   receiptFilePath?: string | null;
   receiptFileName?: string | null;
 }
@@ -424,6 +426,17 @@ export default function MaterialPurchaseRequestsPage() {
     },
   });
 
+  const switchTypeMutation = useMutation({
+    mutationFn: async (id: string) => (await api.post(`/material-purchase-requests/${id}/switch-type`)).data,
+    onSuccess: (updated: { requestType?: string }) => {
+      queryClient.invalidateQueries({ queryKey: ['mprs'] });
+      // follow the record to the tab it now belongs to
+      if (updated?.requestType === 'SERVICE') setRequestTypeTab(MPRRequestType.SERVICE);
+      else if (updated?.requestType === 'MATERIAL') setRequestTypeTab(MPRRequestType.MATERIAL);
+    },
+    onError: (err: unknown) => setError(extractErrorMessage(err)),
+  });
+
   const cancelMutation = useMutation({
     mutationFn: async (id: string) => {
       await api.post(`/material-purchase-requests/${id}/cancel`);
@@ -756,6 +769,11 @@ export default function MaterialPurchaseRequestsPage() {
                     <IconButton size="small" onClick={() => downloadPDF(row.id, row.mprNumber)} title={t('downloadPdf')}>
                       <DownloadIcon fontSize="small" />
                     </IconButton>
+                    {row.status !== MPRStatus.CLOSED && row.status !== MPRStatus.CANCELLED && (
+                      <Button size="small" startIcon={<SwitchIcon />} onClick={() => switchTypeMutation.mutate(row.id)} disabled={switchTypeMutation.isPending}>
+                        {row.requestType === 'SERVICE' ? t('switchToMaterial') : t('switchToService')}
+                      </Button>
+                    )}
                     {(row.status !== MPRStatus.DRAFT) && (
                       <Button size="small" startIcon={<VarianceIcon />} onClick={() => setVarianceRow(row)}>{t('variance')}</Button>
                     )}
@@ -781,7 +799,10 @@ export default function MaterialPurchaseRequestsPage() {
                     {row.status === MPRStatus.APPROVED && !isNonVendor && row.vendorId && (
                       <Button size="small" variant="contained" startIcon={<QuotationIcon />} onClick={() => raiseQuotation(row)}>{t('raiseQuotation')}</Button>
                     )}
-                    {row.status === MPRStatus.APPROVED && isNonVendor && (
+                    {isNonVendor && row.purchaseOrders?.map((po) => (
+                      <Chip key={po.id} label={t('poRaised', { n: po.poNumber })} size="small" color="success" variant="outlined" sx={{ alignSelf: 'center' }} />
+                    ))}
+                    {row.status === MPRStatus.APPROVED && isNonVendor && !row.purchaseOrders?.length && (
                       <Button size="small" variant="contained" startIcon={<ReceiptIcon />} onClick={() => setReceiptRow(row)}>{t('uploadReceiptClose')}</Button>
                     )}
                     {row.status === MPRStatus.QUOTATIONS_RECEIVED && !isNonVendor && row.vendorId && (

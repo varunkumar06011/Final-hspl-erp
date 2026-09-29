@@ -19,6 +19,7 @@ import { streamMprPdf } from '../services/mpr-pdf.service';
 import * as approvalService from '../services/approval.service';
 import { getStorageService, serveFile } from '../services/storage.service';
 import { notifyApprovers } from '../services/push.service';
+import { createNonVendorPoFromMpr, findLivePoForMpr } from '../services/non-vendor-po.service';
 import { ensureVendorLedger } from './ledger.routes';
 import multer from 'multer';
 
@@ -54,6 +55,10 @@ const mprInclude = {
   createdByUser: { select: { id: true, name: true } },
   requestRaisedBy: { select: { id: true, name: true } },
   items: true,
+  purchaseOrders: {
+    where: { deletedAt: null, status: { notIn: ['DELETED', 'CANCELLED', 'REJECTED'] } },
+    select: { id: true, poNumber: true, status: true },
+  },
   vendor: { select: { id: true, name: true, vendorCode: true, vendorType: true, phone: true, contactPersonPhone: true } },
   quotations: {
     where: { deletedAt: null },
@@ -634,6 +639,10 @@ router.post(
           where: { id: mpr.id },
           data: { status: MPRStatus.APPROVED },
         }).catch((err) => console.error('[MPR] Safety-net status sync failed (non-fatal):', err));
+
+        // Non-vendor requests have no quotation — go straight to a PO (amount 0, to be filled in).
+        await createNonVendorPoFromMpr(mpr.id, projectId, req.user!.id)
+          .catch((err) => console.error('[MPR] Non-vendor PO auto-create failed (non-fatal):', err));
       }
 
       await logAudit({
@@ -744,6 +753,10 @@ router.post(
         res.status(400).json({ error: 'This request is raised against a vendor — raise a Quotation instead of uploading a receipt directly' });
         return;
       }
+      if (await findLivePoForMpr(mpr.id)) {
+        res.status(400).json({ error: 'A Purchase Order has been raised for this request — manage it from the Purchase Orders page' });
+        return;
+      }
       if (!req.file) {
         res.status(400).json({ error: 'A receipt/bill file is required' });
         return;
@@ -798,6 +811,50 @@ router.get(
         return;
       }
       await serveFile(res, mpr.receiptFilePath, mpr.receiptFileMimeType);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// POST /:id/switch-type — flip a request between MATERIAL and SERVICE,
+// keeping everything already entered (items, vendor, approvals). Service-only
+// fields are cleared when switching back to MATERIAL.
+router.post(
+  '/:id/switch-type',
+  rbacMiddleware(Permission.CREATE_MPR),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      const existing = await prisma.materialPurchaseRequest.findFirst({
+        where: { id: req.params.id, projectId, deletedAt: null },
+      });
+      if (!existing) {
+        res.status(404).json({ error: 'Material Purchase Request not found' });
+        return;
+      }
+      if (existing.status === MPRStatus.CLOSED || existing.status === MPRStatus.CANCELLED) {
+        res.status(400).json({ error: `A ${existing.status.toLowerCase()} request cannot be switched` });
+        return;
+      }
+      const newType = existing.requestType === 'SERVICE' ? 'MATERIAL' : 'SERVICE';
+      const record = await prisma.materialPurchaseRequest.update({
+        where: { id: existing.id },
+        data: newType === 'MATERIAL'
+          ? { requestType: newType, serviceCategory: null, servicePeriodStart: null, servicePeriodEnd: null }
+          : { requestType: newType },
+        include: mprInclude,
+      });
+      await logAudit({
+        userId: req.user!.id,
+        action: AuditAction.UPDATE,
+        entityType: 'MATERIAL_PURCHASE_REQUEST',
+        entityId: existing.id,
+        projectId,
+        oldValue: { requestType: existing.requestType },
+        newValue: { requestType: newType },
+      });
+      res.json(record);
     } catch (error) {
       next(error);
     }
