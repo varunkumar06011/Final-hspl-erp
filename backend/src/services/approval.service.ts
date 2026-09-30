@@ -116,6 +116,61 @@ async function syncEntityStatusTx(
   }
 }
 
+// Field holding the human-readable number of each approvable record.
+const ENTITY_NUMBER_FIELD: Record<string, string> = {
+  QUOTATION: 'quotationNumber',
+  PURCHASE_ORDER: 'poNumber',
+  VENDOR_INVOICE: 'invoiceCode',
+  PAYMENT_REQUEST: 'requestNumber',
+  JOURNAL_VOUCHER: 'jvNumber',
+  MATERIAL_PURCHASE_REQUEST: 'mprNumber',
+};
+
+// The Comments module (and each page's comment button) uses INVOICE for vendor invoices.
+const COMMENT_ENTITY_TYPE: Record<string, string> = { VENDOR_INVOICE: 'INVOICE' };
+
+/**
+ * An approve/reject comment is the same thing as a comment in the Comments module:
+ * store it there too so others can reply, and the approver can edit or delete it.
+ */
+async function recordDecisionComment(
+  step: { id: string; workflow: { entityType: string; entityId: string; projectId: string } },
+  userId: string,
+  decision: 'APPROVED' | 'REJECTED',
+  text: string | undefined,
+): Promise<void> {
+  const body = text?.trim();
+  if (!body) return;
+  try {
+    const { entityType, entityId, projectId } = step.workflow;
+    let entityLabel: string | null = null;
+    const modelName = ENTITY_MODEL_MAP[entityType];
+    const numberField = ENTITY_NUMBER_FIELD[entityType];
+    if (modelName && numberField) {
+      const row = await (prisma as any)[modelName].findUnique({
+        where: { id: entityId },
+        select: { [numberField]: true },
+      });
+      entityLabel = row?.[numberField] ?? null;
+    }
+    await prisma.comment.create({
+      data: {
+        projectId,
+        entityType: COMMENT_ENTITY_TYPE[entityType] ?? entityType,
+        entityId,
+        entityLabel,
+        url: ENTITY_URL_MAP[entityType] ?? null,
+        authorId: userId,
+        body,
+        decision,
+        approvalStepId: step.id,
+      },
+    });
+  } catch (err) {
+    console.error('[Comments] Failed to record approval comment:', err);
+  }
+}
+
 async function findEntityCreator(entityType: string, entityId: string): Promise<{ createdBy: string | null; projectId: string; label: string }> {
   const modelName = ENTITY_MODEL_MAP[entityType];
   if (!modelName) {
@@ -254,6 +309,7 @@ export async function approve(stepId: string, userId: string, comments?: string)
       comments,
     },
   });
+  await recordDecisionComment(step, userId, 'APPROVED', comments);
 
   // ── D20: Write approval decisions to the audit log ──
   await logAudit({
@@ -415,6 +471,7 @@ export async function reject(stepId: string, userId: string, reason: string) {
       comments: reason,
     },
   });
+  await recordDecisionComment(step, userId, 'REJECTED', reason);
 
   // ── D20: Write rejection decisions to the audit log ──
   await logAudit({

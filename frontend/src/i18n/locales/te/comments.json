@@ -36,5 +36,9 @@
   "entity_GATE_PASS": "గేట్ పాస్",
   "entity_VENDOR": "విక్రేత",
   "entity_CONTRACT": "ఒప్పందం",
-  "entity_ISSUE": "సమస్య"
+  "entity_ISSUE": "సమస్య",
+  "reply": "ప్రత్యుత్తరం",
+  "replyingTo": "{{name}}కి ప్రత్యుత్తరం ఇస్తున్నారు",
+  "approved": "ఆమోదించబడింది",
+  "rejected": "తిరస్కరించబడింది"
 }

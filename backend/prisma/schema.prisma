@@ -1786,10 +1786,18 @@ model Comment {
   deletedAt     DateTime?
   deletedById   String?   @db.Uuid
   deletedByName String?
+  // Replies: parentId points at the top-level comment being answered (threads are one level deep).
+  parentId      String?   @db.Uuid
+  // Set when the comment was written as an approve/reject decision; edits/deletes stay in sync with the step.
+  approvalStepId String?  @unique @db.Uuid
+  decision       String? // "APPROVED" | "REJECTED"
 
-  author User @relation(fields: [authorId], references: [id])
+  author  User      @relation(fields: [authorId], references: [id])
+  parent  Comment?  @relation("CommentReplies", fields: [parentId], references: [id])
+  replies Comment[] @relation("CommentReplies")
 
   @@index([entityType, entityId])
+  @@index([parentId])
   @@index([projectId, createdAt])
   @@index([authorId])
   @@map("comments")

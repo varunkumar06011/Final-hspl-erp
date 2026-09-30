@@ -22,6 +22,7 @@ const createCommentSchema = z.object({
     url: z.string().max(300).startsWith('/').optional(),
     body: z.string().trim().min(1).max(4000),
     mentionIds: z.array(z.string().uuid()).max(50).optional(),
+    parentId: z.string().uuid().optional(),
   }),
 });
 
@@ -127,15 +128,27 @@ router.post(
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const user = req.user!;
-      const { entityType, entityId, entityLabel, url, body, mentionIds } = req.body as {
+      const { entityType, entityId, entityLabel, url, body, mentionIds, parentId } = req.body as {
         entityType: string;
         entityId: string;
         entityLabel?: string;
         url?: string;
         body: string;
         mentionIds?: string[];
+        parentId?: string;
       };
       const projectId = user.projectId ?? null;
+
+      // A reply always hangs off the top-level comment, on the same record.
+      let parent: { id: string; authorId: string } | null = null;
+      if (parentId) {
+        const found = await prisma.comment.findUnique({ where: { id: parentId } });
+        if (!found || found.entityType !== entityType || found.entityId !== entityId) {
+          res.status(400).json({ error: 'Comment to reply to was not found on this record' });
+          return;
+        }
+        parent = { id: found.parentId ?? found.id, authorId: found.authorId };
+      }
       const scope = projectUserScope(projectId);
 
       // Only accept tags of real, active users in scope; never trust client names.
@@ -157,15 +170,19 @@ router.post(
           url: url || null,
           authorId: user.id,
           body,
+          parentId: parent?.id ?? null,
           mentions: mentions as unknown as Prisma.InputJsonValue,
         },
         include: { author: { select: { id: true, name: true, role: true } } },
       });
 
-      // Recipients: tagged users only; with no tag, every active user in scope.
+      // Recipients: tagged users (plus the author being replied to); with no tag on a
+      // top-level comment, every active user in scope.
       let recipientIds: string[];
-      if (mentions.length > 0) {
-        recipientIds = mentions.map((m) => m.id);
+      if (parent || mentions.length > 0) {
+        recipientIds = Array.from(
+          new Set([...mentions.map((m) => m.id), ...(parent ? [parent.authorId] : [])]),
+        ).filter((id) => id !== user.id);
       } else {
         const everyone = await prisma.user.findMany({
           where: { ...scope, id: { not: user.id } },
@@ -178,7 +195,9 @@ router.post(
         const label = entityLabel || entityType.replace(/_/g, ' ').toLowerCase();
         const title = mentions.length > 0
           ? `${user.name} mentioned you on ${label}`
-          : `${user.name} commented on ${label}`;
+          : parent
+            ? `${user.name} replied on ${label}`
+            : `${user.name} commented on ${label}`;
         const preview = body.length > 140 ? `${body.slice(0, 137)}...` : body;
         const targetUrl = url || '/comments';
 
@@ -260,6 +279,13 @@ router.patch(
         include: { author: { select: { id: true, name: true, role: true } } },
       });
 
+      if (existing.approvalStepId) {
+        await prisma.approvalStep.update({
+          where: { id: existing.approvalStepId },
+          data: { comments: body },
+        });
+      }
+
       if (newlyTagged.length > 0) {
         const recipientIds = newlyTagged.map((m) => m.id);
         const label =
@@ -321,6 +347,12 @@ router.delete('/:id', async (req: AuthenticatedRequest, res: Response, next: Nex
           deletedByName: req.user!.name,
         },
       });
+      if (existing.approvalStepId) {
+        await prisma.approvalStep.update({
+          where: { id: existing.approvalStepId },
+          data: { comments: null },
+        });
+      }
     }
     res.json({ success: true });
   } catch (error) {

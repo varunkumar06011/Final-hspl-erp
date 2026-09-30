@@ -36,5 +36,9 @@
   "entity_GATE_PASS": "Gate Pass",
   "entity_VENDOR": "Vendor",
   "entity_CONTRACT": "Contract",
-  "entity_ISSUE": "Issue"
+  "entity_ISSUE": "Issue",
+  "reply": "Reply",
+  "replyingTo": "Replying to {{name}}",
+  "approved": "Approved",
+  "rejected": "Rejected"
 }

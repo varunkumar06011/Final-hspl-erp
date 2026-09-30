@@ -22,6 +22,7 @@ import {
   ChatBubbleOutline as CommentIcon,
   Delete as DeleteIcon,
   Edit as EditIcon,
+  Reply as ReplyIcon,
   Send as SendIcon,
 } from '@mui/icons-material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -42,6 +43,8 @@ export interface CommentRow {
   entityId: string;
   entityLabel: string | null;
   url: string | null;
+  parentId?: string | null;
+  decision?: 'APPROVED' | 'REJECTED' | null;
   body: string;
   mentions: CommentMention[];
   createdAt: string;
@@ -117,6 +120,14 @@ export function CommentContent({ comment }: { comment: CommentRow }) {
   }
   return (
     <>
+      {comment.decision && (
+        <Chip
+          size="small"
+          color={comment.decision === 'APPROVED' ? 'success' : 'error'}
+          label={tr(comment.decision === 'APPROVED' ? 'approved' : 'rejected')}
+          sx={{ height: 18, fontSize: '0.65rem', mb: 0.5 }}
+        />
+      )}
       <CommentBody body={comment.body} mentions={comment.mentions ?? []} />
       {comment.editedAt && (
         <Typography variant="caption" color="text.secondary">
@@ -203,6 +214,8 @@ function CommentsDialog({
   const [error, setError] = useState('');
   // When set, the composer is editing this comment instead of posting a new one.
   const [editingId, setEditingId] = useState<string | null>(null);
+  // When set, the next post is a reply to this (top-level) comment.
+  const [replyTo, setReplyTo] = useState<CommentRow | null>(null);
 
   const { data: comments, isLoading } = useQuery<CommentRow[]>({
     queryKey: ['comments', entityType, entityId],
@@ -255,10 +268,21 @@ function CommentsDialog({
     setText('');
     setTagged({});
     setEditingId(null);
+    setReplyTo(null);
     setError('');
   };
 
+  const startReply = (c: CommentRow) => {
+    setEditingId(null);
+    setReplyTo(c);
+    setText('');
+    setTagged({});
+    setError('');
+    requestAnimationFrame(() => inputRef.current?.focus());
+  };
+
   const startEdit = (c: CommentRow) => {
+    setReplyTo(null);
     setEditingId(c.id);
     setText(c.body);
     setCaret(c.body.length);
@@ -286,6 +310,7 @@ function CommentsDialog({
         url,
         body: text.trim(),
         mentionIds,
+        parentId: replyTo?.id,
       });
     },
     onSuccess: () => {
@@ -306,9 +331,67 @@ function CommentsDialog({
     onError: (err) => setError(extractErrorMessage(err)),
   });
 
+  // Top-level comments oldest first, each with its replies underneath.
+  const threads = useMemo(() => {
+    const all = comments ?? [];
+    const ids = new Set(all.map((c) => c.id));
+    const roots = all.filter((c) => !c.parentId || !ids.has(c.parentId));
+    return roots.map((root) => ({
+      root,
+      replies: all.filter((c) => c.parentId === root.id),
+    }));
+  }, [comments]);
+
   const canDelete = (c: CommentRow) =>
     !c.deletedAt && (c.author.id === me?.id || String(me?.role ?? '').startsWith('ADMIN'));
   const canEdit = (c: CommentRow) => !c.deletedAt && c.author.id === me?.id;
+
+  const renderComment = (c: CommentRow, isReply: boolean) => (
+    <Box key={c.id} sx={{ display: 'flex', gap: 1.25 }}>
+      <Avatar sx={{ width: isReply ? 24 : 30, height: isReply ? 24 : 30, fontSize: isReply ? 12 : 14 }}>
+        {c.author.name.charAt(0).toUpperCase()}
+      </Avatar>
+      <Box sx={{ flex: 1, minWidth: 0 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, flexWrap: 'wrap' }}>
+          <Typography variant="subtitle2">{c.author.name}</Typography>
+          <Chip size="small" label={roleLabel(c.author.role)} sx={{ height: 18, fontSize: '0.65rem' }} />
+          <Typography variant="caption" color="text.secondary">
+            {timeAgo(c.createdAt)}
+          </Typography>
+          <Box sx={{ ml: 'auto', display: 'flex' }}>
+            {!isReply && !c.deletedAt && (
+              <Tooltip title={tr('reply')}>
+                <IconButton size="small" onClick={() => startReply(c)}>
+                  <ReplyIcon sx={{ fontSize: 16 }} />
+                </IconButton>
+              </Tooltip>
+            )}
+            {canEdit(c) && (
+              <Tooltip title={tr('edit')}>
+                <IconButton size="small" onClick={() => startEdit(c)}>
+                  <EditIcon sx={{ fontSize: 16 }} />
+                </IconButton>
+              </Tooltip>
+            )}
+            {canDelete(c) && (
+              <Tooltip title={tr('delete')}>
+                <IconButton
+                  size="small"
+                  onClick={() => {
+                    if (window.confirm(tr('confirmDelete'))) deleteMutation.mutate(c.id);
+                  }}
+                  disabled={deleteMutation.isPending}
+                >
+                  <DeleteIcon sx={{ fontSize: 16 }} />
+                </IconButton>
+              </Tooltip>
+            )}
+          </Box>
+        </Box>
+        <CommentContent comment={c} />
+      </Box>
+    </Box>
+  );
 
   return (
     <ResponsiveDialog open onClose={onClose} maxWidth="sm" fullWidth>
@@ -324,43 +407,25 @@ function CommentsDialog({
           </Typography>
         ) : (
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-            {(comments ?? []).map((c) => (
-              <Box key={c.id} sx={{ display: 'flex', gap: 1.25 }}>
-                <Avatar sx={{ width: 30, height: 30, fontSize: 14 }}>
-                  {c.author.name.charAt(0).toUpperCase()}
-                </Avatar>
-                <Box sx={{ flex: 1, minWidth: 0 }}>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, flexWrap: 'wrap' }}>
-                    <Typography variant="subtitle2">{c.author.name}</Typography>
-                    <Chip size="small" label={roleLabel(c.author.role)} sx={{ height: 18, fontSize: '0.65rem' }} />
-                    <Typography variant="caption" color="text.secondary">
-                      {timeAgo(c.createdAt)}
-                    </Typography>
-                    <Box sx={{ ml: 'auto', display: 'flex' }}>
-                      {canEdit(c) && (
-                        <Tooltip title={tr('edit')}>
-                          <IconButton size="small" onClick={() => startEdit(c)}>
-                            <EditIcon sx={{ fontSize: 16 }} />
-                          </IconButton>
-                        </Tooltip>
-                      )}
-                      {canDelete(c) && (
-                        <Tooltip title={tr('delete')}>
-                          <IconButton
-                            size="small"
-                            onClick={() => {
-                              if (window.confirm(tr('confirmDelete'))) deleteMutation.mutate(c.id);
-                            }}
-                            disabled={deleteMutation.isPending}
-                          >
-                            <DeleteIcon sx={{ fontSize: 16 }} />
-                          </IconButton>
-                        </Tooltip>
-                      )}
-                    </Box>
+            {threads.map(({ root, replies }) => (
+              <Box key={root.id}>
+                {renderComment(root, false)}
+                {replies.length > 0 && (
+                  <Box
+                    sx={{
+                      ml: 2,
+                      mt: 1,
+                      pl: 1.5,
+                      borderLeft: 2,
+                      borderColor: 'divider',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 1.25,
+                    }}
+                  >
+                    {replies.map((r) => renderComment(r, true))}
                   </Box>
-                  <CommentContent comment={c} />
-                </Box>
+                )}
               </Box>
             ))}
           </Box>
@@ -373,6 +438,16 @@ function CommentsDialog({
       </DialogContent>
       <DialogActions sx={{ alignItems: { xs: "stretch", sm: "flex-end" }, flexDirection: { xs: "column", sm: "row" }, px: 2, py: 1.5, gap: 1, pb: { xs: "calc(12px + env(safe-area-inset-bottom))", sm: 1.5 } }}>
         <Box sx={{ flex: 1 }}>
+          {replyTo && !editingId && (
+            <Box sx={{ display: 'flex', alignItems: 'center', mb: 0.5 }}>
+              <Typography variant="caption" color="primary" sx={{ fontWeight: 600 }}>
+                {tr('replyingTo', { name: replyTo.author.name })}
+              </Typography>
+              <Button size="small" sx={{ ml: 'auto' }} onClick={resetComposer}>
+                {tr('cancel')}
+              </Button>
+            </Box>
+          )}
           {editingId && (
             <Box sx={{ display: 'flex', alignItems: 'center', mb: 0.5 }}>
               <Typography variant="caption" color="primary" sx={{ fontWeight: 600 }}>
@@ -458,7 +533,7 @@ function CommentsDialog({
           disabled={!text.trim() || postMutation.isPending}
           onClick={() => postMutation.mutate()}
         >
-          {editingId ? tr('save') : tr('post')}
+          {editingId ? tr('save') : replyTo ? tr('reply') : tr('post')}
         </Button>
       </DialogActions>
     </ResponsiveDialog>
