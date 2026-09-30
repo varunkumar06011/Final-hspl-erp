@@ -848,6 +848,9 @@ export default function MaterialPurchaseRequestsPage() {
                     {row.status === MPRStatus.APPROVED && isNonVendor && !row.purchaseOrders?.length && (
                       <Button size="small" variant="contained" startIcon={<ReceiptIcon />} onClick={() => setReceiptRow(row)}>{t('uploadReceiptClose')}</Button>
                     )}
+                    {row.status === MPRStatus.QUOTATIONS_RECEIVED && (
+                      <IconButton size="small" onClick={() => openEdit(row)} title={t('editReviseQuotation')}><EditIcon fontSize="small" /></IconButton>
+                    )}
                     {row.status === MPRStatus.QUOTATIONS_RECEIVED && !isNonVendor && row.vendorId && (
                       <Button size="small" startIcon={<QuotationIcon />} onClick={() => raiseQuotation(row)}>{t('raiseAnother')}</Button>
                     )}

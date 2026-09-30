@@ -410,7 +410,7 @@ router.put(
         return;
       }
       // An approved MPR can be edited too — it goes back through approval.
-      const wasApproved = existing.status === MPRStatus.APPROVED;
+      const wasApproved = existing.status === MPRStatus.APPROVED || existing.status === MPRStatus.QUOTATIONS_RECEIVED;
       let wasSubmitted = existing.status === MPRStatus.SUBMITTED || wasApproved;
       if (existing.status !== MPRStatus.DRAFT && !wasSubmitted) {
         res.status(400).json({ error: 'Cannot edit MPR after it has been rejected, cancelled, or closed' });
