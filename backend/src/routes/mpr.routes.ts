@@ -20,6 +20,7 @@ import * as approvalService from '../services/approval.service';
 import { getStorageService, serveFile } from '../services/storage.service';
 import { notifyApprovers } from '../services/push.service';
 import { createNonVendorPoFromMpr, findLivePoForMpr } from '../services/non-vendor-po.service';
+import { REVISABLE_PO_STATUSES, syncQuotationsFromMpr, syncPoFromQuotation, hasUnpricedItems } from '../services/mpr-revision.service';
 import { ensureVendorLedger } from './ledger.routes';
 import multer from 'multer';
 
@@ -415,22 +416,51 @@ router.put(
         res.status(400).json({ error: 'Cannot edit MPR after it has been rejected, cancelled, or closed' });
         return;
       }
+      // Approved MPR with quotation(s) raised: it stays approved, the change is
+      // pushed into the quotation(s) and the linked PO is re-approved instead.
+      let linkedQuotations: { id: string }[] = [];
       if (wasApproved) {
-        const [quotationCount, po] = await Promise.all([
-          prisma.quotation.count({ where: { mprId: existing.id, deletedAt: null } }),
+        const [quotations, po] = await Promise.all([
+          prisma.quotation.findMany({
+            where: { mprId: existing.id, deletedAt: null, status: { not: 'DELETED' } },
+            select: { id: true },
+          }),
           findLivePoForMpr(existing.id),
         ]);
         if (po) {
           res.status(400).json({ error: `Purchase Order ${po.poNumber} has been raised from this request — it cannot be edited` });
           return;
         }
-        if (quotationCount > 0) {
-          res.status(400).json({ error: `This request has ${quotationCount} quotation(s) raised against it — it cannot be edited` });
-          return;
-        }
-        // Its PO was rejected: the edited request stays approved so a fresh PO
-        // can be raised straight away (that PO goes through its own approval).
-        if (await prisma.purchaseOrder.count({ where: { mprId: existing.id, deletedAt: null, status: 'REJECTED' } })) {
+        if (quotations.length > 0) {
+          linkedQuotations = quotations;
+          const livePos = await prisma.purchaseOrder.findMany({
+            where: {
+              quotationId: { in: quotations.map((q) => q.id) },
+              deletedAt: null,
+              status: { notIn: ['DELETED', 'CANCELLED', 'REJECTED'] },
+            },
+            select: { poNumber: true, status: true, invoices: { where: { deletedAt: null }, select: { id: true }, take: 1 } },
+          });
+          const blocked = livePos.find((p) => !REVISABLE_PO_STATUSES.includes(p.status) || p.invoices.length > 0);
+          if (blocked) {
+            res.status(400).json({
+              error: `Purchase Order ${blocked.poNumber} is already ${blocked.invoices.length > 0 ? 'invoiced' : blocked.status.toLowerCase().replace(/_/g, ' ')} — this request can no longer be edited`,
+            });
+            return;
+          }
+          if (req.body.items) {
+            const newNames = new Set((req.body.items as { materialName: string }[]).map((i) => i.materialName.trim().toLowerCase()));
+            const current = await prisma.materialPurchaseRequestItem.findMany({ where: { mprId: existing.id }, select: { materialName: true } });
+            const removed = current.find((i) => !newNames.has(i.materialName.trim().toLowerCase()));
+            if (removed) {
+              res.status(400).json({ error: `"${removed.materialName}" cannot be removed — a quotation/PO exists for this request. You can add items or change quantities.` });
+              return;
+            }
+          }
+          wasSubmitted = false;
+        } else if (await prisma.purchaseOrder.count({ where: { mprId: existing.id, deletedAt: null, status: 'REJECTED' } })) {
+          // Its PO was rejected: the edited request stays approved so a fresh PO
+          // can be raised straight away (that PO goes through its own approval).
           wasSubmitted = false;
         }
       }
@@ -553,7 +583,25 @@ router.put(
         }).catch((err) => console.error('[Push] MPR notification error:', err));
       }
 
-      res.json(record);
+      // Push the revised lines into the linked quotation(s); the PO is re-sent
+      // for approval right away only when every quotation line is priced.
+      let revision: { quotationsUpdated: number; pricingPending: boolean; poResubmitted: string[] } | undefined;
+      if (linkedQuotations.length > 0 && req.body.items) {
+        const quotationIds = await syncQuotationsFromMpr(
+          record.id,
+          record.items.map((i) => ({ materialName: i.materialName, quantity: Number(i.quantity), unit: i.unit })),
+          Number(record.estimatedGstRate),
+        );
+        const poResubmitted: string[] = [];
+        for (const qid of quotationIds) {
+          const poNumber = await syncPoFromQuotation(qid, projectId, req.user!.id, `Items revised on ${record.mprNumber}`);
+          if (poNumber) poResubmitted.push(poNumber);
+        }
+        const pending = await prisma.quotationItem.findMany({ where: { quotationId: { in: quotationIds } }, select: { unitPrice: true } });
+        revision = { quotationsUpdated: quotationIds.length, pricingPending: hasUnpricedItems(pending), poResubmitted };
+      }
+
+      res.json(revision ? { ...record, revision } : record);
     } catch (error) {
       if (error instanceof Error && error.message === 'Vendor not found') {
         res.status(400).json({ error: error.message });

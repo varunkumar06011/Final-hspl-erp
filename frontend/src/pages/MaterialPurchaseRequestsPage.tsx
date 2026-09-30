@@ -118,6 +118,7 @@ export default function MaterialPurchaseRequestsPage() {
   const [editRow, setEditRow] = useState<MPRRow | null>(null);
   const [error, setError] = useState('');
   const [pdfLoading, setPdfLoading] = useState(false);
+  const [notice, setNotice] = useState('');
   const [approvalAction, setApprovalAction] = useState<{ row: MPRRow; step: ApprovalStep; action: 'approve' | 'reject' } | null>(null);
   const [receiptRow, setReceiptRow] = useState<MPRRow | null>(null);
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
@@ -419,10 +420,18 @@ export default function MaterialPurchaseRequestsPage() {
       const res = await api.post('/material-purchase-requests', payload);
       return res.data;
     },
-    onSuccess: () => {
+    onSuccess: (data?: { revision?: { quotationsUpdated: number; pricingPending: boolean; poResubmitted: string[] } }) => {
       queryClient.invalidateQueries({ queryKey: ['mprs'] });
       queryClient.invalidateQueries({ queryKey: ['/vendors'] });
       setCreateOpen(false);
+      const rev = data?.revision;
+      if (rev) {
+        queryClient.invalidateQueries({ queryKey: ['/quotations'] });
+        queryClient.invalidateQueries({ queryKey: ['/pos'] });
+        setNotice(rev.poResubmitted.length > 0
+          ? t('revisionPoResubmitted', { pos: rev.poResubmitted.join(', ') })
+          : rev.pricingPending ? t('revisionPricingPending') : t('revisionQuotationsUpdated'));
+      }
       setError('');
       rememberDepartment(department);
       try { localStorage.removeItem(MPR_DRAFT_KEY); } catch { /* ignore */ }
@@ -651,6 +660,7 @@ export default function MaterialPurchaseRequestsPage() {
 
       {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
 
+      {notice && <Alert severity="success" sx={{ mb: 2 }} onClose={() => setNotice('')}>{notice}</Alert>}
       {/* Filters */}
       <Box sx={{ display: 'flex', gap: 1, mb: 2, flexWrap: 'wrap' }}>
         <TextField

@@ -16,6 +16,7 @@ import {
   type QuotationLineItem,
 } from '../services/quotation.service';
 import { streamQuotationPdf } from '../services/quotation-pdf.service';
+import { syncPoFromQuotation } from '../services/mpr-revision.service';
 import multer from 'multer';
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 100 * 1024 * 1024 } });
@@ -511,12 +512,18 @@ router.patch(
         res.status(404).json({ error: 'Quotation not found' });
         return;
       }
-      if (existing.status === QuotationStatus.APPROVED || existing.status === QuotationStatus.CONVERTED_TO_PO) {
+      const isApprovedLocked = existing.status === QuotationStatus.APPROVED || existing.status === QuotationStatus.CONVERTED_TO_PO;
+      // An approved quotation whose MPR gained items/quantities has unpriced
+      // lines: prices (only) can be entered without re-approving it.
+      const existingItems = await prisma.quotationItem.findMany({ where: { quotationId: existing.id } });
+      const pricingOpen = isApprovedLocked && !!existing.mprId && existingItems.some((i) => Number(i.unitPrice) <= 0);
+      const pricingOnly = pricingOpen && !!req.body.items && !req.file;
+      if (isApprovedLocked) {
         // Allow editing only the notes/description on approved quotations
         const isNotesOnlyUpdate = req.body.notes !== undefined
           && !req.body.items
           && !req.file;
-        if (!isNotesOnlyUpdate) {
+        if (!isNotesOnlyUpdate && !pricingOnly) {
           res.status(400).json({ error: 'Cannot edit an approved quotation (only description/notes can be updated)' });
           return;
         }
@@ -529,7 +536,7 @@ router.patch(
       }
 
       // Block item/file changes on approved quotations (notes-only allowed above)
-      if (existing.status === QuotationStatus.APPROVED || existing.status === QuotationStatus.CONVERTED_TO_PO) {
+      if (isApprovedLocked && !pricingOnly) {
         if (req.body.items || req.file) {
           res.status(400).json({ error: 'Cannot edit line items or file on an approved quotation' });
           return;
@@ -540,6 +547,17 @@ router.patch(
         const items = typeof req.body.items === 'string'
           ? JSON.parse(req.body.items) as QuotationLineItem[]
           : req.body.items as QuotationLineItem[];
+        if (pricingOnly) {
+          // Lines follow the MPR — only prices / GST may change here.
+          const sameLines = items.length === existingItems.length && existingItems.every((e) => {
+            const m = items.find((i) => i.materialName.trim().toLowerCase() === e.materialName.trim().toLowerCase());
+            return m && Number(m.quantity) === Number(e.quantity);
+          });
+          if (!sameLines) {
+            res.status(400).json({ error: 'Item names and quantities follow the material request — edit them there. Only prices can be entered here.' });
+            return;
+          }
+        }
         const vendor = await prisma.vendor.findFirst({
           where: { id: existing.vendorId, projectId },
           include: { materials: true },
@@ -615,7 +633,13 @@ router.patch(
         newValue: updateData,
       });
 
-      res.json(updated);
+      // Prices entered on a revised quotation: sync + re-submit its PO for approval.
+      let poResubmitted: string | null = null;
+      if (pricingOnly) {
+        poResubmitted = await syncPoFromQuotation(existing.id, projectId, req.user!.id, `Items priced on ${existing.quotationNumber}`);
+      }
+
+      res.json(poResubmitted ? { ...updated, poResubmitted } : updated);
     } catch (error) {
       next(error);
     }

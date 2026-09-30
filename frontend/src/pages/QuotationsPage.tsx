@@ -257,6 +257,7 @@ export default function QuotationsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/quotations'] });
       queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['/pos'] });
       setEditOpen(false);
       setEditing(null);
       resetForm();
@@ -963,7 +964,9 @@ export default function QuotationsPage() {
                       <Button size="small" variant="outlined" startIcon={<ShareIcon />} onClick={() => handleShareWhatsApp(row)}>{t('share')}</Button>
                       {effectiveStatus !== QuotationStatus.DELETED && (
                         <>
-                          {isAdmin && effectiveStatus !== QuotationStatus.CONVERTED_TO_PO ? (
+                          {row.mpr && (effectiveStatus === QuotationStatus.APPROVED || effectiveStatus === QuotationStatus.CONVERTED_TO_PO) && row.items.some((i) => Number(i.unitPrice) <= 0) ? (
+                            <Button size="small" variant="contained" color="warning" startIcon={<EditIcon />} onClick={() => openEdit(row)}>{t('enterPrices')}</Button>
+                          ) : isAdmin && effectiveStatus !== QuotationStatus.CONVERTED_TO_PO ? (
                             <Button size="small" startIcon={<EditIcon />} onClick={() => openEdit(row, true)}>{t('reEditResend')}</Button>
                           ) : effectiveStatus === QuotationStatus.SUBMITTED || effectiveStatus === QuotationStatus.UNDER_REVIEW ? (
                             <Button size="small" startIcon={<EditIcon />} onClick={() => openEdit(row)}>{t('edit')}</Button>
