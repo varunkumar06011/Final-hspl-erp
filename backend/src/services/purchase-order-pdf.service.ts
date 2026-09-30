@@ -93,6 +93,10 @@ export async function streamPurchaseOrderPdf(res: NodeJS.WritableStream, po: any
 
   // ── Subtitle header ──
   doc.fillColor(dark).font('Helvetica-Bold').fontSize(14).text('PURCHASE ORDER', left, y);
+  const isRejected = po.status === 'REJECTED';
+  if (isRejected) {
+    doc.fillColor('#D32F2F').font('Helvetica-Bold').fontSize(16).text('REJECTED', right - 150, y, { width: 150, align: 'right', lineBreak: false });
+  }
   y += 22;
 
   // ── Left info column ──
@@ -347,6 +351,15 @@ export async function streamPurchaseOrderPdf(res: NodeJS.WritableStream, po: any
   y += 2;
   doc.moveTo(left, y).lineTo(right, y).stroke(primary);
   doc.fillColor(muted).font('Helvetica').fontSize(6.5).text(`Generated from Hospital Construction ERP — ${new Date().toLocaleDateString('en-IN')}`, left, y + 4, { width, align: 'center' });
+
+  // ── Rejected watermark ──
+  if (isRejected) {
+    doc.save();
+    doc.fillOpacity(0.15).fillColor('#D32F2F').font('Helvetica-Bold').fontSize(110);
+    doc.rotate(-35, { origin: [pageW / 2, pageH / 2] });
+    doc.text('REJECTED', 0, pageH / 2 - 55, { width: pageW, align: 'center', lineBreak: false });
+    doc.restore();
+  }
 
   doc.end();
 }
