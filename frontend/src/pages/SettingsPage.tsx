@@ -113,6 +113,9 @@ export default function SettingsPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/settings'] });
+      // The project name also shows in the top-bar switcher and on the dashboard.
+      queryClient.invalidateQueries({ queryKey: ['/projects'] });
+      queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
       setSuccess(tr('okSettings'));
       setError('');
       setTimeout(() => setSuccess(''), 3000);
@@ -132,6 +135,7 @@ export default function SettingsPage() {
     onSuccess: (data) => {
       setLogoUrl(data.logoUrl);
       queryClient.invalidateQueries({ queryKey: ['/settings'] });
+      queryClient.invalidateQueries({ queryKey: ['/projects'] });
     },
     onError: (err: unknown) => setError(extractErrorMessage(err)),
   });

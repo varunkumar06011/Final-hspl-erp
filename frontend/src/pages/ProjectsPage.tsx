@@ -117,7 +117,11 @@ export default function ProjectsPage() {
   });
   const projects: ProjectRow[] = data?.data ?? [];
 
-  const refresh = () => queryClient.invalidateQueries({ queryKey: ['/projects'] });
+  const refresh = () => {
+    queryClient.invalidateQueries({ queryKey: ['/projects'] });
+    queryClient.invalidateQueries({ queryKey: ['/settings'] });
+    queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
+  };
   const flash = (msg: string) => {
     setSuccessMsg(msg);
     setTimeout(() => setSuccessMsg(''), 5000);
