@@ -91,8 +91,18 @@ vi.mock('../src/config/prisma', () => {
           (v) => v.projectId === where.projectId && v.jvNumber.startsWith(where.jvNumber.startsWith)
         )
       ),
+      count: vi.fn(async ({ where }: Row) => db.vouchers.filter((v) => v.projectId === where.projectId).length),
     },
+    quotation: { count: vi.fn(async () => 0) },
+    purchaseOrder: { count: vi.fn(async () => 0) },
+    vendorInvoice: { count: vi.fn(async () => 0) },
+    paymentRequest: { count: vi.fn(async () => 0) },
+    asset: { count: vi.fn(async () => 0) },
+    gatePass: { count: vi.fn(async () => 0) },
+    goodsReceipt: { count: vi.fn(async () => 0) },
+    materialPurchaseRequest: { count: vi.fn(async () => 0) },
     vendor: {
+      count: vi.fn(async ({ where }: Row) => db.vendors.filter((v) => v.projectId === where.projectId).length),
       findMany: vi.fn(async ({ where }: Row) =>
         db.vendors.filter((v) => {
           if (where.projectId && v.projectId !== where.projectId) return false;
@@ -316,13 +326,33 @@ describe('project management', () => {
     expect(list.body.data.map((p: Row) => p.code)).toEqual(['VGH']);
   });
 
-  it('the project code cannot be changed', async () => {
+  it('the code can be changed while the project has no documents', async () => {
     const res = await request
       .patch(`/api/projects/${PROJECT_B}`)
       .set(bearer(tokenFor(ADMIN_ID, PROJECT_A)))
-      .send({ code: 'ZZZ', name: 'Renamed' });
+      .send({ code: 'vieh', name: 'Vgrand Infra Elite Homes' });
     expect(res.status).toBe(200);
-    expect(res.body.code).toBe('ABC');
+    expect(res.body.code).toBe('VIEH');
+    // numbering now uses the new code
+    expect(await generateVoucherNumber('PAYMENT', PROJECT_B)).toBe('VIEH-PAY0001');
+  });
+
+  it('the code cannot be changed once the project has numbered documents', async () => {
+    db.vendors.push({ projectId: PROJECT_B, vendorCode: 'ABC-001' });
+    const res = await request
+      .patch(`/api/projects/${PROJECT_B}`)
+      .set(bearer(tokenFor(ADMIN_ID, PROJECT_A)))
+      .send({ code: 'VIEH' });
+    expect(res.status).toBe(400);
+    expect(db.projects.get(PROJECT_B)!.code).toBe('ABC');
+  });
+
+  it('the code cannot be changed to one another project already uses', async () => {
+    const res = await request
+      .patch(`/api/projects/${PROJECT_B}`)
+      .set(bearer(tokenFor(ADMIN_ID, PROJECT_A)))
+      .send({ code: 'VGH' });
+    expect(res.status).toBe(409);
   });
 });
 

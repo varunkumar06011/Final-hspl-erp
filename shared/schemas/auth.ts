@@ -150,26 +150,29 @@ const projectFields = {
   panNumber: z.string().trim().max(20).nullable().optional(),
 };
 
+const projectCode = z
+  .string()
+  .trim()
+  .toUpperCase()
+  .regex(/^[A-Z][A-Z0-9]{1,5}$/, 'Code must be 2-6 letters/digits, starting with a letter');
+
 // POST /projects
 export const createProjectSchema = z.object({
   body: z.object({
     ...projectFields,
-    // Prefix for document numbers (VGH-PO001). Fixed once created.
-    code: z
-      .string()
-      .trim()
-      .toUpperCase()
-      .regex(/^[A-Z][A-Z0-9]{1,5}$/, 'Code must be 2-6 letters/digits, starting with a letter'),
+    // Prefix for document numbers (VGH-PO001).
+    code: projectCode,
   }),
 });
 
-// PATCH /projects/:id  (code is immutable)
+// PATCH /projects/:id  (the code can only change while no numbered document exists yet)
 export const updateProjectSchema = z.object({
   params: z.object({ id: z.string().uuid() }),
   body: z.object({
     ...projectFields,
     name: projectFields.name.optional(),
     archived: z.boolean().optional(),
+    code: projectCode.optional(),
   }),
 });
 

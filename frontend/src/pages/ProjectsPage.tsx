@@ -141,7 +141,11 @@ export default function ProjectsPage() {
         gstNumber: form.gstNumber.trim() || null,
         panNumber: form.panNumber.trim() || null,
       };
-      if (editing) return (await api.patch(`/projects/${editing.id}`, body)).data;
+      if (editing) {
+        // Only send the code when it was changed (the server allows that while no documents exist).
+        const code = form.code.trim().toUpperCase();
+        return (await api.patch(`/projects/${editing.id}`, code !== editing.code ? { ...body, code } : body)).data;
+      }
       return (await api.post('/projects', { ...body, code: form.code.trim().toUpperCase() })).data;
     },
     onSuccess: () => {
@@ -180,7 +184,7 @@ export default function ProjectsPage() {
   const set = (key: keyof FormState) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setForm((f) => ({ ...f, [key]: e.target.value }));
 
-  const codeValid = editing ? true : CODE_PATTERN.test(form.code.trim().toUpperCase());
+  const codeValid = CODE_PATTERN.test(form.code.trim().toUpperCase());
   const canSave = !!form.name.trim() && codeValid && !saveMutation.isPending;
 
   const handleArchive = (p: ProjectRow) => {
@@ -285,10 +289,9 @@ export default function ProjectsPage() {
               label={tr('code')}
               value={form.code}
               onChange={(e) => setForm((f) => ({ ...f, code: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6) }))}
-              disabled={!!editing}
               required
-              error={!editing && form.code !== '' && !codeValid}
-              helperText={!editing && form.code !== '' && !codeValid ? tr('codeInvalid') : tr('codeHint')}
+              error={form.code !== '' && !codeValid}
+              helperText={form.code !== '' && !codeValid ? tr('codeInvalid') : tr('codeHint')}
               size="small"
             />
             <TextField label={tr('name')} value={form.name} onChange={set('name')} required size="small" />

@@ -68,6 +68,25 @@ router.get('/public', publicLimiter, async (_req, res: Response, next: NextFunct
 
 router.use(authMiddleware);
 
+// How many records already carry a number built from this project's code (soft-deleted ones
+// included, since their numbers stay reserved).
+async function countNumberedRecords(projectId: string): Promise<number> {
+  const where = { projectId };
+  const counts = await Promise.all([
+    prisma.vendor.count({ where }),
+    prisma.quotation.count({ where }),
+    prisma.purchaseOrder.count({ where }),
+    prisma.vendorInvoice.count({ where }),
+    prisma.paymentRequest.count({ where }),
+    prisma.journalVoucher.count({ where }),
+    prisma.asset.count({ where }),
+    prisma.gatePass.count({ where }),
+    prisma.goodsReceipt.count({ where }),
+    prisma.materialPurchaseRequest.count({ where }),
+  ]);
+  return counts.reduce((a, b) => a + b, 0);
+}
+
 // GET /projects — every project (used by the in-app switcher and the Projects page).
 // Archived ones are included only for users who can manage projects.
 router.get('/', async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
@@ -136,7 +155,8 @@ router.post(
   }
 );
 
-// PATCH /projects/:id — edit details, change status, archive / restore. The code never changes.
+// PATCH /projects/:id — edit details, change status, archive / restore. The code can change
+// only while the project has no numbered documents.
 router.patch(
   '/:id',
   rbacMiddleware(Permission.MANAGE_PROJECTS),
@@ -144,13 +164,28 @@ router.patch(
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const { id } = req.params;
-      const { archived, name, description, totalBudget, startDate, endDate, status, officeAddress, hospitalAddress, gstNumber, panNumber } =
+      const { archived, code, name, description, totalBudget, startDate, endDate, status, officeAddress, hospitalAddress, gstNumber, panNumber } =
         req.body;
 
       const existing = await prisma.project.findUnique({ where: { id }, select: projectSelect });
       if (!existing) {
         res.status(404).json({ error: 'Project not found' });
         return;
+      }
+
+      // The code prefixes every document number, so it can only change while none exist.
+      if (code !== undefined && code !== existing.code) {
+        const taken = await prisma.project.findUnique({ where: { code }, select: { id: true } });
+        if (taken) {
+          res.status(409).json({ error: `Project code "${code}" is already in use` });
+          return;
+        }
+        if ((await countNumberedRecords(id)) > 0) {
+          res.status(400).json({
+            error: 'This project already has numbered documents (vendors, orders, vouchers, ...), so its code can no longer be changed.',
+          });
+          return;
+        }
       }
 
       if (archived === true && !existing.deletedAt) {
@@ -166,6 +201,7 @@ router.patch(
       }
 
       const data: Prisma.ProjectUpdateInput = {};
+      if (code !== undefined) data.code = code;
       if (name !== undefined) data.name = name;
       if (description !== undefined) data.description = description;
       if (totalBudget !== undefined) data.totalBudget = totalBudget;

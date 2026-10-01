@@ -5,7 +5,7 @@
   "editProject": "Edit project",
   "emptyNote": "A new project starts completely empty — nothing is copied from another project.",
   "code": "Code",
-  "codeHint": "2–6 letters/digits. It prefixes every document number (e.g. ABC-PO001) and cannot be changed later.",
+  "codeHint": "2–6 letters/digits. It prefixes every document number (e.g. ABC-PO001) and can only be changed while the project has no documents.",
   "name": "Project name",
   "description": "Description",
   "budget": "Total budget (₹)",
