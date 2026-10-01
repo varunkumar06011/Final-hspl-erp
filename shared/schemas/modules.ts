@@ -428,6 +428,14 @@ export const linkPaymentVoucherSchema = z.object({
     journalVoucherId: uuid,
   }),
 });
+// One posted PAYMENT voucher that settles several approved payment requests
+// (e.g. a single transfer covering four POs to the same vendor).
+export const linkPaymentVoucherMultiSchema = z.object({
+  body: z.object({
+    journalVoucherId: uuid,
+    paymentRequestIds: z.array(uuid).min(2).max(50),
+  }),
+});
 export const approvalActionSchema = z.object({
   params: z.object({ id: uuid, stepId: uuid.optional() }),
   body: z.object({

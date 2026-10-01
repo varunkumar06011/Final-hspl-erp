@@ -118,6 +118,15 @@
   "vouchersFound": "{{n}} voucher(s) found for this amount",
   "approvedN": "{{n}}/2 approved",
   "stdFormat": "Standard format: <b>Payee · Item · Ref</b> — no verbs, dates, or amounts in the description.",
+  "linkOneToMany": "Link One Voucher to Several",
+  "multiLinkTitle": "Link One Voucher to Several Payments",
+  "multiLinkNote": "Use this when one payment was made for several approved requests (for example four POs to the same vendor). Pick the posted voucher, then tick the requests it covers. Nothing new is posted to the ledgers; the requests are just marked as paid against this voucher.",
+  "noUnlinkedVouchers": "No unlinked posted payment vouchers found",
+  "multiPickRequests": "Approved requests covered by this voucher",
+  "multiNoRequests": "No approved requests are waiting for payment",
+  "multiTotals": "Selected requests: {{selected}} — Voucher: {{voucher}}. The two must match exactly.",
+  "markAllPaid": "Mark All as Paid",
+  "multiLinkDone": "Marked as paid — all selected requests are linked to the voucher.",
   "linkNote": "The payment of <b>{{v}}</b> was already posted to the ledgers. Select the posted voucher that recorded it — this request will be marked as paid without posting a new voucher (avoids double-entry).",
   "deleteQ": "Are you sure you want to delete payment request <b>{{code}}</b>?"
 }

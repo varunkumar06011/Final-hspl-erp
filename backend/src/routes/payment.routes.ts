@@ -5,6 +5,7 @@ import {
   listPaymentRequestsSchema,
   recordPaymentSchema,
   linkPaymentVoucherSchema,
+  linkPaymentVoucherMultiSchema,
   createExpenseSchema,
   createAdvancePaymentSchema,
   approvalActionSchema,
@@ -1592,6 +1593,162 @@ router.post(
       });
 
       res.status(201).json(payment);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// POST /link-voucher-multi — settle several approved requests (e.g. 4 POs to the
+// same vendor) with ONE already-posted PAYMENT voucher. Books are untouched: no
+// voucher is posted; each request just gets a Payment row pointing at the voucher.
+// The request amounts must add up exactly to the voucher total.
+router.post(
+  '/link-voucher-multi',
+  rbacMiddleware(Permission.VIEW_FINANCIALS),
+  validateMiddleware(linkPaymentVoucherMultiSchema),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      const journalVoucherId = String(req.body.journalVoucherId);
+      const requestIds = [...new Set((req.body.paymentRequestIds as string[]).map(String))];
+      if (requestIds.length < 2) {
+        res.status(400).json({ error: 'Select at least two different payment requests' });
+        return;
+      }
+
+      const voucher = await prisma.journalVoucher.findFirst({
+        where: { id: journalVoucherId, projectId, deletedAt: null },
+        include: {
+          payments: { select: { id: true } },
+          ledgerEntries: {
+            where: { credit: { gt: 0 } },
+            include: { ledger: { select: { linkedEntityType: true, linkedEntityId: true } } },
+          },
+        },
+      });
+      if (!voucher) {
+        res.status(404).json({ error: 'Voucher not found' });
+        return;
+      }
+      if (voucher.status !== 'POSTED') {
+        res.status(400).json({ error: `Voucher must be POSTED. Current status: ${voucher.status}` });
+        return;
+      }
+      if (voucher.voucherType !== VoucherType.PAYMENT) {
+        res.status(400).json({ error: 'Only PAYMENT vouchers can be linked to payment requests' });
+        return;
+      }
+      if (voucher.payments.length > 0) {
+        res.status(409).json({ error: 'This voucher is already linked to a payment' });
+        return;
+      }
+
+      const requests = await prisma.paymentRequest.findMany({
+        where: { id: { in: requestIds }, projectId, deletedAt: null },
+        include: { payments: { select: { id: true } } },
+      });
+      if (requests.length !== requestIds.length) {
+        res.status(404).json({ error: 'One or more payment requests were not found' });
+        return;
+      }
+      for (const pr of requests) {
+        if (pr.status !== PaymentStatus.APPROVED) {
+          res.status(400).json({ error: `${pr.requestNumber} must be APPROVED. Current status: ${pr.status}` });
+          return;
+        }
+        if (pr.payments.length > 0) {
+          res.status(409).json({ error: `Payment has already been recorded for ${pr.requestNumber}` });
+          return;
+        }
+      }
+
+      const requestsTotal = requests.reduce((s, pr) => s + Number(pr.amount), 0);
+      if (Math.abs(Number(voucher.totalDebit) - requestsTotal) > 0.01) {
+        res.status(400).json({
+          error: `The selected requests add up to ${requestsTotal.toFixed(2)} but the voucher is ${Number(voucher.totalDebit).toFixed(2)}. They must match exactly.`,
+        });
+        return;
+      }
+
+      // Same rule as the single link: the credit side must be a real bank/cash account
+      let bankAccountId: string | null = null;
+      let cashAccountId: string | null = null;
+      for (const entry of voucher.ledgerEntries) {
+        if (entry.ledger.linkedEntityType === 'BANK_ACCOUNT' && entry.ledger.linkedEntityId) bankAccountId = entry.ledger.linkedEntityId;
+        if (entry.ledger.linkedEntityType === 'CASH_ACCOUNT' && entry.ledger.linkedEntityId) cashAccountId = entry.ledger.linkedEntityId;
+      }
+      if (!bankAccountId && !cashAccountId) {
+        res.status(400).json({ error: 'The voucher does not credit a bank or cash account ledger' });
+        return;
+      }
+
+      const payments = await prisma.$transaction(async (tx) => {
+        // Serialize concurrent links of the same voucher, then re-check inside the lock
+        await tx.$queryRaw`SELECT id FROM "journal_vouchers" WHERE id = ${voucher.id}::uuid FOR UPDATE`;
+        const existingLink = await tx.payment.findFirst({ where: { journalVoucherId: voucher.id }, select: { id: true } });
+        if (existingLink) {
+          const err = new Error('This voucher is already linked to a payment');
+          (err as Error & { status: number }).status = 409;
+          throw err;
+        }
+
+        const created = [];
+        for (const pr of requests) {
+          if (pr.invoiceId) {
+            await tx.$queryRaw`SELECT id FROM "vendor_invoices" WHERE id = ${pr.invoiceId}::uuid FOR UPDATE`;
+            const { outstanding } = await getInvoicePaymentSummary(pr.invoiceId, tx);
+            if (Number(pr.amount) > outstanding + 0.01) {
+              const err = new Error(`${pr.requestNumber}: approved amount ${Number(pr.amount)} exceeds current invoice outstanding ${outstanding.toFixed(2)}`);
+              (err as Error & { status: number }).status = 400;
+              throw err;
+            }
+          }
+
+          const claimed = await tx.paymentRequest.updateMany({
+            where: { id: pr.id, status: PaymentStatus.APPROVED },
+            data: { status: PaymentStatus.PAID },
+          });
+          if (claimed.count !== 1) {
+            throw new Error(`Payment for ${pr.requestNumber} has already been recorded by another request`);
+          }
+
+          created.push(
+            await tx.payment.create({
+              data: {
+                paymentRequestId: pr.id,
+                amount: Number(pr.amount),
+                mode: bankAccountId ? 'BANK_TRANSFER' : 'CASH',
+                reference: voucher.chequeNumber ?? null,
+                bankAccountId,
+                cashAccountId,
+                budgetHeadId: pr.budgetHeadId ?? null,
+                journalVoucherId: voucher.id,
+                postedAt: voucher.postedAt ?? new Date(),
+              },
+            }),
+          );
+
+          if (pr.invoiceId) {
+            await recalcInvoicePaymentStatus(pr.invoiceId, tx);
+          }
+        }
+        return created;
+      });
+
+      for (const pr of requests) {
+        await logAudit({
+          userId: req.user!.id,
+          action: AuditAction.UPDATE,
+          entityType: 'PAYMENT_REQUEST',
+          entityId: pr.id,
+          projectId,
+          oldValue: { status: PaymentStatus.APPROVED },
+          newValue: { status: PaymentStatus.PAID, linkedVoucher: voucher.jvNumber, sharedWithRequests: requests.length },
+        });
+      }
+
+      res.status(201).json({ voucher: voucher.jvNumber, payments });
     } catch (error) {
       next(error);
     }

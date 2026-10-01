@@ -29,6 +29,8 @@ import {
   Tabs,
   Tab,
   FormHelperText,
+  Checkbox,
+  FormControlLabel,
 } from '@mui/material';
 import ResponsiveDialog from '../components/ResponsiveDialog';
 import ApprovalStepsDisplay from '../components/ApprovalStepsDisplay';
@@ -207,6 +209,10 @@ export default function PaymentsPage() {
   const [editRow, setEditRow] = useState<PaymentRequestRow | null>(null);
   const [editForm, setEditForm] = useState<Record<string, unknown>>({});
   const [linkVoucherRow, setLinkVoucherRow] = useState<PaymentRequestRow | null>(null);
+  // One voucher settling several approved requests (e.g. 4 POs, one transfer)
+  const [multiLinkOpen, setMultiLinkOpen] = useState(false);
+  const [multiVoucherId, setMultiVoucherId] = useState('');
+  const [multiRequestIds, setMultiRequestIds] = useState<string[]>([]);
   const [selectedVoucherId, setSelectedVoucherId] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
@@ -508,6 +514,61 @@ export default function PaymentsPage() {
     onError: (err: unknown) => setError(extractErrorMessage(err)),
   });
 
+  function closeMultiLink() {
+    setMultiLinkOpen(false);
+    setMultiVoucherId('');
+    setMultiRequestIds([]);
+  }
+
+  const { data: multiVouchersData, isLoading: multiVouchersLoading } = useQuery({
+    queryKey: ['/vouchers', 'linkable-multi'],
+    enabled: multiLinkOpen,
+    queryFn: async () => {
+      const response = await api.get('/vouchers', { params: { voucherType: 'PAYMENT', status: 'POSTED', pageSize: 100 } });
+      return response.data;
+    },
+  });
+  const multiVouchers: LinkableVoucher[] = (multiVouchersData?.data ?? []).filter(
+    (v: LinkableVoucher) => (v.payments?.length ?? 0) === 0,
+  );
+
+  const { data: multiRequestsData, isLoading: multiRequestsLoading } = useQuery({
+    queryKey: ['/payments', 'approved-unlinked'],
+    enabled: multiLinkOpen,
+    queryFn: async () => {
+      const response = await api.get('/payments', { params: { status: PaymentStatus.APPROVED, pageSize: 200 } });
+      return response.data;
+    },
+  });
+  const multiRequests: PaymentRequestRow[] = ((multiRequestsData?.data ?? []) as PaymentRequestRow[])
+    .filter((r) => r.payments.length === 0)
+    .sort((a, b) => (a.vendor?.name ?? '').localeCompare(b.vendor?.name ?? ''));
+
+  const multiVoucher = multiVouchers.find((v) => v.id === multiVoucherId);
+  const multiSelectedTotal = multiRequests
+    .filter((r) => multiRequestIds.includes(r.id))
+    .reduce((s, r) => s + Number(r.amount), 0);
+  const multiMatches = !!multiVoucher && multiRequestIds.length >= 2 && Math.abs(Number(multiVoucher.totalDebit) - multiSelectedTotal) < 0.01;
+
+  const linkMultiMutation = useMutation({
+    mutationFn: async () => {
+      const response = await api.post('/payments/link-voucher-multi', {
+        journalVoucherId: multiVoucherId,
+        paymentRequestIds: multiRequestIds,
+      });
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/payments'] });
+      queryClient.invalidateQueries({ queryKey: ['/invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
+      closeMultiLink();
+      setSuccessMsg(tr('multiLinkDone'));
+      setTimeout(() => setSuccessMsg(''), 3000);
+    },
+    onError: (err: unknown) => setError(extractErrorMessage(err)),
+  });
+
   const rows: PaymentRequestRow[] = data?.data ?? [];
   const pagination = data?.pagination ?? { page: 1, pageSize: 20, total: 0, totalPages: 0 };
   const pendingInvoicesData: PendingInvoice[] = pendingInvoices?.data ?? [];
@@ -575,6 +636,7 @@ export default function PaymentsPage() {
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', justifyContent: { xs: 'flex-end', md: 'flex-end' }, width: { xs: '100%', md: 'auto' } }}>
           <RefreshButton onClick={() => refetch()} />
           <Button variant="outlined" startIcon={<ReceiptIcon />} onClick={() => setTab(0)}>{tr('pendingInvoices')}</Button>
+          <Button variant="outlined" startIcon={<LinkIcon />} onClick={() => { setError(''); setMultiLinkOpen(true); }}>{tr('linkOneToMany')}</Button>
           <Button variant="contained" startIcon={<AddIcon />} onClick={() => { setExpenseForm({}); setExpenseFile(null); setExpenseOpen(true); }}>{tr('addDailyExpense')}</Button>
         </Box>
       </Box>
@@ -1436,6 +1498,73 @@ export default function PaymentsPage() {
             onClick={() => { setError(''); linkVoucherMutation.mutate(); }}
           >
             {linkVoucherMutation.isPending ? <CircularProgress size={20} /> : tr('markPaid')}
+          </Button>
+        </DialogActions>
+      </ResponsiveDialog>
+
+      {/* Link ONE posted voucher to SEVERAL approved requests (e.g. 4 POs, one transfer) */}
+      <ResponsiveDialog open={multiLinkOpen} onClose={closeMultiLink} maxWidth="sm" fullWidth>
+        <DialogTitle>{tr('multiLinkTitle')}</DialogTitle>
+        <DialogContent>
+          {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
+            <Typography variant="body2" color="text.secondary">{tr('multiLinkNote')}</Typography>
+            {multiVouchersLoading ? (
+              <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}><CircularProgress size={28} /></Box>
+            ) : (
+              <TextField
+                select
+                label={tr('postedPaymentVoucher')}
+                value={multiVoucherId}
+                onChange={(e) => setMultiVoucherId(e.target.value)}
+                fullWidth
+                size="small"
+                required
+                helperText={multiVouchers.length === 0 ? tr('noUnlinkedVouchers') : undefined}
+              >
+                {multiVouchers.map((v) => (
+                  <MenuItem key={v.id} value={v.id}>
+                    {v.jvNumber} — {formatCurrency(Number(v.totalDebit))} — {new Date(v.date).toLocaleDateString(dateLocale())}{v.description ? ` — ${v.description}` : ''}
+                  </MenuItem>
+                ))}
+              </TextField>
+            )}
+            <Typography variant="subtitle2">{tr('multiPickRequests')}</Typography>
+            {multiRequestsLoading ? (
+              <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}><CircularProgress size={28} /></Box>
+            ) : multiRequests.length === 0 ? (
+              <Typography variant="body2" color="text.secondary">{tr('multiNoRequests')}</Typography>
+            ) : (
+              <Box sx={{ maxHeight: 280, overflowY: 'auto', border: 1, borderColor: 'divider', borderRadius: 1, px: 1 }}>
+                {multiRequests.map((r) => (
+                  <FormControlLabel
+                    key={r.id}
+                    sx={{ display: 'flex', mr: 0 }}
+                    control={
+                      <Checkbox
+                        size="small"
+                        checked={multiRequestIds.includes(r.id)}
+                        onChange={(e) => setMultiRequestIds((prev) => (e.target.checked ? [...prev, r.id] : prev.filter((id) => id !== r.id)))}
+                      />
+                    }
+                    label={`${r.vendor?.name ?? '—'} — ${r.purchaseOrder?.poNumber ?? r.requestNumber} — ${formatCurrency(Number(r.amount))}`}
+                  />
+                ))}
+              </Box>
+            )}
+            <Alert severity={multiMatches ? 'success' : 'info'}>
+              {tr('multiTotals', { selected: formatCurrency(multiSelectedTotal), voucher: multiVoucher ? formatCurrency(Number(multiVoucher.totalDebit)) : '—' })}
+            </Alert>
+          </Box>
+        </DialogContent>
+        <DialogActions sx={{ flexWrap: 'wrap', gap: 1 }}>
+          <Button onClick={closeMultiLink}>{tr('cancel')}</Button>
+          <Button
+            variant="contained"
+            disabled={!multiMatches || linkMultiMutation.isPending}
+            onClick={() => { setError(''); linkMultiMutation.mutate(); }}
+          >
+            {linkMultiMutation.isPending ? <CircularProgress size={20} /> : tr('markAllPaid')}
           </Button>
         </DialogActions>
       </ResponsiveDialog>
