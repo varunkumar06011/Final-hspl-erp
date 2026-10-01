@@ -1,3 +1,4 @@
+import CommentsButton from '../components/CommentsButton';
 import { Fragment, useState } from 'react';
 import {
   Box,
@@ -419,6 +420,7 @@ export default function LedgersPage() {
       </TableCell>
       <TableCell align="right" data-label={tr('actions')}>
         <Stack direction="row" spacing={0.5} justifyContent="flex-end">
+          <CommentsButton entityType="LEDGER" entityId={ledger.id} entityLabel={ledger.name} url="/ledgers" />
           <Tooltip title={tr('viewLedgerStatement')}>
             <IconButton size="small" onClick={() => { setStatementLedger(ledger); setStmtStartDate(''); setStmtEndDate(''); }}>
               <StatementIcon fontSize="small" />

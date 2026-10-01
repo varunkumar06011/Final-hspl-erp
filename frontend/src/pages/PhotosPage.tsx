@@ -1,4 +1,5 @@
 ﻿import { useState } from 'react';
+import CommentsButton from '../components/CommentsButton';
 import {
   Box,
   Typography,
@@ -132,6 +133,7 @@ export default function PhotosPage() {
                 <TableCell sx={{ fontWeight: 600 }}>{t('tag')}</TableCell>
                 <TableCell sx={{ fontWeight: 600 }}>{t('zone')}</TableCell>
                 <TableCell sx={{ fontWeight: 600 }}>{t('date')}</TableCell>
+                <TableCell sx={{ fontWeight: 600 }} align="right">{t('actions')}</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -154,6 +156,9 @@ export default function PhotosPage() {
                     <TableCell data-label={t('tag')}><Chip label={enumLabel(row.tag)} size="small" color={STATUS_COLORS[String(row.tag)] ?? 'default'} /></TableCell>
                     <TableCell data-label={t('zone')}>{String(row.zone ?? '—')}</TableCell>
                     <TableCell data-label={t('date')}>{formatDate(row.takenAt)}</TableCell>
+                    <TableCell data-label={t('actions')} align="right">
+                      <CommentsButton entityType="PHOTO" entityId={row.id as string} entityLabel={String(row.caption ?? '')} url="/photos" />
+                    </TableCell>
                   </TableRow>
                 ))
               )}

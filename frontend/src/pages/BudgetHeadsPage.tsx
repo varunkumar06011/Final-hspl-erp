@@ -1,3 +1,4 @@
+import CommentsButton from '../components/CommentsButton';
 import { useState } from 'react';
 import {
   Box,
@@ -378,6 +379,7 @@ export default function BudgetHeadsPage() {
                     <Chip label={String(row.status ?? 'ACTIVE')} size="small" color={row.status === 'CLOSED' ? 'default' : 'success'} />
                   </TableCell>
                   <TableCell data-label={tr('actions')} align="right" onClick={(e) => e.stopPropagation()}>
+                    <CommentsButton entityType="BUDGET_HEAD" entityId={row.id as string} entityLabel={String(row.particulars ?? '')} url="/budget-heads" />
                     <IconButton size="small" onClick={() => setUsageHeadId(row.id as string)} title={tr('usageDetails')}><VisibilityIcon fontSize="small" /></IconButton>
                     <IconButton size="small" onClick={() => openRevisionDialog(row)} title={tr('requestEdit')}><EditIcon fontSize="small" /></IconButton>
                     <IconButton size="small" onClick={() => { setHistoryHeadId(row.id as string); setHistoryOpen(true); }} title={tr('revisionHistory')}><HistoryIcon fontSize="small" /></IconButton>

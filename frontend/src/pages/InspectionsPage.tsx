@@ -1,4 +1,5 @@
 ﻿import { useState } from 'react';
+import CommentsButton from '../components/CommentsButton';
 import {
   Box,
   Typography,
@@ -184,6 +185,7 @@ export default function InspectionsPage() {
                     <TableCell data-label={t('completed')}>{row.completedDate ? formatDate(row.completedDate) : '—'}</TableCell>
                     <TableCell data-label={t('inspector')}>{row.inspector?.name ?? '—'}</TableCell>
                     <TableCell data-label={t('actions')}>
+                      <CommentsButton entityType="INSPECTION" entityId={row.id} entityLabel={row.name} url="/inspections" />
                       <IconButton size="small" onClick={() => openEdit(row)}><EditIcon fontSize="small" /></IconButton>
                       <IconButton size="small" color="error" onClick={() => { if (confirm(t('confirmDelete'))) deleteMutation.mutate(row.id); }}><DeleteIcon fontSize="small" /></IconButton>
                     </TableCell>

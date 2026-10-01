@@ -1,3 +1,4 @@
+import CommentsButton from '../components/CommentsButton';
 import { useState } from 'react';
 import {
   Box,
@@ -446,6 +447,7 @@ export default function CashAccountsPage() {
                     <TableCell data-label={tr('status')}><Chip label={row.isActive ? tr('active') : tr('inactive')} size="small" color={row.isActive ? 'success' : 'default'} /></TableCell>
                     <TableCell data-label={tr('actions')} align="right">
                       <Stack direction="row" spacing={0.5} justifyContent="flex-end">
+                        <CommentsButton entityType="CASH_ACCOUNT" entityId={row.id} entityLabel={row.name} url="/cash-accounts" />
                         <IconButton size="small" title={tr('statement')} onClick={() => { setStatementAccountId(row.id); setStmtPage(0); }}><StatementIcon fontSize="small" /></IconButton>
                         <IconButton size="small" title={tr('cashIn')} onClick={() => openTxnDialog(row.id, 'IN')}><InIcon fontSize="small" color="success" /></IconButton>
                         <IconButton size="small" title={tr('cashOut')} onClick={() => openTxnDialog(row.id, 'OUT')}><OutIcon fontSize="small" color="error" /></IconButton>

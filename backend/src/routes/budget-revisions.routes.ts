@@ -215,6 +215,25 @@ router.post(
         newValue: { approved, comments, applied: approved },
       });
 
+      // The review remark is also a comment on the budget head, so it shows in its thread.
+      const remark = typeof comments === 'string' ? comments.trim() : '';
+      if (remark) {
+        await prisma.comment
+          .create({
+            data: {
+              projectId,
+              entityType: 'BUDGET_HEAD',
+              entityId: revision.budgetHeadId,
+              entityLabel: revision.budgetHead.particulars,
+              url: '/budget-heads',
+              authorId: req.user!.id,
+              body: remark,
+              decision: approved ? 'APPROVED' : 'REJECTED',
+            },
+          })
+          .catch((err) => console.error('[Comments] Failed to record budget review comment:', err));
+      }
+
       const finalRecord = await prisma.budgetRevision.findUnique({
         where: { id: revision.id },
         include: {

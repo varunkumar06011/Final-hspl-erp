@@ -1,4 +1,5 @@
 ﻿import { useState } from 'react';
+import CommentsButton from '../components/CommentsButton';
 import {
   Box,
   Typography,
@@ -293,6 +294,7 @@ export default function AttendancePage() {
                       <TableCell data-label={tr('baseSalary')}>{formatCurrency(s.baseSalary)}</TableCell>
                       <TableCell data-label={tr('status')}><Chip label={s.active ? 'Active' : 'Inactive'} size="small" color={s.active ? 'success' : 'default'} /></TableCell>
                       <TableCell data-label={tr('actions')}>
+                        <CommentsButton entityType="STAFF" entityId={s.id} entityLabel={s.name} url="/labour" />
                         <IconButton size="small" onClick={() => openEditStaff(s)}><EditIcon fontSize="small" /></IconButton>
                         <IconButton size="small" color="error" onClick={() => { if (confirm(tr('confirmDelete', { n: s.name }))) deleteStaffMutation.mutate(s.id); }}><DeleteIcon fontSize="small" /></IconButton>
                       </TableCell>

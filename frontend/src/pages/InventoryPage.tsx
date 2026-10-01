@@ -1,4 +1,5 @@
 ﻿import { useState } from 'react';
+import CommentsButton from '../components/CommentsButton';
 import { useNavigate } from 'react-router-dom';
 import {
   Box,
@@ -431,6 +432,7 @@ export default function InventoryPage() {
                       <TableCell data-label={tr('minLevel')}>{minStock > 0 ? formatIndianNumber(minStock) : '—'}</TableCell>
                       <TableCell data-label={tr('location')}>{String(row.location ?? '—')}</TableCell>
                       <TableCell align="right" data-label={tr('actions')} onClick={(e) => e.stopPropagation()}>
+                        <CommentsButton entityType="INVENTORY_ITEM" entityId={row.id as string} entityLabel={String(row.name ?? '')} url="/inventory" />
                         <IconButton size="small" onClick={() => openEdit(row)}><EditIcon fontSize="small" /></IconButton>
                         <IconButton size="small" color="error" onClick={() => setDeleteConfirm(row.id as string)}><DeleteIcon fontSize="small" /></IconButton>
                       </TableCell>

@@ -1,3 +1,4 @@
+import CommentsButton from '../components/CommentsButton';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -236,7 +237,10 @@ export default function AssetsPage() {
                     <CardContent>
                       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1 }}>
                         <Typography variant="h6" fontWeight={700} noWrap>{item.name}</Typography>
-                        <QrCodeIcon color="action" />
+                        <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                          <CommentsButton entityType="ASSET" entityId={item.id} entityLabel={item.name} url="/assets" />
+                          <QrCodeIcon color="action" />
+                        </Box>
                       </Box>
                       <Typography variant="caption" color="text.secondary">{item.category ?? tr('uncat')}</Typography>
                       <Typography variant="caption" color="text.secondary" display="block">SKU: {item.sku ?? '—'}</Typography>
@@ -294,6 +298,7 @@ export default function AssetsPage() {
                       <TableCell data-label={tr('units')}>{unitCount}</TableCell>
                       <TableCell data-label={tr('location')}>{item.location ?? '—'}</TableCell>
                       <TableCell align="right" data-label={tr('actions')} onClick={(e) => e.stopPropagation()}>
+                        <CommentsButton entityType="ASSET" entityId={item.id} entityLabel={item.name} url="/assets" />
                         <IconButton size="small" onClick={() => navigate(`/assets/${item.id}`)} title={tr('viewUnits')}><QrCodeIcon fontSize="small" /></IconButton>
                       </TableCell>
                     </TableRow>

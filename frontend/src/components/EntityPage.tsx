@@ -464,7 +464,7 @@ export default function EntityPage({
                     {col.label}
                   </TableCell>
                 ))}
-                {canCreate && <TableCell align="right" sx={{ fontWeight: 600 }}>{t('entity.actions')}</TableCell>}
+                <TableCell align="right" sx={{ fontWeight: 600 }}>{t('entity.actions')}</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -504,18 +504,20 @@ export default function EntityPage({
                         {renderCellContent(row, col)}
                       </TableCell>
                     ))}
-                    {canCreate && (
-                      <TableCell align="right" data-label={t('entity.actions')} onClick={(e) => e.stopPropagation()}>
-                        {rowActions?.(row)}
-                        <CommentsButton entityType={entityType} entityId={row.id as string} entityLabel={String(row.name ?? row.title ?? row.code ?? "")} url={window.location.pathname} />
-                        <IconButton size="small" title={t('entity.edit')} onClick={() => openEdit(row)}>
-                          <EditIcon fontSize="small" />
-                        </IconButton>
-                        <IconButton size="small" color="error" title={t('entity.delete')} onClick={() => setDeleteConfirm(row.id as string)}>
-                          <DeleteIcon fontSize="small" />
-                        </IconButton>
-                      </TableCell>
-                    )}
+                    <TableCell align="right" data-label={t('entity.actions')} onClick={(e) => e.stopPropagation()}>
+                      {rowActions?.(row)}
+                      <CommentsButton entityType={entityType} entityId={row.id as string} entityLabel={String(row.name ?? row.title ?? row.code ?? "")} url={window.location.pathname} />
+                      {canCreate && (
+                        <>
+                          <IconButton size="small" title={t('entity.edit')} onClick={() => openEdit(row)}>
+                            <EditIcon fontSize="small" />
+                          </IconButton>
+                          <IconButton size="small" color="error" title={t('entity.delete')} onClick={() => setDeleteConfirm(row.id as string)}>
+                            <DeleteIcon fontSize="small" />
+                          </IconButton>
+                        </>
+                      )}
+                    </TableCell>
                   </TableRow>
                 ))
               )}

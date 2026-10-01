@@ -35,6 +35,17 @@ export const COMMENT_ENTITY_LABELS: Record<string, string> = {
   VENDOR: 'Vendor',
   CONTRACT: 'Contract',
   ISSUE: 'Issue',
+  PAYMENT_REQUEST: 'Payment Request',
+  ASSET: 'Asset',
+  BANK_ACCOUNT: 'Bank Account',
+  CASH_ACCOUNT: 'Cash Account',
+  BUDGET_HEAD: 'Budget Head',
+  INSPECTION: 'Inspection',
+  INVENTORY_ITEM: 'Inventory Item',
+  STAFF: 'Staff',
+  DOCUMENT: 'Document',
+  LEDGER: 'Ledger',
+  PHOTO: 'Photo',
 };
 
 interface UserOption {
