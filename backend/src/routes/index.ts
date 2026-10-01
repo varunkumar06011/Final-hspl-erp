@@ -41,10 +41,12 @@ import mprRoutes from './mpr.routes';
 import transactionRegisterRoutes from './transaction-register.routes';
 import commentRoutes from './comment.routes';
 import activityLogRoutes from './activity-log.routes';
+import projectRoutes from './project.routes';
 
 const router = Router();
 
 router.use('/auth', authRoutes);
+router.use('/projects', projectRoutes);
 router.use('/audit', auditRoutes);
 router.use('/dashboard', dashboardRoutes);
 router.use('/vendors', vendorRoutes);

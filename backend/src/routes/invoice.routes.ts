@@ -6,7 +6,7 @@ import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middl
 import { rbacMiddleware } from '../middleware/rbac';
 import { validateMiddleware } from '../middleware/validate';
 import { logAudit } from '../services/audit.service';
-import { generateSequenceNumber } from '../services/sequence.service';
+import { generateProjectSequenceNumber } from '../services/sequence.service';
 import * as approvalService from '../services/approval.service';
 import { notifyApprovers } from '../services/push.service';
 import { getStorageService, serveFile } from '../services/storage.service';
@@ -25,9 +25,9 @@ const HEAD_ROLES = [UserRole.PROJECT_HEAD, UserRole.HEAD_OF_CONSTRUCTION];
 /**
  * Fetch all approver roles (heads + dynamic admin roles) for a project.
  */
-async function getAllApproverRoles(projectId: string): Promise<string[]> {
+async function getAllApproverRoles(_projectId: string): Promise<string[]> {
   const users = await prisma.user.findMany({
-    where: { projectId, isActive: true },
+    where: { isActive: true },
     select: { role: true },
   });
   const roles = new Set<string>(HEAD_ROLES as string[]);
@@ -37,8 +37,8 @@ async function getAllApproverRoles(projectId: string): Promise<string[]> {
   return Array.from(roles);
 }
 
-async function generateInvoiceCode(): Promise<string> {
-  return generateSequenceNumber('vendorInvoice', 'invoiceCode', 'VGH-IN', 3);
+async function generateInvoiceCode(projectId: string): Promise<string> {
+  return generateProjectSequenceNumber('vendorInvoice', 'invoiceCode', 'IN', 3, projectId);
 }
 
 /**
@@ -327,7 +327,7 @@ router.post(
       const taxAmt = Number(taxAmount) || 0;
       const split = splitGst(taxAmt, vendor.gstNumber, project?.gstNumber ?? null);
 
-      const invoiceCode = await generateInvoiceCode();
+      const invoiceCode = await generateInvoiceCode(projectId);
       const finalInvoiceNumber = invoiceNumber || invoiceCode;
 
       // Handle file upload

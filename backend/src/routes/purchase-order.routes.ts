@@ -13,6 +13,7 @@ import { streamPurchaseOrderPdf } from '../services/purchase-order-pdf.service';
 import { ensureVendorLedger, findLedgerByName } from './ledger.routes';
 import { postVoucher, generateVoucherNumber } from './voucher.routes';
 import { getActiveAdminRoles, generatePONumber, createNonVendorPoFromMpr, findLivePoForMpr } from '../services/non-vendor-po.service';
+import { reconcilePoAccrualSafe, hasPoAccrual } from '../services/po-accrual.service';
 
 const router = Router();
 router.use(authMiddleware);
@@ -69,12 +70,14 @@ function isPoApprover(role: string): boolean {
  * e.g. original VGH-PO004 → first regen VGH-REGPO004/1, second VGH-REGPO004/2
  */
 async function generateRegeneratedPONumber(parentPo: { poNumber: string; id: string }): Promise<string> {
-  const originalMatch = parentPo.poNumber.match(/^VGH-(?:REGPO(\d+)\/\d+|PO(\d+))$/);
-  const originalNum = originalMatch ? (originalMatch[1] ?? originalMatch[2]) : '001';
+  // The leading project code (VGH, ABC, ...) is carried over from the parent PO.
+  const originalMatch = parentPo.poNumber.match(/^([A-Z][A-Z0-9]*)-(?:REGPO(\d+)\/\d+|PO(\d+))$/);
+  const projectCode = originalMatch ? originalMatch[1] : 'VGH';
+  const originalNum = originalMatch ? (originalMatch[2] ?? originalMatch[3]) : '001';
   const childCount = await prisma.purchaseOrder.count({
     where: { parentPoId: parentPo.id },
   });
-  return `VGH-REGPO${originalNum}/${childCount + 1}`;
+  return `${projectCode}-REGPO${originalNum}/${childCount + 1}`;
 }
 
 /**
@@ -214,6 +217,15 @@ router.get(
         prisma.purchaseOrder.count({ where }),
       ]);
 
+      // Which of these POs already have their vendor payable booked to the ledger
+      const accrualRows = data.length
+        ? await prisma.journalVoucher.findMany({
+            where: { sourcePoId: { in: data.map((po) => po.id) }, deletedAt: null },
+            select: { sourcePoId: true },
+          })
+        : [];
+      const bookedPoIds = new Set(accrualRows.map((r) => r.sourcePoId));
+
       // Calculate paidToDate and amountToPayNow for each PO
       const dataWithPayments = data.map((po) => {
         const paidToDate = (po.advancePaymentRequests ?? []).reduce(
@@ -235,6 +247,7 @@ router.get(
           ...po,
           paidToDate,
           amountToPayNow,
+          payableBooked: bookedPoIds.has(po.id),
         };
       });
 
@@ -263,7 +276,7 @@ router.get(
         res.status(404).json({ error: 'Purchase order not found' });
         return;
       }
-      res.json(record);
+      res.json({ ...record, payableBooked: await hasPoAccrual(record.id) });
     } catch (error) {
       next(error);
     }
@@ -405,7 +418,7 @@ router.post(
       const projectId = requireProjectId(req);
       const { vendorId, quotationId, mprId, paymentType, paymentTerms, deliveryDate, budgetHeadId, advanceAmount, deductions, notes, referredBy } = req.body;
 
-      const orderVendor = await prisma.vendor.findFirst({ where: { id: vendorId }, select: { vendorType: true } });
+      const orderVendor = await prisma.vendor.findFirst({ where: { id: vendorId, projectId }, select: { vendorType: true } });
       if (!orderVendor) {
         res.status(400).json({ error: 'Vendor not found' });
         return;
@@ -695,6 +708,22 @@ router.delete(
         return;
       }
 
+      // Deactivating reverses the vendor payable booked at approval. If items were
+      // also moved to expense ledgers, those postings sit on top of it and must be
+      // cancelled first (Vouchers page) — otherwise the books end up half-reversed.
+      if (await hasPoAccrual(existing.id)) {
+        const itemPost = await prisma.pOItemLedgerPost.findFirst({
+          where: { poItem: { poId: existing.id } },
+          select: { id: true },
+        });
+        if (itemPost) {
+          res.status(400).json({
+            error: 'Items of this PO were posted to expense ledgers. Cancel those vouchers first, then deactivate the PO.',
+          });
+          return;
+        }
+      }
+
       // ── Release committed budget when a PO is deleted ──
       // Only genuinely-committed statuses contribute to committedAmount
       // (APPROVED / PARTIALLY_DELIVERED / DELIVERED). Releasing here keeps the
@@ -735,6 +764,9 @@ router.delete(
           data: { status: POStatus.DELETED },
         });
       }
+
+      // Reverse the vendor payable booked at approval (no-op if none was booked).
+      await reconcilePoAccrualSafe(existing.id, req.user!.id);
 
       await logAudit({
         userId: req.user!.id,
@@ -861,6 +893,10 @@ router.post(
             data: { committedAmount: { increment: Number(po.grandTotal) } },
           });
         }
+
+        // ── Accounting: we now owe the vendor — Dr Purchase / Cr Vendor ledger ──
+        // For an edited PO this posts only the difference vs. what is already booked.
+        await reconcilePoAccrualSafe(po.id, req.user!.id);
       }
 
       await logAudit({
@@ -949,6 +985,10 @@ router.post(
             });
           }
         }
+
+        // A previously approved PO that is rejected on re-approval no longer
+        // counts as owed — reverse its vendor payable (no-op if never booked).
+        await reconcilePoAccrualSafe(po.id, req.user!.id);
       }
 
       await logAudit({
@@ -964,6 +1004,96 @@ router.post(
         where: { id: po.id },
         include: poInclude,
       });
+      res.json(updated);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// POST /:id/resubmit — send a REJECTED PO back for approval without editing it.
+// Resets the approval workflow to fresh pending steps and flips the PO to
+// PENDING_APPROVAL. Use edit-unapproved instead if the content must change.
+router.post(
+  '/:id/resubmit',
+  rbacMiddleware(Permission.CREATE_PO),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      const po = await prisma.purchaseOrder.findFirst({
+        where: { id: req.params.id, projectId, deletedAt: null },
+      });
+      if (!po) {
+        res.status(404).json({ error: 'Purchase order not found' });
+        return;
+      }
+      if (po.status !== POStatus.REJECTED) {
+        res.status(400).json({ error: 'Only rejected purchase orders can be resubmitted for approval' });
+        return;
+      }
+
+      const adminRoles = await getActiveAdminRoles(projectId);
+      await prisma.$transaction(async (tx) => {
+        // Rejecting an edited PO reversed its commitment (see /reject). Its
+        // re-approval skips the commitment step, so restore it here.
+        if (po.budgetHeadId && po.editedAt) {
+          const paymentsAgg = await tx.payment.aggregate({
+            where: { budgetHeadId: po.budgetHeadId, paymentRequest: { poId: po.id, deletedAt: null } },
+            _sum: { amount: true },
+          });
+          const remainingCommitment = Number(po.grandTotal) - (Number(paymentsAgg._sum.amount) || 0);
+          if (remainingCommitment > 0) {
+            await tx.budgetHead.update({
+              where: { id: po.budgetHeadId },
+              data: { committedAmount: { increment: remainingCommitment } },
+            });
+          }
+        }
+
+        await tx.purchaseOrder.update({
+          where: { id: po.id },
+          data: { status: POStatus.PENDING_APPROVAL },
+        });
+
+        if (po.approvalWorkflowId) {
+          await tx.approvalStep.deleteMany({ where: { workflowId: po.approvalWorkflowId } });
+          await tx.approvalWorkflow.update({
+            where: { id: po.approvalWorkflowId },
+            data: {
+              status: 'VERIFICATION',
+              currentStep: 0,
+              steps: {
+                create: adminRoles.map((role, idx) => ({
+                  stepNumber: idx + 1,
+                  approverRole: role,
+                  status: 'PENDING',
+                })),
+              },
+            },
+          });
+        }
+      });
+
+      await logAudit({
+        userId: req.user!.id,
+        action: AuditAction.UPDATE,
+        entityType: 'PURCHASE_ORDER',
+        entityId: po.id,
+        projectId,
+        oldValue: { status: POStatus.REJECTED },
+        newValue: { status: POStatus.PENDING_APPROVAL, resubmitted: true },
+      });
+
+      notifyApprovers(projectId, adminRoles as UserRole[], {
+        approvalId: po.approvalWorkflowId ?? '',
+        entityType: 'PURCHASE_ORDER',
+        entityId: po.id,
+        title: 'PO Resubmitted — Approval Required',
+        body: `${po.poNumber} was resubmitted for approval`,
+        url: `/pos?id=${po.id}`,
+      }).catch((err) => console.error('[Push] PO resubmit notification error:', err));
+
+      const updated = await prisma.purchaseOrder.findUnique({ where: { id: po.id }, include: poInclude });
       res.json(updated);
     } catch (error) {
       next(error);
@@ -2031,18 +2161,18 @@ router.post(
       }
 
       const gstRate = Number(item.gstRate ?? 0);
-      const gst = Math.round(taxable * gstRate) / 100;
-      const total = Math.round((taxable + gst) * 100) / 100;
+      const fullGst = Math.round(taxable * gstRate) / 100;
 
       // ── Credit side ──
       // If this item's value is already booked in the generic "Purchase"
-      // ledger (a posted GRN containing this item, or a linked invoice that
-      // was posted to books), the payable was already recorded — so this
-      // posting reclassifies it: Cr Purchase → Dr <selected ledger>.
+      // ledger (the vendor payable booked when the PO was approved, a posted
+      // GRN containing this item, or a linked invoice that was posted to
+      // books), the payable was already recorded — so this posting
+      // reclassifies it: Cr Purchase → Dr <selected ledger>.
       // Otherwise the payable isn't booked yet: Cr the vendor ledger, which
       // consumes an advance already paid to the vendor or books the payable.
       const invoiceIds = po.invoices.map((i) => i.id);
-      const [grnBooking, invoiceVoucher] = await Promise.all([
+      const [grnBooking, invoiceVoucher, poAccrued] = await Promise.all([
         prisma.goodsReceiptItem.findFirst({
           where: {
             poItemId: item.id,
@@ -2057,8 +2187,15 @@ router.post(
               select: { id: true },
             })
           : Promise.resolve(null),
+        hasPoAccrual(po.id),
       ]);
-      const alreadyBooked = !!grnBooking || !!invoiceVoucher;
+      const alreadyBooked = !!grnBooking || !!invoiceVoucher || poAccrued;
+
+      // A reclassification only moves the taxable cost between ledgers: the
+      // Input GST was already booked together with the payable, so debiting it
+      // again here would double-count it.
+      const gst = alreadyBooked ? 0 : fullGst;
+      const total = Math.round((taxable + gst) * 100) / 100;
 
       // Resolve the generic "Purchase" pool — needed as the debit target when
       // the user posts into the vendor's own ledger, and as the credit target
@@ -2090,7 +2227,7 @@ router.post(
       if (isOwnVendorLedger) {
         if (alreadyBooked) {
           res.status(400).json({
-            error: `"${item.materialName}" is already booked via a posted GRN/invoice — post it to an expense ledger to reclassify.`,
+            error: `"${item.materialName}" is already booked to the vendor (PO approval, GRN or invoice) — post it to an expense ledger to reclassify.`,
           });
           return;
         }
@@ -2153,7 +2290,7 @@ router.post(
       }
       const ledgerMap = new Map(ledgers.map((l) => [l.id, { id: l.id, name: l.name, group: l.group, linkedEntityType: l.linkedEntityType, linkedEntityId: l.linkedEntityId }]));
 
-      const jvNumber = await generateVoucherNumber(VoucherType.PURCHASE);
+      const jvNumber = await generateVoucherNumber(VoucherType.PURCHASE, projectId);
 
       const result = await prisma.$transaction(async (tx) => {
         // Re-check the unposted balance inside the transaction so two

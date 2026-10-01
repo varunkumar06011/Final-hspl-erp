@@ -88,6 +88,8 @@ model User {
 
 model Project {
   id              String    @id @default(uuid()) @db.Uuid
+  // Short unique prefix for this project's document numbers (e.g. VGH -> VGH-PO001).
+  code            String    @unique
   name            String
   description     String?
   totalBudget     Decimal   @db.Decimal(15, 2)
@@ -296,6 +298,12 @@ model PurchaseOrder {
   editedAt           DateTime?
   editedBy           String?   @db.Uuid
   budgetHeadId       String?   @db.Uuid // Phase 3: cost tagging for commitment tracking
+  // true = approved before vendor-payable auto-booking existed; the accountant
+  // already handled its books (JV etc.), so approval/edit must not book it again.
+  accrualExempt      Boolean   @default(false)
+  // Ledger credited for this PO's payable when it is NOT the vendor's own ledger
+  // (e.g. a loan account the payment was made against). null = the vendor ledger.
+  accrualLedgerId    String?   @db.Uuid
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
   deletedAt          DateTime?
@@ -1517,6 +1525,8 @@ model JournalVoucher {
   voucherType      String    @default("JOURNAL") // VoucherType enum
   // For PURCHASE vouchers created from a verified invoice — links back without changing invoice UI
   sourceInvoiceId  String?   @db.Uuid
+  // For PURCHASE vouchers auto-posted when a PO is approved (Dr Purchase / Cr Vendor) — links back to the PO
+  sourcePoId       String?   @db.Uuid
   // Tally-style: cheque details for bank payments/receipts
   chequeNumber     String?
   chequeDate       DateTime?
@@ -1555,6 +1565,7 @@ model JournalVoucher {
   @@index([voucherType])
   @@index([projectId, deletedAt])
   @@index([projectId, status])
+  @@index([sourcePoId])
   @@map("journal_vouchers")
 }
 

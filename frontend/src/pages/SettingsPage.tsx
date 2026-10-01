@@ -22,6 +22,7 @@ import { formatCurrency, formatIndianNumber, roleLabel } from '../utils/enumOpti
 import NotificationPermissionPrompt from '../components/NotificationPermissionPrompt';
 
 import { useTranslation } from 'react-i18next';
+import CameraCapture from '../components/CameraCapture';
 const NOTIFICATION_EVENT_LABELS: { key: string; label: string; description: string }[] = [
   { key: 'entity_created', label: 'New entity created', description: 'PO, quotation, invoice, payment, etc. created by your team' },
   { key: 'approval_request', label: 'Approval requests', description: 'A document is waiting for your approval' },
@@ -398,6 +399,10 @@ export default function SettingsPage() {
               >
                 {uploadLogoMutation.isPending ? <CircularProgress size={18} /> : tr('chooseLogo')}
               </Button>
+              <CameraCapture
+                onCapture={(f) => uploadLogoMutation.mutate(f)}
+                disabled={uploadLogoMutation.isPending}
+              />
               <Typography variant="body2" color="text.secondary" component="span">
                 {logoUrl ? tr('logoUploaded', { u: logoUrl }) : tr('logoHint')}
               </Typography>

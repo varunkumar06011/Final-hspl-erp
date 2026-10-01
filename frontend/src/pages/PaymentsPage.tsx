@@ -69,6 +69,7 @@ import { shareOnWhatsApp, buildPaymentShareMessage } from '../utils/whatsappShar
 import CommentsButton from '../components/CommentsButton';
 
 import { useTranslation, Trans } from 'react-i18next';
+import FilePicker from '../components/FilePicker';
 interface ApprovalStep {
   id: string;
   stepNumber: number;
@@ -209,12 +210,11 @@ export default function PaymentsPage() {
   const [editRow, setEditRow] = useState<PaymentRequestRow | null>(null);
   const [editForm, setEditForm] = useState<Record<string, unknown>>({});
   const [linkVoucherRow, setLinkVoucherRow] = useState<PaymentRequestRow | null>(null);
+  const [selectedVoucherId, setSelectedVoucherId] = useState('');
   // One voucher settling several approved requests (e.g. 4 POs, one transfer)
   const [multiLinkOpen, setMultiLinkOpen] = useState(false);
   const [multiVoucherId, setMultiVoucherId] = useState('');
   const [multiRequestIds, setMultiRequestIds] = useState<string[]>([]);
-  const [selectedVoucherId, setSelectedVoucherId] = useState('');
-  const fileRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
   const { user } = useAuthStore();
   const navigate = useNavigate();
@@ -1276,15 +1276,12 @@ export default function PaymentsPage() {
             />
             <Box>
               <Typography variant="body2" sx={{ mb: 1 }}>{tr('proofOfPaymentBank')}</Typography>
-              <input
-                ref={advanceFileRef}
-                type="file"
+              <FilePicker
+                file={advanceFile}
+                onChange={setAdvanceFile}
                 accept="application/pdf,image/jpeg,image/png,image/webp"
-                onChange={(e) => {
-                  const file = e.target.files?.[0] ?? null;
-                  setAdvanceFile(file);
-                }}
-                style={{ width: '100%' }}
+                startIcon={<AddIcon />}
+                label={tr('uploadReceipt')}
               />
               {advanceFile && (
                 <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
@@ -1413,19 +1410,22 @@ export default function PaymentsPage() {
               </TextField>
             </Box>
             <Box>
-              <input ref={fileRef} type="file" accept="image/*,application/pdf" style={{ display: 'none' }} onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (!file) return;
-                if (!['application/pdf', 'image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 50 * 1024 * 1024) {
-                  setError(tr('errReceipt'));
-                  return;
-                }
-                setError('');
-                setExpenseFile(file);
-              }} />
-              <Button variant="outlined" onClick={() => fileRef.current?.click()} startIcon={<AddIcon />}>
-                {expenseFile ? `✓ ${expenseFile.name}` : tr('uploadReceipt')}
-              </Button>
+              <FilePicker
+                file={expenseFile}
+                accept="image/*,application/pdf"
+                startIcon={<AddIcon />}
+                label={tr('uploadReceipt')}
+                selectedLabel={expenseFile ? `✓ ${expenseFile.name}` : undefined}
+                onChange={(file) => {
+                  if (!file) { setExpenseFile(null); return; }
+                  if (!['application/pdf', 'image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 50 * 1024 * 1024) {
+                    setError(tr('errReceipt'));
+                    return;
+                  }
+                  setError('');
+                  setExpenseFile(file);
+                }}
+              />
             </Box>
           </Box>
         </DialogContent>

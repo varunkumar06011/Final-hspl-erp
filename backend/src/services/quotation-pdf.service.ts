@@ -39,7 +39,7 @@ export async function streamQuotationPdf(res: NodeJS.WritableStream, quotation: 
 
   // ── Find project users in named approver roles ──
   const approvers = await prisma.user.findMany({
-    where: { projectId: quotation.projectId, isActive: true, role: { in: ['PROJECT_HEAD', 'HEAD_OF_CONSTRUCTION', 'ACCOUNTS_HEAD', 'ADMIN', 'ADMIN_2'] } },
+    where: { isActive: true, role: { in: ['PROJECT_HEAD', 'HEAD_OF_CONSTRUCTION', 'ACCOUNTS_HEAD', 'ADMIN', 'ADMIN_2'] } },
     select: { name: true, role: true },
   });
 

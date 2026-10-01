@@ -75,9 +75,9 @@ async function reconcileQuotationStatuses(
  * active admin role in the project (ADMIN, ADMIN_2, ADMIN_3, ...). Used when
  * (re)building approval workflow steps so dynamic admins can also approve.
  */
-async function getQuotationApproverRoles(projectId: string): Promise<string[]> {
+async function getQuotationApproverRoles(_projectId: string): Promise<string[]> {
   const users = await prisma.user.findMany({
-    where: { projectId, isActive: true },
+    where: { isActive: true },
     select: { role: true },
   });
   const roles = new Set<string>([

@@ -102,7 +102,7 @@ router.post(
         [ownerLedger.id, { id: ownerLedger.id, name: ownerLedger.name, group: ownerLedger.group, linkedEntityType: ownerLedger.linkedEntityType, linkedEntityId: ownerLedger.linkedEntityId }],
       ]);
 
-      const jvNumber = await generateVoucherNumber(VoucherType.RECEIPT);
+      const jvNumber = await generateVoucherNumber(VoucherType.RECEIPT, projectId);
 
       // RECEIPT: Dr Bank (money in), Cr Capital Account (owner's equity increases)
       const voucherResult = await postVoucher({
@@ -195,7 +195,7 @@ router.post(
         [ownerLedger.id, { id: ownerLedger.id, name: ownerLedger.name, group: ownerLedger.group, linkedEntityType: ownerLedger.linkedEntityType, linkedEntityId: ownerLedger.linkedEntityId }],
       ]);
 
-      const jvNumber = await generateVoucherNumber(VoucherType.PAYMENT);
+      const jvNumber = await generateVoucherNumber(VoucherType.PAYMENT, projectId);
 
       // PAYMENT: Dr Capital Account (owner's equity decreases), Cr Bank (money out)
       const voucherResult = await postVoucher({

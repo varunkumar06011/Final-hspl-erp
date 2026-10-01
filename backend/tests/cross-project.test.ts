@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { hasPermission, Permission, UserRole } from '@hospital-erp/shared';
 
 describe('Cross-Project Isolation Tests', () => {
@@ -26,27 +26,6 @@ describe('Cross-Project Isolation Tests', () => {
     expect(hasPermission(UserRole.ADMIN_2, Permission.MANAGE_USERS)).toBe(true);
   });
 
-  // The actual cross-project data isolation is enforced at the service layer
-  // by filtering all queries with `where: { projectId: req.user.projectId }`.
-  // This test documents the contract: a user's projectId determines which
-  // project's data they can access. The service layer must never accept
-  // a projectId from the request body/query — it must always use the
-  // authenticated user's projectId.
-
-  describe('Service Layer Isolation Contract', () => {
-    it('Every service query must filter by the authenticated user projectId', () => {
-      // This is a documentation test — the actual enforcement happens in
-      // each service's findMany/findUnique calls using:
-      //   where: { projectId: req.user.projectId }
-      // No service should accept projectId from req.body or req.query.
-      expect(true).toBe(true);
-    });
-
-    it('Creating an entity with a different projectId must be rejected', () => {
-      // When creating entities, the service must use req.user.projectId,
-      // not a projectId from the request body. This prevents a Project A
-      // user from creating entities under Project B.
-      expect(true).toBe(true);
-    });
-  });
+  // Behavioural isolation tests (project claim in the token, per-project numbering,
+  // project management) live in multi-project.test.ts.
 });

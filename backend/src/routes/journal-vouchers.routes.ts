@@ -22,6 +22,7 @@ import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middl
 import { rbacMiddleware } from '../middleware/rbac';
 import { validateMiddleware } from '../middleware/validate';
 import { logAudit } from '../services/audit.service';
+import { getProjectCode } from '../services/project.service';
 import * as approvalService from '../services/approval.service';
 import { notifyAllHeads } from '../services/push.service';
 import { ensureBankLedger, ensureCashLedger, ensureOwnerLedger } from './ledger.routes';
@@ -48,16 +49,17 @@ const jvInclude = {
   },
 };
 
-async function generateJvNumber(): Promise<string> {
+async function generateJvNumber(projectId: string): Promise<string> {
+  const prefix = `${await getProjectCode(projectId)}-JV`;
   const jvs = await prisma.journalVoucher.findMany({
-    where: { jvNumber: { startsWith: 'VGH-JV' } },
+    where: { projectId, jvNumber: { startsWith: prefix } },
     select: { jvNumber: true },
   });
   const maxNum = jvs.reduce((max, jv) => {
-    const match = jv.jvNumber?.match(/^VGH-JV(\d+)$/);
+    const match = jv.jvNumber?.match(new RegExp(`^${prefix}(\\d+)$`));
     return match ? Math.max(max, parseInt(match[1], 10)) : max;
   }, 0);
-  return `VGH-JV${String(maxNum + 1).padStart(3, '0')}`;
+  return `${prefix}${String(maxNum + 1).padStart(3, '0')}`;
 }
 
 // ── List JVs ──
@@ -138,7 +140,7 @@ router.post(
       const totalDebit = (entries as Array<{ debit: number }>).reduce((s, e) => s + Number(e.debit), 0);
       const totalCredit = (entries as Array<{ credit: number }>).reduce((s, e) => s + Number(e.credit), 0);
 
-      const jvNumber = await generateJvNumber();
+      const jvNumber = await generateJvNumber(projectId);
 
       // Block future dates
       const jvDate = date ? new Date(date) : new Date();

@@ -1,6 +1,6 @@
 import { Router, Response, NextFunction } from 'express';
 import { z } from 'zod';
-import { authMiddleware, AuthenticatedRequest } from '../middleware/auth';
+import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middleware/auth';
 import { validateMiddleware } from '../middleware/validate';
 import { prisma } from '../config/prisma';
 import {
@@ -126,16 +126,22 @@ router.get(
     try {
       const page = Math.max(1, parseInt(String(req.query.page ?? '1'), 10) || 1);
       const pageSize = Math.min(100, Math.max(1, parseInt(String(req.query.pageSize ?? '20'), 10) || 20));
+      // Same user works in several projects: show only this project's notifications
+      // (plus any legacy ones that were never tied to a project).
+      const where = {
+        userId: req.user!.id,
+        OR: [{ projectId: requireProjectId(req) }, { projectId: null }],
+      };
 
       const [data, total, unreadCount] = await Promise.all([
         prisma.appNotification.findMany({
-          where: { userId: req.user!.id },
+          where,
           orderBy: { createdAt: 'desc' },
           skip: (page - 1) * pageSize,
           take: pageSize,
         }),
-        prisma.appNotification.count({ where: { userId: req.user!.id } }),
-        prisma.appNotification.count({ where: { userId: req.user!.id, isRead: false } }),
+        prisma.appNotification.count({ where }),
+        prisma.appNotification.count({ where: { ...where, isRead: false } }),
       ]);
 
       res.json({
@@ -175,7 +181,11 @@ router.patch(
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const result = await prisma.appNotification.updateMany({
-        where: { userId: req.user!.id, isRead: false },
+        where: {
+          userId: req.user!.id,
+          isRead: false,
+          OR: [{ projectId: requireProjectId(req) }, { projectId: null }],
+        },
         data: { isRead: true },
       });
       res.json({ success: true, markedRead: result.count });

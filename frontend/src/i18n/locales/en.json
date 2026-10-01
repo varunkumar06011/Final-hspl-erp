@@ -228,7 +228,11 @@
   "shell": {
     "askErp": "Ask ERP (Ctrl+J)",
     "switchToLight": "Switch to light mode",
-    "switchToDark": "Switch to dark mode"
+    "switchToDark": "Switch to dark mode",
+    "project": "Project",
+    "switchProject": "Switch project",
+    "switchFailed": "Could not switch project. Please try again.",
+    "switching": "Switching project…"
   },
   "sections": {
     "Procurement": "Procurement",
@@ -281,7 +285,8 @@
     "Bank & Cash": "Bank & Cash",
     "Vouchers": "Vouchers",
     "Invoices": "Invoices",
-    "Transaction Register": "Transaction Register"
+    "Transaction Register": "Transaction Register",
+    "Projects": "Projects"
   },
   "roles": {
     "SUPERVISOR": "Supervisor",
@@ -324,7 +329,12 @@
     "pinHint": "You'll use this PIN with your phone number to sign in — no OTP needed.",
     "setPinSignIn": "Set PIN & Sign In",
     "needHelp": "Need help? Contact Support",
-    "noConfirmation": "No confirmation result. Please request OTP again."
+    "noConfirmation": "No confirmation result. Please request OTP again.",
+    "chooseProject": "Where do you want to sign in?",
+    "chooseProjectHint": "Pick the project you want to work in. Your phone number and PIN are the same for every project.",
+    "signingInTo": "Signing in to",
+    "changeProject": "Change project",
+    "loadingProjects": "Loading projects…"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -400,7 +410,14 @@
     "search": "Search...",
     "zoomOut": "Zoom out",
     "zoomIn": "Zoom in",
-    "resetZoom": "Reset zoom"
+    "resetZoom": "Reset zoom",
+    "camera": "Camera",
+    "takePhoto": "Take photo",
+    "capture": "Capture",
+    "retake": "Retake",
+    "usePhoto": "Use photo",
+    "removePhoto": "Remove",
+    "cameraUnavailable": "Camera is not available on this device or permission was denied"
   },
   "ledgerGroups": {
     "FIXED_ASSET": "Fixed Assets",

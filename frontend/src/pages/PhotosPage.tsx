@@ -1,4 +1,4 @@
-﻿import { useState, useRef } from 'react';
+﻿import { useState } from 'react';
 import {
   Box,
   Typography,
@@ -39,6 +39,7 @@ import ResponsiveTable from '../components/ResponsiveTable';
 import RefreshButton from '../components/RefreshButton';
 
 import { useTranslation } from 'react-i18next';
+import FilePicker from '../components/FilePicker';
 export default function PhotosPage() {
   const { t } = useTranslation('photos');
   const [page, setPage] = useState(0);
@@ -49,7 +50,6 @@ export default function PhotosPage() {
   const [error, setError] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewPhoto, setPreviewPhoto] = useState<Record<string, unknown> | null>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
 
   const { data, isLoading, refetch } = useQuery({
@@ -178,10 +178,13 @@ export default function PhotosPage() {
         <DialogTitle>{t('uploadPhoto')}</DialogTitle>
         <DialogContent>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
-            <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFileSelect(f); }} />
-            <Button variant="outlined" onClick={() => fileRef.current?.click()}>
-              {selectedFile ? t('fileSelected') : t('chooseImage')}
-            </Button>
+            <FilePicker
+              file={selectedFile}
+              onChange={(f) => (f ? handleFileSelect(f) : setSelectedFile(null))}
+              accept="image/*"
+              label={t('chooseImage')}
+              selectedLabel={t('fileSelected')}
+            />
             {selectedFile && (
               <Box component="img" src={URL.createObjectURL(selectedFile)} sx={{ width: '100%', maxHeight: 200, objectFit: 'contain', borderRadius: 1 }} />
             )}

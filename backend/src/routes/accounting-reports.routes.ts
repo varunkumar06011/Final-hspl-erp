@@ -101,6 +101,7 @@ router.get(
         runningBalance += Number(e.debit) - Number(e.credit);
         return {
           id: e.id,
+          journalVoucherId: e.journalVoucherId,
           voucherNumber: e.voucherNumber,
           voucherType: e.voucherType,
           voucherDate: e.voucherDate.toISOString(),

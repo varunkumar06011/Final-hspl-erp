@@ -31,6 +31,7 @@ import ApprovalActionDialog from '../components/ApprovalActionDialog';
 import ResponsiveDialog from '../components/ResponsiveDialog';
 import { useDeepLinkRow } from '../hooks/useDeepLinkRow';
 import CommentsButton from '../components/CommentsButton';
+import FilePicker from '../components/FilePicker';
 
 interface MPRItem {
   materialName: string;
@@ -117,8 +118,8 @@ export default function MaterialPurchaseRequestsPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [editRow, setEditRow] = useState<MPRRow | null>(null);
   const [error, setError] = useState('');
-  const [pdfLoading, setPdfLoading] = useState(false);
   const [notice, setNotice] = useState('');
+  const [pdfLoading, setPdfLoading] = useState(false);
   const [approvalAction, setApprovalAction] = useState<{ row: MPRRow; step: ApprovalStep; action: 'approve' | 'reject' } | null>(null);
   const [receiptRow, setReceiptRow] = useState<MPRRow | null>(null);
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
@@ -423,7 +424,6 @@ export default function MaterialPurchaseRequestsPage() {
     onSuccess: (data?: { revision?: { quotationsUpdated: number; pricingPending: boolean; poResubmitted: string[] } }) => {
       queryClient.invalidateQueries({ queryKey: ['mprs'] });
       queryClient.invalidateQueries({ queryKey: ['/vendors'] });
-      setCreateOpen(false);
       const rev = data?.revision;
       if (rev) {
         queryClient.invalidateQueries({ queryKey: ['/quotations'] });
@@ -432,6 +432,7 @@ export default function MaterialPurchaseRequestsPage() {
           ? t('revisionPoResubmitted', { pos: rev.poResubmitted.join(', ') })
           : rev.pricingPending ? t('revisionPricingPending') : t('revisionQuotationsUpdated'));
       }
+      setCreateOpen(false);
       setError('');
       rememberDepartment(department);
       try { localStorage.removeItem(MPR_DRAFT_KEY); } catch { /* ignore */ }
@@ -556,7 +557,7 @@ export default function MaterialPurchaseRequestsPage() {
 
   function canApprove(row: MPRRow): ApprovalStep | null {
     if (!row.approvalWorkflow || !user || !isApproverRole(user.role)) return null;
-    if (row.status !== MPRStatus.SUBMITTED) return null;
+    if (row.status !== MPRStatus.SUBMITTED && row.status !== MPRStatus.APPROVED) return null;
     const alreadyDecided = row.approvalWorkflow.steps.some(
       (step) => step.approverUserId === user.id && step.status !== 'PENDING'
     );
@@ -659,8 +660,8 @@ export default function MaterialPurchaseRequestsPage() {
       </Tabs>
 
       {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
-
       {notice && <Alert severity="success" sx={{ mb: 2 }} onClose={() => setNotice('')}>{notice}</Alert>}
+
       {/* Filters */}
       <Box sx={{ display: 'flex', gap: 1, mb: 2, flexWrap: 'wrap' }}>
         <TextField
@@ -829,6 +830,9 @@ export default function MaterialPurchaseRequestsPage() {
                     {row.status === MPRStatus.APPROVED && (
                       <>
                         <IconButton size="small" onClick={() => openEdit(row)} title={t('editReRaise')}><EditIcon fontSize="small" /></IconButton>
+                        {pendingStep && (
+                          <Button size="small" color="success" startIcon={<CheckIcon />} onClick={() => setApprovalAction({ row, step: pendingStep, action: 'approve' })}>{t('approve')}</Button>
+                        )}
                         {user?.role === UserRole.ADMIN_2 && (
                           <IconButton
                             size="small"
@@ -1198,10 +1202,13 @@ export default function MaterialPurchaseRequestsPage() {
         <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '12px !important' }}>
           {error && <Alert severity="error" onClose={() => setError('')}>{error}</Alert>}
           <Alert severity="info">{t('receiptInfo')}</Alert>
-          <Button component="label" variant="outlined" startIcon={<ReceiptIcon />}>
-            {receiptFile ? receiptFile.name : t('chooseReceipt')}
-            <input type="file" hidden accept="application/pdf,image/*" onChange={(e) => setReceiptFile(e.target.files?.[0] ?? null)} />
-          </Button>
+          <FilePicker
+            file={receiptFile}
+            onChange={setReceiptFile}
+            accept="application/pdf,image/*"
+            startIcon={<ReceiptIcon />}
+            label={t('chooseReceipt')}
+          />
           <TextField label={t('notesOptional')} value={receiptNotes} onChange={(e) => setReceiptNotes(e.target.value)} multiline minRows={2} />
         </DialogContent>
         <DialogActions>

@@ -2,6 +2,7 @@ import { prisma } from '../config/prisma';
 import { getFirebaseApp } from '../config/firebase';
 import admin from 'firebase-admin';
 import { UserRole, APPROVER_ROLES } from '@hospital-erp/shared';
+import { projectTitlePrefix } from './project.service';
 
 // ─── Types ────────────────────────────────────────────────
 
@@ -174,11 +175,14 @@ export async function notifyAllHeads(
   }
 
   console.log(`[Push] Notifying ${heads.length} heads (${tokens.length} devices) — ${payload.entityType}`);
-  await sendPushToTokens(tokens, payload.title, payload.body, {
+  // Users are shared by every project, so say which project this is about.
+  const title = (await projectTitlePrefix(projectId)) + payload.title;
+  await sendPushToTokens(tokens, title, payload.body, {
     type: 'entity_created',
+    projectId,
     entityType: payload.entityType,
     entityId: payload.entityId,
-    title: payload.title,
+    title,
     body: payload.body,
     url: payload.url,
   });
@@ -240,12 +244,15 @@ export async function notifyApprovers(
     `${approvers.length} approver(s), ${tokens.length} device(s)`
   );
 
-  await sendPushToTokens(tokens, payload.title, payload.body, {
+  // Users are shared by every project, so say which project this is about.
+  const title = (await projectTitlePrefix(projectId)) + payload.title;
+  await sendPushToTokens(tokens, title, payload.body, {
     type: 'approval_request',
     approvalId: payload.approvalId,
+    projectId,
     entityType: payload.entityType,
     entityId: payload.entityId,
-    title: payload.title,
+    title,
     body: payload.body,
     url: payload.url,
   });

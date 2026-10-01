@@ -46,6 +46,7 @@ import { useAuthStore } from '../stores/authStore';
 import { downloadFile } from '../utils/file';
 
 import { useTranslation } from 'react-i18next';
+import FilePicker from './FilePicker';
 const PAYMENT_MODES = Object.values(PaymentMode);
 
 interface POOption {
@@ -643,10 +644,7 @@ export default function PaymentSheetsTab() {
             <TextField label={t('notes')} size="small" multiline rows={2} value={form.notes}
               onChange={(e) => setForm({ ...form, notes: e.target.value })} />
 
-            <Button variant="outlined" component="label" startIcon={<AttachFileIcon />}>
-              {file ? file.name : t('attach')}
-              <input type="file" hidden onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
-            </Button>
+            <FilePicker file={file} onChange={setFile} label={t('attach')} startIcon={<AttachFileIcon />} />
           </Stack>
         </DialogContent>
         <DialogActions>

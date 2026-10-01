@@ -3,6 +3,7 @@ import { verifyFirebaseToken } from '../config/firebase';
 import { prisma } from '../config/prisma';
 import { UserRole } from '@hospital-erp/shared';
 import jwt from 'jsonwebtoken';
+import { isProjectUsable } from '../services/project.service';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-me';
 
@@ -28,6 +29,21 @@ const TERMS_REQUIRED = {
 
 function hasAcceptedTerms(user: { termsAcceptedAt: Date | null }): boolean {
   return !!user.termsAcceptedAt;
+}
+
+/**
+ * The project a session works in. Tokens issued at login/switch carry a signed
+ * `projectId` claim; it wins when that project still exists and isn't archived.
+ * Older tokens (no claim) and archived projects fall back to the user's default.
+ */
+export async function activeProjectId(
+  claimedProjectId: unknown,
+  userProjectId: string | null
+): Promise<string | null> {
+  if (typeof claimedProjectId === 'string' && claimedProjectId) {
+    if (await isProjectUsable(claimedProjectId)) return claimedProjectId;
+  }
+  return userProjectId;
 }
 
 export function requireProjectId(req: AuthenticatedRequest): string {
@@ -64,13 +80,14 @@ export async function authMiddleware(
         return;
       }
       // Dev tokens bypass the terms gate — they never reach production.
+      // `X-Project-Id` lets local tests act inside a specific project.
       req.user = {
         id: user.id,
         firebaseUid: user.firebaseUid,
         phone: user.phone,
         name: user.name,
         role: user.role as UserRole,
-        projectId: user.projectId,
+        projectId: await activeProjectId(req.headers['x-project-id'], user.projectId),
         isActive: user.isActive,
         termsAcceptedAt: user.termsAcceptedAt,
       };
@@ -81,7 +98,7 @@ export async function authMiddleware(
     // JWT token (from PIN-based login) — 3-part dot-separated token
     if (idToken.split('.').length === 3) {
       try {
-        const decoded = jwt.verify(idToken, JWT_SECRET) as { userId: string };
+        const decoded = jwt.verify(idToken, JWT_SECRET) as { userId: string; projectId?: string };
         const user = await prisma.user.findUnique({ where: { id: decoded.userId } });
         if (!user) {
           res.status(403).json({ error: 'User not found' });
@@ -101,7 +118,7 @@ export async function authMiddleware(
           phone: user.phone,
           name: user.name,
           role: user.role as UserRole,
-          projectId: user.projectId,
+          projectId: await activeProjectId(decoded.projectId, user.projectId),
           isActive: user.isActive,
           termsAcceptedAt: user.termsAcceptedAt,
         };

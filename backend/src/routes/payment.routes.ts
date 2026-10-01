@@ -17,7 +17,7 @@ import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middl
 import { rbacMiddleware } from '../middleware/rbac';
 import { validateMiddleware } from '../middleware/validate';
 import { logAudit } from '../services/audit.service';
-import { generateSequenceNumber } from '../services/sequence.service';
+import { generateProjectSequenceNumber } from '../services/sequence.service';
 import * as approvalService from '../services/approval.service';
 import { notifyApprovers } from '../services/push.service';
 import { getStorageService, serveFile } from '../services/storage.service';
@@ -38,9 +38,9 @@ const HEAD_ROLES = [UserRole.PROJECT_HEAD, UserRole.HEAD_OF_CONSTRUCTION];
  * Fetch all approver roles (heads + dynamic admin roles) for a project.
  * Used to create approval workflow steps and send notifications.
  */
-async function getAllApproverRoles(projectId: string): Promise<string[]> {
+async function getAllApproverRoles(_projectId: string): Promise<string[]> {
   const users = await prisma.user.findMany({
-    where: { projectId, isActive: true },
+    where: { isActive: true },
     select: { role: true },
   });
   const roles = new Set<string>(HEAD_ROLES as string[]);
@@ -50,8 +50,8 @@ async function getAllApproverRoles(projectId: string): Promise<string[]> {
   return Array.from(roles);
 }
 
-async function generatePaymentCode(): Promise<string> {
-  return generateSequenceNumber('paymentRequest', 'paymentCode', 'VGH-PAY', 3);
+async function generatePaymentCode(projectId: string): Promise<string> {
+  return generateProjectSequenceNumber('paymentRequest', 'paymentCode', 'PAY', 3, projectId);
 }
 
 /**
@@ -391,7 +391,7 @@ router.post(
       if (req.file) {
         const isImage = req.file.mimetype.startsWith('image/');
         const subPath = isImage ? 'images' : 'documents';
-        const paymentCode = await generatePaymentCode();
+        const paymentCode = await generatePaymentCode(projectId);
         const prefixedFileName = `advance-payments/${subPath}/${paymentCode}-${req.file.originalname}`;
         const storage = getStorageService();
         const uploadResult = await storage.upload(req.file.buffer, prefixedFileName, req.file.mimetype, 'documents');
@@ -400,7 +400,7 @@ router.post(
         fileMimeType = req.file.mimetype;
       }
 
-      const paymentCode = await generatePaymentCode();
+      const paymentCode = await generatePaymentCode(projectId);
       const finalRequestNumber = await resolveUniqueRequestNumber(projectId, String(requestNumber));
 
       const approverRoles = await getAllApproverRoles(projectId);
@@ -537,7 +537,7 @@ router.post(
         return;
       }
 
-      const paymentCode = await generatePaymentCode();
+      const paymentCode = await generatePaymentCode(projectId);
       const finalRequestNumber = await resolveUniqueRequestNumber(projectId, String(requestNumber));
 
       const approverRoles = await getAllApproverRoles(projectId);
@@ -637,7 +637,7 @@ router.post(
         return;
       }
 
-      const paymentCode = await generatePaymentCode();
+      const paymentCode = await generatePaymentCode(projectId);
 
       // Handle file upload
       let filePath: string | null = null;
@@ -1393,7 +1393,7 @@ router.post(
         //    postVoucher also updates the budget head totals atomically:
         //      actualAmount + paidAmount increase, committedAmount decreases
         //      (capped at 0). GRNs no longer affect budget — they are inventory only.
-        const jvNumber = await generateVoucherNumber(VoucherType.PAYMENT);
+        const jvNumber = await generateVoucherNumber(VoucherType.PAYMENT, projectId);
         const voucherResult = await postVoucher({
           projectId,
           jvNumber,

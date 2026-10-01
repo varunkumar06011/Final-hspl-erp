@@ -15,10 +15,19 @@ const logoUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize:
 // Used by login page and favicon before the user is authenticated
 router.get(
   '/logo',
-  async (_req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
-      // Single-project app — fetch the first project's logo
+      // `?projectId=` serves the project picked on the login page; without it
+      // (favicon, old clients) fall back to the oldest live project.
+      const requestedId = typeof req.query.projectId === 'string' ? req.query.projectId : undefined;
+      const isUuid = !!requestedId && /^[0-9a-f-]{36}$/i.test(requestedId);
+      if (requestedId && !isUuid) {
+        res.status(404).json({ error: 'No logo uploaded' });
+        return;
+      }
       const project = await prisma.project.findFirst({
+        where: isUuid ? { id: requestedId, deletedAt: null } : { deletedAt: null },
+        orderBy: { createdAt: 'asc' },
         select: { logoUrl: true },
       });
 
@@ -223,7 +232,7 @@ router.patch(
         action: AuditAction.UPDATE,
         entityType: 'USER',
         entityId: req.user!.id,
-        projectId: req.user!.projectId ?? '',
+        projectId: requireProjectId(req),
         newValue: updateData,
       });
 

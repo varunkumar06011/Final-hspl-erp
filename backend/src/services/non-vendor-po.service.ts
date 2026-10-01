@@ -1,13 +1,13 @@
 import { POStatus, POPaymentType, AuditAction, UserRole, VendorType, isAdminRole } from '@hospital-erp/shared';
 import { prisma } from '../config/prisma';
-import { generateSequenceNumber } from './sequence.service';
+import { generateProjectSequenceNumber } from './sequence.service';
 import { logAudit } from './audit.service';
 import { notifyApprovers } from './push.service';
 
 /** Active admin roles (ADMIN, ADMIN_2, ...) for a project — the PO approvers. */
-export async function getActiveAdminRoles(projectId: string): Promise<string[]> {
+export async function getActiveAdminRoles(_projectId: string): Promise<string[]> {
   const users = await prisma.user.findMany({
-    where: { projectId, isActive: true },
+    where: { isActive: true },
     select: { role: true },
   });
   const adminRoles = users.map((u) => u.role).filter((r) => isAdminRole(r));
@@ -19,7 +19,7 @@ export async function getActiveAdminRoles(projectId: string): Promise<string[]> 
 }
 
 export async function generatePONumber(projectId: string): Promise<string> {
-  return generateSequenceNumber('purchaseOrder', 'poNumber', 'VGH-PO', 3, { projectId });
+  return generateProjectSequenceNumber('purchaseOrder', 'poNumber', 'PO', 3, projectId);
 }
 
 /** A live (not deleted/cancelled/rejected) PO already raised from this MPR, if any. */

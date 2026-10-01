@@ -3,7 +3,7 @@ import { verifyFirebaseToken } from '../config/firebase';
 import { prisma } from '../config/prisma';
 import { UserRole } from '@hospital-erp/shared';
 import jwt from 'jsonwebtoken';
-import { AuthenticatedRequest } from './auth';
+import { AuthenticatedRequest, activeProjectId } from './auth';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-me';
 
@@ -51,7 +51,7 @@ export async function optionalAuthMiddleware(
     // JWT token
     if (idToken.split('.').length === 3) {
       try {
-        const decoded = jwt.verify(idToken, JWT_SECRET) as { userId: string };
+        const decoded = jwt.verify(idToken, JWT_SECRET) as { userId: string; projectId?: string };
         const user = await prisma.user.findUnique({ where: { id: decoded.userId } });
         if (user && user.isActive && user.termsAcceptedAt) {
           req.user = {
@@ -60,7 +60,7 @@ export async function optionalAuthMiddleware(
             phone: user.phone,
             name: user.name,
             role: user.role as UserRole,
-            projectId: user.projectId,
+            projectId: await activeProjectId(decoded.projectId, user.projectId),
             isActive: user.isActive,
             termsAcceptedAt: user.termsAcceptedAt,
           };

@@ -11,7 +11,6 @@ import {
 } from '@mui/material';
 import {
   AttachFile as AttachFileIcon,
-  PhotoCamera as CameraIcon,
   RemoveCircle as RemoveIcon,
   PictureAsPdf as PdfIcon,
   InsertDriveFile as FileIcon,
@@ -21,6 +20,7 @@ import {
 } from '@mui/icons-material';
 import api, { extractErrorMessage } from '../config/api';
 import { fetchFileUrl, downloadFile } from '../utils/file';
+import CameraCapture from './CameraCapture';
 
 import { useTranslation } from 'react-i18next';
 // ── Types ──────────────────────────────────────────────────
@@ -67,7 +67,6 @@ export default function VoucherProofAttachment({
 }: VoucherProofAttachmentProps) {
   const { t } = useTranslation('vouchers');
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const cameraInputRef = useRef<HTMLInputElement>(null);
 
   // Pending file preview URL (derived from pendingFile prop)
   const [pendingPreviewUrl, setPendingPreviewUrl] = useState<string | null>(null);
@@ -142,7 +141,6 @@ export default function VoucherProofAttachment({
   const removePendingFile = () => {
     onPendingFileChange?.(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
-    if (cameraInputRef.current) cameraInputRef.current.value = '';
   };
 
   // ── Upload a file immediately (edit/detail mode — voucher already exists) ──
@@ -183,7 +181,6 @@ export default function VoucherProofAttachment({
     }
     uploadDirectly(file);
     if (fileInputRef.current) fileInputRef.current.value = '';
-    if (cameraInputRef.current) cameraInputRef.current.value = '';
   };
 
   // ── Delete a saved attachment ──
@@ -251,14 +248,6 @@ export default function VoucherProofAttachment({
         style={{ display: 'none' }}
         onChange={(e) => hasVoucher ? handleFileSelectedExisting(e.target.files?.[0]) : handleFileSelected(e.target.files?.[0])}
       />
-      <input
-        ref={cameraInputRef}
-        type="file"
-        accept="image/*"
-        capture="environment"
-        style={{ display: 'none' }}
-        onChange={(e) => hasVoucher ? handleFileSelectedExisting(e.target.files?.[0]) : handleFileSelected(e.target.files?.[0])}
-      />
 
       {/* Pending file preview (create mode — before voucher is saved) */}
       {showPending && (
@@ -309,9 +298,10 @@ export default function VoucherProofAttachment({
           <Button size="small" variant="outlined" startIcon={<AttachFileIcon />} onClick={() => fileInputRef.current?.click()}>
             {t('proofUpload')}
           </Button>
-          <Button size="small" variant="outlined" startIcon={<CameraIcon />} onClick={() => cameraInputRef.current?.click()}>
-            {t('proofCamera')}
-          </Button>
+          <CameraCapture
+            label
+            onCapture={(f) => (hasVoucher ? handleFileSelectedExisting(f) : handleFileSelected(f))}
+          />
         </Box>
       )}
 

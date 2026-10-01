@@ -1,4 +1,4 @@
-﻿import { useState, useRef } from 'react';
+﻿import { useState } from 'react';
 import {
   Box,
   Typography,
@@ -48,6 +48,7 @@ import RefreshButton from '../components/RefreshButton';
 import CommentsButton from '../components/CommentsButton';
 
 import { useTranslation } from 'react-i18next';
+import FilePicker from '../components/FilePicker';
 interface IssueRow {
   id: string;
   title: string;
@@ -82,7 +83,6 @@ export default function IssuesPage() {
   const [closeFile, setCloseFile] = useState<File | null>(null);
   const [proofTarget, setProofTarget] = useState<IssueRow | null>(null);
   const [proofUrl, setProofUrl] = useState<string | null>(null);
-  const closeFileRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
   const { user } = useAuthStore();
 
@@ -429,10 +429,13 @@ export default function IssuesPage() {
             <Typography variant="body2" color="text.secondary">
               {tr('closing')} <strong>{closeTarget?.title}</strong>
             </Typography>
-            <input ref={closeFileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files?.[0]; if (f) handleCloseFileSelect(f); }} />
-            <Button variant="outlined" onClick={() => closeFileRef.current?.click()}>
-              {closeFile ? tr('photoSelected') : tr('addPhoto')}
-            </Button>
+            <FilePicker
+              file={closeFile}
+              onChange={(f) => (f ? handleCloseFileSelect(f) : setCloseFile(null))}
+              accept="image/*"
+              label={tr('addPhoto')}
+              selectedLabel={tr('photoSelected')}
+            />
             {closeFile && (
               <Box component="img" src={URL.createObjectURL(closeFile)} sx={{ width: '100%', maxHeight: 240, objectFit: 'contain', borderRadius: 1 }} />
             )}

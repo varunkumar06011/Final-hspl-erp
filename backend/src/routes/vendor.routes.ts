@@ -6,7 +6,7 @@ import { createCrudRouter } from '../utils/crudFactory';
 import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middleware/auth';
 import { rbacMiddleware } from '../middleware/rbac';
 import { notifyAllHeads } from '../services/push.service';
-import { generateSequenceNumber } from '../services/sequence.service';
+import { generateProjectSequenceNumber } from '../services/sequence.service';
 import { ensureVendorLedger } from './ledger.routes';
 
 interface MaterialInput {
@@ -37,8 +37,8 @@ async function validateVendorDeletion(vendorId: string): Promise<void> {
   }
 }
 
-async function generateVendorCode(): Promise<string> {
-  return generateSequenceNumber('vendor', 'vendorCode', 'VGH-', 3);
+async function generateVendorCode(projectId: string): Promise<string> {
+  return generateProjectSequenceNumber('vendor', 'vendorCode', '', 3, projectId);
 }
 
 const router = createCrudRouter({
@@ -166,7 +166,7 @@ const router = createCrudRouter({
     });
   },
   transformCreate: async (body, userId, projectId) => {
-    const vendorCode = await generateVendorCode();
+    const vendorCode = await generateVendorCode(projectId);
     const materials = (body.materials as MaterialInput[] | undefined) ?? [];
 
     return {

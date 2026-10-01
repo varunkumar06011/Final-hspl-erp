@@ -3,6 +3,7 @@ import { useLocation } from 'react-router-dom';
 import type { Socket } from 'socket.io-client';
 import { useAuthStore } from '../stores/authStore';
 import { API_BASE_URL } from '../config/appConfig';
+import { registerSessionCleanup } from '../utils/sessionCleanup';
 
 export interface PresenceUser {
   userId: string;
@@ -14,6 +15,13 @@ export interface PresenceUser {
 
 let socket: Socket | null = null;
 let socketPromise: Promise<Socket | null> | null = null;
+
+// On logout / project switch the socket (authenticated for the old project) must go.
+registerSessionCleanup(() => {
+  socket?.disconnect();
+  socket = null;
+  socketPromise = null;
+});
 
 // socket.io-client is lazy-imported — presence is non-critical and the
 // ~60KB module shouldn't block app boot (iOS Home Screen cold starts).

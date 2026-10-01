@@ -40,6 +40,7 @@ import api, { extractErrorMessage } from '../config/api';
 import ResponsiveTable from '../components/ResponsiveTable';
 import RefreshButton from '../components/RefreshButton';
 import CommentsButton from '../components/CommentsButton';
+import FilePicker from '../components/FilePicker';
 
 interface GatePassItem {
   materialName: string;
@@ -820,21 +821,15 @@ export default function GatePassesPage() {
                 minRows={1}
               />
             </Box>
-            <Button
-              component="label"
-              variant="outlined"
-              startIcon={<PhotoCameraIcon />}
+            <FilePicker
+              file={photoProof}
+              onChange={setPhotoProof}
+              accept="image/*"
               size="small"
-              sx={{ alignSelf: 'flex-start' }}
-            >
-              {photoProof ? t('photoName', { name: photoProof.name }) : t('addPhoto')}
-              <input
-                hidden
-                type="file"
-                accept="image/*"
-                onChange={(e) => setPhotoProof(e.target.files?.[0] ?? null)}
-              />
-            </Button>
+              startIcon={<PhotoCameraIcon />}
+              label={t('addPhoto')}
+              selectedLabel={photoProof ? t('photoName', { name: photoProof.name }) : undefined}
+            />
 
             <TextField
               select

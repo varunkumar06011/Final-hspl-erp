@@ -2,6 +2,7 @@ import axios from 'axios';
 import { useNetworkStore } from '../stores/networkStore';
 import { useAuthStore } from '../stores/authStore';
 import { API_BASE_URL } from './appConfig';
+import { clearPersistedProjectData } from '../utils/sessionCleanup';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -38,6 +39,7 @@ api.interceptors.response.use(
         if (localStorage.getItem('firebaseToken')) {
           localStorage.removeItem('firebaseToken');
           localStorage.removeItem('user');
+          clearPersistedProjectData();
           if (window.location.pathname !== '/login') {
             window.location.href = '/login';
           }

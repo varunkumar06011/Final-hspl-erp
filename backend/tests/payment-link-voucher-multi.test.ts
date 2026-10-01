@@ -87,6 +87,7 @@ function makeRequests(amounts: number[]) {
     requestNumber: `ADV-PO${i + 1}`,
     status: 'APPROVED',
     amount,
+    vendorId: `vendor-${i + 1}`, // each request deliberately from a different vendor
     invoiceId: null,
     budgetHeadId: null,
     payments: [],
@@ -126,6 +127,13 @@ describe('POST /payments/link-voucher-multi', () => {
     expect(db.created).toHaveLength(4);
     expect(db.created.every((p) => p.journalVoucherId === VOUCHER_ID && p.bankAccountId === 'bank-1')).toBe(true);
     expect(db.created.reduce((s, p) => s + p.amount, 0)).toBe(38000);
+  });
+
+  it('does not require the requests to be from the same vendor', async () => {
+    expect(new Set(db.requests.map((r) => r.vendorId)).size).toBe(4);
+    const res = await post([1, 2, 3, 4].map(reqId));
+    expect(res.status).toBe(201);
+    expect(db.created).toHaveLength(4);
   });
 
   it('rejects when the requests do not add up to the voucher, and writes nothing', async () => {

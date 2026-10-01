@@ -23,6 +23,7 @@ import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middl
 import { rbacMiddleware } from '../middleware/rbac';
 import { validateMiddleware } from '../middleware/validate';
 import { logAudit } from '../services/audit.service';
+import { getProjectCode } from '../services/project.service';
 import { ensureVendorLedger, findLedgerByName } from './ledger.routes';
 
 const router = Router();
@@ -51,15 +52,21 @@ const voucherInclude = {
 };
 
 // ── Generate voucher number per type ──
-const VOUCHER_PREFIXES: Record<string, string> = {
-  [VoucherType.RECEIPT]: 'VGH-RCPT',
-  [VoucherType.PAYMENT]: 'VGH-PAY',
-  [VoucherType.CONTRA]: 'VGH-CONTRA',
-  [VoucherType.JOURNAL]: 'VGH-JV',
-  [VoucherType.PURCHASE]: 'VGH-PUR',
-  [VoucherType.CREDIT_NOTE]: 'VGH-CN',
-  [VoucherType.DEBIT_NOTE]: 'VGH-DN',
+// The project code (e.g. VGH) is prepended per project: VGH-PAY0001, ABC-PAY0001, ...
+const VOUCHER_PREFIX_SUFFIXES: Record<string, string> = {
+  [VoucherType.RECEIPT]: 'RCPT',
+  [VoucherType.PAYMENT]: 'PAY',
+  [VoucherType.CONTRA]: 'CONTRA',
+  [VoucherType.JOURNAL]: 'JV',
+  [VoucherType.PURCHASE]: 'PUR',
+  [VoucherType.CREDIT_NOTE]: 'CN',
+  [VoucherType.DEBIT_NOTE]: 'DN',
 };
+
+export async function voucherPrefix(voucherType: string, projectId: string): Promise<string> {
+  const suffix = VOUCHER_PREFIX_SUFFIXES[voucherType] ?? 'JV';
+  return `${await getProjectCode(projectId)}-${suffix}`;
+}
 
 // Map voucher type to the correct account transaction ref type
 const VOUCHER_TO_REF_TYPE: Record<string, AccountTxnRefType> = {
@@ -72,10 +79,10 @@ const VOUCHER_TO_REF_TYPE: Record<string, AccountTxnRefType> = {
   [VoucherType.DEBIT_NOTE]: AccountTxnRefType.JOURNAL_VOUCHER,
 };
 
-export async function generateVoucherNumber(voucherType: string): Promise<string> {
-  const prefix = VOUCHER_PREFIXES[voucherType] ?? 'VGH-JV';
+export async function generateVoucherNumber(voucherType: string, projectId: string): Promise<string> {
+  const prefix = await voucherPrefix(voucherType, projectId);
   const vouchers = await prisma.journalVoucher.findMany({
-    where: { jvNumber: { startsWith: prefix } },
+    where: { projectId, jvNumber: { startsWith: prefix } },
     select: { jvNumber: true },
   });
   const maxNum = vouchers.reduce((max, v) => {
@@ -95,7 +102,7 @@ async function resequenceVoucherSeries(
   selectedVoucherId: string | null,
   requestedSequence?: number,
 ): Promise<string> {
-  const prefix = VOUCHER_PREFIXES[voucherType] ?? 'VGH-JV';
+  const prefix = await voucherPrefix(voucherType, projectId);
   const vouchers = await tx.journalVoucher.findMany({
     where: { projectId, voucherType, deletedAt: null },
     select: { id: true, jvNumber: true, date: true, createdAt: true },
@@ -420,7 +427,7 @@ router.post(
         }));
       }
 
-      const jvNumber = await generateVoucherNumber(String(voucherType));
+      const jvNumber = await generateVoucherNumber(String(voucherType), projectId);
       const voucherDate = date ? new Date(String(date)) : new Date();
 
       // Block future dates
@@ -927,7 +934,7 @@ router.patch(
       }
 
       const { date, description, entries, billSettlements, jvNumber: requestedJvNumber } = req.body;
-      const expectedPrefix = VOUCHER_PREFIXES[voucher.voucherType] ?? 'VGH-JV';
+      const expectedPrefix = await voucherPrefix(voucher.voucherType, projectId);
       let requestedSequence = Number(String(voucher.jvNumber).match(/(\d+)$/)?.[1] ?? 0);
       if (requestedJvNumber !== undefined) {
         const requested = String(requestedJvNumber).trim();
@@ -1550,6 +1557,8 @@ export interface PostVoucherArgs {
   ledgerMap: Map<string, { id: string; name: string; group: string; linkedEntityType: string | null; linkedEntityId: string | null }>;
   budgetHeadMap: Map<string, string>;
   sourceInvoiceId: string | null;
+  // Set for the Dr Purchase / Cr Vendor voucher auto-posted when a PO is approved
+  sourcePoId?: string | null;
   billSettlements: Array<{ invoiceId: string; vendorId: string; amount: number }>;
   userId: string;
   chequeNumber?: string | null;
@@ -1573,6 +1582,7 @@ export async function postVoucher(args: PostVoucherArgs) {
         type: 'ADJUSTMENT', // Legacy type field — new vouchers use voucherType
         voucherType: args.voucherType,
         sourceInvoiceId: args.sourceInvoiceId,
+        sourcePoId: args.sourcePoId ?? null,
         chequeNumber: args.chequeNumber ?? null,
         chequeDate: args.chequeDate ?? null,
         status: 'POSTED',
@@ -1775,6 +1785,20 @@ export async function postInvoiceToBooks(invoiceId: string, projectId: string, u
     throw new Error('Invoice must be verified before posting to books');
   }
 
+  // Guard: a PO's payable is booked when the PO is approved (Dr Purchase /
+  // Cr Vendor). Posting the invoice as well would credit the vendor twice.
+  if (invoice.poId) {
+    const accrued = await prisma.journalVoucher.findFirst({
+      where: { sourcePoId: invoice.poId, deletedAt: null },
+      select: { jvNumber: true },
+    });
+    if (accrued) {
+      throw new Error(
+        `This PO's payable was already booked to the vendor when it was approved (${accrued.jvNumber}) — posting the invoice to books would double-book it`,
+      );
+    }
+  }
+
   // Guard: if this PO's items were already posted to ledgers individually
   // (PO "Post to Ledger" action), posting the whole invoice would double-book.
   if (invoice.poId) {
@@ -1875,7 +1899,7 @@ export async function postInvoiceToBooks(invoiceId: string, projectId: string, u
   }
   const ledgerMap = new Map(ledgers.map((l) => [l.id, l]));
 
-  const jvNumber = await generateVoucherNumber(VoucherType.PURCHASE);
+  const jvNumber = await generateVoucherNumber(VoucherType.PURCHASE, projectId);
   const voucherDate = new Date(invoice.date);
 
   const result = await postVoucher({
@@ -2007,7 +2031,7 @@ async function postCreditOrDebitNote(
   }
   const ledgerMap = new Map(ledgers.map((l) => [l.id, { id: l.id, name: l.name, group: l.group, linkedEntityType: l.linkedEntityType, linkedEntityId: l.linkedEntityId }]));
 
-  const jvNumber = await generateVoucherNumber(voucherType);
+  const jvNumber = await generateVoucherNumber(voucherType, projectId);
   const voucherDate = body.date ? new Date(body.date) : new Date();
 
   const result = await postVoucher({

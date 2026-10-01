@@ -2,6 +2,10 @@ import { Server as SocketServer, Socket } from 'socket.io';
 import { Server as HttpServer } from 'http';
 import { verifyFirebaseToken } from './config/firebase';
 import { prisma } from './config/prisma';
+import jwt from 'jsonwebtoken';
+import { activeProjectId } from './middleware/auth';
+
+const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-me';
 
 // Track which users are viewing which pages
 const presenceMap = new Map<string, Map<string, { userId: string; userName: string; userRole: string; page: string; timestamp: number }>>();
@@ -32,13 +36,22 @@ export function initSocketServer(httpServer: HttpServer): SocketServer {
         return next(new Error('No token provided'));
       }
 
-      const decodedToken = await verifyFirebaseToken(token);
-
-      const user = await prisma.user.findFirst({
-        where: {
-          OR: [{ firebaseUid: decodedToken.uid }, { phone: decodedToken.phone_number }],
-        },
-      });
+      // The web/iOS app stores the app JWT issued at PIN login (it carries the
+      // project chosen on the login page); fall back to a Firebase ID token.
+      let claimedProjectId: string | undefined;
+      let user = null;
+      try {
+        const decoded = jwt.verify(token, JWT_SECRET) as { userId: string; projectId?: string };
+        claimedProjectId = decoded.projectId;
+        user = await prisma.user.findUnique({ where: { id: decoded.userId } });
+      } catch {
+        const decodedToken = await verifyFirebaseToken(token);
+        user = await prisma.user.findFirst({
+          where: {
+            OR: [{ firebaseUid: decodedToken.uid }, { phone: decodedToken.phone_number }],
+          },
+        });
+      }
 
       if (!user || !user.isActive) {
         return next(new Error('Unauthorized'));
@@ -47,7 +60,7 @@ export function initSocketServer(httpServer: HttpServer): SocketServer {
       socket.data.user = {
         id: user.id,
         role: user.role,
-        projectId: user.projectId,
+        projectId: await activeProjectId(claimedProjectId, user.projectId),
       };
 
       next();

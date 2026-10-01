@@ -5,6 +5,7 @@ import { AuthenticatedRequest } from '../middleware/auth';
 import { APPROVER_ROLES, UserRole, getNextAdminRole } from '@hospital-erp/shared';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
+import { isProjectUsable, resolveLoginProjectId } from '../services/project.service';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-me';
 const JWT_EXPIRES_IN = '7d';
@@ -14,9 +15,13 @@ const LOCK_DURATION_MS = 15 * 60 * 1000; // 15 minutes
 // In-memory rate limiting for PIN attempts (per phone number)
 const pinAttempts = new Map<string, { count: number; lockedUntil: number }>();
 
-function signJwt(userId: string): string {
-  return jwt.sign({ userId }, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
+// `projectId` is the project this session works in (chosen on the login page).
+// authMiddleware reads it back; tokens without it fall back to User.projectId.
+function signJwt(userId: string, projectId: string): string {
+  return jwt.sign({ userId, projectId }, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
 }
+
+const INVALID_PROJECT = { error: 'The selected project is not available. Please choose another.' };
 
 export async function verifyToken(
   req: AuthenticatedRequest,
@@ -80,7 +85,7 @@ export async function register(
   _next: NextFunction
 ): Promise<void> {
   try {
-    const { idToken, name } = req.body;
+    const { idToken, name, projectId: requestedProjectId } = req.body;
     const decodedToken = await verifyFirebaseToken(idToken);
     const phone = decodedToken.phone_number;
 
@@ -97,13 +102,11 @@ export async function register(
       return;
     }
 
-    const project = await prisma.project.findFirst({
-      where: { status: 'ACTIVE' },
-      orderBy: { createdAt: 'asc' },
-      select: { id: true },
-    });
-    if (!project) {
-      res.status(503).json({ error: 'No active project is available for registration' });
+    const projectId = await resolveLoginProjectId(requestedProjectId, null);
+    if (!projectId) {
+      res.status(requestedProjectId ? 400 : 503).json(
+        requestedProjectId ? INVALID_PROJECT : { error: 'No active project is available for registration' }
+      );
       return;
     }
 
@@ -113,7 +116,7 @@ export async function register(
         phone,
         name: name.trim(),
         role: UserRole.SUPERVISOR,
-        projectId: project.id,
+        projectId,
         isActive: true,
         termsAcceptedAt: new Date(),
       },
@@ -205,11 +208,11 @@ export async function updateUser(
       }
     }
 
+    // Users are shared by every project, so an approver role is unique across all of them.
     if (role && APPROVER_ROLES.some((approverRole) => approverRole === role)) {
       const occupied = await prisma.user.findFirst({
         where: {
           id: { not: id },
-          projectId: projectId ?? existing.projectId,
           role,
           isActive: true,
         },
@@ -311,18 +314,17 @@ export async function getMe(
 /**
  * GET /api/auth/next-admin-role
  * Returns the next available dynamic admin role (ADMIN_3, ADMIN_4, ...).
- * Queries the DB for all existing admin roles in the project and computes
- * the next number. Requires MANAGE_USERS permission.
+ * Queries the DB for all existing admin roles (users are shared by every
+ * project) and computes the next number. Requires MANAGE_USERS permission.
  */
 export async function getNextAdminRoleEndpoint(
-  req: AuthenticatedRequest,
+  _req: AuthenticatedRequest,
   res: Response,
   _next: NextFunction
 ): Promise<void> {
   try {
-    const projectId = req.user!.projectId;
     const users = await prisma.user.findMany({
-      where: { projectId, isActive: true },
+      where: { isActive: true },
       select: { role: true },
     });
     const existingRoles = users.map((u) => u.role);
@@ -345,31 +347,29 @@ export async function devLogin(
   }
 
   try {
-    const { phone, name } = req.body;
+    const { phone, name, projectId: requestedProjectId } = req.body;
     if (!phone) {
       res.status(400).json({ error: 'Phone number is required' });
       return;
     }
 
     let user = await prisma.user.findUnique({ where: { phone } });
+    const projectId = await resolveLoginProjectId(requestedProjectId, user?.projectId ?? null);
+    if (!projectId) {
+      res.status(requestedProjectId ? 400 : 503).json(
+        requestedProjectId ? INVALID_PROJECT : { error: 'No active project available' }
+      );
+      return;
+    }
     if (!user) {
       // Dev mode: auto-create the user as SUPERVISOR if they don't exist
-      const project = await prisma.project.findFirst({
-        where: { status: 'ACTIVE' },
-        orderBy: { createdAt: 'asc' },
-        select: { id: true },
-      });
-      if (!project) {
-        res.status(503).json({ error: 'No active project available' });
-        return;
-      }
       user = await prisma.user.create({
         data: {
           firebaseUid: `dev-${phone}`,
           phone,
           name: (name && String(name).trim()) || 'Dev User',
           role: UserRole.SUPERVISOR,
-          projectId: project.id,
+          projectId,
           isActive: true,
         },
       });
@@ -400,7 +400,7 @@ export async function devLogin(
       phone: user.phone,
       name: updatedName,
       role: user.role,
-      projectId: user.projectId,
+      projectId,
       isActive: user.isActive,
       termsAcceptedAt: user.termsAcceptedAt,
     });
@@ -445,7 +445,7 @@ export async function pinLogin(
   _next: NextFunction
 ): Promise<void> {
   try {
-    const { phone, pin } = req.body;
+    const { phone, pin, projectId: requestedProjectId } = req.body;
 
     // Rate limiting check
     const attempt = pinAttempts.get(phone);
@@ -490,13 +490,20 @@ export async function pinLogin(
     // PIN correct — clear rate limit
     pinAttempts.delete(phone);
 
+    // Validated after the PIN so project ids can't be probed without credentials.
+    const projectId = await resolveLoginProjectId(requestedProjectId, user.projectId);
+    if (!projectId) {
+      res.status(400).json(INVALID_PROJECT);
+      return;
+    }
+
     // Record legal consent — keeps the first acceptance timestamp.
     const termsAcceptedAt = user.termsAcceptedAt ?? new Date();
     if (!user.termsAcceptedAt) {
       await prisma.user.update({ where: { id: user.id }, data: { termsAcceptedAt } });
     }
 
-    const token = signJwt(user.id);
+    const token = signJwt(user.id, projectId);
     res.json({
       token,
       user: {
@@ -505,7 +512,7 @@ export async function pinLogin(
         phone: user.phone,
         name: user.name,
         role: user.role,
-        projectId: user.projectId,
+        projectId,
         isActive: user.isActive,
         termsAcceptedAt,
       },
@@ -522,7 +529,7 @@ export async function setPin(
   _next: NextFunction
 ): Promise<void> {
   try {
-    const { phone, pin } = req.body;
+    const { phone, pin, projectId: requestedProjectId } = req.body;
 
     const user = await prisma.user.findUnique({ where: { phone } });
     if (!user) {
@@ -534,6 +541,12 @@ export async function setPin(
       return;
     }
 
+    const projectId = await resolveLoginProjectId(requestedProjectId, user.projectId);
+    if (!projectId) {
+      res.status(400).json(INVALID_PROJECT);
+      return;
+    }
+
     const pinHash = await bcrypt.hash(pin, 10);
     const termsAcceptedAt = user.termsAcceptedAt ?? new Date();
     await prisma.user.update({
@@ -541,7 +554,7 @@ export async function setPin(
       data: { pinHash, termsAcceptedAt },
     });
 
-    const token = signJwt(user.id);
+    const token = signJwt(user.id, projectId);
     res.json({
       token,
       user: {
@@ -550,13 +563,47 @@ export async function setPin(
         phone: user.phone,
         name: user.name,
         role: user.role,
-        projectId: user.projectId,
+        projectId,
         isActive: user.isActive,
         termsAcceptedAt,
       },
     });
   } catch (error) {
     res.status(500).json({ error: 'Failed to set PIN' });
+  }
+}
+
+// POST /auth/switch-project — move the current session to another project (requires auth).
+// Users are shared across projects, so any active user may switch; the new token carries
+// the new project and every later request is scoped to it.
+export async function switchProject(
+  req: AuthenticatedRequest,
+  res: Response,
+  _next: NextFunction
+): Promise<void> {
+  try {
+    const { projectId } = req.body;
+    if (!(await isProjectUsable(projectId))) {
+      res.status(400).json(INVALID_PROJECT);
+      return;
+    }
+
+    const user = req.user!;
+    res.json({
+      token: signJwt(user.id, projectId),
+      user: {
+        id: user.id,
+        firebaseUid: user.firebaseUid,
+        phone: user.phone,
+        name: user.name,
+        role: user.role,
+        projectId,
+        isActive: user.isActive,
+        termsAcceptedAt: user.termsAcceptedAt,
+      },
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to switch project' });
   }
 }
 

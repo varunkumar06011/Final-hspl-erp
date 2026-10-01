@@ -1,7 +1,7 @@
 import { Router, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
-import { authMiddleware, AuthenticatedRequest } from '../middleware/auth';
+import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middleware/auth';
 import { validateMiddleware } from '../middleware/validate';
 import { prisma } from '../config/prisma';
 import { notifyUsers } from '../services/push.service';
@@ -26,12 +26,10 @@ const createCommentSchema = z.object({
   }),
 });
 
-// Users visible to the caller in the project: same project, or unassigned
-// (heads/admins oversee every project).
-function projectUserScope(projectId: string | null): Prisma.UserWhereInput {
-  return projectId
-    ? { isActive: true, OR: [{ projectId }, { projectId: null }] }
-    : { isActive: true };
+// Users are shared by every project (same people, same logins), so anyone active can be
+// tagged. The comments themselves stay scoped to the project they were written in.
+function projectUserScope(_projectId: string | null): Prisma.UserWhereInput {
+  return { isActive: true };
 }
 
 // GET /comments/users — candidates for the @ picker
@@ -58,7 +56,7 @@ router.get('/', async (req: AuthenticatedRequest, res: Response, next: NextFunct
       return;
     }
     const data = await prisma.comment.findMany({
-      where: { entityType, entityId },
+      where: { entityType, entityId, projectId: requireProjectId(req) },
       orderBy: { createdAt: 'asc' },
       include: { author: { select: { id: true, name: true, role: true } } },
     });
@@ -78,7 +76,7 @@ router.get('/all', async (req: AuthenticatedRequest, res: Response, next: NextFu
     const pageSize = Math.min(100, Math.max(1, parseInt(q.pageSize ?? '25', 10) || 25));
 
     const and: Prisma.CommentWhereInput[] = [];
-    if (projectId) and.push({ OR: [{ projectId }, { projectId: null }] });
+    if (projectId) and.push({ projectId });
     if (q.authorId) and.push({ authorId: q.authorId });
     if (q.entityType) and.push({ entityType: q.entityType });
     if (q.mentionedUserId) {
@@ -143,7 +141,7 @@ router.post(
       let parent: { id: string; authorId: string } | null = null;
       if (parentId) {
         const found = await prisma.comment.findUnique({ where: { id: parentId } });
-        if (!found || found.entityType !== entityType || found.entityId !== entityId) {
+        if (!found || found.entityType !== entityType || found.entityId !== entityId || found.projectId !== projectId) {
           res.status(400).json({ error: 'Comment to reply to was not found on this record' });
           return;
         }
@@ -240,7 +238,7 @@ router.patch(
     try {
       const user = req.user!;
       const existing = await prisma.comment.findUnique({ where: { id: req.params.id } });
-      if (!existing) {
+      if (!existing || existing.projectId !== requireProjectId(req)) {
         res.status(404).json({ error: 'Comment not found' });
         return;
       }
@@ -327,7 +325,7 @@ router.patch(
 router.delete('/:id', async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
     const existing = await prisma.comment.findUnique({ where: { id: req.params.id } });
-    if (!existing) {
+    if (!existing || existing.projectId !== requireProjectId(req)) {
       res.status(404).json({ error: 'Comment not found' });
       return;
     }

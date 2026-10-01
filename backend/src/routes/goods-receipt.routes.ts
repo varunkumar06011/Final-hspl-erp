@@ -11,11 +11,12 @@ import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middl
 import { rbacMiddleware } from '../middleware/rbac';
 import { validateMiddleware } from '../middleware/validate';
 import { logAudit } from '../services/audit.service';
-import { generateSequenceNumber } from '../services/sequence.service';
+import { generateProjectSequenceNumber } from '../services/sequence.service';
 import { notifyAllHeads } from '../services/push.service';
 import { generateAssetId } from './asset.routes';
 import { ensureVendorLedger, findLedgerByName } from './ledger.routes';
 import { postVoucher, generateVoucherNumber } from './voucher.routes';
+import { hasPoAccrual } from '../services/po-accrual.service';
 
 const router = Router();
 router.use(authMiddleware);
@@ -67,7 +68,7 @@ async function generateInventorySku(tx: Prisma.TransactionClient, projectId: str
 }
 
 async function generateReceiptNumber(projectId: string): Promise<string> {
-  return generateSequenceNumber('goodsReceipt', 'receiptNumber', 'VGH-GRN', 3, { projectId });
+  return generateProjectSequenceNumber('goodsReceipt', 'receiptNumber', 'GRN', 3, projectId);
 }
 
 router.get(
@@ -522,7 +523,7 @@ router.post(
             const totalCost = unitPrice && gstAmount ? unitPrice + gstAmount : unitPrice;
 
             for (let i = 0; i < acceptedCount; i++) {
-              const assetId = await generateAssetId(tx);
+              const assetId = await generateAssetId(tx, projectId);
               await tx.asset.create({
                 data: {
                   projectId,
@@ -636,7 +637,60 @@ router.post(
         if (vendor && itemLedgerPost) {
           console.warn(`[GRN] Skipping auto purchase voucher for GRN ${receipt.receiptNumber}: PO items were already posted to ledgers individually`);
         }
-        if (vendor && !itemLedgerPost) {
+
+        // The vendor payable (Dr Purchase / Cr Vendor) is booked when the PO is
+        // approved, so a GRN must not credit the vendor again. It only moves the
+        // cost of received ASSET items from Purchase to Fixed Assets.
+        const poAccrued = await hasPoAccrual(receipt.poId, tx);
+        if (vendor && poAccrued && !itemLedgerPost) {
+          const assetCost = receipt.items.reduce((sum, line) => {
+            if ((line.itemType as InventoryItemType) !== InventoryItemType.ASSET) return sum;
+            if (!line.poItem || Number(line.acceptedQty) <= 0) return sum;
+            return sum + Number(line.poItem.unitPrice) * Number(line.acceptedQty);
+          }, 0);
+          const reclassAmount = Math.round(assetCost * 100) / 100;
+          if (reclassAmount > 0) {
+            let purchaseLedgerId = await findLedgerByName('Purchase', projectId);
+            if (!purchaseLedgerId) {
+              purchaseLedgerId = (
+                await prisma.ledger.create({
+                  data: { projectId, name: 'Purchase', group: LedgerGroup.PURCHASE, linkedEntityType: 'NONE', openingBalance: 0, currentBalance: 0, isActive: true },
+                })
+              ).id;
+            }
+            let fixedAssetLedgerId = await findLedgerByName('Fixed Assets', projectId);
+            if (!fixedAssetLedgerId) {
+              fixedAssetLedgerId = (
+                await prisma.ledger.create({
+                  data: { projectId, name: 'Fixed Assets', group: LedgerGroup.FIXED_ASSET, linkedEntityType: 'NONE', openingBalance: 0, currentBalance: 0, isActive: true },
+                })
+              ).id;
+            }
+            const ledgers = await prisma.ledger.findMany({ where: { id: { in: [purchaseLedgerId, fixedAssetLedgerId] }, projectId } });
+            const ledgerMap = new Map(ledgers.map((l) => [l.id, { id: l.id, name: l.name, group: l.group, linkedEntityType: l.linkedEntityType, linkedEntityId: l.linkedEntityId }]));
+            await postVoucher({
+              projectId,
+              jvNumber: await generateVoucherNumber(VoucherType.PURCHASE, projectId),
+              voucherType: VoucherType.PURCHASE,
+              voucherDate: new Date(),
+              description: `GRN ${receipt.receiptNumber} - asset items moved to Fixed Assets`,
+              totalDebit: reclassAmount,
+              totalCredit: reclassAmount,
+              entries: [
+                { ledgerId: fixedAssetLedgerId, debit: reclassAmount, credit: 0, description: `Fixed Asset - GRN ${receipt.receiptNumber}` },
+                { ledgerId: purchaseLedgerId, debit: 0, credit: reclassAmount, description: `Reclassify to Fixed Assets - GRN ${receipt.receiptNumber}` },
+              ],
+              ledgerMap,
+              budgetHeadMap: new Map(),
+              sourceInvoiceId: null,
+              billSettlements: [],
+              userId: req.user!.id,
+              tx,
+            });
+          }
+        }
+
+        if (vendor && !itemLedgerPost && !poAccrued) {
           const vendorLedgerId = await ensureVendorLedger(vendor.id, projectId);
 
           // Find or create Purchase ledger
@@ -740,7 +794,7 @@ router.post(
             if (ledgers.length === ledgerIds.length) {
               const ledgerMap = new Map(ledgers.map((l) => [l.id, { id: l.id, name: l.name, group: l.group, linkedEntityType: l.linkedEntityType, linkedEntityId: l.linkedEntityId }]));
 
-              const jvNumber = await generateVoucherNumber(VoucherType.PURCHASE);
+              const jvNumber = await generateVoucherNumber(VoucherType.PURCHASE, projectId);
               await postVoucher({
                 projectId,
                 jvNumber,

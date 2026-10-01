@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { UserResponse } from '@hospital-erp/shared';
+import { resetClientState } from '../utils/sessionCleanup';
 
 interface AuthState {
   user: UserResponse | null;
@@ -64,6 +65,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   logout: () => {
     storage.remove('firebaseToken');
     storage.remove('user');
+    // Cached server data / drafts belong to the project we are leaving.
+    resetClientState();
     set({ user: null, token: null });
   },
   isAuthenticated: () => {

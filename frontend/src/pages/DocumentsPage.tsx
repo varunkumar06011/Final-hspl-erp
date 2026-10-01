@@ -1,4 +1,4 @@
-﻿import { useState, useRef } from 'react';
+﻿import { useState } from 'react';
 import {
   Box,
   Typography,
@@ -43,6 +43,7 @@ import ResponsiveTable from '../components/ResponsiveTable';
 import RefreshButton from '../components/RefreshButton';
 
 import { useTranslation } from 'react-i18next';
+import FilePicker from '../components/FilePicker';
 interface DocumentRow {
   id: string;
   name: string;
@@ -66,7 +67,6 @@ export default function DocumentsPage() {
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
   const { user } = useAuthStore();
 
@@ -247,10 +247,12 @@ export default function DocumentsPage() {
                 ))}
               </Select>
             </FormControl>
-            <input ref={fileRef} type="file" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files?.[0]; if (f) setSelectedFile(f); }} />
-            <Button variant="outlined" onClick={() => fileRef.current?.click()}>
-              {selectedFile ? `✓ ${selectedFile.name}` : tr('chooseFile')}
-            </Button>
+            <FilePicker
+              file={selectedFile}
+              onChange={setSelectedFile}
+              label={tr('chooseFile')}
+              selectedLabel={selectedFile ? `✓ ${selectedFile.name}` : undefined}
+            />
           </Box>
         </DialogContent>
         <DialogActions sx={{ flexWrap: "wrap", gap: 1 }}>

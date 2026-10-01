@@ -91,9 +91,8 @@ router.get('/', async (req: AuthenticatedRequest, res: Response, next: NextFunct
       ...(q.action && q.action !== 'COMMENT' && { action: q.action }),
       ...(hasRange && { timestamp: range }),
     };
-    // Comments may be project-less (unassigned admins), so include those too.
     const commentWhere: Prisma.CommentWhereInput = {
-      ...(projectId && { OR: [{ projectId }, { projectId: null }] }),
+      ...(projectId && { projectId }),
       ...(q.userId && { authorId: q.userId }),
       ...(hasRange && { createdAt: range }),
     };

@@ -53,6 +53,7 @@ import RefreshButton from '../components/RefreshButton';
 import QuotationTimelineDialog from '../components/QuotationTimelineDialog';
 import { useApprovalDeepLink } from '../utils/useApprovalDeepLink';
 import CommentsButton from '../components/CommentsButton';
+import FilePicker from '../components/FilePicker';
 
 interface QuotationItem {
   id?: string;
@@ -143,7 +144,6 @@ export default function QuotationsPage() {
   const [notesEditValue, setNotesEditValue] = useState('');
   const [pdfLoading, setPdfLoading] = useState(false);
   const [expandedQuotationId, setExpandedQuotationId] = useState<string | null>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
   const createSubmissionLocked = useRef(false);
   const workTaskIdRef = useRef<string | null>(null);
   const mprIdRef = useRef<string | null>(null);
@@ -1202,10 +1202,14 @@ export default function QuotationsPage() {
 
             {/* File Upload */}
             <Box>
-              <input ref={fileRef} type="file" accept="image/*,application/pdf" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files?.[0]; if (f) setSelectedFile(f); }} />
-              <Button variant="outlined" onClick={() => fileRef.current?.click()} startIcon={<AddIcon />}>
-                {selectedFile ? `✓ ${selectedFile.name}` : t('uploadPhotoPdf')}
-              </Button>
+              <FilePicker
+                file={selectedFile}
+                onChange={setSelectedFile}
+                accept="image/*,application/pdf"
+                startIcon={<AddIcon />}
+                label={t('uploadPhotoPdf')}
+                selectedLabel={selectedFile ? `✓ ${selectedFile.name}` : undefined}
+              />
               {editing?.fileName && !selectedFile && (
                 <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>{t('currentFile', { n: editing.fileName })}</Typography>
               )}

@@ -119,7 +119,7 @@ router.post(
 
       if (record.itemType === InventoryItemType.ASSET) {
         await prisma.$transaction(async (tx) => {
-          const assetId = await generateAssetId(tx);
+          const assetId = await generateAssetId(tx, projectId);
           const asset = await tx.asset.create({
             data: {
               projectId,

@@ -34,6 +34,7 @@
   "credit": "Credit",
   "balance": "Balance",
   "noTxn": "No transactions in this period",
+  "openVoucher": "Open this voucher to view or edit it",
   "noData": "No data",
   "export": "Export",
   "print": "Print",

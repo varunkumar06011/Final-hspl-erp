@@ -4,7 +4,7 @@ import {
   AuditAction,
   QuotationStatus,
 } from '@hospital-erp/shared';
-import { generateSequenceNumber } from './sequence.service';
+import { generateProjectSequenceNumber } from './sequence.service';
 import * as approvalService from './approval.service';
 import { notifyApprovers } from './push.service';
 import { logAudit } from './audit.service';
@@ -50,7 +50,7 @@ const quotationInclude = {
 export { quotationInclude };
 
 async function generateQuotationNumber(projectId: string): Promise<string> {
-  return generateSequenceNumber('quotation', 'quotationNumber', 'VGH-Q', 3, { projectId });
+  return generateProjectSequenceNumber('quotation', 'quotationNumber', 'Q', 3, projectId);
 }
 
 export { generateQuotationNumber };
@@ -194,7 +194,7 @@ export async function createQuotation(input: CreateQuotationInput) {
   // Notify all approvers via push notification
   // Include dynamic admin roles (ADMIN_3, ADMIN_4, ...) in the notification
   const adminUsers = await prisma.user.findMany({
-    where: { projectId, isActive: true, role: { startsWith: 'ADMIN' } },
+    where: { isActive: true, role: { startsWith: 'ADMIN' } },
     select: { role: true },
   });
   const allApproverRoles = Array.from(

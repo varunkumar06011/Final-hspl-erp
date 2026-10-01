@@ -28,7 +28,18 @@ const MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
 interface Snapshot {
   savedAt: number;
+  // Project the snapshot belongs to — never shown to a session in another project.
+  projectId?: string | null;
   entries: Array<[readonly unknown[], unknown]>;
+}
+
+function currentProjectId(): string | null {
+  try {
+    const raw = localStorage.getItem('user');
+    return raw ? (JSON.parse(raw) as { projectId?: string | null }).projectId ?? null : null;
+  } catch {
+    return null;
+  }
 }
 
 export function hydrateDashboardCache(queryClient: QueryClient): void {
@@ -40,8 +51,9 @@ export function hydrateDashboardCache(queryClient: QueryClient): void {
   }
   if (!raw) return;
   try {
-    const { savedAt, entries } = JSON.parse(raw) as Snapshot;
+    const { savedAt, entries, projectId } = JSON.parse(raw) as Snapshot;
     if (!savedAt || Date.now() - savedAt > MAX_AGE_MS || !Array.isArray(entries)) return;
+    if ((projectId ?? null) !== currentProjectId()) return;
     for (const [queryKey, data] of entries) {
       if (!Array.isArray(queryKey) || queryKey[0] !== KEY_PREFIX) continue;
       // updatedAt = savedAt → data is stale → mounts refetch in background.
@@ -64,7 +76,7 @@ export function watchDashboardCache(queryClient: QueryClient): void {
           .getAll()
           .filter((q) => q.queryKey[0] === KEY_PREFIX && q.state.status === 'success')
           .map((q): [readonly unknown[], unknown] => [q.queryKey, q.state.data]);
-        localStorage.setItem(STORAGE_KEY, JSON.stringify({ savedAt: Date.now(), entries }));
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({ savedAt: Date.now(), projectId: currentProjectId(), entries }));
       } catch { /* quota/storage blocked — skip */ }
     }, 500);
   });

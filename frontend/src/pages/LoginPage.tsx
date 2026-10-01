@@ -16,7 +16,7 @@ import {
   Checkbox,
   Link as MuiLink,
 } from '@mui/material';
-import { SupportAgent, Visibility, VisibilityOff } from '@mui/icons-material';
+import { Business as ProjectIcon, SupportAgent, Visibility, VisibilityOff } from '@mui/icons-material';
 import { useNavigate, Navigate, Link as RouterLink } from 'react-router-dom';
 import { isConfigured, getFirebase, type FirebaseHandles } from '../config/firebase';
 import api, { extractErrorMessage } from '../config/api';
@@ -24,6 +24,7 @@ import { useAuthStore } from '../stores/authStore';
 import loginBg from '../login screen.png';
 import { useTranslation } from 'react-i18next';
 import LanguageToggle from '../components/LanguageToggle';
+import type { PublicProject } from '@hospital-erp/shared';
 
 // ── Animations ──────────────────────────────────────────────
 const fadeInUp = keyframes`
@@ -31,7 +32,7 @@ const fadeInUp = keyframes`
   to   { opacity: 1; transform: translateY(0);    }
 `;
 
-type Step = 'phone' | 'pin' | 'otp' | 'setPin' | 'verifying';
+type Step = 'project' | 'phone' | 'pin' | 'otp' | 'setPin' | 'verifying';
 type AuthMode = 'signin' | 'signup';
 
 function formatPhone(raw: string): string {
@@ -41,6 +42,16 @@ function formatPhone(raw: string): string {
   if (digits.length === 11 && digits.startsWith('91')) return `+${digits}`;
   if (raw.startsWith('+')) return raw.replace(/\s/g, '');
   return `+91${digits}`;
+}
+
+const LAST_PROJECT_KEY = 'lastProjectId';
+
+function readLastProjectId(): string | null {
+  try { return localStorage.getItem(LAST_PROJECT_KEY); } catch { return null; }
+}
+
+function saveLastProjectId(id: string) {
+  try { localStorage.setItem(LAST_PROJECT_KEY, id); } catch { /* storage unavailable (iOS) */ }
 }
 
 export default function LoginPage() {
@@ -56,6 +67,10 @@ export default function LoginPage() {
   const [showPin, setShowPin] = useState(false);
   const [confirmationResult, setConfirmationResult] = useState<any>(null);
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  // Projects offered on the login page. null = still loading. If the list cannot be
+  // fetched we fall back to [] and sign in to the user's default project, as before.
+  const [projects, setProjects] = useState<PublicProject[] | null>(null);
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   // Legal consent — must be ticked before any sign-in/sign-up action.
   const [agreed, setAgreed] = useState(false);
   const { setUser, setToken, isAuthenticated } = useAuthStore();
@@ -103,19 +118,65 @@ export default function LoginPage() {
     return () => window.removeEventListener('resize', handler);
   }, [step]);
 
-  // Fetch project logo (public endpoint, no auth needed)
+  // Which projects can be entered (public endpoint, no auth needed). With a single
+  // project there is nothing to choose; with several, the user picks first.
   useEffect(() => {
-    api.get('/settings/logo', { responseType: 'blob' })
+    let cancelled = false;
+    api.get('/projects/public')
       .then((res) => {
+        if (cancelled) return;
+        const list: PublicProject[] = res.data?.data ?? [];
+        setProjects(list);
+        if (list.length === 1) {
+          setSelectedProjectId(list[0].id);
+        } else if (list.length > 1) {
+          setStep('project');
+        }
+      })
+      .catch(() => {
+        // Could not load the list — carry on without a project choice.
+        if (!cancelled) setProjects([]);
+      });
+    return () => { cancelled = true; };
+  }, []);
+
+  // Fetch the chosen project's logo (public endpoint, no auth needed)
+  useEffect(() => {
+    if (projects === null) return;
+    if (projects.length > 1 && !selectedProjectId) {
+      setLogoUrl(null);
+      return;
+    }
+    let objectUrl: string | null = null;
+    let cancelled = false;
+    api.get('/settings/logo', {
+      responseType: 'blob',
+      params: selectedProjectId ? { projectId: selectedProjectId } : undefined,
+    })
+      .then((res) => {
+        if (cancelled) return;
         const rawMime = res.headers['content-type'];
         const mime = typeof rawMime === 'string' ? rawMime : 'image/png';
-        setLogoUrl(URL.createObjectURL(new Blob([res.data], { type: mime })));
+        objectUrl = URL.createObjectURL(new Blob([res.data], { type: mime }));
+        setLogoUrl(objectUrl);
       })
       .catch(() => {
         // No logo uploaded — fallback to favicon
+        if (!cancelled) setLogoUrl(null);
       });
-    return () => { if (logoUrl) URL.revokeObjectURL(logoUrl); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [projects, selectedProjectId]);
+
+  const selectedProject = projects?.find((p) => p.id === selectedProjectId) ?? null;
+
+  const chooseProject = useCallback((id: string) => {
+    setSelectedProjectId(id);
+    saveLastProjectId(id);
+    setError('');
+    setStep('phone');
   }, []);
 
   const setupRecaptcha = useCallback((fb: FirebaseHandles) => {
@@ -208,7 +269,7 @@ export default function LoginPage() {
     setLoading(true);
     try {
       const formattedPhone = formatPhone(phone);
-      const response = await api.post('/auth/pin-login', { phone: formattedPhone, pin, agreedToTerms: agreed });
+      const response = await api.post('/auth/pin-login', { phone: formattedPhone, pin, agreedToTerms: agreed, projectId: selectedProjectId ?? undefined });
       setToken(response.data.token);
       setUser(response.data.user);
       navigate('/', { replace: true });
@@ -217,7 +278,7 @@ export default function LoginPage() {
     } finally {
       setLoading(false);
     }
-  }, [phone, pin, agreed, setToken, setUser, navigate, t]);
+  }, [phone, pin, agreed, selectedProjectId, setToken, setUser, navigate, t]);
 
   // Step 2c: Verify OTP
   const handleVerifyOtp = useCallback(async () => {
@@ -234,13 +295,13 @@ export default function LoginPage() {
             // Dev signup: create user via register endpoint (won't have real Firebase token,
             // so use dev-login which creates/returns the user)
             try {
-              await api.post('/auth/dev-login', { phone: formattedPhone, name: name.trim() || undefined });
+              await api.post('/auth/dev-login', { phone: formattedPhone, name: name.trim() || undefined, projectId: selectedProjectId ?? undefined });
             } catch {
               // If dev-login fails (user doesn't exist), we can't create in dev mode without Firebase
               // Just proceed to setPin — set-pin endpoint will create the PIN if user exists
             }
           } else {
-            await api.post('/auth/dev-login', { phone: formattedPhone, name: name.trim() || undefined });
+            await api.post('/auth/dev-login', { phone: formattedPhone, name: name.trim() || undefined, projectId: selectedProjectId ?? undefined });
           }
           setStep('setPin');
           return;
@@ -255,7 +316,7 @@ export default function LoginPage() {
 
       // Verify or register with backend
       const response = mode === 'signup'
-        ? await api.post('/auth/register', { idToken, name: name.trim(), agreedToTerms: agreed })
+        ? await api.post('/auth/register', { idToken, name: name.trim(), agreedToTerms: agreed, projectId: selectedProjectId ?? undefined })
         : await api.post('/auth/verify', { idToken });
 
       // OTP verified — now set PIN
@@ -267,7 +328,7 @@ export default function LoginPage() {
     } finally {
       setLoading(false);
     }
-  }, [confirmationResult, otp, phone, name, mode, agreed, setUser, t]);
+  }, [confirmationResult, otp, phone, name, mode, agreed, selectedProjectId, setUser, t]);
 
   // Step 3: Set PIN (after OTP verification)
   const handleSetPin = useCallback(async () => {
@@ -279,7 +340,7 @@ export default function LoginPage() {
     setLoading(true);
     try {
       const formattedPhone = formatPhone(phone);
-      const response = await api.post('/auth/set-pin', { phone: formattedPhone, pin, agreedToTerms: agreed });
+      const response = await api.post('/auth/set-pin', { phone: formattedPhone, pin, agreedToTerms: agreed, projectId: selectedProjectId ?? undefined });
       setToken(response.data.token);
       setUser(response.data.user);
       navigate('/', { replace: true });
@@ -288,7 +349,7 @@ export default function LoginPage() {
     } finally {
       setLoading(false);
     }
-  }, [phone, pin, agreed, setToken, setUser, navigate, t]);
+  }, [phone, pin, agreed, selectedProjectId, setToken, setUser, navigate, t]);
 
   if (isAuthenticated()) {
     return <Navigate to="/" replace />;
@@ -510,7 +571,82 @@ export default function LoginPage() {
             </Typography>
           </Box>
 
+          {/* While the project list loads */}
+          {projects === null && (
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1.5, py: 3 }}>
+              <CircularProgress size={22} />
+              <Typography variant="body2" sx={{ color: 'rgba(10, 25, 41, 0.6)' }}>{t('login.loadingProjects')}</Typography>
+            </Box>
+          )}
+
+          {/* Step: choose which project to sign in to (first step when there are several) */}
+          {step === 'project' && projects && (
+            <Box sx={{ animation: stepFadeAnim }}>
+              <Typography sx={{ fontWeight: 700, color: '#0a1929', fontSize: { xs: '1.1rem', sm: '1.35rem' }, mb: 0.5 }}>
+                {t('login.chooseProject')}
+              </Typography>
+              <Typography variant="body2" sx={{ color: 'rgba(10, 25, 41, 0.6)', mb: 2 }}>
+                {t('login.chooseProjectHint')}
+              </Typography>
+              <Box sx={{ display: 'grid', gap: 1.5 }}>
+                {projects.map((p) => {
+                  const isLast = readLastProjectId() === p.id;
+                  return (
+                    <Button
+                      key={p.id}
+                      fullWidth
+                      variant={isLast ? 'contained' : 'outlined'}
+                      onClick={() => chooseProject(p.id)}
+                      startIcon={<ProjectIcon />}
+                      sx={{
+                        ...(isLast ? glassButtonSx : {}),
+                        justifyContent: 'flex-start',
+                        textTransform: 'none',
+                        borderRadius: '14px',
+                        py: { xs: 1.5, sm: 2 },
+                        fontWeight: 600,
+                        fontSize: { xs: '1rem', sm: '1.15rem' },
+                        ...(!isLast && { color: '#0a1929', borderColor: 'rgba(10, 25, 41, 0.25)', background: 'rgba(255,255,255,0.7)' }),
+                      }}
+                    >
+                      {p.name}
+                    </Button>
+                  );
+                })}
+              </Box>
+            </Box>
+          )}
+
+          {/* Chosen project — only shown when there is a choice to change */}
+          {step !== 'project' && selectedProject && projects && projects.length > 1 && (
+            <Box
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 1,
+                mb: 2,
+                px: 1.5,
+                py: 1,
+                borderRadius: 2,
+                background: 'rgba(21, 101, 192, 0.1)',
+              }}
+            >
+              <Typography variant="body2" sx={{ color: '#0a1929', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {t('login.signingInTo')} <strong>{selectedProject.name}</strong>
+              </Typography>
+              <Button
+                size="small"
+                sx={{ ...glassTextButtonSx, flexShrink: 0, color: '#1565C0', fontWeight: 600 }}
+                onClick={() => { setStep('project'); setPin(''); setOtp(''); setError(''); }}
+              >
+                {t('login.changeProject')}
+              </Button>
+            </Box>
+          )}
+
           {/* Sign In / Sign Up toggle — Apple segmented control style */}
+          {step !== 'project' && projects !== null && (
           <Box
             sx={{
               display: 'flex',
@@ -557,6 +693,7 @@ export default function LoginPage() {
               {t('login.signUp')}
             </Box>
           </Box>
+          )}
 
           <div id="recaptcha-container" />
 
@@ -567,7 +704,7 @@ export default function LoginPage() {
           )}
 
           {/* Step: Phone entry */}
-          {step === 'phone' && (
+          {step === 'phone' && projects !== null && (
             <Box sx={{ animation: stepFadeAnim }}>
               {mode === 'signup' && (
                 <>

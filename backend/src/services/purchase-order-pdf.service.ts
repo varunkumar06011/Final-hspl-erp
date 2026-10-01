@@ -39,7 +39,7 @@ export async function streamPurchaseOrderPdf(res: NodeJS.WritableStream, po: any
 
   // ── Find the project head (shown in the meta block) ──
   const head = await prisma.user.findFirst({
-    where: { projectId: po.projectId, isActive: true, role: 'PROJECT_HEAD' },
+    where: { isActive: true, role: 'PROJECT_HEAD' },
     select: { name: true },
   });
 

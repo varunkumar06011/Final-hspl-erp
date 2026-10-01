@@ -14,7 +14,7 @@ import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middl
 import { rbacMiddleware } from '../middleware/rbac';
 import { validateMiddleware } from '../middleware/validate';
 import { logAudit } from '../services/audit.service';
-import { generateSequenceNumber } from '../services/sequence.service';
+import { generateProjectSequenceNumber } from '../services/sequence.service';
 import { streamMprPdf } from '../services/mpr-pdf.service';
 import * as approvalService from '../services/approval.service';
 import { getStorageService, serveFile } from '../services/storage.service';
@@ -33,9 +33,9 @@ const allowedReceiptFileTypes = ['application/pdf', 'image/jpeg', 'image/png', '
 // one used for invoices and journal vouchers.
 const HEAD_ROLES = [UserRole.PROJECT_HEAD, UserRole.HEAD_OF_CONSTRUCTION];
 
-async function getMprApproverRoles(projectId: string): Promise<string[]> {
+async function getMprApproverRoles(_projectId: string): Promise<string[]> {
   const users = await prisma.user.findMany({
-    where: { projectId, isActive: true },
+    where: { isActive: true },
     select: { role: true },
   });
   const roles = new Set<string>(HEAD_ROLES as string[]);
@@ -45,8 +45,8 @@ async function getMprApproverRoles(projectId: string): Promise<string[]> {
   return Array.from(roles);
 }
 
-async function generateVendorCode(): Promise<string> {
-  return generateSequenceNumber('vendor', 'vendorCode', 'VGH-', 3);
+async function generateVendorCode(projectId: string): Promise<string> {
+  return generateProjectSequenceNumber('vendor', 'vendorCode', '', 3, projectId);
 }
 
 const router = Router();
@@ -99,7 +99,7 @@ async function resolveVendor(
 
   const newVendor = body.newVendor as { name: string; phone?: string; vendorType?: string } | undefined;
   if (newVendor?.name) {
-    const vendorCode = await generateVendorCode();
+    const vendorCode = await generateVendorCode(projectId);
     const vendor = await prisma.vendor.create({
       data: {
         projectId,
@@ -320,7 +320,7 @@ router.post(
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const projectId = requireProjectId(req);
-      const mprNumber = await generateSequenceNumber('materialPurchaseRequest', 'mprNumber', 'VGH-MPR', 3, { projectId });
+      const mprNumber = await generateProjectSequenceNumber('materialPurchaseRequest', 'mprNumber', 'MPR', 3, projectId);
 
       const vendorId = await resolveVendor(req.body, projectId, req.user!.id);
 
@@ -709,7 +709,9 @@ router.post(
         res.status(404).json({ error: 'Material Purchase Request or approval workflow not found' });
         return;
       }
-      if (mpr.status !== MPRStatus.SUBMITTED) {
+      // An APPROVED MPR (e.g. finalised by ADMIN_2) stays open for the
+      // remaining approvers to record their sign-off.
+      if (mpr.status !== MPRStatus.SUBMITTED && mpr.status !== MPRStatus.APPROVED) {
         res.status(400).json({ error: `Cannot approve an MPR that is ${mpr.status.replace(/_/g, ' ').toLowerCase()}` });
         return;
       }
@@ -733,7 +735,9 @@ router.post(
         return;
       }
 
-      const result = await approvalService.approve(step.id, req.user!.id, req.body.comments);
+      const result = await approvalService.approve(step.id, req.user!.id, req.body.comments, {
+        allowAfterFinal: mpr.status === MPRStatus.APPROVED,
+      });
 
       if (result.isFullyApproved) {
         await prisma.materialPurchaseRequest.update({

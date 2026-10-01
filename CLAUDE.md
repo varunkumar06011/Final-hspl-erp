@@ -53,6 +53,16 @@ Unit/logic tests mock Prisma; only the `e2e-real-*` / `vitest.real.config.ts` su
 - `backend/` contains many stray scratch files (`_prodtest*.txt`, `_checkdata.js`, `nul`); ignore them.
 - `QA_Test_Plan.md` has manual/API/E2E test cases and role/user setup; DB backup/DR procedures are in `docs/`.
 
+## Multi-project
+
+One database hosts several completely separate projects (hospitals). Users, roles, PINs and logins are shared; **data is not**.
+
+- The login page asks which project to enter first (`GET /projects/public`), and the app JWT carries a signed `projectId` claim. `authMiddleware` resolves `req.user.projectId` from it (falling back to `User.projectId` for old tokens or archived projects), so every handler keeps using `requireProjectId(req)`. `POST /auth/switch-project` re-issues the token; `useSwitchProject` + `utils/sessionCleanup.ts` clear caches and reload.
+- Any ADMIN-type role (`Permission.MANAGE_PROJECTS`) creates/edits/archives projects on the Projects page (`/projects`). A new project starts empty.
+- `Project.code` (e.g. `VGH`) prefixes every document number (`VGH-PO001`, `ABC-PO001`). Always generate numbers with `generateProjectSequenceNumber` / `generateVoucherNumber(type, projectId)` / `getProjectCode`, never a hard-coded prefix. The globally unique columns (`vendorCode`, `invoiceCode`, `paymentCode`, `jvNumber`, `assetId`) stay safe only because prefixes differ per project.
+- Because users are shared, user lookups (approver roles, admins, push recipients) are **not** filtered by project; business rows always are. Never take a project id from the request body/query for data access.
+- The backend `.env` points at the shared hosted database. Do not run `prisma db push`, `migrate reset`, seeds or the real-DB test suites against it; migrations are additive files applied with `prisma migrate deploy`.
+
 ## Internationalization (English / Telugu)
 
 The frontend is bilingual via `react-i18next` (`frontend/src/i18n/`). A language toggle sits in the AppShell top bar and on the login page; the choice persists in `localStorage` (`appLanguage`).

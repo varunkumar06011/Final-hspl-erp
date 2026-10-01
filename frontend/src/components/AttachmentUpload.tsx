@@ -23,6 +23,7 @@ import api, { extractErrorMessage } from '../config/api';
 import { downloadFile } from '../utils/file';
 import { useTranslation } from 'react-i18next';
 import { enumLabel } from '../utils/enumOptions';
+import CameraCapture from './CameraCapture';
 
 interface AttachmentUploadProps {
   entityType: string;
@@ -137,6 +138,12 @@ export default function AttachmentUpload({
         >
           {uploadMutation.isPending ? <CircularProgress size={16} /> : t('shared.upload')}
         </Button>
+        <CameraCapture
+          label
+          size={size}
+          onCapture={handleFileSelect}
+          disabled={!entityId || uploadMutation.isPending}
+        />
       </Box>
 
       {isLoading ? (

@@ -1,6 +1,7 @@
 import { Suspense, lazy, useEffect } from 'react';
 import { BrowserRouter, HashRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClientProvider } from '@tanstack/react-query';
+import { queryClient } from './config/queryClient';
 import { hydrateDashboardCache, watchDashboardCache } from './utils/dashboardCache';
 import { Box, CircularProgress } from '@mui/material';
 import { Permission, UserRole } from '@hospital-erp/shared';
@@ -70,6 +71,7 @@ const LabourPage = lazyWithRetry(() => import('./pages/LabourPage'));
 const AuditLogPage = lazyWithRetry(() => import('./pages/AuditLogPage'));
 const SettingsPage = lazyWithRetry(() => import('./pages/SettingsPage'));
 const UsersPage = lazyWithRetry(() => import('./pages/UsersPage'));
+const ProjectsPage = lazyWithRetry(() => import('./pages/ProjectsPage'));
 const InwardFundsPage = lazyWithRetry(() => import('./pages/InwardFundsPage'));
 const ExpenditurePage = lazyWithRetry(() => import('./pages/ExpenditurePage'));
 const MaterialPurchaseRequestsPage = lazyWithRetry(() => import('./pages/MaterialPurchaseRequestsPage'));
@@ -91,19 +93,6 @@ function PageLoader() {
   );
 }
 
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      retry: 1,
-      refetchOnWindowFocus: false,
-      // Cache data for 30s before considering it stale. Without this every
-      // navigation re-fetches even when the data hasn't changed.
-      staleTime: 30_000,
-      // Keep inactive queries in cache for 5 minutes so back-navigation is instant.
-      gcTime: 5 * 60_000,
-    },
-  },
-});
 
 // Restore the last dashboard snapshot so relaunches render instantly instead
 // of skeletoning while the (possibly sleeping) backend responds. Entries are
@@ -145,6 +134,7 @@ const ROUTES = [
   { path: '/comments', element: <CommentsPage /> },
   { path: '/activity-log', element: <ActivityLogPage /> },
   { path: '/users', element: <UsersPage /> },
+  { path: '/projects', element: <ProjectsPage /> },
   { path: '/settings', element: <SettingsPage /> },
   // ── Admin-only pages (additive — visible to all roles with permission, used by admin dashboard) ──
   { path: '/inward-funds', element: <InwardFundsPage /> },

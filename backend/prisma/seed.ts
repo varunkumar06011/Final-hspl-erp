@@ -47,6 +47,7 @@ async function main() {
   // Create project
   const project = await prisma.project.create({
     data: {
+      code: 'VGH',
       name: 'Hospital Construction - Phase 1',
       description: '₹30 Crore, 6-month hospital construction project',
       totalBudget: 3000000000, // ₹30 Crore in rupees
@@ -60,6 +61,7 @@ async function main() {
   // Create second project for cross-project isolation tests
   const projectB = await prisma.project.create({
     data: {
+      code: 'VGH2',
       name: 'Hospital Construction - Phase 2 (Test)',
       description: 'Second project for cross-project isolation testing',
       totalBudget: 500000000,

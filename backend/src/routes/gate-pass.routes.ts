@@ -10,7 +10,7 @@ import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middl
 import { rbacMiddleware } from '../middleware/rbac';
 import { validateMiddleware } from '../middleware/validate';
 import { logAudit } from '../services/audit.service';
-import { generateSequenceNumber } from '../services/sequence.service';
+import { generateProjectSequenceNumber } from '../services/sequence.service';
 import { verifyFirebaseToken } from '../config/firebase';
 import { notifyAllHeads } from '../services/push.service';
 import { streamGatePassPdf } from '../services/gate-pass-pdf.service';
@@ -28,16 +28,16 @@ const HEAD_ROLES = [
 ];
 // Admin roles (ADMIN, ADMIN_2, ADMIN_3, ...) are checked dynamically via isAdminRole().
 
-function getPassDatePrefix(): string {
+function getPassDateSuffix(): string {
   const now = new Date();
   const dd = String(now.getDate()).padStart(2, '0');
   const yy = String(now.getFullYear()).slice(-2);
-  return `VGH-${dd}-${yy}`;
+  return `${dd}-${yy}`;
 }
 
-async function generateUniquePassNumber(): Promise<string> {
-  const prefix = getPassDatePrefix();
-  return generateSequenceNumber('gatePass', 'passNumber', `${prefix}-`, 3);
+async function generateUniquePassNumber(projectId: string): Promise<string> {
+  // e.g. VGH-04-26-001 (project code, then day-year, then a per-project running number)
+  return generateProjectSequenceNumber('gatePass', 'passNumber', `${getPassDateSuffix()}-`, 3, projectId);
 }
 
 const gatePassInclude = {
@@ -415,7 +415,7 @@ router.post(
         return;
       }
 
-      const passNumber = await generateUniquePassNumber();
+      const passNumber = await generateUniquePassNumber(projectId);
       let uploadedPhotoPath: string | null = photoProofPath || null;
       if (req.file) {
         if (!req.file.mimetype.startsWith('image/')) {

@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useRef } from 'react';
+﻿import { useState, useEffect } from 'react';
 import {
   Box,
   Typography,
@@ -60,6 +60,7 @@ import { useApprovalDeepLink } from '../utils/useApprovalDeepLink';
 import { useDeepLinkRow } from '../hooks/useDeepLinkRow';
 import { useUrlFilters } from '../hooks/useUrlFilters';
 import CommentsButton from '../components/CommentsButton';
+import FilePicker from '../components/FilePicker';
 
 interface POItem {
   id?: string;
@@ -275,7 +276,6 @@ export default function InvoicesPage() {
   const [acknowledged, setAcknowledged] = useState(false);
   const [approvalAction, setApprovalAction] = useState<{ row: InvoiceRow; action: 'approve' | 'reject' } | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
 
   const queryClient = useQueryClient();
   const { user } = useAuthStore();
@@ -1014,10 +1014,14 @@ export default function InvoicesPage() {
 
             {/* File Upload */}
             <Box>
-              <input ref={fileRef} type="file" accept="image/*,application/pdf" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files?.[0]; if (f) setSelectedFile(f); }} />
-              <Button variant="outlined" onClick={() => fileRef.current?.click()} startIcon={<AddIcon />}>
-                {selectedFile ? `✓ ${selectedFile.name}` : t('uploadInvoiceFile')}
-              </Button>
+              <FilePicker
+                file={selectedFile}
+                onChange={setSelectedFile}
+                accept="image/*,application/pdf"
+                startIcon={<AddIcon />}
+                label={t('uploadInvoiceFile')}
+                selectedLabel={selectedFile ? `✓ ${selectedFile.name}` : undefined}
+              />
               <OcrAutoFill
                 file={selectedFile}
                 documentType="INVOICE"

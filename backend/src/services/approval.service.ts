@@ -15,6 +15,14 @@ const STEP_ROLES: { stepNumber: number; approverRole: UserRole }[] = APPROVER_RO
   (approverRole, index) => ({ stepNumber: index + 1, approverRole })
 );
 
+// Material Purchase Requests keep the normal HEAD_GROUPS flow, but an approval
+// from ADMIN_2 (Vinod Sir) on its own is final. The remaining approvers can
+// still record their approval afterwards (see `allowAfterFinal` in approve()).
+function isMprAdmin2Approved(entityType: string, steps: { status: string; approverRole: string }[]): boolean {
+  return entityType === 'MATERIAL_PURCHASE_REQUEST'
+    && steps.some((step) => step.status === ApprovalStepStatus.APPROVED && step.approverRole === UserRole.ADMIN_2);
+}
+
 function satisfiesApprovalPolicy(policy: string | null | undefined, steps: { status: string; approverRole: string }[], required: number): boolean {
   const approvedRoles = new Set(
     steps.filter((step) => step.status === ApprovalStepStatus.APPROVED).map((step) => step.approverRole),
@@ -261,7 +269,12 @@ export async function initiate({
   return workflow;
 }
 
-export async function approve(stepId: string, userId: string, comments?: string) {
+export async function approve(
+  stepId: string,
+  userId: string,
+  comments?: string,
+  opts: { allowAfterFinal?: boolean } = {},
+) {
   const step = await prisma.approvalStep.findUnique({
     where: { id: stepId },
     include: { workflow: true },
@@ -275,7 +288,8 @@ export async function approve(stepId: string, userId: string, comments?: string)
     throw new Error(`Step already ${step.status.toLowerCase()}`);
   }
 
-  if ([ApprovalStatus.APPROVED, ApprovalStatus.REJECTED].includes(step.workflow.status as ApprovalStatus)) {
+  const alreadyFinal = step.workflow.status === ApprovalStatus.APPROVED;
+  if (step.workflow.status === ApprovalStatus.REJECTED || (alreadyFinal && !opts.allowAfterFinal)) {
     throw new Error(`Workflow is already ${step.workflow.status.toLowerCase()}`);
   }
 
@@ -331,6 +345,11 @@ export async function approve(stepId: string, userId: string, comments?: string)
     throw new Error('Workflow not found');
   }
 
+  // Late approval on an already-approved workflow: just record the step.
+  if (alreadyFinal) {
+    return { workflow, step: updatedStep, isFullyApproved: false };
+  }
+
   const approvedSteps = workflow.steps.filter(
     (s: { status: string }) => s.status === ApprovalStepStatus.APPROVED
   );
@@ -340,11 +359,12 @@ export async function approve(stepId: string, userId: string, comments?: string)
   // policies, require both the count AND the policy to be satisfied.
   const isSingleApproverPolicy = workflow.approvalPolicy === 'ADMIN_SINGLE_APPROVER'
     || workflow.approvalPolicy === 'PO_SINGLE_APPROVER';
+  const mprAdmin2Final = isMprAdmin2Approved(workflow.entityType, workflow.steps);
   const countSatisfied = isSingleApproverPolicy
     ? approvedSteps.length >= 1
     : approvedSteps.length >= workflow.minApprovers;
 
-  if (countSatisfied && satisfiesApprovalPolicy(workflow.approvalPolicy, workflow.steps, workflow.minApprovers)) {
+  if (mprAdmin2Final || (countSatisfied && satisfiesApprovalPolicy(workflow.approvalPolicy, workflow.steps, workflow.minApprovers))) {
     // Atomically update the workflow status AND the entity status in a
     // single transaction, so the entity never gets stuck in a stale
     // "SUBMITTED/PENDING" state when its workflow is already APPROVED.

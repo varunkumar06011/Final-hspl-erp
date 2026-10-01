@@ -79,9 +79,9 @@ router.get(
   authMiddleware,
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
-      const projectId = requireProjectId(req);
+      requireProjectId(req);
       const users = await prisma.user.findMany({
-        where: { projectId, isActive: true },
+        where: { isActive: true },
         select: { id: true, name: true, role: true },
         orderBy: { name: 'asc' },
       });

@@ -28,7 +28,9 @@ import {
   AccordionDetails,
   Tabs,
   Tab,
+  Link,
 } from '@mui/material';
+import { useNavigate } from 'react-router-dom';
 import {
   Add as AddIcon,
   Search as SearchIcon,
@@ -115,6 +117,7 @@ const GROUP_COLORS: Record<string, 'primary' | 'secondary' | 'info' | 'success' 
 
 export default function LedgersPage() {
   const { t: tr } = useTranslation('ledgers');
+  const navigate = useNavigate();
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(100);
   const [search, setSearch] = useState('');
@@ -864,7 +867,23 @@ export default function LedgersPage() {
                       statementData.data.map((entry: any) => (
                         <TableRow key={entry.id} hover>
                           <TableCell data-label={tr('date')}>{formatDate(entry.voucherDate)}</TableCell>
-                          <TableCell sx={{ fontWeight: 600 }} data-label={tr('voucher')}>{entry.voucherNumber}</TableCell>
+                          <TableCell sx={{ fontWeight: 600 }} data-label={tr('voucher')}>
+                            {entry.journalVoucherId ? (
+                              <Tooltip title={tr('openVoucher')}>
+                                <Link
+                                  component="button"
+                                  type="button"
+                                  underline="hover"
+                                  sx={{ fontWeight: 600, verticalAlign: 'baseline' }}
+                                  onClick={() => navigate(`/vouchers?id=${entry.journalVoucherId}`)}
+                                >
+                                  {entry.voucherNumber}
+                                </Link>
+                              </Tooltip>
+                            ) : (
+                              entry.voucherNumber
+                            )}
+                          </TableCell>
                           <TableCell data-label={tr('type')}><Chip label={entry.voucherType.replace(/_/g, ' ')} size="small" variant="outlined" /></TableCell>
                           <TableCell data-label={tr('description')}>{entry.description ?? '—'}</TableCell>
                           <TableCell align="right" sx={{ color: 'error.main' }} data-label={tr('debit')}>{entry.debit > 0 ? formatCurrency(entry.debit) : '—'}</TableCell>

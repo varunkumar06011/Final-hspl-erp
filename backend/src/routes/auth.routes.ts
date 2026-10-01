@@ -4,8 +4,8 @@ import { authMiddleware, AuthenticatedRequest } from '../middleware/auth';
 import { prisma } from '../config/prisma';
 import { rbacMiddleware } from '../middleware/rbac';
 import { validateMiddleware } from '../middleware/validate';
-import { Permission, verifyTokenSchema, registerTokenSchema, createUserSchema, updateUserSchema, listUsersSchema, pinLoginSchema, setPinSchema, checkPinSchema, changePinSchema } from '@hospital-erp/shared';
-import { verifyToken, register, createUser, updateUser, listUsers, getMe, getNextAdminRoleEndpoint, devLogin, pinLogin, setPin, checkPin, changePin } from '../controllers/auth.controller';
+import { Permission, verifyTokenSchema, registerTokenSchema, createUserSchema, updateUserSchema, listUsersSchema, pinLoginSchema, setPinSchema, checkPinSchema, changePinSchema, switchProjectSchema } from '@hospital-erp/shared';
+import { verifyToken, register, createUser, updateUser, listUsers, getMe, getNextAdminRoleEndpoint, devLogin, pinLogin, setPin, checkPin, changePin, switchProject } from '../controllers/auth.controller';
 
 const router = Router();
 
@@ -38,6 +38,9 @@ router.post('/set-pin', validateMiddleware(setPinSchema), setPin);
 
 // GET /api/auth/me — get current user profile
 router.get('/me', authMiddleware, getMe);
+
+// POST /api/auth/switch-project — re-issue the session token for another project
+router.post('/switch-project', authMiddleware, validateMiddleware(switchProjectSchema), switchProject);
 
 // POST /api/auth/change-pin — change PIN (requires auth)
 router.post('/change-pin', authMiddleware, validateMiddleware(changePinSchema), changePin);

@@ -40,6 +40,8 @@ const { tables, createModelMock, seedData } = vi.hoisted(() => {
     goodsReceipt: new Map(),
     goodsReceiptItem: new Map(),
     inspection: new Map(),
+    journalVoucher: new Map(),
+    pOItemLedgerPost: new Map(),
   };
 
   function matchWhere(record: Record_, where: any): boolean {
@@ -283,6 +285,8 @@ vi.mock('../src/config/prisma', () => {
     goodsReceipt: createModelMock('goodsReceipt'),
     goodsReceiptItem: createModelMock('goodsReceiptItem'),
     inspection: createModelMock('inspection'),
+    journalVoucher: createModelMock('journalVoucher'),
+    pOItemLedgerPost: createModelMock('pOItemLedgerPost'),
   };
   // $transaction executes the callback with prisma itself as `tx`,
   // since all models share the same in-memory state.

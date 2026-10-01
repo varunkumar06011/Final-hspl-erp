@@ -619,6 +619,8 @@ export enum Permission {
   REVERSE_VOUCHER = 'REVERSE_VOUCHER',
   // User management
   MANAGE_USERS = 'MANAGE_USERS',
+  // Create / edit / archive projects (admin roles only)
+  MANAGE_PROJECTS = 'MANAGE_PROJECTS',
   // Approvals config
   MANAGE_APPROVALS_CONFIG = 'MANAGE_APPROVALS_CONFIG',
   // Payments
@@ -768,6 +770,7 @@ export const PERMISSION_MATRIX: Record<UserRole, Permission[]> = {
     Permission.MANAGE_FINANCE,
     Permission.REVERSE_VOUCHER,
     Permission.MANAGE_USERS,
+    Permission.MANAGE_PROJECTS,
     Permission.VIEW_DASHBOARD,
     Permission.CREATE_GATE_PASS,
     Permission.VIEW_GATE_PASSES,
@@ -793,6 +796,7 @@ export const PERMISSION_MATRIX: Record<UserRole, Permission[]> = {
     Permission.MANAGE_FINANCE,
     Permission.REVERSE_VOUCHER,
     Permission.MANAGE_USERS,
+    Permission.MANAGE_PROJECTS,
     Permission.VIEW_DASHBOARD,
     Permission.CREATE_GATE_PASS,
     Permission.VIEW_GATE_PASSES,

@@ -655,7 +655,7 @@ function fmtMoney(n: number): string {
 function pdfHeader(doc: PDFKit.PDFDocument, title: string, projectName: string, subtitle?: string) {
   const pageWidth = 595;
   doc.rect(0, 0, pageWidth, 70).fill(PDF_PRIMARY);
-  doc.fillColor(PDF_WHITE).fontSize(20).font('Helvetica-Bold').text(projectName || 'Vgrand Hospital', 50, 14);
+  doc.fillColor(PDF_WHITE).fontSize(20).font('Helvetica-Bold').text(projectName || '', 50, 14);
   doc.fontSize(10).font('Helvetica').fillColor(PDF_PRIMARY_LIGHT).text(title, 50, 40);
   if (subtitle) {
     doc.fontSize(8).font('Helvetica').fillColor(PDF_PRIMARY_LIGHT).text(subtitle, 50, 55);

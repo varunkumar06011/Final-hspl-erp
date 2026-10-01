@@ -52,6 +52,7 @@ import ResponsiveTable from '../components/ResponsiveTable';
 import RefreshButton from '../components/RefreshButton';
 
 import { useTranslation } from 'react-i18next';
+import FilePicker from '../components/FilePicker';
 export default function InventoryPage() {
   const { t: tr } = useTranslation('inventory');
   const navigate = useNavigate();
@@ -529,10 +530,14 @@ export default function InventoryPage() {
             <TextField label={tr('quantity')} type="text" required value={formatIndianNumber(txnForm.quantity ?? '')} onChange={(e) => setTxnForm({ ...txnForm, quantity: e.target.value === '' ? '' : Number(e.target.value.replace(/,/g, '')) })} inputMode="decimal" inputProps={{ min: 0.01, step: 0.01 }} fullWidth size="small"
               helperText={txnForm.type === 'ADJUST' ? tr('absHelp') : tr('posHelp')} />
             <TextField label={tr('notes')} value={txnForm.notes ?? ''} onChange={(e) => setTxnForm({ ...txnForm, notes: e.target.value })} fullWidth size="small" multiline rows={2} />
-            <Button component="label" variant="outlined" startIcon={<PhotoCameraIcon />}>
-              {txnPhoto ? tr('photoName', { n: txnPhoto.name }) : tr('addPhoto')}
-              <input hidden type="file" accept="image/*" onChange={(e) => setTxnPhoto(e.target.files?.[0] ?? null)} />
-            </Button>
+            <FilePicker
+              file={txnPhoto}
+              onChange={setTxnPhoto}
+              accept="image/*"
+              startIcon={<PhotoCameraIcon />}
+              label={tr('addPhoto')}
+              selectedLabel={txnPhoto ? tr('photoName', { n: txnPhoto.name }) : undefined}
+            />
           </Box>
         </DialogContent>
         <DialogActions sx={{ flexWrap: "wrap", gap: 1 }}>

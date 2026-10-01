@@ -36,6 +36,7 @@ beforeAll(async () => {
   // Create test project
   const project = await prisma.project.create({
     data: {
+      code: 'E2E' + Date.now().toString(36).toUpperCase().slice(-4),
       name: PROJECT_NAME,
       status: 'ACTIVE',
       totalBudget: 10000000,

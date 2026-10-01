@@ -176,7 +176,7 @@ router.post(
         [contraLedger.id, { id: contraLedger.id, name: contraLedger.name, group: contraLedger.group, linkedEntityType: contraLedger.linkedEntityType, linkedEntityId: contraLedger.linkedEntityId }],
       ]);
 
-      const jvNumber = await generateVoucherNumber(VoucherType.RECEIPT);
+      const jvNumber = await generateVoucherNumber(VoucherType.RECEIPT, projectId);
       const voucherDate = date ? new Date(String(date)) : new Date();
 
       // Receipt: Dr Cash (money in), Cr Contra ledger (source of money)
@@ -272,7 +272,7 @@ router.post(
         [contraLedger.id, { id: contraLedger.id, name: contraLedger.name, group: contraLedger.group, linkedEntityType: contraLedger.linkedEntityType, linkedEntityId: contraLedger.linkedEntityId }],
       ]);
 
-      const jvNumber = await generateVoucherNumber(VoucherType.PAYMENT);
+      const jvNumber = await generateVoucherNumber(VoucherType.PAYMENT, projectId);
       const voucherDate = date ? new Date(String(date)) : new Date();
 
       // Payment: Dr Contra ledger (where money goes), Cr Cash (money out)
@@ -542,7 +542,7 @@ export async function transferCashToCash(args: TransferCashArgs) {
     [toLedger.id, { id: toLedger.id, name: toLedger.name, group: toLedger.group, linkedEntityType: toLedger.linkedEntityType, linkedEntityId: toLedger.linkedEntityId }],
   ]);
 
-  const jvNumber = await generateVoucherNumber(VoucherType.CONTRA);
+  const jvNumber = await generateVoucherNumber(VoucherType.CONTRA, args.projectId);
 
   // Contra: Dr destination cash (money in), Cr source cash (money out)
   const result = await postVoucher({
@@ -602,7 +602,7 @@ export async function transferBankToCash(args: BankCashTransferArgs) {
     [cashLedger.id, { id: cashLedger.id, name: cashLedger.name, group: cashLedger.group, linkedEntityType: cashLedger.linkedEntityType, linkedEntityId: cashLedger.linkedEntityId }],
   ]);
 
-  const jvNumber = await generateVoucherNumber(VoucherType.CONTRA);
+  const jvNumber = await generateVoucherNumber(VoucherType.CONTRA, args.projectId);
 
   // Contra: Dr Cash (money in), Cr Bank (money out)
   const result = await postVoucher({
@@ -652,7 +652,7 @@ export async function transferCashToBank(args: BankCashTransferArgs) {
     [cashLedger.id, { id: cashLedger.id, name: cashLedger.name, group: cashLedger.group, linkedEntityType: cashLedger.linkedEntityType, linkedEntityId: cashLedger.linkedEntityId }],
   ]);
 
-  const jvNumber = await generateVoucherNumber(VoucherType.CONTRA);
+  const jvNumber = await generateVoucherNumber(VoucherType.CONTRA, args.projectId);
 
   // Contra: Dr Bank (money in), Cr Cash (money out)
   const result = await postVoucher({

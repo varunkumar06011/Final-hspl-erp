@@ -43,6 +43,7 @@ import {
   RequestQuote as PaymentReportIcon,
   ChatBubbleOutline as CommentsNavIcon,
   History as ActivityNavIcon,
+  Apartment as ProjectsIcon,
 } from '@mui/icons-material';
 import { useAuthStore } from '../stores/authStore';
 import { hasPermission, Permission, UserRole, isAdminRole } from '@hospital-erp/shared';
@@ -57,6 +58,7 @@ import PresenceBar from './PresenceBar';
 import { useTrackPageView } from '../hooks/useTrackPageView';
 import { useTranslation } from 'react-i18next';
 import LanguageToggle from './LanguageToggle';
+import ProjectSwitcher from './ProjectSwitcher';
 import type { TFunction } from 'i18next';
 
 
@@ -102,6 +104,7 @@ const NAV_ITEMS = [
   { label: 'Activity Log', icon: <ActivityNavIcon />, path: '/activity-log', section: 'Admin' },
   { label: 'Audit Log', icon: <AuditIcon />, path: '/audit', permission: Permission.VIEW_AUDIT_LOG, section: 'Admin' },
   { label: 'Users', icon: <PeopleIcon />, path: '/users', permission: Permission.MANAGE_USERS, section: 'Admin' },
+  { label: 'Projects', icon: <ProjectsIcon />, path: '/projects', permission: Permission.MANAGE_PROJECTS, section: 'Admin' },
   { label: 'Settings', icon: <SettingsIcon />, path: '/settings', section: 'Admin' },
 ];
 
@@ -150,6 +153,7 @@ const ADMIN_NAV_ITEMS = [
   { label: 'Activity Log', icon: <ActivityNavIcon />, path: '/activity-log', section: 'Admin' },
   { label: 'Audit Log', icon: <AuditIcon />, path: '/audit', permission: Permission.VIEW_AUDIT_LOG, section: 'Admin' },
   { label: 'Users', icon: <PeopleIcon />, path: '/users', permission: Permission.MANAGE_USERS, section: 'Admin' },
+  { label: 'Projects', icon: <ProjectsIcon />, path: '/projects', permission: Permission.MANAGE_PROJECTS, section: 'Admin' },
   { label: 'Settings', icon: <SettingsIcon />, path: '/settings', section: 'Admin' },
 ];
 
@@ -337,7 +341,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       try {
         const { data: settings } = await api.get('/settings');
         if (!settings.logoUrl) return;
-        const response = await api.get('/settings/logo', { responseType: 'blob' });
+        const response = await api.get('/settings/logo', { responseType: 'blob', params: { projectId: settings.id } });
         const rawMime = response.headers['content-type'];
         const mime = typeof rawMime === 'string' ? rawMime : 'image/png';
         objectUrl = URL.createObjectURL(new Blob([response.data], { type: mime }));
@@ -481,6 +485,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           >
             {t('app.title')}
           </Typography>
+          <ProjectSwitcher />
           <Box sx={{ mr: 1 }}>
             <LanguageToggle onDark />
           </Box>

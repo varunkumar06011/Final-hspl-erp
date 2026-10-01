@@ -41,7 +41,7 @@ export async function streamMprPdf(res: NodeJS.WritableStream, mpr: any) {
 
   // ── Find project head for "Requested By" ──
   const approvers = await prisma.user.findMany({
-    where: { projectId: mpr.projectId, isActive: true, role: 'PROJECT_HEAD' },
+    where: { isActive: true, role: 'PROJECT_HEAD' },
     select: { name: true, role: true },
   });
   const projectHead = approvers.find((u) => u.role === 'PROJECT_HEAD');

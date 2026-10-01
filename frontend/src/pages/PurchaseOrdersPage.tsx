@@ -45,6 +45,7 @@ import {
   Delete as DeleteIcon,
   Edit as EditIcon,
   Autorenew as AutoRenewIcon,
+  Replay as ResubmitIcon,
   SwapHoriz as SwapBudgetIcon,
   Payment as PaymentIcon,
   TableChart as TableChartIcon,
@@ -141,6 +142,8 @@ interface PORow {
   netPayable?: number;
   paidToDate?: number;
   amountToPayNow?: number;
+  // true once the vendor payable (Cr Vendor) has been booked to the ledger for this PO
+  payableBooked?: boolean;
   notes?: string | null;
   createdBy: string;
   createdByUser: { id: string; name: string };
@@ -440,6 +443,18 @@ export default function PurchaseOrdersPage() {
     onSuccess: () => {
       setApprovalAction(null);
     },
+  });
+
+  const resubmitMutation = useMutation({
+    mutationFn: async (poId: string) => {
+      const response = await api.post(`/purchase-orders/${poId}/resubmit`);
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/pos'] });
+      queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
+    },
+    onError: (err: unknown) => setError(extractErrorMessage(err)),
   });
 
   const [deleteRow, setDeleteRow] = useState<PORow | null>(null);
@@ -792,6 +807,9 @@ export default function PurchaseOrdersPage() {
                               {row.status === POStatus.APPROVED && (
                                 <IconButton size="small" color="secondary" onClick={() => setPaymentTypeRow(row)} title={t('changePaymentType')}><PaymentIcon fontSize="small" /></IconButton>
                               )}
+                              {row.status === POStatus.REJECTED && (
+                                <IconButton size="small" color="warning" disabled={resubmitMutation.isPending} onClick={() => resubmitMutation.mutate(row.id)} title={t('resubmitForApproval')}><ResubmitIcon fontSize="small" /></IconButton>
+                              )}
                               {(row.status === POStatus.PENDING_APPROVAL || row.status === POStatus.REJECTED || (row.status === POStatus.APPROVED && !!user && isAdminRole(user.role))) && (
                                 <IconButton size="small" color="primary" onClick={() => setEditUnapprovedRow(row)} title={t('editPo')}><EditIcon fontSize="small" /></IconButton>
                               )}
@@ -1076,6 +1094,9 @@ export default function PurchaseOrdersPage() {
                               )}
                               {row.status === POStatus.PARTIALLY_DELIVERED && !row.parentPoId && (
                                 <Button size="small" color="warning" startIcon={<EditIcon />} onClick={() => setEditRow(row)}>{t('matchDelivered')}</Button>
+                              )}
+                              {row.status === POStatus.REJECTED && (
+                                <Button size="small" color="warning" startIcon={<ResubmitIcon />} disabled={resubmitMutation.isPending} onClick={() => resubmitMutation.mutate(row.id)}>{t('resubmitForApproval')}</Button>
                               )}
                               {(row.status === POStatus.PENDING_APPROVAL || row.status === POStatus.REJECTED || (row.status === POStatus.APPROVED && !!user && isAdminRole(user.role))) && (
                                 <Button size="small" color="primary" startIcon={<EditIcon />} onClick={() => setEditUnapprovedRow(row)}>{t('editPo')}</Button>
@@ -1795,7 +1816,7 @@ function PostToLedgerDialog({ row, onClose }: { row: PORow | null; onClose: () =
               <Typography fontWeight={600}>{selectedItem.materialName}</Typography>
               <Typography variant="caption" color="text.secondary">
                 {t('amountToPost', { v: formatCurrency(postedInfo(selectedItem).remaining) })}
-                {Number(selectedItem.gstRate ?? 0) > 0 ? t('gstInputNote', { r: selectedItem.gstRate }) : ''}
+                {!po?.payableBooked && Number(selectedItem.gstRate ?? 0) > 0 ? t('gstInputNote', { r: selectedItem.gstRate }) : ''}
               </Typography>
             </Card>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
@@ -1809,7 +1830,9 @@ function PostToLedgerDialog({ row, onClose }: { row: PORow | null; onClose: () =
               autoFocus
             />
             <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1.5 }}>
-              {t('postingLine', { dr: selectedLedger?.name ?? t('selectedLedgerFallback'), cr: po?.vendor?.name ?? t('vendorFallback') })}
+              {po?.payableBooked
+                ? t('postingLineReclass', { dr: selectedLedger?.name ?? t('selectedLedgerFallback') })
+                : t('postingLine', { dr: selectedLedger?.name ?? t('selectedLedgerFallback'), cr: po?.vendor?.name ?? t('vendorFallback') })}
             </Typography>
           </>
         )}

@@ -1,4 +1,5 @@
 import { prisma } from '../config/prisma';
+import { getProjectCode } from './project.service';
 
 /**
  * A20: Atomic sequential reference number generator.
@@ -62,4 +63,21 @@ export async function generateSequenceNumber(
   }
 
   throw new Error(`Failed to generate unique sequence number for ${prefix} after ${maxRetries} attempts`);
+}
+
+/**
+ * Per-project variant: numbers are `<PROJECT_CODE>-<suffix><n>` (e.g. VGH-PO001,
+ * ABC-PO001) and the running counter only considers that project's rows, so every
+ * project starts at 001 and the globally unique columns can never collide.
+ */
+export async function generateProjectSequenceNumber(
+  model: keyof typeof prisma,
+  field: string,
+  suffix: string,
+  padLength: number,
+  projectId: string,
+  maxRetries = 5,
+): Promise<string> {
+  const code = await getProjectCode(projectId);
+  return generateSequenceNumber(model, field, `${code}-${suffix}`, padLength, { projectId }, maxRetries);
 }

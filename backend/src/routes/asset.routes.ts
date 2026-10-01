@@ -20,6 +20,7 @@ import { optionalAuthMiddleware } from '../middleware/optional-auth';
 import { rbacMiddleware } from '../middleware/rbac';
 import { validateMiddleware } from '../middleware/validate';
 import { logAudit } from '../services/audit.service';
+import { getProjectCode } from '../services/project.service';
 import { notifyAdmins } from '../services/push.service';
 
 const router = Router();
@@ -58,18 +59,19 @@ const assetInclude = {
 /**
  * Generate the next human-readable asset ID: VGH-AST-00001, VGH-AST-00002, ...
  */
-async function generateAssetId(tx: Prisma.TransactionClient): Promise<string> {
+async function generateAssetId(tx: Prisma.TransactionClient, projectId: string): Promise<string> {
+  const prefix = `${await getProjectCode(projectId)}-AST-`;
   const lastAsset = await tx.asset.findFirst({
-    where: { assetId: { startsWith: 'VGH-AST-' } },
+    where: { projectId, assetId: { startsWith: prefix } },
     orderBy: { assetId: 'desc' },
     select: { assetId: true },
   });
   let nextNum = 1;
   if (lastAsset) {
-    const match = lastAsset.assetId.match(/^VGH-AST-(\d+)$/);
+    const match = lastAsset.assetId.slice(prefix.length).match(/^(\d+)$/);
     if (match) nextNum = parseInt(match[1], 10) + 1;
   }
-  return `VGH-AST-${String(nextNum).padStart(5, '0')}`;
+  return `${prefix}${String(nextNum).padStart(5, '0')}`;
 }
 
 // GET / — list assets with filters
@@ -214,7 +216,7 @@ router.post(
       const created = await prisma.$transaction(async (tx) => {
         const assets: { id: string; assetId: string }[] = [];
         for (let i = 0; i < missing; i++) {
-          const assetId = await generateAssetId(tx);
+          const assetId = await generateAssetId(tx, projectId);
           const asset = await tx.asset.create({
             data: {
               projectId,
@@ -278,7 +280,7 @@ router.post(
 
       const data = req.body;
       const result = await prisma.$transaction(async (tx) => {
-        const assetId = await generateAssetId(tx);
+        const assetId = await generateAssetId(tx, projectId);
         const asset = await tx.asset.create({
           data: {
             projectId,
@@ -1477,6 +1479,12 @@ router.get(
       if (!asset) {
         res.status(404).json({ error: 'Asset not found' });
         return;
+      }
+
+      // A user signed in to a different project only gets the public view of this
+      // asset: no scan record and no lifecycle/traceability data.
+      if (req.user && req.user.projectId !== asset.projectId) {
+        req.user = undefined;
       }
 
       // If authenticated, record scan + update last scan info

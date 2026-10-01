@@ -389,7 +389,7 @@ const { tables, createModelMock, seedData } = vi.hoisted(() => {
     const USER_ACC = { id: '00000000-0000-0000-0000-000000000012', firebaseUid: 'fb-acc', phone: '+910000000012', name: 'Accountant', role: 'ACCOUNTANT', projectId: PROJECT_ID, isActive: true };
     const USER_ADMIN = { id: '00000000-0000-0000-0000-000000000013', firebaseUid: 'fb-admin', phone: '+910000000013', name: 'Admin', role: 'ADMIN', projectId: PROJECT_ID, isActive: true };
     const USER_ADMIN2 = { id: '00000000-0000-0000-0000-000000000014', firebaseUid: 'fb-admin2', phone: '+910000000014', name: 'Admin 2', role: 'ADMIN_2', projectId: PROJECT_ID, isActive: true };
-    const PROJECT = { id: PROJECT_ID, name: 'Test Hospital', status: 'ACTIVE', totalBudget: 10000000, officeAddress: 'Office 1', hospitalAddress: 'Hospital 1' };
+    const PROJECT = { id: PROJECT_ID, code: 'VGH', deletedAt: null, name: 'Test Hospital', status: 'ACTIVE', totalBudget: 10000000, officeAddress: 'Office 1', hospitalAddress: 'Hospital 1' };
     tables.user.set(USER_PH.id, { ...USER_PH });
     tables.user.set(USER_HOC.id, { ...USER_HOC });
     tables.user.set(USER_ACC.id, { ...USER_ACC });
