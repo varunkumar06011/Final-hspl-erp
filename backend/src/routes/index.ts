@@ -42,6 +42,7 @@ import transactionRegisterRoutes from './transaction-register.routes';
 import commentRoutes from './comment.routes';
 import activityLogRoutes from './activity-log.routes';
 import projectRoutes from './project.routes';
+import searchRoutes from './search.routes';
 
 const router = Router();
 
@@ -88,5 +89,6 @@ router.use('/material-purchase-requests', mprRoutes);
 router.use('/transaction-register', transactionRegisterRoutes);
 router.use('/comments', commentRoutes);
 router.use('/activity-log', activityLogRoutes);
+router.use('/search', searchRoutes);
 
 export default router;

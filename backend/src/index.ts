@@ -3,6 +3,7 @@ import { env } from './config/env';
 import app from './app';
 import { initSocketServer } from './socket';
 import { startQuotationAgingScheduler, stopQuotationAgingScheduler } from './services/scheduler.service';
+import { startSearchIndex, stopSearchIndex, warmAllProjects } from './services/search/manager';
 
 const server = http.createServer(app);
 
@@ -20,12 +21,21 @@ server.listen(env.PORT, () => {
   // notifications to admins. Ensures notifications are delivered even
   // when nobody has the app open.
   startQuotationAgingScheduler();
+
+  // Global search: an in-memory index per project, built read-only from the
+  // database and kept fresh automatically. Warm it in the background so the
+  // first search after a deploy is instant.
+  startSearchIndex();
+  if (process.env.SEARCH_WARMUP !== 'false') {
+    setTimeout(() => void warmAllProjects(), 3000).unref();
+  }
 });
 
 // Graceful shutdown
 process.on('SIGTERM', () => {
   console.log('SIGTERM received, shutting down gracefully...');
   stopQuotationAgingScheduler();
+  stopSearchIndex();
   server.close(() => {
     console.log('Server closed');
     process.exit(0);
@@ -35,6 +45,7 @@ process.on('SIGTERM', () => {
 process.on('SIGINT', () => {
   console.log('SIGINT received, shutting down gracefully...');
   stopQuotationAgingScheduler();
+  stopSearchIndex();
   server.close(() => {
     console.log('Server closed');
     process.exit(0);

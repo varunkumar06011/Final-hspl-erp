@@ -63,6 +63,15 @@ One database hosts several completely separate projects (hospitals). Users, role
 - Because users are shared, user lookups (approver roles, admins, push recipients) are **not** filtered by project; business rows always are. Never take a project id from the request body/query for data access.
 - The backend `.env` points at the shared hosted database. Do not run `prisma db push`, `migrate reset`, seeds or the real-DB test suites against it; migrations are additive files applied with `prisma migrate deploy`.
 
+## Global search
+
+`GET /api/search?q=` (used by the top-bar search dialog) is backed by a read-only, in-memory index per project in `backend/src/services/search/`. It never writes to the database.
+
+- **What is indexed comes from `schema.prisma`, not from a list.** `schemaGraph.ts` reads Prisma's model metadata: every table with `projectId` becomes a searchable record, every table without one that hangs off such a record (PO items, quotation items…) is folded into its parent's document, and comments/attachments fold into whatever record their `entityType`/`entityId` points at. New tables and columns are searchable after the migration with no code change.
+- **`registry.ts` is the only manual part**: where a result opens (`path`), who may see it (`permission`, mirror the module's list endpoint), and `EXCLUDED_MODELS` for tables kept out on purpose. A table with no registry entry is still indexed but is shown to admin roles only and has no link; add a one-line entry when its page exists. `tests/search-schema.test.ts` fails if a new table is neither indexable nor excluded.
+- Search is typo/partial-word tolerant, every typed word must match (best partial match otherwise), amounts and dates are matched in any common spelling, and a record is also found through the record it points at (a PO via its vendor's name). Records a role cannot see never lend text to others.
+- Freshness: writes through this server refresh the affected record immediately (Prisma `$use` hook, plus a `$transaction` wrapper); a 60 s timestamp poll covers other writers; a 10 min id reconcile catches hard deletes; indexes rebuild after 3 h and idle projects are evicted. `SEARCH_WARMUP=false` skips the start-up warm-up.
+
 ## Internationalization (English / Telugu)
 
 The frontend is bilingual via `react-i18next` (`frontend/src/i18n/`). A language toggle sits in the AppShell top bar and on the login page; the choice persists in `localStorage` (`appLanguage`).

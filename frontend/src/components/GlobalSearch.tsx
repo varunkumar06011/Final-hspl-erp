@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
+import axios from 'axios';
 import { getRecentlyViewed, addRecentlyViewed, type RecentItem } from '../hooks/useRecentlyViewed';
 import {
   Dialog,
@@ -33,132 +34,104 @@ import {
   Person as OwnerIcon,
   Dashboard as DashboardIcon,
   ArrowForward as ArrowIcon,
+  LocalShipping as ReceiptIcon,
+  MeetingRoom as GatePassIcon,
+  ListAlt as RequestIcon,
+  FactCheck as InspectionIcon,
+  Folder as DocumentIcon,
+  Groups as StaffIcon,
+  PhotoCamera as PhotoIcon,
+  Gavel as ContractIcon,
 } from '@mui/icons-material';
 import api from '../config/api';
+import { enumLabel, formatCurrency, formatDate } from '../utils/enumOptions';
+import { looseMatch } from '../utils/fuzzy';
 
 import { useTranslation } from 'react-i18next';
-interface SearchResult {
+
+interface Mark {
+  start: number;
+  end: number;
+}
+
+interface Snippet {
+  label: string;
+  labelKey: string;
+  text: string;
+  marks: Mark[];
+  extra?: string;
+}
+
+interface Related {
+  model: string;
+  id: string;
+  title: string;
+}
+
+/** One record returned by GET /search. */
+interface Hit {
+  key: string;
+  model: string;
+  typeLabel: string;
+  id: string;
+  title: string;
+  titleMarks: Mark[];
+  subtitle: string;
+  path: string | null;
+  status?: string;
+  amount?: number;
+  date?: string;
+  matches: Snippet[];
+  via?: Related;
+  related: Related[];
+}
+
+interface SearchResponse {
+  total: number;
+  counts: Record<string, number>;
+  results: Hit[];
+}
+
+interface Item {
   id: string;
   label: string;
-  sublabel?: string;
-  path: string;
+  path: string | null;
+  /** Model name for records, 'Page' for shortcuts, free text for legacy recents. */
   type: string;
   icon: React.ReactNode;
   isPageShortcut?: boolean;
 }
 
-interface SearchSource {
-  type: string;
-  endpoint: string;
-  icon: React.ReactNode;
-  path: (id: string) => string;
-  label: (row: Record<string, unknown>) => string;
-  sublabel?: (row: Record<string, unknown>) => string;
-}
-
-const SOURCES: SearchSource[] = [
-  {
-    type: 'Vendor',
-    endpoint: '/vendors',
-    icon: <VendorIcon fontSize="small" />,
-    path: (id) => `/vendors?id=${id}`,
-    label: (r) => String(r.name ?? ''),
-    sublabel: (r) => String(r.vendorCode ?? ''),
-  },
-  {
-    type: 'Purchase Order',
-    endpoint: '/purchase-orders',
-    icon: <POIcon fontSize="small" />,
-    path: (id) => `/pos?id=${id}`,
-    label: (r) => String(r.poNumber ?? ''),
-    sublabel: (r) => String((r.vendor as { name?: string } | null)?.name ?? ''),
-  },
-  {
-    type: 'Quotation',
-    endpoint: '/quotations',
-    icon: <QuotationIcon fontSize="small" />,
-    path: (id) => `/quotations?id=${id}`,
-    label: (r) => String(r.quotationNumber ?? ''),
-    sublabel: (r) => String((r.vendor as { name?: string } | null)?.name ?? ''),
-  },
-  {
-    type: 'Invoice',
-    endpoint: '/invoices',
-    icon: <InvoiceIcon fontSize="small" />,
-    path: (id) => `/invoices?id=${id}`,
-    label: (r) => String(r.invoiceCode ?? r.invoiceNumber ?? ''),
-    sublabel: (r) => String((r.vendor as { name?: string } | null)?.name ?? ''),
-  },
-  {
-    type: 'Payment Request',
-    endpoint: '/payments',
-    icon: <PaymentIcon fontSize="small" />,
-    path: (id) => `/payments?id=${id}`,
-    label: (r) => String(r.paymentCode ?? r.requestNumber ?? ''),
-    sublabel: (r) => String((r.vendor as { name?: string } | null)?.name ?? r.description ?? ''),
-  },
-  {
-    type: 'Ledger',
-    endpoint: '/ledgers',
-    icon: <LedgerIcon fontSize="small" />,
-    path: (id) => `/ledgers?id=${id}`,
-    label: (r) => String(r.name ?? ''),
-    sublabel: (r) => String(r.group ?? ''),
-  },
-  {
-    type: 'Bank Account',
-    endpoint: '/bank-accounts',
-    icon: <BankIcon fontSize="small" />,
-    path: (id) => `/bank-accounts?id=${id}`,
-    label: (r) => String(r.accountName ?? ''),
-    sublabel: (r) => [r.bankName, r.accountNumber].filter(Boolean).map(String).join(' · '),
-  },
-  {
-    type: 'Cash Account',
-    endpoint: '/cash-accounts',
-    icon: <CashIcon fontSize="small" />,
-    path: (id) => `/cash-accounts?id=${id}`,
-    label: (r) => String(r.name ?? ''),
-  },
-  {
-    type: 'Budget Head',
-    endpoint: '/budget-heads',
-    icon: <BudgetIcon fontSize="small" />,
-    path: (id) => `/budget-heads?id=${id}`,
-    label: (r) => String(r.particulars ?? ''),
-  },
-  {
-    type: 'Owner Account',
-    endpoint: '/owner-accounts',
-    icon: <OwnerIcon fontSize="small" />,
-    path: (id) => `/owner-accounts?id=${id}`,
-    label: (r) => String(r.ownerName ?? ''),
-  },
-  {
-    type: 'Work Task',
-    endpoint: '/work-tasks',
-    icon: <WorkIcon fontSize="small" />,
-    path: (id) => `/work?id=${id}`,
-    label: (r) => String(r.title ?? ''),
-    sublabel: (r) => String(r.status ?? ''),
-  },
-  {
-    type: 'Issue',
-    endpoint: '/issues',
-    icon: <IssueIcon fontSize="small" />,
-    path: (id) => `/issues?id=${id}`,
-    label: (r) => String(r.title ?? ''),
-    sublabel: (r) => String(r.severity ?? ''),
-  },
-  {
-    type: 'Asset / Inventory',
-    endpoint: '/inventory/items',
-    icon: <AssetIcon fontSize="small" />,
-    path: (id) => `/assets/${id}`,
-    label: (r) => String(r.name ?? ''),
-    sublabel: (r) => [r.sku, r.category].filter(Boolean).map(String).join(' · '),
-  },
-];
+const ICON_SMALL = { fontSize: 'small' } as const;
+const ICONS: Record<string, React.ReactNode> = {
+  Vendor: <VendorIcon {...ICON_SMALL} />,
+  Quotation: <QuotationIcon {...ICON_SMALL} />,
+  PurchaseOrder: <POIcon {...ICON_SMALL} />,
+  VendorInvoice: <InvoiceIcon {...ICON_SMALL} />,
+  PaymentRequest: <PaymentIcon {...ICON_SMALL} />,
+  PaymentSheet: <PaymentIcon {...ICON_SMALL} />,
+  JournalVoucher: <LedgerIcon {...ICON_SMALL} />,
+  Ledger: <LedgerIcon {...ICON_SMALL} />,
+  BankAccount: <BankIcon {...ICON_SMALL} />,
+  CashAccount: <CashIcon {...ICON_SMALL} />,
+  OwnerAccount: <OwnerIcon {...ICON_SMALL} />,
+  BudgetHead: <BudgetIcon {...ICON_SMALL} />,
+  BudgetRevision: <BudgetIcon {...ICON_SMALL} />,
+  Contract: <ContractIcon {...ICON_SMALL} />,
+  GoodsReceipt: <ReceiptIcon {...ICON_SMALL} />,
+  GatePass: <GatePassIcon {...ICON_SMALL} />,
+  MaterialPurchaseRequest: <RequestIcon {...ICON_SMALL} />,
+  InventoryItem: <AssetIcon {...ICON_SMALL} />,
+  Asset: <AssetIcon {...ICON_SMALL} />,
+  WorkTask: <WorkIcon {...ICON_SMALL} />,
+  Issue: <IssueIcon {...ICON_SMALL} />,
+  Inspection: <InspectionIcon {...ICON_SMALL} />,
+  Document: <DocumentIcon {...ICON_SMALL} />,
+  Staff: <StaffIcon {...ICON_SMALL} />,
+  SitePhoto: <PhotoIcon {...ICON_SMALL} />,
+};
+// Any record type the server adds later still gets a sensible icon.
+const iconFor = (model: string): React.ReactNode => ICONS[model] ?? <SearchIcon {...ICON_SMALL} />;
 
 // Page shortcuts for quick navigation (shown when query matches a page name or when empty)
 const PAGE_SHORTCUTS: { label: string; path: string; icon: React.ReactNode; keywords: string[] }[] = [
@@ -180,22 +153,32 @@ const PAGE_SHORTCUTS: { label: string; path: string; icon: React.ReactNode; keyw
   { label: 'Finance Reports', path: '/finance-reports', icon: <LedgerIcon fontSize="small" />, keywords: ['report', 'reports', 'finance'] },
 ];
 
-/** Highlight matching text within a string. */
+const markSx = { bgcolor: 'warning.light', color: 'inherit', borderRadius: 0.5, px: 0.2 } as const;
+
+/** Render `text` with the server-supplied highlight ranges (these already account for typos). */
+function Marked({ text, marks }: { text: string; marks: Mark[] }) {
+  if (marks.length === 0) return <>{text}</>;
+  const parts: React.ReactNode[] = [];
+  let pos = 0;
+  marks.forEach((m, i) => {
+    if (m.start > pos) parts.push(text.slice(pos, m.start));
+    parts.push(
+      <Box component="mark" key={i} sx={markSx}>
+        {text.slice(m.start, m.end)}
+      </Box>,
+    );
+    pos = m.end;
+  });
+  if (pos < text.length) parts.push(text.slice(pos));
+  return <>{parts}</>;
+}
+
+/** Highlight a typed query inside a short label (page shortcuts), typo-free substring only. */
 function highlightMatch(text: string, query: string): React.ReactNode {
-  if (!query.trim()) return text;
-  const lower = text.toLowerCase();
-  const q = query.toLowerCase();
-  const idx = lower.indexOf(q);
+  const q = query.trim().toLowerCase();
+  const idx = q ? text.toLowerCase().indexOf(q) : -1;
   if (idx === -1) return text;
-  return (
-    <>
-      {text.slice(0, idx)}
-      <Box component="mark" sx={{ bgcolor: 'warning.light', color: 'inherit', borderRadius: 0.5, px: 0.2 }}>
-        {text.slice(idx, idx + q.length)}
-      </Box>
-      {text.slice(idx + q.length)}
-    </>
-  );
+  return <Marked text={text} marks={[{ start: idx, end: idx + q.length }]} />;
 }
 
 interface GlobalSearchProps {
@@ -207,26 +190,45 @@ export default function GlobalSearch({ open, onClose }: GlobalSearchProps) {
   const { t } = useTranslation('widgets');
   const navigate = useNavigate();
   const tl = (l: string) => t(`page_${l.replace(/[^A-Za-z]/g, '')}`, l);
-  const tt = (ty: string) => t(`type_${ty.replace(/[^A-Za-z]/g, '')}`, ty);
+  const tt = (ty: string, fallback = ty) => t(`type_${ty.replace(/[^A-Za-z]/g, '')}`, { defaultValue: fallback });
+  const fl = (s: Snippet) => t(`gsField_${s.labelKey}`, { defaultValue: s.label });
   const [query, setQuery] = useState('');
-  const [results, setResults] = useState<SearchResult[]>([]);
+  const [response, setResponse] = useState<SearchResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
-  // Page shortcuts filtered by query (shown at top when matched)
+  // Page shortcuts filtered by query (shown at top when matched; tolerant of typos)
   const matchedPages = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return PAGE_SHORTCUTS.slice(0, 6); // show first 6 when empty
     return PAGE_SHORTCUTS.filter(
-      (p) => p.label.toLowerCase().includes(q) || tl(p.label).toLowerCase().includes(q) || p.keywords.some((k) => k.includes(q) || q.includes(k)),
+      (p) =>
+        looseMatch(p.label, q) ||
+        looseMatch(tl(p.label), q) ||
+        p.keywords.some((k) => k.includes(q) || q.includes(k) || looseMatch(k, q)),
     );
   }, [query, t]);
 
-  // Build the flat list of all selectable items (page shortcuts + search results)
-  const allItems: SearchResult[] = useMemo(() => {
-    const pages: SearchResult[] = matchedPages.map((p) => ({
+  // Records grouped by type, groups ordered by their best hit — the same order
+  // is used for rendering and for ↑/↓ navigation.
+  const groups = useMemo(() => {
+    const order: string[] = [];
+    const byModel = new Map<string, Hit[]>();
+    for (const hit of response?.results ?? []) {
+      if (!byModel.has(hit.model)) {
+        byModel.set(hit.model, []);
+        order.push(hit.model);
+      }
+      byModel.get(hit.model)!.push(hit);
+    }
+    return order.map((model) => ({ model, items: byModel.get(model)! }));
+  }, [response]);
+
+  const allItems: Item[] = useMemo(() => {
+    const pages: Item[] = matchedPages.map((p) => ({
       id: `page-${p.path}`,
       label: tl(p.label),
       path: p.path,
@@ -234,53 +236,45 @@ export default function GlobalSearch({ open, onClose }: GlobalSearchProps) {
       icon: p.icon,
       isPageShortcut: true,
     }));
-    return [...pages, ...results];
-  }, [matchedPages, results]);
+    const records: Item[] = groups.flatMap((g) =>
+      g.items.map((h) => ({ id: h.key, label: h.title, path: h.path, type: h.model, icon: iconFor(h.model) })),
+    );
+    return [...pages, ...records];
+  }, [matchedPages, groups, t]);
 
   const doSearch = useCallback(async (q: string) => {
+    abortRef.current?.abort();
     if (q.trim().length < 2) {
-      setResults([]);
+      setResponse(null);
       setLoading(false);
       return;
     }
+    const controller = new AbortController();
+    abortRef.current = controller;
     try {
-      const responses = await Promise.all(
-        SOURCES.map(async (src) => {
-          try {
-            const res = await api.get(src.endpoint, {
-              params: { search: q, page: 1, pageSize: 5 },
-            });
-            const rows: Record<string, unknown>[] = res.data?.data ?? [];
-            return rows.map((row) => ({
-              id: String(row.id),
-              label: src.label(row),
-              sublabel: src.sublabel?.(row),
-              path: src.path(String(row.id)),
-              type: src.type,
-              icon: src.icon,
-            }));
-          } catch {
-            return [];
-          }
-        }),
-      );
-      setResults(responses.flat());
-    } catch {
-      setResults([]);
+      const res = await api.get<SearchResponse>('/search', {
+        params: { q, limit: 40, perType: 6 },
+        signal: controller.signal,
+      });
+      setResponse(res.data);
+    } catch (err) {
+      if (axios.isCancel(err)) return;
+      setResponse(null);
     } finally {
-      setLoading(false);
+      if (abortRef.current === controller) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     if (!query.trim()) {
-      setResults([]);
+      abortRef.current?.abort();
+      setResponse(null);
       setLoading(false);
       return;
     }
     setLoading(true);
-    debounceRef.current = setTimeout(() => doSearch(query), 300);
+    debounceRef.current = setTimeout(() => doSearch(query), 150);
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
@@ -289,8 +283,9 @@ export default function GlobalSearch({ open, onClose }: GlobalSearchProps) {
   // Reset on close
   useEffect(() => {
     if (!open) {
+      abortRef.current?.abort();
       setQuery('');
-      setResults([]);
+      setResponse(null);
       setLoading(false);
       setSelectedIndex(0);
     }
@@ -307,17 +302,13 @@ export default function GlobalSearch({ open, onClose }: GlobalSearchProps) {
     el?.scrollIntoView({ block: 'nearest' });
   }, [selectedIndex]);
 
-  const handleSelect = (result: SearchResult) => {
+  const handleSelect = (item: Item) => {
+    if (!item.path) return; // record type with no page to open yet
     // Track in recently viewed (skip page shortcuts)
-    if (!result.isPageShortcut) {
-      addRecentlyViewed({
-        id: result.id,
-        label: result.label,
-        path: result.path,
-        type: result.type,
-      });
+    if (!item.isPageShortcut) {
+      addRecentlyViewed({ id: item.id, label: item.label, path: item.path, type: item.type });
     }
-    navigate(result.path);
+    navigate(item.path);
     onClose();
   };
 
@@ -337,14 +328,15 @@ export default function GlobalSearch({ open, onClose }: GlobalSearchProps) {
     }
   };
 
-  // Group search results by type (exclude page shortcuts — they're shown separately)
-  const grouped = results.reduce<Record<string, SearchResult[]>>((acc, r) => {
-    (acc[r.type] ??= []).push(r);
-    return acc;
-  }, {});
-
+  const hitCount = response?.results.length ?? 0;
   const showSearchResults = query.trim().length >= 2;
   const hasPageMatches = matchedPages.length > 0;
+  const idxOf = (id: string) => allItems.findIndex((a) => a.id === id);
+
+  const hitLine = (h: Hit) =>
+    [h.subtitle, ...h.related.map((r) => r.title), h.status ? enumLabel(h.status) : '', h.amount ? formatCurrency(h.amount) : '', h.date ? formatDate(h.date) : '']
+      .filter(Boolean)
+      .join(' · ');
 
   return (
     <Dialog
@@ -376,23 +368,22 @@ export default function GlobalSearch({ open, onClose }: GlobalSearchProps) {
           sx={{ '& .MuiOutlinedInput-root': { borderRadius: 0 } }}
         />
 
-        <Box ref={listRef} sx={{ maxHeight: 420, overflowY: 'auto' }}>
+        <Box ref={listRef} sx={{ maxHeight: 460, overflowY: 'auto' }}>
           {/* Page shortcuts (quick navigation) */}
           {hasPageMatches && (
             <Box>
               <Typography variant="overline" color="text.secondary" sx={{ px: 2, pt: 1, display: 'block' }}>
-                {query.trim() ? 'Pages' : 'Quick Navigation'}
+                {query.trim() ? t('gsPages') : t('gsQuick')}
               </Typography>
               <List dense sx={{ pt: 0 }}>
                 {matchedPages.map((p) => {
-                  const flatIdx = allItems.findIndex((a) => a.id === `page-${p.path}`);
-                  const isSelected = flatIdx === selectedIndex;
+                  const flatIdx = idxOf(`page-${p.path}`);
                   return (
                     <ListItemButton
                       key={p.path}
                       data-idx={flatIdx}
-                      selected={isSelected}
-                      onClick={() => handleSelect({ id: `page-${p.path}`, label: tl(p.label), path: p.path, type: 'Page', icon: p.icon })}
+                      selected={flatIdx === selectedIndex}
+                      onClick={() => handleSelect(allItems[flatIdx])}
                       sx={{ py: 0.5 }}
                     >
                       <ListItemIcon sx={{ minWidth: 36 }}>{p.icon}</ListItemIcon>
@@ -408,48 +399,84 @@ export default function GlobalSearch({ open, onClose }: GlobalSearchProps) {
             </Box>
           )}
 
-          {/* Search results from API */}
+          {/* Search results from the server index */}
           {showSearchResults && (
             <>
-              {results.length > 0 && hasPageMatches && <Divider sx={{ my: 0.5 }} />}
-              {results.length === 0 && !loading && !hasPageMatches ? (
+              {hitCount > 0 && hasPageMatches && <Divider sx={{ my: 0.5 }} />}
+              {hitCount === 0 && !loading && !hasPageMatches ? (
                 <Typography color="text.secondary" sx={{ p: 3, textAlign: 'center' }}>
                   {t('gsNoResults', { q: query })}
                 </Typography>
-              ) : results.length > 0 ? (
+              ) : hitCount > 0 ? (
                 <>
                   <Typography variant="overline" color="text.secondary" sx={{ px: 2, display: 'block' }}>
-                    {t('gsResults', { n: results.length > 0 ? `(${results.length})` : '' })}
+                    {t('gsResults', { n: `(${response?.total ?? hitCount})` })}
                   </Typography>
                   <List dense sx={{ pt: 0 }}>
-                    {Object.entries(grouped).map(([type, items]) => (
-                      <Box key={type}>
-                        <Typography variant="caption" color="text.secondary" sx={{ px: 2, pt: 0.5, display: 'block', fontWeight: 600 }}>
-                          {tt(type)}
-                        </Typography>
-                        {items.map((r) => {
-                          const flatIdx = allItems.findIndex((a) => a.id === r.id && a.type === r.type);
-                          const isSelected = flatIdx === selectedIndex;
-                          return (
-                            <ListItemButton
-                              key={`${r.type}-${r.id}`}
-                              data-idx={flatIdx}
-                              selected={isSelected}
-                              onClick={() => handleSelect(r)}
-                              sx={{ py: 0.5 }}
-                            >
-                              <ListItemIcon sx={{ minWidth: 36 }}>{r.icon}</ListItemIcon>
-                              <ListItemText
-                                primary={highlightMatch(r.label, query)}
-                                secondary={r.sublabel}
-                                primaryTypographyProps={{ variant: 'body2', noWrap: true }}
-                                secondaryTypographyProps={{ variant: 'caption', noWrap: true }}
-                              />
-                            </ListItemButton>
-                          );
-                        })}
-                      </Box>
-                    ))}
+                    {groups.map(({ model, items }) => {
+                      const more = (response?.counts[model] ?? items.length) - items.length;
+                      return (
+                        <Box key={model}>
+                          <Typography variant="caption" color="text.secondary" sx={{ px: 2, pt: 0.5, display: 'block', fontWeight: 600 }}>
+                            {tt(model, items[0].typeLabel)}
+                          </Typography>
+                          {items.map((h) => {
+                            const flatIdx = idxOf(h.key);
+                            const line = hitLine(h);
+                            return (
+                              <ListItemButton
+                                key={h.key}
+                                data-idx={flatIdx}
+                                selected={flatIdx === selectedIndex}
+                                onClick={() => handleSelect(allItems[flatIdx])}
+                                disabled={!h.path}
+                                sx={{ py: 0.5, alignItems: 'flex-start' }}
+                              >
+                                <ListItemIcon sx={{ minWidth: 36, mt: 0.5 }}>{iconFor(h.model)}</ListItemIcon>
+                                <ListItemText
+                                  primary={<Marked text={h.title} marks={h.titleMarks} />}
+                                  primaryTypographyProps={{ variant: 'body2', noWrap: true }}
+                                  secondaryTypographyProps={{ component: 'div' }}
+                                  secondary={
+                                    <>
+                                      {line && (
+                                        <Typography variant="caption" color="text.secondary" noWrap component="div">
+                                          {line}
+                                        </Typography>
+                                      )}
+                                      {h.matches.map((m, i) => (
+                                        <Typography key={i} variant="caption" color="text.primary" noWrap component="div">
+                                          <Box component="span" sx={{ color: 'text.secondary' }}>
+                                            {fl(m)}:{' '}
+                                          </Box>
+                                          <Marked text={m.text} marks={m.marks} />
+                                          {m.extra && (
+                                            <Box component="span" sx={{ color: 'text.secondary' }}>
+                                              {' '}
+                                              · {m.extra}
+                                            </Box>
+                                          )}
+                                        </Typography>
+                                      ))}
+                                      {h.via && (
+                                        <Typography variant="caption" color="text.secondary" noWrap component="div" sx={{ fontStyle: 'italic' }}>
+                                          {t('gsVia', { type: tt(h.via.model), title: h.via.title })}
+                                        </Typography>
+                                      )}
+                                    </>
+                                  }
+                                />
+                              </ListItemButton>
+                            );
+                          })}
+                          {more > 0 && (
+                            <Typography variant="caption" color="text.secondary" sx={{ px: 2, pb: 0.5, display: 'block' }}>
+                              {t('gsMore', { n: more })}
+                            </Typography>
+                          )}
+                        </Box>
+                      );
+                    })}
                   </List>
                 </>
               ) : null}
@@ -468,12 +495,10 @@ export default function GlobalSearch({ open, onClose }: GlobalSearchProps) {
                   {recent.map((r: RecentItem) => (
                     <ListItemButton
                       key={`${r.type}-${r.id}`}
-                      onClick={() => handleSelect({ id: r.id, label: r.label, path: r.path, type: r.type, icon: <SearchIcon fontSize="small" /> })}
+                      onClick={() => handleSelect({ id: r.id, label: r.label, path: r.path, type: r.type, icon: iconFor(r.type) })}
                       sx={{ py: 0.5 }}
                     >
-                      <ListItemIcon sx={{ minWidth: 36 }}>
-                        {SOURCES.find((s) => s.type === r.type)?.icon ?? <SearchIcon fontSize="small" />}
-                      </ListItemIcon>
+                      <ListItemIcon sx={{ minWidth: 36 }}>{iconFor(r.type)}</ListItemIcon>
                       <ListItemText
                         primary={r.label}
                         secondary={tt(r.type)}
