@@ -7,6 +7,7 @@ import {
   InvoiceVerificationStatus,
   InventoryTxnType,
   InventoryItemType,
+  StockSourceType,
   AssetStatus,
   PhaseStatus,
   ActivityStatus,
@@ -565,7 +566,9 @@ const goodsReceiptDispositionItem = z.object({
 });
 export const createGoodsReceiptSchema = z.object({
   body: z.object({
-    gatePassId: uuid,
+    // A goods receipt is raised against an approved PO; the gate pass is optional.
+    poId: uuid,
+    gatePassId: uuid.optional().nullable(),
     items: z.preprocess(
       (value) => (typeof value === 'string' ? JSON.parse(value) : value),
       z.array(goodsReceiptDeliveredItem).min(1),
@@ -613,7 +616,34 @@ export const createInventoryTxnSchema = z.object({
       .finite()
       .refine((v) => v !== 0, 'Quantity cannot be zero'),
     notes: z.string().max(500).optional(),
+    // Consumption tracking (OUT) / return context
+    purpose: z.string().trim().max(200).optional(),
+    phaseId: uuid.optional(),
+    budgetHeadId: uuid.optional(),
+    issuedTo: z.string().trim().max(200).optional(),
   }),
+});
+const stockEntryItem = z.object({
+  materialName: nonEmptyText(200),
+  unit: z.string().trim().min(1).max(20),
+  quantity: positiveQty,
+  unitCost: money.default(0),
+  itemType: z.nativeEnum(InventoryItemType).default(InventoryItemType.CONSUMABLE),
+  category: z.string().trim().max(100).optional(),
+});
+export const createStockEntrySchema = z.object({
+  body: z.object({
+    sourceType: z.nativeEnum(StockSourceType),
+    entryDate: dateStr.optional(),
+    supplierName: z.string().trim().max(200).optional(),
+    referenceNo: z.string().trim().max(100).optional(),
+    notes: z.string().trim().max(500).optional(),
+    items: z.array(stockEntryItem).min(1).max(100),
+  }),
+});
+export const rejectStockEntrySchema = z.object({
+  params: z.object({ id: uuid }),
+  body: z.object({ reason: nonEmptyText(500) }),
 });
 export const listInventorySchema = z.object({
   query: pagination.extend({ search: z.string().optional(), category: z.string().optional(), itemType: z.nativeEnum(InventoryItemType).optional() }),
@@ -622,6 +652,8 @@ export const listInventoryTxnsSchema = z.object({
   query: pagination.extend({
     itemId: uuid.optional(),
     type: z.nativeEnum(InventoryTxnType).optional(),
+    phaseId: uuid.optional(),
+    budgetHeadId: uuid.optional(),
   }),
 });
 

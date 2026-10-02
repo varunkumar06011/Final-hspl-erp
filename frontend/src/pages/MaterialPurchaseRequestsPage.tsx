@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  Box, Typography, Button, Card, CardContent, Chip, IconButton, DialogTitle, DialogContent, DialogActions,
+  Box, Typography, Button, Chip, IconButton, DialogTitle, DialogContent, DialogActions,
   TextField, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, CircularProgress,
   MenuItem, InputAdornment, Grid, Alert, ToggleButtonGroup, ToggleButton, Divider, Autocomplete, Tabs, Tab,
+  Accordion, AccordionSummary, AccordionDetails,
 } from '@mui/material';
 import {
+  ExpandMore as ExpandMoreIcon,
   Add as AddIcon,
   SwapHoriz as SwitchIcon,
   Delete as DeleteIcon,
@@ -113,6 +115,7 @@ export default function MaterialPurchaseRequestsPage() {
   const { user } = useAuthStore();
   const [requestTypeTab, setRequestTypeTab] = useState<MPRRequestType>(MPRRequestType.MATERIAL);
   const isServiceTab = requestTypeTab === MPRRequestType.SERVICE;
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [createOpen, setCreateOpen] = useState(false);
@@ -697,25 +700,45 @@ export default function MaterialPurchaseRequestsPage() {
           </Typography>
         </Paper>
       ) : (
-        <Grid container spacing={2}>
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
           {mprs.map((row) => {
             const pendingStep = canApprove(row);
             const isNonVendor = row.vendor?.vendorType === 'NON_VENDOR';
             return (
-            <Grid item xs={12} key={row.id}>
-              <Card
-                variant="outlined"
+              <Accordion
+                key={row.id}
                 ref={rowRef(row.id)}
-                sx={highlightId === row.id ? {
-                  borderColor: 'primary.main',
-                  boxShadow: (theme) => `0 0 0 2px ${theme.palette.primary.main}`,
-                  transition: 'box-shadow 0.3s ease',
-                } : undefined}
+                expanded={expandedId === row.id}
+                onChange={(_event, expanded) => setExpandedId(expanded ? row.id : null)}
+                sx={{
+                  mb: 1,
+                  bgcolor: 'background.paper',
+                  color: 'text.primary',
+                  border: '1px solid',
+                  borderColor: highlightId === row.id ? 'primary.main' : 'divider',
+                  borderRadius: 1,
+                  overflow: 'hidden',
+                  '&:before': { display: 'none' },
+                  '&:hover': { borderColor: 'primary.main' },
+                }}
               >
-                <CardContent>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 1 }}>
-                    <Box>
-                      <Typography variant="subtitle1" fontWeight={700}>{row.mprNumber}</Typography>
+                <AccordionSummary
+                  expandIcon={<ExpandMoreIcon />}
+                  sx={{ minHeight: 52, '&.Mui-expanded': { minHeight: 52 }, '& .MuiAccordionSummary-content': { my: 1, '&.Mui-expanded': { my: 1 } } }}
+                >
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap', minWidth: 0 }}>
+                    <Typography component="span" sx={{ fontSize: { xs: '0.82rem', sm: '0.9rem' } }}>
+                      <strong>{row.mprNumber}</strong> — {row.vendor?.name ?? row.createdByUser?.name ?? '—'} — {formatDate(row.date)}
+                    </Typography>
+                    <Chip
+                      label={t(`status.${row.status}`, enumLabel(row.status))}
+                      size="small"
+                      color={(STATUS_COLORS[row.status] as any) ?? 'default'}
+                    />
+                  </Box>
+                </AccordionSummary>
+                <AccordionDetails sx={{ borderTop: '1px solid', borderColor: 'divider', p: 1.25 }}>
+                  <Box sx={{ minWidth: 0 }}>
                       <Typography variant="body2" color="text.secondary">
                         {t('dateLine', { date: formatDate(row.date), required: row.requiredBy ? formatDate(row.requiredBy) : '—', dept: row.department ?? '—' })}
                       </Typography>
@@ -743,26 +766,14 @@ export default function MaterialPurchaseRequestsPage() {
                       {row.description && (
                         <Typography variant="body2" sx={{ mt: 0.5, color: 'text.primary' }}>{row.description}</Typography>
                       )}
-                    </Box>
-                    <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 1 }}>
-                      <Chip
-                        label={t(`status.${row.status}`, enumLabel(row.status))}
-                        size="small"
-                        color={(STATUS_COLORS[row.status] as any) ?? 'default'}
-                      />
-                    </Box>
-                  </Box>
 
                   {/* Items summary */}
                   <Box sx={{ mt: 1 }}>
-                    {row.items.slice(0, 3).map((item, idx) => (
+                    {row.items.map((item, idx) => (
                       <Typography key={idx} variant="caption" sx={{ display: 'block', color: 'text.secondary' }}>
                         • {item.materialCode ? `[${item.materialCode}] ` : ''}{item.materialName} — {item.quantity}{item.unit ? ` ${item.unit}` : ''}{item.requiredDate ? t('requiredByShort', { d: formatDate(item.requiredDate) }) : ''}
                       </Typography>
                     ))}
-                    {row.items.length > 3 && (
-                      <Typography variant="caption" color="text.secondary">{t('andMore', { n: row.items.length - 3 })}</Typography>
-                    )}
                   </Box>
 
                   {/* Quotations raised against this MPR */}
@@ -863,12 +874,12 @@ export default function MaterialPurchaseRequestsPage() {
                       <Button size="small" color="success" onClick={() => closeMutation.mutate(row.id)} disabled={closeMutation.isPending}>{t('markClosed')}</Button>
                     )}
                   </Box>
-                </CardContent>
-              </Card>
-            </Grid>
+                  </Box>
+                </AccordionDetails>
+              </Accordion>
             );
           })}
-        </Grid>
+        </Box>
       )}
 
       {/* Create / Edit Dialog */}

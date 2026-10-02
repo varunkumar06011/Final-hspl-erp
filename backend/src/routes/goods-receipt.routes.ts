@@ -17,6 +17,7 @@ import { generateAssetId } from './asset.routes';
 import { ensureVendorLedger, findLedgerByName } from './ledger.routes';
 import { postVoucher, generateVoucherNumber } from './voucher.routes';
 import { hasPoAccrual } from '../services/po-accrual.service';
+import { applyInbound } from '../services/inventory-valuation.service';
 
 const router = Router();
 router.use(authMiddleware);
@@ -183,6 +184,85 @@ router.get(
   },
 );
 
+/** Quantity already accepted (posted receipts) and still sitting in open receipts, per PO line. */
+async function receivedByPo(poId: string) {
+  const receipts = await prisma.goodsReceipt.findMany({
+    where: {
+      poId,
+      deletedAt: null,
+      status: { in: [GoodsReceiptStatus.POSTED, GoodsReceiptStatus.PENDING_INSPECTION, GoodsReceiptStatus.READY_TO_POST] },
+    },
+    select: { status: true, items: { select: { poItemId: true, materialName: true, acceptedQty: true, deliveredQty: true } } },
+  });
+  const accepted = new Map<string, number>();
+  const pending = new Map<string, number>();
+  const bump = (m: Map<string, number>, key: string, qty: number) => m.set(key, (m.get(key) ?? 0) + qty);
+  for (const r of receipts) {
+    for (const line of r.items) {
+      const key = line.poItemId ?? line.materialName.toLowerCase();
+      if (r.status === GoodsReceiptStatus.POSTED) bump(accepted, key, Number(line.acceptedQty));
+      else bump(pending, key, Number(line.deliveredQty));
+    }
+  }
+  return { accepted, pending };
+}
+
+// POs goods can be received against: approved (or part-delivered) POs with what
+// is still outstanding per line, plus any open gate passes that could be linked.
+router.get(
+  '/available-pos',
+  rbacMiddleware(Permission.MANAGE_INVENTORY),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      const pos = await prisma.purchaseOrder.findMany({
+        where: { projectId, deletedAt: null, status: { in: ['APPROVED', 'PARTIALLY_DELIVERED'] } },
+        include: {
+          vendor: { select: { id: true, name: true, vendorCode: true } },
+          items: true,
+          gatePasses: {
+            where: { deletedAt: null, status: 'APPROVED', goodsReceipts: { none: {} } },
+            select: { id: true, passNumber: true, date: true },
+            orderBy: { createdAt: 'desc' },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+      const data = await Promise.all(
+        pos.map(async (po) => {
+          const { accepted, pending } = await receivedByPo(po.id);
+          return {
+            id: po.id,
+            poNumber: po.poNumber,
+            paymentType: po.paymentType,
+            vendor: po.vendor,
+            gatePasses: po.gatePasses,
+            items: po.items.map((item) => {
+              const ordered = Number(item.quantity);
+              const key = item.id;
+              const nameKey = item.materialName.toLowerCase();
+              const receivedQty = accepted.get(key) ?? accepted.get(nameKey) ?? 0;
+              const pendingQty = pending.get(key) ?? pending.get(nameKey) ?? 0;
+              return {
+                id: item.id,
+                materialName: item.materialName,
+                unit: item.unit,
+                orderedQuantity: ordered,
+                receivedQuantity: receivedQty,
+                pendingQuantity: pendingQty,
+                remainingQuantity: Math.max(0, ordered - receivedQty - pendingQty),
+              };
+            }),
+          };
+        }),
+      );
+      res.json({ data: data.filter((po) => po.items.some((i) => i.remainingQuantity > 0)) });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
 router.post(
   '/',
   rbacMiddleware(Permission.MANAGE_INVENTORY),
@@ -190,75 +270,71 @@ router.post(
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const projectId = requireProjectId(req);
-      const gatePass = await prisma.gatePass.findFirst({
-        where: { id: req.body.gatePassId, projectId, status: 'APPROVED', deletedAt: null },
-        include: { items: true, purchaseOrder: { include: { items: true } } },
+
+      // The approved PO is what authorises receiving goods. A gate pass is optional.
+      const po = await prisma.purchaseOrder.findFirst({
+        where: { id: req.body.poId, projectId, deletedAt: null },
+        include: { items: true },
       });
-      if (!gatePass || !gatePass.purchaseOrder) {
-        res.status(400).json({ error: 'Only an approved material gatepass can create a goods receipt' });
+      if (!po) {
+        res.status(400).json({ error: 'Purchase order not found' });
         return;
+      }
+      if (!['APPROVED', 'PARTIALLY_DELIVERED'].includes(po.status)) {
+        res.status(400).json({ error: 'Goods can only be received against an approved purchase order' });
+        return;
+      }
+
+      const gatePass = req.body.gatePassId
+        ? await prisma.gatePass.findFirst({
+            where: { id: req.body.gatePassId, projectId, poId: po.id, status: 'APPROVED', deletedAt: null },
+            include: { items: true },
+          })
+        : null;
+      if (req.body.gatePassId) {
+        if (!gatePass) {
+          res.status(400).json({ error: 'The gate pass must be an approved gate pass of this purchase order' });
+          return;
+        }
+        const existing = await prisma.goodsReceipt.findFirst({ where: { gatePassId: gatePass.id, deletedAt: null }, select: { receiptNumber: true } });
+        if (existing) {
+          res.status(409).json({ error: `Gate pass ${gatePass.passNumber} already has goods receipt ${existing.receiptNumber}` });
+          return;
+        }
       }
 
       // Delivered quantities come from the request — the user enters what actually arrived
       const deliveredItems = req.body.items as { materialName: string; deliveredQty: number; unit?: string | null }[];
+      const poItems = new Map(po.items.map((item) => [item.materialName.toLowerCase(), item]));
+      const gatePassItems = gatePass ? new Map(gatePass.items.map((item) => [item.materialName.toLowerCase(), item])) : null;
 
-      // ── E10: Validate delivered items against gate pass items, not PO items ──
-      // The gate pass is the source of truth for what was physically dispatched.
-      // Matching against PO items by materialName breaks when the PO has
-      // duplicate material names (e.g. same material at different prices).
-      const gatePassItems = new Map(gatePass.items.map((item) => [item.materialName.toLowerCase(), item]));
+      // Cumulative received (accepted + still in open receipts) must not pass the ordered quantity.
+      const { accepted, pending } = await receivedByPo(po.id);
       for (const item of deliveredItems) {
-        const gpItem = gatePassItems.get(item.materialName.toLowerCase());
-        if (!gpItem) {
-          res.status(400).json({ error: `Item ${item.materialName} was not on gate pass ${gatePass.passNumber}` });
-          return;
-        }
-        if (Number(item.deliveredQty) > Number(gpItem.quantity) + 0.01) {
-          res.status(400).json({
-            error: `Delivered quantity (${item.deliveredQty}) for ${item.materialName} exceeds gate pass quantity (${gpItem.quantity})`,
-          });
-          return;
-        }
-      }
-
-      // Still need PO items for poItemId linkage and unit fallback
-      const poItems = new Map(gatePass.purchaseOrder.items.map((item) => [item.materialName.toLowerCase(), item]));
-
-      // Validate each delivered item is part of the PO
-      for (const item of deliveredItems) {
-        if (!poItems.has(item.materialName.toLowerCase())) {
+        const name = item.materialName.toLowerCase();
+        const poItem = poItems.get(name);
+        if (!poItem) {
           res.status(400).json({ error: `Item ${item.materialName} is not part of the purchase order` });
           return;
         }
-      }
-
-      // Enforce that cumulative delivered quantity does not exceed the PO ordered
-      // quantity. Already-accepted quantities from posted GRNs are counted so that
-      // a second delivery cannot push the total past the ordered amount.
-      const postedReceipts = await prisma.goodsReceipt.findMany({
-        where: { poId: gatePass.poId!, deletedAt: null, status: GoodsReceiptStatus.POSTED },
-        select: { items: { select: { poItemId: true, materialName: true, acceptedQty: true } } },
-      });
-      const acceptedByPoItemId = new Map<string, number>();
-      const acceptedByName = new Map<string, number>();
-      for (const r of postedReceipts) {
-        for (const line of r.items) {
-          const qty = Number(line.acceptedQty);
-          if (line.poItemId) acceptedByPoItemId.set(line.poItemId, (acceptedByPoItemId.get(line.poItemId) ?? 0) + qty);
-          const name = line.materialName.toLowerCase();
-          acceptedByName.set(name, (acceptedByName.get(name) ?? 0) + qty);
+        if (gatePassItems) {
+          const gpItem = gatePassItems.get(name);
+          if (!gpItem) {
+            res.status(400).json({ error: `Item ${item.materialName} was not on gate pass ${gatePass!.passNumber}` });
+            return;
+          }
+          if (Number(item.deliveredQty) > Number(gpItem.quantity) + 0.01) {
+            res.status(400).json({
+              error: `Delivered quantity (${item.deliveredQty}) for ${item.materialName} exceeds gate pass quantity (${gpItem.quantity})`,
+            });
+            return;
+          }
         }
-      }
-      for (const item of deliveredItems) {
-        const poItem = poItems.get(item.materialName.toLowerCase())!;
-        const alreadyAccepted =
-          (poItem.id && acceptedByPoItemId.has(poItem.id)
-            ? acceptedByPoItemId.get(poItem.id)!
-            : acceptedByName.get(item.materialName.toLowerCase()) ?? 0);
+        const already = (accepted.get(poItem.id) ?? accepted.get(name) ?? 0) + (pending.get(poItem.id) ?? pending.get(name) ?? 0);
         const ordered = Number(poItem.quantity);
-        if (alreadyAccepted + Number(item.deliveredQty) > ordered + 0.01) {
+        if (already + Number(item.deliveredQty) > ordered + 0.01) {
           res.status(400).json({
-            error: `Cannot deliver ${item.deliveredQty} ${item.materialName}: ${alreadyAccepted} already accepted, only ${ordered} ordered`,
+            error: `Cannot receive ${item.deliveredQty} ${item.materialName}: ${already} already received or awaiting inspection, only ${ordered} ordered`,
           });
           return;
         }
@@ -268,8 +344,8 @@ router.post(
       const receipt = await prisma.goodsReceipt.create({
         data: {
           projectId,
-          poId: gatePass.poId!,
-          gatePassId: gatePass.id,
+          poId: po.id,
+          gatePassId: gatePass?.id ?? null,
           receiptNumber,
           status: GoodsReceiptStatus.PENDING_INSPECTION,
           createdBy: req.user!.id,
@@ -292,13 +368,13 @@ router.post(
         entityType: 'GOODS_RECEIPT',
         entityId: receipt.id,
         projectId,
-        newValue: { receiptNumber, gatePassId: gatePass.id, poId: gatePass.poId },
+        newValue: { receiptNumber, poId: po.id, gatePassId: gatePass?.id ?? null },
       });
       notifyAllHeads(projectId, {
         entityType: 'GOODS_RECEIPT',
         entityId: receipt.id,
         title: 'Goods Receipt Created',
-        body: `${receiptNumber} created from gatepass ${gatePass.passNumber}`,
+        body: `${receiptNumber} created for ${po.poNumber}${gatePass ? ` (gate pass ${gatePass.passNumber})` : ''}`,
         url: '/inventory',
       }).catch((error) => console.error('[Push] Goods receipt notification error:', error));
 
@@ -484,12 +560,13 @@ router.post(
           // DB applies the delta, preventing lost updates when a stock issue
           // (or another GRN) touches this item concurrently. The resulting
           // balance is read back for the transaction log's balanceAfter.
-          const updatedItem = await tx.inventoryItem.update({
-            where: { id: inventoryItem.id },
-            data: { currentStock: { increment: Number(line.acceptedQty) } },
-            select: { currentStock: true },
-          });
-          const newBalance = Number(updatedItem.currentStock);
+          // Valued at the PO unit price (ex-GST: input GST is claimed, not stock cost).
+          const moved = await applyInbound(
+            tx,
+            inventoryItem.id,
+            Number(line.acceptedQty),
+            line.poItem ? Number(line.poItem.unitPrice) : 0,
+          );
           await tx.inventoryTransaction.create({
             data: {
               itemId: inventoryItem.id,
@@ -497,7 +574,9 @@ router.post(
               goodsReceiptId: receipt.id,
               type: 'IN',
               quantity: line.acceptedQty,
-              balanceAfter: newBalance,
+              balanceAfter: moved.balance,
+              unitCost: moved.unitCost,
+              totalCost: moved.totalCost,
               userId: req.user!.id,
               notes: `Accepted from ${receipt.receiptNumber}`,
             },
@@ -508,7 +587,7 @@ router.post(
             const acceptedCount = Math.floor(Number(line.acceptedQty));
             const poItem = line.poItem;
             const po = receipt.purchaseOrder;
-            const invoice = receipt.gatePass.invoice;
+            const invoice = receipt.gatePass?.invoice ?? null;
             const unitPrice = poItem ? Number(poItem.unitPrice) : null;
             const gstRate = poItem ? Number(poItem.gstRate) : null;
             const gstAmount = unitPrice && gstRate ? unitPrice * gstRate / 100 : null;
@@ -540,7 +619,7 @@ router.post(
                   poCreatedBy: po?.createdByUser?.name ?? null,
                   receiptNumber: receipt.receiptNumber,
                   receiptDate: receipt.createdAt,
-                  gatePassNumber: receipt.gatePass.passNumber,
+                  gatePassNumber: receipt.gatePass?.passNumber ?? null,
                   receivedBy: receipt.inspectedByUser?.name ?? null,
                   postedBy: req.user!.name,
                   // Live traceability links
@@ -564,7 +643,7 @@ router.post(
             }
           }
         }
-        if (receipt.gatePass.invoiceId) {
+        if (receipt.gatePass?.invoiceId) {
           await tx.vendorInvoice.update({
             where: { id: receipt.gatePass.invoiceId },
             data: { stockStatus: 'RECEIVED' },
@@ -575,10 +654,12 @@ router.post(
         // Once a goods receipt is posted, the authorized shipment has been received;
         // keeping it APPROVED would cause the in-transit calculation to double-count
         // already-delivered quantities against the PO remaining quantity.
-        await tx.gatePass.update({
-          where: { id: receipt.gatePassId },
-          data: { status: GatePassStatus.DELIVERED },
-        });
+        if (receipt.gatePassId) {
+          await tx.gatePass.update({
+            where: { id: receipt.gatePassId },
+            data: { status: GatePassStatus.DELIVERED },
+          });
+        }
 
         // ── A24: Update PO status inside the same transaction ──
         // Previously this was done after the transaction committed, so a
@@ -613,6 +694,14 @@ router.post(
           where: { id: receipt.poId },
           data: { status: fullyReceived ? 'DELIVERED' : 'PARTIALLY_DELIVERED' },
         });
+        // No gate pass to carry an invoice link: once the PO is fully received, its
+        // pending invoices are marked as received too.
+        if (fullyReceived && !receipt.gatePass?.invoiceId) {
+          await tx.vendorInvoice.updateMany({
+            where: { poId: receipt.poId, projectId, deletedAt: null, stockStatus: 'PENDING' },
+            data: { stockStatus: 'RECEIVED' },
+          });
+        }
 
         // ── Accounting: create a PURCHASE voucher for the goods received ──
         // Dr Purchase (consumables) / Dr Fixed Assets (asset items) + Dr Input GST, Cr Sundry Creditor
@@ -798,7 +887,7 @@ router.post(
                 entries: voucherEntries,
                 ledgerMap,
                 budgetHeadMap: new Map(),
-                sourceInvoiceId: receipt.gatePass.invoiceId ?? null,
+                sourceInvoiceId: receipt.gatePass?.invoiceId ?? null,
                 billSettlements: [],
                 userId: req.user!.id,
                 tx,

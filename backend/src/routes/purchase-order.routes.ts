@@ -310,6 +310,20 @@ router.get(
               inventoryItem: { select: { id: true, name: true } },
             },
           },
+          // Receipts raised straight against the PO (no gate pass)
+          goodsReceipts: {
+            where: { deletedAt: null, gatePassId: null },
+            orderBy: { createdAt: 'asc' },
+            select: {
+              id: true,
+              receiptNumber: true,
+              status: true,
+              createdAt: true,
+              inspectedAt: true,
+              postedAt: true,
+              items: { select: { materialName: true, deliveredQty: true, acceptedQty: true, rejectedQty: true, rejectionReason: true } },
+            },
+          },
           gatePasses: {
             where: { deletedAt: null },
             orderBy: { createdAt: 'asc' },
@@ -362,7 +376,7 @@ router.get(
       });
 
       // Build delivery instances from gate passes
-      const deliveries = po.gatePasses.map((gp) => ({
+      const deliveries: Record<string, any>[] = po.gatePasses.map((gp) => ({
         gatePassId: gp.id,
         passNumber: gp.passNumber,
         gatePassStatus: gp.status,
@@ -387,6 +401,33 @@ router.get(
           })),
         })),
       }));
+
+      // Receipts with no gate pass appear as deliveries without a gate pass.
+      for (const gr of po.goodsReceipts) {
+        deliveries.push({
+          gatePassId: null,
+          passNumber: null,
+          gatePassStatus: null,
+          gatePassDate: gr.createdAt,
+          approvedDate: null,
+          items: gr.items.map((gri) => ({ materialName: gri.materialName, deliveredQty: Number(gri.deliveredQty), unit: null })),
+          goodsReceipts: [
+            {
+              receiptNumber: gr.receiptNumber,
+              receiptStatus: gr.status,
+              inspectedAt: gr.inspectedAt,
+              postedAt: gr.postedAt,
+              items: gr.items.map((gri) => ({
+                materialName: gri.materialName,
+                deliveredQty: Number(gri.deliveredQty),
+                acceptedQty: Number(gri.acceptedQty),
+                rejectedQty: Number(gri.rejectedQty),
+                rejectionReason: gri.rejectionReason,
+              })),
+            },
+          ],
+        });
+      }
 
       res.json({
         poNumber: po.poNumber,

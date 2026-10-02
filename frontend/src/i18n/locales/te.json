@@ -169,7 +169,13 @@
     "ADMIN": "అడ్మిన్",
     "ADMIN_2": "అడ్మిన్ 2",
     "RTGS": "RTGS",
-    "NEFT": "NEFT"
+    "NEFT": "NEFT",
+    "RETURN": "తిరిగి ఇవ్వడం",
+    "OPENING_STOCK": "ప్రారంభ నిల్వ",
+    "CASH_PURCHASE": "నగదు / చిన్న కొనుగోలు",
+    "OWNER_FREE_ISSUE": "యజమాని ఉచిత సరఫరా",
+    "PROJECT_TRANSFER": "మరో ప్రాజెక్ట్ నుండి బదిలీ",
+    "SITE_RETURN": "సైట్ నుండి తిరిగి వచ్చింది"
   },
   "units": {
     "nos": "సంఖ్య (ముక్కలు)",

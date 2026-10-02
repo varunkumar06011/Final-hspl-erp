@@ -46,6 +46,8 @@ model User {
   createdGoodsReceipts    GoodsReceipt[]         @relation("GoodsReceiptCreatedBy")
   inspectedGoodsReceipts  GoodsReceipt[]         @relation("GoodsReceiptInspectedBy")
   postedGoodsReceipts     GoodsReceipt[]         @relation("GoodsReceiptPostedBy")
+  createdStockEntries     StockEntry[]           @relation("StockEntryCreatedBy")
+  approvedStockEntries    StockEntry[]           @relation("StockEntryApprovedBy")
   inventoryTxns           InventoryTransaction[]
   assetsIssuedBy          Asset[]                @relation("AssetIssuedBy")
   assetsLastScannedBy     Asset[]                @relation("AssetLastScannedBy")
@@ -114,6 +116,7 @@ model Project {
   gatePasses        GatePass[]
   goodsReceipts     GoodsReceipt[]
   inventoryItems    InventoryItem[]
+  stockEntries      StockEntry[]
   assets            Asset[]
   phases            Phase[]
   photos            SitePhoto[]
@@ -663,7 +666,9 @@ model GoodsReceipt {
   id            String    @id @default(uuid()) @db.Uuid
   projectId     String    @db.Uuid
   poId          String    @db.Uuid
-  gatePassId    String    @db.Uuid
+  // Optional: a goods receipt is raised against an approved PO; a gate pass is
+  // linked only when one was issued for the delivery.
+  gatePassId    String?   @db.Uuid
   receiptNumber String
   status        String    @default("PENDING_INSPECTION")
   inspectedBy   String?   @db.Uuid
@@ -677,7 +682,7 @@ model GoodsReceipt {
 
   project         Project                @relation(fields: [projectId], references: [id])
   purchaseOrder   PurchaseOrder          @relation(fields: [poId], references: [id])
-  gatePass        GatePass               @relation(fields: [gatePassId], references: [id])
+  gatePass        GatePass?              @relation(fields: [gatePassId], references: [id])
   createdByUser   User                   @relation("GoodsReceiptCreatedBy", fields: [createdBy], references: [id])
   inspectedByUser User?                  @relation("GoodsReceiptInspectedBy", fields: [inspectedBy], references: [id])
   postedByUser    User?                  @relation("GoodsReceiptPostedBy", fields: [postedBy], references: [id])
@@ -755,14 +760,73 @@ model InventoryTransaction {
   userId         String   @db.Uuid
   notes          String?
   timestamp      DateTime @default(now())
+  // Direct (no-PO) receipts and consumption tracking
+  stockEntryId   String?  @db.Uuid
+  purpose        String?  // why the stock moved (DropdownOption STOCK_PURPOSE or free text)
+  phaseId        String?  @db.Uuid // OUT: phase the material was consumed on
+  budgetHeadId   String?  @db.Uuid // OUT: budget head the consumption is charged to
+  issuedTo       String?  // OUT: person / crew who took the material
 
   inventoryItem InventoryItem @relation(fields: [itemId], references: [id])
   gatePass      GatePass?     @relation(fields: [gatePassId], references: [id])
   goodsReceipt  GoodsReceipt? @relation(fields: [goodsReceiptId], references: [id])
+  stockEntry    StockEntry?   @relation(fields: [stockEntryId], references: [id])
+  phase         Phase?        @relation(fields: [phaseId], references: [id])
+  budgetHead    BudgetHead?   @relation(fields: [budgetHeadId], references: [id])
   user          User          @relation(fields: [userId], references: [id])
 
   @@index([itemId, timestamp])
+  @@index([stockEntryId])
   @@map("inventory_transactions")
+}
+
+// Direct stock receipt that does not come from a PO: opening stock, cash/petty
+// purchases, owner free-issue, transfers from another project and returns from
+// site. Posts to inventory (IN transactions) once a head/admin approves it.
+model StockEntry {
+  id              String    @id @default(uuid()) @db.Uuid
+  projectId       String    @db.Uuid
+  entryNumber     String
+  sourceType      String    // StockSourceType enum
+  status          String    @default("PENDING_APPROVAL") // StockEntryStatus enum
+  entryDate       DateTime  @default(now())
+  supplierName    String?   // who it came from (shop, owner, other project)
+  referenceNo     String?   // bill / challan / transfer number
+  notes           String?
+  createdBy       String    @db.Uuid
+  approvedBy      String?   @db.Uuid
+  approvedAt      DateTime?
+  rejectionReason String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  deletedAt       DateTime?
+
+  project        Project                @relation(fields: [projectId], references: [id])
+  createdByUser  User                   @relation("StockEntryCreatedBy", fields: [createdBy], references: [id])
+  approvedByUser User?                  @relation("StockEntryApprovedBy", fields: [approvedBy], references: [id])
+  items          StockEntryItem[]
+  inventoryTxns  InventoryTransaction[]
+
+  @@unique([projectId, entryNumber])
+  @@index([projectId, deletedAt])
+  @@index([projectId, status])
+  @@map("stock_entries")
+}
+
+model StockEntryItem {
+  id           String   @id @default(uuid()) @db.Uuid
+  stockEntryId String   @db.Uuid
+  materialName String
+  unit         String?
+  quantity     Decimal  @db.Decimal(10, 2)
+  unitCost     Decimal  @default(0) @db.Decimal(15, 2)
+  itemType     String   @default("CONSUMABLE") // InventoryItemType enum
+  category     String?
+  createdAt    DateTime @default(now())
+
+  stockEntry StockEntry @relation(fields: [stockEntryId], references: [id], onDelete: Cascade)
+
+  @@map("stock_entry_items")
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -941,6 +1005,7 @@ model Phase {
   quotations     Quotation[]
   purchaseOrders PurchaseOrder[]
   photos         SitePhoto[]
+  inventoryTxns  InventoryTransaction[]
 
   @@map("phases")
 }
@@ -1346,6 +1411,7 @@ model BudgetHead {
   ledgerEntries   LedgerEntry[]
   bankTransactions BankTransaction[] @relation("BankTxnBudgetHead")
   cashTransactions CashTransaction[] @relation("CashTxnBudgetHead")
+  inventoryTxns    InventoryTransaction[]
 
   @@unique([projectId, slNo])
   @@index([projectId])

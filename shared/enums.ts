@@ -232,6 +232,23 @@ export enum InventoryTxnType {
   IN = 'IN',
   OUT = 'OUT',
   ADJUST = 'ADJUST',
+  /** Unused material handed back to the store (inbound at the current average cost). */
+  RETURN = 'RETURN',
+}
+
+/** Where stock that did not come through a PO originated. */
+export enum StockSourceType {
+  OPENING_STOCK = 'OPENING_STOCK',
+  CASH_PURCHASE = 'CASH_PURCHASE',
+  OWNER_FREE_ISSUE = 'OWNER_FREE_ISSUE',
+  PROJECT_TRANSFER = 'PROJECT_TRANSFER',
+  SITE_RETURN = 'SITE_RETURN',
+}
+
+export enum StockEntryStatus {
+  PENDING_APPROVAL = 'PENDING_APPROVAL',
+  POSTED = 'POSTED',
+  REJECTED = 'REJECTED',
 }
 
 export enum InventoryItemType {

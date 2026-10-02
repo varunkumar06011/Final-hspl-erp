@@ -25,7 +25,6 @@ import {
   InputAdornment,
   Tabs,
   Tab,
-  Grid,
   Stack,
   LinearProgress,
 } from '@mui/material';
@@ -40,17 +39,20 @@ import {
   Inventory2 as ItemsIcon,
   History as HistoryIcon,
   Warning as WarningIcon,
-  Category as CategoryIcon,
-  Layers as LayersIcon,
+  MoveToInbox as ReceiveIcon,
+  PlaylistAddCheck as EntriesIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { InventoryTxnType, InventoryItemType } from '@hospital-erp/shared';
-import { enumToOptions, formatIndianNumber } from '../utils/enumOptions';
+import { enumToOptions, enumLabel, formatIndianNumber, formatCurrency } from '../utils/enumOptions';
 import api, { extractErrorMessage } from '../config/api';
 import CreatableSelect from '../components/CreatableSelect';
 import AttachmentUpload from '../components/AttachmentUpload';
 import ResponsiveTable from '../components/ResponsiveTable';
 import RefreshButton from '../components/RefreshButton';
+import InventorySummary, { InventorySummaryData } from '../components/inventory/InventorySummary';
+import ReceiveStockDialog from '../components/inventory/ReceiveStockDialog';
+import StockEntriesTab from '../components/inventory/StockEntriesTab';
 
 import { useTranslation } from 'react-i18next';
 import FilePicker from '../components/FilePicker';
@@ -72,6 +74,8 @@ export default function InventoryPage() {
   const [error, setError] = useState('');
   const queryClient = useQueryClient();
 
+  const [receiveOpen, setReceiveOpen] = useState(false);
+  const [notice, setNotice] = useState('');
   const endpoint = tab === 0 ? '/inventory/items' : '/inventory/transactions';
 
   const { data, isLoading, refetch } = useQuery({
@@ -82,25 +86,22 @@ export default function InventoryPage() {
       const response = await api.get(endpoint, { params });
       return response.data;
     },
+    enabled: tab !== 2,
   });
 
-  // Fetch all items (up to 100) for summary stats — independent of pagination/search
-  const { data: statsData } = useQuery({
-    queryKey: ['/inventory/items', 'stats'],
+  // Headline metrics (value, stock health, 30-day movement). Only available to
+  // inventory managers, so a 403 simply hides the panel.
+  const { data: summary, refetch: refetchSummary } = useQuery<InventorySummaryData | null>({
+    queryKey: ['/inventory/summary'],
     queryFn: async () => {
-      const response = await api.get('/inventory/items', { params: { page: 1, pageSize: 100 } });
-      return response.data;
+      try {
+        return (await api.get('/inventory/summary')).data;
+      } catch {
+        return null;
+      }
     },
   });
-  const statsItems: Record<string, unknown>[] = statsData?.data ?? [];
-  const stats = {
-    total: statsItems.length,
-    lowStock: statsItems.filter(
-      (i) => Number(i.minStockLevel) > 0 && Number(i.currentStock) <= Number(i.minStockLevel),
-    ).length,
-    assets: statsItems.filter((i) => i.itemType === InventoryItemType.ASSET).length,
-    consumables: statsItems.filter((i) => i.itemType === InventoryItemType.CONSUMABLE).length,
-  };
+  const stats = { lowStock: summary?.lowStockCount ?? 0 };
 
   const createMutation = useMutation({
     mutationFn: async (payload: Record<string, unknown>) => {
@@ -109,6 +110,7 @@ export default function InventoryPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/inventory/items'] });
+      queryClient.invalidateQueries({ queryKey: ['/inventory/summary'] });
       queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
       setDialogOpen(false);
       setForm({});
@@ -157,6 +159,7 @@ export default function InventoryPage() {
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['/inventory/transactions'] });
       queryClient.invalidateQueries({ queryKey: ['/inventory/items'] });
+      queryClient.invalidateQueries({ queryKey: ['/inventory/summary'] });
       queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
       setTxnDialogOpen(false);
       setTxnForm({});
@@ -209,9 +212,32 @@ export default function InventoryPage() {
     }
   };
 
+  const describeTxn = (row: Record<string, unknown>): string => {
+    const parts: string[] = [];
+    const gr = row.goodsReceipt as { receiptNumber?: string } | null;
+    const se = row.stockEntry as { entryNumber?: string; sourceType?: string } | null;
+    if (gr?.receiptNumber) parts.push(`${tr('fromPo')} ${gr.receiptNumber}`);
+    if (se?.entryNumber) parts.push(`${enumLabel(se.sourceType)} ${se.entryNumber}`);
+    const phase = row.phase as { name?: string } | null;
+    const head = row.budgetHead as { particulars?: string } | null;
+    if (phase?.name) parts.push(phase.name);
+    if (head?.particulars) parts.push(head.particulars);
+    const purpose = String(row.purpose ?? '');
+    if (purpose && !se) parts.push(purpose);
+    return parts.length ? parts.join(' · ') : '—';
+  };
+
   const handleTransactionSubmit = () => {
     if (!txnForm.itemId || !txnForm.type || !Number.isFinite(Number(txnForm.quantity)) || Number(txnForm.quantity) <= 0) {
       setError(tr('errQty'));
+      return;
+    }
+    if (txnForm.type === InventoryTxnType.OUT && !txnForm.phaseId && !txnForm.budgetHeadId && !String(txnForm.purpose ?? '').trim()) {
+      setError(tr('errUsedFor'));
+      return;
+    }
+    if (txnForm.type === InventoryTxnType.ADJUST && !String(txnForm.notes ?? '').trim()) {
+      setError(tr('reasonRequired'));
       return;
     }
     setError('');
@@ -220,72 +246,25 @@ export default function InventoryPage() {
 
   return (
     <Box>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap' }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap', gap: 1 }}>
         <Typography variant="h5" fontWeight={600} sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' } }}>{tr('title')}</Typography>
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', justifyContent: { xs: 'flex-end', md: 'flex-end' }, width: { xs: '100%', md: 'auto' } }}>
-          <RefreshButton onClick={() => refetch()} />
-          {tab === 0 && (
-            <>
-              <Button variant="outlined" startIcon={<SwapVertIcon />} onClick={() => { setTxnForm({ type: InventoryTxnType.OUT, quantity: 0 }); setTxnPhoto(null); setTxnDialogOpen(true); }}>
-                {tr('stockMovement')}
-              </Button>
-              <Button variant="contained" startIcon={<AddIcon />} onClick={openCreate}>{tr('newItem')}</Button>
-            </>
-          )}
+          <RefreshButton onClick={() => { refetch(); refetchSummary(); }} />
+          <Button variant="contained" color="success" startIcon={<ReceiveIcon />} onClick={() => setReceiveOpen(true)}>
+            {tr('receiveStock')}
+          </Button>
+          <Button variant="outlined" startIcon={<SwapVertIcon />} onClick={() => { setTxnForm({ type: InventoryTxnType.OUT, quantity: 0 }); setTxnPhoto(null); setError(''); setTxnDialogOpen(true); }}>
+            {tr('stockMovement')}
+          </Button>
+          {tab === 0 && <Button variant="outlined" startIcon={<AddIcon />} onClick={openCreate}>{tr('newItem')}</Button>}
         </Box>
       </Box>
 
       {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
+      {notice && <Alert severity="success" sx={{ mb: 2 }} onClose={() => setNotice('')}>{notice}</Alert>}
 
-      {/* Summary stat cards */}
-      {tab === 0 && (
-        <Grid container spacing={2} sx={{ mb: 2 }}>
-          <Grid item xs={6} sm={3}>
-            <Card sx={{ p: 2, height: '100%' }}>
-              <Stack direction="row" spacing={1.5} alignItems="flex-start">
-                <Box sx={{ color: 'primary.main', mt: 0.5 }}><ItemsIcon /></Box>
-                <Box>
-                  <Typography variant="caption" color="text.secondary">{tr('totalItems')}</Typography>
-                  <Typography variant="h6" sx={{ color: 'primary.main', fontWeight: 600 }}>{stats.total}</Typography>
-                </Box>
-              </Stack>
-            </Card>
-          </Grid>
-          <Grid item xs={6} sm={3}>
-            <Card sx={{ p: 2, height: '100%', borderColor: stats.lowStock > 0 ? 'error.main' : undefined }}>
-              <Stack direction="row" spacing={1.5} alignItems="flex-start">
-                <Box sx={{ color: stats.lowStock > 0 ? 'error.main' : 'text.secondary', mt: 0.5 }}><WarningIcon /></Box>
-                <Box>
-                  <Typography variant="caption" color="text.secondary">{tr('lowStock')}</Typography>
-                  <Typography variant="h6" sx={{ color: stats.lowStock > 0 ? 'error.main' : 'text.primary', fontWeight: 600 }}>{stats.lowStock}</Typography>
-                </Box>
-              </Stack>
-            </Card>
-          </Grid>
-          <Grid item xs={6} sm={3}>
-            <Card sx={{ p: 2, height: '100%' }}>
-              <Stack direction="row" spacing={1.5} alignItems="flex-start">
-                <Box sx={{ color: 'secondary.main', mt: 0.5 }}><LayersIcon /></Box>
-                <Box>
-                  <Typography variant="caption" color="text.secondary">{tr('assets')}</Typography>
-                  <Typography variant="h6" sx={{ color: 'secondary.main', fontWeight: 600 }}>{stats.assets}</Typography>
-                </Box>
-              </Stack>
-            </Card>
-          </Grid>
-          <Grid item xs={6} sm={3}>
-            <Card sx={{ p: 2, height: '100%' }}>
-              <Stack direction="row" spacing={1.5} alignItems="flex-start">
-                <Box sx={{ color: 'success.main', mt: 0.5 }}><CategoryIcon /></Box>
-                <Box>
-                  <Typography variant="caption" color="text.secondary">{tr('consumables')}</Typography>
-                  <Typography variant="h6" sx={{ color: 'success.main', fontWeight: 600 }}>{stats.consumables}</Typography>
-                </Box>
-              </Stack>
-            </Card>
-          </Grid>
-        </Grid>
-      )}
+      {/* Headline metrics: stock value, health, 30-day movement, pending work */}
+      {summary && <InventorySummary data={summary} />}
 
       <Tabs
         value={tab}
@@ -297,8 +276,16 @@ export default function InventoryPage() {
       >
         <Tab icon={<ItemsIcon />} iconPosition="start" label={tr('items')} />
         <Tab icon={<HistoryIcon />} iconPosition="start" label={tr('transactions')} />
+        <Tab icon={<EntriesIcon />} iconPosition="start" label={tr('stockEntries')} />
       </Tabs>
 
+      {tab === 2 && (
+        <Card sx={{ overflow: 'hidden' }}>
+          <StockEntriesTab />
+        </Card>
+      )}
+
+      {tab !== 2 && (
       <Card sx={{ overflow: 'hidden' }}>
         {tab === 0 && (
           <Box sx={{ p: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
@@ -335,6 +322,8 @@ export default function InventoryPage() {
                   <TableCell sx={{ fontWeight: 600 }}>{tr('unit')}</TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>{tr('stock')}</TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>{tr('minLevel')}</TableCell>
+                  <TableCell align="right" sx={{ fontWeight: 600 }}>{tr('avgRate')}</TableCell>
+                  <TableCell align="right" sx={{ fontWeight: 600 }}>{tr('value')}</TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>{tr('location')}</TableCell>
                   <TableCell align="right" sx={{ fontWeight: 600 }}>{tr('actions')}</TableCell>
                 </TableRow>
@@ -344,7 +333,10 @@ export default function InventoryPage() {
                   <TableCell sx={{ fontWeight: 600 }}>{tr('type')}</TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>{tr('qty')}</TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>{tr('balanceAfter')}</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>{tr('gatePass')}</TableCell>
+                  <TableCell align="right" sx={{ fontWeight: 600 }}>{tr('rate')}</TableCell>
+                  <TableCell align="right" sx={{ fontWeight: 600 }}>{tr('value')}</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>{tr('usedFor')}</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>{tr('issuedTo')}</TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>{tr('notes')}</TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>{tr('proof')}</TableCell>
                 </TableRow>
@@ -352,10 +344,10 @@ export default function InventoryPage() {
             </TableHead>
             <TableBody>
               {isLoading ? (
-                <TableRow><TableCell colSpan={9} align="center" sx={{ py: 4 }}><CircularProgress size={32} /></TableCell></TableRow>
+                <TableRow><TableCell colSpan={11} align="center" sx={{ py: 4 }}><CircularProgress size={32} /></TableCell></TableRow>
               ) : rows.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={9} align="center" sx={{ py: 6 }}>
+                  <TableCell colSpan={11} align="center" sx={{ py: 6 }}>
                     <Stack spacing={1} alignItems="center">
                       <ItemsIcon sx={{ fontSize: 40, color: 'text.disabled' }} />
                       <Typography color="text.secondary">
@@ -430,6 +422,8 @@ export default function InventoryPage() {
                         )}
                       </TableCell>
                       <TableCell data-label={tr('minLevel')}>{minStock > 0 ? formatIndianNumber(minStock) : '—'}</TableCell>
+                      <TableCell data-label={tr('avgRate')} align="right">{!isAsset && Number(row.weightedAvgCost) > 0 ? formatCurrency(row.weightedAvgCost) : '—'}</TableCell>
+                      <TableCell data-label={tr('value')} align="right" sx={{ fontWeight: 600 }}>{!isAsset && Number(row.totalValue) > 0 ? formatCurrency(row.totalValue) : '—'}</TableCell>
                       <TableCell data-label={tr('location')}>{String(row.location ?? '—')}</TableCell>
                       <TableCell align="right" data-label={tr('actions')} onClick={(e) => e.stopPropagation()}>
                         <CommentsButton entityType="INVENTORY_ITEM" entityId={row.id as string} entityLabel={String(row.name ?? '')} url="/inventory" />
@@ -445,14 +439,17 @@ export default function InventoryPage() {
                     <TableCell data-label={tr('item')} sx={{ fontWeight: 500 }}>{(row.inventoryItem as any)?.name ?? '—'}</TableCell>
                     <TableCell data-label={tr('type')}>
                       <Chip
-                        label={String(row.type)}
+                        label={enumLabel(row.type)}
                         size="small"
-                        color={row.type === 'IN' ? 'success' : row.type === 'OUT' ? 'warning' : 'default'}
+                        color={row.type === 'IN' ? 'success' : row.type === 'RETURN' ? 'info' : row.type === 'OUT' ? 'warning' : 'default'}
                       />
                     </TableCell>
                     <TableCell data-label={tr('qty')} sx={{ fontWeight: 600 }}>{formatIndianNumber(Number(row.quantity ?? 0))}</TableCell>
                     <TableCell data-label={tr('balanceAfter')}>{formatIndianNumber(Number(row.balanceAfter ?? 0))}</TableCell>
-                    <TableCell data-label={tr('gatePass')}>{(row.gatePass as any)?.passNumber ?? '—'}</TableCell>
+                    <TableCell data-label={tr('rate')} align="right">{Number(row.unitCost) > 0 ? formatCurrency(row.unitCost) : '—'}</TableCell>
+                    <TableCell data-label={tr('value')} align="right">{Number(row.totalCost) > 0 ? formatCurrency(row.totalCost) : '—'}</TableCell>
+                    <TableCell data-label={tr('usedFor')}>{describeTxn(row)}</TableCell>
+                    <TableCell data-label={tr('issuedTo')}>{String(row.issuedTo ?? '—')}</TableCell>
                     <TableCell data-label={tr('notes')}>{String(row.notes ?? '—')}</TableCell>
                     <TableCell data-label={tr('proof')}>
                       <Button size="small" onClick={() => setAttachmentTransactionId(String(row.id))}>{tr('viewUpload')}</Button>
@@ -476,6 +473,7 @@ export default function InventoryPage() {
           sx={{ '& .MuiTablePagination-toolbar': { flexWrap: 'wrap' } }}
         />
       </Card>
+      )}
 
       <ResponsiveDialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>{editing ? tr('editItem') : tr('newItem')}</DialogTitle>
@@ -526,12 +524,22 @@ export default function InventoryPage() {
         <DialogContent>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
             <CreatableSelect label={tr('item')} required value={String(txnForm.itemId ?? '')} onChange={(v) => setTxnForm({ ...txnForm, itemId: v })} optionsEndpoint="/inventory/items" />
-            <TextField select label={tr('type')} required value={txnForm.type ?? InventoryTxnType.OUT} onChange={(e) => setTxnForm({ ...txnForm, type: e.target.value })} fullWidth size="small">
+            <TextField select label={tr('type')} required value={txnForm.type ?? InventoryTxnType.OUT} onChange={(e) => setTxnForm({ ...txnForm, type: e.target.value, phaseId: undefined, budgetHeadId: undefined, purpose: undefined, issuedTo: undefined })} fullWidth size="small">
               {enumToOptions(InventoryTxnType).filter((opt) => opt.value !== InventoryTxnType.IN).map((opt) => <MenuItem key={opt.value} value={opt.value}>{opt.label}</MenuItem>)}
             </TextField>
             <TextField label={tr('quantity')} type="text" required value={formatIndianNumber(txnForm.quantity ?? '')} onChange={(e) => setTxnForm({ ...txnForm, quantity: e.target.value === '' ? '' : Number(e.target.value.replace(/,/g, '')) })} inputMode="decimal" inputProps={{ min: 0.01, step: 0.01 }} fullWidth size="small"
               helperText={txnForm.type === 'ADJUST' ? tr('absHelp') : tr('posHelp')} />
-            <TextField label={tr('notes')} value={txnForm.notes ?? ''} onChange={(e) => setTxnForm({ ...txnForm, notes: e.target.value })} fullWidth size="small" multiline rows={2} />
+            {txnForm.type === InventoryTxnType.OUT && (
+              <>
+                <Alert severity="info" sx={{ py: 0.25 }}>{tr('usedForHelp')}</Alert>
+                <CreatableSelect label={tr('phase')} value={String(txnForm.phaseId ?? '')} onChange={(v) => setTxnForm({ ...txnForm, phaseId: v || undefined })} optionsEndpoint="/phases" />
+                <CreatableSelect label={tr('budgetHead')} value={String(txnForm.budgetHeadId ?? '')} onChange={(v) => setTxnForm({ ...txnForm, budgetHeadId: v || undefined })} optionsEndpoint="/budget-heads" optionLabelKey="particulars" />
+                <CreatableSelect label={tr('purpose')} value={String(txnForm.purpose ?? '')} onChange={(v) => setTxnForm({ ...txnForm, purpose: v })} dropdownType="STOCK_PURPOSE" />
+                <TextField label={tr('issuedTo')} value={txnForm.issuedTo ?? ''} onChange={(e) => setTxnForm({ ...txnForm, issuedTo: e.target.value })} fullWidth size="small" />
+              </>
+            )}
+            {txnForm.type === InventoryTxnType.RETURN && <Alert severity="info" sx={{ py: 0.25 }}>{tr('returnHelp')}</Alert>}
+            <TextField label={txnForm.type === InventoryTxnType.ADJUST ? `${tr('notes')} *` : tr('notes')} value={txnForm.notes ?? ''} onChange={(e) => setTxnForm({ ...txnForm, notes: e.target.value })} fullWidth size="small" multiline rows={2} />
             <FilePicker
               file={txnPhoto}
               onChange={setTxnPhoto}
@@ -568,6 +576,8 @@ export default function InventoryPage() {
           <Button color="error" variant="contained" onClick={() => deleteConfirm && deleteMutation.mutate(deleteConfirm)} disabled={deleteMutation.isPending}>{tr('delete')}</Button>
         </DialogActions>
       </ResponsiveDialog>
+
+      <ReceiveStockDialog open={receiveOpen} onClose={() => setReceiveOpen(false)} onDone={(m) => setNotice(m)} />
     </Box>
   );
 }

@@ -14,6 +14,7 @@ import { validateMiddleware } from '../middleware/validate';
 import { logAudit } from '../services/audit.service';
 import { notifyAllHeads } from '../services/push.service';
 import { generateAssetId } from './asset.routes';
+import { applyOutbound, applyReturn, applyAdjustment } from '../services/inventory-valuation.service';
 
 const CATEGORY_SKU_PREFIXES: Record<string, string> = {
   MATERIAL: 'MAT',
@@ -273,11 +274,13 @@ router.get(
   validateMiddleware(listInventoryTxnsSchema),
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
-      const { page = 1, pageSize = 20, itemId, type } = req.query as Record<string, unknown>;
+      const { page = 1, pageSize = 20, itemId, type, phaseId, budgetHeadId } = req.query as Record<string, unknown>;
       const where: Record<string, unknown> = {
-        inventoryItem: { projectId: req.user!.projectId },
+        inventoryItem: { projectId: requireProjectId(req) },
         ...(itemId ? { itemId } : {}),
         ...(type ? { type } : {}),
+        ...(phaseId ? { phaseId } : {}),
+        ...(budgetHeadId ? { budgetHeadId } : {}),
       };
 
       const [data, total] = await Promise.all([
@@ -287,6 +290,10 @@ router.get(
             inventoryItem: { select: { id: true, name: true, unit: true } },
             user: { select: { id: true, name: true } },
             gatePass: { select: { id: true, passNumber: true } },
+            goodsReceipt: { select: { id: true, receiptNumber: true } },
+            stockEntry: { select: { id: true, entryNumber: true, sourceType: true } },
+            phase: { select: { id: true, name: true } },
+            budgetHead: { select: { id: true, particulars: true } },
           },
           orderBy: { timestamp: 'desc' },
           skip: (Number(page) - 1) * Number(pageSize),
@@ -362,46 +369,63 @@ router.post(
         res.status(400).json({ error: `Adjustment would set stock to a negative value (${quantity})` });
         return;
       }
-
-      const txn = await prisma.$transaction(async (tx) => {
-        let resultingStock: number;
-        if (req.body.type === InventoryTxnType.IN) {
-          // Inbound is blocked above for generic movements, but keep the branch
-          // for safety/consistency.
-          const updated = await tx.inventoryItem.update({
-            where: { id: item.id },
-            data: { currentStock: { increment: absQty } },
-            select: { currentStock: true },
-          });
-          resultingStock = Number(updated.currentStock);
-        } else if (req.body.type === InventoryTxnType.OUT) {
-          const updated = await tx.inventoryItem.update({
-            where: { id: item.id },
-            data: { currentStock: { decrement: absQty } },
-            select: { currentStock: true },
-          });
-          resultingStock = Number(updated.currentStock);
-        } else {
-          // ADJUST sets an absolute value (admin override). This is an
-          // intentional reset, not a delta, so a direct set is correct here.
-          // ADJUST is restricted to ADMIN/ADMIN_2 and rare, so the
-          // last-writer-wins risk is acceptable for this explicit override.
-          await tx.inventoryItem.update({
-            where: { id: item.id },
-            data: { currentStock: quantity },
-          });
-          resultingStock = quantity;
+      if (req.body.type === InventoryTxnType.ADJUST && !String(req.body.notes ?? '').trim()) {
+        res.status(400).json({ error: 'A reason is required for a stock adjustment' });
+        return;
+      }
+      // Consumption must say where the material went (phase / budget head / purpose).
+      if (
+        req.body.type === InventoryTxnType.OUT &&
+        !req.body.phaseId &&
+        !req.body.budgetHeadId &&
+        !String(req.body.purpose ?? '').trim()
+      ) {
+        res.status(400).json({ error: 'Say what the material was used for: choose a phase, a budget head or enter a purpose' });
+        return;
+      }
+      const projectId = requireProjectId(req);
+      if (req.body.phaseId) {
+        const phase = await prisma.phase.findFirst({ where: { id: req.body.phaseId, projectId, deletedAt: null }, select: { id: true } });
+        if (!phase) {
+          res.status(400).json({ error: 'Phase not found' });
+          return;
         }
+      }
+      if (req.body.budgetHeadId) {
+        const head = await prisma.budgetHead.findFirst({ where: { id: req.body.budgetHeadId, projectId, deletedAt: null }, select: { id: true } });
+        if (!head) {
+          res.status(400).json({ error: 'Budget head not found' });
+          return;
+        }
+      }
+
+      // Quantity, average cost and value change together in one atomic UPDATE
+      // (inventory-valuation.service); the log row is written in the same
+      // transaction so a failure rolls back both.
+      const txnType = req.body.type as InventoryTxnType;
+      const txn = await prisma.$transaction(async (tx) => {
+        const moved =
+          txnType === InventoryTxnType.OUT
+            ? await applyOutbound(tx, item.id, absQty)
+            : txnType === InventoryTxnType.RETURN
+              ? await applyReturn(tx, item.id, absQty)
+              : await applyAdjustment(tx, item.id, quantity);
 
         return tx.inventoryTransaction.create({
           data: {
             itemId: item.id,
             gatePassId: req.body.gatePassId ?? null,
-            type: req.body.type,
-            quantity,
-            balanceAfter: resultingStock,
+            type: txnType,
+            quantity: txnType === InventoryTxnType.ADJUST ? quantity : absQty,
+            balanceAfter: moved.balance,
+            unitCost: moved.unitCost,
+            totalCost: moved.totalCost,
             userId: req.user!.id,
             notes: req.body.notes ?? null,
+            purpose: req.body.purpose?.trim() || null,
+            phaseId: req.body.phaseId ?? null,
+            budgetHeadId: req.body.budgetHeadId ?? null,
+            issuedTo: req.body.issuedTo?.trim() || null,
           },
         });
       });
@@ -420,7 +444,7 @@ router.post(
       notifyAllHeads(requireProjectId(req), {
         entityType: 'INVENTORY_TRANSACTION',
         entityId: txn.id,
-        title: `Stock ${req.body.type === InventoryTxnType.IN ? 'In' : 'Out'}`,
+        title: `Stock ${req.body.type === InventoryTxnType.OUT ? 'Out' : req.body.type === InventoryTxnType.ADJUST ? 'Adjusted' : 'Returned'}`,
         body: `${item.name}: ${Math.abs(quantity)} units — Balance: ${newBalance}`,
         url: '/inventory',
       }).catch((err) => console.error('[Push] Inventory txn notification error:', err));
@@ -430,6 +454,135 @@ router.post(
       next(error);
     }
   }
+);
+
+// GET /summary — headline metrics for the inventory dashboard (value, stock
+// health, 30-day movement, consumption split, pending work).
+router.get(
+  '/summary',
+  rbacMiddleware(Permission.MANAGE_INVENTORY),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      const now = Date.now();
+      const since30 = new Date(now - 30 * 24 * 60 * 60 * 1000);
+      const since60 = new Date(now - 60 * 24 * 60 * 60 * 1000);
+
+      const [items, assets, recentTxns, lastOut, receiptsToProcess, entriesToApprove, gatePassesAwaiting, posAwaitingDelivery] =
+        await Promise.all([
+          prisma.inventoryItem.findMany({
+            where: { projectId, deletedAt: null },
+            select: {
+              id: true, name: true, category: true, unit: true, itemType: true, createdAt: true,
+              currentStock: true, minStockLevel: true, totalValue: true,
+            },
+          }),
+          prisma.asset.findMany({
+            where: { projectId, status: { not: AssetStatus.RETIRED } },
+            select: { totalCost: true },
+          }),
+          prisma.inventoryTransaction.findMany({
+            where: { inventoryItem: { projectId }, timestamp: { gte: since30 } },
+            select: {
+              type: true, totalCost: true, budgetHeadId: true, phaseId: true,
+              budgetHead: { select: { particulars: true } },
+              phase: { select: { name: true } },
+            },
+          }),
+          prisma.inventoryTransaction.groupBy({
+            by: ['itemId'],
+            where: { inventoryItem: { projectId }, type: InventoryTxnType.OUT },
+            _max: { timestamp: true },
+          }),
+          prisma.goodsReceipt.count({
+            where: { projectId, deletedAt: null, status: { in: ['PENDING_INSPECTION', 'READY_TO_POST'] } },
+          }),
+          prisma.stockEntry.count({ where: { projectId, deletedAt: null, status: 'PENDING_APPROVAL' } }),
+          prisma.gatePass.count({
+            where: { projectId, deletedAt: null, status: 'APPROVED', gatePassCategory: 'MATERIAL', poId: { not: null }, goodsReceipts: { none: {} } },
+          }),
+          prisma.purchaseOrder.count({
+            where: { projectId, deletedAt: null, status: { in: ['APPROVED', 'PARTIALLY_DELIVERED'] } },
+          }),
+        ]);
+
+      const consumables = items.filter((i) => i.itemType === InventoryItemType.CONSUMABLE);
+      const consumableValue = consumables.reduce((sum, i) => sum + Number(i.totalValue), 0);
+      const assetValue = assets.reduce((sum, a) => sum + Number(a.totalCost ?? 0), 0);
+
+      const lowStock = consumables.filter((i) => Number(i.minStockLevel) > 0 && Number(i.currentStock) <= Number(i.minStockLevel));
+      const outOfStock = consumables.filter((i) => Number(i.currentStock) <= 0);
+
+      const byCategory = new Map<string, { value: number; items: number }>();
+      for (const i of consumables) {
+        if (Number(i.currentStock) <= 0) continue;
+        const key = i.category?.trim() || 'Uncategorised';
+        const cur = byCategory.get(key) ?? { value: 0, items: 0 };
+        cur.value += Number(i.totalValue);
+        cur.items += 1;
+        byCategory.set(key, cur);
+      }
+
+      const lastOutByItem = new Map(lastOut.map((r) => [r.itemId, r._max.timestamp]));
+      const dead = consumables.filter((i) => {
+        if (Number(i.currentStock) <= 0) return false;
+        const last = lastOutByItem.get(i.id) ?? i.createdAt;
+        return last < since60;
+      });
+
+      const flow = { inValue: 0, outValue: 0, returnValue: 0, inCount: 0, outCount: 0 };
+      const byHead = new Map<string, { id: string; name: string; value: number }>();
+      const byPhase = new Map<string, { id: string; name: string; value: number }>();
+      for (const t of recentTxns) {
+        const v = Number(t.totalCost);
+        if (t.type === InventoryTxnType.IN) { flow.inValue += v; flow.inCount += 1; }
+        else if (t.type === InventoryTxnType.RETURN) flow.returnValue += v;
+        else if (t.type === InventoryTxnType.OUT) {
+          flow.outValue += v;
+          flow.outCount += 1;
+          if (t.budgetHeadId && t.budgetHead) {
+            const cur = byHead.get(t.budgetHeadId) ?? { id: t.budgetHeadId, name: t.budgetHead.particulars, value: 0 };
+            cur.value += v;
+            byHead.set(t.budgetHeadId, cur);
+          }
+          if (t.phaseId && t.phase) {
+            const cur = byPhase.get(t.phaseId) ?? { id: t.phaseId, name: t.phase.name, value: 0 };
+            cur.value += v;
+            byPhase.set(t.phaseId, cur);
+          }
+        }
+      }
+      const top = <T extends { value: number }>(list: T[], n = 5) => list.sort((a, b) => b.value - a.value).slice(0, n);
+
+      res.json({
+        totalValue: consumableValue + assetValue,
+        consumableValue,
+        assetValue,
+        itemCount: items.length,
+        consumableCount: consumables.length,
+        assetUnits: assets.length,
+        lowStockCount: lowStock.length,
+        outOfStockCount: outOfStock.length,
+        lowStockItems: lowStock.slice(0, 5).map((i) => ({ id: i.id, name: i.name, unit: i.unit, stock: Number(i.currentStock), min: Number(i.minStockLevel) })),
+        valueByCategory: top([...byCategory.entries()].map(([category, v]) => ({ category, ...v })), 6),
+        topItems: top(
+          consumables.filter((i) => Number(i.currentStock) > 0).map((i) => ({ id: i.id, name: i.name, unit: i.unit, stock: Number(i.currentStock), value: Number(i.totalValue) })),
+        ),
+        last30Days: flow,
+        consumptionByBudgetHead: top([...byHead.values()]),
+        consumptionByPhase: top([...byPhase.values()]),
+        deadStock: { count: dead.length, value: dead.reduce((sum, i) => sum + Number(i.totalValue), 0) },
+        pending: {
+          receiptsToProcess,
+          entriesToApprove,
+          gatePassesAwaiting,
+          posAwaitingDelivery,
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
 );
 
 export default router;

@@ -1089,7 +1089,10 @@ export default function PurchaseOrdersPage() {
                                 </>
                               )}
                               {(row.status === POStatus.APPROVED || row.status === POStatus.PARTIALLY_DELIVERED) && (
-                                <Button size="small" color="primary" startIcon={<GatePassIcon />} onClick={() => navigate('/gate-passes')}>{t('gatePass')}</Button>
+                                <Button size="small" color="primary" startIcon={<GatePassIcon />} onClick={() => navigate(`/goods-receipts?po=${row.id}`)}>{t('receiveGoods')}</Button>
+                              )}
+                              {(row.status === POStatus.APPROVED || row.status === POStatus.PARTIALLY_DELIVERED) && (
+                                <Button size="small" startIcon={<GatePassIcon />} onClick={() => navigate('/gate-passes')}>{t('gatePass')}</Button>
                               )}
                               {(row.status === POStatus.APPROVED || row.status === POStatus.PARTIALLY_DELIVERED || row.status === POStatus.DELIVERED) && (
                                 <Button size="small" startIcon={<TimelineIcon />} onClick={() => setTrailRow(row)}>{t('trail')}</Button>
@@ -1872,9 +1875,9 @@ interface DeliveryTrailData {
     remainingQuantity: number;
   }[];
   deliveries: {
-    gatePassId: string;
-    passNumber: string;
-    gatePassStatus: string;
+    gatePassId: string | null;
+    passNumber: string | null;
+    gatePassStatus: string | null;
     gatePassDate: string;
     approvedDate: string | null;
     items: { materialName: string; deliveredQty: number; unit: string | null }[];
@@ -1963,16 +1966,23 @@ function DeliveryTrailDialog({ poId, poNumber, onClose }: { poId: string | null;
                 <Typography variant="body2" color="text.secondary">{t('noDeliveries')}</Typography>
               ) : (
                 data.deliveries.map((delivery, idx) => (
-                  <Accordion key={delivery.gatePassId} defaultExpanded={idx === data.deliveries.length - 1}>
+                  <Accordion key={delivery.gatePassId ?? delivery.goodsReceipts[0]?.receiptNumber ?? idx} defaultExpanded={idx === data.deliveries.length - 1}>
                     <AccordionSummary expandIcon={<ExpandMoreIcon />}>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-                        <Chip size="small" label={delivery.passNumber} color="primary" />
-                        <Chip size="small" label={enumLabel(delivery.gatePassStatus)} color={STATUS_COLORS[delivery.gatePassStatus] ?? 'default'} />
+                        {delivery.gatePassId ? (
+                          <>
+                            <Chip size="small" label={delivery.passNumber} color="primary" />
+                            <Chip size="small" label={enumLabel(delivery.gatePassStatus)} color={STATUS_COLORS[delivery.gatePassStatus ?? ''] ?? 'default'} />
+                          </>
+                        ) : (
+                          <Chip size="small" variant="outlined" label={t('noGatePass')} />
+                        )}
                         <Typography variant="caption" color="text.secondary">{formatDate(delivery.gatePassDate)}</Typography>
                       </Box>
                     </AccordionSummary>
                     <AccordionDetails>
                       {/* Gate Pass Items */}
+                      {delivery.gatePassId && <>
                       <Typography variant="caption" fontWeight={600} color="text.secondary">{t('gatePassItems')}</Typography>
                       <TableContainer component={Card} variant="outlined" sx={{ overflowX: 'auto', mb: 2 }}>
                         <Table size="small">
@@ -1994,6 +2004,7 @@ function DeliveryTrailDialog({ poId, poNumber, onClose }: { poId: string | null;
                           </TableBody>
                         </Table>
                       </TableContainer>
+                      </>}
 
                       {/* Goods Receipts / Inspection Results */}
                       {delivery.goodsReceipts.length > 0 ? (

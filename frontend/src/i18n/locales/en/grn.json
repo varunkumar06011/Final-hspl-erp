@@ -51,14 +51,20 @@
   "createTitle": "Create Goods Receipt",
   "approvedGatepass": "Approved Gatepass",
   "enterDelivered": "Enter the actual quantity delivered for each item:",
-  "expected": "Expected",
+  "expected": "Still to receive",
   "unit": "Unit",
-  "expectedHelp": "Expected = quantity from the purchase order. Delivered = actual quantity that arrived. If less than expected, the PO will be marked as partially delivered.",
+  "expectedHelp": "Still to receive = ordered quantity minus what is already received or awaiting inspection. Delivered = actual quantity that arrived. If less than expected, the PO will be marked as partially delivered.",
   "cancel": "Cancel",
   "createReceipt": "Create Receipt",
   "inspectTitle": "Inspect {{n}}",
   "inspectHelp": "Accepted quantities will be posted to usable inventory. Rejected quantities remain outside usable stock. Entering a rejected quantity automatically reduces the accepted quantity. Mark each item as Consumable or Asset — assets get individual unit tracking with QR codes.",
   "rejectionReason": "Rejection reason",
   "itemType": "Item Type",
-  "completeInspection": "Complete Inspection"
+  "completeInspection": "Complete Inspection",
+  "approvedPo": "Approved purchase order",
+  "noOpenPos": "No approved purchase orders are waiting for goods.",
+  "optionalGatepass": "Gate pass (optional)",
+  "gatepassOptionalHelp": "Link a gate pass if one was issued for this delivery. It is not required.",
+  "noGatepass": "No gate pass",
+  "ordered": "Ordered"
 }

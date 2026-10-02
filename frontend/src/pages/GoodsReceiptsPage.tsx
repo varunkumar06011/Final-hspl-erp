@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Alert,
   Box,
@@ -20,7 +20,7 @@ import {
   Typography,
 } from '@mui/material';
 import { Add as AddIcon, FactCheck as InspectIcon, Inventory as PostIcon, Visibility as ViewIcon } from '@mui/icons-material';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import ResponsiveDialog from '../components/ResponsiveDialog';
 import ResponsiveTable from '../components/ResponsiveTable';
@@ -67,7 +67,7 @@ interface GRNDetail {
     vehicleNumber: string | null; driverName: string | null; driverMobile: string | null;
     items: { materialName: string; quantity: number; unit: string | null }[];
     createdByUser: { name: string } | null;
-  };
+  } | null;
   assets: { id: string; assetId: string; status: string; location: string; serialNumber: string | null; totalCost: string | null; warrantyExpiry: string | null; inventoryItem: { id: string; name: string } }[];
   createdByUser: { name: string } | null;
   inspectedByUser: { name: string } | null;
@@ -79,19 +79,20 @@ interface Receipt {
   receiptNumber: string;
   status: GoodsReceiptStatus;
   purchaseOrder: { poNumber: string; vendor: { name: string }; budgetHead?: { id: string; particulars: string } | null };
-  gatePass: { passNumber: string };
+  gatePass: { passNumber: string } | null;
   items: ReceiptItem[];
 }
 
-interface Gatepass {
+interface AvailablePo {
   id: string;
-  passNumber: string;
-  purchaseOrder: {
-    poNumber: string;
-    vendor: { name: string };
-    items: { id: string; materialName: string; quantity: number; unit: string | null }[];
-  };
-  items: { materialName: string; quantity: number; unit: string | null }[];
+  poNumber: string;
+  paymentType: string;
+  vendor: { name: string };
+  gatePasses: { id: string; passNumber: string }[];
+  items: {
+    id: string; materialName: string; unit: string | null;
+    orderedQuantity: number; receivedQuantity: number; pendingQuantity: number; remainingQuantity: number;
+  }[];
 }
 
 interface Disposition {
@@ -177,8 +178,8 @@ function GRNDetailDialog({ id, open, onClose }: { id: string | null; open: boole
               </Box>
             </Card>
 
-            {/* Gate Pass */}
-            <Card variant="outlined" sx={{ p: 2 }}>
+            {/* Gate Pass (optional) */}
+            {data.gatePass && <Card variant="outlined" sx={{ p: 2 }}>
               <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>{t('gatePass')}</Typography>
               <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1 }}>
                 <Box><Typography variant="caption" color="text.secondary">{t('passNumber')}</Typography><Typography variant="body2">{data.gatePass.passNumber}</Typography></Box>
@@ -187,7 +188,7 @@ function GRNDetailDialog({ id, open, onClose }: { id: string | null; open: boole
                 <Box><Typography variant="caption" color="text.secondary">{t('vehicle')}</Typography><Typography variant="body2">{data.gatePass.vehicleNumber ?? '—'}</Typography></Box>
                 <Box><Typography variant="caption" color="text.secondary">{t('driver')}</Typography><Typography variant="body2">{data.gatePass.driverName ? `${data.gatePass.driverName} ${data.gatePass.driverMobile || ''}` : '—'}</Typography></Box>
               </Box>
-            </Card>
+            </Card>}
 
             {/* Items */}
             <Box>
@@ -271,7 +272,9 @@ export default function GoodsReceiptsPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [inspectReceipt, setInspectReceipt] = useState<Receipt | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
+  const [selectedPoId, setSelectedPoId] = useState('');
   const [selectedGatepassId, setSelectedGatepassId] = useState('');
+  const [searchParams, setSearchParams] = useSearchParams();
   const [dispositions, setDispositions] = useState<Record<string, Disposition>>({});
   const [deliveredQty, setDeliveredQty] = useState<Record<string, number | string>>({});
   const [error, setError] = useState('');
@@ -281,14 +284,25 @@ export default function GoodsReceiptsPage() {
     queryKey: ['/goods-receipts'],
     queryFn: async () => (await api.get('/goods-receipts')).data,
   });
-  const gatepassesQuery = useQuery<Gatepass[]>({
-    queryKey: ['/goods-receipts/available-gatepasses'],
-    queryFn: async () => (await api.get('/goods-receipts/available-gatepasses')).data?.data ?? [],
+  const posQuery = useQuery<AvailablePo[]>({
+    queryKey: ['/goods-receipts/available-pos'],
+    queryFn: async () => (await api.get('/goods-receipts/available-pos')).data?.data ?? [],
   });
+
+  // Coming from a PO's "Receive Goods" button: open the form with that PO selected.
+  const poFromUrl = searchParams.get('po');
+  useEffect(() => {
+    if (!poFromUrl || !posQuery.data) return;
+    if (posQuery.data.some((p) => p.id === poFromUrl)) {
+      setSelectedPoId(poFromUrl);
+      setCreateOpen(true);
+    }
+    setSearchParams({}, { replace: true });
+  }, [poFromUrl, posQuery.data, setSearchParams]);
 
   const createMutation = useMutation({
     mutationFn: async () => {
-      const poItems = selectedGatepass?.purchaseOrder.items ?? [];
+      const poItems = selectedPo?.items ?? [];
       const items = poItems
         .map((item) => ({
           materialName: item.materialName,
@@ -296,12 +310,14 @@ export default function GoodsReceiptsPage() {
           unit: item.unit,
         }))
         .filter((item) => item.deliveredQty > 0);
-      return (await api.post('/goods-receipts', { gatePassId: selectedGatepassId, items })).data;
+      return (await api.post('/goods-receipts', { poId: selectedPoId, gatePassId: selectedGatepassId || undefined, items })).data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/goods-receipts'] });
-      queryClient.invalidateQueries({ queryKey: ['/goods-receipts/available-gatepasses'] });
+      queryClient.invalidateQueries({ queryKey: ['/goods-receipts/available-pos'] });
+      queryClient.invalidateQueries({ queryKey: ['/inventory/summary'] });
       setCreateOpen(false);
+      setSelectedPoId('');
       setSelectedGatepassId('');
       setDeliveredQty({});
     },
@@ -335,7 +351,7 @@ export default function GoodsReceiptsPage() {
   });
 
   const receipts: Receipt[] = receiptsQuery.data?.data ?? [];
-  const selectedGatepass = gatepassesQuery.data?.find((gatepass) => gatepass.id === selectedGatepassId);
+  const selectedPo = posQuery.data?.find((po) => po.id === selectedPoId);
 
   function openInspection(receipt: Receipt) {
     setError('');
@@ -415,7 +431,7 @@ export default function GoodsReceiptsPage() {
                 <TableRow key={receipt.id} hover>
                   <TableCell data-label={t('colReceipt')}>{receipt.receiptNumber}</TableCell>
                   <TableCell data-label={t('colPO')}>{receipt.purchaseOrder.poNumber}</TableCell>
-                  <TableCell data-label={t('colGatepass')}>{receipt.gatePass.passNumber}</TableCell>
+                  <TableCell data-label={t('colGatepass')}>{receipt.gatePass?.passNumber ?? '—'}</TableCell>
                   <TableCell data-label={t('vendor')}>{receipt.purchaseOrder.vendor.name}</TableCell>
                   <TableCell data-label={t('budgetHead')}>
                     {receipt.purchaseOrder.budgetHead
@@ -456,14 +472,20 @@ export default function GoodsReceiptsPage() {
       <ResponsiveDialog open={createOpen} onClose={() => setCreateOpen(false)} maxWidth="md" fullWidth>
         <DialogTitle>{t('createTitle')}</DialogTitle>
         <DialogContent>
-          <TextField select fullWidth size="small" label={t('approvedGatepass')} value={selectedGatepassId} onChange={(event) => { setSelectedGatepassId(event.target.value); setDeliveredQty({}); }} sx={{ mt: 1 }}>
-            {gatepassesQuery.data?.map((gatepass) => (
-              <MenuItem key={gatepass.id} value={gatepass.id}>
-                {gatepass.passNumber} — {gatepass.purchaseOrder.poNumber} — {gatepass.purchaseOrder.vendor.name}
+          <TextField select fullWidth size="small" label={t('approvedPo')} value={selectedPoId} onChange={(event) => { setSelectedPoId(event.target.value); setSelectedGatepassId(''); setDeliveredQty({}); }} sx={{ mt: 1 }} helperText={posQuery.data && posQuery.data.length === 0 ? t('noOpenPos') : undefined}>
+            {posQuery.data?.map((po) => (
+              <MenuItem key={po.id} value={po.id}>
+                {po.poNumber} — {po.vendor.name} ({enumLabel(po.paymentType)})
               </MenuItem>
             ))}
           </TextField>
-          {selectedGatepass && <Box sx={{ mt: 2 }}>
+          {selectedPo && selectedPo.gatePasses.length > 0 && (
+            <TextField select fullWidth size="small" label={t('optionalGatepass')} value={selectedGatepassId} onChange={(event) => setSelectedGatepassId(event.target.value)} sx={{ mt: 2 }} helperText={t('gatepassOptionalHelp')}>
+              <MenuItem value="">{t('noGatepass')}</MenuItem>
+              {selectedPo.gatePasses.map((gp) => <MenuItem key={gp.id} value={gp.id}>{gp.passNumber}</MenuItem>)}
+            </TextField>
+          )}
+          {selectedPo && <Box sx={{ mt: 2 }}>
             <Typography variant="body2" fontWeight={600} sx={{ mb: 1 }}>
               {t('enterDelivered')}
             </Typography>
@@ -473,25 +495,28 @@ export default function GoodsReceiptsPage() {
                 <TableHead>
                   <TableRow>
                     <TableCell sx={{ fontWeight: 600 }}>{t('material')}</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>{t('ordered')}</TableCell>
                     <TableCell sx={{ fontWeight: 600 }}>{t('expected')}</TableCell>
                     <TableCell sx={{ fontWeight: 600 }}>{t('delivered')}</TableCell>
                     <TableCell sx={{ fontWeight: 600 }}>{t('unit')}</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {selectedGatepass.purchaseOrder.items.map((item) => (
+                  {selectedPo.items.map((item) => (
                     <TableRow key={item.id}>
                       <TableCell data-label={t('material')}>{item.materialName}</TableCell>
-                      <TableCell data-label={t('expected')}>{Number(item.quantity)}</TableCell>
+                      <TableCell data-label={t('ordered')}>{item.orderedQuantity}</TableCell>
+                      <TableCell data-label={t('expected')}>{item.remainingQuantity}</TableCell>
                       <TableCell data-label={t('delivered')}>
                         <TextField
                           type="number"
                           size="small"
                           value={deliveredQty[item.materialName] ?? ''}
                           onChange={(e) => setDeliveredQty((current) => ({ ...current, [item.materialName]: e.target.value }))}
-                          inputProps={{ min: 0, step: 0.01 }}
+                          inputProps={{ min: 0, max: item.remainingQuantity, step: 0.01 }}
                           sx={{ width: 100 }}
                           placeholder="0"
+                          disabled={item.remainingQuantity <= 0}
                         />
                       </TableCell>
                       <TableCell data-label={t('unit')}>{item.unit ?? '—'}</TableCell>
@@ -508,7 +533,7 @@ export default function GoodsReceiptsPage() {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setCreateOpen(false)}>{t('cancel')}</Button>
-          <Button variant="contained" onClick={() => createMutation.mutate()} disabled={!selectedGatepassId || createMutation.isPending}>
+          <Button variant="contained" onClick={() => createMutation.mutate()} disabled={!selectedPoId || createMutation.isPending}>
             {createMutation.isPending ? <CircularProgress size={20} /> : t('createReceipt')}
           </Button>
         </DialogActions>

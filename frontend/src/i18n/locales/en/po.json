@@ -215,5 +215,7 @@
   "regenInfo": "This will create a new PO with the remaining items from the original PO. The new PO will need its own approval.",
   "generateRegen": "Generate Regenerated PO",
   "refPlaceholder": "Select a user or type a new name",
-  "newName": "New Name"
+  "newName": "New Name",
+  "receiveGoods": "Receive Goods",
+  "noGatePass": "No gate pass"
 }

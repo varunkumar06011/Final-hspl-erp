@@ -55,6 +55,7 @@ export const REGISTRY: Record<string, EntityRegistration> = {
   },
   Contract: { path: byId('/contracts'), permission: Permission.VIEW_FINANCIALS },
   GoodsReceipt: { label: 'Goods Receipt', path: byId('/goods-receipts'), permission: Permission.VIEW_FINANCIALS, title: ['receiptNumber'] },
+  StockEntry: { label: 'Stock Entry', path: () => '/inventory', permission: Permission.MANAGE_INVENTORY, title: ['entryNumber'] },
   GatePass: { label: 'Gate Pass', path: byId('/gate-passes'), permission: Permission.VIEW_GATE_PASSES, title: ['passNumber'] },
   MaterialPurchaseRequest: { label: 'Material Request', path: byId('/material-purchase-requests'), permission: Permission.VIEW_MPR, title: ['mprNumber'] },
   InventoryItem: { label: 'Inventory Item', path: (id) => `/assets/${id}`, title: ['name'], subtitle: ['sku', 'category'] },

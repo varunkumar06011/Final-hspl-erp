@@ -169,7 +169,13 @@
     "ADMIN": "Admin",
     "ADMIN_2": "Admin 2",
     "RTGS": "RTGS",
-    "NEFT": "NEFT"
+    "NEFT": "NEFT",
+    "RETURN": "Return",
+    "OPENING_STOCK": "Opening stock",
+    "CASH_PURCHASE": "Cash / petty purchase",
+    "OWNER_FREE_ISSUE": "Owner free-issue",
+    "PROJECT_TRANSFER": "Transfer from another project",
+    "SITE_RETURN": "Return from site"
   },
   "units": {
     "nos": "Nos (pieces)",
