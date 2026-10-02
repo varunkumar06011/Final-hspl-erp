@@ -1227,7 +1227,7 @@ router.get(
   }
 );
 
-// GET /:id/pdf — serve uploaded quotation file if available, else generate formatted PDF
+// GET /:id/pdf — always generate the formatted quotation PDF
 router.get(
   '/:id/pdf',
   rbacMiddleware(Permission.VIEW_FINANCIALS),
@@ -1256,17 +1256,7 @@ router.get(
         return;
       }
 
-      // If the vendor uploaded a quotation file, serve that directly
-      if (quotation.filePath) {
-        const storage = getStorageService();
-        const buffer = await storage.getFile(quotation.filePath);
-        res.setHeader('Content-Type', quotation.fileMimeType || 'application/octet-stream');
-        res.setHeader('Content-Disposition', `inline; filename="${quotation.fileName ?? quotation.quotationNumber}"`);
-        res.send(buffer);
-        return;
-      }
-
-      // Otherwise, generate our formatted quotation PDF
+      // Always generate our formatted quotation PDF; the uploaded attachment is served by GET /:id/file
       res.setHeader('Content-Type', 'application/pdf');
       res.setHeader('Content-Disposition', `attachment; filename="${quotation.quotationNumber}.pdf"`);
       await streamQuotationPdf(res as unknown as NodeJS.WritableStream, quotation);
