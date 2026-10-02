@@ -245,9 +245,8 @@ function CommentsDialog({
   const suggestions = useMemo(() => {
     if (!activeMention) return [];
     const q = activeMention.query.toLowerCase();
-    return users
-      .filter((u) => u.id !== me?.id && u.name.toLowerCase().includes(q))
-      .slice(0, 6);
+    // Everyone is taggable: no cap on the list (the popup scrolls).
+    return users.filter((u) => u.id !== me?.id && u.name.toLowerCase().includes(q));
   }, [activeMention, users, me?.id]);
 
   const pickUser = (u: MentionUser) => {
@@ -513,6 +512,7 @@ function CommentsDialog({
                 {suggestions.map((u, i) => (
                   <ListItemButton
                     key={u.id}
+                    ref={i === pickerIndex ? (el) => el?.scrollIntoView({ block: 'nearest' }) : undefined}
                     selected={i === pickerIndex}
                     onMouseDown={(e) => {
                       e.preventDefault(); // keep textarea focus
