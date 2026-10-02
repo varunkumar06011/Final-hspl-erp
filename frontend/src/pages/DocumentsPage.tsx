@@ -1,4 +1,5 @@
 ﻿import { useState } from 'react';
+import CommentsButton from '../components/CommentsButton';
 import {
   Box,
   Typography,
@@ -26,6 +27,8 @@ import {
   InputLabel,
   Select,
   Chip,
+  Tabs,
+  Tab,
 } from '@mui/material';
 import ResponsiveDialog from '../components/ResponsiveDialog';
 import {
@@ -44,6 +47,7 @@ import RefreshButton from '../components/RefreshButton';
 
 import { useTranslation } from 'react-i18next';
 import FilePicker from '../components/FilePicker';
+import DocumentLibraryTab from '../components/DocumentLibraryTab';
 interface DocumentRow {
   id: string;
   name: string;
@@ -57,7 +61,7 @@ interface DocumentRow {
   createdAt: string;
 }
 
-export default function DocumentsPage() {
+function GeneralDocumentsTab() {
   const { t: tr } = useTranslation('documents');
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(20);
@@ -144,8 +148,7 @@ export default function DocumentsPage() {
 
   return (
     <Box>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap' }}>
-        <Typography variant="h5" fontWeight={600} sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' } }}>{tr('title')}</Typography>
+      <Box sx={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', mb: 2, flexWrap: 'wrap' }}>
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', justifyContent: { xs: 'flex-end', md: 'flex-end' }, width: { xs: '100%', md: 'auto' } }}>
           <RefreshButton onClick={() => refetch()} />
           <Button variant="contained" startIcon={<AddIcon />} onClick={() => { setForm({ resolveTo: [] }); setError(''); setSelectedFile(null); setDialogOpen(true); }}>
@@ -200,6 +203,7 @@ export default function DocumentsPage() {
                     <TableCell data-label={tr('uploadedBy')}>{row.uploadedByUser?.name ?? '—'}</TableCell>
                     <TableCell data-label={tr('date')}>{formatDate(row.createdAt)}</TableCell>
                     <TableCell data-label={tr('actions')}>
+                      <CommentsButton entityType="DOCUMENT" entityId={row.id} entityLabel={row.name} url="/documents" />
                       <IconButton size="small" onClick={() => handleDownload(row.id, row.fileName)}><DownloadIcon fontSize="small" /></IconButton>
                       <IconButton size="small" color="error" onClick={() => { if (confirm(tr('confirmDelete'))) deleteMutation.mutate(row.id); }}><DeleteIcon fontSize="small" /></IconButton>
                     </TableCell>
@@ -272,6 +276,21 @@ export default function DocumentsPage() {
           </Button>
         </DialogActions>
       </ResponsiveDialog>
+    </Box>
+  );
+}
+
+export default function DocumentsPage() {
+  const { t: tr } = useTranslation('documents');
+  const [tab, setTab] = useState<'library' | 'general'>('library');
+  return (
+    <Box>
+      <Typography variant="h5" fontWeight={600} sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' }, mb: 1 }}>{tr('title')}</Typography>
+      <Tabs value={tab} onChange={(_e, v) => setTab(v)} sx={{ mb: 2, borderBottom: 1, borderColor: 'divider' }}>
+        <Tab value="library" label={tr('tabLibrary')} />
+        <Tab value="general" label={tr('tabGeneral')} />
+      </Tabs>
+      {tab === 'library' ? <DocumentLibraryTab /> : <GeneralDocumentsTab />}
     </Box>
   );
 }

@@ -9,6 +9,7 @@ import { logAudit } from '../services/audit.service';
 import { getStorageService, serveFile } from '../services/storage.service';
 import { notifyAllHeads } from '../services/push.service';
 import multer from 'multer';
+import { isAllowedUpload, ALLOWED_UPLOAD_MESSAGE } from '../utils/uploadFileTypes';
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 100 * 1024 * 1024 } });
 
@@ -56,21 +57,8 @@ router.post(
         res.status(400).json({ error: 'No file uploaded' });
         return;
       }
-      const allowedMimeTypes = [
-        'application/pdf',
-        'image/jpeg',
-        'image/png',
-        'image/gif',
-        'image/webp',
-        'image/bmp',
-        'image/tiff',
-        'application/msword',
-        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        'application/vnd.ms-excel',
-        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      ];
-      if (!allowedMimeTypes.includes(req.file.mimetype)) {
-        res.status(400).json({ error: 'Unsupported document file type' });
+      if (!isAllowedUpload(req.file)) {
+        res.status(400).json({ error: ALLOWED_UPLOAD_MESSAGE });
         return;
       }
       if (!String(req.body.name ?? '').trim()) {

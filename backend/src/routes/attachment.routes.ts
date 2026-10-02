@@ -7,6 +7,7 @@ import { validateMiddleware } from '../middleware/validate';
 import { logAudit } from '../services/audit.service';
 import { getStorageService, serveFile } from '../services/storage.service';
 import multer from 'multer';
+import { isAllowedUpload, ALLOWED_UPLOAD_MESSAGE } from '../utils/uploadFileTypes';
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
 
@@ -52,6 +53,10 @@ router.post(
       const projectId = requireProjectId(req);
       if (!req.file) {
         res.status(400).json({ error: 'No file uploaded' });
+        return;
+      }
+      if (!isAllowedUpload(req.file)) {
+        res.status(400).json({ error: ALLOWED_UPLOAD_MESSAGE });
         return;
       }
       if (!req.body.entityType || !req.body.entityId) {
