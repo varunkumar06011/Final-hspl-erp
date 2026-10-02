@@ -511,10 +511,12 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           <Typography
             variant="h6"
             component="div"
-            sx={{ flexGrow: 1, minWidth: 0, fontSize: { xs: '1rem', sm: '1.25rem' }, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+            sx={{ flexGrow: 1, minWidth: 0, fontSize: { xs: '1rem', sm: '1.25rem' }, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: { xs: 'none', sm: 'block' } }}
           >
             {t('app.title')}
           </Typography>
+          {/* On phones the app title is dropped so the project chip gets the room. */}
+          <Box sx={{ flexGrow: 1, display: { xs: 'block', sm: 'none' } }} />
           <ProjectSwitcher />
           <Box sx={{ mr: { xs: 0.5, sm: 1 }, flexShrink: 0 }}>
             <LanguageToggle onDark />

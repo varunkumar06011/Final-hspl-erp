@@ -44,8 +44,10 @@ export default function ProjectSwitcher() {
         disabled={switching}
         title={t('shell.project')}
         sx={{
-          mr: 1,
-          maxWidth: { xs: 120, sm: 220 },
+          mr: { xs: 0.5, sm: 1 },
+          minWidth: 0,
+          flexShrink: 1,
+          maxWidth: { xs: 'calc(100vw - 230px)', sm: 220 },
           bgcolor: 'rgba(255,255,255,0.18)',
           color: 'inherit',
           fontWeight: 600,
