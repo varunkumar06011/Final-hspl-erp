@@ -14,7 +14,8 @@ import {
   FormControlLabel,
   Switch,
 } from '@mui/material';
-import { Visibility, VisibilityOff } from '@mui/icons-material';
+import { Visibility, VisibilityOff, Logout as LogoutIcon } from '@mui/icons-material';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { extractErrorMessage } from '../config/api';
 import { useAuthStore } from '../stores/authStore';
@@ -31,8 +32,10 @@ const NOTIFICATION_EVENT_LABELS: { key: string; label: string; description: stri
 
 export default function SettingsPage() {
   const { t: tr } = useTranslation('settings');
+  const { t } = useTranslation();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { user, setUser } = useAuthStore();
+  const { user, setUser, logout } = useAuthStore();
   const [officeAddress, setOfficeAddress] = useState('');
   const [hospitalAddress, setHospitalAddress] = useState('');
   const [totalBudget, setTotalBudget] = useState('');
@@ -465,6 +468,24 @@ export default function SettingsPage() {
             sx={{ alignSelf: 'flex-start' }}
           >
             {updating ? <CircularProgress size={20} /> : tr('updateApp')}
+          </Button>
+        </CardContent>
+      </Card>
+
+      {/* Account */}
+      <Card sx={{ mb: 3 }}>
+        <CardContent>
+          <Typography variant="h6" gutterBottom>{tr('account')}</Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            {tr('logoutNote')}
+          </Typography>
+          <Button
+            variant="outlined"
+            color="error"
+            startIcon={<LogoutIcon />}
+            onClick={() => { logout(); navigate('/login'); }}
+          >
+            {t('common.logout')}
           </Button>
         </CardContent>
       </Card>

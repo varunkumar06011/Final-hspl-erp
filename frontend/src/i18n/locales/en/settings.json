@@ -43,6 +43,8 @@
   "setBudget": "Set the total project budget",
   "saveSettings": "Save Settings",
   "updateApp": "Update App",
+  "account": "Account",
+  "logoutNote": "Sign out of this device. You will need to log in again to continue.",
   "n_entity_created_label": "New entity created",
   "n_entity_created_desc": "PO, quotation, invoice, payment, etc. created by your team",
   "n_approval_request_label": "Approval requests",
