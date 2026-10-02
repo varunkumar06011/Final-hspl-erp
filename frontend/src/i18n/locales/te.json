@@ -417,6 +417,13 @@
     "retake": "మళ్లీ తీయండి",
     "usePhoto": "ఫోటోను ఉపయోగించండి",
     "removePhoto": "తొలగించు",
+    "fromDevice": "పరికరం నుండి",
+    "fromLibrary": "యాప్ లైబ్రరీ నుండి",
+    "libraryTitle": "లైబ్రరీ నుండి ఎంచుకోండి",
+    "librarySearch": "ఫైళ్లను వెతకండి",
+    "libraryEmpty": "లైబ్రరీలో ఫైళ్లు లేవు",
+    "libraryLoadFailed": "ఎంచుకున్న ఫైల్‌ను లోడ్ చేయలేకపోయాము",
+    "close": "మూసివేయి",
     "cameraUnavailable": "ఈ పరికరంలో కెమెరా అందుబాటులో లేదు లేదా అనుమతి నిరాకరించబడింది"
   },
   "ledgerGroups": {

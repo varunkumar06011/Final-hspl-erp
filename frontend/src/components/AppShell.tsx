@@ -1,7 +1,7 @@
 import { Box, AppBar, Toolbar, Typography, IconButton, Avatar, Chip, Menu, MenuItem, Drawer, List, ListItem, ListItemIcon, ListItemText, useTheme, useMediaQuery, Snackbar, Alert, Breadcrumbs, Link, CircularProgress } from '@mui/material';
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate, useLocation, Link as RouterLink } from 'react-router-dom';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Menu as MenuIcon,
   Dashboard as DashboardIcon,
@@ -245,6 +245,22 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const location = useLocation();
   const { user, logout } = useAuthStore();
 
+  // Unread comments / mentions / replies, shown next to "Comments" in the sidebar.
+  const { data: unreadComments = 0 } = useQuery<number>({
+    queryKey: ['/comments/unread-count'],
+    queryFn: async () => (await api.get('/comments/unread-count')).data?.count ?? 0,
+    enabled: !!user,
+    refetchInterval: 30000,
+  });
+  // Opening the Comments page counts as reading them.
+  useEffect(() => {
+    if (location.pathname !== '/comments' || unreadComments === 0) return;
+    api.patch('/comments/mark-read').then(() => {
+      queryClient.setQueryData(['/comments/unread-count'], 0);
+      queryClient.invalidateQueries({ queryKey: ['/notifications/app'] });
+    }).catch(() => {});
+  }, [location.pathname, unreadComments, queryClient]);
+
   // Build breadcrumb from current path
   const breadcrumbs = useMemo(() => {
     const path = location.pathname;
@@ -445,6 +461,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                 >
                   <ListItemIcon sx={{ minWidth: 40 }}>{item.icon}</ListItemIcon>
                   <ListItemText primary={t(`nav.${item.label}`, item.label)}primaryTypographyProps={{ fontSize: 14 }} />
+                  {item.path === '/comments' && unreadComments > 0 && (
+                    <Chip label={unreadComments > 99 ? '99+' : unreadComments} size="small" color="error" sx={{ height: 20, fontWeight: 700 }} />
+                  )}
                 </ListItem>
               </Box>
             );
@@ -467,7 +486,14 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           ...(isAdminRole(user?.role ?? '') && { bgcolor: '#000', backgroundImage: 'none' }),
         }}
       >
-        <Toolbar>
+        <Toolbar
+          sx={{
+            px: { xs: 1, sm: 3 },
+            // Tighter icon buttons on phones so the avatar stays inside the bar
+            // instead of being pushed off the right edge.
+            '& .MuiIconButton-root': { p: { xs: 0.5, sm: 1 }, flexShrink: 0 },
+          }}
+        >
           {isMobile && (
             <IconButton
               color="inherit"
@@ -481,12 +507,12 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           <Typography
             variant="h6"
             component="div"
-            sx={{ flexGrow: 1, fontSize: { xs: '1rem', sm: '1.25rem' }, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+            sx={{ flexGrow: 1, minWidth: 0, fontSize: { xs: '1rem', sm: '1.25rem' }, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
           >
             {t('app.title')}
           </Typography>
           <ProjectSwitcher />
-          <Box sx={{ mr: 1 }}>
+          <Box sx={{ mr: { xs: 0.5, sm: 1 }, flexShrink: 0 }}>
             <LanguageToggle onDark />
           </Box>
           <IconButton color="inherit" onClick={() => setNlQueryOpen(true)} title={t('shell.askErp')} sx={{ display: { xs: 'none', sm: 'inline-flex' } }}>

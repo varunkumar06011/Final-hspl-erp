@@ -417,6 +417,13 @@
     "retake": "Retake",
     "usePhoto": "Use photo",
     "removePhoto": "Remove",
+    "fromDevice": "From device",
+    "fromLibrary": "From app library",
+    "libraryTitle": "Choose from library",
+    "librarySearch": "Search files",
+    "libraryEmpty": "No files found in the library",
+    "libraryLoadFailed": "Could not load the selected file",
+    "close": "Close",
     "cameraUnavailable": "Camera is not available on this device or permission was denied"
   },
   "ledgerGroups": {

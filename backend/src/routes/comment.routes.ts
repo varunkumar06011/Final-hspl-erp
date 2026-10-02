@@ -46,6 +46,40 @@ router.get('/users', async (req: AuthenticatedRequest, res: Response, next: Next
   }
 });
 
+// Unread comment/mention/reply notifications for the current user in this project
+// (drives the count next to "Comments" in the sidebar).
+function unreadCommentWhere(req: AuthenticatedRequest): Prisma.AppNotificationWhereInput {
+  return {
+    userId: req.user!.id,
+    isRead: false,
+    type: { in: ['COMMENT', 'COMMENT_MENTION'] },
+    OR: [{ projectId: requireProjectId(req) }, { projectId: null }],
+  };
+}
+
+// GET /comments/unread-count
+router.get('/unread-count', async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  try {
+    const count = await prisma.appNotification.count({ where: unreadCommentWhere(req) });
+    res.json({ count });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// PATCH /comments/mark-read — clear the count (called when the Comments page is opened)
+router.patch('/mark-read', async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  try {
+    const result = await prisma.appNotification.updateMany({
+      where: unreadCommentWhere(req),
+      data: { isRead: true },
+    });
+    res.json({ success: true, markedRead: result.count });
+  } catch (error) {
+    next(error);
+  }
+});
+
 // GET /comments?entityType=&entityId= — thread for one record (oldest first)
 router.get('/', async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   try {

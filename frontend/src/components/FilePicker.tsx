@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo } from 'react';
 import type { ReactNode } from 'react';
-import { Box, Button, IconButton, Tooltip } from '@mui/material';
+import { Box, IconButton, Tooltip } from '@mui/material';
 import { Close as CloseIcon } from '@mui/icons-material';
 import { useTranslation } from 'react-i18next';
 import CameraCapture from './CameraCapture';
+import UploadSourceButton from './UploadSourceButton';
 
 interface FilePickerProps {
   file: File | null;
@@ -36,7 +37,6 @@ export default function FilePicker({
   fullWidth,
 }: FilePickerProps) {
   const { t } = useTranslation();
-  const inputRef = useRef<HTMLInputElement>(null);
 
   const previewUrl = useMemo(
     () => (file && file.type.startsWith('image/') ? URL.createObjectURL(file) : null),
@@ -48,27 +48,16 @@ export default function FilePicker({
 
   return (
     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-      <input
-        ref={inputRef}
-        type="file"
+      <UploadSourceButton
+        onFile={onChange}
         accept={accept}
-        style={{ display: 'none' }}
-        onChange={(e) => {
-          const f = e.target.files?.[0];
-          if (f) onChange(f);
-          e.target.value = '';
-        }}
-      />
-      <Button
-        variant="outlined"
-        size={size}
         startIcon={startIcon}
         disabled={disabled}
-        onClick={() => inputRef.current?.click()}
-        sx={fullWidth ? { flex: 1, minWidth: 0 } : undefined}
+        size={size}
+        fullWidth={fullWidth}
       >
         {file ? (selectedLabel ?? file.name) : label}
-      </Button>
+      </UploadSourceButton>
       <CameraCapture size={size} disabled={disabled} onCapture={onChange} />
       {previewUrl && (
         <Box

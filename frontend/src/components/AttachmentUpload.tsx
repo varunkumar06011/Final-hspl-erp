@@ -1,7 +1,6 @@
-import { useState, useRef } from 'react';
+import { useState } from 'react';
 import {
   Box,
-  Button,
   Typography,
   IconButton,
   CircularProgress,
@@ -24,6 +23,7 @@ import { downloadFile } from '../utils/file';
 import { useTranslation } from 'react-i18next';
 import { enumLabel } from '../utils/enumOptions';
 import CameraCapture from './CameraCapture';
+import UploadSourceButton from './UploadSourceButton';
 
 interface AttachmentUploadProps {
   entityType: string;
@@ -38,7 +38,6 @@ export default function AttachmentUpload({
 }: AttachmentUploadProps) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
-  const fileRef = useRef<HTMLInputElement>(null);
   const [error, setError] = useState('');
   const [description, setDescription] = useState('');
 
@@ -118,26 +117,15 @@ export default function AttachmentUpload({
       )}
 
       <Box sx={{ display: 'flex', gap: 1, mb: 1 }}>
-        <input
-          ref={fileRef}
-          type="file"
-          style={{ display: 'none' }}
+        <UploadSourceButton
+          onFile={handleFileSelect}
           accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx"
-          onChange={(e) => {
-            const f = e.target.files?.[0];
-            if (f) handleFileSelect(f);
-            e.target.value = '';
-          }}
-        />
-        <Button
-          variant="outlined"
-          size={size}
           startIcon={<UploadIcon />}
-          onClick={() => fileRef.current?.click()}
+          size={size}
           disabled={!entityId || uploadMutation.isPending}
         >
           {uploadMutation.isPending ? <CircularProgress size={16} /> : t('shared.upload')}
-        </Button>
+        </UploadSourceButton>
         <CameraCapture
           label
           size={size}
