@@ -1,4 +1,4 @@
-﻿import { useState, useCallback } from 'react';
+﻿import { useState } from 'react';
 import {
   Box,
   Typography,
@@ -28,12 +28,10 @@ import {
   Search as SearchIcon,
   Check as CheckIcon,
   Delete as DeleteIcon,
-  Refresh as ResendIcon,
   Download as DownloadIcon,
   PhotoCamera as PhotoCameraIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { isConfigured, getFirebase, type FirebaseHandles } from '../config/firebase';
 import { formatDate, enumLabel } from '../utils/enumOptions';
 import { useTranslation, Trans } from 'react-i18next';
 import api, { extractErrorMessage } from '../config/api';
@@ -66,7 +64,6 @@ interface GatePassRow {
   } | null;
   invoice: { id: string; invoiceCode: string; invoiceNumber: string } | null;
   items: GatePassItem[];
-  otpRequestedForUser: { id: string; name: string; role: string; phone: string } | null;
   otpApprovedByUser: { id: string; name: string } | null;
   otpApprovedAt: string | null;
 }
@@ -95,17 +92,6 @@ interface ApprovedPO {
   }[];
 }
 
-interface HeadUser {
-  id: string;
-  name: string;
-  role: string;
-  phone: string;
-}
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let confirmationResult: any = null;
-let confirmationGatePassId: string | null = null;
-
 export default function GatePassesPage() {
   const { t } = useTranslation('gatepass');
   const [page, setPage] = useState(0);
@@ -113,15 +99,12 @@ export default function GatePassesPage() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [createOpen, setCreateOpen] = useState(false);
-  const [otpDialogOpen, setOtpDialogOpen] = useState<GatePassRow | null>(null);
-  const [otpInput, setOtpInput] = useState('');
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [gatePassCategory, setGatePassCategory] = useState<'MATERIAL' | 'VISITOR'>('MATERIAL');
   const [categoryConfirmed, setCategoryConfirmed] = useState(false);
   const [selectedPoId, setSelectedPoId] = useState('');
   const [selectedInvoiceId, setSelectedInvoiceId] = useState('');
-  const [selectedHeadId, setSelectedHeadId] = useState('');
   const [visitorName, setVisitorName] = useState('');
   const [visitorPhone, setVisitorPhone] = useState('');
   const [visitDate, setVisitDate] = useState('');
@@ -137,8 +120,6 @@ export default function GatePassesPage() {
   const [createdGatePass, setCreatedGatePass] = useState<{ id: string; passNumber: string } | null>(
     null,
   );
-  const [sendingOtp, setSendingOtp] = useState(false);
-  const [resendingOtp, setResendingOtp] = useState(false);
   const [deleteRow, setDeleteRow] = useState<GatePassRow | null>(null);
   const queryClient = useQueryClient();
 
@@ -161,63 +142,6 @@ export default function GatePassesPage() {
     },
   });
 
-  const { data: heads } = useQuery<HeadUser[]>({
-    queryKey: ['/gate-passes', 'heads'],
-    queryFn: async () => {
-      const response = await api.get('/gate-passes/heads');
-      return response.data?.data ?? [];
-    },
-  });
-
-  const setupRecaptcha = useCallback((fb: FirebaseHandles) => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    if ((window as any).recaptchaVerifier) {
-      try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (window as any).recaptchaVerifier.clear();
-      } catch {
-        // ignore
-      }
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (window as any).recaptchaVerifier = null;
-    }
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (window as any).recaptchaVerifier = new fb.RecaptchaVerifier(
-      fb.auth,
-      'recaptcha-container-gatepass',
-      { size: 'invisible' },
-    );
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return (window as any).recaptchaVerifier;
-  }, []);
-
-  const sendFirebaseOtp = useCallback(
-    async (phone: string, gatePassId?: string): Promise<boolean> => {
-      if (!isConfigured) {
-        setError(t('firebaseNotConfigured'));
-        return false;
-      }
-      setSendingOtp(true);
-      try {
-        const fb = await getFirebase();
-        if (!fb) {
-          setError(t('firebaseNotConfigured'));
-          return false;
-        }
-        const appVerifier = setupRecaptcha(fb);
-        confirmationResult = await fb.signInWithPhoneNumber(fb.auth, phone, appVerifier);
-        if (gatePassId) confirmationGatePassId = gatePassId;
-        return true;
-      } catch (err: unknown) {
-        setError(extractErrorMessage(err));
-        return false;
-      } finally {
-        setSendingOtp(false);
-      }
-    },
-    [setupRecaptcha, t],
-  );
-
   const createMutation = useMutation({
     mutationFn: async () => {
       const payload = new FormData();
@@ -226,7 +150,6 @@ export default function GatePassesPage() {
         payload.append('poId', selectedPoId);
         if (selectedInvoiceId) payload.append('invoiceId', selectedInvoiceId);
       }
-      payload.append('otpRequestedFor', selectedHeadId);
       if (gatePassCategory === 'VISITOR') {
         if (visitorName) payload.append('visitorName', visitorName);
         if (visitorPhone) payload.append('visitorPhone', visitorPhone);
@@ -247,63 +170,30 @@ export default function GatePassesPage() {
       });
       return response.data;
     },
-    onSuccess: async (data) => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['/gate-passes'] });
       queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['/goods-receipts/available-gatepasses'] });
       setCreateOpen(false);
       setCreatedGatePass({ id: data.id, passNumber: data.passNumber });
       resetForm();
-      setSuccessMsg(t('createdSending', { n: data.passNumber, name: data.headName, phone: data.headPhone }));
-      // Send Firebase OTP to the head's phone
-      const sent = await sendFirebaseOtp(data.headPhone, data.id);
-      if (sent) {
-        setSuccessMsg(t('otpSentMsg', { name: data.headName, phone: data.headPhone }));
-      } else {
-        setError(t('otpFailed'));
-      }
+      setSuccessMsg(t('createdMsg', { n: data.passNumber }));
       setTimeout(() => setSuccessMsg(''), 8000);
     },
     onError: (err: unknown) => setError(extractErrorMessage(err)),
   });
 
-  const verifyOtpMutation = useMutation({
-    mutationFn: async ({ id, idToken }: { id: string; idToken: string }) => {
-      const response = await api.post(`/gate-passes/${id}/verify-otp`, { idToken });
-      return response.data;
-    },
-    onMutate: async ({ id }) => {
-      // Optimistic update — flip the gate pass status to APPROVED instantly.
-      await queryClient.cancelQueries({ queryKey: ['/gate-passes'] });
-      const prevQueries = queryClient.getQueriesData<{ data: GatePassRow[] }>({ queryKey: ['/gate-passes'] });
-      queryClient.setQueriesData<{ data: GatePassRow[] }>({ queryKey: ['/gate-passes'] }, (old) => {
-        if (!old?.data) return old;
-        return {
-          ...old,
-          data: old.data.map((gp) =>
-            gp.id === id ? { ...gp, status: 'APPROVED' } : gp,
-          ),
-        };
-      });
-      return { prevQueries };
-    },
-    onError: (err: unknown, _vars, context) => {
-      context?.prevQueries.forEach(([key, data]) => {
-        queryClient.setQueryData(key, data);
-      });
-      setError(extractErrorMessage(err));
-    },
-    onSettled: () => {
+  // One-click approval for passes created before OTP was removed (still PENDING).
+  const approveMutation = useMutation({
+    mutationFn: async (id: string) => (await api.post(`/gate-passes/${id}/approve`)).data,
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/gate-passes'] });
       queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
-    },
-    onSuccess: (data) => {
-      setOtpDialogOpen(null);
-      setOtpInput('');
-      confirmationResult = null;
-      confirmationGatePassId = null;
-      setSuccessMsg(data.message || t('approvedMsg'));
+      queryClient.invalidateQueries({ queryKey: ['/goods-receipts/available-gatepasses'] });
+      setSuccessMsg(t('approvedMsg'));
       setTimeout(() => setSuccessMsg(''), 5000);
     },
+    onError: (err: unknown) => setError(extractErrorMessage(err)),
   });
 
   const deleteMutation = useMutation({
@@ -325,7 +215,6 @@ export default function GatePassesPage() {
     setCategoryConfirmed(false);
     setSelectedPoId('');
     setSelectedInvoiceId('');
-    setSelectedHeadId('');
     setVisitorName('');
     setVisitorPhone('');
     setVisitDate('');
@@ -357,39 +246,8 @@ export default function GatePassesPage() {
     }
   }
 
-  async function handleVerifyOtp() {
-    if (!otpDialogOpen) return;
-    setError('');
-    // Check if we have a valid confirmationResult for this specific gate pass
-    if (!confirmationResult || confirmationGatePassId !== otpDialogOpen.id) {
-      setError(t('noOtpYet'));
-      return;
-    }
-    try {
-      const userCredential = await confirmationResult.confirm(otpInput);
-      const idToken = await userCredential.user.getIdToken();
-      verifyOtpMutation.mutate({ id: otpDialogOpen.id, idToken });
-    } catch (err: unknown) {
-      setError(extractErrorMessage(err) || t('invalidOtp'));
-    }
-  }
-
-  async function handleResendOtp() {
-    if (!otpDialogOpen?.otpRequestedForUser?.phone) return;
-    setResendingOtp(true);
-    setError('');
-    const sent = await sendFirebaseOtp(otpDialogOpen.otpRequestedForUser.phone, otpDialogOpen.id);
-    if (sent) {
-      setSuccessMsg(t('otpResent', { name: otpDialogOpen.otpRequestedForUser.name, phone: otpDialogOpen.otpRequestedForUser.phone }));
-      setTimeout(() => setSuccessMsg(''), 5000);
-    }
-    setResendingOtp(false);
-  }
-
   return (
     <Box>
-      <div id="recaptcha-container-gatepass" />
-
       <Box
         sx={{
           display: 'flex',
@@ -505,7 +363,6 @@ export default function GatePassesPage() {
                   <TableCell sx={{ fontWeight: 600 }}>{t('invoice')}</TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>{t('vendor')}</TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>{t('items')}</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>{t('otpSentTo')}</TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>{t('approvedBy')}</TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>{t('date')}</TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>{t('status')}</TableCell>
@@ -515,13 +372,13 @@ export default function GatePassesPage() {
               <TableBody>
                 {isLoading ? (
                   <TableRow>
-                    <TableCell colSpan={11} align="center" sx={{ py: 4 }}>
+                    <TableCell colSpan={10} align="center" sx={{ py: 4 }}>
                       <CircularProgress size={32} />
                     </TableCell>
                   </TableRow>
                 ) : rows.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={11} align="center" sx={{ py: 4 }}>
+                    <TableCell colSpan={10} align="center" sx={{ py: 4 }}>
                       <Typography color="text.secondary">{t('none')}</Typography>
                     </TableCell>
                   </TableRow>
@@ -538,9 +395,6 @@ export default function GatePassesPage() {
                           : '—'}
                       </TableCell>
                       <TableCell data-label={t('items')}>{t('itemsCount', { n: row.items?.length ?? 0 })}</TableCell>
-                      <TableCell data-label={t('otpSentTo')}>
-                        {row.otpRequestedForUser?.name ?? '—'}
-                      </TableCell>
                       <TableCell data-label={t('approvedBy')}>
                         {row.otpApprovedByUser?.name ?? '—'}
                       </TableCell>
@@ -568,12 +422,10 @@ export default function GatePassesPage() {
                                 size="small"
                                 variant="outlined"
                                 startIcon={<CheckIcon />}
-                                onClick={() => {
-                                  setOtpDialogOpen(row);
-                                  setOtpInput('');
-                                }}
+                                disabled={approveMutation.isPending}
+                                onClick={() => approveMutation.mutate(row.id)}
                               >
-                                {t('enterOtp')}
+                                {t('approve')}
                               </Button>
                               <IconButton
                                 size="small"
@@ -831,22 +683,6 @@ export default function GatePassesPage() {
               selectedLabel={photoProof ? t('photoName', { name: photoProof.name }) : undefined}
             />
 
-            <TextField
-              select
-              label={t('selectHead')}
-              value={selectedHeadId}
-              onChange={(e) => setSelectedHeadId(e.target.value)}
-              fullWidth
-              size="small"
-              required
-              helperText={t('headHelp')}
-            >
-              {heads?.map((h) => (
-                <MenuItem key={h.id} value={h.id}>
-                  {h.name} ({enumLabel(h.role)}) — {h.phone}
-                </MenuItem>
-              ))}
-            </TextField>
             </>}
           </Box>
         </DialogContent>
@@ -866,74 +702,17 @@ export default function GatePassesPage() {
               createMutation.mutate();
             }}
             disabled={
-              !selectedHeadId ||
               (gatePassCategory === 'MATERIAL' && !selectedPoId) ||
               (gatePassCategory === 'VISITOR' && !visitorName.trim()) ||
-              createMutation.isPending ||
-              sendingOtp
+              createMutation.isPending
             }
           >
-            {createMutation.isPending || sendingOtp ? (
+            {createMutation.isPending ? (
               <CircularProgress size={20} />
             ) : (
-              t('createSendOtp')
+              t('createPass')
             )}
           </Button>}
-        </DialogActions>
-      </ResponsiveDialog>
-
-      {/* OTP Verification Dialog */}
-      <ResponsiveDialog
-        open={!!otpDialogOpen}
-        onClose={() => {
-          setOtpDialogOpen(null);
-          setOtpInput('');
-        }}
-        maxWidth="xs"
-        fullWidth
-      >
-        <DialogTitle>{t('otpDialogTitle', { n: otpDialogOpen?.passNumber })}</DialogTitle>
-        <DialogContent>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
-            <Typography variant="body2">
-              <Trans t={t} i18nKey="otpDialogText" values={{ name: otpDialogOpen?.otpRequestedForUser?.name, phone: otpDialogOpen?.otpRequestedForUser?.phone }} components={{ b: <strong /> }} />
-            </Typography>
-            <TextField
-              label={t('enterOtp')}
-              value={otpInput}
-              onChange={(e) => setOtpInput(e.target.value)}
-              fullWidth
-              size="small"
-              required
-              inputProps={{ maxLength: 6 }}
-            />
-            <Button
-              variant="text"
-              startIcon={resendingOtp ? <CircularProgress size={16} /> : <ResendIcon />}
-              onClick={handleResendOtp}
-              disabled={resendingOtp}
-              sx={{ alignSelf: 'flex-start' }}
-            >
-              {t('resendOtp')}
-            </Button>
-          </Box>
-        </DialogContent>
-        <DialogActions>
-          <Button
-            onClick={() => {
-              setOtpDialogOpen(null);
-              setOtpInput('');
-            }}
-          >
-            {t('cancel')}
-          </Button>
-          <Button
-            variant="contained"
-            onClick={handleVerifyOtp}
-            disabled={!otpInput || verifyOtpMutation.isPending}
-          >
-            {verifyOtpMutation.isPending ? <CircularProgress size={20} /> : t('verifyApprove')}
-          </Button>
         </DialogActions>
       </ResponsiveDialog>
 

@@ -213,13 +213,12 @@ describe('1. Procurement lifecycle', () => {
     record('po.approve', db!.status === 'APPROVED', `status=${db!.status}`);
   });
 
-  it('1.6 Create gate pass for the approved PO (OTP requested)', async () => {
+  it('1.6 Create gate pass for the approved PO (issued immediately, no OTP)', async () => {
     const res = await request
       .post('/api/gate-passes')
       .set(authAs(userPhId))
       .field('gatePassCategory', 'MATERIAL')
       .field('poId', poId)
-      .field('otpRequestedFor', userHocId)
       .field('vehicleType', 'TRUCK')
       .field('vehicleNumber', 'AP39AB1234')
       .field('driverName', 'Suresh')
@@ -227,23 +226,9 @@ describe('1. Procurement lifecycle', () => {
     expect(res.status).toBe(201);
     gatePassId = res.body.id;
     const db = await prisma.gatePass.findUnique({ where: { id: gatePassId }, include: { items: true } });
-    expect(db!.status).toBe('PENDING');
+    expect(db!.status).toBe('APPROVED');
     expect(db!.items.length).toBeGreaterThan(0);
     record('gatepass.create', res.status === 201, `gatePass=${gatePassId} status=${db!.status} items=${db!.items.length}`);
-  });
-
-  it('1.7 Approve gate pass directly in DB (no Firebase OTP in test env)', async () => {
-    // The verify-otp endpoint requires a real Firebase ID token which we cannot
-    // mint in a test. Since DB access is granted, mark the gate pass APPROVED
-    // directly — this mirrors what a successful OTP verification does.
-    const approver = userHocId;
-    await prisma.gatePass.update({
-      where: { id: gatePassId },
-      data: { status: 'APPROVED', otpApprovedBy: approver, otpApprovedAt: new Date() },
-    });
-    const db = await prisma.gatePass.findUnique({ where: { id: gatePassId } });
-    expect(db!.status).toBe('APPROVED');
-    record('gatepass.approve', db!.status === 'APPROVED', `status=${db!.status} approvedBy=${approver}`);
   });
 
   it('1.8 Create goods receipt from the approved gate pass', async () => {
@@ -283,7 +268,7 @@ describe('1. Procurement lifecycle', () => {
   });
 
   it('1.10 Post goods receipt → inventory IN + assets created', async () => {
-    // Poster must differ from creator + inspector. Creator was admin/ph, inspector hoc → use admin2 or ph.
+    // Any user with MANAGE_INVENTORY may post; no creator/inspector separation is enforced.
     const posterId = userAdmin2Id || userPhId;
     const res = await request.post(`/api/goods-receipts/${goodsReceiptId}/post`).set(authAs(posterId)).send({});
     expect(res.status).toBe(200);

@@ -74,13 +74,12 @@ describe('Gate Pass Approval', () => {
     record('po.approve', true, `status=APPROVED`);
   });
 
-  it('creates a gate pass (OTP requested for HoC)', async () => {
+  it('creates a gate pass (issued immediately, no OTP)', async () => {
     const res = await request
       .post('/api/gate-passes')
       .set(authAs(ctx.userPhId))
       .field('gatePassCategory', 'MATERIAL')
       .field('poId', poId)
-      .field('otpRequestedFor', ctx.userHocId)
       .field('vehicleType', 'LORRY')
       .field('vehicleNumber', 'AP28XY5678')
       .field('driverName', 'Mahesh')
@@ -88,30 +87,16 @@ describe('Gate Pass Approval', () => {
     expect(res.status).toBe(201);
     gatePassId = res.body.id;
     const db = await prisma.gatePass.findUnique({ where: { id: gatePassId }, include: { items: true } });
-    expect(db!.status).toBe('PENDING');
+    expect(db!.status).toBe('APPROVED');
     expect(db!.items.length).toBeGreaterThan(0);
-    expect(db!.otpRequestedFor).toBe(ctx.userHocId);
+    expect(db!.otpApprovedBy).toBe(ctx.userPhId);
     record('gatepass.create', true, `gatePass=${gatePassId} items=${db!.items.length}`);
   });
 
-  it('rejects OTP verification without a valid Firebase token', async () => {
-    const res = await request
-      .post(`/api/gate-passes/${gatePassId}/verify-otp`)
-      .set(authAs(ctx.userPhId))
-      .send({ idToken: 'invalid-token' });
+  it('rejects approving a gate pass that is already approved', async () => {
+    const res = await request.post(`/api/gate-passes/${gatePassId}/approve`).set(authAs(ctx.userPhId));
     expect(res.status).toBe(400);
-    record('gatepass.otpRejected', true, `400 as expected (no Firebase token)`);
-  });
-
-  it('approves the gate pass directly in DB (OTP bypass)', async () => {
-    await prisma.gatePass.update({
-      where: { id: gatePassId },
-      data: { status: 'APPROVED', otpApprovedBy: ctx.userHocId, otpApprovedAt: new Date() },
-    });
-    const db = await prisma.gatePass.findUnique({ where: { id: gatePassId } });
-    expect(db!.status).toBe('APPROVED');
-    expect(db!.otpApprovedBy).toBe(ctx.userHocId);
-    record('gatepass.approve', true, `status=APPROVED approvedBy=HoC`);
+    record('gatepass.alreadyApproved', true, `400 as expected`);
   });
 
   it('verifies gate pass + PO persisted in DB', async () => {

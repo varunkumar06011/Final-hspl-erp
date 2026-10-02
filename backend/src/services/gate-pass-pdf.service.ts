@@ -45,9 +45,9 @@ export function streamGatePassPdf(res: NodeJS.WritableStream, gatePass: any) {
   const address = (place: any) => text(place?.hospitalAddress ?? place?.officeAddress);
   const date = gatePass.date ? new Date(gatePass.date).toLocaleDateString('en-IN') : '—';
   const approval =
-    gatePass.status === 'APPROVED'
+    gatePass.status !== 'PENDING'
       ? text(gatePass.otpApprovedByUser?.name)
-      : 'Pending OTP approval';
+      : 'Pending approval';
 
   // Clean PO-style header without logos.
   doc.rect(0, 0, pageWidth, 8).fill(primary);
@@ -244,7 +244,7 @@ export function streamGatePassPdf(res: NodeJS.WritableStream, gatePass: any) {
     ['Vehicle no.', gatePass.vehicleNumber],
     [
       'Out time',
-      gatePass.status === 'APPROVED'
+      gatePass.status !== 'PENDING'
         ? new Date(gatePass.otpApprovedAt ?? gatePass.date).toLocaleString('en-IN')
         : '—',
     ],
@@ -277,7 +277,7 @@ export function streamGatePassPdf(res: NodeJS.WritableStream, gatePass: any) {
     ['Store keeper', ''],
     [
       'Approved by',
-      gatePass.status === 'APPROVED' ? gatePass.otpApprovedByUser?.name : 'Pending OTP',
+      gatePass.status !== 'PENDING' ? gatePass.otpApprovedByUser?.name : 'Pending approval',
     ],
   ].forEach(([label, name], index) => {
     const x = left + index * 166;
@@ -299,7 +299,7 @@ export function streamGatePassPdf(res: NodeJS.WritableStream, gatePass: any) {
     .font('Helvetica')
     .fontSize(6.5)
     .text(
-      'Generated from the Gate Pass record. Approval status is shown above; OTP is not required to download this document.',
+      'Generated from the Gate Pass record. Approval status is shown above.',
       left,
       signatureY + 38,
       { width, align: 'center' },

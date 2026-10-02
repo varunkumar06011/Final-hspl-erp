@@ -28,7 +28,7 @@ import {
   createExpenseSchema,
   recordPaymentSchema,
   createGatePassSchema,
-  verifyGatePassOtpSchema,
+  approveGatePassSchema,
   createInventoryItemSchema,
   createInventoryTxnSchema,
   createPhaseSchema,
@@ -266,47 +266,46 @@ describe('Payment request & expense schemas', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// GATE PASSES — material entry/exit tracking with OTP verification.
+// GATE PASSES — material entry/exit tracking (no OTP; passes are issued immediately).
 // ─────────────────────────────────────────────────────────────────────────────
 describe('Gate Pass schemas', () => {
-  it('createGatePassSchema requires a PO, vehicle type, and an OTP recipient for material gatepasses (vehicle number is optional)', () => {
+  it('createGatePassSchema requires a PO and vehicle type for material gatepasses (vehicle number is optional)', () => {
     expect(() => createGatePassSchema.parse({ body: { poId: id } })).toThrow();
     const parsed = createGatePassSchema.parse({
-      body: { poId: id, otpRequestedFor: id, vehicleType: 'TRUCK', vehicleNumber: 'AP39AB1234' },
+      body: { poId: id, vehicleType: 'TRUCK', vehicleNumber: 'AP39AB1234' },
     });
     expect(parsed.body.poId).toBe(id);
     expect(parsed.body.vehicleType).toBe('TRUCK');
     // vehicle number is optional
     const parsedNoVehicle = createGatePassSchema.parse({
-      body: { poId: id, otpRequestedFor: id, vehicleType: 'TRUCK' },
+      body: { poId: id, vehicleType: 'TRUCK' },
     });
     expect(parsedNoVehicle.body.vehicleNumber).toBeUndefined();
   });
 
   it('createGatePassSchema accepts an optional invoiceId (for invoice-linked deliveries)', () => {
     const parsed = createGatePassSchema.parse({
-      body: { poId: id, otpRequestedFor: id, invoiceId: otherId, vehicleType: 'LORRY', vehicleNumber: 'AP39AB1234' },
+      body: { poId: id, invoiceId: otherId, vehicleType: 'LORRY', vehicleNumber: 'AP39AB1234' },
     });
     expect(parsed.body.invoiceId).toBe(otherId);
   });
 
   it('createGatePassSchema accepts simple visitor gatepasses without a PO or vehicle', () => {
     const parsed = createGatePassSchema.parse({
-      body: { gatePassCategory: 'VISITOR', visitorName: 'Jane Doe', otpRequestedFor: id },
+      body: { gatePassCategory: 'VISITOR', visitorName: 'Jane Doe' },
     });
     expect(parsed.body.gatePassCategory).toBe('VISITOR');
     expect(parsed.body.poId).toBeUndefined();
   });
 
-  it('verifyGatePassOtpSchema requires a Firebase idToken (the guard must authenticate before verifying)', () => {
-    // The guard's identity is verified via Firebase before the OTP is accepted.
-    // This prevents a random person at the gate from approving a gate pass.
-    expect(() => verifyGatePassOtpSchema.parse({ params: { id }, body: {} })).toThrow();
-    const parsed = verifyGatePassOtpSchema.parse({
-      params: { id },
-      body: { idToken: 'firebase-token' },
-    });
-    expect(parsed.body.idToken).toBe('firebase-token');
+  it('createGatePassSchema no longer needs an OTP recipient', () => {
+    const parsed = createGatePassSchema.parse({ body: { poId: id, vehicleType: 'TRUCK' } });
+    expect((parsed.body as Record<string, unknown>).otpRequestedFor).toBeUndefined();
+  });
+
+  it('approveGatePassSchema only needs the gate pass id (legacy pending passes, no OTP)', () => {
+    expect(() => approveGatePassSchema.parse({ params: { id: 'not-a-uuid' } })).toThrow();
+    expect(approveGatePassSchema.parse({ params: { id } }).params.id).toBe(id);
   });
 });
 

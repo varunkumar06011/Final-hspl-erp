@@ -12,7 +12,7 @@
  *   - Quotations (list/get/file/patch)
  *   - Invoices (list/get/file/patch/delete)
  *   - Payments (list/get/file/delete)
- *   - Gate Passes (list/get/pdf/delete, heads, approved-pos)
+ *   - Gate Passes (list/get/pdf/delete, approved-pos)
  *   - GRNs (list/get, available-gatepasses)
  *   - Assets (list/get/stats/trace/export, generate, serial, details, print-log)
  *   - Photos (list/get/file/delete)
@@ -269,12 +269,6 @@ describe('CRUD Coverage', () => {
     expect(res.status).toBe(200);
     expect(res.body).toHaveProperty('data');
     record('gp.list', true, `count=${res.body.data?.length ?? 0}`);
-  });
-
-  it('GET /api/gate-passes/heads returns OTP heads', async () => {
-    const res = await request.get('/api/gate-passes/heads').set(authAs(ctx.userPhId));
-    expect(res.status).toBe(200);
-    record('gp.heads', true, `ok`);
   });
 
   it('GET /api/gate-passes/approved-pos returns approved POs', async () => {

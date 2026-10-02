@@ -318,7 +318,7 @@ router.post(
       const projectId = requireProjectId(req);
       const receipt = await prisma.goodsReceipt.findFirst({
         where: { id: req.params.id, projectId, deletedAt: null },
-        include: { items: true, gatePass: { select: { createdBy: true } }, inspection: true },
+        include: { items: true, inspection: true },
       });
       if (!receipt) {
         res.status(404).json({ error: 'Goods receipt not found' });
@@ -326,10 +326,6 @@ router.post(
       }
       if (receipt.status !== GoodsReceiptStatus.PENDING_INSPECTION && receipt.status !== GoodsReceiptStatus.READY_TO_POST) {
         res.status(400).json({ error: 'This goods receipt has already been posted' });
-        return;
-      }
-      if (receipt.createdBy === req.user!.id || receipt.gatePass.createdBy === req.user!.id) {
-        res.status(403).json({ error: 'The person who created the receipt or gatepass cannot inspect it' });
         return;
       }
 
@@ -446,10 +442,6 @@ router.post(
       }
       if (receipt.status !== GoodsReceiptStatus.READY_TO_POST) {
         res.status(400).json({ error: 'Only an inspected goods receipt can be posted to inventory' });
-        return;
-      }
-      if (receipt.createdBy === req.user!.id || receipt.inspectedBy === req.user!.id || receipt.gatePass.createdBy === req.user!.id) {
-        res.status(403).json({ error: 'The receipt creator, gatepass creator, and inspector cannot post inventory for this receipt' });
         return;
       }
 

@@ -1,9 +1,9 @@
 import { Router, Response, NextFunction } from 'express';
-import { Permission, AuditAction, UserRole, isAdminRole } from '@hospital-erp/shared';
+import { Permission, AuditAction, UserRole } from '@hospital-erp/shared';
 import {
   createGatePassSchema,
   listGatePassesSchema,
-  verifyGatePassOtpSchema,
+  approveGatePassSchema,
 } from '@hospital-erp/shared';
 import { prisma } from '../config/prisma';
 import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middleware/auth';
@@ -11,7 +11,6 @@ import { rbacMiddleware } from '../middleware/rbac';
 import { validateMiddleware } from '../middleware/validate';
 import { logAudit } from '../services/audit.service';
 import { generateProjectSequenceNumber } from '../services/sequence.service';
-import { verifyFirebaseToken } from '../config/firebase';
 import { notifyAllHeads } from '../services/push.service';
 import { streamGatePassPdf } from '../services/gate-pass-pdf.service';
 import { getStorageService } from '../services/storage.service';
@@ -22,11 +21,8 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 *
 const router = Router();
 router.use(authMiddleware);
 
-const HEAD_ROLES = [
-  UserRole.PROJECT_HEAD,
-  UserRole.HEAD_OF_CONSTRUCTION,
-];
-// Admin roles (ADMIN, ADMIN_2, ADMIN_3, ...) are checked dynamically via isAdminRole().
+// Head and admin roles (admins are matched by the ADMIN prefix).
+const HEAD_ROLES = [UserRole.PROJECT_HEAD, UserRole.HEAD_OF_CONSTRUCTION];
 
 function getPassDateSuffix(): string {
   const now = new Date();
@@ -53,12 +49,12 @@ const gatePassInclude = {
   invoice: { select: { id: true, invoiceCode: true, invoiceNumber: true } },
   items: true,
   createdByUser: { select: { id: true, name: true } },
-  otpRequestedForUser: { select: { id: true, name: true, role: true, phone: true } },
   otpApprovedByUser: { select: { id: true, name: true } },
   project: { select: { name: true, officeAddress: true, hospitalAddress: true, gstNumber: true } },
 };
 
-// GET /heads — list the 4 head users for OTP selection (not filtered by projectId — heads may not be assigned to a project)
+// GET /heads — head/admin users, used as a people picker by other pages (Documents, Issues).
+// Not filtered by projectId: users are shared across projects.
 router.get(
   '/heads',
   rbacMiddleware(Permission.VIEW_GATE_PASSES),
@@ -66,10 +62,7 @@ router.get(
     try {
       const users = await prisma.user.findMany({
         where: {
-          OR: [
-            { role: { in: HEAD_ROLES } },
-            { role: { startsWith: 'ADMIN' } },
-          ],
+          OR: [{ role: { in: HEAD_ROLES } }, { role: { startsWith: 'ADMIN' } }],
           isActive: true,
         },
         select: { id: true, name: true, role: true, phone: true },
@@ -81,6 +74,42 @@ router.get(
     }
   },
 );
+
+// A gate pass only authorizes a delivery. PO delivery status follows accepted quantities from
+// posted Goods Receipts (rejected material does not count as received).
+async function syncPoDeliveryStatus(poId: string): Promise<void> {
+  const poWithReceipts = await prisma.purchaseOrder.findUnique({
+    where: { id: poId },
+    include: {
+      items: true,
+      goodsReceipts: {
+        where: { deletedAt: null, status: 'POSTED' },
+        select: { items: { select: { poItemId: true, materialName: true, acceptedQty: true } } },
+      },
+    },
+  });
+  if (!poWithReceipts) return;
+  const acceptedByPoItemId = new Map<string, number>();
+  const acceptedByName = new Map<string, number>();
+  for (const receipt of poWithReceipts.goodsReceipts) {
+    for (const item of receipt.items) {
+      const qty = Number(item.acceptedQty);
+      if (item.poItemId) acceptedByPoItemId.set(item.poItemId, (acceptedByPoItemId.get(item.poItemId) ?? 0) + qty);
+      const name = item.materialName.toLowerCase();
+      acceptedByName.set(name, (acceptedByName.get(name) ?? 0) + qty);
+    }
+  }
+  const fullyReceived = poWithReceipts.items.every(
+    (item) =>
+      (item.id && acceptedByPoItemId.has(item.id)
+        ? acceptedByPoItemId.get(item.id)!
+        : acceptedByName.get(item.materialName.toLowerCase()) ?? 0) >= Number(item.quantity),
+  );
+  await prisma.purchaseOrder.update({
+    where: { id: poId },
+    data: { status: fullyReceived ? 'DELIVERED' : 'PARTIALLY_DELIVERED' },
+  });
+}
 
 // GET /approved-pos — list approved POs with their verified invoices and items (for gate pass creation)
 router.get(
@@ -252,7 +281,7 @@ router.get(
   },
 );
 
-// POST / — create gate pass (request OTP)
+// POST / — create gate pass. No OTP: the pass is issued (APPROVED) immediately so the gate never waits.
 router.post(
   '/',
   rbacMiddleware(Permission.CREATE_GATE_PASS),
@@ -266,7 +295,6 @@ router.post(
         poId,
         items: rawItems,
         invoiceId,
-        otpRequestedFor,
         visitorName,
         visitorPhone,
         visitDate,
@@ -408,13 +436,6 @@ router.post(
         }
       }
 
-      // Validate otpRequestedFor is one of the 4 heads
-      const headUser = await prisma.user.findUnique({ where: { id: otpRequestedFor } });
-      if (!headUser || (!HEAD_ROLES.includes(headUser.role as UserRole) && !isAdminRole(headUser.role))) {
-        res.status(400).json({ error: 'OTP recipient must be a head or admin' });
-        return;
-      }
-
       const passNumber = await generateUniquePassNumber(projectId);
       let uploadedPhotoPath: string | null = photoProofPath || null;
       if (req.file) {
@@ -451,8 +472,9 @@ router.post(
           gatePassType: gatePassType ?? 'NON_RETURNABLE',
           photoProofPath: uploadedPhotoPath,
           remarks: remarks || null,
-          status: 'PENDING',
-          otpRequestedFor,
+          status: 'APPROVED',
+          otpApprovedBy: req.user!.id,
+          otpApprovedAt: new Date(),
           createdBy: req.user!.id,
           items: {
             create: items.map((item) => ({
@@ -471,148 +493,64 @@ router.post(
         entityType: 'GATE_PASS',
         entityId: gatePass.id,
         projectId,
-        newValue: { passNumber, gatePassCategory, poId: poId ?? null, invoiceId: invoiceId ?? null, otpRequestedFor },
+        newValue: { passNumber, gatePassCategory, poId: poId ?? null, invoiceId: invoiceId ?? null, status: 'APPROVED' },
       });
+
+      if (gatePass.poId) await syncPoDeliveryStatus(gatePass.poId);
 
       // Notify all heads about the new gate pass
       notifyAllHeads(projectId, {
         entityType: 'GATE_PASS',
         entityId: gatePass.id,
         title: gatePassCategory === 'VISITOR' ? 'New Visitor Gate Pass Created' : 'New Material Gate Pass Created',
-        body: `${gatePassCategory === 'VISITOR' ? 'Visitor' : 'Material'} gate pass ${passNumber} — OTP sent to ${headUser.name}`,
+        body: `${gatePassCategory === 'VISITOR' ? 'Visitor' : 'Material'} gate pass ${passNumber} issued by ${req.user!.name}`,
         url: '/gate-passes',
       }).catch((err) => console.error('[Push] Gate pass notification error:', err));
 
-      // Return the gate pass — the frontend will use Firebase to send the OTP to the head's phone
-      res.status(201).json({
-        ...gatePass,
-        headPhone: headUser.phone,
-        headName: headUser.name,
-        message: `Gate pass created. An OTP has been sent to ${headUser.name} at ${headUser.phone}. Get the OTP from them to approve.`,
-      });
+      res.status(201).json(gatePass);
     } catch (error) {
       next(error);
     }
   },
 );
 
-// POST /:id/verify-otp — verify Firebase ID token and approve gate pass
+// POST /:id/approve — one-click approval for passes created before OTP was removed (still PENDING)
 router.post(
-  '/:id/verify-otp',
+  '/:id/approve',
   rbacMiddleware(Permission.CREATE_GATE_PASS),
-  validateMiddleware(verifyGatePassOtpSchema),
+  validateMiddleware(approveGatePassSchema),
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const projectId = requireProjectId(req);
       const gatePass = await prisma.gatePass.findFirst({
         where: { id: req.params.id, projectId, deletedAt: null },
-        include: {
-          purchaseOrder: { include: { items: true, approvalWorkflow: { select: { id: true } } } },
-          items: true,
-          otpRequestedForUser: { select: { id: true, name: true, phone: true } },
-        },
       });
       if (!gatePass) {
         res.status(404).json({ error: 'Gate pass not found' });
         return;
       }
-      if (gatePass.status === 'APPROVED') {
-        res.status(400).json({ error: 'Gate pass already approved' });
-        return;
-      }
-      if (!gatePass.otpRequestedForUser) {
-        res.status(400).json({ error: 'No OTP recipient was set for this gate pass' });
+      if (gatePass.status !== 'PENDING') {
+        res.status(400).json({ error: 'Gate pass is already approved' });
         return;
       }
 
-      // Verify the Firebase ID token
-      const { idToken } = req.body;
-      let decodedToken;
-      try {
-        decodedToken = await verifyFirebaseToken(idToken);
-      } catch {
-        res.status(400).json({ error: 'Invalid or expired OTP token' });
-        return;
-      }
-
-      // Check that the phone number in the verified token matches the selected head's phone number
-      const tokenPhone = decodedToken.phone_number;
-      const headPhone = gatePass.otpRequestedForUser.phone;
-      if (!tokenPhone || !headPhone || tokenPhone !== headPhone) {
-        res
-          .status(400)
-          .json({
-            error:
-              'OTP was not verified for the correct head. The OTP must be sent to ' + headPhone,
-          });
-        return;
-      }
-
-      // OTP approval only approves the gate pass. Inventory is intentionally decoupled
-      // until the inventory receiving workflow is defined.
-
-      // Mark gate pass as approved
       const updated = await prisma.gatePass.update({
         where: { id: gatePass.id },
-        data: {
-          status: 'APPROVED',
-          otpApprovedBy: gatePass.otpRequestedForUser.id,
-          otpApprovedAt: new Date(),
-        },
+        data: { status: 'APPROVED', otpApprovedBy: req.user!.id, otpApprovedAt: new Date() },
         include: gatePassInclude,
       });
-
-      if (gatePass.poId) {
-        // PO status is based on accepted quantities from posted Goods Receipts,
-        // not gate pass quantities. Rejected material does not count as received.
-        const poWithReceipts = await prisma.purchaseOrder.findUnique({
-          where: { id: gatePass.poId },
-          include: {
-            items: true,
-            goodsReceipts: {
-              where: { deletedAt: null, status: 'POSTED' },
-              select: { items: { select: { poItemId: true, materialName: true, acceptedQty: true } } },
-            },
-          },
-        });
-      if (poWithReceipts) {
-        const acceptedByPoItemId = new Map<string, number>();
-        const acceptedByName = new Map<string, number>();
-        for (const receipt of poWithReceipts.goodsReceipts) {
-          for (const item of receipt.items) {
-            const qty = Number(item.acceptedQty);
-            if (item.poItemId) acceptedByPoItemId.set(item.poItemId, (acceptedByPoItemId.get(item.poItemId) ?? 0) + qty);
-            const name = item.materialName.toLowerCase();
-            acceptedByName.set(name, (acceptedByName.get(name) ?? 0) + qty);
-          }
-        }
-        const fullyReceived = poWithReceipts.items.every(
-          (item) =>
-            (item.id && acceptedByPoItemId.has(item.id)
-              ? acceptedByPoItemId.get(item.id)!
-              : acceptedByName.get(item.materialName.toLowerCase()) ?? 0) >= Number(item.quantity),
-        );
-        await prisma.purchaseOrder.update({
-          where: { id: gatePass.poId },
-          data: { status: fullyReceived ? 'DELIVERED' : 'PARTIALLY_DELIVERED' },
-        });
-      }
-      }
+      if (gatePass.poId) await syncPoDeliveryStatus(gatePass.poId);
 
       await logAudit({
-        userId: gatePass.otpRequestedForUser.id,
+        userId: req.user!.id,
         action: AuditAction.APPROVE,
         entityType: 'GATE_PASS',
         entityId: gatePass.id,
         projectId,
-        newValue: { status: 'APPROVED', approvedBy: gatePass.otpRequestedForUser.id, requestedBy: req.user!.id, inventoryUpdated: false },
+        newValue: { status: 'APPROVED', approvedBy: req.user!.id },
       });
 
-      res.json({
-        ...updated,
-        inventoryResults: [],
-        message: 'Gate pass approved. Inventory has not been updated.',
-      });
+      res.json(updated);
     } catch (error) {
       next(error);
     }

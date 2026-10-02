@@ -510,7 +510,6 @@ export const createGatePassSchema = z.object({
       z.array(gatePassItem).optional(),
     ),
     invoiceId: uuid.optional(),
-    otpRequestedFor: uuid,
     visitorName: z.string().trim().max(200).optional(),
     visitorPhone: z.string().trim().max(30).optional(),
     visitDate: dateStr.optional(),
@@ -547,9 +546,8 @@ export const createGatePassSchema = z.object({
 export const listGatePassesSchema = z.object({
   query: pagination.extend({ status: z.string().optional() }),
 });
-export const verifyGatePassOtpSchema = z.object({
+export const approveGatePassSchema = z.object({
   params: z.object({ id: uuid }),
-  body: z.object({ idToken: z.string().min(1, 'Firebase ID token is required') }),
 });
 
 // ═══ Goods Receipts ═══
@@ -1099,6 +1097,25 @@ export const listAttachmentsSchema = z.object({
     entityType: z.string().min(1).max(50).optional(),
     entityId: uuid.optional(),
     fileType: z.string().max(20).optional(),
+  }),
+});
+
+// ═══ Document library ═══
+export const listDocumentLibrarySchema = z.object({
+  query: pagination.extend({
+    category: z.string().min(1).max(30).optional(),
+    fileType: z.enum(['IMAGE', 'DOCUMENT']).optional(),
+    search: z.string().max(100).optional(),
+    uploadedBy: uuid.optional(),
+    from: dateStr.optional(),
+    to: dateStr.optional(),
+  }),
+});
+
+export const searchLibraryTargetsSchema = z.object({
+  query: z.object({
+    category: z.string().min(1).max(30),
+    q: z.string().max(100).optional(),
   }),
 });
 
