@@ -17,6 +17,7 @@ import { logAudit } from '../services/audit.service';
 import { generateProjectSequenceNumber } from '../services/sequence.service';
 import { streamMprPdf } from '../services/mpr-pdf.service';
 import * as approvalService from '../services/approval.service';
+import { HEAD_THEN_ADMIN_POLICY } from '../services/approval.service';
 import { getStorageService, serveFile } from '../services/storage.service';
 import { notifyApprovers } from '../services/push.service';
 import { createNonVendorPoFromMpr, findLivePoForMpr } from '../services/non-vendor-po.service';
@@ -545,7 +546,7 @@ router.put(
               status: 'VERIFICATION',
               currentStep: 0,
               minApprovers: getRequiredApproverCount(newTotal),
-              approvalPolicy: 'HEAD_GROUPS',
+              approvalPolicy: HEAD_THEN_ADMIN_POLICY,
               steps: {
                 create: approverRoles.map((role, idx) => ({
                   stepNumber: idx + 1,
@@ -573,7 +574,7 @@ router.put(
       await logAudit({ userId: req.user!.id, action: AuditAction.UPDATE_MPR, entityType: 'material_purchase_requests', entityId: record.id, projectId, newValue: { mprNumber: record.mprNumber } });
 
       if (wasSubmitted) {
-        notifyApprovers(projectId, approverRoles as UserRole[], {
+        notifyApprovers(projectId, HEAD_ROLES as UserRole[], {
           approvalId: record.approvalWorkflowId!,
           entityType: 'MATERIAL_PURCHASE_REQUEST',
           entityId: record.id,
@@ -657,7 +658,7 @@ router.post(
             status: 'VERIFICATION',
             currentStep: 0,
             minApprovers: getRequiredApproverCount(Number(existing.estimatedTotal)),
-            approvalPolicy: 'HEAD_GROUPS',
+            approvalPolicy: HEAD_THEN_ADMIN_POLICY,
             steps: {
               create: approverRoles.map((role, idx) => ({
                 stepNumber: idx + 1,
@@ -677,7 +678,7 @@ router.post(
 
       await logAudit({ userId: req.user!.id, action: AuditAction.SUBMIT_MPR, entityType: 'material_purchase_requests', entityId: record.id, projectId, newValue: { mprNumber: record.mprNumber } });
 
-      notifyApprovers(projectId, approverRoles as UserRole[], {
+      notifyApprovers(projectId, HEAD_ROLES as UserRole[], {
         approvalId: record.approvalWorkflowId!,
         entityType: 'MATERIAL_PURCHASE_REQUEST',
         entityId: record.id,

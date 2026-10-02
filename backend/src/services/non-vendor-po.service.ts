@@ -1,8 +1,9 @@
-import { POStatus, POPaymentType, AuditAction, UserRole, VendorType, isAdminRole } from '@hospital-erp/shared';
+import { POStatus, POPaymentType, AuditAction, UserRole, VendorType, isAdminRole, FIRST_LEVEL_APPROVER_ROLES } from '@hospital-erp/shared';
 import { prisma } from '../config/prisma';
 import { generateProjectSequenceNumber } from './sequence.service';
 import { logAudit } from './audit.service';
 import { notifyApprovers } from './push.service';
+import { HEAD_THEN_ADMIN_POLICY, headThenAdminSteps } from './approval.service';
 
 /** Active admin roles (ADMIN, ADMIN_2, ...) for a project — the PO approvers. */
 export async function getActiveAdminRoles(_projectId: string): Promise<string[]> {
@@ -90,9 +91,9 @@ export async function createNonVendorPoFromMpr(mprId: string, projectId: string,
         status: 'VERIFICATION',
         currentStep: 0,
         minApprovers: 1,
-        approvalPolicy: 'PO_SINGLE_APPROVER',
+        approvalPolicy: HEAD_THEN_ADMIN_POLICY,
         steps: {
-          create: adminRoles.map((role, idx) => ({ stepNumber: idx + 1, approverRole: role, status: 'PENDING' })),
+          create: headThenAdminSteps(adminRoles),
         },
       },
     });
@@ -108,7 +109,7 @@ export async function createNonVendorPoFromMpr(mprId: string, projectId: string,
     newValue: { poNumber, mprId: mpr.id, mprNumber: mpr.mprNumber, source: 'NON_VENDOR_MPR', grandTotal: 0 },
   });
 
-  notifyApprovers(projectId, adminRoles as UserRole[], {
+  notifyApprovers(projectId, [...FIRST_LEVEL_APPROVER_ROLES] as UserRole[], {
     approvalId: po.approvalWorkflowId ?? '',
     entityType: 'PURCHASE_ORDER',
     entityId: po.id,

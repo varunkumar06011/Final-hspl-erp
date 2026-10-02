@@ -96,7 +96,7 @@ async function checkOverdueQuotations(): Promise<void> {
       where: {
         entityType: 'QUOTATION',
         status: { in: [ApprovalStatus.VERIFICATION, ApprovalStatus.APPROVAL_1, ApprovalStatus.APPROVAL_2] },
-        approvalPolicy: { not: 'ADMIN_SINGLE_APPROVER' },
+        approvalPolicy: { notIn: ['ADMIN_SINGLE_APPROVER', 'HEAD_THEN_ADMIN'] },
       },
       data: { approvalPolicy: 'ADMIN_SINGLE_APPROVER' },
     });

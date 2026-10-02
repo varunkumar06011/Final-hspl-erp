@@ -21,7 +21,7 @@ import {
   Balance as VarianceIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { MPRStatus, MPRRequestType, UserRole, isApproverRole } from '@hospital-erp/shared';
+import { MPRStatus, MPRRequestType, UserRole, isApproverRole, isWorkflowOpenToRole } from '@hospital-erp/shared';
 import { formatDate, STATUS_COLORS, QTY_UNIT_OPTIONS, SERVICE_UNIT_OPTIONS, SERVICE_CATEGORY_OPTIONS, enumLabel, unitLabel, serviceCategoryLabel } from '../utils/enumOptions';
 import { useTranslation } from 'react-i18next';
 import api, { extractErrorMessage } from '../config/api';
@@ -80,7 +80,7 @@ interface MPRRow {
   vendor?: { id: string; name: string; vendorCode: string; vendorType: string; phone?: string | null; contactPersonPhone?: string | null } | null;
   quotations?: { id: string; quotationNumber: string; status: string; grandTotal: number }[];
   approvalWorkflowId?: string | null;
-  approvalWorkflow?: { id: string; status: string; currentStep: number; steps: ApprovalStep[] } | null;
+  approvalWorkflow?: { id: string; status: string; approvalPolicy?: string | null; currentStep: number; steps: ApprovalStep[] } | null;
   purchaseOrders?: { id: string; poNumber: string; status: string }[];
   receiptFilePath?: string | null;
   receiptFileName?: string | null;
@@ -557,6 +557,7 @@ export default function MaterialPurchaseRequestsPage() {
 
   function canApprove(row: MPRRow): ApprovalStep | null {
     if (!row.approvalWorkflow || !user || !isApproverRole(user.role)) return null;
+    if (!isWorkflowOpenToRole(row.approvalWorkflow, user.role)) return null;
     if (row.status !== MPRStatus.SUBMITTED && row.status !== MPRStatus.APPROVED) return null;
     const alreadyDecided = row.approvalWorkflow.steps.some(
       (step) => step.approverUserId === user.id && step.status !== 'PENDING'

@@ -1,9 +1,10 @@
 import { Prisma } from '@prisma/client';
-import { POStatus, QuotationStatus, AuditAction, UserRole } from '@hospital-erp/shared';
+import { POStatus, QuotationStatus, AuditAction, UserRole, FIRST_LEVEL_APPROVER_ROLES } from '@hospital-erp/shared';
 import { prisma } from '../config/prisma';
 import { logAudit } from './audit.service';
 import { notifyApprovers } from './push.service';
 import { getActiveAdminRoles } from './non-vendor-po.service';
+import { HEAD_THEN_ADMIN_POLICY, headThenAdminSteps } from './approval.service';
 
 /**
  * MPR revision flow: an approved MPR that already has quotation(s)/PO(s) can
@@ -163,12 +164,12 @@ export async function syncPoFromQuotation(
       });
     }
 
-    const stepRows = adminRoles.map((role, idx) => ({ stepNumber: idx + 1, approverRole: role, status: 'PENDING' }));
+    const stepRows = headThenAdminSteps(adminRoles);
     if (po.approvalWorkflowId) {
       await tx.approvalStep.deleteMany({ where: { workflowId: po.approvalWorkflowId } });
       await tx.approvalWorkflow.update({
         where: { id: po.approvalWorkflowId },
-        data: { status: 'VERIFICATION', currentStep: 0, steps: { create: stepRows } },
+        data: { status: 'VERIFICATION', currentStep: 0, approvalPolicy: HEAD_THEN_ADMIN_POLICY, steps: { create: stepRows } },
       });
     } else {
       const workflow = await tx.approvalWorkflow.create({
@@ -179,7 +180,7 @@ export async function syncPoFromQuotation(
           status: 'VERIFICATION',
           currentStep: 0,
           minApprovers: 1,
-          approvalPolicy: 'PO_SINGLE_APPROVER',
+          approvalPolicy: HEAD_THEN_ADMIN_POLICY,
           steps: { create: stepRows },
         },
       });
@@ -199,7 +200,7 @@ export async function syncPoFromQuotation(
 
   const workflowId =
     po.approvalWorkflowId ?? (await prisma.purchaseOrder.findUnique({ where: { id: po.id }, select: { approvalWorkflowId: true } }))?.approvalWorkflowId ?? '';
-  notifyApprovers(projectId, adminRoles as UserRole[], {
+  notifyApprovers(projectId, [...FIRST_LEVEL_APPROVER_ROLES] as UserRole[], {
     approvalId: workflowId,
     entityType: 'PURCHASE_ORDER',
     entityId: po.id,

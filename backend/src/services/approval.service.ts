@@ -1,6 +1,6 @@
 import { prisma } from '../config/prisma';
-import { APPROVER_ROLES, ApprovalStatus, ApprovalStepStatus, UserRole, APPROVAL_CONFIG, AuditAction, isAdminRole, isApproverRole } from '@hospital-erp/shared';
-import { notifyAllHeads, notifyUser, NotificationPayload } from './push.service';
+import { APPROVER_ROLES, ApprovalStatus, ApprovalStepStatus, UserRole, APPROVAL_CONFIG, AuditAction, isAdminRole, isApproverRole, isFirstLevelApproverRole } from '@hospital-erp/shared';
+import { notifyAllHeads, notifyApprovers, notifyUser, NotificationPayload } from './push.service';
 import { logAudit } from './audit.service';
 
 interface InitiateParams {
@@ -8,19 +8,27 @@ interface InitiateParams {
   entityId: string;
   projectId: string;
   minApprovers?: number;
-  approvalPolicy?: 'HEAD_GROUPS' | 'PO_SINGLE_APPROVER' | 'PO_HEAD_APPROVERS' | 'ANY_APPROVERS' | 'ADMIN_SINGLE_APPROVER';
+  approvalPolicy?: 'HEAD_GROUPS' | 'PO_SINGLE_APPROVER' | 'PO_HEAD_APPROVERS' | 'ANY_APPROVERS' | 'ADMIN_SINGLE_APPROVER' | 'HEAD_THEN_ADMIN';
 }
 
 const STEP_ROLES: { stepNumber: number; approverRole: UserRole }[] = APPROVER_ROLES.map(
   (approverRole, index) => ({ stepNumber: index + 1, approverRole })
 );
 
-// Material Purchase Requests keep the normal HEAD_GROUPS flow, but an approval
-// from ADMIN_2 (Vinod Sir) on its own is final. The remaining approvers can
-// still record their approval afterwards (see `allowAfterFinal` in approve()).
-function isMprAdmin2Approved(entityType: string, steps: { status: string; approverRole: string }[]): boolean {
-  return entityType === 'MATERIAL_PURCHASE_REQUEST'
-    && steps.some((step) => step.status === ApprovalStepStatus.APPROVED && step.approverRole === UserRole.ADMIN_2);
+/**
+ * HEAD_THEN_ADMIN (POs, quotations, MPRs): a Project Head or Head of Construction
+ * must approve first; only then does the request reach the admins, and one admin
+ * approval completes it. Steps are: heads first, then every admin role.
+ */
+export const HEAD_THEN_ADMIN_POLICY = 'HEAD_THEN_ADMIN';
+
+export function headThenAdminSteps(adminRoles: string[]) {
+  const roles = [UserRole.PROJECT_HEAD, UserRole.HEAD_OF_CONSTRUCTION, ...adminRoles.filter((r) => isAdminRole(r))];
+  return roles.map((approverRole, idx) => ({ stepNumber: idx + 1, approverRole, status: 'PENDING' as const }));
+}
+
+function hasHeadApproval(steps: { status: string; approverRole: string }[]): boolean {
+  return steps.some((s) => s.status === ApprovalStepStatus.APPROVED && isFirstLevelApproverRole(s.approverRole));
 }
 
 function satisfiesApprovalPolicy(policy: string | null | undefined, steps: { status: string; approverRole: string }[], required: number): boolean {
@@ -28,6 +36,9 @@ function satisfiesApprovalPolicy(policy: string | null | undefined, steps: { sta
     steps.filter((step) => step.status === ApprovalStepStatus.APPROVED).map((step) => step.approverRole),
   );
 
+  if (policy === HEAD_THEN_ADMIN_POLICY) {
+    return hasHeadApproval(steps) && [...approvedRoles].some((role) => isAdminRole(role));
+  }
   if (policy === 'PO_SINGLE_APPROVER' || policy === 'ADMIN_SINGLE_APPROVER') {
     // A single approval from any admin role (ADMIN, ADMIN_2, ADMIN_3, ...) is enough.
     return [...approvedRoles].some((role) => isAdminRole(role));
@@ -246,6 +257,12 @@ export async function initiate({
   minApprovers,
   approvalPolicy,
 }: InitiateParams) {
+  let stepRows: { stepNumber: number; approverRole: string; status: string }[] = STEP_ROLES.map((sr) => ({ ...sr, status: ApprovalStepStatus.PENDING }));
+  if (approvalPolicy === HEAD_THEN_ADMIN_POLICY) {
+    const users = await prisma.user.findMany({ where: { isActive: true }, select: { role: true } });
+    stepRows = headThenAdminSteps(Array.from(new Set(users.map((u) => u.role))));
+  }
+
   const workflow = await prisma.approvalWorkflow.create({
     data: {
       entityType,
@@ -256,17 +273,28 @@ export async function initiate({
       minApprovers: minApprovers ?? APPROVAL_CONFIG.MIN_APPROVERS,
       approvalPolicy: approvalPolicy ?? null,
       steps: {
-        create: STEP_ROLES.map((sr) => ({
-          stepNumber: sr.stepNumber,
-          approverRole: sr.approverRole,
-          status: ApprovalStepStatus.PENDING,
-        })),
+        create: stepRows,
       },
     },
     include: { steps: true },
   });
 
   return workflow;
+}
+
+/** Admins cannot act on a HEAD_THEN_ADMIN request until a head has approved it. */
+async function assertHeadApprovedFirst(
+  step: { workflowId: string; workflow: { approvalPolicy: string | null } },
+  role: string,
+): Promise<void> {
+  if (step.workflow.approvalPolicy !== HEAD_THEN_ADMIN_POLICY || !isAdminRole(role)) return;
+  const steps = await prisma.approvalStep.findMany({
+    where: { workflowId: step.workflowId },
+    select: { status: true, approverRole: true },
+  });
+  if (!hasHeadApproval(steps)) {
+    throw new Error('Project Head or Head of Construction must approve this first');
+  }
 }
 
 export async function approve(
@@ -301,6 +329,8 @@ export async function approve(
   if (user.role !== step.approverRole) {
     throw new Error(`Only ${step.approverRole} can approve this step`);
   }
+
+  await assertHeadApprovedFirst(step, user.role);
 
   const existingDecision = await prisma.approvalStep.findFirst({
     where: {
@@ -359,12 +389,11 @@ export async function approve(
   // policies, require both the count AND the policy to be satisfied.
   const isSingleApproverPolicy = workflow.approvalPolicy === 'ADMIN_SINGLE_APPROVER'
     || workflow.approvalPolicy === 'PO_SINGLE_APPROVER';
-  const mprAdmin2Final = isMprAdmin2Approved(workflow.entityType, workflow.steps);
-  const countSatisfied = isSingleApproverPolicy
+  const countSatisfied = isSingleApproverPolicy || workflow.approvalPolicy === HEAD_THEN_ADMIN_POLICY
     ? approvedSteps.length >= 1
     : approvedSteps.length >= workflow.minApprovers;
 
-  if (mprAdmin2Final || (countSatisfied && satisfiesApprovalPolicy(workflow.approvalPolicy, workflow.steps, workflow.minApprovers))) {
+  if (countSatisfied && satisfiesApprovalPolicy(workflow.approvalPolicy, workflow.steps, workflow.minApprovers)) {
     // Atomically update the workflow status AND the entity status in a
     // single transaction, so the entity never gets stuck in a stale
     // "SUBMITTED/PENDING" state when its workflow is already APPROVED.
@@ -425,6 +454,22 @@ export async function approve(
 
   // Notify creator + all heads that a step was approved (not final yet)
   const entityInfo = await findEntityCreator(workflow.entityType, workflow.entityId);
+
+  // A head just signed off — only now does the request go to the admins.
+  if (workflow.approvalPolicy === HEAD_THEN_ADMIN_POLICY && isFirstLevelApproverRole(user.role)) {
+    const adminRoles = workflow.steps
+      .filter((s) => isAdminRole(s.approverRole) && s.status === ApprovalStepStatus.PENDING)
+      .map((s) => s.approverRole as UserRole);
+    const entityUrl = `${ENTITY_URL_MAP[workflow.entityType] ?? '/'}?id=${workflow.entityId}`;
+    notifyApprovers(entityInfo.projectId || workflow.projectId, adminRoles, {
+      approvalId: workflow.id,
+      entityType: workflow.entityType,
+      entityId: workflow.entityId,
+      title: 'Approval Required',
+      body: `${entityInfo.label} approved by ${user.name} — awaiting your approval`,
+      url: entityUrl,
+    }).catch((err) => console.error('[Push] Admin approval notification error:', err));
+  }
   notifyApprovalResult(
     workflow.entityType,
     workflow.entityId,
@@ -471,6 +516,8 @@ export async function reject(stepId: string, userId: string, reason: string) {
     throw new Error(`Only ${step.approverRole} can reject this step`);
   }
 
+  await assertHeadApprovedFirst(step, user.role);
+
   const existingDecision = await prisma.approvalStep.findFirst({
     where: {
       workflowId: step.workflowId,
@@ -515,7 +562,9 @@ export async function reject(stepId: string, userId: string, reason: string) {
   const rejectedCount = workflow.steps.filter(
     (workflowStep) => workflowStep.status === ApprovalStepStatus.REJECTED
   ).length;
-  const isFullyRejected = rejectedCount >= workflow.minApprovers;
+  const isFullyRejected = workflow.approvalPolicy === HEAD_THEN_ADMIN_POLICY
+    ? rejectedCount >= 1
+    : rejectedCount >= workflow.minApprovers;
   const newWorkflowStatus = isFullyRejected ? ApprovalStatus.REJECTED : workflow.status;
 
   // Atomically update the workflow status AND the entity status in a

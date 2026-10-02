@@ -1,5 +1,5 @@
 import { Router, Response, NextFunction } from 'express';
-import { Permission, POStatus, POPaymentType, AuditAction, UserRole, GoodsReceiptStatus, isAdminRole, VoucherType, GST_LEDGER_NAMES, VendorType, MPRStatus } from '@hospital-erp/shared';
+import { Permission, POStatus, POPaymentType, AuditAction, UserRole, GoodsReceiptStatus, isAdminRole, isFirstLevelApproverRole, FIRST_LEVEL_APPROVER_ROLES, VoucherType, GST_LEDGER_NAMES, VendorType, MPRStatus } from '@hospital-erp/shared';
 import { createPOSchema, listPOsSchema, approvalActionSchema, editPOSchema, editUnapprovedPOSchema, regeneratePOSchema, changePOPaymentTypeSchema } from '@hospital-erp/shared';
 import { prisma } from '../config/prisma';
 import { Prisma } from '@prisma/client';
@@ -8,6 +8,7 @@ import { rbacMiddleware } from '../middleware/rbac';
 import { validateMiddleware } from '../middleware/validate';
 import { logAudit } from '../services/audit.service';
 import * as approvalService from '../services/approval.service';
+import { HEAD_THEN_ADMIN_POLICY, headThenAdminSteps } from '../services/approval.service';
 import { notifyApprovers } from '../services/push.service';
 import { streamPurchaseOrderPdf } from '../services/purchase-order-pdf.service';
 import { ensureVendorLedger, findLedgerByName } from './ledger.routes';
@@ -56,13 +57,12 @@ function acceptedForPoItem(
   return acc.byName.get(item.materialName.toLowerCase()) ?? 0;
 }
 
-const HEAD_ROLES = [UserRole.PROJECT_HEAD, UserRole.HEAD_OF_CONSTRUCTION, UserRole.ACCOUNTS_HEAD];
 // PO approver roles now include all dynamic admin roles (ADMIN_3, ADMIN_4, ...)
 // via isAdminRole(). The fixed array is kept for backward compatibility with
 // approval workflow step creation.
 
 function isPoApprover(role: string): boolean {
-  return isAdminRole(role);
+  return isAdminRole(role) || isFirstLevelApproverRole(role);
 }
 
 /**
@@ -583,13 +583,9 @@ router.post(
             status: 'VERIFICATION',
             currentStep: 0,
             minApprovers: 1,
-            approvalPolicy: 'PO_SINGLE_APPROVER',
+            approvalPolicy: HEAD_THEN_ADMIN_POLICY,
             steps: {
-              create: adminRoles.map((role, idx) => ({
-                stepNumber: idx + 1,
-                approverRole: role,
-                status: 'PENDING',
-              })),
+              create: headThenAdminSteps(adminRoles),
             },
           },
           include: { steps: true },
@@ -613,7 +609,7 @@ router.post(
       });
 
       // Notify all approvers via push notification (heads + dynamic admin roles)
-      notifyApprovers(projectId, [...HEAD_ROLES, ...adminRoles] as UserRole[], {
+      notifyApprovers(projectId, [...FIRST_LEVEL_APPROVER_ROLES] as UserRole[], {
         approvalId: workflow.id,
         entityType: 'PURCHASE_ORDER',
         entityId: po.id,
@@ -693,7 +689,7 @@ router.delete(
         res.status(404).json({ error: 'Purchase order not found' });
         return;
       }
-      const isAdmin = isPoApprover(req.user!.role);
+      const isAdmin = isAdminRole(req.user!.role);
       const isCreator = existing.createdBy === req.user!.id;
       if (!isAdmin && !isCreator) {
         res.status(403).json({ error: 'Only the creator or an admin can deactivate this purchase order' });
@@ -809,7 +805,7 @@ router.post(
 
       // Check user is one of the PO approver roles (Admin or Admin 2)
       if (!isPoApprover(req.user!.role)) {
-        res.status(403).json({ error: 'Only Admin or Admin 2 can approve purchase orders' });
+        res.status(403).json({ error: 'Only Project Head, Head of Construction or Admin can approve purchase orders' });
         return;
       }
 
@@ -943,7 +939,7 @@ router.post(
       }
 
       if (!isPoApprover(req.user!.role)) {
-        res.status(403).json({ error: 'Only Admin or Admin 2 can reject purchase orders' });
+        res.status(403).json({ error: 'Only Project Head, Head of Construction or Admin can reject purchase orders' });
         return;
       }
 
@@ -1062,12 +1058,9 @@ router.post(
             data: {
               status: 'VERIFICATION',
               currentStep: 0,
+              approvalPolicy: HEAD_THEN_ADMIN_POLICY,
               steps: {
-                create: adminRoles.map((role, idx) => ({
-                  stepNumber: idx + 1,
-                  approverRole: role,
-                  status: 'PENDING',
-                })),
+                create: headThenAdminSteps(adminRoles),
               },
             },
           });
@@ -1084,7 +1077,7 @@ router.post(
         newValue: { status: POStatus.PENDING_APPROVAL, resubmitted: true },
       });
 
-      notifyApprovers(projectId, adminRoles as UserRole[], {
+      notifyApprovers(projectId, [...FIRST_LEVEL_APPROVER_ROLES] as UserRole[], {
         approvalId: po.approvalWorkflowId ?? '',
         entityType: 'PURCHASE_ORDER',
         entityId: po.id,
@@ -1188,7 +1181,7 @@ router.post(
       }
       // Editing an already-approved PO is an admin-only action; the PO returns
       // to PENDING_APPROVAL and must pass the approval workflow again.
-      if (isApprovedPo && !isPoApprover(req.user!.role)) {
+      if (isApprovedPo && !isAdminRole(req.user!.role)) {
         res.status(403).json({ error: 'Only an admin can edit an approved purchase order' });
         return;
       }
@@ -1354,12 +1347,9 @@ router.post(
             data: {
               status: 'VERIFICATION',
               currentStep: 0,
+              approvalPolicy: HEAD_THEN_ADMIN_POLICY,
               steps: {
-                create: adminRoles.map((role, idx) => ({
-                  stepNumber: idx + 1,
-                  approverRole: role,
-                  status: 'PENDING',
-                })),
+                create: headThenAdminSteps(adminRoles),
               },
             },
           });
@@ -1379,7 +1369,7 @@ router.post(
       });
 
       // Notify approvers
-      notifyApprovers(projectId, adminRoles as UserRole[], {
+      notifyApprovers(projectId, [...FIRST_LEVEL_APPROVER_ROLES] as UserRole[], {
         approvalId: po.approvalWorkflowId ?? '',
         entityType: 'PURCHASE_ORDER',
         entityId: po.id,
@@ -1396,8 +1386,8 @@ router.post(
 );
 
 // POST /:id/change-payment-type — change payment type on an APPROVED PO.
-// The PO goes back to PENDING_APPROVAL and must be re-approved; once approved
-// it is treated as the new type everywhere (advance payments, invoice flow).
+// No re-approval: the PO stays APPROVED and the new type applies immediately
+// everywhere (advance payments, invoice flow).
 router.post(
   '/:id/change-payment-type',
   rbacMiddleware(Permission.CREATE_PO),
@@ -1462,64 +1452,17 @@ router.post(
 
       const oldValue = { paymentType: po.paymentType, advanceAmount: po.advanceAmount ? Number(po.advanceAmount) : null };
 
-      const adminRoles = await getActiveAdminRoles(projectId);
-      const updated = await prisma.$transaction(async (tx) => {
-        const updatedPo = await tx.purchaseOrder.update({
-          where: { id: po.id },
-          data: {
-            paymentType,
-            advanceAmount: resolvedAdvanceAmount,
-            status: POStatus.PENDING_APPROVAL,
-            editReason: reason,
-            editedAt: new Date(),
-            editedBy: req.user!.id,
-          },
-          include: poInclude,
-        });
-
-        // Reset approval workflow for re-approval (one ADMIN/ADMIN_2 approval)
-        if (po.approvalWorkflowId) {
-          await tx.approvalStep.deleteMany({ where: { workflowId: po.approvalWorkflowId } });
-          await tx.approvalWorkflow.update({
-            where: { id: po.approvalWorkflowId },
-            data: {
-              status: 'VERIFICATION',
-              currentStep: 0,
-              steps: {
-                create: adminRoles.map((role, idx) => ({
-                  stepNumber: idx + 1,
-                  approverRole: role,
-                  status: 'PENDING',
-                })),
-              },
-            },
-          });
-        } else {
-          const workflow = await tx.approvalWorkflow.create({
-            data: {
-              entityType: 'PURCHASE_ORDER',
-              entityId: po.id,
-              projectId,
-              status: 'VERIFICATION',
-              currentStep: 0,
-              minApprovers: 1,
-              approvalPolicy: 'PO_SINGLE_APPROVER',
-              steps: {
-                create: adminRoles.map((role, idx) => ({
-                  stepNumber: idx + 1,
-                  approverRole: role,
-                  status: 'PENDING',
-                })),
-              },
-            },
-          });
-          await tx.purchaseOrder.update({
-            where: { id: po.id },
-            data: { approvalWorkflowId: workflow.id },
-          });
-        }
-
-        return updatedPo;
+      // No re-approval: the PO stays APPROVED and the change is audit-logged.
+      const updated = await prisma.purchaseOrder.update({
+        where: { id: po.id },
+        data: {
+          paymentType,
+          advanceAmount: resolvedAdvanceAmount,
+          editReason: reason,
+          editedAt: new Date(),
+          editedBy: req.user!.id,
+        },
+        include: poInclude,
       });
 
       await logAudit({
@@ -1531,15 +1474,6 @@ router.post(
         oldValue,
         newValue: { paymentType, advanceAmount: resolvedAdvanceAmount, reason },
       });
-
-      notifyApprovers(projectId, adminRoles as UserRole[], {
-        approvalId: po.approvalWorkflowId ?? '',
-        entityType: 'PURCHASE_ORDER',
-        entityId: po.id,
-        title: 'PO Payment Type Changed — Re-approval Required',
-        body: `${po.poNumber} payment type changed to ${paymentType.replace(/_/g, ' ')} and needs re-approval`,
-        url: `/pos?id=${po.id}`,
-      }).catch((err) => console.error('[Push] PO payment-type notification error:', err));
 
       res.json(updated);
     } catch (error) {
@@ -1738,12 +1672,9 @@ router.post(
             data: {
               status: 'VERIFICATION',
               currentStep: 0,
+              approvalPolicy: HEAD_THEN_ADMIN_POLICY,
               steps: {
-                create: adminRoles.map((role, idx) => ({
-                  stepNumber: idx + 1,
-                  approverRole: role,
-                  status: 'PENDING',
-                })),
+                create: headThenAdminSteps(adminRoles),
               },
             },
           });
@@ -1763,7 +1694,7 @@ router.post(
       });
 
       // Notify approvers
-      notifyApprovers(projectId, adminRoles as UserRole[], {
+      notifyApprovers(projectId, [...FIRST_LEVEL_APPROVER_ROLES] as UserRole[], {
         approvalId: po.approvalWorkflowId ?? '',
         entityType: 'PURCHASE_ORDER',
         entityId: po.id,
@@ -1868,13 +1799,9 @@ router.post(
             status: 'VERIFICATION',
             currentStep: 0,
             minApprovers: 1,
-            approvalPolicy: 'PO_SINGLE_APPROVER',
+            approvalPolicy: HEAD_THEN_ADMIN_POLICY,
             steps: {
-              create: adminRoles.map((role, idx) => ({
-                stepNumber: idx + 1,
-                approverRole: role,
-                status: 'PENDING',
-              })),
+              create: headThenAdminSteps(adminRoles),
             },
           },
           include: { steps: true },
@@ -1898,7 +1825,7 @@ router.post(
       });
 
       // Notify approvers
-      notifyApprovers(projectId, adminRoles as UserRole[], {
+      notifyApprovers(projectId, [...FIRST_LEVEL_APPROVER_ROLES] as UserRole[], {
         approvalId: result!.approvalWorkflowId ?? '',
         entityType: 'PURCHASE_ORDER',
         entityId: result!.id,

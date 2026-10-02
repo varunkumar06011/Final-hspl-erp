@@ -1,11 +1,12 @@
 import { prisma } from '../config/prisma';
 import {
-  APPROVER_ROLES,
   AuditAction,
   QuotationStatus,
+  FIRST_LEVEL_APPROVER_ROLES,
 } from '@hospital-erp/shared';
 import { generateProjectSequenceNumber } from './sequence.service';
 import * as approvalService from './approval.service';
+import { HEAD_THEN_ADMIN_POLICY } from './approval.service';
 import { notifyApprovers } from './push.service';
 import { logAudit } from './audit.service';
 
@@ -163,16 +164,14 @@ export async function createQuotation(input: CreateQuotationInput) {
     }).catch((err) => console.error('[Quotation] Failed to sync MPR status:', err));
   }
 
-  // Initiate approval workflow — ADMIN_SINGLE_APPROVER: a single approval
-  // from any admin (ADMIN or ADMIN_2) is enough to fully approve the
-  // quotation. Other heads can still approve, but their approval alone is
-  // not sufficient — an admin must sign off.
+  // Initiate approval workflow — HEAD_THEN_ADMIN: a Project Head or Head of
+  // Construction approves first; then any one admin completes the approval.
   const workflow = await approvalService.initiate({
     entityType: 'QUOTATION',
     entityId: quotation.id,
     projectId,
     minApprovers: 2,
-    approvalPolicy: 'ADMIN_SINGLE_APPROVER',
+    approvalPolicy: HEAD_THEN_ADMIN_POLICY,
   });
 
   // Link the workflow and return the full record (with includes) in one call.
@@ -191,16 +190,8 @@ export async function createQuotation(input: CreateQuotationInput) {
     newValue: { quotationNumber, vendorId, totalAmount, grandTotal, acknowledged: true },
   });
 
-  // Notify all approvers via push notification
-  // Include dynamic admin roles (ADMIN_3, ADMIN_4, ...) in the notification
-  const adminUsers = await prisma.user.findMany({
-    where: { isActive: true, role: { startsWith: 'ADMIN' } },
-    select: { role: true },
-  });
-  const allApproverRoles = Array.from(
-    new Set([...APPROVER_ROLES.map((r) => r as string), ...adminUsers.map((u) => u.role)])
-  ) as any;
-  notifyApprovers(projectId, allApproverRoles, {
+  // Only the first-level heads are told now; admins are notified once a head approves.
+  notifyApprovers(projectId, [...FIRST_LEVEL_APPROVER_ROLES], {
     approvalId: workflow.id,
     entityType: 'QUOTATION',
     entityId: quotation.id,

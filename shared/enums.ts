@@ -78,6 +78,19 @@ export const APPROVER_ROLES = [
 ] as const;
 
 /**
+ * First-level approvers for POs, quotations and MPRs. One of them must approve
+ * before the request reaches the admins (HEAD_THEN_ADMIN approval policy).
+ */
+export const FIRST_LEVEL_APPROVER_ROLES = [
+  UserRole.PROJECT_HEAD,
+  UserRole.HEAD_OF_CONSTRUCTION,
+] as const;
+
+export function isFirstLevelApproverRole(role: string): boolean {
+  return FIRST_LEVEL_APPROVER_ROLES.some((r) => r === role);
+}
+
+/**
  * Returns true if the given role can approve POs, quotations, etc.
  * Includes all dynamic admin roles (ADMIN_3, ADMIN_4, ...).
  */
@@ -819,4 +832,17 @@ export function hasPermission(role: UserRole | string, permission: Permission): 
     return PERMISSION_MATRIX[UserRole.ADMIN]?.includes(permission) ?? false;
   }
   return PERMISSION_MATRIX[role as UserRole]?.includes(permission) ?? false;
+}
+
+/**
+ * HEAD_THEN_ADMIN workflows (PO, quotation, MPR) stay hidden from admins until
+ * a Project Head or Head of Construction has approved. Returns false when the
+ * given role should not yet be able to act on the workflow.
+ */
+export function isWorkflowOpenToRole(
+  workflow: { approvalPolicy?: string | null; steps: { approverRole: string; status: string }[] },
+  role: string,
+): boolean {
+  if (workflow.approvalPolicy !== 'HEAD_THEN_ADMIN' || !isAdminRole(role)) return true;
+  return workflow.steps.some((s) => s.status === 'APPROVED' && isFirstLevelApproverRole(s.approverRole));
 }

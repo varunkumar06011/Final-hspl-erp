@@ -19,7 +19,7 @@ import CloseIcon from '@mui/icons-material/Close';
 import CheckIcon from '@mui/icons-material/Check';
 import CloseIconSmall from '@mui/icons-material/Close';
 import VisibilityIcon from '@mui/icons-material/Visibility';
-import { APPROVER_ROLES, type UserResponse } from '@hospital-erp/shared';
+import { APPROVER_ROLES, isWorkflowOpenToRole, type UserResponse } from '@hospital-erp/shared';
 import api, { extractErrorMessage } from '../config/api';
 import ResponsiveDialog from './ResponsiveDialog';
 import ApprovalActionDialog from './ApprovalActionDialog';
@@ -115,6 +115,7 @@ interface RecordDisplay {
   status: string; // raw status for the chip
   approvalWorkflow?: {
     status?: string;
+    approvalPolicy?: string | null;
     steps?: Array<{
       approverRole: string;
       approverUserId?: string | null;
@@ -193,6 +194,7 @@ function extractRecord(entityType: PendingEntityType, raw: Record<string, unknow
 function canUserApprove(record: RecordDisplay, user: UserResponse | null): boolean {
   if (!user || !APPROVER_ROLES.some((role) => role === user.role)) return false;
   if (!record.approvalWorkflow?.steps) return false;
+  if (!isWorkflowOpenToRole({ approvalPolicy: record.approvalWorkflow.approvalPolicy, steps: record.approvalWorkflow.steps }, user.role)) return false;
   // Workflow already decided elsewhere (approved/rejected on another device or
   // by another admin) — never show approve/reject for it.
   const wfStatus = record.approvalWorkflow.status;

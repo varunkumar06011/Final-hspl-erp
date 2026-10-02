@@ -31,11 +31,10 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 
 const router = Router();
 router.use(authMiddleware);
 
-const HEAD_ROLES = [UserRole.PROJECT_HEAD, UserRole.HEAD_OF_CONSTRUCTION];
 // Admin roles are checked dynamically via isAdminRole() to support ADMIN_3, ADMIN_4, etc.
 
 /**
- * Fetch all approver roles (heads + dynamic admin roles) for a project.
+ * Fetch the payment approver roles (admin roles only) for a project.
  * Used to create approval workflow steps and send notifications.
  */
 async function getAllApproverRoles(_projectId: string): Promise<string[]> {
@@ -43,7 +42,8 @@ async function getAllApproverRoles(_projectId: string): Promise<string[]> {
     where: { isActive: true },
     select: { role: true },
   });
-  const roles = new Set<string>(HEAD_ROLES as string[]);
+  // Payments are authorised by admins only (Admin 1, Admin 2, ...).
+  const roles = new Set<string>();
   for (const u of users) {
     if (isAdminRole(u.role)) roles.add(u.role);
   }
@@ -1113,8 +1113,8 @@ router.post(
         return;
       }
 
-      if (!HEAD_ROLES.includes(req.user!.role as UserRole) && !isAdminRole(req.user!.role)) {
-        res.status(403).json({ error: 'Only heads can approve payment requests' });
+      if (!isAdminRole(req.user!.role)) {
+        res.status(403).json({ error: 'Only Admin can approve payment requests' });
         return;
       }
 
@@ -1181,8 +1181,8 @@ router.post(
         return;
       }
 
-      if (!HEAD_ROLES.includes(req.user!.role as UserRole) && !isAdminRole(req.user!.role)) {
-        res.status(403).json({ error: 'Only heads can reject payment requests' });
+      if (!isAdminRole(req.user!.role)) {
+        res.status(403).json({ error: 'Only Admin can reject payment requests' });
         return;
       }
 

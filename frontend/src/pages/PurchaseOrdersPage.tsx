@@ -53,7 +53,7 @@ import {
 } from '@mui/icons-material';
 import LedgerAutocomplete, { LedgerOption } from '../components/LedgerAutocomplete';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { POStatus, UserRole, POPaymentType, GST_RATES, ApprovalStatus, isAdminRole } from '@hospital-erp/shared';
+import { POStatus, UserRole, POPaymentType, GST_RATES, ApprovalStatus, isAdminRole, isWorkflowOpenToRole } from '@hospital-erp/shared';
 import { formatCurrency, formatDate, formatIndianNumber, STATUS_COLORS, QTY_UNIT_OPTIONS, enumLabel, unitLabel } from '../utils/enumOptions';
 import { useTranslation, Trans } from 'react-i18next';
 import { num, toIncGst, round2 } from '../utils/taxCalc';
@@ -162,6 +162,7 @@ interface PORow {
   approvalWorkflow?: {
     id: string;
     status: string;
+    approvalPolicy?: string | null;
     currentStep: number;
     steps: ApprovalStep[];
   } | null;
@@ -571,6 +572,7 @@ export default function PurchaseOrdersPage() {
     if (!row.approvalWorkflow) return false;
     if (!user || (!HEAD_ROLES.includes(user.role as UserRole) && !isAdminRole(user.role))) return false;
     if (row.status !== POStatus.PENDING_APPROVAL) return false;
+    if (!isWorkflowOpenToRole(row.approvalWorkflow, user.role)) return false;
     // Check if this user's role has a pending step and hasn't already approved
     const step = row.approvalWorkflow.steps.find(
       (s) => s.approverRole === user.role && s.status === 'PENDING'

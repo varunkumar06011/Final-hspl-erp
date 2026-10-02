@@ -38,7 +38,7 @@ import {
   PictureAsPdf as PdfIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { QuotationStatus, GST_RATES, ApprovalStatus, isAdminRole, isApproverRole } from '@hospital-erp/shared';
+import { QuotationStatus, GST_RATES, ApprovalStatus, isAdminRole, isApproverRole, isWorkflowOpenToRole } from '@hospital-erp/shared';
 import { formatCurrency, formatDate, STATUS_COLORS, QTY_UNIT_OPTIONS, enumLabel, unitLabel } from '../utils/enumOptions';
 import { useTranslation, Trans } from 'react-i18next';
 import { num, gstMult, toIncGst, toPreTax, round2 } from '../utils/taxCalc';
@@ -115,6 +115,7 @@ interface QuotationRow {
   approvalWorkflow?: {
     id: string;
     status: string;
+    approvalPolicy?: string | null;
     currentStep: number;
     steps: ApprovalStep[];
   } | null;
@@ -551,6 +552,7 @@ export default function QuotationsPage() {
 
   function canApprove(row: QuotationRow): ApprovalStep | null {
     if (!row.approvalWorkflow || !user || !isApproverRole(user.role)) return null;
+    if (!isWorkflowOpenToRole(row.approvalWorkflow, user.role)) return null;
     // If the workflow is already APPROVED/REJECTED, no further approval is possible
     const wfStatus = row.approvalWorkflow.status;
     if (wfStatus === ApprovalStatus.APPROVED || wfStatus === ApprovalStatus.REJECTED) return null;

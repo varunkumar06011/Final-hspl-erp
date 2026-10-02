@@ -1,5 +1,5 @@
 import { Router, Response, NextFunction } from 'express';
-import { Permission, QuotationStatus, AuditAction, ApprovalStatus, ApprovalStepStatus, UserRole, isApproverRole, isAdminRole } from '@hospital-erp/shared';
+import { Permission, QuotationStatus, AuditAction, ApprovalStatus, ApprovalStepStatus, UserRole, isAdminRole, isFirstLevelApproverRole, FIRST_LEVEL_APPROVER_ROLES } from '@hospital-erp/shared';
 import { createQuotationSchema, listQuotationsSchema, approvalActionSchema } from '@hospital-erp/shared';
 import { prisma } from '../config/prisma';
 import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middleware/auth';
@@ -7,6 +7,7 @@ import { rbacMiddleware } from '../middleware/rbac';
 import { validateMiddleware } from '../middleware/validate';
 import { logAudit } from '../services/audit.service';
 import * as approvalService from '../services/approval.service';
+import { HEAD_THEN_ADMIN_POLICY, headThenAdminSteps } from '../services/approval.service';
 import { getStorageService, serveFile } from '../services/storage.service';
 import { notifyAdmins, notifyApprovers } from '../services/push.service';
 import {
@@ -822,7 +823,7 @@ router.post(
       }
 
       // Build the approver step roles — heads + every active admin role
-      const approverRoles = await getQuotationApproverRoles(projectId);
+      const approverRoles = headThenAdminSteps(await getQuotationApproverRoles(projectId)).map((s) => s.approverRole);
 
       // Update quotation + reset approval workflow atomically.
       const updated = await prisma.$transaction(async (tx) => {
@@ -851,7 +852,7 @@ router.post(
               status: ApprovalStatus.VERIFICATION,
               currentStep: 0,
               minApprovers: 2,
-              approvalPolicy: 'ADMIN_SINGLE_APPROVER',
+              approvalPolicy: HEAD_THEN_ADMIN_POLICY,
               steps: { create: stepCreates },
             },
           });
@@ -864,7 +865,7 @@ router.post(
               status: ApprovalStatus.VERIFICATION,
               currentStep: 0,
               minApprovers: 2,
-              approvalPolicy: 'ADMIN_SINGLE_APPROVER',
+              approvalPolicy: HEAD_THEN_ADMIN_POLICY,
               steps: { create: stepCreates },
             },
           });
@@ -892,7 +893,7 @@ router.post(
       });
 
       // Notify approvers via push notification
-      notifyApprovers(projectId, approverRoles as UserRole[], {
+      notifyApprovers(projectId, [...FIRST_LEVEL_APPROVER_ROLES] as UserRole[], {
         approvalId: existing.approvalWorkflowId ?? '',
         entityType: 'QUOTATION',
         entityId: existing.id,
@@ -936,8 +937,8 @@ router.post(
       }
 
       // Check user is one of the approver roles
-      if (!isApproverRole(req.user!.role)) {
-        res.status(403).json({ error: 'Only heads can approve quotations' });
+      if (!isAdminRole(req.user!.role) && !isFirstLevelApproverRole(req.user!.role)) {
+        res.status(403).json({ error: 'Only Project Head, Head of Construction or Admin can approve quotations' });
         return;
       }
 
@@ -1015,8 +1016,8 @@ router.post(
       }
 
       // Check user is one of the approver roles
-      if (!isApproverRole(req.user!.role)) {
-        res.status(403).json({ error: 'Only heads can reject quotations' });
+      if (!isAdminRole(req.user!.role) && !isFirstLevelApproverRole(req.user!.role)) {
+        res.status(403).json({ error: 'Only Project Head, Head of Construction or Admin can reject quotations' });
         return;
       }
 
