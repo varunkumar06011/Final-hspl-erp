@@ -737,7 +737,7 @@ export default function DenseAdminDashboard() {
         <Box sx={{ minHeight: 170, minWidth: 0, overflow: 'hidden' }}><RateTrackerWidget /></Box>
       </Box>
 
-      {/* ── Recent activity: latest 10 actions by anyone (approvals, comments, edits) ── */}
+      {/* ── Recent activity: latest 7 actions by anyone (approvals, comments, edits) ── */}
       <Box sx={{ mt: { xs: 1, md: 1.2 } }}>
         <RecentActivityPanel />
       </Box>
@@ -966,14 +966,14 @@ function CompactRecordsDark({ title, subtitle, rows, codeKey, amountKey, color, 
   );
 }
 
-// Latest 10 actions by anyone — who approved/rejected/commented on what, and
+// Latest 7 actions by anyone — who approved/rejected/commented on what, and
 // when. Full history with filters lives on the Activity Log page.
 function RecentActivityPanel() {
   const { t } = useTranslation('activity');
   const navigate = useNavigate();
   const { data, isLoading } = useQuery<{ data: ActivityItem[] }>({
     queryKey: ['activity-log', 'recent'],
-    queryFn: async () => (await api.get('/activity-log', { params: { pageSize: 10 } })).data,
+    queryFn: async () => (await api.get('/activity-log', { params: { pageSize: 7 } })).data,
     refetchInterval: 30000,
   });
   const rows = data?.data ?? [];

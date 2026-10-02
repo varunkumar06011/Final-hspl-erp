@@ -1319,7 +1319,10 @@ router.get(
         budgetHeads: budgetHeadRows,
         budgetTotals: (() => {
           const totalAllocated = budgetHeadRows.reduce((s, h) => s + h.allocated, 0);
-          const totalActual = budgetHeadRows.reduce((s, h) => s + h.actual, 0);
+          // Spent matches the Total Expenditure card (cash/bank outflows net of
+          // refunds and loan repayments). Summing each head's cached actual
+          // overstates it when refunds were never tagged to a budget head.
+          const totalActual = Math.max(0, totalExpenditure);
           return {
             totalAllocated,
             totalActual,

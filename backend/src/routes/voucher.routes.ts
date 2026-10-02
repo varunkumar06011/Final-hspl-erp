@@ -707,6 +707,8 @@ router.post(
                   referenceType: AccountTxnRefType.JOURNAL_VOUCHER,
                   referenceId: voucher.id,
                   status: 'POSTED',
+                  // A refunded expense keeps its budget head so recompute nets it.
+                  budgetHeadId: !wasDeposit && !isReceiptVoucher ? paymentBudgetHeadId : null,
                   createdBy: req.user!.id,
                 },
               });
@@ -739,6 +741,7 @@ router.post(
                   referenceType: AccountTxnRefType.JOURNAL_VOUCHER,
                   referenceId: voucher.id,
                   status: 'POSTED',
+                  budgetHeadId: !wasIn && !isReceiptVoucher ? paymentBudgetHeadId : null,
                   createdBy: req.user!.id,
                 },
               });
@@ -1319,6 +1322,7 @@ router.patch(
                   referenceType: AccountTxnRefType.JOURNAL_VOUCHER,
                   referenceId: voucher.id,
                   status: 'POSTED',
+                  budgetHeadId: !wasDeposit && !isReceiptEdit ? oldBudgetHeadId : null,
                   createdBy: req.user!.id,
                 },
               });
@@ -1347,6 +1351,7 @@ router.patch(
                   referenceType: AccountTxnRefType.JOURNAL_VOUCHER,
                   referenceId: voucher.id,
                   status: 'POSTED',
+                  budgetHeadId: !wasIn && !isReceiptEdit ? oldBudgetHeadId : null,
                   createdBy: req.user!.id,
                 },
               });
