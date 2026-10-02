@@ -100,17 +100,19 @@ if (!isNative && 'serviceWorker' in navigator) {
 }
 
 // If a lazy chunk/preload fails (stale deploy, flaky mobile network), Vite
-// fires 'vite:preloadError'. Reload once to pick up the fresh build — the
-// sessionStorage flag prevents a reload loop if the failure persists.
-window.addEventListener('vite:preloadError', () => {
+// fires 'vite:preloadError'. Reload to pick up the fresh build — the
+// timestamp guard (shared with lazyWithRetry in App.tsx) prevents a reload
+// loop if the failure persists, but still allows a reload after a later deploy.
+window.addEventListener('vite:preloadError', (event) => {
+  event.preventDefault();
   try {
-    if (!sessionStorage.getItem('chunk-reload')) {
-      sessionStorage.setItem('chunk-reload', '1');
-      window.location.reload();
-    }
+    const last = Number(sessionStorage.getItem('chunk-reload-at') || 0);
+    if (Date.now() - last < 30_000) return;
+    sessionStorage.setItem('chunk-reload-at', String(Date.now()));
   } catch {
-    window.location.reload();
+    // storage blocked: fall through and reload
   }
+  window.location.reload();
 });
 
 // Listen for notification click messages from the service worker

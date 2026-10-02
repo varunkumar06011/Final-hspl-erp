@@ -36,7 +36,7 @@ function getInitialMode(): Mode {
 export function ColorModeProvider({ children }: { children: ReactNode }) {
   const [userMode, setMode] = useState<Mode>(getInitialMode);
   const user = useAuthStore((s) => s.user);
-  // Admin panel is always the dark navy theme (dashboard + all sections).
+  // Admin panel is always the dark (true black) theme (dashboard + all sections).
   // Other roles keep the light/dark preference toggle.
   const mode: Mode = user && isAdminRole(user.role) ? 'dark' : userMode;
 

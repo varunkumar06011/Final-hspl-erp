@@ -72,20 +72,41 @@ const sharedOverrides: ThemeOptions = {
 
 export function createAppTheme(mode: 'light' | 'dark') {
   if (mode === 'dark') {
-    return createTheme({
-      palette: {
-        mode: 'dark',
-        primary: { main: '#82B1FF', light: '#C5E1F5', dark: '#448AFF', contrastText: '#000000' },
-        secondary: { main: '#FF69B4', light: '#FFB6C1', dark: '#FF1493' },
-        success: { main: '#66BB6A', light: '#81C784', dark: '#2E7D32' },
-        error: { main: '#EF5350', light: '#E57373', dark: '#D32F2F' },
-        warning: { main: '#FFCA28' },
-        // Navy palette matching the admin dashboard theme.
-        background: { default: '#0d1524', paper: '#141f31' },
-        divider: 'rgba(148, 163, 184, 0.12)',
+    const surfaceBorder = '1px solid rgba(255, 255, 255, 0.10)';
+    return createTheme(
+      {
+        palette: {
+          mode: 'dark',
+          primary: { main: '#82B1FF', light: '#16294a', dark: '#448AFF', contrastText: '#000000' },
+          secondary: { main: '#FF69B4', light: '#4a1a33', dark: '#FF1493' },
+          // `.light` tokens are used app-wide as soft tinted backgrounds behind normal
+          // (white) text, so in dark mode they must be dark tints, not pastel colours.
+          success: { main: '#66BB6A', light: '#143d1f', dark: '#2E7D32' },
+          error: { main: '#EF5350', light: '#4d1a1a', dark: '#D32F2F' },
+          warning: { main: '#FFCA28', light: '#4a3a05' },
+          info: { main: '#4FC3F7', light: '#0b3350' },
+          // `grey.50/100/200` are used as table-header / panel backgrounds; MUI does not
+          // flip them in dark mode, which left near-white boxes with white text.
+          grey: { 50: '#161616', 100: '#1c1c1c', 200: '#242424' },
+          // True black (OLED) palette.
+          background: { default: '#000000', paper: '#0c0c0c' },
+          text: { primary: '#f5f5f5', secondary: 'rgba(255, 255, 255, 0.68)' },
+          divider: 'rgba(255, 255, 255, 0.12)',
+        },
+        ...sharedOverrides,
       },
-      ...sharedOverrides,
-    });
+      {
+        components: {
+          // Drop MUI's elevation overlay (it greys surfaces); separate with borders instead.
+          MuiPaper: { styleOverrides: { root: { backgroundImage: 'none' } } },
+          MuiCard: { styleOverrides: { root: { border: surfaceBorder, boxShadow: 'none' } } },
+          MuiDialog: { styleOverrides: { paper: { border: surfaceBorder } } },
+          MuiPopover: { styleOverrides: { paper: { border: surfaceBorder } } },
+          MuiDrawer: { styleOverrides: { paper: { borderColor: 'rgba(255, 255, 255, 0.10)' } } },
+          MuiTableCell: { styleOverrides: { head: { backgroundColor: '#161616' } } },
+        },
+      },
+    );
   }
 
   return createTheme({

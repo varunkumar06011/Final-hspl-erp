@@ -17,17 +17,39 @@ import LoginPage from './pages/LoginPage';
 import { isNative } from './config/appConfig';
 import OpeningVideo from './components/OpeningVideo';
 
-// Retry a failed lazy chunk once — a flaky mobile fetch or a mid-deploy
-// window can drop a chunk request; retrying recovers instead of crashing
-// into the error boundary.
+// A lazy chunk can fail to load because a new deploy replaced the hashed file
+// this open tab still references (or a flaky mobile fetch). Retrying the same
+// URL cannot help (the browser caches the failed import), so on failure we
+// reload once to fetch the fresh index.html and chunk names. The timestamp
+// guard allows a new reload for a later deploy but stops a reload loop when
+// the failure is real (e.g. offline).
+const CHUNK_RELOAD_KEY = 'chunk-reload-at';
+const CHUNK_RELOAD_WINDOW_MS = 30_000;
+
+function reloadForFreshBuild(): boolean {
+  try {
+    const last = Number(sessionStorage.getItem(CHUNK_RELOAD_KEY) || 0);
+    if (Date.now() - last < CHUNK_RELOAD_WINDOW_MS) return false;
+    sessionStorage.setItem(CHUNK_RELOAD_KEY, String(Date.now()));
+  } catch {
+    // storage blocked: reload anyway, once per failure
+  }
+  window.location.reload();
+  return true;
+}
+
 function lazyWithRetry<T extends React.ComponentType<unknown>>(
   factory: () => Promise<{ default: T }>,
 ) {
   return lazy(async () => {
     try {
       return await factory();
-    } catch {
-      return factory();
+    } catch (err) {
+      if (reloadForFreshBuild()) {
+        // Keep Suspense showing its fallback while the page reloads.
+        return new Promise<{ default: T }>(() => {});
+      }
+      throw err;
     }
   });
 }

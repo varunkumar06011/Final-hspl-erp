@@ -832,7 +832,7 @@ export default function QuotationsPage() {
                       </Typography>
                       <Chip label={enumLabel(approvalStatus)} size="small" color={STATUS_COLORS[approvalStatus] ?? 'default'} />
                       {agingLabel && displayAgingStatus !== 'APPROVED' && displayAgingStatus !== 'REJECTED' && (
-                        <Typography variant="caption" sx={{ color: displayAgingStatus === 'OVERDUE' ? 'error.main' : (theme.palette.mode === 'dark' ? 'warning.light' : 'warning.dark'), fontWeight: displayAgingStatus === 'OVERDUE' ? 700 : 500 }}>
+                        <Typography variant="caption" sx={{ color: displayAgingStatus === 'OVERDUE' ? 'error.main' : (theme.palette.mode === 'dark' ? 'warning.main' : 'warning.dark'), fontWeight: displayAgingStatus === 'OVERDUE' ? 700 : 500 }}>
                           {agingLabel}
                         </Typography>
                       )}
@@ -857,7 +857,7 @@ export default function QuotationsPage() {
                     />
                     {agingLabel && displayAgingStatus !== 'APPROVED' && displayAgingStatus !== 'REJECTED' && (
                       <Typography variant="caption" sx={{
-                        color: displayAgingStatus === 'OVERDUE' ? 'error.main' : displayAgingStatus === 'ATTENTION' ? (theme.palette.mode === 'dark' ? 'warning.light' : 'warning.dark') : 'text.secondary',
+                        color: displayAgingStatus === 'OVERDUE' ? 'error.main' : displayAgingStatus === 'ATTENTION' ? (theme.palette.mode === 'dark' ? 'warning.main' : 'warning.dark') : 'text.secondary',
                         fontWeight: displayAgingStatus === 'OVERDUE' ? 700 : 500,
                       }}>
                         {agingLabel}

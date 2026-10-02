@@ -86,11 +86,11 @@ const DASHBOARD_TIMELINE = { startDate: '2026-09-03', endDate: '2027-10-09' };
 
 // ── Dark reference palette (dashboard page only — other screens untouched) ──
 const D = {
-  bg: '#0d1524',
-  card: '#141f31',
-  cardBorder: 'rgba(148, 163, 184, 0.12)',
-  text: '#e8edf7',
-  textDim: '#8b98ad',
+  bg: '#000000',
+  card: '#0c0c0c',
+  cardBorder: 'rgba(255,255,255,0.12)',
+  text: '#f0f0f0',
+  textDim: '#9a9a9a',
   teal: '#2fd9a4',
   red: '#ff5c7a',
   violet: '#8b7cf6',
@@ -189,7 +189,7 @@ function KpiCard({ title, value, subtitle, color, delta, spark, extra, onClick }
       onKeyDown={(e) => { if (onClick && (e.key === 'Enter' || e.key === ' ')) onClick(); }}
       role={onClick ? 'button' : undefined}
       tabIndex={onClick ? 0 : undefined}
-      sx={{ ...darkCard, cursor: onClick ? 'pointer' : 'default', '&:hover': onClick ? { borderColor: 'rgba(148,163,184,.3)' } : undefined, transition: 'border-color .2s' }}
+      sx={{ ...darkCard, cursor: onClick ? 'pointer' : 'default', '&:hover': onClick ? { borderColor: 'rgba(255,255,255,.3)' } : undefined, transition: 'border-color .2s' }}
     >
       <CardContent sx={{ p: 1.4, '&:last-child': { pb: 1.4 }, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
         <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={0.5} sx={{ minWidth: 0 }}>
@@ -361,7 +361,7 @@ export default function DenseAdminDashboard() {
               <Typography sx={{ fontSize: '0.7rem', fontWeight: 700, color: D.text }}><CalendarIcon sx={{ fontSize: 13, verticalAlign: 'middle', mr: 0.3, color: D.blue }} />{t('projectTimeline')}</Typography>
               <Typography variant="caption" sx={{ color: D.textDim }}>{formatDate(DASHBOARD_TIMELINE.startDate)} → {formatDate(DASHBOARD_TIMELINE.endDate)}</Typography>
             </Stack>
-            <LinearProgress variant="determinate" value={timeline ?? 0} sx={{ mt: 0.6, height: 6, borderRadius: 4, bgcolor: 'rgba(148,163,184,.15)', '& .MuiLinearProgress-bar': { bgcolor: D.blue } }} />
+            <LinearProgress variant="determinate" value={timeline ?? 0} sx={{ mt: 0.6, height: 6, borderRadius: 4, bgcolor: 'rgba(255,255,255,.15)', '& .MuiLinearProgress-bar': { bgcolor: D.blue } }} />
           </CardContent>
         </Card>
       </Stack>
@@ -379,7 +379,7 @@ export default function DenseAdminDashboard() {
         {/* Business/Budget overview donut */}
         <Section title={t('budgetOverview')} icon={<MoneyIcon sx={{ fontSize: 15, color: D.blue }} />}
           action={<Chip size="small" label={t('live')} sx={{ height: 18, fontSize: '0.58rem', color: D.teal, bgcolor: 'rgba(47,217,164,.12)' }} />}>
-          {loading ? <Skeleton variant="circular" width={90} height={90} sx={{ mx: 'auto', bgcolor: 'rgba(148,163,184,.12)' }} /> : (
+          {loading ? <Skeleton variant="circular" width={90} height={90} sx={{ mx: 'auto', bgcolor: 'rgba(255,255,255,.12)' }} /> : (
             <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 1.2, sm: 2 }, minWidth: 0 }}>
               <Box sx={{ position: 'relative', width: { xs: 96, sm: 112 }, height: { xs: 96, sm: 112 }, flexShrink: 0 }}>
                 <ResponsiveContainer width="100%" height="100%">
@@ -406,7 +406,7 @@ export default function DenseAdminDashboard() {
                     <Typography sx={{ fontSize: '0.72rem', fontWeight: 700, color: D.text, fontFamily: NUM_FONT }}>{formatCurrency(r.value)}</Typography>
                   </Stack>
                 ))}
-                <LinearProgress variant="determinate" value={Math.min(100, budgetPct)} sx={{ mt: 0.3, height: 5, borderRadius: 3, bgcolor: 'rgba(148,163,184,.15)', '& .MuiLinearProgress-bar': { bgcolor: D.red } }} />
+                <LinearProgress variant="determinate" value={Math.min(100, budgetPct)} sx={{ mt: 0.3, height: 5, borderRadius: 3, bgcolor: 'rgba(255,255,255,.15)', '& .MuiLinearProgress-bar': { bgcolor: D.red } }} />
               </Stack>
             </Box>
           )}
@@ -429,7 +429,7 @@ export default function DenseAdminDashboard() {
                 <Chip size="small" clickable onClick={() => { setAllTasksInitialTab(toPendingEntityType(data!.actionItems[0].type)); setAllTasksOpen(true); }} label={t('viewAll')} sx={{ height: 20, fontSize: '0.6rem', fontWeight: 700, color: D.red, borderColor: 'rgba(255,92,122,.45)', bgcolor: 'rgba(255,92,122,.1)' }} variant="outlined" />
               )}
             </Stack>
-            <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', mt: 1, overflow: 'auto', '&::-webkit-scrollbar': { width: 4 }, '&::-webkit-scrollbar-thumb': { bgcolor: 'rgba(148,163,184,.2)', borderRadius: 2 } }}>
+            <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', mt: 1, overflow: 'auto', '&::-webkit-scrollbar': { width: 4 }, '&::-webkit-scrollbar-thumb': { bgcolor: 'rgba(255,255,255,.2)', borderRadius: 2 } }}>
               {loading ? <Skeleton variant="rectangular" height={60} /> : (data?.actionItems ?? []).length === 0 ? (
                 <Typography variant="caption" sx={{ textAlign: 'center', py: 1, color: D.textDim }}>{t('noPendingAction')}</Typography>
               ) : (
@@ -443,7 +443,7 @@ export default function DenseAdminDashboard() {
                       <Typography sx={{ fontSize: '1.3rem', fontWeight: 900, color: D.red, lineHeight: 1 }}>!</Typography>
                     </Box>
                   </Stack>
-                  <Stack spacing={0.5} sx={{ maxHeight: 130, overflowY: 'auto', '&::-webkit-scrollbar': { width: 4 }, '&::-webkit-scrollbar-thumb': { bgcolor: 'rgba(148,163,184,.2)', borderRadius: 2 } }}>
+                  <Stack spacing={0.5} sx={{ maxHeight: 130, overflowY: 'auto', '&::-webkit-scrollbar': { width: 4 }, '&::-webkit-scrollbar-thumb': { bgcolor: 'rgba(255,255,255,.2)', borderRadius: 2 } }}>
                     {data!.actionItems.map((item) => (
                       <Stack key={`${item.type}-${item.id}`} direction="row" alignItems="center" spacing={0.8} onClick={() => navigate(item.path)} sx={{ cursor: 'pointer', px: 0.9, py: 0.7, borderRadius: 1.5, bgcolor: 'rgba(255,92,122,.1)', border: '1px solid rgba(255,92,122,.22)', '&:hover': { bgcolor: 'rgba(255,92,122,.16)' }, minWidth: 0 }}>
                         <ReceiptIcon sx={{ fontSize: 14, color: D.red, flexShrink: 0 }} />
@@ -478,7 +478,7 @@ export default function DenseAdminDashboard() {
             </Stack>
             <Stack direction="row" alignItems="center" spacing={1.6} sx={{ mt: 1.1 }}>
               <Box sx={{ position: 'relative', width: 62, height: 62, flexShrink: 0 }}>
-                <Box sx={{ position: 'absolute', inset: 0, borderRadius: '50%', border: '6px solid rgba(148,163,184,.15)' }} />
+                <Box sx={{ position: 'absolute', inset: 0, borderRadius: '50%', border: '6px solid rgba(255,255,255,.15)' }} />
                 <Box sx={{ position: 'absolute', inset: 0, borderRadius: '50%', border: `6px solid ${D.blue}`, clipPath: `inset(0 ${100 - (todaysTasks.length ? Math.round(todaysTasks.filter((t) => t.status === 'COMPLETED').length / todaysTasks.length * 100) : 0)}% 0 0)` }} />
                 <Box sx={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
                   <Typography sx={{ fontSize: '1rem', fontWeight: 900, color: D.text, lineHeight: 1, fontFamily: NUM_FONT }}>{todaysTasks.length}</Typography>
@@ -552,15 +552,15 @@ export default function DenseAdminDashboard() {
           <Box sx={{ display: 'grid', gridTemplateColumns: '76px minmax(0,1fr) auto', gap: '0 10px', px: 0.6, pb: 0.6, borderBottom: `1px solid ${D.cardBorder}` }}>
             {['date', 'description', 'amount'].map((h) => <Typography key={h} sx={{ fontSize: '0.58rem', fontWeight: 700, color: D.textDim, textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: h === 'amount' ? 'right' : 'left' }}>{t(h)}</Typography>)}
           </Box>
-          <Box sx={{ maxHeight: 6 * 34, overflowY: 'auto', '&::-webkit-scrollbar': { width: 5 }, '&::-webkit-scrollbar-thumb': { bgcolor: 'rgba(148,163,184,.3)', borderRadius: 3 } }}>
+          <Box sx={{ maxHeight: 6 * 34, overflowY: 'auto', '&::-webkit-scrollbar': { width: 5 }, '&::-webkit-scrollbar-thumb': { bgcolor: 'rgba(255,255,255,.3)', borderRadius: 3 } }}>
             {inwardFeedRows.map((tx) => (
-              <Box key={tx.id} sx={{ display: 'grid', gridTemplateColumns: '76px minmax(0,1fr) auto', gap: '0 10px', alignItems: 'center', px: 0.6, height: 34, boxSizing: 'border-box', borderBottom: `1px solid ${D.cardBorder}`, '&:hover': { bgcolor: 'rgba(148,163,184,.05)' } }}>
+              <Box key={tx.id} sx={{ display: 'grid', gridTemplateColumns: '76px minmax(0,1fr) auto', gap: '0 10px', alignItems: 'center', px: 0.6, height: 34, boxSizing: 'border-box', borderBottom: `1px solid ${D.cardBorder}`, '&:hover': { bgcolor: 'rgba(255,255,255,.05)' } }}>
                 <Typography sx={{ fontSize: '0.66rem', color: D.textDim, fontFamily: NUM_FONT }} noWrap>{formatDate(tx.date)}</Typography>
                 <Typography sx={{ fontSize: '0.7rem', fontWeight: 600, color: D.text }} noWrap title={tx.description || tx.account}>{tx.description || tx.account}</Typography>
                 <Typography sx={{ fontSize: '0.7rem', fontWeight: 800, color: D.teal, fontFamily: NUM_FONT, textAlign: 'right' }}>+{formatCurrency(tx.amount)}</Typography>
               </Box>
             ))}
-            {inwardFeedLoading && <Skeleton variant="rectangular" height={34} sx={{ bgcolor: 'rgba(148,163,184,.12)' }} />}
+            {inwardFeedLoading && <Skeleton variant="rectangular" height={34} sx={{ bgcolor: 'rgba(255,255,255,.12)' }} />}
             {!inwardFeedLoading && inwardFeedRows.length === 0 && <Typography sx={{ fontSize: '0.7rem', color: D.textDim, textAlign: 'center', py: 2 }}>{t('noInwardYet')}</Typography>}
           </Box>
         </CardContent>
@@ -585,9 +585,9 @@ export default function DenseAdminDashboard() {
             <Box sx={{ display: 'grid', gridTemplateColumns: '76px minmax(0,1fr) auto auto', gap: '0 10px', px: 0.6, pb: 0.6, borderBottom: `1px solid ${D.cardBorder}` }}>
               {['date', 'description', 'amount', 'type'].map((h) => <Typography key={h} sx={{ fontSize: '0.58rem', fontWeight: 700, color: D.textDim, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{t(h)}</Typography>)}
             </Box>
-            <Box sx={{ flex: 1, maxHeight: 230, overflowY: 'auto', '&::-webkit-scrollbar': { width: 5 }, '&::-webkit-scrollbar-thumb': { bgcolor: 'rgba(148,163,184,.3)', borderRadius: 3 } }}>
+            <Box sx={{ flex: 1, maxHeight: 230, overflowY: 'auto', '&::-webkit-scrollbar': { width: 5 }, '&::-webkit-scrollbar-thumb': { bgcolor: 'rgba(255,255,255,.3)', borderRadius: 3 } }}>
               {(data?.recentTransactions ?? []).map((tx) => (
-                <Box key={tx.id} sx={{ display: 'grid', gridTemplateColumns: '76px minmax(0,1fr) auto auto', gap: '0 10px', alignItems: 'center', px: 0.6, py: 0.75, borderBottom: `1px solid ${D.cardBorder}`, '&:hover': { bgcolor: 'rgba(148,163,184,.05)' } }}>
+                <Box key={tx.id} sx={{ display: 'grid', gridTemplateColumns: '76px minmax(0,1fr) auto auto', gap: '0 10px', alignItems: 'center', px: 0.6, py: 0.75, borderBottom: `1px solid ${D.cardBorder}`, '&:hover': { bgcolor: 'rgba(255,255,255,.05)' } }}>
                   <Typography sx={{ fontSize: '0.66rem', color: D.textDim, fontFamily: NUM_FONT }} noWrap>{formatDate(tx.date)}</Typography>
                   <Stack direction="row" spacing={0.7} alignItems="center" sx={{ minWidth: 0 }}>
                     <ReceiptIcon sx={{ fontSize: 13, color: D.textDim, flexShrink: 0 }} />
@@ -640,7 +640,7 @@ export default function DenseAdminDashboard() {
                   <XAxis dataKey="date" tick={{ fontSize: 8.5, fill: D.textDim }} axisLine={false} tickLine={false} minTickGap={28} />
                   <YAxis orientation="right" width={32} tick={{ fontSize: 8.5, fill: D.textDim }} axisLine={false} tickLine={false}
                     tickFormatter={(v: number) => v >= 100000 ? `${Math.round(v / 100000)}L` : v >= 1000 ? `${Math.round(v / 1000)}K` : `${v}`} />
-                  <Tooltip formatter={(value: unknown) => formatCurrency(Number(value))} contentStyle={{ background: '#1b2740', border: `1px solid ${D.cardBorder}`, borderRadius: 8, fontSize: 11 }} labelStyle={{ color: D.textDim }} itemStyle={{ color: D.text }} />
+                  <Tooltip formatter={(value: unknown) => formatCurrency(Number(value))} contentStyle={{ background: '#1a1a1a', border: `1px solid ${D.cardBorder}`, borderRadius: 8, fontSize: 11 }} labelStyle={{ color: D.textDim }} itemStyle={{ color: D.text }} />
                   <Area type="monotone" dataKey="amount" stroke={D.red} fill="url(#expTrendFill)" strokeWidth={2} dot={false} activeDot={{ r: 4, fill: D.red, stroke: '#fff', strokeWidth: 1.5 }} />
                 </AreaChart>
               </ResponsiveContainer>
@@ -668,9 +668,9 @@ export default function DenseAdminDashboard() {
             <Box sx={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) auto auto 18px', gap: '0 12px', px: 0.6, pb: 0.6, borderBottom: `1px solid ${D.cardBorder}` }}>
               {['colBudgetHead', 'colApproved', 'colActual', ''].map((h) => <Typography key={h} sx={{ fontSize: '0.58rem', fontWeight: 700, color: D.textDim, textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: h === 'colBudgetHead' || h === '' ? 'left' : 'right' }}>{h ? t(h) : ''}</Typography>)}
             </Box>
-            <Box sx={{ flex: 1, maxHeight: 250, overflowY: 'auto', '&::-webkit-scrollbar': { width: 5 }, '&::-webkit-scrollbar-thumb': { bgcolor: 'rgba(148,163,184,.3)', borderRadius: 3 } }}>
+            <Box sx={{ flex: 1, maxHeight: 250, overflowY: 'auto', '&::-webkit-scrollbar': { width: 5 }, '&::-webkit-scrollbar-thumb': { bgcolor: 'rgba(255,255,255,.3)', borderRadius: 3 } }}>
               {heads.map((head) => (
-                <Box key={head.id} onClick={() => navigate('/budget-heads')} sx={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) auto auto 18px', gap: '0 12px', alignItems: 'center', px: 0.6, py: 0.85, borderBottom: `1px solid ${D.cardBorder}`, cursor: 'pointer', '&:hover': { bgcolor: 'rgba(148,163,184,.05)' } }}>
+                <Box key={head.id} onClick={() => navigate('/budget-heads')} sx={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) auto auto 18px', gap: '0 12px', alignItems: 'center', px: 0.6, py: 0.85, borderBottom: `1px solid ${D.cardBorder}`, cursor: 'pointer', '&:hover': { bgcolor: 'rgba(255,255,255,.05)' } }}>
                   <Stack direction="row" spacing={0.8} alignItems="center" sx={{ minWidth: 0 }}>
                     <ReceiptIcon sx={{ fontSize: 14, color: D.amber, flexShrink: 0 }} />
                     <Typography sx={{ fontSize: '0.7rem', fontWeight: 600, color: D.text }} noWrap title={head.particulars}>{head.particulars}</Typography>
@@ -785,10 +785,10 @@ export default function DenseAdminDashboard() {
           <Button aria-label={t('closeInward')} onClick={() => setInwardOpen(false)} sx={{ minWidth: 36, p: 0.5 }}><CloseIcon fontSize="small" /></Button>
         </DialogTitle>
         <DialogContent dividers sx={{ p: 0, borderColor: D.cardBorder }}>
-          {inwardDetailsLoading ? <Box sx={{ py: 6, textAlign: 'center' }}><Skeleton variant="rectangular" height={32} sx={{ mx: 2, bgcolor: 'rgba(148,163,184,.12)' }} /></Box> : (() => {
+          {inwardDetailsLoading ? <Box sx={{ py: 6, textAlign: 'center' }}><Skeleton variant="rectangular" height={32} sx={{ mx: 2, bgcolor: 'rgba(255,255,255,.12)' }} /></Box> : (() => {
             const bankReceipts = (inwardDetails?.transactions ?? []).filter((transaction) => transaction.accountType === 'BANK' && ['DEPOSIT', 'MANUAL_DEPOSIT', 'REVERSAL_OUT'].includes(transaction.type));
             return <Box sx={{ overflowX: 'auto' }}>
-              <Stack direction="row" spacing={2} sx={{ px: 2, py: 1, bgcolor: 'rgba(148,163,184,.06)', borderBottom: `1px solid ${D.cardBorder}` }}><Typography variant="caption" fontWeight={700}>{t('netInward', { v: formatCurrency(data?.pureBankInward ?? 0) })}</Typography><Typography variant="caption" sx={{ color: D.textDim }}>{t('records', { n: bankReceipts.length })}</Typography></Stack>
+              <Stack direction="row" spacing={2} sx={{ px: 2, py: 1, bgcolor: 'rgba(255,255,255,.06)', borderBottom: `1px solid ${D.cardBorder}` }}><Typography variant="caption" fontWeight={700}>{t('netInward', { v: formatCurrency(data?.pureBankInward ?? 0) })}</Typography><Typography variant="caption" sx={{ color: D.textDim }}>{t('records', { n: bankReceipts.length })}</Typography></Stack>
               <Table size="small" sx={{ minWidth: 620, '& td': { color: D.text, borderColor: D.cardBorder }, '& th': { color: D.textDim, borderColor: D.cardBorder } }}><TableHead><TableRow><TableCell sx={{ py: 0.35, px: 0.8, fontSize: '0.68rem', whiteSpace: 'nowrap' }}>{t('date')}</TableCell><TableCell sx={{ py: 0.35, px: 0.8, fontSize: '0.68rem', whiteSpace: 'nowrap' }}>{t('type')}</TableCell><TableCell sx={{ py: 0.35, px: 0.8, fontSize: '0.68rem', whiteSpace: 'nowrap' }}>{t('bankAccount')}</TableCell><TableCell sx={{ py: 0.35, px: 0.8, fontSize: '0.68rem', whiteSpace: 'nowrap' }}>{t('description')}</TableCell><TableCell align="right" sx={{ py: 0.35, px: 0.8, fontSize: '0.68rem', whiteSpace: 'nowrap' }}>{t('amount')}</TableCell></TableRow></TableHead><TableBody>{bankReceipts.map((transaction) => <TableRow key={transaction.id} hover onClick={() => transaction.voucherId ? setVoucherPreviewId(transaction.voucherId) : setNoVoucherHint(true)} onMouseEnter={() => prefetchVoucher(transaction.voucherId)} onTouchStart={() => prefetchVoucher(transaction.voucherId)} sx={{ cursor: 'pointer' }} title={transaction.voucherId ? t('tapToView') : t('noVoucherLinked')}><TableCell sx={{ py: 0.35, px: 0.8, fontSize: '0.68rem', whiteSpace: 'nowrap' }}><Stack direction="row" alignItems="center" spacing={0.5}>{transaction.voucherId && <ReceiptIcon sx={{ fontSize: 13, color: 'primary.main' }} />}<span>{formatDate(transaction.date)}</span></Stack></TableCell><TableCell sx={{ py: 0.35, px: 0.8, fontSize: '0.68rem', whiteSpace: 'nowrap' }}><Chip size="small" label={transaction.type === 'REVERSAL_OUT' ? t('reversedReceipt') : t('bankReceipt')} color={transaction.type === 'REVERSAL_OUT' ? 'error' : 'success'} sx={{ height: 18, fontSize: '0.6rem' }} /></TableCell><TableCell sx={{ py: 0.35, px: 0.8, fontSize: '0.68rem', whiteSpace: 'nowrap' }}>{transaction.account}</TableCell><TableCell sx={{ py: 0.35, px: 0.8, fontSize: '0.68rem', whiteSpace: 'nowrap', maxWidth: 280, overflow: 'hidden', textOverflow: 'ellipsis' }} title={transaction.description}>{transaction.description || '—'}</TableCell><TableCell align="right" sx={{ py: 0.35, px: 0.8, fontSize: '0.68rem', whiteSpace: 'nowrap', fontWeight: 700, color: transaction.type === 'REVERSAL_OUT' ? 'error.main' : 'success.main' }}>{transaction.type === 'REVERSAL_OUT' ? '−' : '+'}{formatCurrency(Math.abs(transaction.amount))}</TableCell></TableRow>)}</TableBody></Table>
               {!bankReceipts.length && <Typography sx={{ p: 3, textAlign: 'center', color: D.textDim }}>{t('noBankReceipts')}</Typography>}
             </Box>;
@@ -818,7 +818,7 @@ export default function DenseAdminDashboard() {
                   <TableCell align="right" sx={{ py: 0.8, px: 1.6, fontSize: '0.74rem', fontWeight: 700, color: r.color, fontFamily: NUM_FONT }}>{r.sign}{formatCurrency(r.value)}</TableCell>
                 </TableRow>
               ))}
-              <TableRow sx={{ bgcolor: 'rgba(148,163,184,.06)' }}>
+              <TableRow sx={{ bgcolor: 'rgba(255,255,255,.06)' }}>
                 <TableCell sx={{ py: 0.9, px: 1.6, fontSize: '0.78rem', fontWeight: 800 }}>{t('availableBalance')}</TableCell>
                 <TableCell align="right" sx={{ py: 0.9, px: 1.6, fontSize: '0.78rem', fontWeight: 800, color: D.blue, fontFamily: NUM_FONT }}>{formatCurrency(data?.balance ?? 0)}</TableCell>
               </TableRow>
@@ -842,9 +842,9 @@ export default function DenseAdminDashboard() {
           <Button aria-label={t('closeExpenditure')} onClick={() => setExpenditureOpen(false)} sx={{ minWidth: 36, p: 0.5 }}><CloseIcon fontSize="small" /></Button>
         </DialogTitle>
         <DialogContent dividers sx={{ p: 0, borderColor: D.cardBorder }}>
-          {expenditureDetailsLoading ? <Box sx={{ py: 6, textAlign: 'center' }}><Skeleton variant="rectangular" height={32} sx={{ mx: 2, bgcolor: 'rgba(148,163,184,.12)' }} /></Box> : (
+          {expenditureDetailsLoading ? <Box sx={{ py: 6, textAlign: 'center' }}><Skeleton variant="rectangular" height={32} sx={{ mx: 2, bgcolor: 'rgba(255,255,255,.12)' }} /></Box> : (
             <Box sx={{ overflowX: 'auto' }}>
-              <Stack direction="row" spacing={2} sx={{ px: 2, py: 1, bgcolor: 'rgba(148,163,184,.06)', borderBottom: `1px solid ${D.cardBorder}` }}>
+              <Stack direction="row" spacing={2} sx={{ px: 2, py: 1, bgcolor: 'rgba(255,255,255,.06)', borderBottom: `1px solid ${D.cardBorder}` }}>
                 <Typography variant="caption" fontWeight={700}>{t('totalLine', { v: formatCurrency(expenditureDetails?.totalAmount ?? 0) })}</Typography>
                 <Typography variant="caption" sx={{ color: D.textDim }}>{t('records', { n: expenditureDetails?.totalCount ?? 0 })}</Typography>
               </Stack>
@@ -865,9 +865,9 @@ export default function DenseAdminDashboard() {
           <Button aria-label={t('closeShortAdvance')} onClick={() => setShortAdvanceOpen(false)} sx={{ minWidth: 36, p: 0.5 }}><CloseIcon fontSize="small" /></Button>
         </DialogTitle>
         <DialogContent dividers sx={{ p: 0, borderColor: D.cardBorder }}>
-          {shortAdvanceDetailsLoading ? <Box sx={{ py: 6, textAlign: 'center' }}><Skeleton variant="rectangular" height={32} sx={{ mx: 2, bgcolor: 'rgba(148,163,184,.12)' }} /></Box> : (
+          {shortAdvanceDetailsLoading ? <Box sx={{ py: 6, textAlign: 'center' }}><Skeleton variant="rectangular" height={32} sx={{ mx: 2, bgcolor: 'rgba(255,255,255,.12)' }} /></Box> : (
             <Box sx={{ overflowX: 'auto' }}>
-              <Stack direction="row" spacing={2} sx={{ px: 2, py: 1, bgcolor: 'rgba(148,163,184,.06)', borderBottom: `1px solid ${D.cardBorder}` }}>
+              <Stack direction="row" spacing={2} sx={{ px: 2, py: 1, bgcolor: 'rgba(255,255,255,.06)', borderBottom: `1px solid ${D.cardBorder}` }}>
                 <Typography variant="caption" fontWeight={700}>{t('netShortAdvance', { v: formatCurrency(shortAdvanceDetails?.totalAmount ?? 0) })}</Typography>
                 <Typography variant="caption" sx={{ color: D.textDim }}>{t('records', { n: shortAdvanceDetails?.totalCount ?? 0 })}</Typography>
               </Stack>
@@ -941,7 +941,7 @@ function CompactRecordsDark({ title, subtitle, rows, codeKey, amountKey, color, 
         </Stack>
         <Stack spacing={0.6}>
           {rows.map((row) => (
-            <Stack key={row.id} direction="row" alignItems="center" spacing={0.9} onClick={() => onRow(row)} sx={{ cursor: 'pointer', minWidth: 0, px: 0.8, py: 0.7, borderRadius: 1.5, bgcolor: 'rgba(148,163,184,.04)', border: `1px solid ${D.cardBorder}`, '&:hover': { bgcolor: 'rgba(148,163,184,.08)' } }}>
+            <Stack key={row.id} direction="row" alignItems="center" spacing={0.9} onClick={() => onRow(row)} sx={{ cursor: 'pointer', minWidth: 0, px: 0.8, py: 0.7, borderRadius: 1.5, bgcolor: 'rgba(255,255,255,.04)', border: `1px solid ${D.cardBorder}`, '&:hover': { bgcolor: 'rgba(255,255,255,.08)' } }}>
               <Box sx={{ width: 28, height: 28, borderRadius: 1.4, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: `${color}1f` }}>
                 <ReceiptIcon sx={{ fontSize: 14, color }} />
               </Box>
@@ -985,7 +985,7 @@ function RecentActivityPanel() {
     >
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'minmax(0, 1fr)', lg: 'repeat(2, minmax(0, 1fr))' }, gap: 0.6 }}>
         {isLoading
-          ? Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} variant="rectangular" height={44} sx={{ bgcolor: 'rgba(148,163,184,.12)', borderRadius: 1.5 }} />)
+          ? Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} variant="rectangular" height={44} sx={{ bgcolor: 'rgba(255,255,255,.12)', borderRadius: 1.5 }} />)
           : rows.map((item) => <ActivityLogRow key={item.id} item={item} compact dark onOpen={(p) => navigate(p)} />)}
       </Box>
       {!isLoading && rows.length === 0 && (

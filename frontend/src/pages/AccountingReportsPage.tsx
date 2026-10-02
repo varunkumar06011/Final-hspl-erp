@@ -520,7 +520,7 @@ export default function AccountingReportsPage() {
               {/* Expenses side */}
               <Grid item xs={12} md={6}>
                 <Card sx={{ overflow: 'hidden' }}>
-                  <Box sx={{ p: 2, bgcolor: 'error.light', color: 'error.contrastText' }}>
+                  <Box sx={{ p: 2, bgcolor: 'error.light', color: 'text.primary' }}>
                     <Typography variant="h6" fontWeight={600}>{tr('expenses')}</Typography>
                   </Box>
                   <ResponsiveTable>
@@ -565,7 +565,7 @@ export default function AccountingReportsPage() {
               {/* Income side */}
               <Grid item xs={12} md={6}>
                 <Card sx={{ overflow: 'hidden' }}>
-                  <Box sx={{ p: 2, bgcolor: 'success.light', color: 'success.contrastText' }}>
+                  <Box sx={{ p: 2, bgcolor: 'success.light', color: 'text.primary' }}>
                     <Typography variant="h6" fontWeight={600}>{tr('income')}</Typography>
                   </Box>
                   <ResponsiveTable>
@@ -651,7 +651,7 @@ export default function AccountingReportsPage() {
               {/* Assets */}
               <Grid item xs={12} md={6}>
                 <Card sx={{ overflow: 'hidden' }}>
-                  <Box sx={{ p: 2, bgcolor: 'info.light', color: 'info.contrastText' }}>
+                  <Box sx={{ p: 2, bgcolor: 'info.light', color: 'text.primary' }}>
                     <Typography variant="h6" fontWeight={600}>{tr('assets')}</Typography>
                   </Box>
                   <ResponsiveTable>
@@ -680,7 +680,7 @@ export default function AccountingReportsPage() {
               {/* Liabilities + Capital */}
               <Grid item xs={12} md={6}>
                 <Card sx={{ overflow: 'hidden' }}>
-                  <Box sx={{ p: 2, bgcolor: 'warning.light', color: 'warning.contrastText' }}>
+                  <Box sx={{ p: 2, bgcolor: 'warning.light', color: 'text.primary' }}>
                     <Typography variant="h6" fontWeight={600}>{tr('liabilitiesCapital')}</Typography>
                   </Box>
                   <ResponsiveTable>

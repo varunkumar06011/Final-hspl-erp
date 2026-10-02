@@ -211,14 +211,18 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   // Pull-to-refresh (mobile) + manual refresh (desktop). Refetches the data
   // in place instead of reloading the whole app — the page stays put and
-  // fresh numbers swap in. Falls back to a full reload if refetch fails.
+  // fresh numbers swap in. If any refetch fails (stale tab, broken session
+  // state) it falls back to a full reload, which also pulls the latest build.
+  // Skipped while offline, where a reload would only show a browser error page.
   const queryClient = useQueryClient();
   const [manualRefreshing, setManualRefreshing] = useState(false);
   const handleManualRefresh = useCallback(() => {
     setManualRefreshing(true);
     queryClient
-      .invalidateQueries()
-      .catch(() => window.location.reload())
+      .invalidateQueries(undefined, { throwOnError: true })
+      .catch(() => {
+        if (navigator.onLine) window.location.reload();
+      })
       .finally(() => setManualRefreshing(false));
   }, [queryClient]);
 

@@ -133,7 +133,7 @@ export default function ActivityLogRow({
         alignItems: 'flex-start',
         cursor: clickable ? 'pointer' : 'default',
         ...(compact
-          ? { px: 0.8, py: 0.6, borderRadius: 1.5, bgcolor: 'rgba(148,163,184,.04)', border: '1px solid rgba(148,163,184,.14)', '&:hover': clickable ? { bgcolor: 'rgba(148,163,184,.08)' } : {} }
+          ? { px: 0.8, py: 0.6, borderRadius: 1.5, bgcolor: 'rgba(255,255,255,.04)', border: '1px solid rgba(255,255,255,.14)', '&:hover': clickable ? { bgcolor: 'rgba(255,255,255,.08)' } : {} }
           : { py: 1.25 }),
       }}
     >
