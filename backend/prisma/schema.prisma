@@ -1879,3 +1879,29 @@ model Comment {
   @@index([authorId])
   @@map("comments")
 }
+
+// ═══════════════════════════════════════════════════════════
+// AI assistant — proposed/executed create actions. The assistant never writes
+// directly: it proposes an action (stored here, PENDING), the user confirms,
+// and the server then replays it through the normal API as that user.
+// ═══════════════════════════════════════════════════════════
+
+model AssistantAction {
+  id             String    @id @default(uuid()) @db.Uuid
+  projectId      String    @db.Uuid
+  userId         String    @db.Uuid
+  tool           String // e.g. create_mpr, create_quotation
+  args           Json // validated request body that will be sent on confirm
+  summary        Json // human-readable preview shown on the confirmation card
+  status         String    @default("PENDING") // PENDING | EXECUTED | CANCELLED | FAILED | EXPIRED
+  resultType     String? // created record type (e.g. MPR)
+  resultId       String?   @db.Uuid
+  resultLabel    String? // e.g. VGH-MPR012
+  error          String?
+  createdAt      DateTime  @default(now())
+  executedAt     DateTime?
+
+  @@index([projectId, userId, status])
+  @@index([userId, createdAt])
+  @@map("assistant_actions")
+}

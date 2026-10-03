@@ -7,6 +7,7 @@ import { errorMiddleware } from './middleware/error';
 import { requestLogger } from './middleware/requestLogger';
 import { prisma } from './config/prisma';
 import { logger } from './utils/logger';
+import { INTERNAL_HEADER, INTERNAL_SECRET } from './services/assistant/internalApi';
 
 const app = express();
 
@@ -23,6 +24,9 @@ const apiLimiter = rateLimit({
   max: 500,
   standardHeaders: true,
   legacyHeaders: false,
+  // The AI assistant calls this server's own API on the user's behalf; those
+  // loopback calls carry a per-process secret and must not eat the user's quota.
+  skip: (req) => req.headers[INTERNAL_HEADER] === INTERNAL_SECRET,
 });
 app.use('/api', apiLimiter);
 

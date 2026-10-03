@@ -45,6 +45,7 @@ import commentRoutes from './comment.routes';
 import activityLogRoutes from './activity-log.routes';
 import projectRoutes from './project.routes';
 import searchRoutes from './search.routes';
+import assistantRoutes from './assistant.routes';
 
 const router = Router();
 
@@ -94,5 +95,6 @@ router.use('/transaction-register', transactionRegisterRoutes);
 router.use('/comments', commentRoutes);
 router.use('/activity-log', activityLogRoutes);
 router.use('/search', searchRoutes);
+router.use('/assistant', assistantRoutes);
 
 export default router;

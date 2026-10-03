@@ -39,6 +39,7 @@ import {
   LightMode as LightModeIcon,
   NavigateNext as NavigateNextIcon,
   AutoAwesome as AutoAwesomeIcon,
+  SmartToy as AssistantIcon,
   ArrowBack as ArrowBackIcon,
   RequestQuote as PaymentReportIcon,
   ChatBubbleOutline as CommentsNavIcon,
@@ -54,6 +55,7 @@ import { useIdleTimeout } from '../hooks/useIdleTimeout';
 import { useColorMode } from '../config/ColorModeContext';
 import GlobalSearch from './GlobalSearch';
 import NLQueryBar from './NLQueryBar';
+import AssistantDrawer from './AssistantDrawer';
 import PresenceBar from './PresenceBar';
 import { useTrackPageView } from '../hooks/useTrackPageView';
 import { useTranslation } from 'react-i18next';
@@ -203,7 +205,16 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [nlQueryOpen, setNlQueryOpen] = useState(false);
+  const [assistantOpen, setAssistantOpen] = useState(false);
   const { t } = useTranslation();
+  const { t: tAssistant } = useTranslation('assistant');
+  // The AI assistant is hidden unless the server has it switched on and configured.
+  const { data: assistantStatus } = useQuery<{ enabled: boolean }>({
+    queryKey: ['assistant-status'],
+    queryFn: async () => (await api.get('/assistant/status')).data,
+    staleTime: 10 * 60 * 1000,
+    retry: false,
+  });
   const { mode, toggle: toggleColorMode } = useColorMode();
   useTrackPageView();
   // Auto-logout disabled — user stays logged in until manual logout.
@@ -524,6 +535,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           <IconButton color="inherit" onClick={() => setNlQueryOpen(true)} title={t('shell.askErp')} sx={{ display: { xs: 'none', sm: 'inline-flex' } }}>
             <AutoAwesomeIcon />
           </IconButton>
+          {assistantStatus?.enabled && (
+            <IconButton color="inherit" onClick={() => setAssistantOpen(true)} title={tAssistant('open')} aria-label={tAssistant('open')}>
+              <AssistantIcon />
+            </IconButton>
+          )}
           {!isAdminRole(user?.role ?? '') && (
             <IconButton color="inherit" onClick={toggleColorMode} title={mode === 'dark' ? t('shell.switchToLight') : t('shell.switchToDark')}>
               {mode === 'dark' ? <LightModeIcon /> : <DarkModeIcon />}
@@ -682,6 +698,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
       {/* Natural Language Query — Ctrl+J */}
       <NLQueryBar open={nlQueryOpen} onClose={() => setNlQueryOpen(false)} />
+
+      {/* AI assistant — reads records and prepares creates for confirmation */}
+      {assistantStatus?.enabled && <AssistantDrawer open={assistantOpen} onClose={() => setAssistantOpen(false)} />}
 
       {/* Real-time presence — shows other users viewing the same page */}
       <PresenceBar />

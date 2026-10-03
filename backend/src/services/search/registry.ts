@@ -99,6 +99,7 @@ export const EXCLUDED_MODELS: Record<string, string> = {
   InventoryTransaction: 'high-volume stock ledger',
   BillSettlement: 'link table',
   WorkTaskQuotation: 'link table',
+  AssistantAction: 'AI assistant action log; per-user, not shared records',
 };
 
 /**

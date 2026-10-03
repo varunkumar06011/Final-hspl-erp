@@ -80,3 +80,14 @@ The frontend is bilingual via `react-i18next` (`frontend/src/i18n/`). A language
 - Enum/status values go through `enumLabel()`, roles through `roleLabel()`, ledger groups through `ledgerGroupLabel()` (all in `utils/enumOptions.ts`). Use `dateLocale()` for `toLocaleString`/`toLocaleDateString`.
 - Run `npm run i18n:check` before finishing UI work. It fails on en/te key mismatches or missing keys, and warns on hardcoded English (`--strict` makes warnings fail).
 - Out of scope by design: PDF/CSV/print output, WhatsApp share text, legal pages, backend-supplied strings.
+
+## AI assistant (Telugu / English chat)
+
+A chat drawer (`AssistantDrawer.tsx`, robot icon in the AppShell top bar) that reads records and prepares creates. Backend: `backend/src/services/assistant/` + `routes/assistant.routes.ts`, tests in `tests/assistant.test.ts`.
+
+- **It never touches the database directly.** Every tool call is an HTTP call to this server's own `/api` carrying the user's own bearer token (`internalApi.ts`), so RBAC, project scoping, validation, approvals, sequence numbers and audit all apply unchanged. Loopback calls carry a per-process secret header so the rate limiter in `app.ts` skips them.
+- **Create-only, by construction.** `tools.ts` is the whole capability list: read tools (`list_records`, `get_record`, `search_records`) and create tools (vendor, MPR, quotation, PO, goods receipt, invoice, stock entry). There is deliberately no approve/reject/pay/delete/cancel/update tool; a test fails if one is added. Adding a capability is a code change in `tools.ts`.
+- **Propose → confirm.** A create tool validates args with the shared Zod schema, resolves labels via the API, and stores a `PENDING` row in `assistant_actions`; nothing is saved until the user confirms (`POST /assistant/actions/:id/confirm`), which replays it through the normal endpoint (adding `acknowledged: true` where the endpoint demands it). Proposals are per-user/project, expire after 30 min, and are claimed atomically (`EXECUTING`) so a double-click cannot create twice.
+- Chat is stateless server-side: the client sends back the opaque Gemini `history` (sanitised in `sanitizeHistory`). Provider is Gemini via `gemini.ts` (`ASSISTANT_MODEL`, default `gemini-3.8-flash` — `gemini-2.5-flash` is retired for new keys; note `ocr-gemini.ts` still hardcodes it).
+- Env: `GEMINI_API_KEY` (needs a **paid** key; free tier allows ~20 requests), optional `ASSISTANT_ENABLED`, `ASSISTANT_MODEL`, `ASSISTANT_DAILY_LIMIT` (messages/user/day, default 150), `ASSISTANT_INTERNAL_URL` (default `http://127.0.0.1:$PORT`).
+- UI labels for confirmation cards/tables are keys (`assistant` i18n namespace), not backend strings; add a key to both `en`/`te` when adding a tool field or list column.
