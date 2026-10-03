@@ -43,6 +43,7 @@ import {
   ArrowBack as ArrowBackIcon,
   RequestQuote as PaymentReportIcon,
   ChatBubbleOutline as CommentsNavIcon,
+  Forum as ChatNavIcon,
   History as ActivityNavIcon,
   Apartment as ProjectsIcon,
 } from '@mui/icons-material';
@@ -52,6 +53,7 @@ import { onForegroundMessage, enableNotifications, isPushSupported, getPermissio
 import NotificationBell from './NotificationBell';
 import api from '../config/api';
 import { useIdleTimeout } from '../hooks/useIdleTimeout';
+import { useChatRealtime } from '../hooks/useChatRealtime';
 import { useColorMode } from '../config/ColorModeContext';
 import GlobalSearch from './GlobalSearch';
 import NLQueryBar from './NLQueryBar';
@@ -66,6 +68,7 @@ import type { TFunction } from 'i18next';
 
 const NAV_ITEMS = [
   { label: 'Dashboard', icon: <DashboardIcon />, path: '/', permission: Permission.VIEW_DASHBOARD, section: '' },
+  { label: 'Chat', icon: <ChatNavIcon />, path: '/chat', section: '' },
   { label: 'Work Calendar', icon: <WorkIcon />, path: '/work-calendar', permission: Permission.MANAGE_WORK_TASKS, section: '' },
   // ── Procurement ──
   { label: 'Work', icon: <WorkIcon />, path: '/work', permission: Permission.MANAGE_WORK_TASKS, section: 'Procurement' },
@@ -117,6 +120,7 @@ const NAV_ITEMS = [
 // Same routes, just reorganized into clearer sections.
 const ADMIN_NAV_ITEMS = [
   { label: 'Dashboard', icon: <DashboardIcon />, path: '/', permission: Permission.VIEW_DASHBOARD, section: '' },
+  { label: 'Chat', icon: <ChatNavIcon />, path: '/chat', section: '' },
   { label: 'Work', icon: <WorkIcon />, path: '/work', permission: Permission.MANAGE_WORK_TASKS, section: '' },
   // ── Accounting (FIRST — client wants accounting first) ──
   { label: 'Inward Funds', icon: <SavingsIcon />, path: '/inward-funds', permission: Permission.VIEW_FINANCIALS, section: 'Accounting' },
@@ -259,6 +263,15 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout } = useAuthStore();
+
+  // Chat: live updates app-wide, plus the unread count shown next to "Chat" in the sidebar.
+  useChatRealtime();
+  const { data: unreadChat = 0 } = useQuery<number>({
+    queryKey: ['chat', 'unread'],
+    queryFn: async () => (await api.get('/chat/unread-count')).data?.count ?? 0,
+    enabled: !!user,
+    refetchInterval: 60000,
+  });
 
   // Unread comments / mentions / replies, shown next to "Comments" in the sidebar.
   const { data: unreadComments = 0 } = useQuery<number>({
@@ -476,6 +489,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                 >
                   <ListItemIcon sx={{ minWidth: 40 }}>{item.icon}</ListItemIcon>
                   <ListItemText primary={t(`nav.${item.label}`, item.label)}primaryTypographyProps={{ fontSize: 14 }} />
+                  {item.path === '/chat' && unreadChat > 0 && (
+                    <Chip label={unreadChat > 99 ? '99+' : unreadChat} size="small" color="error" sx={{ height: 20, fontWeight: 700 }} />
+                  )}
                   {item.path === '/comments' && unreadComments > 0 && (
                     <Chip label={unreadComments > 99 ? '99+' : unreadComments} size="small" color="error" sx={{ height: 20, fontWeight: 700 }} />
                   )}

@@ -46,6 +46,7 @@ import activityLogRoutes from './activity-log.routes';
 import projectRoutes from './project.routes';
 import searchRoutes from './search.routes';
 import assistantRoutes from './assistant.routes';
+import chatRoutes from './chat.routes';
 
 const router = Router();
 
@@ -96,5 +97,6 @@ router.use('/comments', commentRoutes);
 router.use('/activity-log', activityLogRoutes);
 router.use('/search', searchRoutes);
 router.use('/assistant', assistantRoutes);
+router.use('/chat', chatRoutes);
 
 export default router;

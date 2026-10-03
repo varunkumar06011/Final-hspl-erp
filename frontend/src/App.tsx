@@ -99,6 +99,7 @@ const ExpenditurePage = lazyWithRetry(() => import('./pages/ExpenditurePage'));
 const MaterialPurchaseRequestsPage = lazyWithRetry(() => import('./pages/MaterialPurchaseRequestsPage'));
 const TransactionRegisterPage = lazyWithRetry(() => import('./pages/TransactionRegisterPage'));
 const CommentsPage = lazyWithRetry(() => import('./pages/CommentsPage'));
+const ChatPage = lazyWithRetry(() => import('./pages/ChatPage'));
 const ActivityLogPage = lazyWithRetry(() => import('./pages/ActivityLogPage'));
 // Public legal/support pages — must be reachable without a session (login
 // checkbox links here; Apple also requires working privacy-policy and
@@ -154,6 +155,7 @@ const ROUTES = [
   { path: '/contracts', element: <ContractsPage /> },
   { path: '/audit', element: <AuditLogPage /> },
   { path: '/comments', element: <CommentsPage /> },
+  { path: '/chat', element: <ChatPage /> },
   { path: '/activity-log', element: <ActivityLogPage /> },
   { path: '/users', element: <UsersPage /> },
   { path: '/projects', element: <ProjectsPage /> },

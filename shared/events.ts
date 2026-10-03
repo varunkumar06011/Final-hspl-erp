@@ -55,6 +55,15 @@ export const SocketEvents = {
   // Approval
   APPROVAL_STEP_UPDATED: 'approval:step:updated',
 
+  // Internal chat
+  CHAT_MESSAGE: 'chat:message',
+  CHAT_MESSAGE_UPDATED: 'chat:message:updated',
+  CHAT_MESSAGE_DELETED: 'chat:message:deleted',
+  CHAT_CONVERSATION: 'chat:conversation',
+  // client -> server: the conversation currently on screen (suppresses push for it)
+  CHAT_OPEN: 'chat:open',
+  CHAT_CLOSE: 'chat:close',
+
   // Notifications
   NOTIFICATION: 'notification',
 } as const;

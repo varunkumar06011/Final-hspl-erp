@@ -4,6 +4,7 @@ import { verifyFirebaseToken } from './config/firebase';
 import { prisma } from './config/prisma';
 import jwt from 'jsonwebtoken';
 import { activeProjectId } from './middleware/auth';
+import { SocketEvents } from '@hospital-erp/shared';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-me';
 
@@ -74,6 +75,33 @@ export function initSocketServer(httpServer: HttpServer): SocketServer {
     if (user?.projectId) {
       socket.join(`project:${user.projectId}`);
     }
+    // Personal room: direct messages and groups are delivered per user.
+    if (user?.id) {
+      socket.join(`user:${user.id}`);
+    }
+
+    // Chat: the conversation on screen. Only used to skip push notifications for
+    // a chat the user is already looking at, so a membership check is enough.
+    socket.on(SocketEvents.CHAT_OPEN, async (data: { conversationId?: string }) => {
+      try {
+        const id = data?.conversationId;
+        if (!id || !user?.projectId || typeof id !== 'string') return;
+        const conversation = await prisma.chatConversation.findFirst({
+          where: {
+            id,
+            projectId: user.projectId,
+            OR: [{ type: 'GENERAL' }, { members: { some: { userId: user.id } } }],
+          },
+          select: { id: true },
+        });
+        if (conversation) socket.join(`chat:${id}`);
+      } catch {
+        /* best-effort */
+      }
+    });
+    socket.on(SocketEvents.CHAT_CLOSE, (data: { conversationId?: string }) => {
+      if (data?.conversationId) socket.leave(`chat:${data.conversationId}`);
+    });
 
     // Presence: user is viewing a page
     socket.on('presence:join', (data: { page: string; userName: string; userRole: string }) => {
@@ -120,4 +148,17 @@ export function emitToProject(projectId: string, event: string, data: unknown): 
   if (io) {
     io.to(`project:${projectId}`).emit(event, data);
   }
+}
+
+export function emitToUsers(userIds: string[], event: string, data: unknown): void {
+  if (io && userIds.length > 0) {
+    io.to(userIds.map((id) => `user:${id}`)).emit(event, data);
+  }
+}
+
+/** Users with a live socket currently viewing the given chat conversation. */
+export async function userIdsViewingChat(conversationId: string): Promise<Set<string>> {
+  if (!io) return new Set();
+  const sockets = await io.in(`chat:${conversationId}`).fetchSockets();
+  return new Set(sockets.map((s) => s.data?.user?.id as string).filter(Boolean));
 }

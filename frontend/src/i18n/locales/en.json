@@ -253,6 +253,7 @@
   },
   "nav": {
     "Dashboard": "Dashboard",
+    "Chat": "Chat",
     "Work Calendar": "Work Calendar",
     "Work": "Work",
     "Material Requests": "Material Requests",

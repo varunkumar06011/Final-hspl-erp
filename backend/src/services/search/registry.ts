@@ -100,6 +100,10 @@ export const EXCLUDED_MODELS: Record<string, string> = {
   BillSettlement: 'link table',
   WorkTaskQuotation: 'link table',
   AssistantAction: 'AI assistant action log; per-user, not shared records',
+  ChatConversation: 'private conversations; only members may read them',
+  ChatMember: 'private conversations; only members may read them',
+  ChatMessage: 'private conversations; only members may read them',
+  ChatAttachment: 'private conversations; only members may read them',
 };
 
 /**

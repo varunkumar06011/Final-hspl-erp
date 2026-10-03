@@ -25,7 +25,7 @@ registerSessionCleanup(() => {
 
 // socket.io-client is lazy-imported — presence is non-critical and the
 // ~60KB module shouldn't block app boot (iOS Home Screen cold starts).
-async function getSocket(): Promise<Socket | null> {
+export async function getSocket(): Promise<Socket | null> {
   if (socket) return socket;
   if (socketPromise) return socketPromise;
   socketPromise = (async () => {
