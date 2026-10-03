@@ -57,6 +57,28 @@ async function resolveMentions(
   return users.map((u) => ({ id: u.id, name: u.name }));
 }
 
+const ALL_TAG = /(^|\s)@all(?=\s|$|[.,!?;:])/i;
+
+/** True when the text really contains an @all tag (the client flag alone is not trusted). */
+function hasAllTag(body: string): boolean {
+  return ALL_TAG.test(body);
+}
+
+/** Everyone @all reaches: all active users in General, the members elsewhere (never the sender). */
+async function resolveAllRecipients(
+  conversation: { id: string; type: string },
+  selfId: string,
+): Promise<string[]> {
+  const where: Prisma.UserWhereInput = { isActive: true, id: { not: selfId } };
+  if (conversation.type !== CHAT_TYPES.GENERAL) {
+    where.chatMemberships = { some: { conversationId: conversation.id } };
+  }
+  const users = await prisma.user.findMany({ where, select: { id: true } });
+  return users.map((u) => u.id);
+}
+
+const ALL_MENTION: ChatMention = { id: 'all', name: 'all' };
+
 function parseMentionIds(raw: unknown): string[] {
   let value = raw;
   if (typeof value === 'string') {
@@ -348,10 +370,10 @@ async function notifyForMessage(opts: {
   senderName: string;
   body: string;
   attachmentNames: string[];
-  mentions: ChatMention[];
+  mentionAll: boolean;
   newlyTaggedIds: string[];
 }): Promise<void> {
-  const { conversation, senderId, senderName, body, attachmentNames, mentions, newlyTaggedIds } = opts;
+  const { conversation, senderId, senderName, body, attachmentNames, mentionAll, newlyTaggedIds } = opts;
   const prefix = await projectTitlePrefix(conversation.projectId);
   const preview = previewOf(body, attachmentNames);
   const url = `/chat?c=${conversation.id}`;
@@ -360,7 +382,9 @@ async function notifyForMessage(opts: {
 
   // Tagged users: in-app notification + push, whatever the chat type.
   if (newlyTaggedIds.length > 0) {
-    const title = `${prefix}${senderName} mentioned you${conversation.type === CHAT_TYPES.DIRECT ? '' : ` in ${where}`}`;
+    const title = mentionAll
+      ? `${prefix}${senderName} mentioned everyone${conversation.type === CHAT_TYPES.DIRECT ? '' : ` in ${where}`}`
+      : `${prefix}${senderName} mentioned you${conversation.type === CHAT_TYPES.DIRECT ? '' : ` in ${where}`}`;
     await prisma.appNotification.createMany({
       data: newlyTaggedIds.map((userId) => ({
         userId,
@@ -388,7 +412,7 @@ async function notifyForMessage(opts: {
     select: { userId: true },
   });
   const viewing = await userIdsViewingChat(conversation.id);
-  const tagged = new Set(mentions.map((m) => m.id));
+  const tagged = new Set(newlyTaggedIds);
   const recipients = members.map((m) => m.userId).filter((id) => !viewing.has(id) && !tagged.has(id));
   if (recipients.length > 0) {
     notifyUsers(
@@ -457,6 +481,12 @@ router.post(
       }
 
       const mentions = await resolveMentions(parseMentionIds(req.body.mentionIds), conversation, me.id);
+      const mentionAll = hasAllTag(body);
+      const notifyIds = new Set(mentions.map((m) => m.id));
+      if (mentionAll) {
+        (await resolveAllRecipients(conversation, me.id)).forEach((id) => notifyIds.add(id));
+        mentions.push(ALL_MENTION);
+      }
 
       // Upload first; rows are created in one go so a failed upload leaves no half message.
       const storage = getStorageService();
@@ -514,8 +544,8 @@ router.post(
         senderName: me.name,
         body,
         attachmentNames: files.map((f) => f.originalname),
-        mentions,
-        newlyTaggedIds: mentions.map((m) => m.id),
+        mentionAll,
+        newlyTaggedIds: Array.from(notifyIds),
       }).catch((err) => console.error('[Chat] notify failed:', err));
 
       res.status(201).json({ data: dto });
@@ -567,6 +597,15 @@ router.patch(
       const mentions = await resolveMentions(mentionIds, conversation, me.id);
       const previous = new Set(((message.mentions as unknown as ChatMention[] | null) ?? []).map((m) => m.id));
       const newlyTagged = mentions.filter((m) => !previous.has(m.id)).map((m) => m.id);
+      // @all notifies everyone only the first time it appears in the message.
+      const mentionAll = hasAllTag(body);
+      const newlyAll = mentionAll && !previous.has(ALL_MENTION.id);
+      if (mentionAll) mentions.push(ALL_MENTION);
+      if (newlyAll) {
+        (await resolveAllRecipients(conversation, me.id)).forEach((id) => {
+          if (!newlyTagged.includes(id)) newlyTagged.push(id);
+        });
+      }
 
       const updated = await prisma.chatMessage.update({
         where: { id: message.id },
@@ -579,7 +618,7 @@ router.patch(
       if (newlyTagged.length > 0) {
         const prefix = await projectTitlePrefix(conversation.projectId);
         const where = conversation.type === CHAT_TYPES.GENERAL ? 'General' : (conversation.name ?? '');
-        const title = `${prefix}${me.name} mentioned you${conversation.type === CHAT_TYPES.DIRECT ? '' : ` in ${where}`}`;
+        const title = `${prefix}${me.name} mentioned ${newlyAll ? 'everyone' : 'you'}${conversation.type === CHAT_TYPES.DIRECT ? '' : ` in ${where}`}`;
         const preview = previewOf(body, []);
         const url = `/chat?c=${conversation.id}`;
         await prisma.appNotification.createMany({

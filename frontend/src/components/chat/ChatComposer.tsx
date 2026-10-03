@@ -31,6 +31,9 @@ import {
 } from './chatTypes';
 
 // Mirrors backend/src/utils/uploadFileTypes.ts (the server check is the real guard).
+// Pseudo-user at the top of the @ list: tags everyone in the chat.
+const ALL_USER: ChatUser = { id: 'all', name: 'all', role: '' };
+
 const ACCEPT =
   '.pdf,.jpg,.jpeg,.png,.gif,.webp,.bmp,.tif,.tiff,.heic,.heif,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.csv,.txt';
 
@@ -71,7 +74,7 @@ export default function ChatComposer({
     if (editing) {
       setText(editing.body);
       setCaret(editing.body.length);
-      setTagged(Object.fromEntries(editing.mentions.map((m) => [m.id, { id: m.id, name: m.name, role: '' }])));
+      setTagged(Object.fromEntries(editing.mentions.filter((m) => m.id !== ALL_USER.id).map((m) => [m.id, { id: m.id, name: m.name, role: '' }])));
       setFiles([]);
       setError('');
       requestAnimationFrame(() => inputRef.current?.focus());
@@ -91,7 +94,8 @@ export default function ChatComposer({
   const suggestions = useMemo(() => {
     if (!activeMention) return [];
     const q = activeMention.query.toLowerCase();
-    return mentionUsers.filter((u) => u.name.toLowerCase().includes(q));
+    const matches = mentionUsers.filter((u) => u.name.toLowerCase().includes(q));
+    return mentionUsers.length > 0 && ('all'.startsWith(q) || 'everyone'.startsWith(q)) ? [ALL_USER, ...matches] : matches;
   }, [activeMention, mentionUsers]);
 
   const pickUser = (u: ChatUser) => {
@@ -100,7 +104,7 @@ export default function ChatComposer({
     const newCaret = activeMention.start + u.name.length + 2;
     setText(next);
     setCaret(newCaret);
-    setTagged((prev) => ({ ...prev, [u.id]: u }));
+    if (u.id !== ALL_USER.id) setTagged((prev) => ({ ...prev, [u.id]: u }));
     setPickerIndex(0);
     requestAnimationFrame(() => {
       inputRef.current?.focus();
@@ -331,7 +335,10 @@ export default function ChatComposer({
                   pickUser(u);
                 }}
               >
-                <ListItemText primary={u.name} secondary={roleLabel(u.role)} />
+                <ListItemText
+                  primary={u.id === ALL_USER.id ? '@all' : u.name}
+                  secondary={u.id === ALL_USER.id ? t('mentionAllHint') : roleLabel(u.role)}
+                />
               </ListItemButton>
             ))}
           </List>

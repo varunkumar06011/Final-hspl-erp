@@ -42,6 +42,7 @@
   "back": "Back",
   "messageActions": "Message actions",
   "removeFile": "Remove",
+  "mentionAllHint": "Notify everyone in this chat",
   "noEmoji": "No emoji",
   "emoji_smileys": "Smileys",
   "emoji_gestures": "Hands & people",

@@ -112,7 +112,7 @@ vi.mock('../src/config/prisma', () => {
     },
     user: {
       findMany: vi.fn(async ({ where }: Row) =>
-        (where.id.in as string[])
+        (where.id.in ? (where.id.in as string[]) : Object.keys(USERS).filter((id) => id !== where.id.not))
           .filter((id) => USERS[id] && (!where.chatMemberships || state.members.includes(id)))
           .map((id) => ({ id, name: USERS[id].name }))
       ),
@@ -278,6 +278,46 @@ describe('tagging and notifications', () => {
     await api.post(`/chat/conversations/${CONV}/messages`).set('x-user', ALICE).field('body', 'ping');
     await new Promise((r) => setTimeout(r, 20));
     expect(notifyUsers).not.toHaveBeenCalled();
+  });
+});
+
+describe('@all', () => {
+  const post = (user: string, body: string) =>
+    api.post(`/chat/conversations/${CONV}/messages`).set('x-user', user).field('body', body);
+
+  it('notifies every active user in General except the sender', async () => {
+    setConversation('GENERAL', []);
+    const res = await post(ALICE, 'meeting at 5 @all');
+    expect(res.status).toBe(201);
+    expect(res.body.data.mentions).toContainEqual({ id: 'all', name: 'all' });
+    await vi.waitFor(() => expect(notifyUsers).toHaveBeenCalledTimes(1));
+    expect([...notifyUsers.mock.calls[0][0]].sort()).toEqual([ADMIN, BOB, CAROL].sort());
+    expect(state.notifications.every((n) => n.type === 'CHAT_MENTION')).toBe(true);
+    expect(state.notifications.map((n) => n.userId)).not.toContain(ALICE);
+  });
+
+  it('only reaches the members of a group', async () => {
+    setConversation('GROUP', [ALICE, BOB]);
+    await post(ALICE, '@all heads up');
+    await vi.waitFor(() => expect(notifyUsers).toHaveBeenCalledTimes(1));
+    expect(notifyUsers.mock.calls[0][0]).toEqual([BOB]);
+  });
+
+  it('does not treat an address like me@allen.com as @all', async () => {
+    setConversation('GENERAL', []);
+    await post(ALICE, 'mail me@allen.com');
+    await new Promise((r) => setTimeout(r, 20));
+    expect(state.notifications).toEqual([]);
+  });
+
+  it('notifies everyone once when an edit first adds @all', async () => {
+    setConversation('GENERAL', []);
+    seedMessage(MSG, ALICE);
+    await api.patch(`/chat/messages/${MSG}`).set('x-user', ALICE).send({ body: 'hello @all' });
+    expect(state.notifications).toHaveLength(3);
+    state.notifications = [];
+    await api.patch(`/chat/messages/${MSG}`).set('x-user', ALICE).send({ body: 'hello again @all' });
+    expect(state.notifications).toHaveLength(0);
   });
 });
 
