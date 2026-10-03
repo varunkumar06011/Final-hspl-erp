@@ -700,6 +700,8 @@ export const PERMISSION_MATRIX: Record<UserRole, Permission[]> = {
     Permission.MANAGE_CONTRACTS,
     Permission.MANAGE_LABOUR,
     Permission.VIEW_AUDIT_LOG,
+    Permission.CREATE_MPR,
+    Permission.VIEW_MPR,
   ],
   [UserRole.ACCOUNTANT]: [
     Permission.CREATE_VENDOR,
