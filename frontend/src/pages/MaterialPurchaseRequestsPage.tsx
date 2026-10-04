@@ -77,6 +77,7 @@ interface MPRRow {
   requestRaisedById?: string | null;
   requestRaisedBy?: { id: string; name: string } | null;
   technicalRequirements?: string | null;
+  estimatedGstRate?: string | number | null;
   createdByUser: { id: string; name: string };
   items: MPRItem[];
   vendorId?: string | null;
@@ -776,13 +777,74 @@ export default function MaterialPurchaseRequestsPage() {
                       )}
 
                   {/* Items summary */}
-                  <Box sx={{ mt: 1 }}>
-                    {row.items.map((item, idx) => (
-                      <Typography key={idx} variant="caption" sx={{ display: 'block', color: 'text.secondary' }}>
-                        • {item.materialCode ? `[${item.materialCode}] ` : ''}{item.materialName} — {item.quantity}{item.unit ? ` ${item.unit}` : ''}{item.requiredDate ? t('requiredByShort', { d: formatDate(item.requiredDate) }) : ''}
-                      </Typography>
-                    ))}
-                  </Box>
+                  {(() => {
+                    const rateOf = (i: MPRItem) => Number(i.estimatedRate) || 0;
+                    const hasPrice = row.items.some((i) => rateOf(i) > 0);
+                    const subtotal = row.items.reduce((s, i) => s + rateOf(i) * (Number(i.quantity) || 0), 0);
+                    const gstRate = Number(row.estimatedGstRate) || 0;
+                    const gst = (subtotal * gstRate) / 100;
+                    const money = (n: number) => `₹${n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                    return (
+                      <TableContainer component={Paper} variant="outlined" sx={{ mt: 1.5, overflowX: 'auto' }}>
+                        <Table size="small">
+                          <TableHead>
+                            <TableRow sx={{ '& th': { fontWeight: 700, whiteSpace: 'nowrap' } }}>
+                              <TableCell>#</TableCell>
+                              <TableCell>{t('colItem')}</TableCell>
+                              <TableCell align="right">{t('colQty')}</TableCell>
+                              {hasPrice && <TableCell align="right">{t('colRate')}</TableCell>}
+                              {hasPrice && <TableCell align="right">{t('colAmount')}</TableCell>}
+                            </TableRow>
+                          </TableHead>
+                          <TableBody>
+                            {row.items.map((item, idx) => {
+                              const rate = rateOf(item);
+                              return (
+                                <TableRow key={idx}>
+                                  <TableCell>{idx + 1}</TableCell>
+                                  <TableCell>
+                                    <Typography variant="body2">{item.materialName}</Typography>
+                                    {(item.materialCode || item.requiredDate) && (
+                                      <Typography variant="caption" color="text.secondary">
+                                        {item.materialCode ?? ''}{item.requiredDate ? t('requiredByShort', { d: formatDate(item.requiredDate) }) : ''}
+                                      </Typography>
+                                    )}
+                                  </TableCell>
+                                  <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>{item.quantity}{item.unit ? ` ${item.unit}` : ''}</TableCell>
+                                  {hasPrice && <TableCell align="right">{rate > 0 ? money(rate) : '—'}</TableCell>}
+                                  {hasPrice && (
+                                    <TableCell align="right" sx={{ fontWeight: 600, whiteSpace: 'nowrap' }}>
+                                      {rate > 0 ? money(rate * (Number(item.quantity) || 0)) : '—'}
+                                    </TableCell>
+                                  )}
+                                </TableRow>
+                              );
+                            })}
+                            {hasPrice && (
+                              <>
+                                {gstRate > 0 && (
+                                  <>
+                                    <TableRow>
+                                      <TableCell colSpan={4} align="right">{t('subTotal')}</TableCell>
+                                      <TableCell align="right">{money(subtotal)}</TableCell>
+                                    </TableRow>
+                                    <TableRow>
+                                      <TableCell colSpan={4} align="right">{t('gstLine', { rate: gstRate })}</TableCell>
+                                      <TableCell align="right">{money(gst)}</TableCell>
+                                    </TableRow>
+                                  </>
+                                )}
+                                <TableRow sx={{ '& td': { fontWeight: 700, fontSize: '0.95rem', bgcolor: 'action.hover' } }}>
+                                  <TableCell colSpan={4} align="right">{t('estimatedTotal')}</TableCell>
+                                  <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>{money(subtotal + gst)}</TableCell>
+                                </TableRow>
+                              </>
+                            )}
+                          </TableBody>
+                        </Table>
+                      </TableContainer>
+                    );
+                  })()}
 
                   {/* Quotations raised against this MPR */}
                   {row.quotations && row.quotations.length > 0 && (
