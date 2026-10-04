@@ -42,6 +42,7 @@ interface MPRItem {
   quantity: string | number;
   unit?: string;
   requiredDate?: string;
+  estimatedRate?: string | number;
   remarks?: string;
 }
 
@@ -360,6 +361,7 @@ export default function MaterialPurchaseRequestsPage() {
       quantity: String(i.quantity),
       unit: i.unit ?? 'nos',
       requiredDate: i.requiredDate ? new Date(i.requiredDate).toISOString().slice(0, 10) : '',
+      estimatedRate: Number(i.estimatedRate) > 0 ? String(i.estimatedRate) : '',
       remarks: i.remarks ?? '',
     })));
     setVendorMode('existing');
@@ -409,6 +411,7 @@ export default function MaterialPurchaseRequestsPage() {
           quantity: Number(i.quantity),
           unit: i.unit || undefined,
           requiredDate: i.requiredDate || undefined,
+          estimatedRate: Number(i.estimatedRate) > 0 ? Number(i.estimatedRate) : 0,
           remarks: i.remarks || undefined,
         })),
       };
@@ -1079,6 +1082,7 @@ export default function MaterialPurchaseRequestsPage() {
                   <TableCell align="right">{t('colQty')}</TableCell>
                   <TableCell>{t('colUnit')}</TableCell>
                   <TableCell>{isServiceTab ? t('colServiceDate') : t('colRequiredDate')}</TableCell>
+                  <TableCell align="right">{t('colPrice')}</TableCell>
                   <TableCell>{t('colRemarks')}</TableCell>
                   <TableCell></TableCell>
                 </TableRow>
@@ -1141,6 +1145,17 @@ export default function MaterialPurchaseRequestsPage() {
                         onChange={(e) => updateItem(index, 'requiredDate', e.target.value)}
                         sx={{ width: 130 }}
                         InputLabelProps={{ shrink: true }}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <TextField
+                        size="small"
+                        type="number"
+                        value={item.estimatedRate ?? ''}
+                        onChange={(e) => updateItem(index, 'estimatedRate', e.target.value)}
+                        placeholder={t('optional')}
+                        sx={{ width: 100 }}
+                        inputProps={{ min: 0, style: { textAlign: 'right' }, inputMode: 'decimal' }}
                       />
                     </TableCell>
                     <TableCell>

@@ -102,6 +102,8 @@
   "colUnit": "యూనిట్",
   "colServiceDate": "సేవా తేదీ",
   "colRequiredDate": "కావలసిన తేదీ",
+  "colPrice": "ధర (₹/యూనిట్)",
+  "optional": "ఐచ్ఛికం",
   "colRemarks": "వ్యాఖ్యలు",
   "addItem": "వస్తువును జోడించండి",
   "termsService": "నిబంధనలు / సేవా అవసరాలు",

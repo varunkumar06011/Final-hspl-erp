@@ -102,6 +102,8 @@
   "colUnit": "Unit",
   "colServiceDate": "Service Date",
   "colRequiredDate": "Required Date",
+  "colPrice": "Price (₹/unit)",
+  "optional": "Optional",
   "colRemarks": "Remarks",
   "addItem": "Add Item",
   "termsService": "Terms / Service Requirements",

@@ -197,16 +197,24 @@ export async function streamMprPdf(res: NodeJS.WritableStream, mpr: any) {
   doc.fillColor(primary).font('Helvetica-Bold').fontSize(10).text(isService ? 'SERVICE DETAILS' : 'MATERIAL DETAILS', left, y);
   y += 18;
 
+  // Price is optional per item: the Rate / Amount columns and the totals only
+  // appear when at least one item has a price entered.
+  const items = mpr.items ?? [];
+  const rateOf = (it: any) => Number(it.estimatedRate) || 0;
+  const hasPrice = items.some((it: any) => rateOf(it) > 0);
+  const money = (n: number) => n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
   // Column widths — must fit within page width (511px)
-  // Total: 25+58+150+120+35+35+65 = 488 + 6 gaps × 3 = 506 (fits in 511)
   const colGap = 3;
   const wSl = 25;
-  const wCode = 58;
-  const wDesc = 150;
-  const wSpec = 120;
-  const wQty = 35;
-  const wUnit = 35;
-  const wReqDate = 65;
+  const wCode = hasPrice ? 50 : 58;
+  const wDesc = hasPrice ? 100 : 150;
+  const wSpec = hasPrice ? 75 : 120;
+  const wQty = hasPrice ? 32 : 35;
+  const wUnit = hasPrice ? 32 : 35;
+  const wReqDate = hasPrice ? 55 : 65;
+  const wRate = 52;
+  const wAmt = 62;
 
   const colSl = left;
   const colCode = colSl + wSl + colGap;
@@ -215,6 +223,8 @@ export async function streamMprPdf(res: NodeJS.WritableStream, mpr: any) {
   const colQty = colSpec + wSpec + colGap;
   const colUnit = colQty + wQty + colGap;
   const colReqDate = colUnit + wUnit + colGap;
+  const colRate = colReqDate + wReqDate + colGap;
+  const colAmt = colRate + wRate + colGap;
 
   // Header row
   const headerRowH = 28;
@@ -227,11 +237,15 @@ export async function streamMprPdf(res: NodeJS.WritableStream, mpr: any) {
   doc.text('QTY', colQty, y + 8, { width: wQty, align: 'center' });
   doc.text('UNIT', colUnit, y + 8, { width: wUnit, align: 'center' });
   doc.text('REQUIRED DATE', colReqDate + 2, y + 8, { width: wReqDate - 4, align: 'center' });
+  if (hasPrice) {
+    doc.text('RATE (INR)', colRate, y + 8, { width: wRate, align: 'center' });
+    doc.text('AMOUNT (INR)', colAmt, y + 8, { width: wAmt, align: 'center' });
+  }
   y += headerRowH;
 
   // Data rows — only show actual entered items (no blank rows)
   const dataRowH = 30;
-  const items = mpr.items ?? [];
+  let subtotal = 0;
   for (let i = 0; i < items.length; i++) {
     if (y > pageH - 120) { doc.addPage(); y = 40; }
     const item = items[i];
@@ -246,7 +260,37 @@ export async function streamMprPdf(res: NodeJS.WritableStream, mpr: any) {
     doc.text(String(item.quantity), colQty, y + 7, { width: wQty, align: 'center' });
     doc.text(text(item.unit), colUnit, y + 7, { width: wUnit, align: 'center' });
     doc.text(item.requiredDate ? new Date(item.requiredDate).toLocaleDateString('en-IN') : '—', colReqDate + 2, y + 7, { width: wReqDate - 4, align: 'center' });
+    if (hasPrice) {
+      const rate = rateOf(item);
+      const amount = rate * Number(item.quantity);
+      subtotal += amount;
+      doc.text(rate > 0 ? money(rate) : '—', colRate, y + 7, { width: wRate - 2, align: rate > 0 ? 'right' : 'center' });
+      doc.text(rate > 0 ? money(amount) : '—', colAmt, y + 7, { width: wAmt - 2, align: rate > 0 ? 'right' : 'center' });
+    }
     y += dataRowH;
+  }
+
+  // Totals — only when prices were entered
+  if (hasPrice) {
+    const gstRate = Number(mpr.estimatedGstRate) || 0;
+    const gstAmount = (subtotal * gstRate) / 100;
+    const lines: Array<[string, string, boolean]> = [['Sub Total', money(subtotal), false]];
+    if (gstRate > 0) lines.push([`GST (${gstRate}%)`, money(gstAmount), false]);
+    lines.push(['Total', money(subtotal + gstAmount), true]);
+    const lineH = 20;
+    if (y + lines.length * lineH > pageH - 60) { doc.addPage(); y = 40; }
+    const labelW = 120;
+    const boxW = labelW + wAmt + 10;
+    const boxX = right - boxW;
+    for (const [label, value, bold] of lines) {
+      doc.rect(boxX, y, boxW, lineH).fill(bold ? primaryLight : '#ffffff').stroke(border);
+      doc.fillColor(bold ? primary : dark).font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(8.5);
+      doc.text(label, boxX + 8, y + 6, { width: labelW - 8 });
+      doc.text(`INR ${value}`, boxX + labelW - 20, y + 6, { width: wAmt + 22, align: 'right' });
+      y += lineH;
+    }
+    doc.fillColor(muted).font('Helvetica').fontSize(7).text('Estimated amount; items without a price are not included.', left, y + 4, { width, align: 'right' });
+    y += 12;
   }
   y += 16;
 
