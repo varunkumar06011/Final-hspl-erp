@@ -37,8 +37,9 @@ export function findLivePoForMpr(mprId: string) {
 
 /**
  * NON_VENDOR requests have no quotation, so once the MPR is approved it goes
- * straight to a Purchase Order. The PO starts at amount 0 with the MPR's items
- * at unit price 0; the creator fills in prices/GST via the PO edit dialog
+ * straight to a Purchase Order. The PO inherits the MPR's rates (estimatedRate)
+ * and quantities, so its amounts are already filled in. The MPR carries no GST,
+ * so lines start at 0% GST; the creator can still adjust via the PO edit dialog
  * (edit-unapproved), which sends it to an admin for approval.
  *
  * Returns the created PO, or null if the MPR isn't an approved non-vendor
@@ -51,6 +52,12 @@ export async function createNonVendorPoFromMpr(mprId: string, projectId: string,
   });
   if (!mpr || !mpr.vendorId || mpr.vendor?.vendorType !== VendorType.NON_VENDOR) return null;
   if (await findLivePoForMpr(mpr.id)) return null;
+
+  const lines = mpr.items.map((item) => {
+    const unitPrice = Number(item.estimatedRate ?? 0);
+    return { item, unitPrice, amount: Math.round(Number(item.quantity) * unitPrice * 100) / 100 };
+  });
+  const totalAmount = Math.round(lines.reduce((sum, l) => sum + l.amount, 0) * 100) / 100;
 
   const poNumber = await generatePONumber(projectId);
   const adminRoles = await getActiveAdminRoles(projectId);
@@ -65,19 +72,19 @@ export async function createNonVendorPoFromMpr(mprId: string, projectId: string,
         status: POStatus.PENDING_APPROVAL,
         paymentType: POPaymentType.AFTER_DELIVERY,
         notes: mpr.description ?? null,
-        totalAmount: 0,
+        totalAmount,
         gstAmount: 0,
-        grandTotal: 0,
+        grandTotal: totalAmount,
         totalDeductions: 0,
-        netPayable: 0,
+        netPayable: totalAmount,
         createdBy: userId,
         items: {
-          create: mpr.items.map((item) => ({
+          create: lines.map(({ item, unitPrice, amount }) => ({
             materialName: item.materialName,
             quantity: item.quantity,
             unit: item.unit,
-            unitPrice: 0,
-            amount: 0,
+            unitPrice,
+            amount,
             gstRate: 0,
           })),
         },
@@ -106,7 +113,7 @@ export async function createNonVendorPoFromMpr(mprId: string, projectId: string,
     entityType: 'PURCHASE_ORDER',
     entityId: po.id,
     projectId,
-    newValue: { poNumber, mprId: mpr.id, mprNumber: mpr.mprNumber, source: 'NON_VENDOR_MPR', grandTotal: 0 },
+    newValue: { poNumber, mprId: mpr.id, mprNumber: mpr.mprNumber, source: 'NON_VENDOR_MPR', grandTotal: totalAmount },
   });
 
   notifyApprovers(projectId, [...FIRST_LEVEL_APPROVER_ROLES] as UserRole[], {
@@ -114,7 +121,7 @@ export async function createNonVendorPoFromMpr(mprId: string, projectId: string,
     entityType: 'PURCHASE_ORDER',
     entityId: po.id,
     title: 'New Non-Vendor PO',
-    body: `Purchase Order ${poNumber} raised from ${mpr.mprNumber} — amount to be filled in`,
+    body: `Purchase Order ${poNumber} raised from ${mpr.mprNumber} — please review and approve`,
     url: `/pos?id=${po.id}`,
   }).catch((err) => console.error('[Push] Non-vendor PO notification error:', err));
 
