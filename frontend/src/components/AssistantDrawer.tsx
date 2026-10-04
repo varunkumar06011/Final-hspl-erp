@@ -98,6 +98,7 @@ export default function AssistantDrawer({ open, onClose }: Props) {
   const idRef = useRef(0);
   const endRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
+  const wantListenRef = useRef(false);
 
   const SpeechRecognitionCtor = useMemo(
     () => (typeof window !== 'undefined' ? (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition : null),
@@ -108,7 +109,13 @@ export default function AssistantDrawer({ open, onClose }: Props) {
     endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }, [messages, actions, busy]);
 
-  useEffect(() => () => recognitionRef.current?.abort?.(), []);
+  useEffect(
+    () => () => {
+      wantListenRef.current = false;
+      recognitionRef.current?.abort?.();
+    },
+    [],
+  );
 
   const addMsg = useCallback((m: NewMsg) => {
     idRef.current += 1;
@@ -130,6 +137,9 @@ export default function AssistantDrawer({ open, onClose }: Props) {
     async (raw: string) => {
       const text = raw.trim();
       if (!text || busy) return;
+      wantListenRef.current = false;
+      recognitionRef.current?.abort?.();
+      setListening(false);
       setInput('');
       addMsg({ role: 'user', text });
       setBusy(true);
@@ -172,6 +182,7 @@ export default function AssistantDrawer({ open, onClose }: Props) {
   };
 
   const newChat = () => {
+    wantListenRef.current = false;
     recognitionRef.current?.abort?.();
     setListening(false);
     historyRef.current = [];
@@ -183,27 +194,58 @@ export default function AssistantDrawer({ open, onClose }: Props) {
   const toggleMic = () => {
     if (!SpeechRecognitionCtor) return;
     if (listening) {
+      wantListenRef.current = false;
       recognitionRef.current?.stop?.();
       return;
     }
-    const rec = new SpeechRecognitionCtor();
-    rec.lang = i18n.language?.startsWith('te') ? 'te-IN' : 'en-IN';
-    rec.interimResults = false;
-    rec.maxAlternatives = 1;
-    rec.onresult = (e: any) => {
-      const heard = Array.from(e.results as ArrayLike<any>)
-        .map((r) => r[0]?.transcript ?? '')
-        .join(' ')
-        .trim();
-      if (heard) setInput((prev) => (prev ? `${prev} ${heard}` : heard));
+    // Live dictation: words appear in the box as they are spoken (interim results),
+    // and recognition restarts itself after the browser's silence timeout until the
+    // user presses stop.
+    const lang = i18n.language?.startsWith('te') ? 'te-IN' : 'en-IN';
+    let committed = input.trim();
+    wantListenRef.current = true;
+    const startRec = () => {
+      const rec = new SpeechRecognitionCtor();
+      rec.lang = lang;
+      rec.continuous = true;
+      rec.interimResults = true;
+      rec.maxAlternatives = 1;
+      rec.onresult = (e: any) => {
+        let interim = '';
+        for (let i = e.resultIndex; i < e.results.length; i += 1) {
+          const r = e.results[i];
+          const text = (r[0]?.transcript ?? '').trim();
+          if (!text) continue;
+          if (r.isFinal) committed = committed ? `${committed} ${text}` : text;
+          else interim = interim ? `${interim} ${text}` : text;
+        }
+        setInput(interim ? (committed ? `${committed} ${interim}` : interim) : committed);
+      };
+      rec.onerror = (e: any) => {
+        if (e?.error === 'no-speech' || e?.error === 'aborted') return;
+        wantListenRef.current = false;
+        addMsg({ role: 'error', text: t('micError') });
+      };
+      rec.onend = () => {
+        if (wantListenRef.current) {
+          try {
+            startRec();
+            return;
+          } catch {
+            /* fall through to stop */
+          }
+        }
+        wantListenRef.current = false;
+        setListening(false);
+      };
+      recognitionRef.current = rec;
+      rec.start();
     };
-    rec.onerror = () => addMsg({ role: 'error', text: t('micError') });
-    rec.onend = () => setListening(false);
-    recognitionRef.current = rec;
     setListening(true);
     try {
-      rec.start();
+      startRec();
     } catch {
+      wantListenRef.current = false;
       setListening(false);
     }
   };
