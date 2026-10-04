@@ -24,6 +24,7 @@
   "grandTotal": "Grand Total",
   "netPayable": "Net Payable",
   "paid": "Paid",
+  "partiallyPaid": "Partially paid",
   "toPay": "To Pay",
   "actions": "Actions",
   "noPOs": "No purchase orders found",

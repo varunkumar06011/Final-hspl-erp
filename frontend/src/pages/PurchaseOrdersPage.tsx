@@ -893,6 +893,17 @@ export default function PurchaseOrdersPage() {
                           color={effectiveStatus === POStatus.DELETED ? 'error' : (STATUS_COLORS[effectiveStatus] ?? 'default')}
                           sx={effectiveStatus === POStatus.DELETED ? { bgcolor: '#d32f2f', color: '#fff', textDecoration: 'line-through' } : undefined}
                         />
+                        {Number(row.paidToDate ?? 0) > 0 && (() => {
+                          const fullyPaid = Number(row.amountToPayNow ?? 0) <= 0;
+                          return (
+                            <>
+                              <Chip label={fullyPaid ? t('paid') : t('partiallyPaid')} size="small" color={fullyPaid ? 'success' : 'warning'} />
+                              <Typography component="span" variant="body2" sx={{ fontWeight: 700, color: fullyPaid ? 'success.main' : 'warning.main' }}>
+                                {formatCurrency(Number(row.paidToDate))}
+                              </Typography>
+                            </>
+                          );
+                        })()}
                         {row.editReason && (
                           <Typography variant="caption" color="warning.main" title={row.editReason}>{t('edited')}</Typography>
                         )}
