@@ -1,6 +1,6 @@
 import { Router, Response, NextFunction } from 'express';
 import { Permission, POStatus, POPaymentType, AuditAction, UserRole, GoodsReceiptStatus, isAdminRole, isFirstLevelApproverRole, FIRST_LEVEL_APPROVER_ROLES, VoucherType, GST_LEDGER_NAMES, VendorType, MPRStatus } from '@hospital-erp/shared';
-import { createPOSchema, listPOsSchema, approvalActionSchema, editPOSchema, editUnapprovedPOSchema, regeneratePOSchema, changePOPaymentTypeSchema } from '@hospital-erp/shared';
+import { createPOSchema, listPOsSchema, approvalActionSchema, editPOSchema, editUnapprovedPOSchema, regeneratePOSchema, changePOPaymentTypeSchema, createContractPOSchema, createSubPOSchema, updateContractTermsSchema } from '@hospital-erp/shared';
 import { prisma } from '../config/prisma';
 import { Prisma } from '@prisma/client';
 import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middleware/auth';
@@ -14,7 +14,7 @@ import { streamPurchaseOrderPdf } from '../services/purchase-order-pdf.service';
 import { ensureVendorLedger, findLedgerByName } from './ledger.routes';
 import { postVoucher, generateVoucherNumber } from './voucher.routes';
 import { getActiveAdminRoles, generatePONumber, createNonVendorPoFromMpr, findLivePoForMpr } from '../services/non-vendor-po.service';
-import { reconcilePoAccrualSafe, hasPoAccrual } from '../services/po-accrual.service';
+import { reconcilePoAccrualSafe, hasPoAccrual, payableAfterDeductions } from '../services/po-accrual.service';
 
 const router = Router();
 router.use(authMiddleware);
@@ -64,6 +64,10 @@ function acceptedForPoItem(
 function isPoApprover(role: string): boolean {
   return isAdminRole(role) || isFirstLevelApproverRole(role);
 }
+
+/** A contract PO has no items of its own — item-level edits belong on its sub-POs. */
+const CONTRACT_PO_ITEM_EDIT_ERROR =
+  'This is a contract PO: it has no items. Edit the contract terms, or edit the individual sub-PO.';
 
 /**
  * Generate a regenerated PO number: VGH-REGPO{originalNum}/{regenSeq}
@@ -125,6 +129,12 @@ const poInclude = {
   editedByUser: { select: { id: true, name: true } },
   parentPo: { select: { id: true, poNumber: true } },
   childPos: { select: { id: true, poNumber: true, regenerationNumber: true, status: true } },
+  contractPo: { select: { id: true, poNumber: true, contractTitle: true, contractType: true } },
+  subPos: {
+    where: { deletedAt: null },
+    orderBy: { createdAt: 'asc' as const },
+    select: { id: true, poNumber: true, status: true, grandTotal: true, periodLabel: true, periodFrom: true, periodTo: true },
+  },
   budgetHead: { select: { id: true, particulars: true } },
   advancePaymentRequests: {
     where: { deletedAt: null },
@@ -671,6 +681,458 @@ router.post(
   }
 );
 
+// ═══════════════════════════════════════════════════════════════════════════
+// Contract POs: one umbrella PO (approved once) + a sub-PO per billing period.
+// A sub-PO is an ordinary PO row (contractPoId -> contract), so approval, goods
+// receipt / service sign-off, invoice, payment, budget commitment and the vendor
+// payable all work on it exactly as on any PO. The contract itself carries no
+// items or amount (grandTotal 0) so nothing is double-counted.
+// ═══════════════════════════════════════════════════════════════════════════
+
+const DEAD_PO_STATUSES: string[] = [POStatus.DELETED, POStatus.REJECTED, POStatus.CANCELLED];
+const COMMITTED_PO_STATUSES: string[] = [POStatus.APPROVED, POStatus.PARTIALLY_DELIVERED, POStatus.DELIVERED];
+
+// POST /contracts — raise a contract PO (goes through the normal PO approval)
+router.post(
+  '/contracts',
+  rbacMiddleware(Permission.CREATE_PO),
+  validateMiddleware(createContractPOSchema),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      const { vendorId, contractTitle, contractType, estimatedValue, contractStart, contractEnd, budgetHeadId, paymentTerms, notes, referredBy } = req.body;
+
+      const vendor = await prisma.vendor.findFirst({ where: { id: vendorId, projectId, deletedAt: null }, select: { id: true } });
+      if (!vendor) {
+        res.status(400).json({ error: 'Vendor not found' });
+        return;
+      }
+      if (budgetHeadId) {
+        const head = await prisma.budgetHead.findFirst({ where: { id: budgetHeadId, projectId, deletedAt: null }, select: { id: true } });
+        if (!head) {
+          res.status(400).json({ error: 'Budget head not found' });
+          return;
+        }
+      }
+      if (contractStart && contractEnd && new Date(contractEnd) < new Date(contractStart)) {
+        res.status(400).json({ error: 'Contract end date cannot be before the start date' });
+        return;
+      }
+
+      const poNumber = await generatePONumber(projectId);
+      const adminRoles = await getActiveAdminRoles(projectId);
+      const { po, workflow } = await prisma.$transaction(async (tx) => {
+        const po = await tx.purchaseOrder.create({
+          data: {
+            projectId,
+            vendorId,
+            poNumber,
+            status: POStatus.PENDING_APPROVAL,
+            paymentType: POPaymentType.AFTER_DELIVERY,
+            paymentTerms: paymentTerms ?? null,
+            notes: notes ?? null,
+            referredBy: typeof referredBy === 'string' && referredBy.trim() ? referredBy.trim() : null,
+            budgetHeadId: budgetHeadId ?? null,
+            createdBy: req.user!.id,
+            isContract: true,
+            contractTitle,
+            contractType: contractType || null,
+            estimatedValue: estimatedValue === undefined ? null : estimatedValue,
+            contractStart: contractStart ? new Date(contractStart) : null,
+            contractEnd: contractEnd ? new Date(contractEnd) : null,
+          },
+        });
+        const workflow = await tx.approvalWorkflow.create({
+          data: {
+            entityType: 'PURCHASE_ORDER',
+            entityId: po.id,
+            projectId,
+            status: 'VERIFICATION',
+            currentStep: 0,
+            minApprovers: 1,
+            approvalPolicy: HEAD_THEN_ADMIN_POLICY,
+            steps: { create: headThenAdminSteps(adminRoles) },
+          },
+          include: { steps: true },
+        });
+        await tx.purchaseOrder.update({ where: { id: po.id }, data: { approvalWorkflowId: workflow.id } });
+        return { po, workflow };
+      });
+
+      await logAudit({
+        userId: req.user!.id,
+        action: AuditAction.CREATE,
+        entityType: 'PURCHASE_ORDER',
+        entityId: po.id,
+        projectId,
+        newValue: { poNumber, vendorId, isContract: true, contractTitle, contractType, estimatedValue, acknowledged: true },
+      });
+
+      notifyApprovers(projectId, [...FIRST_LEVEL_APPROVER_ROLES] as UserRole[], {
+        approvalId: workflow.id,
+        entityType: 'PURCHASE_ORDER',
+        entityId: po.id,
+        title: 'New Contract — Approval Required',
+        body: `Contract ${poNumber} — ${contractTitle}`,
+        url: `/pos?id=${po.id}`,
+      }).catch((err) => console.error('[Push] Contract PO notification error:', err));
+
+      res.status(201).json(await prisma.purchaseOrder.findUnique({ where: { id: po.id }, include: poInclude }));
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// POST /:id/sub-pos — raise the sub-PO for one billing period of an approved contract.
+// Same vendor/budget as the contract, amounts entered per period (no cap), own approval.
+router.post(
+  '/:id/sub-pos',
+  rbacMiddleware(Permission.CREATE_PO),
+  validateMiddleware(createSubPOSchema),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      const contract = await prisma.purchaseOrder.findFirst({
+        where: { id: req.params.id, projectId, deletedAt: null, isContract: true },
+      });
+      if (!contract) {
+        res.status(404).json({ error: 'Contract not found' });
+        return;
+      }
+      if (contract.status !== POStatus.APPROVED) {
+        res.status(400).json({ error: 'Sub-POs can only be raised against an approved contract' });
+        return;
+      }
+      if (contract.contractClosedAt) {
+        res.status(400).json({ error: 'This contract is closed. Reopen it to raise more sub-POs' });
+        return;
+      }
+
+      const { periodLabel, periodFrom, periodTo, paymentType, advanceAmount, paymentTerms, notes, items, deductions } = req.body;
+      if (periodFrom && periodTo && new Date(periodTo) < new Date(periodFrom)) {
+        res.status(400).json({ error: 'Period end cannot be before the period start' });
+        return;
+      }
+
+      const budgetHeadId: string | null = req.body.budgetHeadId ?? contract.budgetHeadId ?? null;
+      if (!budgetHeadId) {
+        res.status(400).json({ error: 'Budget head is required' });
+        return;
+      }
+      const head = await prisma.budgetHead.findFirst({ where: { id: budgetHeadId, projectId, deletedAt: null }, select: { id: true } });
+      if (!head) {
+        res.status(400).json({ error: 'Budget head not found' });
+        return;
+      }
+
+      const lines = items as { materialName: string; quantity: number; unit: string; unitPrice: number; gstRate: number }[];
+      const totalAmount = lines.reduce((s, i) => s + i.quantity * i.unitPrice, 0);
+      const gstAmount = lines.reduce((s, i) => s + (i.quantity * i.unitPrice * i.gstRate) / 100, 0);
+      const grandTotal = totalAmount + gstAmount;
+
+      const deductionRows: { amount: number; reason: string }[] = Array.isArray(deductions) ? deductions : [];
+      const totalDeductions = deductionRows.reduce((s, d) => s + Number(d.amount), 0);
+      if (totalDeductions > grandTotal) {
+        res.status(400).json({ error: `Total deductions (${totalDeductions}) cannot exceed the sub-PO grand total (${grandTotal})` });
+        return;
+      }
+
+      let resolvedAdvanceAmount: number | null = null;
+      if (paymentType === POPaymentType.ADVANCE || paymentType === POPaymentType.FULL_PAYMENT) {
+        const amt = Number(advanceAmount);
+        if (!Number.isFinite(amt) || amt <= 0) {
+          res.status(400).json({ error: 'Advance amount is required for advance / full payment' });
+          return;
+        }
+        if (amt > grandTotal) {
+          res.status(400).json({ error: `Advance amount cannot exceed the sub-PO grand total of ${grandTotal}` });
+          return;
+        }
+        resolvedAdvanceAmount = amt;
+      }
+
+      const adminRoles = await getActiveAdminRoles(projectId);
+      // Numbered <contract>-S01, -S02 ... (deleted ones keep their number); retry if two are raised at once.
+      const existingCount = await prisma.purchaseOrder.count({ where: { contractPoId: contract.id } });
+      let created: { id: string; poNumber: string; approvalWorkflowId: string | null } | null = null;
+      for (let attempt = 0; attempt < 5 && !created; attempt++) {
+        const poNumber = `${contract.poNumber}-S${String(existingCount + 1 + attempt).padStart(2, '0')}`;
+        try {
+          created = await prisma.$transaction(async (tx) => {
+            const sub = await tx.purchaseOrder.create({
+              data: {
+                projectId,
+                vendorId: contract.vendorId,
+                poNumber,
+                status: POStatus.PENDING_APPROVAL,
+                paymentType,
+                advanceAmount: resolvedAdvanceAmount,
+                paymentTerms: paymentTerms ?? contract.paymentTerms ?? null,
+                notes: notes ?? null,
+                referredBy: contract.referredBy,
+                totalAmount,
+                gstAmount,
+                grandTotal,
+                deductions: deductionRows.length > 0 ? deductionRows : Prisma.JsonNull,
+                totalDeductions,
+                netPayable: grandTotal - totalDeductions,
+                budgetHeadId,
+                phaseId: contract.phaseId,
+                createdBy: req.user!.id,
+                contractPoId: contract.id,
+                contractType: contract.contractType,
+                periodLabel,
+                periodFrom: periodFrom ? new Date(periodFrom) : null,
+                periodTo: periodTo ? new Date(periodTo) : null,
+                items: {
+                  create: lines.map((i) => ({
+                    materialName: i.materialName,
+                    quantity: i.quantity,
+                    unit: i.unit,
+                    unitPrice: i.unitPrice,
+                    amount: i.quantity * i.unitPrice,
+                    gstRate: i.gstRate,
+                  })),
+                },
+              },
+            });
+            const workflow = await tx.approvalWorkflow.create({
+              data: {
+                entityType: 'PURCHASE_ORDER',
+                entityId: sub.id,
+                projectId,
+                status: 'VERIFICATION',
+                currentStep: 0,
+                minApprovers: 1,
+                approvalPolicy: HEAD_THEN_ADMIN_POLICY,
+                steps: { create: headThenAdminSteps(adminRoles) },
+              },
+            });
+            await tx.purchaseOrder.update({ where: { id: sub.id }, data: { approvalWorkflowId: workflow.id } });
+            return { id: sub.id, poNumber, approvalWorkflowId: workflow.id };
+          });
+        } catch (err) {
+          const duplicate = err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002';
+          if (!duplicate) throw err;
+        }
+      }
+      if (!created) {
+        res.status(409).json({ error: 'Could not allocate a sub-PO number, please try again' });
+        return;
+      }
+
+      await logAudit({
+        userId: req.user!.id,
+        action: AuditAction.CREATE,
+        entityType: 'PURCHASE_ORDER',
+        entityId: created.id,
+        projectId,
+        newValue: { poNumber: created.poNumber, contractPoId: contract.id, contractPoNumber: contract.poNumber, periodLabel, totalAmount, grandTotal, paymentType, acknowledged: true },
+      });
+
+      notifyApprovers(projectId, [...FIRST_LEVEL_APPROVER_ROLES] as UserRole[], {
+        approvalId: created.approvalWorkflowId ?? '',
+        entityType: 'PURCHASE_ORDER',
+        entityId: created.id,
+        title: 'New Approval Required',
+        body: `Sub-PO ${created.poNumber} (${contract.poNumber}) — ₹${grandTotal}`,
+        url: `/pos?id=${created.id}`,
+      }).catch((err) => console.error('[Push] Sub-PO notification error:', err));
+
+      res.status(201).json(await prisma.purchaseOrder.findUnique({ where: { id: created.id }, include: poInclude }));
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// PATCH /:id/contract-terms — edit the contract's own terms any time (estimate, dates, title,
+// close / reopen). No re-approval: the estimate is indicative, each sub-PO is approved separately.
+router.patch(
+  '/:id/contract-terms',
+  rbacMiddleware(Permission.CREATE_PO),
+  validateMiddleware(updateContractTermsSchema),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      const contract = await prisma.purchaseOrder.findFirst({
+        where: { id: req.params.id, projectId, deletedAt: null, isContract: true },
+      });
+      if (!contract) {
+        res.status(404).json({ error: 'Contract not found' });
+        return;
+      }
+      if (contract.status === POStatus.DELETED) {
+        res.status(400).json({ error: 'Cannot edit a deleted contract' });
+        return;
+      }
+
+      const b = req.body;
+      if (b.budgetHeadId) {
+        const head = await prisma.budgetHead.findFirst({ where: { id: b.budgetHeadId, projectId, deletedAt: null }, select: { id: true } });
+        if (!head) {
+          res.status(400).json({ error: 'Budget head not found' });
+          return;
+        }
+      }
+      const start = b.contractStart !== undefined ? b.contractStart : contract.contractStart;
+      const end = b.contractEnd !== undefined ? b.contractEnd : contract.contractEnd;
+      if (start && end && new Date(end) < new Date(start)) {
+        res.status(400).json({ error: 'Contract end date cannot be before the start date' });
+        return;
+      }
+
+      const data: Prisma.PurchaseOrderUncheckedUpdateInput = {};
+      if (b.contractTitle !== undefined) data.contractTitle = b.contractTitle;
+      if (b.contractType !== undefined) data.contractType = b.contractType || null;
+      if (b.estimatedValue !== undefined) data.estimatedValue = b.estimatedValue;
+      if (b.contractStart !== undefined) data.contractStart = b.contractStart;
+      if (b.contractEnd !== undefined) data.contractEnd = b.contractEnd;
+      if (b.budgetHeadId !== undefined) data.budgetHeadId = b.budgetHeadId;
+      if (b.paymentTerms !== undefined) data.paymentTerms = b.paymentTerms || null;
+      if (b.notes !== undefined) data.notes = b.notes || null;
+      if (b.closed !== undefined) data.contractClosedAt = b.closed ? (contract.contractClosedAt ?? new Date()) : null;
+      if (Object.keys(data).length === 0) {
+        res.status(400).json({ error: 'Nothing to update' });
+        return;
+      }
+
+      const updated = await prisma.purchaseOrder.update({ where: { id: contract.id }, data, include: poInclude });
+
+      await logAudit({
+        userId: req.user!.id,
+        action: AuditAction.UPDATE,
+        entityType: 'PURCHASE_ORDER',
+        entityId: contract.id,
+        projectId,
+        oldValue: {
+          contractTitle: contract.contractTitle,
+          contractType: contract.contractType,
+          estimatedValue: contract.estimatedValue === null ? null : Number(contract.estimatedValue),
+          contractStart: contract.contractStart,
+          contractEnd: contract.contractEnd,
+          closed: !!contract.contractClosedAt,
+        },
+        newValue: { ...b },
+      });
+
+      res.json(updated);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// GET /:id/contract-summary — live totals for a contract: what has been raised, approved,
+// paid and what is still to pay, with the sub-PO list. The estimate is shown for reference only.
+router.get(
+  '/:id/contract-summary',
+  rbacMiddleware(Permission.VIEW_FINANCIALS),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      const contract = await prisma.purchaseOrder.findFirst({
+        where: { id: req.params.id, projectId, deletedAt: null, isContract: true },
+        include: { vendor: { select: { id: true, name: true, vendorCode: true } } },
+      });
+      if (!contract) {
+        res.status(404).json({ error: 'Contract not found' });
+        return;
+      }
+
+      const subs = await prisma.purchaseOrder.findMany({
+        where: { contractPoId: contract.id, projectId, deletedAt: null },
+        orderBy: { createdAt: 'asc' },
+        select: {
+          id: true,
+          poNumber: true,
+          status: true,
+          paymentType: true,
+          grandTotal: true,
+          totalDeductions: true,
+          periodLabel: true,
+          periodFrom: true,
+          periodTo: true,
+          date: true,
+        },
+      });
+      const ids = subs.map((s) => s.id);
+      const payments = ids.length
+        ? await prisma.payment.findMany({
+            where: {
+              status: 'PAID',
+              paymentRequest: { deletedAt: null, OR: [{ poId: { in: ids } }, { invoice: { poId: { in: ids } } }] },
+            },
+            select: { amount: true, paymentRequest: { select: { poId: true, invoice: { select: { poId: true } } } } },
+          })
+        : [];
+      const paidBySub = new Map<string, number>();
+      for (const p of payments) {
+        const subId = p.paymentRequest?.poId ?? p.paymentRequest?.invoice?.poId;
+        if (subId) paidBySub.set(subId, (paidBySub.get(subId) ?? 0) + Number(p.amount));
+      }
+
+      const rows = subs.map((s) => {
+        const grandTotal = Number(s.grandTotal);
+        const payable = payableAfterDeductions(grandTotal, Number(s.totalDeductions ?? 0));
+        const paid = paidBySub.get(s.id) ?? 0;
+        const committed = COMMITTED_PO_STATUSES.includes(s.status);
+        return {
+          id: s.id,
+          poNumber: s.poNumber,
+          status: s.status,
+          paymentType: s.paymentType,
+          periodLabel: s.periodLabel,
+          periodFrom: s.periodFrom,
+          periodTo: s.periodTo,
+          date: s.date,
+          grandTotal,
+          netPayable: payable,
+          paid,
+          outstanding: committed ? Math.max(0, payable - paid) : 0,
+        };
+      });
+
+      const sum = (list: typeof rows, pick: (r: (typeof rows)[number]) => number) => list.reduce((a, r) => a + pick(r), 0);
+      const approved = rows.filter((r) => COMMITTED_PO_STATUSES.includes(r.status));
+      const pending = rows.filter((r) => r.status === POStatus.PENDING_APPROVAL);
+      const approvedValue = sum(approved, (r) => r.grandTotal);
+      const pendingValue = sum(pending, (r) => r.grandTotal);
+      const estimatedValue = contract.estimatedValue === null ? null : Number(contract.estimatedValue);
+      const raisedValue = approvedValue + pendingValue;
+
+      res.json({
+        contract: {
+          id: contract.id,
+          poNumber: contract.poNumber,
+          status: contract.status,
+          contractTitle: contract.contractTitle,
+          contractType: contract.contractType,
+          estimatedValue,
+          contractStart: contract.contractStart,
+          contractEnd: contract.contractEnd,
+          contractClosedAt: contract.contractClosedAt,
+          vendor: contract.vendor,
+        },
+        totals: {
+          subPoCount: rows.filter((r) => !DEAD_PO_STATUSES.includes(r.status)).length,
+          approvedValue,
+          pendingValue,
+          paid: sum(rows, (r) => r.paid),
+          outstanding: sum(rows, (r) => r.outstanding),
+          estimatedValue,
+          remainingVsEstimate: estimatedValue === null ? null : estimatedValue - raisedValue,
+          exceedsEstimate: estimatedValue !== null && raisedValue > estimatedValue,
+        },
+        subPos: rows,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
 // PATCH /:id — update PO notes (allowed for any status, including APPROVED/DELIVERED)
 router.patch(
   '/:id',
@@ -731,6 +1193,20 @@ router.delete(
         return;
       }
       const isAdmin = isAdminRole(req.user!.role);
+      // A contract that still has live sub-POs cannot be deactivated: they would be orphaned.
+      if (existing.isContract) {
+        const liveSubPos = await prisma.purchaseOrder.count({
+          where: {
+            contractPoId: existing.id,
+            deletedAt: null,
+            status: { notIn: [POStatus.DELETED, POStatus.REJECTED, POStatus.CANCELLED] },
+          },
+        });
+        if (liveSubPos > 0) {
+          res.status(400).json({ error: `This contract has ${liveSubPos} active sub-PO(s). Deactivate them first.` });
+          return;
+        }
+      }
       const isCreator = existing.createdBy === req.user!.id;
       if (!isAdmin && !isCreator) {
         res.status(403).json({ error: 'Only the creator or an admin can deactivate this purchase order' });
@@ -1213,6 +1689,10 @@ router.post(
       });
       if (!po) {
         res.status(404).json({ error: 'Purchase order not found' });
+        return;
+      }
+      if (po.isContract) {
+        res.status(400).json({ error: CONTRACT_PO_ITEM_EDIT_ERROR });
         return;
       }
       const isApprovedPo = po.status === POStatus.APPROVED;
@@ -1814,6 +2294,10 @@ router.post(
             createdBy: req.user!.id,
             parentPoId: po.id,
             regenerationNumber: 1,
+            contractPoId: po.contractPoId,
+            periodLabel: po.periodLabel,
+            periodFrom: po.periodFrom,
+            periodTo: po.periodTo,
           },
           include: poInclude,
         });

@@ -119,7 +119,7 @@ router.get(
     try {
       const projectId = requireProjectId(req);
       const pos = await prisma.purchaseOrder.findMany({
-        where: { projectId, deletedAt: null, status: { in: ['APPROVED', 'PARTIALLY_DELIVERED'] } },
+        where: { projectId, deletedAt: null, isContract: false, status: { in: ['APPROVED', 'PARTIALLY_DELIVERED'] } },
         include: {
           vendor: { select: { id: true, name: true, vendorCode: true } },
           items: true,

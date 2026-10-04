@@ -190,7 +190,9 @@
     "visit": "సందర్శన(లు)",
     "job": "పని (ఒక్కో పనికి)",
     "lumpsum": "మొత్తంగా (లంప్‌సమ్)",
-    "nosUnits": "సంఖ్య (యూనిట్లు)"
+    "nosUnits": "సంఖ్య (యూనిట్లు)",
+    "week": "వారం(లు)",
+    "month": "నెల(లు)"
   },
   "serviceCategories": {
     "AMC / Annual Maintenance Contract": "AMC / వార్షిక నిర్వహణ ఒప్పందం",

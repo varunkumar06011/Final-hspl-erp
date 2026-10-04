@@ -216,7 +216,7 @@ router.get(
     try {
       const projectId = requireProjectId(req);
       const pos = await prisma.purchaseOrder.findMany({
-        where: { projectId, deletedAt: null, status: { in: ['APPROVED', 'PARTIALLY_DELIVERED'] } },
+        where: { projectId, deletedAt: null, isContract: false, status: { in: ['APPROVED', 'PARTIALLY_DELIVERED'] } },
         include: {
           vendor: { select: { id: true, name: true, vendorCode: true } },
           items: true,
@@ -278,6 +278,10 @@ router.post(
       });
       if (!po) {
         res.status(400).json({ error: 'Purchase order not found' });
+        return;
+      }
+      if (po.isContract) {
+        res.status(400).json({ error: 'This is a contract PO. Receive against one of its sub-POs' });
         return;
       }
       if (!['APPROVED', 'PARTIALLY_DELIVERED'].includes(po.status)) {

@@ -267,6 +267,88 @@ export const listPOsSchema = z.object({
   }),
 });
 
+
+// ═══ Contract POs (umbrella agreement + one sub-PO per billing period) ═══
+// Suggested contract types; the field is free text on the backend so projects can add their own.
+export const CONTRACT_PO_TYPES = [
+  'LABOUR',
+  'CIVIL_WORK',
+  'ELECTRICAL',
+  'PLUMBING',
+  'EQUIPMENT_HIRE',
+  'TRANSPORT',
+  'SECURITY_HOUSEKEEPING',
+  'AMC_MAINTENANCE',
+  'CONSULTANCY',
+  'OTHER',
+] as const;
+
+const optionalDate = z.coerce.date().optional().or(z.literal('').transform(() => undefined));
+const deductionRows = z
+  .array(z.object({ amount: money, reason: z.string().trim().min(1, 'Reason is required').max(200) }))
+  .optional();
+
+// Raise the contract itself. No items/amount: the estimate is optional and editable later.
+export const createContractPOSchema = z.object({
+  body: z.object({
+    vendorId: uuid,
+    contractTitle: z.string().trim().min(1, 'Contract title is required').max(200),
+    contractType: z.string().trim().max(60).optional(),
+    estimatedValue: z.preprocess((v) => (v === '' || v === null ? undefined : v), money.optional()),
+    contractStart: optionalDate,
+    contractEnd: optionalDate,
+    budgetHeadId: uuid.optional(),
+    paymentTerms: z.string().max(500).optional(),
+    notes: z.string().trim().max(1000).optional(),
+    referredBy: z.string().trim().max(200).optional(),
+    acknowledged: acknowledgement,
+  }),
+});
+
+// One billing period of a contract (week / month / milestone). Amounts vary per period.
+export const createSubPOSchema = z.object({
+  params: z.object({ id: uuid }),
+  body: z.object({
+    periodLabel: z.string().trim().min(1, 'Period is required').max(100),
+    periodFrom: optionalDate,
+    periodTo: optionalDate,
+    paymentType: z.nativeEnum(POPaymentType),
+    advanceAmount: money.optional(),
+    paymentTerms: z.string().max(500).optional(),
+    budgetHeadId: uuid.optional(),
+    notes: z.string().trim().max(1000).optional(),
+    items: z
+      .array(
+        z.object({
+          materialName: z.string().trim().min(1).max(200),
+          quantity: positiveQty,
+          unit: z.string().trim().min(1).max(20),
+          unitPrice: money,
+          gstRate: z.coerce.number().min(0).max(100),
+        }),
+      )
+      .min(1, 'At least one line is required'),
+    deductions: deductionRows,
+    acknowledged: acknowledgement,
+  }),
+});
+
+// Edit the contract's own terms at any time (estimate up/down, dates, close). No re-approval:
+// the estimate is indicative and every sub-PO is approved on its own.
+export const updateContractTermsSchema = z.object({
+  params: z.object({ id: uuid }),
+  body: z.object({
+    contractTitle: z.string().trim().min(1).max(200).optional(),
+    contractType: z.string().trim().max(60).nullable().optional(),
+    estimatedValue: money.nullable().optional(),
+    contractStart: z.coerce.date().nullable().optional(),
+    contractEnd: z.coerce.date().nullable().optional(),
+    budgetHeadId: uuid.nullable().optional(),
+    paymentTerms: z.string().max(500).nullable().optional(),
+    notes: z.string().trim().max(1000).nullable().optional(),
+    closed: z.boolean().optional(),
+  }),
+});
 // ═══ Project Settings ═══
 export const updateProjectSettingsSchema = z.object({
   body: z.object({

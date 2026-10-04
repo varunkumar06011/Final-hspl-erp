@@ -190,7 +190,9 @@
     "visit": "Visit(s)",
     "job": "Job (per job)",
     "lumpsum": "Lumpsum",
-    "nosUnits": "Nos (units)"
+    "nosUnits": "Nos (units)",
+    "week": "Week(s)",
+    "month": "Month(s)"
   },
   "serviceCategories": {
     "AMC / Annual Maintenance Contract": "AMC / Annual Maintenance Contract",

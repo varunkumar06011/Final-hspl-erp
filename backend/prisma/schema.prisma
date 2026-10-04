@@ -308,6 +308,22 @@ model PurchaseOrder {
   editedAt           DateTime?
   editedBy           String?   @db.Uuid
   budgetHeadId       String?   @db.Uuid // Phase 3: cost tagging for commitment tracking
+  // ── Contract POs (rate contracts / work orders: labour, civil work, hire, AMC ...) ──
+  // A contract PO is the umbrella agreement: it is approved once and carries no items
+  // or amounts of its own (grandTotal stays 0, so budget/ledger are untouched). Each
+  // period's billing is a sub-PO (contractPoId -> contract) that goes through the
+  // normal approval -> goods receipt/service sign-off -> invoice -> payment flow.
+  isContract         Boolean   @default(false)
+  contractPoId       String?   @db.Uuid // set on a sub-PO: the contract PO it belongs to
+  contractTitle      String?
+  contractType       String?   // LABOUR | CIVIL_WORK | EQUIPMENT_HIRE | ... (free text, suggested list in UI)
+  estimatedValue     Decimal?  @db.Decimal(15, 2) // indicative only, editable any time, NOT a hard cap
+  contractStart      DateTime?
+  contractEnd        DateTime?
+  contractClosedAt   DateTime? // set when no further sub-POs may be raised
+  periodLabel        String?   // sub-PO: e.g. "Week 3 (12-18 Oct)"
+  periodFrom         DateTime?
+  periodTo           DateTime?
   // true = approved before vendor-payable auto-booking existed; the accountant
   // already handled its books (JV etc.), so approval/edit must not book it again.
   accrualExempt      Boolean   @default(false)
@@ -327,6 +343,8 @@ model PurchaseOrder {
   editedByUser     User?             @relation("POEditedBy", fields: [editedBy], references: [id])
   parentPo         PurchaseOrder?    @relation("PORegeneration", fields: [parentPoId], references: [id])
   childPos         PurchaseOrder[]   @relation("PORegeneration")
+  contractPo       PurchaseOrder?    @relation("POContract", fields: [contractPoId], references: [id])
+  subPos           PurchaseOrder[]   @relation("POContract")
   items            POItem[]
   invoices         VendorInvoice[]
   gatePasses       GatePass[]
@@ -342,6 +360,7 @@ model PurchaseOrder {
   @@index([projectId, deletedAt])
   @@index([projectId, status, date])
   @@index([mprId])
+  @@index([contractPoId])
   @@map("purchase_orders")
 }
 

@@ -286,6 +286,10 @@ router.post(
           res.status(400).json({ error: 'Purchase order not found' });
           return;
         }
+        if (po.isContract) {
+          res.status(400).json({ error: 'This is a contract PO. Raise the invoice against one of its sub-POs' });
+          return;
+        }
         if (po.vendorId !== vendorId) {
           res.status(400).json({ error: 'PO does not belong to the selected vendor' });
           return;
