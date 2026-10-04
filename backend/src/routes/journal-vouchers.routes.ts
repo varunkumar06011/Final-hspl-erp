@@ -296,14 +296,6 @@ router.post(
           where: { id: jv.id },
           data: { status: 'APPROVED' },
         });
-        await logAudit({
-          userId: req.user!.id,
-          action: AuditAction.APPROVE,
-          entityType: 'JOURNAL_VOUCHER',
-          entityId: jv.id,
-          projectId,
-          newValue: { status: 'APPROVED' },
-        });
       }
 
       res.json({
@@ -363,15 +355,6 @@ router.post(
           data: { status: 'REJECTED' },
         });
       }
-
-      await logAudit({
-        userId: req.user!.id,
-        action: AuditAction.REJECT,
-        entityType: 'JOURNAL_VOUCHER',
-        entityId: jv.id,
-        projectId,
-        newValue: { status: 'REJECTED', reason },
-      });
 
       res.json({ message: 'JV rejected', isFullyRejected: result.isFullyRejected });
     } catch (error) {

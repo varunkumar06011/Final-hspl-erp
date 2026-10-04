@@ -972,15 +972,6 @@ router.post(
         }).catch((err) => console.error('[Quotation] Safety-net status sync failed (non-fatal, reconciliation will fix):', err));
       }
 
-      await logAudit({
-        userId: req.user!.id,
-        action: AuditAction.APPROVE,
-        entityType: 'QUOTATION',
-        entityId: quotation.id,
-        projectId,
-        newValue: { stepId: step.id, comments: req.body.comments, acknowledged: true },
-      });
-
       const updated = await prisma.quotation.findUnique({
         where: { id: quotation.id },
         include: quotationInclude,
@@ -1048,15 +1039,6 @@ router.post(
         where: { id: quotation.id },
         data: { status: QuotationStatus.REJECTED },
       }).catch((err) => console.error('[Quotation] Safety-net status sync failed (non-fatal, reconciliation will fix):', err));
-
-      await logAudit({
-        userId: req.user!.id,
-        action: AuditAction.REJECT,
-        entityType: 'QUOTATION',
-        entityId: quotation.id,
-        projectId,
-        newValue: { stepId: step.id, reason, acknowledged: true },
-      });
 
       const updated = await prisma.quotation.findUnique({
         where: { id: quotation.id },

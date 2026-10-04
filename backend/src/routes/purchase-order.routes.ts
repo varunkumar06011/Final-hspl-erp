@@ -1412,15 +1412,6 @@ router.post(
         await reconcilePoAccrualSafe(po.id, req.user!.id);
       }
 
-      await logAudit({
-        userId: req.user!.id,
-        action: AuditAction.APPROVE,
-        entityType: 'PURCHASE_ORDER',
-        entityId: po.id,
-        projectId,
-        newValue: { comments: req.body.comments, acknowledged: true },
-      });
-
       const updated = await prisma.purchaseOrder.findUnique({
         where: { id: po.id },
         include: poInclude,
@@ -1503,15 +1494,6 @@ router.post(
         // counts as owed — reverse its vendor payable (no-op if never booked).
         await reconcilePoAccrualSafe(po.id, req.user!.id);
       }
-
-      await logAudit({
-        userId: req.user!.id,
-        action: AuditAction.REJECT,
-        entityType: 'PURCHASE_ORDER',
-        entityId: po.id,
-        projectId,
-        newValue: { reason, acknowledged: true },
-      });
 
       const updated = await prisma.purchaseOrder.findUnique({
         where: { id: po.id },

@@ -751,15 +751,6 @@ router.post(
           .catch((err) => console.error('[MPR] Non-vendor PO auto-create failed (non-fatal):', err));
       }
 
-      await logAudit({
-        userId: req.user!.id,
-        action: AuditAction.APPROVE,
-        entityType: 'MATERIAL_PURCHASE_REQUEST',
-        entityId: mpr.id,
-        projectId,
-        newValue: { stepId: step.id, comments: req.body.comments, acknowledged: true },
-      });
-
       const updated = await prisma.materialPurchaseRequest.findUnique({
         where: { id: mpr.id },
         include: mprInclude,
@@ -813,15 +804,6 @@ router.post(
           data: { status: MPRStatus.REJECTED },
         }).catch((err) => console.error('[MPR] Safety-net status sync failed (non-fatal):', err));
       }
-
-      await logAudit({
-        userId: req.user!.id,
-        action: AuditAction.REJECT,
-        entityType: 'MATERIAL_PURCHASE_REQUEST',
-        entityId: mpr.id,
-        projectId,
-        newValue: { stepId: step.id, reason },
-      });
 
       const updated = await prisma.materialPurchaseRequest.findUnique({
         where: { id: mpr.id },

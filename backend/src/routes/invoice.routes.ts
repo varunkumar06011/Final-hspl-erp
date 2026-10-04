@@ -750,15 +750,6 @@ router.post(
         });
       }
 
-      await logAudit({
-        userId: req.user!.id,
-        action: AuditAction.APPROVE,
-        entityType: 'VENDOR_INVOICE',
-        entityId: invoice.id,
-        projectId,
-        newValue: { comments: req.body.comments, acknowledged: true },
-      });
-
       const updated = await prisma.vendorInvoice.findUnique({
         where: { id: invoice.id },
         include: invoiceInclude,
@@ -809,15 +800,6 @@ router.post(
           data: { verificationStatus: InvoiceVerificationStatus.REJECTED },
         });
       }
-
-      await logAudit({
-        userId: req.user!.id,
-        action: AuditAction.REJECT,
-        entityType: 'VENDOR_INVOICE',
-        entityId: invoice.id,
-        projectId,
-        newValue: { reason, acknowledged: true },
-      });
 
       const updated = await prisma.vendorInvoice.findUnique({
         where: { id: invoice.id },
