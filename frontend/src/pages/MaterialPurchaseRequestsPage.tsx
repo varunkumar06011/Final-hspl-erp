@@ -198,6 +198,11 @@ export default function MaterialPurchaseRequestsPage() {
     } catch { /* ignore */ }
     return [{ materialName: '', materialCode: '', quantity: '', unit: 'nos', requiredDate: '', remarks: '' }];
   });
+  // Optional prices: sum quantity x rate over the items that have a rate.
+  const estimatedTotal = items.reduce(
+    (sum, i) => sum + (Number(i.quantity) || 0) * (Number(i.estimatedRate) || 0),
+    0,
+  );
 
   // Vendor selection — an existing vendor, or a brand-new one created inline
   // (name + phone + type only). Non-vendor requests skip the Quotation step.
@@ -1177,7 +1182,17 @@ export default function MaterialPurchaseRequestsPage() {
             </Table>
           </TableContainer>
 
-          <Button size="small" startIcon={<AddIcon />} onClick={addItem} sx={{ mb: 2 }}>{t('addItem')}</Button>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1, mb: 2 }}>
+            <Button size="small" startIcon={<AddIcon />} onClick={addItem}>{t('addItem')}</Button>
+            {estimatedTotal > 0 && (
+              <Box sx={{ textAlign: 'right' }}>
+                <Typography variant="subtitle2">
+                  {t('estimatedTotal')}: ₹{estimatedTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </Typography>
+                <Typography variant="caption" color="text.secondary">{t('estimatedTotalHint')}</Typography>
+              </Box>
+            )}
+          </Box>
 
           {/* Technical Requirements */}
           <Typography variant="subtitle2" sx={{ mb: 1 }}>{isServiceTab ? t('termsService') : t('termsMaterial')}</Typography>

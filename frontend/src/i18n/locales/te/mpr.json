@@ -104,6 +104,8 @@
   "colRequiredDate": "కావలసిన తేదీ",
   "colPrice": "ధర (₹/యూనిట్)",
   "optional": "ఐచ్ఛికం",
+  "estimatedTotal": "అంచనా మొత్తం",
+  "estimatedTotalHint": "ధర లేని వస్తువులు లెక్కలో చేర్చబడవు",
   "colRemarks": "వ్యాఖ్యలు",
   "addItem": "వస్తువును జోడించండి",
   "termsService": "నిబంధనలు / సేవా అవసరాలు",

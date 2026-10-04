@@ -104,6 +104,8 @@
   "colRequiredDate": "Required Date",
   "colPrice": "Price (₹/unit)",
   "optional": "Optional",
+  "estimatedTotal": "Estimated total",
+  "estimatedTotalHint": "Items without a price are not included",
   "colRemarks": "Remarks",
   "addItem": "Add Item",
   "termsService": "Terms / Service Requirements",
