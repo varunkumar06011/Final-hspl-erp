@@ -280,5 +280,6 @@
     "AMC_MAINTENANCE": "AMC / Maintenance",
     "CONSULTANCY": "Consultancy",
     "OTHER": "Other"
-  }
+  },
+  "moreItems": "+{{n}} more items"
 }

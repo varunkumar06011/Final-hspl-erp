@@ -70,6 +70,7 @@ import { useUrlFilters } from '../hooks/useUrlFilters';
 import { shareOnWhatsApp, buildPOShareMessage } from '../utils/whatsappShare';
 import CommentsButton from '../components/CommentsButton';
 import LinkedFiles from '../components/LinkedFiles';
+import ItemsGist from '../components/ItemsGist';
 import { NewContractDialog, ContractPanel } from '../components/ContractPO';
 
 interface POItemLedgerPost {
@@ -771,7 +772,9 @@ export default function PurchaseOrdersPage() {
                           <TableCell>{row.quotation?.quotationNumber ?? row.mpr?.mprNumber ?? row.contractPo?.poNumber ?? '—'}</TableCell>
                           <TableCell>{formatDate(row.date)}</TableCell>
                           <TableCell>{row.vendor?.vendorCode} - {row.vendor?.name ?? '—'}</TableCell>
-                          <TableCell className="truncate-cell" title={row.notes ?? ''}>{row.notes || '—'}</TableCell>
+                          <TableCell className="truncate-cell" title={(row.items ?? []).map((i) => `${i.materialName} × ${i.quantity} ${i.unit ?? ''}`).join('\n') || (row.notes ?? '')}>
+                            {row.isContract ? (row.contractTitle ?? '—') : ((row.items ?? []).map((i) => `${i.materialName} × ${formatIndianNumber(i.quantity)} ${i.unit ?? ''}`.trim()).join('; ') || row.notes || '—')}
+                          </TableCell>
                           <TableCell>
                             <Chip
                               size="small"
@@ -925,6 +928,7 @@ export default function PurchaseOrdersPage() {
                         {row.editReason && (
                           <Typography variant="caption" color="warning.main" title={row.editReason}>{t('edited')}</Typography>
                         )}
+                        {!row.isContract && <ItemsGist items={row.items} />}
                       </Box>
                     </AccordionSummary>
                     <AccordionDetails sx={{ borderTop: '1px solid', borderColor: 'divider', bgcolor: 'background.paper', color: 'text.primary', p: 1.25 }}>

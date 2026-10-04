@@ -69,8 +69,8 @@ async function resolveUniqueRequestNumber(projectId: string, base: string): Prom
 
 const prInclude = {
   vendor: { select: { id: true, name: true, vendorCode: true } },
-  invoice: { select: { id: true, invoiceCode: true, invoiceNumber: true, totalAmount: true } },
-  purchaseOrder: { select: { id: true, poNumber: true, grandTotal: true, paymentType: true } },
+  invoice: { select: { id: true, invoiceCode: true, invoiceNumber: true, totalAmount: true, purchaseOrder: { select: { items: { select: { materialName: true, quantity: true, unit: true, unitPrice: true, amount: true, gstRate: true } } } } } },
+  purchaseOrder: { select: { id: true, poNumber: true, grandTotal: true, paymentType: true, items: { select: { materialName: true, quantity: true, unit: true, unitPrice: true, amount: true, gstRate: true } } } },
   createdByUser: { select: { id: true, name: true } },
   payments: {
     select: {
@@ -1144,15 +1144,6 @@ router.post(
         });
       }
 
-      await logAudit({
-        userId: req.user!.id,
-        action: AuditAction.APPROVE,
-        entityType: 'PAYMENT_REQUEST',
-        entityId: pr.id,
-        projectId,
-        newValue: { comments: req.body.comments, isFullyApproved: result.isFullyApproved, acknowledged: true },
-      });
-
       const updated = await prisma.paymentRequest.findUnique({
         where: { id: pr.id },
         include: prInclude,
@@ -1203,15 +1194,6 @@ router.post(
           data: { status: PaymentStatus.REJECTED },
         });
       }
-
-      await logAudit({
-        userId: req.user!.id,
-        action: AuditAction.REJECT,
-        entityType: 'PAYMENT_REQUEST',
-        entityId: pr.id,
-        projectId,
-        newValue: { reason, acknowledged: true },
-      });
 
       const updated = await prisma.paymentRequest.findUnique({
         where: { id: pr.id },

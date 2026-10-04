@@ -40,6 +40,7 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { QuotationStatus, GST_RATES, ApprovalStatus, isAdminRole, isApproverRole, isWorkflowOpenToRole } from '@hospital-erp/shared';
 import { formatCurrency, formatDate, STATUS_COLORS, QTY_UNIT_OPTIONS, enumLabel, unitLabel } from '../utils/enumOptions';
+import ItemsGist from '../components/ItemsGist';
 import { useTranslation, Trans } from 'react-i18next';
 import { num, gstMult, toIncGst, toPreTax, round2 } from '../utils/taxCalc';
 import api, { extractErrorMessage } from '../config/api';
@@ -838,6 +839,7 @@ export default function QuotationsPage() {
                           {agingLabel}
                         </Typography>
                       )}
+                      <ItemsGist items={row.items} />
                     </Box>
                   </AccordionSummary>
                   <AccordionDetails sx={{ borderTop: '1px solid', borderColor: 'divider', bgcolor: 'background.paper', color: 'text.primary', p: 1.25 }}>

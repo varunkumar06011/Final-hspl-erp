@@ -44,6 +44,7 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { InvoiceVerificationStatus, UserRole, STORAGE, isAdminRole } from '@hospital-erp/shared';
 import { formatCurrency, formatDate, formatIndianNumber, STATUS_COLORS, enumLabel } from '../utils/enumOptions';
+import ItemsGist from '../components/ItemsGist';
 import { useTranslation, Trans } from 'react-i18next';
 import api, { extractErrorMessage } from '../config/api';
 import { useAuthStore } from '../stores/authStore';
@@ -782,7 +783,10 @@ export default function InvoicesPage() {
           {rows.filter((r) => r.approvalWorkflow).map((row) => (
             <Accordion key={row.id}>
               <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                <Typography><strong>{row.invoiceCode}</strong> — {row.vendor?.name} — <Chip label={enumLabel(row.approvalWorkflow!.status)} size="small" /></Typography>
+                <Box sx={{ minWidth: 0, width: '100%' }}>
+                  <Typography><strong>{row.invoiceCode}</strong> — {row.vendor?.name} — <Chip label={enumLabel(row.approvalWorkflow!.status)} size="small" /></Typography>
+                  <ItemsGist items={row.purchaseOrder?.items} />
+                </Box>
               </AccordionSummary>
               <AccordionDetails>
                 <ApprovalStepsDisplay steps={row.approvalWorkflow!.steps} />

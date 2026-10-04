@@ -25,6 +25,7 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { MPRStatus, MPRRequestType, UserRole, isApproverRole, isWorkflowOpenToRole } from '@hospital-erp/shared';
 import { formatDate, STATUS_COLORS, QTY_UNIT_OPTIONS, SERVICE_UNIT_OPTIONS, SERVICE_CATEGORY_OPTIONS, enumLabel, unitLabel, serviceCategoryLabel } from '../utils/enumOptions';
+import ItemsGist from '../components/ItemsGist';
 import { useTranslation } from 'react-i18next';
 import api, { extractErrorMessage } from '../config/api';
 import { useAuthStore } from '../stores/authStore';
@@ -745,6 +746,7 @@ export default function MaterialPurchaseRequestsPage() {
                       size="small"
                       color={(STATUS_COLORS[row.status] as any) ?? 'default'}
                     />
+                    <ItemsGist items={row.items} />
                   </Box>
                 </AccordionSummary>
                 <AccordionDetails sx={{ borderTop: '1px solid', borderColor: 'divider', p: 1.25 }}>

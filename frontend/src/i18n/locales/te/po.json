@@ -280,5 +280,6 @@
     "AMC_MAINTENANCE": "AMC / నిర్వహణ",
     "CONSULTANCY": "కన్సల్టెన్సీ",
     "OTHER": "ఇతర"
-  }
+  },
+  "moreItems": "+{{n}} మరిన్ని అంశాలు"
 }

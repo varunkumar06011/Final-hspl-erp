@@ -67,6 +67,7 @@ import { shareOnWhatsApp, buildPaymentShareMessage } from '../utils/whatsappShar
 import CommentsButton from '../components/CommentsButton';
 import { LinkedFilesButton } from '../components/LinkedFiles';
 
+import ItemsGist, { type GistItem } from '../components/ItemsGist';
 import { useTranslation, Trans } from 'react-i18next';
 import FilePicker from '../components/FilePicker';
 interface ApprovalStep {
@@ -97,9 +98,9 @@ interface PaymentRequestRow {
   vendorId: string | null;
   vendor: { id: string; name: string; vendorCode: string } | null;
   invoiceId: string | null;
-  invoice: { id: string; invoiceCode: string; invoiceNumber: string; totalAmount: number } | null;
+  invoice: { id: string; invoiceCode: string; invoiceNumber: string; totalAmount: number; purchaseOrder?: { items: GistItem[] } | null } | null;
   poId: string | null;
-  purchaseOrder: { id: string; poNumber: string; grandTotal: number; paymentType: string } | null;
+  purchaseOrder: { id: string; poNumber: string; grandTotal: number; paymentType: string; items?: GistItem[] } | null;
   createdBy: string;
   createdByUser: { id: string; name: string };
   payments: { id: string; amount: number; mode: string; reference: string | null; date: string; bankAccountId: string | null; cashAccountId: string | null; bankAccount: { id: string; accountName: string } | null; cashAccount: { id: string; name: string } | null; journalVoucherId: string | null; journalVoucher: { jvNumber: string } | null }[];
@@ -989,7 +990,10 @@ export default function PaymentsPage() {
           {rows.filter((r) => r.approvalWorkflow).map((row) => (
             <Accordion key={row.id}>
               <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                <Typography><strong>{row.paymentCode}</strong> — {row.type === 'EXPENSE' ? row.description : row.type === 'ADVANCE' ? tr('poN', { n: row.purchaseOrder?.poNumber }) : row.invoice?.invoiceCode} — {tr('approvedN', { n: getApprovalCount(row) })} — <Chip label={enumLabel(row.status)} size="small" color={STATUS_COLORS[row.status] ?? 'default'} /></Typography>
+                <Box sx={{ minWidth: 0, width: '100%' }}>
+                  <Typography><strong>{row.paymentCode}</strong> — {row.type === 'EXPENSE' ? row.description : row.type === 'ADVANCE' ? tr('poN', { n: row.purchaseOrder?.poNumber }) : row.invoice?.invoiceCode} — {tr('approvedN', { n: getApprovalCount(row) })} — <Chip label={enumLabel(row.status)} size="small" color={STATUS_COLORS[row.status] ?? 'default'} /></Typography>
+                  <ItemsGist items={row.purchaseOrder?.items ?? row.invoice?.purchaseOrder?.items} />
+                </Box>
               </AccordionSummary>
               <AccordionDetails>
                 <ApprovalStepsDisplay steps={row.approvalWorkflow!.steps} />
