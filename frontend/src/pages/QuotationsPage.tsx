@@ -415,13 +415,16 @@ export default function QuotationsPage() {
         const qtyMap: RequestedQtyMap = {};
         const prefillItems: QuotationItem[] = (mpr.items ?? []).map((item: any) => {
           qtyMap[item.materialName.trim().toLowerCase()] = { quantity: Number(item.quantity), unit: item.unit };
+          // Price entered on the MPR (optional) is the starting point; it stays editable.
+          const rate = Number(item.estimatedRate) || 0;
+          const gstRate = rate > 0 ? Number(mpr.estimatedGstRate) || 0 : 0;
           return {
             materialName: item.materialName,
             quantity: item.quantity,
             unit: item.unit ?? 'nos',
-            unitPrice: '',
-            amount: 0,
-            gstRate: 0,
+            unitPrice: rate > 0 ? rate : '',
+            amount: rate > 0 ? round2(num(item.quantity) * rate * gstMult(gstRate)) : 0,
+            gstRate,
           };
         });
         setRequestedQtyMap(qtyMap);
