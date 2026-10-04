@@ -1,4 +1,4 @@
-import { Box, AppBar, Toolbar, Typography, IconButton, Avatar, Chip, Menu, MenuItem, Drawer, List, ListItem, ListItemIcon, ListItemText, useTheme, useMediaQuery, Snackbar, Alert, Breadcrumbs, Link, CircularProgress } from '@mui/material';
+import { Box, AppBar, Toolbar, Typography, IconButton, Avatar, Chip, Menu, MenuItem, Drawer, List, ListItem, ListItemIcon, ListItemText, useTheme, useMediaQuery, Snackbar, Alert, Breadcrumbs, Link, CircularProgress, Badge } from '@mui/material';
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate, useLocation, Link as RouterLink } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -556,6 +556,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               <AssistantIcon />
             </IconButton>
           )}
+          <IconButton color="inherit" onClick={() => navigate('/chat')} title={t('nav.Chat', 'Chat')} aria-label={t('nav.Chat', 'Chat')}>
+            <Badge color="error" badgeContent={unreadChat} max={99} invisible={unreadChat === 0}>
+              <ChatNavIcon />
+            </Badge>
+          </IconButton>
           {!isAdminRole(user?.role ?? '') && (
             <IconButton color="inherit" onClick={toggleColorMode} title={mode === 'dark' ? t('shell.switchToLight') : t('shell.switchToDark')}>
               {mode === 'dark' ? <LightModeIcon /> : <DarkModeIcon />}
@@ -640,7 +645,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             React Router sets location.key='default' on the first entry only,
             which reliably detects in-app history (unlike window.history.length,
             which also counts external sites and makes navigate(-1) flaky on iOS). */}
-        {isMobile && location.pathname !== '/' && (
+        {isMobile && location.pathname !== '/' && !location.pathname.startsWith('/chat') && (
           <IconButton
             onClick={() => {
               if (location.key !== 'default') {

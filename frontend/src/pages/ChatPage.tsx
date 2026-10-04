@@ -85,8 +85,9 @@ export default function ChatPage() {
     <Card
       sx={{
         display: 'flex',
-        height: { xs: 'calc(100dvh - 130px)', sm: 'calc(100dvh - 170px)' },
-        minHeight: 420,
+        height: { xs: 'calc(100dvh - 64px - 24px - env(safe-area-inset-top) - env(safe-area-inset-bottom))', sm: 'calc(100dvh - 170px)' },
+        borderRadius: { xs: 2, sm: 3 },
+        minHeight: { xs: 300, sm: 420 },
         overflow: 'hidden',
       }}
     >

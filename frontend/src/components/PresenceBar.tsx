@@ -1,4 +1,5 @@
 import { Avatar, Box, Tooltip, Typography, Fade } from '@mui/material';
+import { useLocation } from 'react-router-dom';
 import { usePresence } from '../hooks/usePresence';
 import { UserRole } from '@hospital-erp/shared';
 
@@ -36,8 +37,10 @@ function getInitials(name: string): string {
 export default function PresenceBar() {
   const { t } = useTranslation('widgets');
   const { viewers } = usePresence();
+  const { pathname } = useLocation();
 
-  if (viewers.length === 0) return null;
+  // The chat screen pins the message box to the bottom, so a floating pill there covers it.
+  if (viewers.length === 0 || pathname.startsWith('/chat')) return null;
 
   const label = viewers.length === 1
     ? t('pbOne', { name: viewers[0].userName })
