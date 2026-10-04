@@ -450,7 +450,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               if ('roles' in item && Array.isArray(item.roles) && item.roles.length > 0) {
                 if (!user || !item.roles.includes(user.role as UserRole)) return false;
               }
-              return !item.permission || (user && hasPermission(user.role as UserRole, item.permission));
+              return !item.permission || (user && hasPermission(user.role as UserRole, item.permission, user.extraPermissions));
             })
             .map((item, idx, arr) => {
             const prevItem = idx > 0 ? arr[idx - 1] : null;

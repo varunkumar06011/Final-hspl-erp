@@ -845,7 +845,17 @@ export const PERMISSION_MATRIX: Record<UserRole, Permission[]> = {
   ],
 };
 
-export function hasPermission(role: UserRole | string, permission: Permission): boolean {
+export const SUPER_ADMIN_GRANT = '*';
+
+export function hasPermission(
+  role: UserRole | string,
+  permission: Permission,
+  extraPermissions?: readonly string[] | null,
+): boolean {
+  // '*' in a user's extraPermissions marks a super admin: every permission.
+  if (extraPermissions?.includes(SUPER_ADMIN_GRANT) || extraPermissions?.includes(permission)) {
+    return true;
+  }
   // Dynamic admin roles (ADMIN_3, ADMIN_4, ...) get the same permissions as ADMIN
   if (typeof role === 'string' && isAdminRole(role) && !(role in PERMISSION_MATRIX)) {
     return PERMISSION_MATRIX[UserRole.ADMIN]?.includes(permission) ?? false;

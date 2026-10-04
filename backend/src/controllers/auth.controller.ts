@@ -308,6 +308,7 @@ export async function getMe(
     projectId: req.user!.projectId,
     isActive: req.user!.isActive,
     termsAcceptedAt: req.user!.termsAcceptedAt,
+    extraPermissions: req.user!.extraPermissions ?? [],
   });
 }
 
@@ -515,6 +516,7 @@ export async function pinLogin(
         projectId,
         isActive: user.isActive,
         termsAcceptedAt,
+        extraPermissions: user.extraPermissions,
       },
     });
   } catch (error) {
@@ -566,6 +568,7 @@ export async function setPin(
         projectId,
         isActive: user.isActive,
         termsAcceptedAt,
+        extraPermissions: user.extraPermissions,
       },
     });
   } catch (error) {
@@ -600,6 +603,7 @@ export async function switchProject(
         projectId,
         isActive: user.isActive,
         termsAcceptedAt: user.termsAcceptedAt,
+        extraPermissions: user.extraPermissions,
       },
     });
   } catch (error) {

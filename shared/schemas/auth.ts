@@ -84,6 +84,7 @@ export const userResponseSchema = z.object({
   projectId: z.string().uuid().nullable(),
   isActive: z.boolean(),
   termsAcceptedAt: z.string().nullable().optional(),
+  extraPermissions: z.array(z.string()).optional(),
 });
 
 // Custom role validator — accepts any UserRole enum value OR a dynamic admin role (ADMIN_3, ADMIN_4, ...)

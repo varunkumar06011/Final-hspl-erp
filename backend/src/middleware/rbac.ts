@@ -9,7 +9,7 @@ export function rbacMiddleware(requiredPermission: Permission) {
       return;
     }
 
-    if (!hasPermission(req.user.role, requiredPermission)) {
+    if (!hasPermission(req.user.role, requiredPermission, req.user.extraPermissions)) {
       res.status(403).json({
         error: `Insufficient permissions. Required: ${requiredPermission}`,
       });

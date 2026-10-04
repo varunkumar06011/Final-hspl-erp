@@ -29,6 +29,9 @@ model User {
   // Event types: "entity_created", "approval_request", "approval_result".
   // Missing key = enabled (default on). Set to false to mute that category.
   notificationPrefs Json?
+  // Permissions granted to this one user on top of their role (e.g. a single
+  // supervisor who may see the dashboard). Values are Permission enum strings.
+  extraPermissions String[] @default([])
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 

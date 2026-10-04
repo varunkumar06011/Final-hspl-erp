@@ -17,6 +17,7 @@ export interface AuthenticatedRequest extends Request {
     projectId: string | null;
     isActive: boolean;
     termsAcceptedAt: Date | null;
+    extraPermissions?: string[];
   };
 }
 
@@ -90,6 +91,7 @@ export async function authMiddleware(
         projectId: await activeProjectId(req.headers['x-project-id'], user.projectId),
         isActive: user.isActive,
         termsAcceptedAt: user.termsAcceptedAt,
+        extraPermissions: user.extraPermissions,
       };
       next();
       return;
@@ -121,6 +123,7 @@ export async function authMiddleware(
           projectId: await activeProjectId(decoded.projectId, user.projectId),
           isActive: user.isActive,
           termsAcceptedAt: user.termsAcceptedAt,
+        extraPermissions: user.extraPermissions,
         };
         next();
         return;
@@ -161,6 +164,7 @@ export async function authMiddleware(
       projectId: user.projectId,
       isActive: user.isActive,
       termsAcceptedAt: user.termsAcceptedAt,
+        extraPermissions: user.extraPermissions,
     };
 
     next();

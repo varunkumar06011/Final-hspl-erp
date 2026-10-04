@@ -19,7 +19,7 @@ export default function ProtectedRoute({ children, permission, roles, fallback =
     return <Navigate to="/login" replace />;
   }
 
-  if (permission && user && !hasPermission(user.role as UserRole, permission)) {
+  if (permission && user && !hasPermission(user.role as UserRole, permission, user.extraPermissions)) {
     return <Navigate to={fallback} replace />;
   }
 
