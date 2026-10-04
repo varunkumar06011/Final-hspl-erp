@@ -33,6 +33,8 @@ npx prisma migrate dev                                   # create/apply migratio
 
 Unit/logic tests mock Prisma; only the `e2e-real-*` / `vitest.real.config.ts` suites need Postgres at localhost:5432 (see `backend/tests/README.md`).
 
+Requires Node 22.x (`.nvmrc`, `engines`). CI lives in `.github/workflows/` (`ios-build.yml`, `database-backup.yml`); there is no CI job for lint/typecheck/tests, so run `npm run typecheck`, `npm run lint` and the relevant vitest files yourself.
+
 ## Architecture
 
 **Shared package (`shared/`)** is the contract between the two apps: enums (`UserRole`, approval statuses), `Permission` + `hasPermission`, `APPROVAL_CONFIG`/`APPROVER_ROLES`, socket events, and Zod schemas. Both apps alias `@hospital-erp/shared` directly to `../shared` source (vitest and vite configs), but the backend `build` compiles it first. Changing a role/permission/schema here affects both sides.
@@ -41,7 +43,7 @@ Unit/logic tests mock Prisma; only the `e2e-real-*` / `vitest.real.config.ts` su
 - Auth: `middleware/auth.ts` verifies Firebase ID tokens (phone OTP login) and maps to a Prisma `User`; also enforces the Terms-accepted gate (`TERMS_NOT_ACCEPTED`). Outside production, `Bearer dev-token` (or `dev-token:<userId>`) resolves to a seeded user and skips the terms gate.
 - Authorization: `rbacMiddleware(Permission)` checks role permissions from `shared`. Data is multi-project; handlers scope by `requireProjectId(req)` (`req.user.projectId`) — always filter queries by project.
 - `utils/crudFactory.ts` (`createCrudRouter`) generates standard CRUD routers (auth, RBAC, Zod validation, search/sort/amount/date filters, audit logging) from a config with `transformCreate/afterCreate/...` hooks. Many `*.routes.ts` files use it; prefer it for simple entities.
-- `services/approval.service.ts` is the generic multi-step approval engine keyed by `entityType` + `entityId`, with policies (`HEAD_GROUPS`, `PO_SINGLE_APPROVER`, `ANY_APPROVERS`, ...). Other services: audit logging, sequence numbers, PDF generation (pdfkit), OCR (tesseract/Gemini) for invoices, push (Firebase) notifications, storage (local or Supabase via `STORAGE_MODE`).
+- `services/approval.service.ts` is the generic multi-step approval engine keyed by `entityType` + `entityId`, with policies (`HEAD_GROUPS`, `PO_SINGLE_APPROVER`, `ANY_APPROVERS`, ...). Other services: audit logging, sequence numbers, in-app chat (`chat.service.ts` + `socket.ts`), PDF generation (pdfkit), OCR (tesseract/Gemini) for invoices, push (Firebase) notifications, storage (local or Supabase via `STORAGE_MODE`).
 - Deployment: Railway (`railway.json`); `npm start` runs `prisma migrate deploy` before `node dist/index.js`.
 
 **Frontend (`frontend/src`)**: React 18 + Vite + MUI + React Query + Zustand. One file per screen in `pages/`; routing in `App.tsx`. `config/api.ts` is the shared axios instance (bearer token from `localStorage.firebaseToken`, global 401 → clear token and redirect to login, offline handling via `stores/networkStore`). `stores/authStore.ts` holds the user. Also packaged for iOS via Capacitor (`frontend/ios`, `capacitor.config.ts`, `.github/workflows/ios-build.yml`); storage access is wrapped in try/catch because iOS WebKit can block it. Vercel config in `frontend/vercel.json`.

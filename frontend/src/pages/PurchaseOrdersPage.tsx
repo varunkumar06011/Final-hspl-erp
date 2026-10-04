@@ -54,7 +54,7 @@ import {
 import LedgerAutocomplete, { LedgerOption } from '../components/LedgerAutocomplete';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { POStatus, UserRole, POPaymentType, GST_RATES, ApprovalStatus, isAdminRole, isWorkflowOpenToRole } from '@hospital-erp/shared';
-import { formatCurrency, formatDate, formatIndianNumber, STATUS_COLORS, QTY_UNIT_OPTIONS, enumLabel, unitLabel } from '../utils/enumOptions';
+import { formatCurrency, formatDate, formatDateTime, formatIndianNumber, STATUS_COLORS, QTY_UNIT_OPTIONS, enumLabel, unitLabel } from '../utils/enumOptions';
 import { useTranslation, Trans } from 'react-i18next';
 import { num, toIncGst, round2 } from '../utils/taxCalc';
 import api, { extractErrorMessage } from '../config/api';
@@ -860,6 +860,11 @@ export default function PurchaseOrdersPage() {
                 const approverNames = row.approvalWorkflow?.steps?.some((s) => s.status === 'APPROVED' && s.approverUser)
                   ? row.approvalWorkflow!.steps.filter((s) => s.status === 'APPROVED' && s.approverUser).map((s) => s.approverUser!.name).join(', ')
                   : '—';
+                const approvedOn = (row.approvalWorkflow?.steps ?? [])
+                  .filter((s) => s.status === 'APPROVED' && s.decidedAt)
+                  .map((s) => s.decidedAt as string)
+                  .sort()
+                  .pop();
 
                 return (
                   <Accordion
@@ -999,8 +1004,11 @@ export default function PurchaseOrdersPage() {
                           <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>{t('referredBy')}</Typography>
                           <Typography component="div" variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem', minWidth: 0 }}>{row.referredBy ?? '—'}</Typography>
 
-                          <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>{t('description')}</Typography>
-                          <Typography component="div" variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem', minWidth: 0, overflowWrap: 'break-word' }}>{row.notes || '—'}</Typography>
+                          <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>{t('createdOn')}</Typography>
+                          <Typography component="div" variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem', minWidth: 0 }}>{formatDateTime(row.createdAt)}</Typography>
+
+                          <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>{t('approvedOn')}</Typography>
+                          <Typography component="div" variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem', minWidth: 0 }}>{approvedOn ? formatDateTime(approvedOn) : '—'}</Typography>
                         </Box>
 
                         {/* Deductions */}
@@ -1085,6 +1093,12 @@ export default function PurchaseOrdersPage() {
                             </Box>
                           </Box>
                         )}
+
+                        {/* Description — always visible below the items */}
+                        <Box sx={{ mt: 1 }}>
+                          <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem', display: 'block', mb: 0.25 }}>{t('description')}</Typography>
+                          <Typography variant="body2" sx={{ fontSize: '0.85rem', whiteSpace: 'pre-wrap', overflowWrap: 'break-word' }}>{row.notes || '—'}</Typography>
+                        </Box>
 
                         {/* Actions — bottom row */}
                         <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, mt: 1, pt: 1, borderTop: '1px solid', borderColor: 'divider' }}>

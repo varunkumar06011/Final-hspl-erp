@@ -45,6 +45,8 @@
   "toPayNow": "To Pay Now",
   "createdBy": "Created By",
   "approvedBy": "Approved By",
+  "createdOn": "Created On",
+  "approvedOn": "Approved On",
   "referredBy": "Referred By",
   "description": "Description",
   "fromPo": "from {{n}}",
