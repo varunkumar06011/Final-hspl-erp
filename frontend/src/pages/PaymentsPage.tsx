@@ -44,7 +44,7 @@ import {
   Close as CloseIcon,
   Payments as PaymentsIcon,
   ExpandMore as ExpandMoreIcon,
-  Download as DownloadIcon,
+  Visibility as ViewIcon,
   Receipt as ReceiptIcon,
   Delete as DeleteIcon,
   Edit as EditIcon,
@@ -58,7 +58,7 @@ import { enumLabel, formatCurrency, formatIndianNumber, STATUS_COLORS, todayLoca
 import { dateLocale } from '../i18n';
 import api, { extractErrorMessage } from '../config/api';
 import { useAuthStore } from '../stores/authStore';
-import { downloadFile } from '../utils/file';
+import { useFileViewer } from '../components/FileViewerDialog';
 import ApprovalActionDialog from '../components/ApprovalActionDialog';
 import ResponsiveTable from '../components/ResponsiveTable';
 import PaymentSheetsTab from '../components/PaymentSheetsTab';
@@ -598,8 +598,9 @@ export default function PaymentsPage() {
     return row.approvalWorkflow.steps.filter((s) => s.status === 'APPROVED').length;
   }
 
+  const { openFile, viewer } = useFileViewer();
   function handleDownload(id: string, fileName: string) {
-    downloadFile('payments', id, fileName).catch(() => setError(tr('errDownload')));
+    openFile('payments', id, fileName);
   }
 
   function validateExpenseForm(): boolean {
@@ -630,6 +631,7 @@ export default function PaymentsPage() {
 
   return (
     <Box>
+      {viewer}
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap' }}>
         <Typography variant="h5" fontWeight={600} sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' } }}>{tr('title')}</Typography>
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', justifyContent: { xs: 'flex-end', md: 'flex-end' }, width: { xs: '100%', md: 'auto' } }}>
@@ -918,7 +920,7 @@ export default function PaymentsPage() {
                       </TableCell>
                       <TableCell data-label={tr('file')}>
                         {row.filePath
-                          ? <IconButton size="small" onClick={() => handleDownload(row.id, row.fileName ?? 'file')}><DownloadIcon fontSize="small" /></IconButton>
+                          ? <IconButton size="small" onClick={() => handleDownload(row.id, row.fileName ?? 'file')}><ViewIcon fontSize="small" /></IconButton>
                           : '—'}
                       </TableCell>
                       <TableCell data-label={tr('actions')}>

@@ -34,14 +34,14 @@ import ResponsiveDialog from '../components/ResponsiveDialog';
 import {
   Add as AddIcon,
   Search as SearchIcon,
-  Download as DownloadIcon,
+  Visibility as ViewIcon,
   Delete as DeleteIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { formatDate } from '../utils/enumOptions';
 import api, { extractErrorMessage } from '../config/api';
 import { useAuthStore } from '../stores/authStore';
-import { downloadFile } from '../utils/file';
+import { useFileViewer } from '../components/FileViewerDialog';
 import ResponsiveTable from '../components/ResponsiveTable';
 import RefreshButton from '../components/RefreshButton';
 
@@ -142,12 +142,14 @@ function GeneralDocumentsTab() {
     return ids.map((id) => resolveToOptions.find((o) => o.id === id)?.name ?? tr('unknown')).join(', ');
   }
 
+  const { openFile, viewer } = useFileViewer();
   function handleDownload(id: string, fileName: string) {
-    downloadFile('documents', id, fileName).catch(() => setError(tr('errDownload')));
+    openFile('documents', id, fileName);
   }
 
   return (
     <Box>
+      {viewer}
       <Box sx={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', mb: 2, flexWrap: 'wrap' }}>
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', justifyContent: { xs: 'flex-end', md: 'flex-end' }, width: { xs: '100%', md: 'auto' } }}>
           <RefreshButton onClick={() => refetch()} />
@@ -204,7 +206,7 @@ function GeneralDocumentsTab() {
                     <TableCell data-label={tr('date')}>{formatDate(row.createdAt)}</TableCell>
                     <TableCell data-label={tr('actions')}>
                       <CommentsButton entityType="DOCUMENT" entityId={row.id} entityLabel={row.name} url="/documents" />
-                      <IconButton size="small" onClick={() => handleDownload(row.id, row.fileName)}><DownloadIcon fontSize="small" /></IconButton>
+                      <IconButton size="small" onClick={() => handleDownload(row.id, row.fileName)}><ViewIcon fontSize="small" /></IconButton>
                       <IconButton size="small" color="error" onClick={() => { if (confirm(tr('confirmDelete'))) deleteMutation.mutate(row.id); }}><DeleteIcon fontSize="small" /></IconButton>
                     </TableCell>
                   </TableRow>

@@ -102,6 +102,45 @@ self.addEventListener('notificationclick', (event) => {
   );
 });
 
+// ─── Web Share Target (Android: Share → Hospital ERP) ─────
+// manifest.webmanifest declares a share_target that POSTs multipart/form-data to
+// /share-target. The files are parked in Cache Storage and the user is redirected
+// to the Document Library, which picks them up and opens its upload dialog.
+const SHARE_CACHE = 'shared-files-v1';
+
+self.addEventListener('fetch', (event) => {
+  const url = new URL(event.request.url);
+  if (event.request.method !== 'POST' || url.pathname !== '/share-target') return;
+
+  event.respondWith(
+    (async () => {
+      try {
+        const form = await event.request.formData();
+        const files = form.getAll('file').filter((f) => f instanceof File);
+        const cache = await caches.open(SHARE_CACHE);
+        for (const key of await cache.keys()) await cache.delete(key);
+        for (let i = 0; i < files.length; i += 1) {
+          const f = files[i];
+          await cache.put(
+            `/__shared/${i}`,
+            new Response(f, {
+              headers: {
+                'Content-Type': f.type || 'application/octet-stream',
+                'X-File-Name': encodeURIComponent(f.name || `shared-${i}`),
+                'X-Shared-At': String(Date.now()),
+              },
+            })
+          );
+        }
+        const note = [form.get('title'), form.get('text')].filter(Boolean).join(' ').slice(0, 300);
+        return Response.redirect(`/documents?share=${files.length}${note ? `&note=${encodeURIComponent(note)}` : ''}`, 303);
+      } catch {
+        return Response.redirect('/documents', 303);
+      }
+    })()
+  );
+});
+
 // ─── Service worker lifecycle ─────────────────────────────
 self.addEventListener('install', () => {
   self.skipWaiting();

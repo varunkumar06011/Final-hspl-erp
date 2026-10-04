@@ -43,6 +43,7 @@ import ResponsiveDialog from './ResponsiveDialog';
 import ResponsiveTable from './ResponsiveTable';
 import RefreshButton from './RefreshButton';
 import FilePicker from './FilePicker';
+import { takeSharedFiles } from '../utils/sharedFiles';
 
 interface LibraryRow {
   key: string;
@@ -110,6 +111,7 @@ export default function DocumentLibraryTab() {
   const [note, setNote] = useState('');
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<{ row: LibraryRow; url: string | null; previewable: boolean } | null>(null);
+  const [sharedQueue, setSharedQueue] = useState<File[]>([]);
 
   useEffect(() => {
     const id = setTimeout(() => setDebouncedSearch(search), 300);
@@ -119,6 +121,22 @@ export default function DocumentLibraryTab() {
     const id = setTimeout(() => setDebouncedTargetInput(targetInput), 250);
     return () => clearTimeout(id);
   }, [targetInput]);
+
+  // Files shared from another app (e.g. WhatsApp → Share → Hospital ERP) open the upload dialog.
+  useEffect(() => {
+    void takeSharedFiles().then((files) => {
+      if (!files.length) return;
+      const note = new URLSearchParams(window.location.search).get('note') ?? '';
+      setSharedQueue(files.slice(1));
+      setError('');
+      setUploadCategory('GENERAL');
+      setTarget(null);
+      setTargetInput('');
+      setNote(note);
+      setFile(files[0]);
+      setDialogOpen(true);
+    });
+  }, []);
 
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['/document-library', page, pageSize, debouncedSearch, category, fileType, from, to],
@@ -161,7 +179,13 @@ export default function DocumentLibraryTab() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/document-library'] });
       queryClient.invalidateQueries({ queryKey: ['attachments'] });
-      setDialogOpen(false);
+      if (sharedQueue.length > 0) {
+        setFile(sharedQueue[0]);
+        setNote('');
+        setSharedQueue(sharedQueue.slice(1));
+      } else {
+        setDialogOpen(false);
+      }
       setSuccessMsg(tr('libOkUploaded'));
       setTimeout(() => setSuccessMsg(''), 3000);
     },

@@ -34,7 +34,7 @@ import {
   Search as SearchIcon,
   Check as CheckIcon,
   Close as CloseIcon,
-  Download as DownloadIcon,
+  Visibility as ViewIcon,
   ExpandMore as ExpandMoreIcon,
   Delete as DeleteIcon,
   Publish as PostToBooksIcon,
@@ -48,7 +48,7 @@ import { formatCurrency, formatDate, formatIndianNumber, STATUS_COLORS, enumLabe
 import { useTranslation, Trans } from 'react-i18next';
 import api, { extractErrorMessage } from '../config/api';
 import { useAuthStore } from '../stores/authStore';
-import { downloadFile } from '../utils/file';
+import { useFileViewer } from '../components/FileViewerDialog';
 import { generateInvoicePDF } from '../utils/invoicePdf';
 import { shareOnWhatsApp, buildInvoiceShareMessage } from '../utils/whatsappShare';
 import AcknowledgementCheckbox from '../components/AcknowledgementCheckbox';
@@ -592,8 +592,9 @@ export default function InvoicesPage() {
     return !alreadyApproved;
   }
 
+  const { openFile, viewer } = useFileViewer();
   function handleDownload(id: string, fileName: string) {
-    downloadFile('invoices', id, fileName).catch(() => setError(t('errDownload')));
+    openFile('invoices', id, fileName);
   }
 
   function handleOcrExtract(data: OcrInvoiceData) {
@@ -607,6 +608,7 @@ export default function InvoicesPage() {
 
   return (
     <Box>
+      {viewer}
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap' }}>
         <Typography variant="h5" fontWeight={600} sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' } }}>{t('title')}</Typography>
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', justifyContent: { xs: 'flex-end', md: 'flex-end' }, width: { xs: '100%', md: 'auto' } }}>
@@ -717,7 +719,7 @@ export default function InvoicesPage() {
                     </TableCell>
                     <TableCell data-label={t('colFile')}>
                       {row.filePath ? (
-                        <IconButton size="small" onClick={() => handleDownload(row.id, row.fileName ?? 'invoice')}><DownloadIcon fontSize="small" /></IconButton>
+                        <IconButton size="small" onClick={() => handleDownload(row.id, row.fileName ?? 'invoice')}><ViewIcon fontSize="small" /></IconButton>
                       ) : '—'}
                     </TableCell>
                     <TableCell data-label={t('colActions')}>

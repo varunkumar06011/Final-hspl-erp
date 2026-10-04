@@ -15,11 +15,12 @@ import {
   Upload as UploadIcon,
   Delete as DeleteIcon,
   AttachFile as AttachFileIcon,
+  Visibility as ViewIcon,
   Image as ImageIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { extractErrorMessage } from '../config/api';
-import { downloadFile } from '../utils/file';
+import { useFileViewer } from './FileViewerDialog';
 import { useTranslation } from 'react-i18next';
 import { enumLabel } from '../utils/enumOptions';
 import CameraCapture from './CameraCapture';
@@ -40,6 +41,7 @@ export default function AttachmentUpload({
   const queryClient = useQueryClient();
   const [error, setError] = useState('');
   const [description, setDescription] = useState('');
+  const { openFile, viewer } = useFileViewer();
 
   const { data: attachments, isLoading } = useQuery({
     queryKey: ['attachments', entityType, entityId],
@@ -101,6 +103,7 @@ export default function AttachmentUpload({
 
   return (
     <Box>
+      {viewer}
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
         <Typography variant={size === 'small' ? 'body2' : 'body1'} fontWeight={600}>
           {t('shared.attachments')}
@@ -151,9 +154,9 @@ export default function AttachmentUpload({
                 <ListItemSecondaryAction>
                   <IconButton
                     size="small"
-                    onClick={() => downloadFile('attachments', row.id as string, String(row.fileName)).catch(() => setError(t('shared.errDownload')))}
+                    onClick={() => openFile('attachments', row.id as string, String(row.fileName))}
                   >
-                    <AttachFileIcon fontSize="small" />
+                    <ViewIcon fontSize="small" />
                   </IconButton>
                   <IconButton
                     size="small"

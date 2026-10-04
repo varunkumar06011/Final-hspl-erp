@@ -15,11 +15,10 @@ import {
   PictureAsPdf as PdfIcon,
   InsertDriveFile as FileIcon,
   Visibility as PreviewIcon,
-  Download as DownloadIcon,
   Delete as DeleteIcon,
 } from '@mui/icons-material';
 import api, { extractErrorMessage } from '../config/api';
-import { fetchFileUrl, downloadFile } from '../utils/file';
+import { useFileViewer } from './FileViewerDialog';
 import CameraCapture from './CameraCapture';
 
 import { useTranslation } from 'react-i18next';
@@ -67,6 +66,7 @@ export default function VoucherProofAttachment({
 }: VoucherProofAttachmentProps) {
   const { t } = useTranslation('vouchers');
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { openFile, viewer } = useFileViewer();
 
   // Pending file preview URL (derived from pendingFile prop)
   const [pendingPreviewUrl, setPendingPreviewUrl] = useState<string | null>(null);
@@ -203,37 +203,15 @@ export default function VoucherProofAttachment({
     }
   };
 
-  // ── Preview a saved attachment (lazy load blob URL) ──
-  const previewAttachment = async (attachment: SavedAttachment) => {
-    if (previewUrls[attachment.id]) {
-      window.open(previewUrls[attachment.id], '_blank');
-      return;
-    }
-    try {
-      const url = await fetchFileUrl('attachments', attachment.id);
-      setPreviewUrls((prev) => ({ ...prev, [attachment.id]: url }));
-      if (isPdfMime(attachment.mimeType)) {
-        window.open(url, '_blank');
-      }
-    } catch (err) {
-      setError(extractErrorMessage(err));
-    }
-  };
-
-  // ── Download a saved attachment ──
-  const downloadAttachment = async (attachment: SavedAttachment) => {
-    try {
-      await downloadFile('attachments', attachment.id, attachment.fileName);
-    } catch (err) {
-      setError(extractErrorMessage(err));
-    }
-  };
+  // ── View a saved attachment in-page ──
+  const previewAttachment = (attachment: SavedAttachment) => openFile('attachments', attachment.id, attachment.fileName);
 
   const hasVoucher = !!voucherId;
   const showPending = !!pendingFile;
 
   return (
     <Box>
+      {viewer}
       <Typography variant="subtitle2" sx={{ mb: 1 }}>
         {t('proofTitle')} <Typography component="span" variant="caption" color="text.secondary">(Optional)</Typography>
       </Typography>
@@ -370,11 +348,6 @@ export default function VoucherProofAttachment({
                   <Tooltip title={t('proofOpen')}>
                     <IconButton size="small" onClick={() => previewAttachment(att)}>
                       <PreviewIcon fontSize="small" />
-                    </IconButton>
-                  </Tooltip>
-                  <Tooltip title={t('proofDownload')}>
-                    <IconButton size="small" onClick={() => downloadAttachment(att)}>
-                      <DownloadIcon fontSize="small" />
                     </IconButton>
                   </Tooltip>
                   <Tooltip title={t('proofDelete')}>

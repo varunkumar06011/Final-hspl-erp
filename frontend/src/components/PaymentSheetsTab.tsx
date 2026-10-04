@@ -43,7 +43,7 @@ import { PaymentMode, PaymentStatus, isAdminRole } from '@hospital-erp/shared';
 import { formatCurrency, formatDate, STATUS_COLORS, enumLabel } from '../utils/enumOptions';
 import api, { extractErrorMessage } from '../config/api';
 import { useAuthStore } from '../stores/authStore';
-import { downloadFile } from '../utils/file';
+import { useFileViewer } from './FileViewerDialog';
 
 import { useTranslation } from 'react-i18next';
 import FilePicker from './FilePicker';
@@ -146,6 +146,7 @@ const voucherParty = (v: VoucherOption | null | undefined): string => {
 };
 
 export default function PaymentSheetsTab() {
+  const { openFile, viewer } = useFileViewer();
   const { t } = useTranslation('psheets');
   const queryClient = useQueryClient();
   const user = useAuthStore((s) => s.user);
@@ -376,6 +377,7 @@ export default function PaymentSheetsTab() {
 
   return (
     <Box>
+      {viewer}
       {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
       {successMsg && <Alert severity="success" sx={{ mb: 2 }} onClose={() => setSuccessMsg('')}>{successMsg}</Alert>}
 
@@ -494,7 +496,7 @@ export default function PaymentSheetsTab() {
                         </IconButton>
                       )}
                       {r.fileName && (
-                        <IconButton size="small" title={r.fileName} onClick={() => downloadFile('payment-sheets', r.id, r.fileName as string)}>
+                        <IconButton size="small" title={r.fileName} onClick={() => openFile('payment-sheets', r.id, r.fileName as string)}>
                           <AttachFileIcon fontSize="small" />
                         </IconButton>
                       )}
