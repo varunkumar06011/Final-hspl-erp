@@ -32,7 +32,6 @@ import {
   Edit as EditIcon,
   ExpandMore as ExpandMoreIcon,
   Download as DownloadIcon,
-  Visibility as ViewIcon,
   Delete as DeleteIcon,
   Timeline as TimelineIcon,
   Share as ShareIcon,
@@ -45,7 +44,6 @@ import { useTranslation, Trans } from 'react-i18next';
 import { num, gstMult, toIncGst, toPreTax, round2 } from '../utils/taxCalc';
 import api, { extractErrorMessage } from '../config/api';
 import { useAuthStore } from '../stores/authStore';
-import { useFileViewer } from '../components/FileViewerDialog';
 import { useDeepLinkRow } from '../hooks/useDeepLinkRow';
 import AcknowledgementCheckbox from '../components/AcknowledgementCheckbox';
 import ApprovalActionDialog from '../components/ApprovalActionDialog';
@@ -54,6 +52,7 @@ import RefreshButton from '../components/RefreshButton';
 import QuotationTimelineDialog from '../components/QuotationTimelineDialog';
 import { useApprovalDeepLink } from '../utils/useApprovalDeepLink';
 import CommentsButton from '../components/CommentsButton';
+import LinkedFiles from '../components/LinkedFiles';
 import FilePicker from '../components/FilePicker';
 
 interface QuotationItem {
@@ -570,10 +569,6 @@ export default function QuotationsPage() {
     ) ?? null;
   }
 
-  const { openFile, viewer } = useFileViewer();
-  function handleDownload(id: string, fileName: string) {
-    openFile('quotations', id, fileName);
-  }
 
   function downloadQuotationPDF(quotationId: string, quotationNumber: string) {
     const token = localStorage.getItem('firebaseToken');
@@ -741,7 +736,6 @@ export default function QuotationsPage() {
 
   return (
     <Box>
-      {viewer}
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap' }}>
         <Typography variant="h5" fontWeight={600} sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' } }}>{t('title')}</Typography>
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', justifyContent: { xs: 'flex-end', md: 'flex-end' }, width: { xs: '100%', md: 'auto' } }}>
@@ -958,12 +952,7 @@ export default function QuotationsPage() {
 
                   {/* File + Actions — bottom row */}
                   <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, mt: 1, pt: 1, borderTop: '1px solid', borderColor: 'divider' }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>{t('file')}</Typography>
-                      {row.filePath ? (
-                        <Button size="small" startIcon={<ViewIcon />} onClick={() => handleDownload(row.id, row.fileName ?? 'quotation')}>{t('downloadAttachment')}</Button>
-                      ) : <Typography variant="caption" sx={{ fontSize: '0.75rem' }}>—</Typography>}
-                    </Box>
+                    {expandedQuotationId === row.id && <LinkedFiles recordType="QUOTATION" recordId={row.id} />}
                     <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
                       <Button size="small" variant="outlined" startIcon={pdfLoading ? <CircularProgress size={16} /> : <PdfIcon />} onClick={() => previewQuotationPDF(row.id)} disabled={pdfLoading}>{t('open')}</Button>
                       <Button size="small" variant="outlined" startIcon={<TimelineIcon />} onClick={() => setTimelineRow(row)}>{t('view')}</Button>

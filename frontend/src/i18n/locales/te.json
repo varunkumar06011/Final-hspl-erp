@@ -434,7 +434,18 @@
     "libraryEmpty": "లైబ్రరీలో ఫైళ్లు లేవు",
     "libraryLoadFailed": "ఎంచుకున్న ఫైల్‌ను లోడ్ చేయలేకపోయాము",
     "close": "మూసివేయి",
-    "cameraUnavailable": "ఈ పరికరంలో కెమెరా అందుబాటులో లేదు లేదా అనుమతి నిరాకరించబడింది"
+    "cameraUnavailable": "ఈ పరికరంలో కెమెరా అందుబాటులో లేదు లేదా అనుమతి నిరాకరించబడింది",
+    "filesTitle": "ఫైళ్లు & ఫోటోలు",
+    "uploadFiles": "ఫైళ్లు అప్‌లోడ్ చేయండి",
+    "view": "చూడండి",
+    "chain": {
+      "MPR": "MPR",
+      "QUOTATION": "కొటేషన్",
+      "PO": "PO",
+      "GOODS_RECEIPT": "రసీదు",
+      "INVOICE": "ఇన్వాయిస్",
+      "PAYMENT": "చెల్లింపు"
+    }
   },
   "ledgerGroups": {
     "FIXED_ASSET": "స్థిర ఆస్తులు",

@@ -33,6 +33,7 @@ import ApprovalActionDialog from '../components/ApprovalActionDialog';
 import ResponsiveDialog from '../components/ResponsiveDialog';
 import { useDeepLinkRow } from '../hooks/useDeepLinkRow';
 import CommentsButton from '../components/CommentsButton';
+import LinkedFiles from '../components/LinkedFiles';
 import FilePicker from '../components/FilePicker';
 
 interface MPRItem {
@@ -944,6 +945,11 @@ export default function MaterialPurchaseRequestsPage() {
                       <Button size="small" color="success" onClick={() => closeMutation.mutate(row.id)} disabled={closeMutation.isPending}>{t('markClosed')}</Button>
                     )}
                   </Box>
+                  {expandedId === row.id && (
+                    <Box sx={{ mt: 1.5, pt: 1, borderTop: '1px solid', borderColor: 'divider' }}>
+                      <LinkedFiles recordType="MPR" recordId={row.id} />
+                    </Box>
+                  )}
                   </Box>
                 </AccordionDetails>
               </Accordion>

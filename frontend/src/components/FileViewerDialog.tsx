@@ -2,12 +2,12 @@ import { useCallback, useEffect, useState } from 'react';
 import { Alert, Box, Button, CircularProgress, DialogActions, DialogContent, DialogTitle } from '@mui/material';
 import { useTranslation } from 'react-i18next';
 import api from '../config/api';
-import { downloadFile } from '../utils/file';
+import { downloadPath } from '../utils/file';
 import ResponsiveDialog from './ResponsiveDialog';
 
 interface OpenTarget {
-  route: string;
-  id: string;
+  /** API path (under /api) that serves the file */
+  path: string;
   fileName: string;
 }
 
@@ -45,7 +45,7 @@ export function useFileViewer() {
     setUrl(null);
     setStatus('loading');
     api
-      .get(`/${target.route}/${target.id}/file`, { responseType: 'blob' })
+      .get(target.path, { responseType: 'blob' })
       .then((res) => {
         if (cancelled) return;
         const blob = res.data as Blob;
@@ -70,7 +70,12 @@ export function useFileViewer() {
   }, [target]);
 
   const openFile = useCallback((route: string, id: string, fileName: string) => {
-    setTarget({ route, id, fileName });
+    setTarget({ path: `/${route}/${id}/file`, fileName });
+  }, []);
+
+  /** Open a file by its full API path, e.g. `/material-purchase-requests/:id/receipt`. */
+  const openPath = useCallback((path: string, fileName: string) => {
+    setTarget({ path, fileName });
   }, []);
 
   const viewer = (
@@ -90,14 +95,13 @@ export function useFileViewer() {
         )}
       </DialogContent>
       <DialogActions>
-        {/* Word/Excel can't be shown in the browser; only then is a download offered. */}
-        {target && status === 'unsupported' && (
-          <Button onClick={() => void downloadFile(target.route, target.id, target.fileName)}>{t('shared.download')}</Button>
+        {target && status !== 'loading' && (
+          <Button onClick={() => void downloadPath(target.path, target.fileName)}>{t('shared.download')}</Button>
         )}
         <Button variant="contained" onClick={close}>{t('shared.close')}</Button>
       </DialogActions>
     </ResponsiveDialog>
   );
 
-  return { openFile, viewer };
+  return { openFile, openPath, viewer };
 }

@@ -24,7 +24,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import ResponsiveDialog from '../components/ResponsiveDialog';
 import ResponsiveTable from '../components/ResponsiveTable';
-import AttachmentUpload from '../components/AttachmentUpload';
+import LinkedFiles from '../components/LinkedFiles';
 import api, { extractErrorMessage } from '../config/api';
 import { GoodsReceiptStatus, InventoryItemType } from '@hospital-erp/shared';
 import { formatDate, STATUS_COLORS, enumLabel } from '../utils/enumOptions';
@@ -257,6 +257,9 @@ function GRNDetailDialog({ id, open, onClose }: { id: string | null; open: boole
                 </ResponsiveTable>
               </Box>
             )}
+            <Card variant="outlined" sx={{ p: 2 }}>
+              <LinkedFiles recordType="GOODS_RECEIPT" recordId={data.id} />
+            </Card>
           </Box>
         )}
       </DialogContent>
@@ -551,7 +554,7 @@ export default function GoodsReceiptsPage() {
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
             {t('inspectHelp')}
           </Typography>
-          {inspectReceipt && <AttachmentUpload entityType="GOODS_RECEIPT" entityId={inspectReceipt.id} />}
+          {inspectReceipt && <LinkedFiles recordType="GOODS_RECEIPT" recordId={inspectReceipt.id} />}
           {inspectReceipt?.items.map((item) => {
             const disposition = dispositions[item.id] ?? { acceptedQty: 0, rejectedQty: 0, rejectionReason: '', itemType: InventoryItemType.CONSUMABLE };
             return <Box key={item.id} sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1.5fr 1fr 1fr 1.5fr 1.5fr' }, gap: 1, mb: 1, alignItems: 'center' }}>

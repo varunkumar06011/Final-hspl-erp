@@ -6,6 +6,7 @@ import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middl
 import { validateMiddleware } from '../middleware/validate';
 import { logAudit } from '../services/audit.service';
 import { getStorageService, serveFile } from '../services/storage.service';
+import { listLinkedFiles } from '../services/linked-files.service';
 import multer from 'multer';
 import { isAllowedUpload, ALLOWED_UPLOAD_MESSAGE } from '../utils/uploadFileTypes';
 
@@ -43,6 +44,26 @@ router.get(
     }
   }
 );
+
+// GET /related — files of a procurement record plus every record it came from or led to
+// (MPR -> quotation -> PO -> receipt / invoice -> payment), computed live.
+router.get('/related', async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  try {
+    const { entityType, entityId } = req.query as Record<string, string | undefined>;
+    if (!entityType || !entityId || !/^[0-9a-f-]{36}$/i.test(entityId)) {
+      res.status(400).json({ error: 'entityType and a valid entityId are required' });
+      return;
+    }
+    const data = await listLinkedFiles(requireProjectId(req), req.user!.role, entityType, entityId);
+    if (!data) {
+      res.status(404).json({ error: 'Record not found' });
+      return;
+    }
+    res.json({ data, total: data.length });
+  } catch (error) {
+    next(error);
+  }
+});
 
 // POST /upload — multipart file upload linked to any entity
 router.post(

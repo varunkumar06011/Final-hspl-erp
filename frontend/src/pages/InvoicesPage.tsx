@@ -34,7 +34,6 @@ import {
   Search as SearchIcon,
   Check as CheckIcon,
   Close as CloseIcon,
-  Visibility as ViewIcon,
   ExpandMore as ExpandMoreIcon,
   Delete as DeleteIcon,
   Publish as PostToBooksIcon,
@@ -48,7 +47,6 @@ import { formatCurrency, formatDate, formatIndianNumber, STATUS_COLORS, enumLabe
 import { useTranslation, Trans } from 'react-i18next';
 import api, { extractErrorMessage } from '../config/api';
 import { useAuthStore } from '../stores/authStore';
-import { useFileViewer } from '../components/FileViewerDialog';
 import { generateInvoicePDF } from '../utils/invoicePdf';
 import { shareOnWhatsApp, buildInvoiceShareMessage } from '../utils/whatsappShare';
 import AcknowledgementCheckbox from '../components/AcknowledgementCheckbox';
@@ -60,6 +58,7 @@ import { useApprovalDeepLink } from '../utils/useApprovalDeepLink';
 import { useDeepLinkRow } from '../hooks/useDeepLinkRow';
 import { useUrlFilters } from '../hooks/useUrlFilters';
 import CommentsButton from '../components/CommentsButton';
+import { LinkedFilesButton } from '../components/LinkedFiles';
 import FilePicker from '../components/FilePicker';
 
 interface POItem {
@@ -592,10 +591,6 @@ export default function InvoicesPage() {
     return !alreadyApproved;
   }
 
-  const { openFile, viewer } = useFileViewer();
-  function handleDownload(id: string, fileName: string) {
-    openFile('invoices', id, fileName);
-  }
 
   function handleOcrExtract(data: OcrInvoiceData) {
     if (data.invoiceNumber) setInvoiceNumber(data.invoiceNumber);
@@ -608,7 +603,6 @@ export default function InvoicesPage() {
 
   return (
     <Box>
-      {viewer}
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap' }}>
         <Typography variant="h5" fontWeight={600} sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' } }}>{t('title')}</Typography>
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', justifyContent: { xs: 'flex-end', md: 'flex-end' }, width: { xs: '100%', md: 'auto' } }}>
@@ -718,9 +712,7 @@ export default function InvoicesPage() {
                         : <Typography variant="caption" color="text.secondary">—</Typography>}
                     </TableCell>
                     <TableCell data-label={t('colFile')}>
-                      {row.filePath ? (
-                        <IconButton size="small" onClick={() => handleDownload(row.id, row.fileName ?? 'invoice')}><ViewIcon fontSize="small" /></IconButton>
-                      ) : '—'}
+                      <LinkedFilesButton recordType="INVOICE" recordId={row.id} title={row.invoiceCode} />
                     </TableCell>
                     <TableCell data-label={t('colActions')}>
                       <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>

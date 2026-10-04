@@ -42,6 +42,8 @@ interface LibraryItem {
 
 interface UploadSourceButtonProps {
   onFile: (file: File) => void;
+  /** Allow picking several files from the device at once; `onFile` is called once per file. */
+  multiple?: boolean;
   children: ReactNode;
   accept?: string;
   startIcon?: ReactNode;
@@ -57,6 +59,7 @@ interface UploadSourceButtonProps {
  */
 export default function UploadSourceButton({
   onFile,
+  multiple,
   children,
   accept,
   startIcon,
@@ -109,10 +112,11 @@ export default function UploadSourceButton({
         ref={inputRef}
         type="file"
         accept={accept}
+        multiple={multiple}
         style={{ display: 'none' }}
         onChange={(e) => {
-          const f = e.target.files?.[0];
-          if (f) onFile(f);
+          const files = Array.from(e.target.files ?? []);
+          (multiple ? files : files.slice(0, 1)).forEach((f) => onFile(f));
           e.target.value = '';
         }}
       />

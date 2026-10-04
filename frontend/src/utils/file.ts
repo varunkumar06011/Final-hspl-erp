@@ -5,7 +5,12 @@ import api from '../config/api';
  * Works in both storage modes (local stream / supabase signed-URL redirect).
  */
 export async function downloadFile(route: string, id: string, fileName: string): Promise<void> {
-  const res = await api.get(`/${route}/${id}/file`, { responseType: 'blob' });
+  return downloadPath(`/${route}/${id}/file`, fileName);
+}
+
+/** Download from any authenticated API path (relative to /api). */
+export async function downloadPath(path: string, fileName: string): Promise<void> {
+  const res = await api.get(path, { responseType: 'blob' });
   const url = window.URL.createObjectURL(res.data);
   const a = document.createElement('a');
   a.href = url;

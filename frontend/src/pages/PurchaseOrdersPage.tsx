@@ -69,6 +69,7 @@ import { useDeepLinkRow } from '../hooks/useDeepLinkRow';
 import { useUrlFilters } from '../hooks/useUrlFilters';
 import { shareOnWhatsApp, buildPOShareMessage } from '../utils/whatsappShare';
 import CommentsButton from '../components/CommentsButton';
+import LinkedFiles from '../components/LinkedFiles';
 
 interface POItemLedgerPost {
   id: string;
@@ -1157,6 +1158,11 @@ export default function PurchaseOrdersPage() {
                           <Box sx={{ mt: 1.5 }}>
                             <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>{t('approvalStatus')}</Typography>
                             <ApprovalStepsDisplay steps={row.approvalWorkflow.steps} />
+                          </Box>
+                        )}
+                        {expandedPoId === row.id && (
+                          <Box sx={{ mt: 1.5, pt: 1, borderTop: '1px solid', borderColor: 'divider' }}>
+                            <LinkedFiles recordType="PO" recordId={row.id} />
                           </Box>
                         )}
                       </Box>

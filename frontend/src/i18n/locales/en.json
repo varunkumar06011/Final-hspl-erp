@@ -434,7 +434,18 @@
     "libraryEmpty": "No files found in the library",
     "libraryLoadFailed": "Could not load the selected file",
     "close": "Close",
-    "cameraUnavailable": "Camera is not available on this device or permission was denied"
+    "cameraUnavailable": "Camera is not available on this device or permission was denied",
+    "filesTitle": "Files & photos",
+    "uploadFiles": "Upload files",
+    "view": "View",
+    "chain": {
+      "MPR": "MPR",
+      "QUOTATION": "Quotation",
+      "PO": "PO",
+      "GOODS_RECEIPT": "Receipt",
+      "INVOICE": "Invoice",
+      "PAYMENT": "Payment"
+    }
   },
   "ledgerGroups": {
     "FIXED_ASSET": "Fixed Assets",

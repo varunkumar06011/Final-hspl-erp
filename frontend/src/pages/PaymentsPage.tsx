@@ -44,7 +44,6 @@ import {
   Close as CloseIcon,
   Payments as PaymentsIcon,
   ExpandMore as ExpandMoreIcon,
-  Visibility as ViewIcon,
   Receipt as ReceiptIcon,
   Delete as DeleteIcon,
   Edit as EditIcon,
@@ -58,7 +57,6 @@ import { enumLabel, formatCurrency, formatIndianNumber, STATUS_COLORS, todayLoca
 import { dateLocale } from '../i18n';
 import api, { extractErrorMessage } from '../config/api';
 import { useAuthStore } from '../stores/authStore';
-import { useFileViewer } from '../components/FileViewerDialog';
 import ApprovalActionDialog from '../components/ApprovalActionDialog';
 import ResponsiveTable from '../components/ResponsiveTable';
 import PaymentSheetsTab from '../components/PaymentSheetsTab';
@@ -67,6 +65,7 @@ import { useDeepLinkRow } from '../hooks/useDeepLinkRow';
 import { useUrlFilters } from '../hooks/useUrlFilters';
 import { shareOnWhatsApp, buildPaymentShareMessage } from '../utils/whatsappShare';
 import CommentsButton from '../components/CommentsButton';
+import { LinkedFilesButton } from '../components/LinkedFiles';
 
 import { useTranslation, Trans } from 'react-i18next';
 import FilePicker from '../components/FilePicker';
@@ -598,10 +597,6 @@ export default function PaymentsPage() {
     return row.approvalWorkflow.steps.filter((s) => s.status === 'APPROVED').length;
   }
 
-  const { openFile, viewer } = useFileViewer();
-  function handleDownload(id: string, fileName: string) {
-    openFile('payments', id, fileName);
-  }
 
   function validateExpenseForm(): boolean {
     const payee = String(expenseForm.payee ?? '').trim();
@@ -631,7 +626,6 @@ export default function PaymentsPage() {
 
   return (
     <Box>
-      {viewer}
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap' }}>
         <Typography variant="h5" fontWeight={600} sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' } }}>{tr('title')}</Typography>
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', justifyContent: { xs: 'flex-end', md: 'flex-end' }, width: { xs: '100%', md: 'auto' } }}>
@@ -919,9 +913,7 @@ export default function PaymentsPage() {
                         </Stack>
                       </TableCell>
                       <TableCell data-label={tr('file')}>
-                        {row.filePath
-                          ? <IconButton size="small" onClick={() => handleDownload(row.id, row.fileName ?? 'file')}><ViewIcon fontSize="small" /></IconButton>
-                          : '—'}
+                        <LinkedFilesButton recordType="PAYMENT" recordId={row.id} title={row.paymentCode} />
                       </TableCell>
                       <TableCell data-label={tr('actions')}>
                         <Box sx={{ display: 'flex', gap: 0.5 }}>
