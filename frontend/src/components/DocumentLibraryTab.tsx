@@ -29,6 +29,7 @@ import {
   Add as AddIcon,
   Delete as DeleteIcon,
   Download as DownloadIcon,
+  Edit as EditIcon,
   Image as ImageIcon,
   InsertDriveFile as FileIcon,
   InfoOutlined as InfoIcon,
@@ -112,6 +113,9 @@ export default function DocumentLibraryTab() {
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<{ row: LibraryRow; url: string | null; previewable: boolean } | null>(null);
   const [sharedQueue, setSharedQueue] = useState<File[]>([]);
+  const [fileLabel, setFileLabel] = useState('');
+  const [renameRow, setRenameRow] = useState<LibraryRow | null>(null);
+  const [renameValue, setRenameValue] = useState('');
 
   useEffect(() => {
     const id = setTimeout(() => setDebouncedSearch(search), 300);
@@ -133,6 +137,7 @@ export default function DocumentLibraryTab() {
       setTarget(null);
       setTargetInput('');
       setNote(note);
+      setFileLabel('');
       setFile(files[0]);
       setDialogOpen(true);
     });
@@ -174,6 +179,7 @@ export default function DocumentLibraryTab() {
         fd.append('entityId', target.id);
       }
       if (note) fd.append('description', note);
+      if (fileLabel.trim()) fd.append('fileName', fileLabel.trim());
       return (await api.post('/document-library/upload', fd, { headers: { 'Content-Type': 'multipart/form-data' } })).data;
     },
     onSuccess: () => {
@@ -182,11 +188,32 @@ export default function DocumentLibraryTab() {
       if (sharedQueue.length > 0) {
         setFile(sharedQueue[0]);
         setNote('');
+        setFileLabel('');
         setSharedQueue(sharedQueue.slice(1));
       } else {
         setDialogOpen(false);
       }
       setSuccessMsg(tr('libOkUploaded'));
+      setTimeout(() => setSuccessMsg(''), 3000);
+    },
+    onError: (err: unknown) => setError(extractErrorMessage(err)),
+  });
+
+  const renameMutation = useMutation({
+    mutationFn: async () => {
+      if (!renameRow) return;
+      await api.patch('/document-library/rename', {
+        source: renameRow.source,
+        id: renameRow.id,
+        fileName: renameValue,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/document-library'] });
+      queryClient.invalidateQueries({ queryKey: ['attachments'] });
+      queryClient.invalidateQueries({ queryKey: ['/documents'] });
+      setRenameRow(null);
+      setSuccessMsg(tr('libOkRenamed'));
       setTimeout(() => setSuccessMsg(''), 3000);
     },
     onError: (err: unknown) => setError(extractErrorMessage(err)),
@@ -261,6 +288,7 @@ export default function DocumentLibraryTab() {
     setTarget(null);
     setTargetInput('');
     setNote('');
+    setFileLabel('');
     setFile(null);
     setDialogOpen(true);
   };
@@ -361,6 +389,17 @@ export default function DocumentLibraryTab() {
                           </Tooltip>
                         )}
                         <Tooltip title={tr('libDownload')}><IconButton size="small" onClick={() => handleDownload(row)}><DownloadIcon fontSize="small" /></IconButton></Tooltip>
+                        {row.canDelete && (
+                          <Tooltip title={tr('libRename')}>
+                            <IconButton
+                              size="small"
+                              aria-label={tr('libRename')}
+                              onClick={() => { setError(''); setRenameValue(row.fileName); setRenameRow(row); }}
+                            >
+                              <EditIcon fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                        )}
                         {row.canDelete && row.deleteRoute && (
                           <Tooltip title={tr('libDelete')}>
                             <IconButton size="small" color="error" onClick={() => { if (confirm(tr('libConfirmDelete'))) deleteMutation.mutate(row.deleteRoute!); }}>
@@ -415,6 +454,35 @@ export default function DocumentLibraryTab() {
         </DialogActions>
       </ResponsiveDialog>
 
+      <ResponsiveDialog open={!!renameRow} onClose={() => setRenameRow(null)} maxWidth="sm" fullWidth>
+        <DialogTitle>{tr('libRenameTitle')}</DialogTitle>
+        <DialogContent>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
+            {error && <Alert severity="error" onClose={() => setError('')}>{error}</Alert>}
+            <TextField
+              autoFocus
+              size="small"
+              fullWidth
+              label={tr('libFileName')}
+              helperText={tr('libFileNameHint')}
+              value={renameValue}
+              onChange={(e) => setRenameValue(e.target.value)}
+              inputProps={{ maxLength: 200 }}
+            />
+          </Box>
+        </DialogContent>
+        <DialogActions sx={{ flexWrap: 'wrap', gap: 1 }}>
+          <Button onClick={() => setRenameRow(null)}>{tr('cancel')}</Button>
+          <Button
+            variant="contained"
+            onClick={() => { setError(''); renameMutation.mutate(); }}
+            disabled={!renameValue.trim() || renameMutation.isPending}
+          >
+            {renameMutation.isPending ? <CircularProgress size={20} /> : tr('libSave')}
+          </Button>
+        </DialogActions>
+      </ResponsiveDialog>
+
       <ResponsiveDialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>{tr('libUploadTitle')}</DialogTitle>
         <DialogContent>
@@ -447,6 +515,15 @@ export default function DocumentLibraryTab() {
               renderInput={(params) => <TextField {...params} label={tr('libPickRecord')} placeholder={tr('libPickHint')} helperText={tr('libPickOptional')} />}
             />
             )}
+            <TextField
+              size="small"
+              fullWidth
+              label={tr('libFileName')}
+              helperText={tr('libFileNameHint')}
+              value={fileLabel}
+              onChange={(e) => setFileLabel(e.target.value)}
+              inputProps={{ maxLength: 200 }}
+            />
             <TextField size="small" fullWidth label={tr('libDescription')} value={note} onChange={(e) => setNote(e.target.value)} inputProps={{ maxLength: 500 }} />
             <FilePicker
               accept={ACCEPT}

@@ -76,6 +76,78 @@ router.get(
   }
 );
 
+/** Cleaned display name; keeps the original extension when the new name has none. */
+function cleanFileName(input: unknown, original: string): string | null {
+  const name = String(input ?? '')
+    .replace(/[\\/\x00-\x1f]/g, ' ')
+    .trim()
+    .slice(0, 200);
+  if (!name) return null;
+  const ext = /\.[A-Za-z0-9]{1,8}$/.exec(original)?.[0] ?? '';
+  return ext && !name.toLowerCase().endsWith(ext.toLowerCase()) ? `${name}${ext}` : name;
+}
+
+// PATCH /rename — change the name shown for an uploaded file (not the stored copy)
+router.patch('/rename', async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  try {
+    const projectId = requireProjectId(req);
+    const { source, id } = req.body as { source?: string; id?: string };
+    if (!id || !/^[0-9a-f-]{36}$/i.test(id) || (source !== 'ATTACHMENT' && source !== 'DOCUMENT')) {
+      res.status(400).json({ error: 'Invalid file' });
+      return;
+    }
+
+    if (source === 'ATTACHMENT') {
+      const existing = await prisma.attachment.findFirst({ where: { id, projectId } });
+      const fileName = existing && cleanFileName(req.body.fileName, existing.fileName);
+      if (!existing) {
+        res.status(404).json({ error: 'File not found' });
+        return;
+      }
+      if (!fileName) {
+        res.status(400).json({ error: 'File name is required' });
+        return;
+      }
+      await prisma.attachment.update({ where: { id }, data: { fileName } });
+      await logAudit({
+        userId: req.user!.id,
+        action: AuditAction.UPDATE,
+        entityType: 'ATTACHMENT',
+        entityId: id,
+        projectId,
+        oldValue: { fileName: existing.fileName },
+        newValue: { fileName },
+      });
+      res.json({ fileName });
+      return;
+    }
+
+    const existing = await prisma.document.findFirst({ where: { id, projectId, deletedAt: null } });
+    const fileName = existing && cleanFileName(req.body.fileName, existing.fileName);
+    if (!existing) {
+      res.status(404).json({ error: 'File not found' });
+      return;
+    }
+    if (!fileName) {
+      res.status(400).json({ error: 'File name is required' });
+      return;
+    }
+    await prisma.document.update({ where: { id }, data: { fileName, name: fileName } });
+    await logAudit({
+      userId: req.user!.id,
+      action: AuditAction.UPDATE,
+      entityType: 'DOCUMENT',
+      entityId: id,
+      projectId,
+      oldValue: { fileName: existing.fileName },
+      newValue: { fileName },
+    });
+    res.json({ fileName });
+  } catch (error) {
+    next(error);
+  }
+});
+
 // POST /upload — upload a file, optionally linked to a record
 router.post(
   '/upload',
@@ -94,6 +166,7 @@ router.post(
       const category = String(req.body.category ?? '');
       const entityId = String(req.body.entityId ?? '');
       const description = req.body.description ? String(req.body.description).slice(0, 500) : null;
+      const displayName = cleanFileName(req.body.fileName, req.file.originalname) ?? req.file.originalname;
 
       // No record picked: keep it as a general document (floor plans, drawings, ...).
       if (!entityId) {
@@ -102,10 +175,10 @@ router.post(
         const doc = await prisma.document.create({
           data: {
             projectId,
-            name: req.file.originalname,
+            name: displayName,
             description,
             resolveTo: [],
-            fileName: req.file.originalname,
+            fileName: displayName,
             filePath: uploaded.filePath,
             mimeType: req.file.mimetype,
             uploadedBy: req.user!.id,
@@ -149,7 +222,7 @@ router.post(
           projectId,
           entityType,
           entityId,
-          fileName: req.file.originalname,
+          fileName: displayName,
           filePath: uploadResult.filePath,
           mimeType: req.file.mimetype,
           fileType: isImage ? 'IMAGE' : 'DOCUMENT',
