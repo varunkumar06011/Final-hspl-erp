@@ -21,6 +21,7 @@ import {
   Typography,
 } from '@mui/material';
 import {
+  AttachFile as AttachIcon,
   AutoAwesome as AssistantIcon,
   Close as CloseIcon,
   Mic as MicIcon,
@@ -31,6 +32,7 @@ import {
 } from '@mui/icons-material';
 import { useTranslation } from 'react-i18next';
 import api from '../config/api';
+import CameraCapture from './CameraCapture';
 import { enumLabel, formatCurrency, formatDate } from '../utils/enumOptions';
 
 interface GeminiContent {
@@ -61,7 +63,7 @@ interface ListTable {
   rows: { id: string; link: string | null; values: Record<string, unknown> }[];
 }
 type Msg =
-  | { id: number; role: 'user'; text: string }
+  | { id: number; role: 'user'; text: string; images?: string[] }
   | { id: number; role: 'assistant'; text: string; tables: ListTable[]; pending: PendingAction[] }
   | { id: number; role: 'error'; text: string };
 
@@ -72,11 +74,40 @@ interface ActionState {
   label?: string;
   link?: string | null;
   error?: string;
+  photos?: { attached: number; total: number };
 }
 
 const AMOUNT_COLS = /(total|amount|grandTotal)$/i;
 const STATUS_COLS = /(status|type)$/i;
 const DATE_VALUE = /^\d{4}-\d{2}-\d{2}T/;
+
+const MAX_PHOTOS = 3;
+const MAX_PHOTO_EDGE = 1600;
+
+/** Shrinks a camera/gallery photo to a JPEG data URL small enough to send in a chat message. */
+async function photoToDataUrl(file: File): Promise<string> {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const el = new Image();
+      el.onload = () => resolve(el);
+      el.onerror = () => reject(new Error('unreadable image'));
+      el.src = url;
+    });
+    const scale = Math.min(1, MAX_PHOTO_EDGE / Math.max(img.naturalWidth, img.naturalHeight));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(img.naturalWidth * scale));
+    canvas.height = Math.max(1, Math.round(img.naturalHeight * scale));
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('no canvas');
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    return canvas.toDataURL('image/jpeg', 0.8);
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
 
 interface Props {
   open: boolean;
@@ -93,6 +124,8 @@ export default function AssistantDrawer({ open, onClose }: Props) {
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
   const [listening, setListening] = useState(false);
+  const [photos, setPhotos] = useState<{ id: number; dataUrl: string }[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const historyRef = useRef<GeminiContent[]>([]);
   const idRef = useRef(0);
@@ -133,18 +166,47 @@ export default function AssistantDrawer({ open, onClose }: Props) {
     [t],
   );
 
+  const addPhotos = useCallback(
+    async (files: File[]) => {
+      const room = MAX_PHOTOS - photos.length;
+      if (room <= 0) {
+        addMsg({ role: 'error', text: t('photoMax', { n: MAX_PHOTOS }) });
+        return;
+      }
+      for (const file of files.slice(0, room)) {
+        try {
+          const dataUrl = await photoToDataUrl(file);
+          idRef.current += 1;
+          const id = idRef.current;
+          setPhotos((prev) => (prev.length >= MAX_PHOTOS ? prev : [...prev, { id, dataUrl }]));
+        } catch {
+          addMsg({ role: 'error', text: t('photoError') });
+        }
+      }
+      if (files.length > room) addMsg({ role: 'error', text: t('photoMax', { n: MAX_PHOTOS }) });
+    },
+    [photos.length, addMsg, t],
+  );
+
   const send = useCallback(
     async (raw: string) => {
-      const text = raw.trim();
-      if (!text || busy) return;
+      const typed = raw.trim();
+      if ((!typed && photos.length === 0) || busy) return;
+      const text = typed || t('photoDefault');
+      const sending = photos;
       wantListenRef.current = false;
       recognitionRef.current?.abort?.();
       setListening(false);
       setInput('');
-      addMsg({ role: 'user', text });
+      setPhotos([]);
+      addMsg({ role: 'user', text, images: sending.map((p) => p.dataUrl) });
       setBusy(true);
       try {
-        const { data } = await api.post('/assistant/chat', { message: text, history: historyRef.current });
+        const { data } = await api.post('/assistant/chat', {
+          message: text,
+          history: historyRef.current,
+          images: sending.map((p) => ({ mimeType: 'image/jpeg', data: p.dataUrl.split(',')[1] })),
+        });
         historyRef.current = data.history ?? [];
         addMsg({ role: 'assistant', text: data.reply ?? '', tables: data.tables ?? [], pending: data.pending ?? [] });
       } catch (err) {
@@ -153,7 +215,7 @@ export default function AssistantDrawer({ open, onClose }: Props) {
         setBusy(false);
       }
     },
-    [busy, addMsg, errorText],
+    [busy, photos, addMsg, errorText, t],
   );
 
   const setAction = (id: string, patch: ActionState) => setActions((prev) => ({ ...prev, [id]: patch }));
@@ -163,7 +225,7 @@ export default function AssistantDrawer({ open, onClose }: Props) {
     try {
       const { data } = await api.post(`/assistant/actions/${a.id}/confirm`);
       historyRef.current = [...historyRef.current, ...(data.historyAppend ?? [])];
-      setAction(a.id, { status: 'saved', label: data.result?.label, link: data.result?.link });
+      setAction(a.id, { status: 'saved', label: data.result?.label, link: data.result?.link, photos: data.result?.photos });
       void queryClient.invalidateQueries();
     } catch (err: any) {
       const body = err?.response?.data;
@@ -189,6 +251,7 @@ export default function AssistantDrawer({ open, onClose }: Props) {
     setMessages([]);
     setActions({});
     setInput('');
+    setPhotos([]);
   };
 
   const toggleMic = () => {
@@ -313,6 +376,13 @@ export default function AssistantDrawer({ open, onClose }: Props) {
           if (m.role === 'user') {
             return (
               <Paper key={m.id} elevation={0} sx={{ alignSelf: 'flex-end', maxWidth: '85%', px: 1.5, py: 1, bgcolor: 'primary.main', color: 'primary.contrastText', borderRadius: 2, whiteSpace: 'pre-wrap' }}>
+                {m.images && m.images.length > 0 && (
+                  <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', mb: m.text ? 0.75 : 0 }}>
+                    {m.images.map((src, i) => (
+                      <Box key={i} component="img" src={src} alt="" sx={{ width: 72, height: 72, objectFit: 'cover', borderRadius: 1 }} />
+                    ))}
+                  </Box>
+                )}
                 <Typography variant="body2">{m.text}</Typography>
               </Paper>
             );
@@ -462,6 +532,13 @@ export default function AssistantDrawer({ open, onClose }: Props) {
                               {t('openRecord')} <OpenIcon sx={{ fontSize: 14, verticalAlign: 'middle' }} />
                             </Link>
                           )}
+                          {st.photos && (
+                            <Typography variant="caption" sx={{ display: 'block' }}>
+                              {st.photos.attached === st.photos.total
+                                ? t('photosSaved', { count: st.photos.attached })
+                                : t('photosPartial', { attached: st.photos.attached, total: st.photos.total })}
+                            </Typography>
+                          )}
                         </Alert>
                       )}
                       {st.status === 'failed' && (
@@ -491,7 +568,36 @@ export default function AssistantDrawer({ open, onClose }: Props) {
         <div ref={endRef} />
       </Box>
 
-      <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'flex-end', p: 1.5, borderTop: 1, borderColor: 'divider' }}>
+      {photos.length > 0 && (
+        <Box sx={{ display: 'flex', gap: 1, px: 1.5, pt: 1.5, flexWrap: 'wrap', borderTop: 1, borderColor: 'divider' }}>
+          {photos.map((p) => (
+            <Box key={p.id} sx={{ position: 'relative' }}>
+              <Box component="img" src={p.dataUrl} alt="" sx={{ width: 64, height: 64, objectFit: 'cover', borderRadius: 1, display: 'block' }} />
+              <IconButton
+                size="small"
+                aria-label={t('removePhoto')}
+                onClick={() => setPhotos((prev) => prev.filter((x) => x.id !== p.id))}
+                sx={{ position: 'absolute', top: -8, right: -8, bgcolor: 'background.paper', border: 1, borderColor: 'divider', p: 0.25, '&:hover': { bgcolor: 'background.paper' } }}
+              >
+                <CloseIcon sx={{ fontSize: 14 }} />
+              </IconButton>
+            </Box>
+          ))}
+        </Box>
+      )}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        multiple
+        hidden
+        onChange={(e) => {
+          const files = Array.from(e.target.files ?? []);
+          e.target.value = '';
+          if (files.length) void addPhotos(files);
+        }}
+      />
+      <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'flex-end', p: 1.5, borderTop: photos.length ? 0 : 1, borderColor: 'divider' }}>
         <TextField
           fullWidth
           multiline
@@ -508,6 +614,14 @@ export default function AssistantDrawer({ open, onClose }: Props) {
           }}
           inputProps={{ maxLength: 4000 }}
         />
+        <Tooltip title={t('attach')}>
+          <span>
+            <IconButton onClick={() => fileInputRef.current?.click()} disabled={busy || photos.length >= MAX_PHOTOS} aria-label={t('attach')}>
+              <AttachIcon />
+            </IconButton>
+          </span>
+        </Tooltip>
+        <CameraCapture onCapture={(file) => void addPhotos([file])} disabled={busy || photos.length >= MAX_PHOTOS} size="medium" />
         {SpeechRecognitionCtor && (
           <Tooltip title={listening ? t('micStop') : t('mic')}>
             <IconButton color={listening ? 'error' : 'default'} onClick={toggleMic} aria-label={t('mic')}>
@@ -517,7 +631,7 @@ export default function AssistantDrawer({ open, onClose }: Props) {
         )}
         <Tooltip title={t('send')}>
           <span>
-            <IconButton color="primary" onClick={() => void send(input)} disabled={busy || !input.trim()} aria-label={t('send')}>
+            <IconButton color="primary" onClick={() => void send(input)} disabled={busy || (!input.trim() && photos.length === 0)} aria-label={t('send')}>
               <SendIcon />
             </IconButton>
           </span>

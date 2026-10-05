@@ -70,6 +70,34 @@ export async function callApi(
   }
 }
 
+/** Multipart POST (file uploads) as the logged-in user; same guarantees as callApi. */
+export async function callApiForm(authorization: string, path: string, form: FormData): Promise<ApiResult> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  try {
+    const res = await fetch(`${baseUrl()}/api${path}`, {
+      method: 'POST',
+      // No Content-Type: fetch adds the multipart boundary itself.
+      headers: { Authorization: authorization, [INTERNAL_HEADER]: INTERNAL_SECRET },
+      body: form,
+      signal: controller.signal,
+    });
+    const text = await res.text();
+    let body: any = null;
+    try {
+      body = text ? JSON.parse(text) : null;
+    } catch {
+      body = { raw: text.slice(0, 500) };
+    }
+    return { ok: res.ok, status: res.status, body };
+  } catch (err) {
+    const aborted = (err as Error).name === 'AbortError';
+    return { ok: false, status: aborted ? 504 : 502, body: { error: aborted ? 'The request timed out' : 'Could not reach the server' } };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /** Best human-readable message from an API error body. */
 export function apiErrorMessage(result: ApiResult): string {
   const b = result.body;

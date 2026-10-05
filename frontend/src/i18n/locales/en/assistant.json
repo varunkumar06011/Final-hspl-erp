@@ -1,6 +1,6 @@
 {
-  "title": "Assistant",
-  "open": "Open assistant",
+  "title": "Miko",
+  "open": "Open Miko",
   "newChat": "New chat",
   "close": "Close",
   "placeholder": "Tell me what to do… (English / తెలుగు)",
@@ -28,8 +28,8 @@
   "noRows": "No records found",
   "errors": {
     "generic": "Something went wrong. Please try again.",
-    "limit": "You have reached today's assistant limit.",
-    "disabled": "The assistant is not enabled.",
+    "limit": "You have reached today's Miko limit.",
+    "disabled": "Miko is not enabled.",
     "busy": "The AI service is busy. Please try again in a moment."
   },
   "tool": {
@@ -69,7 +69,12 @@
     "sourceType": "Source",
     "supplier": "Supplier",
     "reference": "Reference no.",
-    "date": "Date"
+    "date": "Date",
+    "photos": "Photos",
+    "serviceCategory": "Service category",
+    "servicePeriod": "Service period",
+    "technicalRequirements": "Technical requirements",
+    "contactNumber": "Contact number"
   },
   "total": {
     "subtotal": "Subtotal",
@@ -114,5 +119,13 @@
     "unit": "Unit",
     "paymentCode": "Code",
     "amount": "Amount"
-  }
+  },
+  "attach": "Attach photo",
+  "removePhoto": "Remove photo",
+  "photoDefault": "Read this photo and prepare the request from it.",
+  "photoError": "Could not read that photo. Try a JPG or PNG.",
+  "photoMax": "You can attach up to {{n}} photos.",
+  "photosSaved_one": "{{count}} photo attached to the record.",
+  "photosSaved_other": "{{count}} photos attached to the record.",
+  "photosPartial": "Only {{attached}} of {{total}} photos could be attached."
 }

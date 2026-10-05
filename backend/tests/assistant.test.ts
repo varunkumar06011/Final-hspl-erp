@@ -30,6 +30,7 @@ vi.mock('../src/services/assistant/gemini', () => ({
 
 vi.mock('../src/services/assistant/internalApi', () => ({
   callApi: vi.fn(),
+  callApiForm: vi.fn(),
   apiErrorMessage: (r: { body?: { error?: string } }) => r.body?.error ?? 'failed',
   INTERNAL_SECRET: 's',
   INTERNAL_HEADER: 'x-assistant-internal',
@@ -37,12 +38,13 @@ vi.mock('../src/services/assistant/internalApi', () => ({
 
 import { prisma } from '../src/config/prisma';
 import { generate } from '../src/services/assistant/gemini';
-import { callApi } from '../src/services/assistant/internalApi';
+import { callApi, callApiForm } from '../src/services/assistant/internalApi';
 import { TOOLS, TOOLS_BY_NAME } from '../src/services/assistant/tools';
 import { runChat, confirmAction, cancelAction, sanitizeHistory, consumeDailyQuota } from '../src/services/assistant/engine';
 
 const mGenerate = generate as unknown as ReturnType<typeof vi.fn>;
 const mCallApi = callApi as unknown as ReturnType<typeof vi.fn>;
+const mCallApiForm = callApiForm as unknown as ReturnType<typeof vi.fn>;
 const db = prisma as unknown as {
   project: { findUnique: ReturnType<typeof vi.fn> };
   assistantAction: Record<'create' | 'findFirst' | 'update' | 'updateMany', ReturnType<typeof vi.fn>>;
@@ -271,5 +273,68 @@ describe('history + quota', () => {
 
   it('tool lookup never exposes anything outside the registry', () => {
     expect(TOOLS_BY_NAME['approve_po']).toBeUndefined();
+  });
+});
+
+describe('service requests and photos', () => {
+  const photo = { mimeType: 'image/jpeg' as const, data: 'A'.repeat(200) };
+
+  it('proposes a SERVICE request with its category and period, keeping the photo only on the stored action', async () => {
+    mGenerate
+      .mockResolvedValueOnce({
+        role: 'model',
+        parts: [
+          {
+            functionCall: {
+              name: 'create_mpr',
+              args: {
+                requestType: 'SERVICE',
+                vendorId: VENDOR_ID,
+                serviceCategory: 'Repair & Maintenance',
+                servicePeriodStart: '2026-10-10',
+                servicePeriodEnd: '2026-10-12',
+                items: [{ materialName: 'AC servicing', quantity: 4, unit: 'visit', estimatedRate: 1500 }],
+              },
+            },
+          },
+        ],
+      })
+      .mockResolvedValueOnce({ role: 'model', parts: [{ text: 'Please confirm.' }] });
+    mCallApi.mockResolvedValue({ ok: true, status: 200, body: { id: VENDOR_ID, name: 'ABC Traders', vendorCode: 'V001' } });
+    db.assistantAction.create.mockResolvedValue({ id: 'a1' });
+
+    const out = await runChat(user, 'AC service chey', [], [photo]);
+
+    const keys = out.pending[0].summary.fields.map((f) => f.key);
+    expect(keys).toEqual(expect.arrayContaining(['requestType', 'serviceCategory', 'servicePeriod', 'photos']));
+    expect(db.assistantAction.create.mock.calls[0][0].data.args._images).toHaveLength(1);
+    // The model saw the photo this turn, but the history returned to the client does not carry it.
+    expect(JSON.stringify(mGenerate.mock.calls[0][0].contents)).toContain(photo.data);
+    expect(JSON.stringify(out.history)).not.toContain(photo.data);
+  });
+
+  it('on confirm, sends the request without the photos and uploads them to the new record', async () => {
+    db.assistantAction.findFirst.mockResolvedValue({
+      id: 'abcdef12-0000-4000-8000-000000000000',
+      tool: 'create_mpr',
+      status: 'PENDING',
+      createdAt: new Date(),
+      args: { vendorId: VENDOR_ID, items: [{ materialName: 'Cement', quantity: 5 }], _images: [photo] },
+    });
+    db.assistantAction.updateMany.mockResolvedValue({ count: 1 });
+    db.assistantAction.update.mockResolvedValue({});
+    mCallApi.mockResolvedValue({ ok: true, status: 201, body: { data: { id: VENDOR_ID, mprNumber: 'VGH-MPR001' } } });
+    mCallApiForm.mockResolvedValue({ ok: true, status: 201, body: {} });
+
+    const out = await confirmAction('abcdef12-0000-4000-8000-000000000000', user);
+
+    expect(out.ok).toBe(true);
+    expect(JSON.stringify(mCallApi.mock.calls[0][3])).not.toContain('_images');
+    expect(mCallApiForm).toHaveBeenCalledTimes(1);
+    const form = mCallApiForm.mock.calls[0][2] as FormData;
+    expect(form.get('entityType')).toBe('MATERIAL_PURCHASE_REQUEST');
+    expect(form.get('entityId')).toBe(VENDOR_ID);
+    expect(out.result?.photos).toEqual({ attached: 1, total: 1 });
+    expect(db.assistantAction.update.mock.calls.at(-1)?.[0].data.args._images).toBeUndefined();
   });
 });

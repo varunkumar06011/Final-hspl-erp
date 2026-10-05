@@ -18,7 +18,8 @@ npm run typecheck          # tsc --noEmit in every workspace
 npm run lint               # eslint . --ext .ts,.tsx
 npm run format             # prettier (single quotes, semi, width 100, trailing commas)
 npm run seed               # backend/prisma/seed.ts
-npm test                   # backend vitest only (no frontend tests exist)
+npm test                   # backend vitest only (no frontend tests exist) -- see warning below
+npm run i18n:check         # frontend en/te locale key check (run before finishing UI work)
 ```
 
 Backend (from `backend/`):
@@ -30,6 +31,8 @@ npx vitest run --exclude "**/e2e-real-*.test.ts"         # skip tests needing li
 npx vitest run --config vitest.real.config.ts            # real-DB e2e (e2e-full-lifecycle + tests/scenarios), serial
 npx prisma migrate dev                                   # create/apply migrations locally
 ```
+
+**Warning:** the default `vitest.config.ts` includes every `tests/**/*.test.ts`, so a bare `npm test` / `vitest run` also runs `e2e-full-lifecycle` and `tests/scenarios`, which hit the real (shared hosted) DB. Run named test files instead.
 
 Unit/logic tests mock Prisma; only the `e2e-real-*` / `vitest.real.config.ts` suites need Postgres at localhost:5432 (see `backend/tests/README.md`).
 
@@ -83,9 +86,9 @@ The frontend is bilingual via `react-i18next` (`frontend/src/i18n/`). A language
 - Run `npm run i18n:check` before finishing UI work. It fails on en/te key mismatches or missing keys, and warns on hardcoded English (`--strict` makes warnings fail).
 - Out of scope by design: PDF/CSV/print output, WhatsApp share text, legal pages, backend-supplied strings.
 
-## AI assistant (Telugu / English chat)
+## AI assistant "Miko" (Telugu / English chat)
 
-A chat drawer (`AssistantDrawer.tsx`, robot icon in the AppShell top bar) that reads records and prepares creates. Backend: `backend/src/services/assistant/` + `routes/assistant.routes.ts`, tests in `tests/assistant.test.ts`.
+The assistant is branded **Miko** (UI strings in the `assistant` i18n namespace, system prompt in `engine.ts`). A chat drawer (`AssistantDrawer.tsx`, robot icon in the AppShell top bar) that reads records and prepares creates. Backend: `backend/src/services/assistant/` + `routes/assistant.routes.ts`, tests in `tests/assistant.test.ts`.
 
 - **It never touches the database directly.** Every tool call is an HTTP call to this server's own `/api` carrying the user's own bearer token (`internalApi.ts`), so RBAC, project scoping, validation, approvals, sequence numbers and audit all apply unchanged. Loopback calls carry a per-process secret header so the rate limiter in `app.ts` skips them.
 - **Create-only, by construction.** `tools.ts` is the whole capability list: read tools (`list_records`, `get_record`, `search_records`) and create tools (vendor, MPR, quotation, PO, goods receipt, invoice, stock entry). There is deliberately no approve/reject/pay/delete/cancel/update tool; a test fails if one is added. Adding a capability is a code change in `tools.ts`.

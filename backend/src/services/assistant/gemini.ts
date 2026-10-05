@@ -13,6 +13,8 @@ export interface GeminiPart {
   text?: string;
   functionCall?: { name: string; args?: Record<string, unknown> };
   functionResponse?: { name: string; response: Record<string, unknown> };
+  /** A photo the user attached this turn (never kept in the history sent back to the client). */
+  inlineData?: { mimeType: string; data: string };
   // Returned by thinking models on function-call parts; must be echoed back verbatim.
   thoughtSignature?: string;
   thought?: boolean;

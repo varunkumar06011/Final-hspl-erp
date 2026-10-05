@@ -288,12 +288,14 @@ const readTools: ReadTool[] = [
 ];
 
 // ─── write tools (create-only, proposal + confirm) ──────────────────────────
+// Unit codes the MPR / service-request form offers (QTY_UNIT_OPTIONS + SERVICE_UNIT_OPTIONS in the frontend).
+const UNIT_CODES = ['nos', 'hrs', 'sqft', 'rft', 'kg', 'ton', 'ltr', 'set', 'day', 'visit', 'job', 'lumpsum'];
 const lineItemMaterial = (extra: Record<string, unknown>) =>
   O(
     {
       materialName: S('Material name in English, e.g. Cement 53 Grade. Translate Telugu names.'),
       quantity: N('Quantity.'),
-      unit: S('Unit: Bags, Nos, Kg, Tons, Meters, Sq.ft, Ltr...'),
+      unit: E(UNIT_CODES, 'Unit code. Materials: nos (pieces, bags, bundles), kg, ton, ltr, sqft, rft, set. Services: hrs, day, visit, job, lumpsum. Put the pack in the name if useful, e.g. "Cement 53 Grade (bags)" with unit nos.'),
       ...extra,
     },
     ['materialName', 'quantity'],
@@ -356,7 +358,7 @@ const writeTools: WriteTool[] = [
     declaration: {
       name: 'create_mpr',
       description:
-        'Propose a Material Purchase Request (MPR) — a request for materials or services from a vendor. It is saved as a DRAFT; the user submits it for approval in the app. Needs the vendor (existing vendorId, or newVendor only if the user agreed to create one).',
+        'Propose a Material Purchase Request (requestType MATERIAL) or a Service Request (requestType SERVICE) for a vendor. It is saved as a DRAFT; the user submits it for approval in the app. Needs the vendor (existing vendorId, or newVendor only if the user agreed to create one) and at least one item with a quantity. For SERVICE, each item is a service/work line (materialName = what work, e.g. "AC servicing", quantity = hours/days/visits/jobs, unit from the service units).',
       parameters: O(
         {
           requestType: E(['MATERIAL', 'SERVICE'], 'Default MATERIAL.'),
@@ -378,7 +380,9 @@ const writeTools: WriteTool[] = [
           deliveryAddress: S('Delivery address.'),
           contactPerson: S('Site contact person.'),
           contactNumber: S('Site contact number.'),
-          serviceCategory: S('SERVICE requests only: AMC, Repair & Maintenance, Installation, Consultancy...'),
+          serviceCategory: E(['AMC / Annual Maintenance Contract', 'Repair & Maintenance', 'Installation & Commissioning', 'Consultancy / Professional Services', 'Manpower / Labour Supply', 'Transportation / Logistics', 'Housekeeping Services', 'Security Services', 'IT / Software Services', 'Other'], 'SERVICE requests only: pick the closest category.'),
+          servicePeriodStart: S('SERVICE requests only: service start date, YYYY-MM-DD.'),
+          servicePeriodEnd: S('SERVICE requests only: service end date, YYYY-MM-DD.'),
           technicalRequirements: S('Technical requirements.'),
         },
         ['items'],
@@ -401,11 +405,16 @@ const writeTools: WriteTool[] = [
         fields: [
           field('requestType', a.requestType ?? 'MATERIAL'),
           ...maybe('vendor', vendor),
+          ...maybe('serviceCategory', a.serviceCategory),
+          ...maybe('servicePeriod', a.servicePeriodStart || a.servicePeriodEnd ? `${a.servicePeriodStart ?? '…'} → ${a.servicePeriodEnd ?? '…'}` : null),
           ...maybe('requiredBy', a.requiredBy),
           ...maybe('priority', a.priority),
           ...maybe('department', a.department),
           ...maybe('description', a.description),
+          ...maybe('technicalRequirements', a.technicalRequirements),
           ...maybe('deliveryAddress', a.deliveryAddress),
+          ...maybe('contactPerson', a.contactPerson),
+          ...maybe('contactNumber', a.contactNumber),
         ],
         items,
         totals: [field('subtotal', money(subtotal)), ...(gstRate ? [field('gst', `${gstRate}% · ${money(gst)}`)] : []), field('total', money(subtotal + gst))],

@@ -24,6 +24,11 @@ function assistantUser(req: AuthenticatedRequest): AssistantUser {
 const chatSchema = z.object({
   message: z.string().trim().min(1).max(4000),
   history: z.unknown().optional(),
+  // Photos from the camera / gallery, downscaled by the client (~2.5 MB of base64 each at most).
+  images: z
+    .array(z.object({ mimeType: z.enum(['image/jpeg', 'image/png', 'image/webp']), data: z.string().min(100).max(2_500_000).regex(/^[A-Za-z0-9+/]+=*$/) }))
+    .max(3)
+    .optional(),
 });
 
 // GET /assistant/status — lets the UI hide the assistant when it is switched off.
@@ -51,12 +56,13 @@ router.post('/chat', async (req: AuthenticatedRequest, res: Response, next: Next
     }
 
     const started = Date.now();
-    const result = await runChat(assistantUser(req), parsed.data.message, parsed.data.history);
+    const result = await runChat(assistantUser(req), parsed.data.message, parsed.data.history, parsed.data.images ?? []);
     logger.info({
       event: 'assistant_chat',
       userId: req.user!.id,
       ms: Date.now() - started,
       pending: result.pending.map((p) => p.tool),
+      images: parsed.data.images?.length ?? 0,
     });
     res.json(result);
   } catch (error) {
