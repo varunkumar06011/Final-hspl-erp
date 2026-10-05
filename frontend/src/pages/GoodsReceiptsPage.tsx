@@ -1,3 +1,4 @@
+import { useActiveRecord } from '../hooks/useActiveRecord';
 import { useEffect, useState } from 'react';
 import {
   Alert,
@@ -354,6 +355,7 @@ export default function GoodsReceiptsPage() {
   });
 
   const receipts: Receipt[] = receiptsQuery.data?.data ?? [];
+  useActiveRecord('GOODS_RECEIPT', detailId, receipts.find((r) => r.id === detailId)?.receiptNumber);
   const selectedPo = posQuery.data?.find((po) => po.id === selectedPoId);
 
   function openInspection(receipt: Receipt) {

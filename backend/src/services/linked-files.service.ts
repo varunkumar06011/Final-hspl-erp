@@ -69,7 +69,7 @@ export interface LinkedFile {
   deleteRoute?: string;
 }
 
-interface Ids {
+export interface Ids {
   MPR: Set<string>;
   QUOTATION: Set<string>;
   PO: Set<string>;
@@ -82,7 +82,7 @@ const isImage = (m?: string | null) => !!m && m.startsWith('image/');
 const userSelect = { select: { id: true, name: true } } as const;
 
 /** Ids of the record, everything it came from, and everything raised from it. */
-async function resolveChain(projectId: string, type: ChainType, id: string): Promise<Ids | null> {
+export async function resolveChain(projectId: string, type: ChainType, id: string): Promise<Ids | null> {
   const ids: Ids = {
     MPR: new Set(),
     QUOTATION: new Set(),

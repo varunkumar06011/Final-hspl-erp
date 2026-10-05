@@ -33,6 +33,7 @@ import ApprovalStepsDisplay from '../components/ApprovalStepsDisplay';
 import ApprovalActionDialog from '../components/ApprovalActionDialog';
 import ResponsiveDialog from '../components/ResponsiveDialog';
 import { useDeepLinkRow } from '../hooks/useDeepLinkRow';
+import { useActiveRecord } from '../hooks/useActiveRecord';
 import CommentsButton from '../components/CommentsButton';
 import LinkedFiles from '../components/LinkedFiles';
 import FilePicker from '../components/FilePicker';
@@ -272,6 +273,11 @@ export default function MaterialPurchaseRequestsPage() {
   // Deep-link from a push notification or global search: ?id=<mprId> scrolls
   // to and briefly highlights the matching card.
   const { highlightId, rowRef } = useDeepLinkRow<MPRRow>('/material-purchase-requests', mprs, 'mprNumber', setSearch);
+  // Open the card a deep link points at (same as the PO and quotation pages)
+  useEffect(() => {
+    if (highlightId) setExpandedId(highlightId);
+  }, [highlightId]);
+  useActiveRecord('MPR', expandedId, mprs.find((r) => r.id === expandedId)?.mprNumber);
 
   // A deep-linked row (from a notification / global search) may live on the
   // other tab — switch to its tab first so useDeepLinkRow above can find it.

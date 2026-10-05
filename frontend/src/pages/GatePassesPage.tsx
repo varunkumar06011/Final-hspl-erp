@@ -1,4 +1,5 @@
 ﻿import { useState } from 'react';
+import { useActiveRecordSetter } from '../hooks/useActiveRecord';
 import {
   Box,
   Typography,
@@ -208,6 +209,7 @@ export default function GatePassesPage() {
   });
 
   const rows: GatePassRow[] = data?.data ?? [];
+  const setActiveRecord = useActiveRecordSetter();
   const pagination = data?.pagination ?? { page: 1, pageSize: 20, total: 0, totalPages: 0 };
 
   function resetForm() {
@@ -384,7 +386,7 @@ export default function GatePassesPage() {
                   </TableRow>
                 ) : (
                   rows.map((row) => (
-                    <TableRow key={row.id} hover>
+                    <TableRow key={row.id} hover onClick={() => setActiveRecord({ type: 'GATE_PASS', id: row.id, label: row.passNumber })}>
                       <TableCell data-label={t('passNumber')}>{row.passNumber}</TableCell>
                       <TableCell data-label={t('type')}><Chip size="small" label={row.gatePassCategory === 'VISITOR' ? t('visitor') : t('material')} color={row.gatePassCategory === 'VISITOR' ? 'info' : 'default'} /></TableCell>
                       <TableCell data-label={t('po')}>{row.purchaseOrder?.poNumber ?? '—'}</TableCell>

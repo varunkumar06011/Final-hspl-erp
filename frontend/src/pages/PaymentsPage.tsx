@@ -1,4 +1,4 @@
-﻿import { useState, useRef } from 'react';
+﻿import { useState, useRef, useEffect } from 'react';
 import {
   Box,
   Typography,
@@ -62,6 +62,7 @@ import ResponsiveTable from '../components/ResponsiveTable';
 import PaymentSheetsTab from '../components/PaymentSheetsTab';
 import { useApprovalDeepLink } from '../utils/useApprovalDeepLink';
 import { useDeepLinkRow } from '../hooks/useDeepLinkRow';
+import { useActiveRecordSetter } from '../hooks/useActiveRecord';
 import { useUrlFilters } from '../hooks/useUrlFilters';
 import { shareOnWhatsApp, buildPaymentShareMessage } from '../utils/whatsappShare';
 import CommentsButton from '../components/CommentsButton';
@@ -577,6 +578,11 @@ export default function PaymentsPage() {
   useApprovalDeepLink(rows, (row) => setApprovalAction({ row, action: 'approve' }));
   // Deep-link from global search: ?id=<prId> — filter to that payment and highlight it
   const { highlightId, rowRef } = useDeepLinkRow<PaymentRequestRow>('/payments', rows, 'paymentCode', (v) => { setSearch(v); setPage(0); });
+  const setActiveRecord = useActiveRecordSetter();
+  useEffect(() => {
+    const hit = rows.find((r) => r.id === highlightId);
+    if (hit) setActiveRecord({ type: 'PAYMENT', id: hit.id, label: hit.paymentCode });
+  }, [highlightId]);
   useUrlFilters({ search: (v) => { setSearch(v); setPage(0); }, status: (v) => { setStatusFilter(v); setPage(0); }, type: (v) => { setTypeFilter(v); setPage(0); }, minAmount: setMinAmount, maxAmount: setMaxAmount, dateFilter: setDateFilter });
 
   function canApprove(row: PaymentRequestRow): boolean {
@@ -876,7 +882,7 @@ export default function PaymentsPage() {
                   <TableRow><TableCell colSpan={11} align="center" sx={{ py: 4 }}><Typography color="text.secondary">{tr('noPaymentRequestsFound')}</Typography></TableCell></TableRow>
                 ) : (
                   rows.map((row) => (
-                    <TableRow key={row.id} hover ref={rowRef(row.id)} sx={{ ...(highlightId === row.id && { bgcolor: 'warning.light', '&:hover': { bgcolor: 'warning.light' } }) }}>
+                    <TableRow key={row.id} hover ref={rowRef(row.id)} onClick={() => setActiveRecord({ type: 'PAYMENT', id: row.id, label: row.paymentCode })} sx={{ ...(highlightId === row.id && { bgcolor: 'warning.light', '&:hover': { bgcolor: 'warning.light' } }) }}>
                       <TableCell data-label={tr('code')}>{row.paymentCode}</TableCell>
                       <TableCell data-label={tr('type')}><Chip label={enumLabel(row.type)} size="small" color={row.type === 'EXPENSE' ? 'secondary' : row.type === 'ADVANCE' ? 'warning' : 'primary'} variant="outlined" /></TableCell>
                       <TableCell data-label={tr('descriptionInvoicePo')}>

@@ -66,6 +66,7 @@ import LandscapeExcelTable from '../components/LandscapeExcelTable';
 import { useMobileLandscape } from '../hooks/useMobileLandscape';
 import { useApprovalDeepLink } from '../utils/useApprovalDeepLink';
 import { useDeepLinkRow } from '../hooks/useDeepLinkRow';
+import { useActiveRecord } from '../hooks/useActiveRecord';
 import { useUrlFilters } from '../hooks/useUrlFilters';
 import { shareOnWhatsApp, buildPOShareMessage } from '../utils/whatsappShare';
 import CommentsButton from '../components/CommentsButton';
@@ -542,6 +543,7 @@ export default function PurchaseOrdersPage() {
   useEffect(() => {
     if (highlightId) setExpandedPoId(highlightId);
   }, [highlightId]);
+  useActiveRecord('PO', expandedPoId, rows.find((r) => r.id === expandedPoId)?.poNumber);
   // Read NL query filters from URL on mount
   useUrlFilters({ search: (v) => { setSearch(v); setPage(0); }, status: (v) => { setStatusFilter(v); setPage(0); }, minAmount: setMinAmount, maxAmount: setMaxAmount, dateFilter: setDateFilter });
 

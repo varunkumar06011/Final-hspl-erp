@@ -57,6 +57,7 @@ import ResponsiveTable from '../components/ResponsiveTable';
 import RefreshButton from '../components/RefreshButton';
 import { useApprovalDeepLink } from '../utils/useApprovalDeepLink';
 import { useDeepLinkRow } from '../hooks/useDeepLinkRow';
+import { useActiveRecordSetter } from '../hooks/useActiveRecord';
 import { useUrlFilters } from '../hooks/useUrlFilters';
 import CommentsButton from '../components/CommentsButton';
 import { LinkedFilesButton } from '../components/LinkedFiles';
@@ -534,6 +535,11 @@ export default function InvoicesPage() {
   useApprovalDeepLink(rows, (row) => setApprovalAction({ row, action: 'approve' }));
   // Deep-link from global search: ?id=<invoiceId> — filter to that invoice and highlight it
   const { highlightId, rowRef } = useDeepLinkRow<InvoiceRow>('/invoices', rows, 'invoiceCode', (v) => { setSearch(v); setPage(0); });
+  const setActiveRecord = useActiveRecordSetter();
+  useEffect(() => {
+    const hit = rows.find((r) => r.id === highlightId);
+    if (hit) setActiveRecord({ type: 'INVOICE', id: hit.id, label: hit.invoiceCode });
+  }, [highlightId]);
   useUrlFilters({ search: (v) => { setSearch(v); setPage(0); }, status: (v) => { setStatusFilter(v); setPage(0); }, minAmount: setMinAmount, maxAmount: setMaxAmount, dateFilter: setDateFilter });
 
   function downloadInvoicePdf(row: InvoiceRow) {
@@ -663,7 +669,7 @@ export default function InvoicesPage() {
                 <TableRow><TableCell colSpan={18} align="center" sx={{ py: 4 }}><Typography color="text.secondary">{t('noInvoices')}</Typography></TableCell></TableRow>
               ) : (
                 rows.map((row) => (
-                  <TableRow key={row.id} hover ref={rowRef(row.id)} sx={{ ...(highlightId === row.id && { bgcolor: 'warning.light', '&:hover': { bgcolor: 'warning.light' } }) }}>
+                  <TableRow key={row.id} hover ref={rowRef(row.id)} onClick={() => setActiveRecord({ type: 'INVOICE', id: row.id, label: row.invoiceCode })} sx={{ ...(highlightId === row.id && { bgcolor: 'warning.light', '&:hover': { bgcolor: 'warning.light' } }) }}>
                     <TableCell data-label={t('colInvoiceCode')}>{row.invoiceCode}</TableCell>
                     <TableCell data-label={t('colInvoiceNo')}>{row.invoiceNumber}</TableCell>
                     <TableCell data-label={t('colVendor')}>{row.vendor?.vendorCode} - {row.vendor?.name ?? '—'}</TableCell>

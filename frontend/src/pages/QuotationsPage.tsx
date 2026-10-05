@@ -46,6 +46,7 @@ import { num, gstMult, toIncGst, toPreTax, round2 } from '../utils/taxCalc';
 import api, { extractErrorMessage } from '../config/api';
 import { useAuthStore } from '../stores/authStore';
 import { useDeepLinkRow } from '../hooks/useDeepLinkRow';
+import { useActiveRecord } from '../hooks/useActiveRecord';
 import AcknowledgementCheckbox from '../components/AcknowledgementCheckbox';
 import ApprovalActionDialog from '../components/ApprovalActionDialog';
 import OcrAutoFill, { type OcrQuotationData } from '../components/OcrAutoFill';
@@ -388,6 +389,7 @@ export default function QuotationsPage() {
   useEffect(() => {
     if (highlightId) setExpandedQuotationId(highlightId);
   }, [highlightId]);
+  useActiveRecord('QUOTATION', expandedQuotationId, rows.find((r) => r.id === expandedQuotationId)?.quotationNumber);
 
   // Auto-open approval dialog when navigated from a push notification
   useApprovalDeepLink(rows, (row) => {

@@ -242,6 +242,22 @@
     "switchFailed": "Could not switch project. Please try again.",
     "switching": "Switching project…"
   },
+  "related": {
+    "button": "Related to {{label}}",
+    "loading": "Loading related records…",
+    "none": "No other linked records",
+    "failed": "Could not load related records",
+    "current": "this record",
+    "types": {
+      "MPR": "Material Requests",
+      "QUOTATION": "Quotations",
+      "PO": "Purchase Orders",
+      "GATE_PASS": "Gate Passes",
+      "GOODS_RECEIPT": "Goods Receipts",
+      "INVOICE": "Invoices",
+      "PAYMENT": "Payments"
+    }
+  },
   "sections": {
     "Procurement": "Procurement",
     "Masters": "Masters",

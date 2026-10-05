@@ -1,6 +1,6 @@
-import { Box, AppBar, Toolbar, Typography, IconButton, Avatar, Chip, Menu, MenuItem, Drawer, List, ListItem, ListItemIcon, ListItemText, useTheme, useMediaQuery, Snackbar, Alert, Breadcrumbs, Link, CircularProgress, Badge } from '@mui/material';
-import { useState, useEffect, useCallback, useMemo } from 'react';
-import { useNavigate, useLocation, Link as RouterLink } from 'react-router-dom';
+import { Box, AppBar, Toolbar, Typography, IconButton, Avatar, Chip, Menu, MenuItem, Drawer, List, ListItem, ListItemIcon, ListItemText, useTheme, useMediaQuery, Snackbar, Alert, CircularProgress, Badge } from '@mui/material';
+import { useState, useEffect, useCallback } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Menu as MenuIcon,
@@ -37,7 +37,6 @@ import {
   BarChart as AccountingReportsIcon,
   DarkMode as DarkModeIcon,
   LightMode as LightModeIcon,
-  NavigateNext as NavigateNextIcon,
   AutoAwesome as AutoAwesomeIcon,
   SmartToy as AssistantIcon,
   ArrowBack as ArrowBackIcon,
@@ -59,6 +58,7 @@ import GlobalSearch from './GlobalSearch';
 import NLQueryBar from './NLQueryBar';
 import AssistantDrawer from './AssistantDrawer';
 import PresenceBar from './PresenceBar';
+import RelatedRecordsMenu from './RelatedRecordsMenu';
 import { useTrackPageView } from '../hooks/useTrackPageView';
 import { useTranslation } from 'react-i18next';
 import LanguageToggle from './LanguageToggle';
@@ -289,23 +289,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     }).catch(() => {});
   }, [location.pathname, unreadComments, queryClient]);
 
-  // Build breadcrumb from current path
-  const breadcrumbs = useMemo(() => {
-    const path = location.pathname;
-    // Use the admin nav items for breadcrumb resolution if the user sees the admin dashboard
-    const navSource = (isAdminRole(user?.role ?? '') || user?.role === UserRole.ACCOUNTANT) ? ADMIN_NAV_ITEMS : NAV_ITEMS;
-    const navLabel = (label: string) => t(`nav.${label}`, label);
-    const home = { label: navLabel('Dashboard'), path: '/' };
-    if (path === '/') return [home];
-    const navItem = navSource.find((item) => item.path === path);
-    if (navItem) return [home, { label: navLabel(navItem.label), path }];
-    const partial = navSource.filter((item) => path.startsWith(item.path + '/') || path === item.path);
-    if (partial.length > 0) {
-      const best = partial[partial.length - 1];
-      return [home, { label: navLabel(best.label), path: best.path }, { label: t('common.details'), path }];
-    }
-    return [home, { label: path.split('/')[1] ?? 'Page', path }];
-  }, [location.pathname, user?.role, t]);
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
@@ -666,31 +649,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             <ArrowBackIcon />
           </IconButton>
         )}
-        {/* Breadcrumbs */}
-        <Breadcrumbs
-          separator={<NavigateNextIcon fontSize="small" />}
-          sx={{ mb: 2, display: { xs: 'none', sm: 'flex' } }}
-        >
-          {breadcrumbs.map((crumb, idx) => {
-            const isLast = idx === breadcrumbs.length - 1;
-            return isLast ? (
-              <Typography key={crumb.path} variant="body2" color="text.primary" fontWeight={500}>
-                {crumb.label}
-              </Typography>
-            ) : (
-              <Link
-                key={crumb.path}
-                component={RouterLink}
-                to={crumb.path}
-                variant="body2"
-                color="inherit"
-                sx={{ textTransform: 'capitalize', textDecoration: 'none', '&:hover': { textDecoration: 'underline' } }}
-              >
-                {crumb.label}
-              </Link>
-            );
-          })}
-        </Breadcrumbs>
+        {/* Related records of the record opened on this page */}
+        <RelatedRecordsMenu />
         {children}
       </Box>
 
