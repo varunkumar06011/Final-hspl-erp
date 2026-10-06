@@ -22,6 +22,10 @@ vi.mock('../src/config/prisma', () => ({
   },
 }));
 
+vi.mock('../src/services/assistant/notify', () => ({
+  notifyMikoPhotoSaved: vi.fn(),
+}));
+
 vi.mock('../src/services/assistant/openai', () => ({
   generate: vi.fn(),
   AssistantProviderError: class extends Error {},
@@ -38,12 +42,14 @@ vi.mock('../src/services/assistant/internalApi', () => ({
 import { prisma } from '../src/config/prisma';
 import { generate } from '../src/services/assistant/openai';
 import { callApi, callApiForm } from '../src/services/assistant/internalApi';
+import { notifyMikoPhotoSaved } from '../src/services/assistant/notify';
 import { TOOLS, TOOLS_BY_NAME } from '../src/services/assistant/tools';
 import { runChat, confirmAction, cancelAction, sanitizeHistory, consumeDailyQuota } from '../src/services/assistant/engine';
 
 const mGenerate = generate as unknown as ReturnType<typeof vi.fn>;
 const mCallApi = callApi as unknown as ReturnType<typeof vi.fn>;
 const mCallApiForm = callApiForm as unknown as ReturnType<typeof vi.fn>;
+const mNotify = notifyMikoPhotoSaved as unknown as ReturnType<typeof vi.fn>;
 const db = prisma as unknown as {
   project: { findUnique: ReturnType<typeof vi.fn> };
   assistantAction: Record<'create' | 'findFirst' | 'update' | 'updateMany', ReturnType<typeof vi.fn>>;
@@ -73,6 +79,7 @@ describe('assistant tool registry (hard limits)', () => {
       'create_quotation',
       'create_stock_entry',
       'create_vendor',
+      'save_to_library',
     ]);
   });
 
@@ -335,5 +342,65 @@ describe('service requests and photos', () => {
     expect(form.get('entityId')).toBe(VENDOR_ID);
     expect(out.result?.photos).toEqual({ attached: 1, total: 1 });
     expect(db.assistantAction.update.mock.calls.at(-1)?.[0].data.args._images).toBeUndefined();
+    expect(mNotify).toHaveBeenCalledTimes(1);
+  });
+
+  it('save_to_library needs a photo and keeps it only on the stored action', async () => {
+    const call = { role: 'model', parts: [{ functionCall: { name: 'save_to_library', args: { fileName: 'ABC Traders - Cement quotation', vendorName: 'ABC Traders', documentType: 'quotation' } } }] };
+    db.assistantAction.create.mockResolvedValue({ id: 'a9' });
+
+    mGenerate.mockResolvedValueOnce(call).mockResolvedValueOnce({ role: 'model', parts: [{ text: 'Attach a photo.' }] });
+    const none = await runChat(user, 'save this', []);
+    expect(none.pending).toHaveLength(0);
+    expect(db.assistantAction.create).not.toHaveBeenCalled();
+
+    mGenerate.mockResolvedValueOnce(call).mockResolvedValueOnce({ role: 'model', parts: [{ text: 'Press Save.' }] });
+    const out = await runChat(user, 'save this', [], [photo]);
+    expect(out.pending[0].tool).toBe('save_to_library');
+    expect(out.pending[0].summary.fields.map((f) => f.key)).toEqual(expect.arrayContaining(['saveAs', 'documentType', 'vendor', 'photos']));
+    expect(db.assistantAction.create.mock.calls[0][0].data.args._images).toHaveLength(1);
+  });
+
+  it('on confirm, files the photo in the document library under the chosen name and notifies', async () => {
+    db.assistantAction.findFirst.mockResolvedValue({
+      id: 'abcdef12-0000-4000-8000-000000000000',
+      tool: 'save_to_library',
+      status: 'PENDING',
+      createdAt: new Date(),
+      args: { fileName: 'ABC Traders - Cement quotation', vendorName: 'ABC Traders', _images: [photo] },
+    });
+    db.assistantAction.updateMany.mockResolvedValue({ count: 1 });
+    db.assistantAction.update.mockResolvedValue({});
+    mCallApiForm.mockResolvedValue({ ok: true, status: 201, body: { id: VENDOR_ID } });
+
+    const out = await confirmAction('abcdef12-0000-4000-8000-000000000000', user);
+
+    expect(out.ok).toBe(true);
+    expect(mCallApi).not.toHaveBeenCalled();
+    expect(mCallApiForm.mock.calls[0][1]).toBe('/document-library/upload');
+    const form = mCallApiForm.mock.calls[0][2] as FormData;
+    expect(form.get('fileName')).toBe('ABC Traders - Cement quotation');
+    expect(form.get('entityId')).toBeNull();
+    expect(out.result).toMatchObject({ label: 'ABC Traders - Cement quotation', link: '/documents', photos: { attached: 1, total: 1 } });
+    expect(mNotify).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports a failure and notifies nobody when the library upload is rejected', async () => {
+    db.assistantAction.findFirst.mockResolvedValue({
+      id: 'abcdef12-0000-4000-8000-000000000000',
+      tool: 'save_to_library',
+      status: 'PENDING',
+      createdAt: new Date(),
+      args: { fileName: 'X', _images: [photo] },
+    });
+    db.assistantAction.updateMany.mockResolvedValue({ count: 1 });
+    db.assistantAction.update.mockResolvedValue({});
+    mCallApiForm.mockResolvedValue({ ok: false, status: 403, body: { error: 'Forbidden' } });
+
+    const out = await confirmAction('abcdef12-0000-4000-8000-000000000000', user);
+
+    expect(out.ok).toBe(false);
+    expect(out.error).toBe('Forbidden');
+    expect(mNotify).not.toHaveBeenCalled();
   });
 });

@@ -18,6 +18,9 @@
   "thinking": "పని చేస్తున్నాను…",
   "reviewNote": "కింది వివరాలను చూడండి. మీరు నిర్ధారించే వరకు ఏదీ సేవ్ అవ్వదు.",
   "confirm": "నిర్ధారించి సేవ్ చేయండి",
+  "saveToLibrary": "సేవ్ చేయండి",
+  "libraryPhotosSaved_one": "{{count}} ఫోటో లైబ్రరీలో సేవ్ అయింది.",
+  "libraryPhotosSaved_other": "{{count}} ఫోటోలు లైబ్రరీలో సేవ్ అయ్యాయి.",
   "discard": "రద్దు చేయండి",
   "saving": "సేవ్ చేస్తోంది…",
   "saved": "సేవ్ అయింది",
@@ -39,7 +42,8 @@
     "create_purchase_order": "కొత్త పర్చేజ్ ఆర్డర్",
     "create_goods_receipt": "కొత్త గూడ్స్ రిసీప్ట్",
     "create_invoice": "కొత్త ఇన్వాయిస్",
-    "create_stock_entry": "కొత్త స్టాక్ ఎంట్రీ"
+    "create_stock_entry": "కొత్త స్టాక్ ఎంట్రీ",
+    "save_to_library": "ఫోటోను లైబ్రరీలో సేవ్ చేయండి"
   },
   "field": {
     "name": "పేరు",
@@ -74,7 +78,9 @@
     "serviceCategory": "సేవా వర్గం",
     "servicePeriod": "సేవా కాలం",
     "technicalRequirements": "సాంకేతిక అవసరాలు",
-    "contactNumber": "సంప్రదింపు నంబర్"
+    "contactNumber": "సంప్రదింపు నంబర్",
+    "saveAs": "ఈ పేరుతో సేవ్",
+    "documentType": "డాక్యుమెంట్ రకం"
   },
   "total": {
     "subtotal": "ఉప మొత్తం",

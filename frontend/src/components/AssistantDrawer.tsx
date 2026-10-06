@@ -510,7 +510,7 @@ export default function AssistantDrawer({ open, onClose }: Props) {
                           </Typography>
                           <Box sx={{ display: 'flex', gap: 1 }}>
                             <Button variant="contained" size="small" onClick={() => void confirm(a)}>
-                              {t('confirm')}
+                              {a.tool === 'save_to_library' ? t('saveToLibrary') : t('confirm')}
                             </Button>
                             <Button size="small" onClick={() => void discard(a)}>
                               {t('discard')}
@@ -535,7 +535,7 @@ export default function AssistantDrawer({ open, onClose }: Props) {
                           {st.photos && (
                             <Typography variant="caption" sx={{ display: 'block' }}>
                               {st.photos.attached === st.photos.total
-                                ? t('photosSaved', { count: st.photos.attached })
+                                ? t(a.tool === 'save_to_library' ? 'libraryPhotosSaved' : 'photosSaved', { count: st.photos.attached })
                                 : t('photosPartial', { attached: st.photos.attached, total: st.photos.total })}
                             </Typography>
                           )}

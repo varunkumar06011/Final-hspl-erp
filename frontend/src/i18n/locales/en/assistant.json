@@ -18,6 +18,9 @@
   "thinking": "Working on it…",
   "reviewNote": "Review the details below. Nothing is saved until you confirm.",
   "confirm": "Confirm & save",
+  "saveToLibrary": "Save",
+  "libraryPhotosSaved_one": "{{count}} photo saved to the library.",
+  "libraryPhotosSaved_other": "{{count}} photos saved to the library.",
   "discard": "Discard",
   "saving": "Saving…",
   "saved": "Saved",
@@ -39,7 +42,8 @@
     "create_purchase_order": "New purchase order",
     "create_goods_receipt": "New goods receipt",
     "create_invoice": "New invoice",
-    "create_stock_entry": "New stock entry"
+    "create_stock_entry": "New stock entry",
+    "save_to_library": "Save photo to library"
   },
   "field": {
     "name": "Name",
@@ -74,7 +78,9 @@
     "serviceCategory": "Service category",
     "servicePeriod": "Service period",
     "technicalRequirements": "Technical requirements",
-    "contactNumber": "Contact number"
+    "contactNumber": "Contact number",
+    "saveAs": "Save as",
+    "documentType": "Document type"
   },
   "total": {
     "subtotal": "Subtotal",
