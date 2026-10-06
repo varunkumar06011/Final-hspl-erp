@@ -1889,8 +1889,8 @@ router.post(
 );
 
 // POST /:id/change-payment-type — change payment type on an APPROVED PO.
-// No re-approval: the PO stays APPROVED and the new type applies immediately
-// everywhere (advance payments, invoice flow).
+// The PO is sent back for re-approval; the new type applies to advance
+// payments / the invoice flow once it is approved again.
 router.post(
   '/:id/change-payment-type',
   rbacMiddleware(Permission.CREATE_PO),
@@ -1955,17 +1955,40 @@ router.post(
 
       const oldValue = { paymentType: po.paymentType, advanceAmount: po.advanceAmount ? Number(po.advanceAmount) : null };
 
-      // No re-approval: the PO stays APPROVED and the change is audit-logged.
-      const updated = await prisma.purchaseOrder.update({
-        where: { id: po.id },
-        data: {
-          paymentType,
-          advanceAmount: resolvedAdvanceAmount,
-          editReason: reason,
-          editedAt: new Date(),
-          editedBy: req.user!.id,
-        },
-        include: poInclude,
+      // The PO goes back to PENDING_APPROVAL and must pass the approval workflow
+      // again. editedAt makes re-approval skip the budget commitment step (the
+      // amount is unchanged, so the existing commitment stands).
+      const adminRoles = await getActiveAdminRoles(projectId);
+      const updated = await prisma.$transaction(async (tx) => {
+        const row = await tx.purchaseOrder.update({
+          where: { id: po.id },
+          data: {
+            paymentType,
+            advanceAmount: resolvedAdvanceAmount,
+            editReason: reason,
+            editedAt: new Date(),
+            editedBy: req.user!.id,
+            status: POStatus.PENDING_APPROVAL,
+          },
+          include: poInclude,
+        });
+
+        if (po.approvalWorkflowId) {
+          await tx.approvalStep.deleteMany({ where: { workflowId: po.approvalWorkflowId } });
+          await tx.approvalWorkflow.update({
+            where: { id: po.approvalWorkflowId },
+            data: {
+              status: 'VERIFICATION',
+              currentStep: 0,
+              approvalPolicy: HEAD_THEN_ADMIN_POLICY,
+              steps: {
+                create: headThenAdminSteps(adminRoles),
+              },
+            },
+          });
+        }
+
+        return row;
       });
 
       await logAudit({
@@ -1975,8 +1998,17 @@ router.post(
         entityId: po.id,
         projectId,
         oldValue,
-        newValue: { paymentType, advanceAmount: resolvedAdvanceAmount, reason },
+        newValue: { paymentType, advanceAmount: resolvedAdvanceAmount, reason, status: POStatus.PENDING_APPROVAL },
       });
+
+      notifyApprovers(projectId, [...FIRST_LEVEL_APPROVER_ROLES] as UserRole[], {
+        approvalId: po.approvalWorkflowId ?? '',
+        entityType: 'PURCHASE_ORDER',
+        entityId: po.id,
+        title: 'PO Payment Type Changed — Re-approval Required',
+        body: `${po.poNumber} payment type changed to ${paymentType} and needs re-approval`,
+        url: `/pos?id=${po.id}`,
+      }).catch((err) => console.error('[Push] PO payment type notification error:', err));
 
       res.json(updated);
     } catch (error) {

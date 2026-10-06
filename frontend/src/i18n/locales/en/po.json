@@ -200,7 +200,7 @@
   "editReasonPlaceholder": "e.g. Vendor delivered 70 out of 100, closing PO at delivered quantity",
   "editSend": "Edit & Send for Re-approval",
   "changePtTitle": "Change Payment Type — {{n}}",
-  "changePtInfo": "Changing the payment type does not need re-approval. The PO stays approved and the new type applies immediately.",
+  "changePtInfo": "Changing the payment type sends the PO back for re-approval. The new type applies once it is approved again.",
   "currentPt": "Current Payment Type",
   "newPt": "New Payment Type",
   "select": "— Select —",
