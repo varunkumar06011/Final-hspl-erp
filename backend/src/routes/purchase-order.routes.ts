@@ -1688,27 +1688,6 @@ router.post(
         res.status(403).json({ error: 'Only an admin can edit an approved purchase order' });
         return;
       }
-      // An approved PO with financial links cannot be freely edited — the
-      // linked records would no longer match the PO amounts.
-      if (isApprovedPo) {
-        const [invoiceCount, paymentRequestCount, sheetCount, grCount] = await Promise.all([
-          prisma.vendorInvoice.count({ where: { poId: po.id, deletedAt: null } }),
-          prisma.paymentRequest.count({ where: { poId: po.id, deletedAt: null } }),
-          prisma.paymentSheet.count({ where: { poId: po.id, deletedAt: null } }),
-          prisma.goodsReceipt.count({ where: { poId: po.id, deletedAt: null } }),
-        ]);
-        const blockers = [
-          invoiceCount > 0 && `${invoiceCount} invoice(s)`,
-          paymentRequestCount > 0 && `${paymentRequestCount} payment request(s)`,
-          sheetCount > 0 && `${sheetCount} payment sheet entrie(s)`,
-          grCount > 0 && `${grCount} goods receipt(s)`,
-        ].filter(Boolean);
-        if (blockers.length > 0) {
-          res.status(400).json({ error: `This approved PO has linked ${blockers.join(', ')} and cannot be edited. Resolve the linked records first.` });
-          return;
-        }
-      }
-
       const { paymentTerms, deliveryDate, budgetHeadId, items: newItems, deductions, notes, referredBy } = req.body;
 
       // Validate budget head exists and belongs to project
@@ -1900,13 +1879,6 @@ router.post(
       const projectId = requireProjectId(req);
       const po = await prisma.purchaseOrder.findFirst({
         where: { id: req.params.id, projectId, deletedAt: null },
-        include: {
-          advancePaymentRequests: {
-            where: { deletedAt: null, status: { not: 'REJECTED' } },
-            select: { id: true, paymentCode: true },
-          },
-          invoices: { where: { deletedAt: null }, select: { id: true, invoiceCode: true } },
-        },
       });
       if (!po) {
         res.status(404).json({ error: 'Purchase order not found' });
@@ -1916,19 +1888,6 @@ router.post(
         res.status(400).json({ error: 'Only approved POs can have their payment type changed' });
         return;
       }
-      if (po.advancePaymentRequests.length > 0) {
-        res.status(409).json({
-          error: `Payment request ${po.advancePaymentRequests[0].paymentCode} already exists against this PO — cancel or complete it first`,
-        });
-        return;
-      }
-      if (po.invoices.length > 0) {
-        res.status(409).json({
-          error: `Invoice ${po.invoices[0].invoiceCode} already exists against this PO — payment type cannot be changed`,
-        });
-        return;
-      }
-
       const { paymentType, advanceAmount, reason } = req.body;
       if (paymentType === po.paymentType) {
         res.status(400).json({ error: 'Payment type is already ' + paymentType });
