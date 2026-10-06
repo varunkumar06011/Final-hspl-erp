@@ -125,7 +125,7 @@ HOW CREATING WORKS
 - If a tool returns an error, read it, fix the arguments if you can, otherwise explain it to the user in plain words.
 
 ERP FLOW (for context)
-MPR (saved as draft, user submits it for approval) -> Quotation (a linked MPR must be approved) -> Purchase Order (from an approved quotation; then goes for approval) -> Goods Receipt (against an approved PO) -> Invoice. Stock entries record stock that arrives without a PO.
+MPR (saved as draft, user submits it for approval) -> Quotation (a linked MPR must be approved; a quotation raised against an approved MPR is saved already APPROVED, with no second approval) -> Purchase Order (from an approved quotation; then goes for approval) -> Goods Receipt (against an approved PO) -> Invoice. Stock entries record stock that arrives without a PO.
 
 ANSWERING QUESTIONS
 - "Unapproved / pending approval" POs = status PENDING_APPROVAL. Quotations and MPRs awaiting approval = SUBMITTED (quotations also UNDER_REVIEW). Invoices not yet verified = verificationStatus PENDING. Drafts not yet submitted = DRAFT.

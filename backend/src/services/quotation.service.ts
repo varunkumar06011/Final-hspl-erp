@@ -2,6 +2,7 @@ import { prisma } from '../config/prisma';
 import {
   AuditAction,
   QuotationStatus,
+  ApprovalStatus,
   FIRST_LEVEL_APPROVER_ROLES,
 } from '@hospital-erp/shared';
 import { generateProjectSequenceNumber } from './sequence.service';
@@ -62,6 +63,12 @@ export { generateQuotationNumber };
  * registers any new vendor materials, computes totals, creates the quotation
  * with its line items, kicks off the approval workflow, logs an audit entry,
  * and notifies approvers via push.
+ *
+ * A quotation raised against an approved Material Purchase Request (mprId) is
+ * auto-approved: the request itself already went through approval, so the
+ * quotation is stored as APPROVED with an already-approved workflow and no
+ * approver is asked again. Quotations from work tasks / standalone still go
+ * through the normal approval workflow.
  *
  * Returns the created quotation with the standard includes.
  */
@@ -132,6 +139,7 @@ export async function createQuotation(input: CreateQuotationInput) {
   const grandTotal = totalAmount + gstAmount;
 
   const quotationNumber = providedNumber ?? (await generateQuotationNumber(projectId));
+  const autoApproved = !!mprId;
 
   // Create quotation
   const quotation = await prisma.quotation.create({
@@ -140,7 +148,7 @@ export async function createQuotation(input: CreateQuotationInput) {
       vendorId,
       mprId,
       quotationNumber,
-      status: QuotationStatus.SUBMITTED,
+      status: autoApproved ? QuotationStatus.APPROVED : QuotationStatus.SUBMITTED,
       totalAmount,
       gstAmount,
       grandTotal,
@@ -166,13 +174,27 @@ export async function createQuotation(input: CreateQuotationInput) {
 
   // Initiate approval workflow — HEAD_THEN_ADMIN: a Project Head or Head of
   // Construction approves first; then any one admin completes the approval.
-  const workflow = await approvalService.initiate({
-    entityType: 'QUOTATION',
-    entityId: quotation.id,
-    projectId,
-    minApprovers: 2,
-    approvalPolicy: HEAD_THEN_ADMIN_POLICY,
-  });
+  // Auto-approved quotations get a workflow that is already APPROVED, with no
+  // steps, so nothing shows up in anyone's approval queue.
+  const workflow = autoApproved
+    ? await prisma.approvalWorkflow.create({
+        data: {
+          entityType: 'QUOTATION',
+          entityId: quotation.id,
+          projectId,
+          status: ApprovalStatus.APPROVED,
+          currentStep: 0,
+          minApprovers: 2,
+          approvalPolicy: HEAD_THEN_ADMIN_POLICY,
+        },
+      })
+    : await approvalService.initiate({
+        entityType: 'QUOTATION',
+        entityId: quotation.id,
+        projectId,
+        minApprovers: 2,
+        approvalPolicy: HEAD_THEN_ADMIN_POLICY,
+      });
 
   // Link the workflow and return the full record (with includes) in one call.
   const result = await prisma.quotation.update({
@@ -187,18 +209,28 @@ export async function createQuotation(input: CreateQuotationInput) {
     entityType: 'QUOTATION',
     entityId: quotation.id,
     projectId,
-    newValue: { quotationNumber, vendorId, totalAmount, grandTotal, acknowledged: true },
+    newValue: {
+      quotationNumber,
+      vendorId,
+      totalAmount,
+      grandTotal,
+      acknowledged: true,
+      ...(autoApproved ? { autoApproved: true, reason: 'Raised against an approved Material Purchase Request', mprId } : {}),
+    },
   });
 
   // Only the first-level heads are told now; admins are notified once a head approves.
-  notifyApprovers(projectId, [...FIRST_LEVEL_APPROVER_ROLES], {
-    approvalId: workflow.id,
-    entityType: 'QUOTATION',
-    entityId: quotation.id,
-    title: 'New Approval Required',
-    body: `Quotation ${quotationNumber} from ${quotation.vendor?.name ?? 'vendor'} — ₹${grandTotal}`,
-    url: `/quotations?id=${quotation.id}`,
-  }).catch((err) => console.error('[Push] Quotation notification error:', err));
+  // Auto-approved quotations need no approver, so nobody is notified.
+  if (!autoApproved) {
+    notifyApprovers(projectId, [...FIRST_LEVEL_APPROVER_ROLES], {
+      approvalId: workflow.id,
+      entityType: 'QUOTATION',
+      entityId: quotation.id,
+      title: 'New Approval Required',
+      body: `Quotation ${quotationNumber} from ${quotation.vendor?.name ?? 'vendor'} — ₹${grandTotal}`,
+      url: `/quotations?id=${quotation.id}`,
+    }).catch((err) => console.error('[Push] Quotation notification error:', err));
+  }
 
   // If raised from a work task, link the quotation back to it and advance
   // the work task from PLANNED to IN_PROGRESS.
