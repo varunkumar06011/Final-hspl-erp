@@ -105,7 +105,10 @@ fi
 echo "    dump archive OK: ${TABLE_COUNT} tables with data"
 
 gzip -t "$SCHEMA_FILE"
-if ! gzip -dc "$SCHEMA_FILE" | grep -q '^CREATE TABLE'; then
+# Count instead of `grep -q`: with pipefail, grep exiting early SIGPIPEs gzip and
+# makes a valid dump look like it has no tables.
+CREATE_COUNT="$(gzip -dc "$SCHEMA_FILE" | grep -c '^CREATE TABLE' || true)"
+if [[ "$CREATE_COUNT" -lt 1 ]]; then
   echo "::error::schema dump contains no CREATE TABLE statements" >&2
   exit 1
 fi
