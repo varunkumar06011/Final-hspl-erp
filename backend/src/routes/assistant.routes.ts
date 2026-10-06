@@ -4,12 +4,12 @@ import { env } from '../config/env';
 import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middleware/auth';
 import { logger } from '../utils/logger';
 import { runChat, confirmAction, cancelAction, consumeDailyQuota, type AssistantUser } from '../services/assistant/engine';
-import { AssistantProviderError } from '../services/assistant/gemini';
+import { AssistantProviderError } from '../services/assistant/openai';
 
 const router = Router();
 router.use(authMiddleware);
 
-const isConfigured = () => env.ASSISTANT_ENABLED && !!env.GEMINI_API_KEY;
+const isConfigured = () => env.ASSISTANT_ENABLED && !!env.OPENAI_API_KEY;
 
 function assistantUser(req: AuthenticatedRequest): AssistantUser {
   return {

@@ -6,7 +6,7 @@
  */
 import { prisma } from '../../config/prisma';
 import { env } from '../../config/env';
-import { generate, type GeminiContent, type GeminiPart } from './gemini';
+import { generate, type ChatContent, type ChatPart } from './openai';
 import { callApi, callApiForm, apiErrorMessage } from './internalApi';
 import {
   DECLARATIONS,
@@ -55,7 +55,7 @@ export interface PendingAction {
 
 export interface ChatResult {
   reply: string;
-  history: GeminiContent[];
+  history: ChatContent[];
   tables: ListTable[];
   pending: PendingAction[];
 }
@@ -137,9 +137,9 @@ SAFETY
 }
 
 // ─── history handling ───────────────────────────────────────────────────────
-function cleanPart(p: any): GeminiPart | null {
+function cleanPart(p: any): ChatPart | null {
   if (!p || typeof p !== 'object') return null;
-  const out: GeminiPart = {};
+  const out: ChatPart = {};
   if (typeof p.text === 'string') out.text = p.text.slice(0, MAX_TEXT);
   if (p.functionCall && typeof p.functionCall.name === 'string' && TOOLS_BY_NAME[p.functionCall.name]) {
     out.functionCall = { name: p.functionCall.name, args: typeof p.functionCall.args === 'object' && p.functionCall.args ? p.functionCall.args : {} };
@@ -152,22 +152,22 @@ function cleanPart(p: any): GeminiPart | null {
 }
 
 /** Accepts only well-formed history coming back from the client. */
-export function sanitizeHistory(input: unknown): GeminiContent[] {
+export function sanitizeHistory(input: unknown): ChatContent[] {
   if (!Array.isArray(input)) return [];
-  const out: GeminiContent[] = [];
+  const out: ChatContent[] = [];
   for (const c of input.slice(-MAX_HISTORY_ITEMS)) {
     if (!c || (c.role !== 'user' && c.role !== 'model') || !Array.isArray(c.parts)) continue;
-    const parts = c.parts.map(cleanPart).filter((p: GeminiPart | null): p is GeminiPart => p !== null);
+    const parts = c.parts.map(cleanPart).filter((p: ChatPart | null): p is ChatPart => p !== null);
     if (parts.length) out.push({ role: c.role, parts });
   }
   return trimHistory(out);
 }
 
-const isPlainUserTurn = (c: GeminiContent) =>
+const isPlainUserTurn = (c: ChatContent) =>
   c.role === 'user' && c.parts.every((p) => p.text !== undefined && !p.functionResponse);
 
 /** Drop oldest turns (at a plain user message) until small enough, keeping call/response pairs intact. */
-function trimHistory(history: GeminiContent[]): GeminiContent[] {
+function trimHistory(history: ChatContent[]): ChatContent[] {
   let h = history;
   while (JSON.stringify(h).length > MAX_HISTORY_CHARS || (h.length && !isPlainUserTurn(h[0]))) {
     const next = h.findIndex((c, i) => i > 0 && isPlainUserTurn(c));
@@ -177,7 +177,7 @@ function trimHistory(history: GeminiContent[]): GeminiContent[] {
   return h;
 }
 
-const textOf = (c: GeminiContent) =>
+const textOf = (c: ChatContent) =>
   c.parts
     .filter((p) => p.text && !p.thought)
     .map((p) => p.text)
@@ -219,7 +219,7 @@ async function propose(tool: WriteTool, name: string, rawArgs: Record<string, an
 }
 
 /** Photos are only needed for the turn they were sent in; the history sent back to the client keeps a text marker instead. */
-function withoutImages(contents: GeminiContent[]): GeminiContent[] {
+function withoutImages(contents: ChatContent[]): ChatContent[] {
   return contents.map((c) =>
     c.parts.some((p) => p.inlineData)
       ? { ...c, parts: [...c.parts.filter((p) => !p.inlineData), { text: '(the user attached a photo with this message)' }] }
@@ -232,7 +232,7 @@ export async function runChat(user: AssistantUser, message: string, priorHistory
   const project = await prisma.project.findUnique({ where: { id: user.projectId }, select: { name: true, code: true } });
   const system = systemPrompt(user, project);
 
-  const contents: GeminiContent[] = [...sanitizeHistory(priorHistory), { role: 'user', parts: [{ text: message.slice(0, MAX_TEXT) }, ...images.map((i) => ({ inlineData: { mimeType: i.mimeType, data: i.data } }))] }];
+  const contents: ChatContent[] = [...sanitizeHistory(priorHistory), { role: 'user', parts: [{ text: message.slice(0, MAX_TEXT) }, ...images.map((i) => ({ inlineData: { mimeType: i.mimeType, data: i.data } }))] }];
   const tables: ListTable[] = [];
   const pending: PendingAction[] = [];
 
@@ -245,7 +245,7 @@ export async function runChat(user: AssistantUser, message: string, priorHistory
       return { reply: textOf(modelTurn), history: trimHistory(withoutImages(contents)), tables: tables.filter((t, i) => t.rows.length > 0 || i === 0 && tables.every((x) => x.rows.length === 0)), pending };
     }
 
-    const responses: GeminiPart[] = [];
+    const responses: ChatPart[] = [];
     let proposedThisTurn = false;
 
     for (const part of calls) {
@@ -281,7 +281,7 @@ export async function runChat(user: AssistantUser, message: string, priorHistory
   }
 
   // Ran out of steps — close the turn with a model message so history stays valid.
-  const fallback: GeminiContent = { role: 'model', parts: [{ text: 'I could not finish that. Please try a simpler request.' }] };
+  const fallback: ChatContent = { role: 'model', parts: [{ text: 'I could not finish that. Please try a simpler request.' }] };
   contents.push(fallback);
   return { reply: textOf(fallback), history: trimHistory(withoutImages(contents)), tables, pending };
 }
@@ -293,7 +293,7 @@ export interface ConfirmResult {
   error?: string;
   result?: { type: string; id: string | null; label: string; link: string | null; photos?: { attached: number; total: number } };
   /** Appended to the client's history so the model knows what was created (and its id). */
-  historyAppend?: GeminiContent[];
+  historyAppend?: ChatContent[];
 }
 
 export async function confirmAction(actionId: string, user: AssistantUser): Promise<ConfirmResult> {

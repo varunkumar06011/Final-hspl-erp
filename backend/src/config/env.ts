@@ -31,13 +31,17 @@ const envSchema = z.object({
   // Gemini (OCR document structuring — optional; local parser is used if omitted)
   GEMINI_API_KEY: z.string().optional(),
 
+  // OpenAI (AI assistant "Miko")
+  OPENAI_API_KEY: z.string().optional(),
+
   // AI assistant (chat that reads/creates records as the logged-in user).
-  // Reuses GEMINI_API_KEY; switch off with ASSISTANT_ENABLED=false.
+  // Uses OPENAI_API_KEY; switch off with ASSISTANT_ENABLED=false.
   ASSISTANT_ENABLED: z
     .enum(['true', 'false'])
     .default('true')
     .transform((v) => v === 'true'),
-  ASSISTANT_MODEL: z.string().default('gemini-3.8-flash'),
+  ASSISTANT_MODEL: z.string().default('gpt-5-mini'),
+  ASSISTANT_REASONING_EFFORT: z.enum(['minimal', 'low', 'medium', 'high']).default('low'),
   // Max user messages per user per day (cost guard).
   ASSISTANT_DAILY_LIMIT: z.coerce.number().int().positive().default(150),
   // Base URL the server uses to call its own API. Default: http://127.0.0.1:$PORT

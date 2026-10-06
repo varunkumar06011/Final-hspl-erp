@@ -22,7 +22,7 @@ import {
 } from '@hospital-erp/shared';
 import { callApi, apiErrorMessage } from './internalApi';
 import { REGISTRY } from '../search/registry';
-import type { FunctionDeclaration } from './gemini';
+import type { FunctionDeclaration } from './openai';
 
 export interface ToolContext {
   /** The caller's own Authorization header, forwarded to every internal call. */
@@ -53,7 +53,7 @@ export interface ListTable {
   rows: { id: string; link: string | null; values: Record<string, unknown> }[];
 }
 
-// ─── JSON-schema helpers (Gemini function-declaration subset) ───────────────
+// ─── JSON-schema helpers (upper-case type names; lower-cased for OpenAI in openai.ts) ───────────────
 const S = (description: string) => ({ type: 'STRING', description });
 const N = (description: string) => ({ type: 'NUMBER', description });
 const E = (values: string[], description: string) => ({ type: 'STRING', enum: values, description });

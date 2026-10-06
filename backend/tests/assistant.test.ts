@@ -3,9 +3,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 vi.mock('../src/config/env', () => ({
   env: {
     PORT: 4000,
-    GEMINI_API_KEY: 'test-key',
+    OPENAI_API_KEY: 'test-key',
     ASSISTANT_ENABLED: true,
-    ASSISTANT_MODEL: 'gemini-3.8-flash',
+    ASSISTANT_MODEL: 'gpt-5-mini',
     ASSISTANT_DAILY_LIMIT: 3,
     ASSISTANT_INTERNAL_URL: undefined,
   },
@@ -23,7 +23,7 @@ vi.mock('../src/config/prisma', () => ({
   },
 }));
 
-vi.mock('../src/services/assistant/gemini', () => ({
+vi.mock('../src/services/assistant/openai', () => ({
   generate: vi.fn(),
   AssistantProviderError: class extends Error {},
 }));
@@ -37,7 +37,7 @@ vi.mock('../src/services/assistant/internalApi', () => ({
 }));
 
 import { prisma } from '../src/config/prisma';
-import { generate } from '../src/services/assistant/gemini';
+import { generate } from '../src/services/assistant/openai';
 import { callApi, callApiForm } from '../src/services/assistant/internalApi';
 import { TOOLS, TOOLS_BY_NAME } from '../src/services/assistant/tools';
 import { runChat, confirmAction, cancelAction, sanitizeHistory, consumeDailyQuota } from '../src/services/assistant/engine';
