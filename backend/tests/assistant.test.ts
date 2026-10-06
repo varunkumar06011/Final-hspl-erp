@@ -5,7 +5,6 @@ vi.mock('../src/config/env', () => ({
     PORT: 4000,
     OPENAI_API_KEY: 'test-key',
     ASSISTANT_ENABLED: true,
-    ASSISTANT_MODEL: 'gpt-5-mini',
     ASSISTANT_DAILY_LIMIT: 3,
     ASSISTANT_INTERNAL_URL: undefined,
   },

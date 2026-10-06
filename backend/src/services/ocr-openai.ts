@@ -20,6 +20,8 @@ import type {
 } from './ocr.service.types';
 
 const OPENAI_API_URL = 'https://api.openai.com/v1/chat/completions';
+// Fixed on purpose: not configurable, so a stale env var can never point OCR at another model.
+const MODEL = 'gpt-5-mini';
 
 const QUOTATION_PROMPT = `Extract all fields from this quotation/invoice text. Return ONLY JSON, no markdown:
 {"vendorName":string|null,"quotationNumber":string|null,"date":"YYYY-MM-DD"|null,"lineItems":[{"materialName":string,"quantity":number,"unitPrice":number,"unit":string|null}],"gstAmount":number|null,"totalAmount":number|null,"grandTotal":number|null}
@@ -62,7 +64,7 @@ async function callOpenAI(content: string | unknown[], maxRetries = 3): Promise<
   }
 
   const body = {
-    model: env.OCR_MODEL,
+    model: MODEL,
     messages: [{ role: 'user', content }],
     response_format: { type: 'json_object' },
     reasoning_effort: 'low',

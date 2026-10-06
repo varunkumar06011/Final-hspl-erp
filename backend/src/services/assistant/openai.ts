@@ -12,6 +12,8 @@ import { logger } from '../../utils/logger';
 
 const OPENAI_API_URL = 'https://api.openai.com/v1/chat/completions';
 const TIMEOUT_MS = 90_000;
+// Fixed on purpose: not configurable, so a stale env var can never point Miko at another model.
+const MODEL = 'gpt-5-mini';
 
 export interface ChatPart {
   text?: string;
@@ -176,7 +178,7 @@ async function generateOnce(opts: {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
       body: JSON.stringify({
-        model: env.ASSISTANT_MODEL,
+        model: MODEL,
         messages: toMessages(opts.system, opts.contents),
         tools: opts.tools.map((t) => ({
           type: 'function',

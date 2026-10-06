@@ -21,7 +21,6 @@ import sharp from 'sharp';
 vi.mock('../src/config/env', () => ({
   env: {
     OPENAI_API_KEY: 'test-openai-key',
-    OCR_MODEL: 'gpt-5-mini',
     STORAGE_MODE: 'local',
     LOCAL_STORAGE_PATH: './test-uploads',
   },

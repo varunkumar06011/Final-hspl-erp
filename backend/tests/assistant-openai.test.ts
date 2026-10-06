@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('../src/config/env', () => ({
-  env: { OPENAI_API_KEY: 'sk-test', ASSISTANT_MODEL: 'gpt-5-mini', ASSISTANT_REASONING_EFFORT: 'low' },
+  env: { OPENAI_API_KEY: 'sk-test', ASSISTANT_REASONING_EFFORT: 'low' },
 }));
 vi.mock('../src/utils/logger', () => ({ logger: { warn: vi.fn(), error: vi.fn(), info: vi.fn() } }));
 
