@@ -106,21 +106,21 @@ if they reject good data, users can't do their jobs.
 
 ---
 
-### `ocr-service.test.ts` — OCR document extraction (local extraction + Gemini structuring)
+### `ocr-service.test.ts` — OCR document extraction (local extraction + OpenAI structuring)
 
 **What it covers:** the `extractFromFile` function that extracts structured data from quotation
-or invoice images/PDFs using local extraction followed by Gemini 2.5 Flash structuring. Digital
+or invoice images/PDFs using local extraction followed by OpenAI structuring. Digital
 PDFs use pdfjs-dist text extraction; images/scanned PDFs use Tesseract.js plus the original image
-for Gemini vision. The conservative regex parser remains the no-API fallback. This powers the
+for OpenAI vision. The conservative regex parser remains the no-API fallback. This powers the
 "Scan quotation / Scan invoice" auto-fill buttons in the frontend.
 
 | Behavior verified | Why it matters |
 |-------------------|----------------|
 | Unsupported file types rejected with a helpful message | Users upload Word docs by mistake — the error tells them what's accepted. |
-| Variable-layout image is sent to Gemini vision for structuring | Gemini sees the original table geometry instead of trusting potentially reordered OCR columns. |
-| Local extraction and parser remain available without Gemini | The app still returns conservative partial data when no API key is configured or Gemini fails. |
-| Missing `GEMINI_API_KEY` returns regex result as-is | Graceful degradation — the app still works without the fallback configured. |
-| Gemini API errors return regex result, not a crash | If the fallback fails, partial data is better than no data. |
+| Variable-layout image is sent to OpenAI vision for structuring | OpenAI sees the original table geometry instead of trusting potentially reordered OCR columns. |
+| Local extraction and parser remain available without OpenAI | The app still returns conservative partial data when no API key is configured or OpenAI fails. |
+| Missing `OPENAI_API_KEY` returns regex result as-is | Graceful degradation — the app still works without the fallback configured. |
+| OpenAI API errors return regex result, not a crash | If the fallback fails, partial data is better than no data. |
 | Corrupt PDF produces a friendly "Failed to read PDF" message | A scanned image renamed to `.pdf` will fail to parse — the user is told to upload a photo instead. |
 
 ### `ocr-parser.test.ts` — Local regex document parser

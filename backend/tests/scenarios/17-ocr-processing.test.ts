@@ -2,7 +2,7 @@
  * Scenario 17: OCR Processing
  *
  * Tests the OCR extract endpoint: validation, image processing, vendor matching.
- * The OCR pipeline may fall back to local regex if Gemini is not configured.
+ * The OCR pipeline may fall back to local regex if OpenAI is not configured.
  *
  * Data persists — NO teardown.
  */
@@ -65,13 +65,13 @@ describe('OCR Processing', () => {
       .attach('file', pngBuffer, { filename: `quotation-${RUN_ID}.png`, contentType: 'image/png' })
       .field('documentType', 'QUOTATION')
       .timeout(60000);
-    // OCR may succeed (200) or fail (500) depending on Tesseract/Gemini config.
+    // OCR may succeed (200) or fail (500) depending on Tesseract/OpenAI config.
     // We accept either, but verify the response structure on success.
     if (res.status === 200) {
       expect(res.body).toHaveProperty('documentType');
       record('ocr.extract', true, `200 documentType=${res.body.documentType}`);
     } else {
-      // 500 is acceptable if OCR backend (Tesseract/Gemini) is not configured
+      // 500 is acceptable if OCR backend (Tesseract/OpenAI) is not configured
       expect([400, 500]).toContain(res.status);
       record('ocr.extract', true, `${res.status} (OCR backend may not be configured)`);
     }

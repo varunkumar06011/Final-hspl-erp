@@ -215,7 +215,7 @@ describe('parseDocumentText — invoice (GST format)', () => {
 });
 
 // ────────────────────────────────────────────────────────────────────────────
-// Edge cases — should return nulls (triggering Gemini fallback)
+// Edge cases — should return nulls (triggering OpenAI fallback)
 // ────────────────────────────────────────────────────────────────────────────
 
 describe('parseDocumentText — edge cases', () => {

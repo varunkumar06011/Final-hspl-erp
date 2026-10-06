@@ -6,7 +6,7 @@
  * structured fields the frontend expects.
  *
  * Design principle: be CONSERVATIVE. Return null rather than guess wrong —
- * the Gemini fallback in ocr.service.ts catches anything ambiguous. A wrong
+ * the OpenAI fallback in ocr.service.ts catches anything ambiguous. A wrong
  * value silently autofilled is worse than a null the user must fill in.
  */
 import type {
@@ -341,7 +341,7 @@ function buildItemFromColumns(cols: string[], idx: ColumnIndex): OcrLineItem | n
 
   // If all three numeric columns are available, validate their relationship.
   // This prevents a column-shifted OCR row from being accepted by the local
-  // fallback. Layout-aware Gemini remains responsible for unusual tables.
+  // fallback. Layout-aware OpenAI remains responsible for unusual tables.
   if (quantity != null && unitPrice != null && amount != null && quantity > 0 && unitPrice > 0 && amount > 0) {
     const expected = quantity * unitPrice;
     const difference = Math.abs(expected - amount);
@@ -474,7 +474,7 @@ export interface ParseConfidence {
 
 /**
  * Decide whether the regex parse is good enough to return without calling
- * the Gemini fallback. Conservative: any of these failing triggers fallback.
+ * the OpenAI fallback. Conservative: any of these failing triggers fallback.
  */
 export function assessConfidence(
   result: OcrResult,

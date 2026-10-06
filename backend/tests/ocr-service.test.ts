@@ -3,13 +3,13 @@
  * =================
  *
  * Tests for the new OCR pipeline (local regex parser + Tesseract OCR +
- * Gemini fallback). The old tests mocked the Groq API; these tests verify:
+ * OpenAI fallback). The old tests mocked the Groq API; these tests verify:
  *  - Unsupported file types are rejected with a helpful message
  *  - Digital PDFs with extractable text are parsed by the regex parser
  *    (no API call, no Tesseract needed)
  *  - Corrupt PDFs produce a friendly "try uploading a photo" message
- *  - Gemini fallback is invoked when regex confidence is low
- *  - Missing GEMINI_API_KEY returns the regex result as-is (graceful degradation)
+ *  - OpenAI fallback is invoked when regex confidence is low
+ *  - Missing OPENAI_API_KEY returns the regex result as-is (graceful degradation)
  *
  * Tesseract.js and pdfjs-dist are mocked to avoid downloading language data
  * or requiring real PDF/image files in the test environment.
@@ -17,10 +17,11 @@
 import { describe, it, expect, afterEach, vi, beforeEach } from 'vitest';
 import sharp from 'sharp';
 
-// Mock env so the service believes GEMINI_API_KEY is configured.
+// Mock env so the service believes OPENAI_API_KEY is configured.
 vi.mock('../src/config/env', () => ({
   env: {
-    GEMINI_API_KEY: 'test-gemini-key',
+    OPENAI_API_KEY: 'test-openai-key',
+    OCR_MODEL: 'gpt-5-mini',
     STORAGE_MODE: 'local',
     LOCAL_STORAGE_PATH: './test-uploads',
   },
@@ -61,10 +62,10 @@ describe('OCR Service — extractFromFile', () => {
     ).rejects.toThrow('Unsupported file type');
   });
 
-  it('uses Gemini vision to structure a variable-layout image', async () => {
+  it('uses OpenAI vision to structure a variable-layout image', async () => {
     // Even when local OCR produces plausible text, the original image is sent
-    // to Gemini so it can understand the document's actual table geometry.
-    const geminiResponse = {
+    // to OpenAI so it can understand the document's actual table geometry.
+    const llmResponse = {
       vendorName: 'Mock Vendor Pvt Ltd',
       quotationNumber: 'QT-100',
       date: '2026-08-23',
@@ -76,7 +77,7 @@ describe('OCR Service — extractFromFile', () => {
     global.fetch = vi.fn().mockResolvedValue({
       ok: true,
       text: async () => JSON.stringify({
-        candidates: [{ content: { parts: [{ text: JSON.stringify(geminiResponse) }] } }],
+        choices: [{ message: { content: JSON.stringify(llmResponse) } }],
       }),
     }) as unknown as typeof fetch;
 
@@ -91,17 +92,17 @@ describe('OCR Service — extractFromFile', () => {
     expect(global.fetch).toHaveBeenCalled();
   });
 
-  it('falls back to Gemini when regex confidence is low (image path)', async () => {
-    // Override the Tesseract mock to return garbage text → low confidence → Gemini fallback
+  it('falls back to OpenAI when regex confidence is low (image path)', async () => {
+    // Override the Tesseract mock to return garbage text → low confidence → OpenAI fallback
     const tesseract = await import('tesseract.js');
     vi.mocked(tesseract.createWorker).mockResolvedValueOnce({
       recognize: vi.fn(async () => ({ data: { text: 'garbage unstructured text' } })),
       terminate: vi.fn(async () => {}),
     } as any);
 
-    const geminiResponse = {
-      vendorName: 'Gemini Vendor',
-      quotationNumber: 'Q-GEM',
+    const llmResponse = {
+      vendorName: 'OpenAI Vendor',
+      quotationNumber: 'Q-OAI',
       date: '2026-08-23',
       lineItems: [{ materialName: 'Item A', quantity: 5, unitPrice: 100 }],
       gstAmount: 50,
@@ -112,23 +113,23 @@ describe('OCR Service — extractFromFile', () => {
     global.fetch = vi.fn().mockResolvedValue({
       ok: true,
       text: async () => JSON.stringify({
-        candidates: [{ content: { parts: [{ text: JSON.stringify(geminiResponse) }] } }],
+        choices: [{ message: { content: JSON.stringify(llmResponse) } }],
       }),
     }) as unknown as typeof fetch;
 
     const png = await onePixelPng();
     const result = (await extractFromFile(png, 'image/png', 'QUOTATION')) as OcrQuotationResult;
 
-    expect(result.vendorName).toBe('Gemini Vendor');
-    expect(result.quotationNumber).toBe('Q-GEM');
+    expect(result.vendorName).toBe('OpenAI Vendor');
+    expect(result.quotationNumber).toBe('Q-OAI');
     expect(result.grandTotal).toBe(550);
     expect(global.fetch).toHaveBeenCalled();
   });
 
-  it('returns regex result as-is when Gemini is not configured (graceful degradation)', async () => {
+  it('returns regex result as-is when OpenAI is not configured (graceful degradation)', async () => {
     const envMod = await import('../src/config/env');
-    const original = envMod.env.GEMINI_API_KEY;
-    (envMod.env as any).GEMINI_API_KEY = undefined;
+    const original = envMod.env.OPENAI_API_KEY;
+    (envMod.env as any).OPENAI_API_KEY = undefined;
 
     // Tesseract returns low-confidence text
     const tesseract = await import('tesseract.js');
@@ -144,7 +145,7 @@ describe('OCR Service — extractFromFile', () => {
     expect(result.vendorName).toBeNull();
     expect(result.quotationNumber).toBeNull();
 
-    (envMod.env as any).GEMINI_API_KEY = original;
+    (envMod.env as any).OPENAI_API_KEY = original;
   });
 
   it('produces a friendly "Failed to read PDF" message for a corrupt PDF buffer', async () => {
@@ -154,9 +155,9 @@ describe('OCR Service — extractFromFile', () => {
     ).rejects.toThrow('Failed to read PDF');
   });
 
-  it('surfaces Gemini API errors gracefully (returns regex result, not a crash)', async () => {
-    // Tesseract returns low-confidence text, Gemini returns 500.
-    // Gemini retries with exponential backoff (2s + 4s + 8s = 14s), so this
+  it('surfaces OpenAI API errors gracefully (returns regex result, not a crash)', async () => {
+    // Tesseract returns low-confidence text, OpenAI returns 500.
+    // OpenAI retries with exponential backoff (2s + 4s + 8s = 14s), so this
     // test needs a longer timeout than the default 5s.
     const tesseract = await import('tesseract.js');
     vi.mocked(tesseract.createWorker).mockResolvedValueOnce({

@@ -28,11 +28,9 @@ const envSchema = z.object({
   STORAGE_MODE: z.enum(['local', 'supabase']).default('local'),
   LOCAL_STORAGE_PATH: z.string().default('./uploads'),
 
-  // Gemini (OCR document structuring — optional; local parser is used if omitted)
-  GEMINI_API_KEY: z.string().optional(),
-
-  // OpenAI (AI assistant "Miko")
+  // OpenAI: AI assistant "Miko" and OCR document structuring (OCR uses the local parser if omitted)
   OPENAI_API_KEY: z.string().optional(),
+  OCR_MODEL: z.string().default('gpt-5-mini'),
 
   // AI assistant (chat that reads/creates records as the logged-in user).
   // Uses OPENAI_API_KEY; switch off with ASSISTANT_ENABLED=false.

@@ -5,10 +5,10 @@
  *  1. Get raw document data locally:
  *     - Digital PDF → pdfjs-dist text extraction
  *     - Image / scanned PDF → Tesseract.js OCR plus rendered images
- *  2. When Gemini is configured, use Gemini to structure the document. This
+ *  2. When OpenAI is configured, use OpenAI to structure the document. This
  *     is important because vendor quotations do not share one table layout or
  *     one set of headings, and regex rules can silently shift columns.
- *  3. If Gemini is unavailable or fails, return the conservative local regex
+ *  3. If OpenAI is unavailable or fails, return the conservative local regex
  *     parse as a no-API fallback.
  *
  * This eliminates the Groq dependency that was causing rate-limit failures.
@@ -20,8 +20,8 @@ import { ocrImage, ocrImages } from './ocr-tesseract';
 import {
   fallbackParseText,
   fallbackParseImages,
-  isGeminiConfigured,
-} from './ocr-gemini';
+  isOcrLlmConfigured,
+} from './ocr-openai';
 import type {
   OcrDocumentType,
   OcrResult,
@@ -174,25 +174,25 @@ export async function extractFromFile(
 
   // Do not use the local parser as the authority for arbitrary layouts. A
   // column-oriented OCR result can look superficially valid while assigning
-  // a quantity to the wrong column. Gemini receives the original image for
+  // a quantity to the wrong column. OpenAI receives the original image for
   // visual layout understanding, not just Tesseract's reordered text.
-  if (isGeminiConfigured()) {
+  if (isOcrLlmConfigured()) {
     try {
       if (rawImages && rawImages.length > 0) {
-        console.log('[OCR] Using Gemini vision to structure the document layout');
+        console.log('[OCR] Using OpenAI vision to structure the document layout');
         return await fallbackParseImages(rawImages, documentType);
       }
 
-      console.log('[OCR] Using Gemini text to structure the digital PDF');
+      console.log('[OCR] Using OpenAI text to structure the digital PDF');
       return await fallbackParseText(rawText, documentType);
     } catch (fallbackErr) {
       console.warn(
-        '[OCR] Gemini structuring failed, returning local result:',
+        '[OCR] OpenAI structuring failed, returning local result:',
         fallbackErr instanceof Error ? fallbackErr.message : fallbackErr
       );
     }
   } else {
-    console.warn('[OCR] Gemini not configured; using local parser');
+    console.warn('[OCR] OpenAI not configured; using local parser');
   }
 
   console.log(`[OCR] Local parser result retained (confidence: ${confidence.reason})`);
