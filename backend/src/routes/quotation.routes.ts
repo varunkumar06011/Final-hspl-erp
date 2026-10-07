@@ -953,7 +953,7 @@ router.post(
       const alreadyApproved = quotation.approvalWorkflow.steps.find(
         (s) => s.approverUserId === req.user!.id && s.status === 'APPROVED'
       );
-      if (alreadyApproved) {
+      if (alreadyApproved && !approvalService.canOverride(req.user!)) {
         res.status(400).json({ error: 'You have already approved this quotation' });
         return;
       }

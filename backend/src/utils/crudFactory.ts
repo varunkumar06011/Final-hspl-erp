@@ -6,12 +6,14 @@ import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middl
 import { rbacMiddleware } from '../middleware/rbac';
 import { validateMiddleware } from '../middleware/validate';
 import { logAudit } from '../services/audit.service';
-import { AuditAction, Permission } from '@hospital-erp/shared';
+import { AuditAction, Permission, fuzzyFilter } from '@hospital-erp/shared';
 
 interface CrudConfig {
   entityType: string;
   model: string;
   createPermission: Permission;
+  /** Replaces the createPermission check on create/update/delete (e.g. role-based rules). */
+  createGuard?: (req: AuthenticatedRequest, res: Response, next: NextFunction) => void;
   viewPermission?: Permission;
   createSchema: ZodSchema;
   updateSchema: ZodSchema;
@@ -19,6 +21,8 @@ interface CrudConfig {
   include?: Record<string, unknown>;
   defaultSort?: Record<string, 'asc' | 'desc'>;
   searchFields?: string[];
+  /** Text column(s) to match with spelling-mistake tolerance when the plain search finds nothing. */
+  fuzzyFields?: string[];
   intSearchFields?: string[];
   /** Field name used for minAmount/maxAmount range filtering (e.g. 'grandTotal', 'totalAmount', 'amount') */
   amountField?: string;
@@ -109,6 +113,18 @@ export function createCrudRouter(config: CrudConfig): Router {
           }
 
           where.OR = orConditions;
+
+          // Nothing contains what was typed: retry tolerating spelling mistakes.
+          if (config.fuzzyFields?.length && (await model.count({ where })) === 0) {
+            const fields = config.fuzzyFields;
+            const candidates = (await model.findMany({
+              where: { projectId, deletedAt: null, ...buildFilterWhere(filters) },
+              select: { id: true, ...Object.fromEntries(fields.map((f) => [f, true])) },
+            })) as Record<string, unknown>[];
+            const ids = fuzzyFilter(candidates, String(search), (row) => fields.map((f) => String(row[f] ?? ''))).map((row) => row.id);
+            delete where.OR;
+            where.id = { in: ids };
+          }
         }
 
         const [data, total] = await Promise.all([
@@ -165,7 +181,7 @@ export function createCrudRouter(config: CrudConfig): Router {
   // POST / — create
   router.post(
     '/',
-    rbacMiddleware(config.createPermission),
+    config.createGuard ?? rbacMiddleware(config.createPermission),
     validateMiddleware(config.createSchema),
     async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
       try {
@@ -212,7 +228,7 @@ export function createCrudRouter(config: CrudConfig): Router {
   // PATCH /:id — update
   router.patch(
     '/:id',
-    rbacMiddleware(config.createPermission),
+    config.createGuard ?? rbacMiddleware(config.createPermission),
     validateMiddleware(config.updateSchema),
     async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
       try {
@@ -261,7 +277,7 @@ export function createCrudRouter(config: CrudConfig): Router {
   // DELETE /:id — soft delete
   router.delete(
     '/:id',
-    rbacMiddleware(config.createPermission),
+    config.createGuard ?? rbacMiddleware(config.createPermission),
     async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
       try {
         const existing = await model.findFirst({

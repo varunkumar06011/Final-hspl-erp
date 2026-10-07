@@ -68,7 +68,6 @@ export const REGISTRY: Record<string, EntityRegistration> = {
   WorkTask: { label: 'Work Task', path: byId('/work'), title: ['title'] },
   Issue: { path: byId('/issues'), title: ['title'] },
   Inspection: { path: byId('/inspections') },
-  Document: { path: byId('/documents') },
   Staff: { label: 'Labour', path: byId('/labour') },
   SitePhoto: { label: 'Site Photo', path: byId('/photos'), title: ['caption'] },
 };
@@ -80,6 +79,7 @@ export const REGISTRY: Record<string, EntityRegistration> = {
  */
 export const EXCLUDED_MODELS: Record<string, string> = {
   User: 'shared across projects; managed from the Users page',
+  Document: 'general documents can be PIN-locked; their names must not leak through search',
   Project: 'the tenant itself, not project data',
   PushSubscription: 'device tokens',
   AppNotification: 'per-user inbox, not shared records',

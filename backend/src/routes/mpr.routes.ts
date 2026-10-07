@@ -7,6 +7,7 @@ import {
   VendorType,
   isAdminRole,
   getRequiredApproverCount,
+  isSuperAdmin,
 } from '@hospital-erp/shared';
 import { createMPRSchema, updateMPRSchema, listMPRSchema, approvalActionSchema } from '@hospital-erp/shared';
 import { prisma } from '../config/prisma';
@@ -123,6 +124,121 @@ async function resolveVendor(
   return null;
 }
 
+/** Statuses that do not count as a real earlier request when flagging repeat shipments. */
+const NON_SHIPMENT_STATUSES = [MPRStatus.DRAFT, MPRStatus.REJECTED, MPRStatus.CANCELLED];
+
+const normalizeMaterialName = (name: string) => name.trim().toLowerCase().replace(/\s+/g, ' ');
+const materialKey = (item: { materialName: string; materialCode?: string | null }) => normalizeMaterialName(item.materialName);
+
+/**
+ * Flags repeat requests: when the same material is asked from the same vendor again,
+ * the later request is the "2nd shipment", then the "3rd" and so on. Adds
+ * `shipmentFlags` (only for repeated materials) and `shipmentNo` (highest of them,
+ * 1 when nothing repeats) to every MPR.
+ */
+async function withShipmentFlags<T extends { id: string; vendorId: string | null; createdAt: Date; items: { materialName: string; materialCode?: string | null }[] }>(
+  projectId: string,
+  mprs: T[],
+) {
+  const vendorIds = Array.from(new Set(mprs.map((m) => m.vendorId).filter((v): v is string => !!v)));
+  const earlier = vendorIds.length
+    ? await prisma.materialPurchaseRequestItem.findMany({
+        where: { mpr: { projectId, deletedAt: null, vendorId: { in: vendorIds }, status: { notIn: NON_SHIPMENT_STATUSES } } },
+        select: { materialName: true, materialCode: true, mpr: { select: { id: true, vendorId: true, createdAt: true } } },
+      })
+    : [];
+  // vendor + material -> the distinct requests that contain it, oldest first
+  const byKey = new Map<string, { id: string; createdAt: Date }[]>();
+  for (const row of earlier) {
+    const key = `${row.mpr.vendorId}|${materialKey(row)}`;
+    const list = byKey.get(key) ?? [];
+    if (!list.some((m) => m.id === row.mpr.id)) list.push({ id: row.mpr.id, createdAt: row.mpr.createdAt });
+    byKey.set(key, list);
+  }
+  for (const list of byKey.values()) list.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime() || a.id.localeCompare(b.id));
+
+  return mprs.map((mpr) => {
+    const shipmentFlags: { materialName: string; shipmentNo: number }[] = [];
+    if (mpr.vendorId && !NON_SHIPMENT_STATUSES.includes(((mpr as unknown as { status?: MPRStatus }).status) as MPRStatus)) {
+      for (const item of mpr.items) {
+        const list = byKey.get(`${mpr.vendorId}|${materialKey(item)}`) ?? [];
+        const position = list.findIndex((m) => m.id === mpr.id);
+        if (position >= 1) shipmentFlags.push({ materialName: item.materialName, shipmentNo: position + 1 });
+      }
+    }
+    return { ...mpr, shipmentFlags, shipmentNo: shipmentFlags.reduce((max, f) => Math.max(max, f.shipmentNo), 1) };
+  });
+}
+
+/**
+ * One material, one code. When a requested item has the same name as a material the project
+ * already has, it takes that material's existing code, so the same material can never end up
+ * under two codes (and duplicated in inventory). New names keep whatever code was entered.
+ */
+async function canonicalizeMaterialCodes<T extends { materialName: string; materialCode?: string | null }>(
+  projectId: string,
+  items: T[],
+): Promise<T[]> {
+  const known = await prisma.materialPurchaseRequestItem.findMany({
+    where: { materialCode: { not: null }, mpr: { projectId, deletedAt: null } },
+    select: { materialName: true, materialCode: true },
+    orderBy: { createdAt: 'asc' },
+  });
+  const codeByName = new Map<string, string>();
+  for (const row of known) {
+    const key = normalizeMaterialName(row.materialName);
+    if (row.materialCode && !codeByName.has(key)) codeByName.set(key, row.materialCode);
+  }
+  return items.map((item) => {
+    const existing = codeByName.get(normalizeMaterialName(item.materialName));
+    return existing && existing !== item.materialCode ? { ...item, materialCode: existing } : item;
+  });
+}
+
+// GET /material-catalog — every distinct material the project has used (from requests and
+// inventory), with its code and unit, for type-ahead pickers that stop duplicates.
+router.get(
+  '/material-catalog',
+  rbacMiddleware(Permission.VIEW_MPR),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      const [requested, stocked] = await Promise.all([
+        prisma.materialPurchaseRequestItem.findMany({
+          where: { mpr: { projectId, deletedAt: null } },
+          select: { materialName: true, materialCode: true, unit: true },
+          orderBy: { createdAt: 'asc' },
+          take: 20000,
+        }),
+        prisma.inventoryItem.findMany({
+          where: { projectId, deletedAt: null },
+          select: { name: true, unit: true },
+          take: 5000,
+        }),
+      ]);
+      const catalog = new Map<string, { materialName: string; materialCode: string | null; unit: string | null; uses: number }>();
+      for (const row of requested) {
+        const key = normalizeMaterialName(row.materialName);
+        const entry = catalog.get(key);
+        if (entry) {
+          entry.uses += 1;
+          if (!entry.materialCode && row.materialCode) entry.materialCode = row.materialCode;
+          if (!entry.unit && row.unit) entry.unit = row.unit;
+        } else {
+          catalog.set(key, { materialName: row.materialName.trim(), materialCode: row.materialCode, unit: row.unit, uses: 1 });
+        }
+      }
+      for (const row of stocked) {
+        const key = normalizeMaterialName(row.name);
+        if (!catalog.has(key)) catalog.set(key, { materialName: row.name.trim(), materialCode: null, unit: row.unit, uses: 0 });
+      }
+      res.json({ data: Array.from(catalog.values()).sort((a, b) => b.uses - a.uses || a.materialName.localeCompare(b.materialName)) });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
 // GET /next-material-code — next auto-increment item code (e.g. VGH-MAT-0021),
 // continuing from the highest code already used in this project's MPR items.
 router.get(
@@ -188,7 +304,7 @@ router.get(
         prisma.materialPurchaseRequest.count({ where }),
       ]);
 
-      res.json({ data: items, total, page, limit });
+      res.json({ data: await withShipmentFlags(projectId, items), total, page, limit });
     } catch (error) {
       next(error);
     }
@@ -210,7 +326,7 @@ router.get(
         res.status(404).json({ error: 'Material Purchase Request not found' });
         return;
       }
-      res.json(record);
+      res.json((await withShipmentFlags(projectId, [record]))[0]);
     } catch (error) {
       next(error);
     }
@@ -325,7 +441,7 @@ router.post(
 
       const vendorId = await resolveVendor(req.body, projectId, req.user!.id);
 
-      const items = req.body.items;
+      const items = await canonicalizeMaterialCodes(projectId, req.body.items);
       const estimatedGstRate = Number(req.body.estimatedGstRate) || 0;
 
       // Compute estimated amounts
@@ -489,7 +605,7 @@ router.put(
 
       // If items are provided, recompute totals and replace items
       if (req.body.items) {
-        const items = req.body.items;
+        const items = await canonicalizeMaterialCodes(projectId, req.body.items);
         const estimatedGstRate = Number(updateData.estimatedGstRate ?? existing.estimatedGstRate);
         const computedItems = items.map((item: any) => {
           const qty = Number(item.quantity);
@@ -729,7 +845,7 @@ router.post(
       const alreadyApproved = mpr.approvalWorkflow.steps.find(
         (s) => s.approverUserId === req.user!.id && s.status === 'APPROVED'
       );
-      if (alreadyApproved) {
+      if (alreadyApproved && !approvalService.canOverride(req.user!)) {
         res.status(400).json({ error: 'You have already approved this request' });
         return;
       }
@@ -1028,7 +1144,7 @@ router.delete(
         return;
       }
       if (existing.status === MPRStatus.APPROVED) {
-        if (req.user!.role !== UserRole.ADMIN_2) {
+        if (req.user!.role !== UserRole.ADMIN_2 && !isSuperAdmin(req.user!.extraPermissions)) {
           res.status(403).json({ error: 'Only Vinod Sir can delete an approved request' });
           return;
         }

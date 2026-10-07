@@ -14,6 +14,7 @@ vi.mock('../src/services/approval.service', () => ({
   HEAD_THEN_ADMIN_POLICY: 'HEAD_THEN_ADMIN',
 }));
 vi.mock('../src/services/push.service', () => ({ notifyApprovers: vi.fn(async () => undefined) }));
+vi.mock('../src/services/po-from-quotation.service', () => ({ createPoFromApprovedQuotation: vi.fn(async () => null) }));
 vi.mock('../src/services/audit.service', () => ({ logAudit: vi.fn(async () => undefined) }));
 
 import { createQuotation } from '../src/services/quotation.service';

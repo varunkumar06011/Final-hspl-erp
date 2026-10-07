@@ -20,6 +20,7 @@ import {
   Accordion,
   AccordionSummary,
   AccordionDetails,
+  Collapse,
   Checkbox,
 } from '@mui/material';
 import ResponsiveDialog from '../components/ResponsiveDialog';
@@ -38,7 +39,10 @@ import {
   PictureAsPdf as PdfIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { QuotationStatus, GST_RATES, ApprovalStatus, isAdminRole, isApproverRole, isWorkflowOpenToRole } from '@hospital-erp/shared';
+import CopyText from '../components/CopyText';
+import ApprovalTiming from '../components/ApprovalTiming';
+import VendorAutocomplete from '../components/VendorAutocomplete';
+import { QuotationStatus, GST_RATES, ApprovalStatus, isAdminRole, isApproverRole, isWorkflowOpenToRole, canOverrideApprovals, findApprovableStep } from '@hospital-erp/shared';
 import { formatCurrency, formatDate, STATUS_COLORS, QTY_UNIT_OPTIONS, enumLabel, unitLabel } from '../utils/enumOptions';
 import ItemsGist from '../components/ItemsGist';
 import { useTranslation, Trans } from 'react-i18next';
@@ -146,6 +150,8 @@ export default function QuotationsPage() {
   const [notesEditRow, setNotesEditRow] = useState<QuotationRow | null>(null);
   const [notesEditValue, setNotesEditValue] = useState('');
   const [pdfLoading, setPdfLoading] = useState(false);
+  const [detailRows, setDetailRows] = useState<Set<string>>(new Set());
+  const toggleDetails = (id: string) => setDetailRows((prev) => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; });
   const [expandedQuotationId, setExpandedQuotationId] = useState<string | null>(null);
   const createSubmissionLocked = useRef(false);
   const workTaskIdRef = useRef<string | null>(null);
@@ -190,13 +196,6 @@ export default function QuotationsPage() {
     (agingData?.data ?? []).map((a: { id: string; agingStatus: string; agingLabel: string }) => [a.id, { agingStatus: a.agingStatus, agingLabel: a.agingLabel }])
   );
 
-  const { data: vendorsData } = useQuery({
-    queryKey: ['/vendors', 'for-quotation'],
-    queryFn: async () => {
-      const response = await api.get('/vendors', { params: { pageSize: 100 } });
-      return response.data;
-    },
-  });
 
   const { data: selectedVendor } = useQuery<Vendor | null>({
     queryKey: ['/vendors', selectedVendorId],
@@ -381,7 +380,6 @@ export default function QuotationsPage() {
 
   const rows: QuotationRow[] = data?.data ?? [];
   const pagination = data?.pagination ?? { page: 1, pageSize: 20, total: 0, totalPages: 0 };
-  const vendors: { id: string; name: string; vendorCode: string }[] = vendorsData?.data ?? [];
 
   // Deep-link from global search: ?id=<quotationId> — filter to that quotation and highlight it
   const { highlightId, rowRef } = useDeepLinkRow<QuotationRow>('/quotations', rows, 'quotationNumber', (v) => { setSearch(v); setPage(0); });
@@ -557,8 +555,8 @@ export default function QuotationsPage() {
   const gstRateOptions = GST_RATES;
 
   function canApprove(row: QuotationRow): ApprovalStep | null {
-    if (!row.approvalWorkflow || !user || !isApproverRole(user.role)) return null;
-    if (!isWorkflowOpenToRole(row.approvalWorkflow, user.role)) return null;
+    if (!row.approvalWorkflow || !user || !(isApproverRole(user.role) || canOverrideApprovals(user.role, user.extraPermissions))) return null;
+    if (!isWorkflowOpenToRole(row.approvalWorkflow, user.role, user.extraPermissions)) return null;
     // If the workflow is already APPROVED/REJECTED, no further approval is possible
     const wfStatus = row.approvalWorkflow.status;
     if (wfStatus === ApprovalStatus.APPROVED || wfStatus === ApprovalStatus.REJECTED) return null;
@@ -567,9 +565,7 @@ export default function QuotationsPage() {
       (step) => step.approverUserId === user.id && step.status !== 'PENDING'
     );
     if (alreadyDecided) return null;
-    return row.approvalWorkflow.steps.find(
-      (step) => step.approverRole === user.role && step.status === 'PENDING'
-    ) ?? null;
+    return findApprovableStep(row.approvalWorkflow.steps, user) ?? null;
   }
 
 
@@ -831,21 +827,63 @@ export default function QuotationsPage() {
                     expandIcon={<ExpandMoreIcon />}
                     sx={{ minHeight: 52, '&.Mui-expanded': { minHeight: 52 }, '& .MuiAccordionSummary-content': { my: 1, '&.Mui-expanded': { my: 1 } } }}
                   >
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap', minWidth: 0 }}>
-                      <Typography component="span" sx={{ fontSize: { xs: '0.82rem', sm: '0.9rem' } }}>
-                        <strong>{row.quotationNumber}</strong> — {row.vendor?.name ?? '—'} — {t('statusColon')}
-                      </Typography>
-                      <Chip label={enumLabel(approvalStatus)} size="small" color={STATUS_COLORS[approvalStatus] ?? 'default'} />
-                      {agingLabel && displayAgingStatus !== 'APPROVED' && displayAgingStatus !== 'REJECTED' && (
-                        <Typography variant="caption" sx={{ color: displayAgingStatus === 'OVERDUE' ? 'error.main' : (theme.palette.mode === 'dark' ? 'warning.main' : 'warning.dark'), fontWeight: displayAgingStatus === 'OVERDUE' ? 700 : 500 }}>
-                          {agingLabel}
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, minWidth: 0, flex: 1 }}>
+                      <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1, minWidth: 0, flexWrap: 'wrap' }}>
+                        <CopyText text={row.quotationNumber} sx={{ fontSize: { xs: '0.9rem', sm: '0.95rem' } }} />
+                        <Typography component="span" noWrap sx={{ fontSize: { xs: '0.82rem', sm: '0.9rem' }, minWidth: 0, flexShrink: 1 }}>
+                          {row.vendor?.name ?? '—'}
+                        </Typography>
+                      </Box>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, flexWrap: 'wrap' }}>
+                        <Chip label={enumLabel(approvalStatus)} size="small" color={STATUS_COLORS[approvalStatus] ?? 'default'} />
+                        <Typography component="span" sx={{ fontWeight: 700, fontSize: '0.9rem' }}>{formatCurrency(row.grandTotal)}</Typography>
+                        {agingLabel && displayAgingStatus !== 'APPROVED' && displayAgingStatus !== 'REJECTED' && (
+                          <Typography variant="caption" sx={{ color: displayAgingStatus === 'OVERDUE' ? 'error.main' : (theme.palette.mode === 'dark' ? 'warning.main' : 'warning.dark'), fontWeight: displayAgingStatus === 'OVERDUE' ? 700 : 500 }}>
+                            {agingLabel}
+                          </Typography>
+                        )}
+                      </Box>
+                      {(row.items ?? []).length > 0 && (
+                        <Typography variant="caption" color="text.secondary" noWrap>
+                          {(row.items ?? []).slice(0, 2).map((i) => `${i.materialName} × ${i.quantity}${i.unit ? ' ' + i.unit : ''}`).join(', ')}
+                          {(row.items ?? []).length > 2 ? ` +${(row.items ?? []).length - 2}` : ''}
                         </Typography>
                       )}
-                      <ItemsGist items={row.items} />
                     </Box>
                   </AccordionSummary>
                   <AccordionDetails sx={{ borderTop: '1px solid', borderColor: 'divider', bgcolor: 'background.paper', color: 'text.primary', p: 1.25 }}>
                     <Box sx={{ minWidth: 0 }}>
+                  {/* Key facts — the few things people actually look for */}
+                  <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', sm: 'repeat(4, 1fr)' }, gap: 1, mb: 1 }}>
+                    <Box>
+                      <Typography variant="caption" color="text.secondary">{t('grandTotal')}</Typography>
+                      <Typography sx={{ fontWeight: 700 }}>{formatCurrency(row.grandTotal)}</Typography>
+                    </Box>
+                    <Box>
+                      <Typography variant="caption" color="text.secondary">{t('vendor')}</Typography>
+                      <Typography sx={{ fontWeight: 600 }} noWrap>{row.vendor?.name ?? '—'}</Typography>
+                    </Box>
+                    <Box>
+                      <Typography variant="caption" color="text.secondary">{t('quotationDate')}</Typography>
+                      <Typography sx={{ fontWeight: 600 }}>{formatDate(row.date)}</Typography>
+                    </Box>
+                    {row.mpr && (
+                      <Box>
+                        <Typography variant="caption" color="text.secondary">{t('requestNo')}</Typography>
+                        <Typography sx={{ fontWeight: 600 }}><CopyText text={row.mpr.mprNumber} /></Typography>
+                      </Box>
+                    )}
+                  </Box>
+
+                  <Box sx={{ mb: 1 }}><ApprovalTiming startedAt={row.createdAt} workflow={row.approvalWorkflow} /></Box>
+
+                  {/* Materials — simple list: material, qty, rate, amount */}
+                  {row.items && row.items.length > 0 && <ItemsGist items={row.items} max={50} />}
+
+                  <Button size="small" sx={{ mt: 0.5, px: 0.5 }} onClick={() => toggleDetails(row.id)} endIcon={<ExpandMoreIcon sx={{ transform: detailRows.has(row.id) ? 'rotate(180deg)' : 'none', transition: 'transform .2s' }} />}>
+                    {detailRows.has(row.id) ? t('lessDetails') : t('moreDetails')}
+                  </Button>
+                  <Collapse in={detailRows.has(row.id)} unmountOnExit>
                   {/* Status bar */}
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 0.75, pb: 0.75, borderBottom: '1px solid', borderColor: 'action.hover' }}>
                     <Chip
@@ -954,6 +992,8 @@ export default function QuotationsPage() {
                     </Box>
                   )}
 
+                  </Collapse>
+
                   {/* File + Actions — bottom row */}
                   <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, mt: 1, pt: 1, borderTop: '1px solid', borderColor: 'divider' }}>
                     {expandedQuotationId === row.id && <LinkedFiles recordType="QUOTATION" recordId={row.id} />}
@@ -987,7 +1027,7 @@ export default function QuotationsPage() {
                       )}
                     </Box>
                   </Box>
-                  {row.approvalWorkflow && (
+                  {row.approvalWorkflow && detailRows.has(row.id) && (
                     <Box sx={{ mt: 1.5 }}>
                       {/* Approval details accordion for each quotation with a workflow */}
                       <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>{t('approvalStatus')}</Typography>
@@ -1031,20 +1071,13 @@ export default function QuotationsPage() {
           )}
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1, flexWrap: 'wrap' }}>
             {/* Vendor Selection */}
-            <TextField
-              select
+            <VendorAutocomplete
               label={t('vendorLabel')}
               value={selectedVendorId}
-              onChange={(e) => { setSelectedVendorId(e.target.value); setLineItems([]); setSelectedMaterialNames(new Set()); }}
-              fullWidth
-              size="small"
+              onChange={(id) => { setSelectedVendorId(id); setLineItems([]); setSelectedMaterialNames(new Set()); }}
               disabled={editOpen && !reviseMode}
               required
-            >
-              {vendors.map((v) => (
-                <MenuItem key={v.id} value={v.id}>{v.vendorCode} - {v.name}</MenuItem>
-              ))}
-            </TextField>
+            />
 
             {/* Materials / Line Items */}
             {selectedVendorId && (

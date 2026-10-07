@@ -59,7 +59,7 @@ export default function FinanceReportsPage() {
   // Only users with MANAGE_FINANCE permission (ADMIN, ADMIN_2, ACCOUNTANT,
   // PROJECT_HEAD, ACCOUNTS_HEAD) can create new budget heads from the report.
   const user = useAuthStore((s) => s.user);
-  const canManageFinance = !!user && hasPermission(user.role as UserRole, Permission.MANAGE_FINANCE);
+  const canManageFinance = !!user && hasPermission(user.role as UserRole, Permission.MANAGE_FINANCE, user.extraPermissions);
 
   // ── Create budget head (new row in Budget vs Actual report) ──
   // Uses the same POST /budget-heads endpoint as the Budget Heads page,

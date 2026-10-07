@@ -86,7 +86,7 @@ export const APP_MODULES: readonly AppModule[] = [
   { key: 'issues', label: 'Issues', section: 'Site Operations', path: '/issues', permission: Permission.MANAGE_ISSUES, grants: [Permission.MANAGE_ISSUES], apiPrefixes: ['/issues'] },
   { key: 'inspections', label: 'Inspections', section: 'Site Operations', path: '/inspections', permission: Permission.MANAGE_INSPECTIONS, defaultFor: (role) => !adminOrAccountant(role), grants: [Permission.MANAGE_INSPECTIONS], apiPrefixes: ['/inspections'] },
   { key: 'documents', label: 'Documents', section: 'Site Operations', path: '/documents', permission: Permission.MANAGE_DOCUMENTS, grants: [Permission.MANAGE_DOCUMENTS], apiPrefixes: ['/documents', '/document-library'] },
-  { key: 'contracts', label: 'Contracts', section: 'Site Operations', path: '/contracts', permission: Permission.MANAGE_CONTRACTS, grants: [Permission.MANAGE_CONTRACTS], apiPrefixes: ['/contracts'] },
+  { key: 'contracts', label: 'Contracts', section: 'Site Operations', permission: Permission.MANAGE_CONTRACTS, grants: [Permission.MANAGE_CONTRACTS], apiPrefixes: ['/contracts'] },
   // ── Admin ──
   { key: 'comments', label: 'Comments', section: 'Admin', path: '/comments', grants: [], apiPrefixes: [] },
   { key: 'activityLog', label: 'Activity Log', section: 'Admin', path: '/activity-log', grants: [], apiPrefixes: [] },
@@ -174,6 +174,8 @@ export function moduleOverride(subject: ModuleAccessSubject, key: string): boole
 export function isModuleEnabled(subject: ModuleAccessSubject, key: string): boolean {
   const module = MODULE_BY_KEY.get(key);
   if (!module) return true;
+  // A super admin ('*') has every module, whatever the role defaults say.
+  if (subject.extraPermissions?.includes(SUPER_ADMIN_GRANT)) return true;
   const override = moduleOverride(subject, key);
   if (override !== undefined) return override;
   return isModuleOnByDefault(module, subject.role, subject.extraPermissions);

@@ -88,7 +88,6 @@ const PhotosPage = lazyWithRetry(() => import('./pages/PhotosPage'));
 const IssuesPage = lazyWithRetry(() => import('./pages/IssuesPage'));
 const InspectionsPage = lazyWithRetry(() => import('./pages/InspectionsPage'));
 const DocumentsPage = lazyWithRetry(() => import('./pages/DocumentsPage'));
-const ContractsPage = lazyWithRetry(() => import('./pages/ContractsPage'));
 const LabourPage = lazyWithRetry(() => import('./pages/LabourPage'));
 const AuditLogPage = lazyWithRetry(() => import('./pages/AuditLogPage'));
 const SettingsPage = lazyWithRetry(() => import('./pages/SettingsPage'));
@@ -154,7 +153,8 @@ const ROUTES = [
   { path: '/issues', element: <IssuesPage /> },
   { path: '/inspections', element: <InspectionsPage /> },
   { path: '/documents', element: <DocumentsPage /> },
-  { path: '/contracts', element: <ContractsPage /> },
+  // Contracts live inside Purchase Orders (Contracts tab); keep old links working.
+  { path: '/contracts', element: <Navigate to="/pos?tab=contracts" replace /> },
   { path: '/audit', element: <AuditLogPage /> },
   { path: '/comments', element: <CommentsPage /> },
   { path: '/chat', element: <ChatPage /> },

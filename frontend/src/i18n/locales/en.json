@@ -485,5 +485,21 @@
     "DIRECT_INCOME": "Direct Incomes",
     "INDIRECT_INCOME": "Indirect Incomes",
     "SALES": "Sales Accounts"
-  }
+  },
+  "copied": "Copied {{text}}",
+  "copyFailed": "Could not copy",
+  "clickToCopy": "Click to copy",
+  "noVendorMatch": "No vendor found. Check the spelling or add the vendor first.",
+  "nonVendorTag": "Non-vendor",
+  "approvalTime": {
+    "d": "d",
+    "h": "h",
+    "m": "m",
+    "head": "Head",
+    "admin": "Admin",
+    "tookToApprove": "{{name}} took {{d}} to approve",
+    "waitingHead": "Waiting for Project Head / Head of Construction: {{d}}",
+    "waitingAdmin": "Waiting for Admin: {{d}}"
+  },
+  "newMaterialHint": "New material. It will get a new code."
 }

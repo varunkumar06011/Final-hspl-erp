@@ -21,6 +21,8 @@ model User {
   projectId   String?  @db.Uuid
   isActive    Boolean  @default(true)
   pinHash     String?
+  // 6-digit PIN protecting this user's locked documents (bcrypt hash). Separate from the login PIN.
+  documentPinHash String?
   // When the user accepted the Terms & Conditions / Privacy Policy.
   // NULL = pre-consent user — auth middleware rejects API access until they
   // log in again and tick the consent checkbox.
@@ -1212,6 +1214,8 @@ model Document {
   filePath    String
   mimeType    String
   uploadedBy  String    @db.Uuid
+  // Locked documents show nothing (name, file, people) until the uploader's document PIN is entered.
+  isLocked    Boolean   @default(false)
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   deletedAt   DateTime?

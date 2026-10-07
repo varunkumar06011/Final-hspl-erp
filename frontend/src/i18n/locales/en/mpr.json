@@ -106,7 +106,6 @@
   "optional": "Optional",
   "estimatedTotal": "Estimated total",
   "colItem": "Item",
-  "colQty": "Qty",
   "colRate": "Rate",
   "colAmount": "Amount",
   "subTotal": "Sub total",
@@ -143,5 +142,9 @@
   "errItems": "Each item must have a name and quantity greater than zero",
   "errNewVendor": "Enter a name for the new vendor, or switch to an existing vendor",
   "pdfLoadingTitle": "MPR PDF Loading...",
-  "pdfLoadingText": "Loading PDF..."
+  "pdfLoadingText": "Loading PDF...",
+  "shipment2": "2nd shipment requested",
+  "shipment3": "3rd shipment requested",
+  "shipmentN": "{{n}}th shipment requested",
+  "shipmentOf": "{{name}} — shipment {{n}}"
 }

@@ -1,5 +1,5 @@
 import { prisma } from '../config/prisma';
-import { canOverrideApprovals, APPROVER_ROLES, ApprovalStatus, ApprovalStepStatus, UserRole, APPROVAL_CONFIG, AuditAction, isAdminRole, isApproverRole, isFirstLevelApproverRole } from '@hospital-erp/shared';
+import { findApprovableStep as sharedFindApprovableStep, canOverrideApprovals, APPROVER_ROLES, ApprovalStatus, ApprovalStepStatus, UserRole, APPROVAL_CONFIG, AuditAction, isAdminRole, isApproverRole, isFirstLevelApproverRole } from '@hospital-erp/shared';
 import { notifyAllHeads, notifyApprovers, notifyUser, NotificationPayload } from './push.service';
 import { logAudit } from './audit.service';
 
@@ -224,6 +224,7 @@ async function notifyApprovalResult(
   entityUrl: string,
   projectId: string,
   createdBy: string | null,
+  actorId: string,
 ): Promise<void> {
   const status = action === 'approved' ? 'Approved' : 'Rejected';
   const title = isFinal ? `${entityLabel} ${status}` : `${entityLabel} — Step ${status}`;
@@ -238,12 +239,12 @@ async function notifyApprovalResult(
   };
 
   // Notify all 4 heads
-  notifyAllHeads(projectId, payload).catch((err) =>
+  notifyAllHeads(projectId, payload, actorId).catch((err) =>
     console.error('[Push] Approval result heads notification error:', err)
   );
 
   // Notify the creator (if different from the actor and has a subscription)
-  if (createdBy) {
+  if (createdBy && createdBy !== actorId) {
     notifyUser(createdBy, payload).catch((err) =>
       console.error('[Push] Approval result creator notification error:', err)
     );
@@ -291,15 +292,7 @@ export function canOverride(user: { role: string; extraPermissions?: string[] | 
  * The pending step this user may decide: the one for their own role, or — for a
  * user holding APPROVAL_OVERRIDE (super admin) — the earliest pending step.
  */
-export function findApprovableStep<
-  S extends { approverRole: string; status: string; stepNumber: number },
->(steps: S[], user: { role: string; extraPermissions?: string[] | null }): S | undefined {
-  const own = steps.find((s) => s.approverRole === user.role && s.status === ApprovalStepStatus.PENDING);
-  if (own || !canOverrideApprovals(user.role, user.extraPermissions)) return own;
-  return [...steps]
-    .sort((a, b) => a.stepNumber - b.stepNumber)
-    .find((s) => s.status === ApprovalStepStatus.PENDING);
-}
+export const findApprovableStep = sharedFindApprovableStep;
 
 /** Marks an override decision so the audit trail shows it was not a normal role approval. */
 function overrideNote(step: { approverRole: string }, userName: string, verb: 'Approved' | 'Rejected') {
@@ -350,11 +343,12 @@ export async function approve(
     throw new Error('User not found');
   }
 
-  const isOverride =
-    user.role !== step.approverRole && canOverrideApprovals(user.role, user.extraPermissions);
+  // A super admin (APPROVAL_OVERRIDE) may decide any step, in any order, whatever their own role.
+  const isOverride = canOverrideApprovals(user.role, user.extraPermissions);
   if (user.role !== step.approverRole && !isOverride) {
     throw new Error(`Only ${step.approverRole} can approve this step`);
   }
+  const plainComments = comments;
 
   if (!isOverride) await assertHeadApprovedFirst(step, user.role);
 
@@ -431,7 +425,16 @@ export async function approve(
     ? approvedSteps.length >= 1
     : approvedSteps.length >= workflow.minApprovers;
 
-  if (countSatisfied && satisfiesApprovalPolicy(workflow.approvalPolicy, workflow.steps, workflow.minApprovers)) {
+  const policySatisfied = countSatisfied && satisfiesApprovalPolicy(workflow.approvalPolicy, workflow.steps, workflow.minApprovers);
+
+  // A super admin's single approval settles the whole request: carry on through the
+  // remaining pending steps (each audited as an override) instead of making them click again.
+  if (isOverride && !policySatisfied) {
+    const nextPending = workflow.steps.find((s: { status: string }) => s.status === ApprovalStepStatus.PENDING);
+    if (nextPending) return approve(nextPending.id, userId, plainComments, opts);
+  }
+
+  if (policySatisfied) {
     // Atomically update the workflow status AND the entity status in a
     // single transaction, so the entity never gets stuck in a stale
     // "SUBMITTED/PENDING" state when its workflow is already APPROVED.
@@ -455,6 +458,7 @@ export async function approve(
       `${ENTITY_URL_MAP[workflow.entityType] ?? '/'}?id=${workflow.entityId}`,
       entityInfo.projectId || workflow.projectId,
       entityInfo.createdBy,
+      userId,
     ).catch((err) => console.error('[Push] Approval notification error:', err));
 
     return {
@@ -506,7 +510,7 @@ export async function approve(
       title: 'Approval Required',
       body: `${entityInfo.label} approved by ${user.name} — awaiting your approval`,
       url: entityUrl,
-    }).catch((err) => console.error('[Push] Admin approval notification error:', err));
+    }, userId).catch((err) => console.error('[Push] Admin approval notification error:', err));
   }
   notifyApprovalResult(
     workflow.entityType,
@@ -518,6 +522,7 @@ export async function approve(
     `${ENTITY_URL_MAP[workflow.entityType] ?? '/'}?id=${workflow.entityId}`,
     entityInfo.projectId || workflow.projectId,
     entityInfo.createdBy,
+    userId,
   ).catch((err) => console.error('[Push] Step approval notification error:', err));
 
   return {
@@ -550,8 +555,7 @@ export async function reject(stepId: string, userId: string, reason: string) {
     throw new Error('User not found');
   }
 
-  const isOverride =
-    user.role !== step.approverRole && canOverrideApprovals(user.role, user.extraPermissions);
+  const isOverride = canOverrideApprovals(user.role, user.extraPermissions);
   if (user.role !== step.approverRole && !isOverride) {
     throw new Error(`Only ${step.approverRole} can reject this step`);
   }
@@ -645,6 +649,7 @@ export async function reject(stepId: string, userId: string, reason: string) {
     `${ENTITY_URL_MAP[workflow.entityType] ?? '/'}?id=${workflow.entityId}`,
     entityInfo.projectId || workflow.projectId,
     entityInfo.createdBy,
+    userId,
   ).catch((err) => console.error('[Push] Rejection notification error:', err));
 
   return {

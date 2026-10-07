@@ -9,7 +9,7 @@ import {
 import { prisma } from '../config/prisma';
 import { createCrudRouter } from '../utils/crudFactory';
 import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middleware/auth';
-import { rbacMiddleware } from '../middleware/rbac';
+import { rbacMiddleware, rbacFinanceManager } from '../middleware/rbac';
 import { validateMiddleware } from '../middleware/validate';
 import { logAudit } from '../services/audit.service';
 
@@ -18,6 +18,7 @@ const crudRouter = createCrudRouter({
   entityType: 'BUDGET_HEAD',
   model: 'budgetHead',
   createPermission: Permission.MANAGE_FINANCE,
+  createGuard: rbacFinanceManager,
   viewPermission: Permission.VIEW_FINANCIALS,
   createSchema: createBudgetHeadSchema,
   updateSchema: updateBudgetHeadSchema,
@@ -48,7 +49,7 @@ router.use(authMiddleware);
 // Body: { items: [{ sl_no, particulars, amount }] }
 router.post(
   '/import',
-  rbacMiddleware(Permission.MANAGE_FINANCE),
+  rbacFinanceManager,
   validateMiddleware(importBudgetSchema),
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
@@ -124,7 +125,7 @@ router.post(
 // 3. Ensure allocated amount is added once, not duplicated
 router.post(
   '/',
-  rbacMiddleware(Permission.MANAGE_FINANCE),
+  rbacFinanceManager,
   validateMiddleware(createBudgetHeadSchema),
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
@@ -203,7 +204,7 @@ router.post(
 // bugs or manual edits, they can be reconstructed from the source data.
 router.post(
   '/recompute',
-  rbacMiddleware(Permission.MANAGE_FINANCE),
+  rbacFinanceManager,
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const projectId = requireProjectId(req);
@@ -753,7 +754,7 @@ router.get(
 // immutable id, so linked POs/payments/JVs are unaffected.
 router.delete(
   '/:id',
-  rbacMiddleware(Permission.MANAGE_FINANCE),
+  rbacFinanceManager,
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const projectId = requireProjectId(req);

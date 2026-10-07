@@ -42,7 +42,8 @@ import {
   WhatsApp as WhatsAppIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { InvoiceVerificationStatus, UserRole, STORAGE, isAdminRole } from '@hospital-erp/shared';
+import VendorAutocomplete from '../components/VendorAutocomplete';
+import { InvoiceVerificationStatus, UserRole, STORAGE, isAdminRole, canOverrideApprovals, findApprovableStep } from '@hospital-erp/shared';
 import { formatCurrency, formatDate, formatIndianNumber, STATUS_COLORS, enumLabel } from '../utils/enumOptions';
 import ItemsGist from '../components/ItemsGist';
 import { useTranslation, Trans } from 'react-i18next';
@@ -328,13 +329,6 @@ export default function InvoicesPage() {
     setApprovalPopup(null);
   }
 
-  const { data: vendorsData } = useQuery({
-    queryKey: ['/vendors', 'for-invoice'],
-    queryFn: async () => {
-      const response = await api.get('/vendors', { params: { pageSize: 100 } });
-      return response.data;
-    },
-  });
 
   // Fetch eligible POs (approved, partially delivered, or delivered) for the selected vendor
   const { data: approvedPOs } = useQuery({
@@ -529,7 +523,6 @@ export default function InvoicesPage() {
 
   const rows: InvoiceRow[] = data?.data ?? [];
   const pagination = data?.pagination ?? { page: 1, pageSize: 20, total: 0, totalPages: 0 };
-  const vendors: { id: string; name: string; vendorCode: string }[] = vendorsData?.data ?? [];
 
   // Auto-open approval dialog when navigated from a push notification
   useApprovalDeepLink(rows, (row) => setApprovalAction({ row, action: 'approve' }));
@@ -586,11 +579,9 @@ export default function InvoicesPage() {
 
   function canApprove(row: InvoiceRow): boolean {
     if (!row.approvalWorkflow) return false;
-    if (!user || (!HEAD_ROLES.includes(user.role as UserRole) && !isAdminRole(user.role))) return false;
+    if (!user || (!HEAD_ROLES.includes(user.role as UserRole) && !isAdminRole(user.role) && !canOverrideApprovals(user.role, user.extraPermissions))) return false;
     if (row.verificationStatus !== InvoiceVerificationStatus.PENDING) return false;
-    const step = row.approvalWorkflow.steps.find(
-      (s) => s.approverRole === user.role && s.status === 'PENDING'
-    );
+    const step = findApprovableStep(row.approvalWorkflow.steps, user);
     if (!step) return false;
     const alreadyApproved = row.approvalWorkflow.steps.some(
       (s) => s.approverUserId === user.id && s.status === 'APPROVED'
@@ -819,19 +810,12 @@ export default function InvoicesPage() {
           {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
             {/* Vendor Selection */}
-            <TextField
-              select
+            <VendorAutocomplete
               label={t('vendor')}
               value={selectedVendorId}
-              onChange={(e) => { setSelectedVendorId(e.target.value); setSelectedPoId(''); }}
-              fullWidth
-              size="small"
+              onChange={(id) => { setSelectedVendorId(id); setSelectedPoId(''); }}
               required
-            >
-              {vendors.map((v) => (
-                <MenuItem key={v.id} value={v.id}>{v.vendorCode} - {v.name}</MenuItem>
-              ))}
-            </TextField>
+            />
 
             {/* PO Selection (approved POs for this vendor) */}
             {selectedVendorId && (

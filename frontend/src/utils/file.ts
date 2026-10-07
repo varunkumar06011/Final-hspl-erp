@@ -9,8 +9,8 @@ export async function downloadFile(route: string, id: string, fileName: string):
 }
 
 /** Download from any authenticated API path (relative to /api). */
-export async function downloadPath(path: string, fileName: string): Promise<void> {
-  const res = await api.get(path, { responseType: 'blob' });
+export async function downloadPath(path: string, fileName: string, headers?: Record<string, string>): Promise<void> {
+  const res = await api.get(path, { responseType: 'blob', headers });
   const url = window.URL.createObjectURL(res.data);
   const a = document.createElement('a');
   a.href = url;

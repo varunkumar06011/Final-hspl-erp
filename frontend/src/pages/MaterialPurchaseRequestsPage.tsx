@@ -23,9 +23,11 @@ import {
   Balance as VarianceIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { MPRStatus, MPRRequestType, UserRole, isApproverRole, isWorkflowOpenToRole } from '@hospital-erp/shared';
+import VendorAutocomplete from '../components/VendorAutocomplete';
+import CopyText from '../components/CopyText';
+import ApprovalTiming from '../components/ApprovalTiming';
+import { MPRStatus, MPRRequestType, UserRole, isApproverRole, isWorkflowOpenToRole, canOverrideApprovals, findApprovableStep, isSuperAdmin } from '@hospital-erp/shared';
 import { formatDate, STATUS_COLORS, QTY_UNIT_OPTIONS, SERVICE_UNIT_OPTIONS, SERVICE_CATEGORY_OPTIONS, enumLabel, unitLabel, serviceCategoryLabel } from '../utils/enumOptions';
-import ItemsGist from '../components/ItemsGist';
 import { useTranslation } from 'react-i18next';
 import api, { extractErrorMessage } from '../config/api';
 import { useAuthStore } from '../stores/authStore';
@@ -37,6 +39,7 @@ import { useActiveRecord } from '../hooks/useActiveRecord';
 import CommentsButton from '../components/CommentsButton';
 import LinkedFiles from '../components/LinkedFiles';
 import FilePicker from '../components/FilePicker';
+import MaterialAutocomplete, { useMaterialCatalog, type CatalogMaterial } from '../components/MaterialAutocomplete';
 
 interface MPRItem {
   materialName: string;
@@ -63,6 +66,10 @@ interface MPRRow {
   id: string;
   mprNumber: string;
   date: string;
+  createdAt?: string;
+  /** Repeat-request flags from the server: highest shipment number and which materials repeat. */
+  shipmentNo?: number;
+  shipmentFlags?: { materialName: string; shipmentNo: number }[];
   requestType?: string;
   serviceCategory?: string | null;
   servicePeriodStart?: string | null;
@@ -91,13 +98,6 @@ interface MPRRow {
   purchaseOrders?: { id: string; poNumber: string; status: string }[];
   receiptFilePath?: string | null;
   receiptFileName?: string | null;
-}
-
-interface Vendor {
-  id: string;
-  name: string;
-  vendorCode: string;
-  vendorType: string;
 }
 
 interface VarianceRow {
@@ -247,11 +247,6 @@ export default function MaterialPurchaseRequestsPage() {
   });
   const users: { id: string; name: string; role: string }[] = usersData ?? [];
 
-  const { data: vendorsData } = useQuery({
-    queryKey: ['/vendors', 'for-mpr'],
-    queryFn: async () => (await api.get('/vendors', { params: { pageSize: 200 } })).data,
-  });
-  const vendors: Vendor[] = vendorsData?.data ?? [];
 
   // Project settings — Delivery Address defaults to the hospital site address,
   // Billing Address to the office ("Bill To") address, both configured once
@@ -390,6 +385,47 @@ export default function MaterialPurchaseRequestsPage() {
     const updated = [...items];
     updated[index] = { ...updated[index], [field]: value };
     setItems(updated);
+  }
+
+  // Existing materials are suggested as the name is typed; choosing (or fully typing) one reuses
+  // its code and unit so the same material is never created twice.
+  const materialCatalog = useMaterialCatalog(!isServiceTab);
+  const knownCodes = new Set(materialCatalog.map((m) => m.materialCode).filter(Boolean));
+  const unitValues: string[] = (isServiceTab ? SERVICE_UNIT_OPTIONS : QTY_UNIT_OPTIONS).map((o) => (typeof o === 'string' ? o : o.value));
+
+  function applyMaterial(index: number, m: CatalogMaterial) {
+    setItems((prev) =>
+      prev.map((it, i) =>
+        i === index
+          ? {
+              ...it,
+              materialName: m.materialName,
+              materialCode: m.materialCode ?? it.materialCode,
+              unit: m.unit && unitValues.includes(m.unit) ? m.unit : it.unit,
+            }
+          : it,
+      ),
+    );
+  }
+
+  function pickMaterial(index: number, m: CatalogMaterial) {
+    applyMaterial(index, m);
+  }
+
+  function typeMaterial(index: number, name: string, exact: CatalogMaterial | null) {
+    if (exact) {
+      applyMaterial(index, exact);
+      return;
+    }
+    setItems((prev) =>
+      prev.map((it, i) => {
+        if (i !== index) return it;
+        // The row was linked to an existing material but the name no longer matches it:
+        // it is a different material now, so it gets a fresh code.
+        const wasLinked = !!it.materialCode && knownCodes.has(it.materialCode);
+        return { ...it, materialName: name, materialCode: wasLinked ? nextRowCode(prev) : it.materialCode };
+      }),
+    );
   }
 
   function addItem() {
@@ -576,16 +612,14 @@ export default function MaterialPurchaseRequestsPage() {
   });
 
   function canApprove(row: MPRRow): ApprovalStep | null {
-    if (!row.approvalWorkflow || !user || !isApproverRole(user.role)) return null;
-    if (!isWorkflowOpenToRole(row.approvalWorkflow, user.role)) return null;
+    if (!row.approvalWorkflow || !user || !(isApproverRole(user.role) || canOverrideApprovals(user.role, user.extraPermissions))) return null;
+    if (!isWorkflowOpenToRole(row.approvalWorkflow, user.role, user.extraPermissions)) return null;
     if (row.status !== MPRStatus.SUBMITTED && row.status !== MPRStatus.APPROVED) return null;
     const alreadyDecided = row.approvalWorkflow.steps.some(
       (step) => step.approverUserId === user.id && step.status !== 'PENDING'
     );
     if (alreadyDecided) return null;
-    return row.approvalWorkflow.steps.find(
-      (step) => step.approverRole === user.role && step.status === 'PENDING'
-    ) ?? null;
+    return findApprovableStep(row.approvalWorkflow.steps, user) ?? null;
   }
 
   function raiseQuotation(row: MPRRow) {
@@ -743,20 +777,41 @@ export default function MaterialPurchaseRequestsPage() {
                   expandIcon={<ExpandMoreIcon />}
                   sx={{ minHeight: 52, '&.Mui-expanded': { minHeight: 52 }, '& .MuiAccordionSummary-content': { my: 1, '&.Mui-expanded': { my: 1 } } }}
                 >
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap', minWidth: 0 }}>
-                    <Typography component="span" sx={{ fontSize: { xs: '0.82rem', sm: '0.9rem' } }}>
-                      <strong>{row.mprNumber}</strong> — {row.vendor?.name ?? row.createdByUser?.name ?? '—'} — {formatDate(row.date)}
-                    </Typography>
-                    <Chip
-                      label={t(`status.${row.status}`, enumLabel(row.status))}
-                      size="small"
-                      color={(STATUS_COLORS[row.status] as any) ?? 'default'}
-                    />
-                    <ItemsGist items={row.items} />
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, minWidth: 0, flex: 1 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1, minWidth: 0, flexWrap: 'wrap' }}>
+                      <CopyText text={row.mprNumber} sx={{ fontSize: { xs: '0.9rem', sm: '0.95rem' } }} />
+                      <Typography component="span" noWrap sx={{ fontSize: { xs: '0.82rem', sm: '0.9rem' }, minWidth: 0, flexShrink: 1 }}>
+                        {row.vendor?.name ?? row.createdByUser?.name ?? '—'}
+                      </Typography>
+                      <Typography component="span" variant="caption" color="text.secondary">{formatDate(row.date)}</Typography>
+                    </Box>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, flexWrap: 'wrap' }}>
+                      <Chip
+                        label={t(`status.${row.status}`, enumLabel(row.status))}
+                        size="small"
+                        color={(STATUS_COLORS[row.status] as any) ?? 'default'}
+                      />
+                      {(row.shipmentNo ?? 1) >= 2 && (
+                        <Chip
+                          label={row.shipmentNo === 2 ? t('shipment2') : row.shipmentNo === 3 ? t('shipment3') : t('shipmentN', { n: row.shipmentNo })}
+                          size="small"
+                          color="warning"
+                          title={(row.shipmentFlags ?? []).map((f) => t('shipmentOf', { name: f.materialName, n: f.shipmentNo })).join(', ')}
+                        />
+                      )}
+                    </Box>
+                    <ApprovalTiming startedAt={row.createdAt} workflow={row.approvalWorkflow} compact />
+                    {row.items.length > 0 && (
+                      <Typography variant="caption" color="text.secondary" noWrap>
+                        {row.items.slice(0, 2).map((i) => `${i.materialName} × ${i.quantity}${i.unit ? ' ' + i.unit : ''}`).join(', ')}
+                        {row.items.length > 2 ? ` +${row.items.length - 2}` : ''}
+                      </Typography>
+                    )}
                   </Box>
                 </AccordionSummary>
                 <AccordionDetails sx={{ borderTop: '1px solid', borderColor: 'divider', p: 1.25 }}>
                   <Box sx={{ minWidth: 0 }}>
+                      <Box sx={{ mb: 0.5 }}><ApprovalTiming startedAt={row.createdAt} workflow={row.approvalWorkflow} /></Box>
                       <Typography variant="body2" color="text.secondary">
                         {t('dateLine', { date: formatDate(row.date), required: row.requiredBy ? formatDate(row.requiredBy) : '—', dept: row.department ?? '—' })}
                       </Typography>
@@ -924,7 +979,7 @@ export default function MaterialPurchaseRequestsPage() {
                         {pendingStep && (
                           <Button size="small" color="success" startIcon={<CheckIcon />} onClick={() => setApprovalAction({ row, step: pendingStep, action: 'approve' })}>{t('approve')}</Button>
                         )}
-                        {user?.role === UserRole.ADMIN_2 && (
+                        {(user?.role === UserRole.ADMIN_2 || isSuperAdmin(user?.extraPermissions)) && (
                           <IconButton
                             size="small"
                             color="error"
@@ -985,20 +1040,12 @@ export default function MaterialPurchaseRequestsPage() {
             <ToggleButton value="new">{t('newVendor')}</ToggleButton>
           </ToggleButtonGroup>
           {vendorMode === 'existing' ? (
-            <TextField
-              fullWidth
-              size="small"
-              select
+            <VendorAutocomplete
               label={t('vendorSection')}
               value={selectedVendorId}
-              onChange={(e) => setSelectedVendorId(e.target.value)}
+              onChange={(id) => setSelectedVendorId(id)}
               sx={{ mb: 2 }}
-            >
-              <MenuItem value=""><em>{t('select')}</em></MenuItem>
-              {vendors.map((v) => (
-                <MenuItem key={v.id} value={v.id}>{v.vendorCode} - {v.name} {v.vendorType === 'NON_VENDOR' ? t('nonVendorTag') : ''}</MenuItem>
-              ))}
-            </TextField>
+            />
           ) : (
             <Grid container spacing={2} sx={{ mb: 2 }}>
               <Grid item xs={12} sm={5}>
@@ -1172,12 +1219,21 @@ export default function MaterialPurchaseRequestsPage() {
                 {items.map((item, index) => (
                   <TableRow key={index}>
                     <TableCell>
-                      <TextField
-                        size="small"
-                        value={item.materialName}
-                        onChange={(e) => updateItem(index, 'materialName', e.target.value)}
-                        sx={{ minWidth: 140 }}
-                      />
+                      {isServiceTab ? (
+                        <TextField
+                          size="small"
+                          value={item.materialName}
+                          onChange={(e) => updateItem(index, 'materialName', e.target.value)}
+                          sx={{ minWidth: 140 }}
+                        />
+                      ) : (
+                        <MaterialAutocomplete
+                          value={item.materialName}
+                          catalog={materialCatalog}
+                          onTyped={(name, exact) => typeMaterial(index, name, exact)}
+                          onPicked={(m) => pickMaterial(index, m)}
+                        />
+                      )}
                     </TableCell>
                     <TableCell>
                       <TextField

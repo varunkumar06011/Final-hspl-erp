@@ -69,7 +69,7 @@ export default function UploadSourceButton({
 }: UploadSourceButtonProps) {
   const { t } = useTranslation();
   const user = useAuthStore((s) => s.user);
-  const canUseLibrary = !!user && hasPermission(user.role as UserRole, Permission.MANAGE_DOCUMENTS);
+  const canUseLibrary = !!user && hasPermission(user.role as UserRole, Permission.MANAGE_DOCUMENTS, user.extraPermissions);
   const inputRef = useRef<HTMLInputElement>(null);
   const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
   const [libraryOpen, setLibraryOpen] = useState(false);

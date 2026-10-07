@@ -876,15 +876,41 @@ export function canOverrideApprovals(
   return hasPermission(role, Permission.APPROVAL_OVERRIDE, extraPermissions);
 }
 
+/** True for a super admin: '*' in the user's own extra permissions. */
+export function isSuperAdmin(extraPermissions?: readonly string[] | null): boolean {
+  return !!extraPermissions?.includes(SUPER_ADMIN_GRANT);
+}
+
+/**
+ * The pending approval step this user may decide: the one for their own role, or
+ * — for a user holding APPROVAL_OVERRIDE (super admin) — the earliest pending step.
+ */
+export function findApprovableStep<
+  S extends { approverRole: string; status: string; stepNumber?: number },
+>(
+  steps: readonly S[],
+  user: { role: string; extraPermissions?: readonly string[] | null },
+): S | undefined {
+  if (canOverrideApprovals(user.role, user.extraPermissions)) {
+    return [...steps]
+      .sort((a, b) => (a.stepNumber ?? 0) - (b.stepNumber ?? 0))
+      .find((s) => s.status === 'PENDING');
+  }
+  return steps.find((s) => s.approverRole === user.role && s.status === 'PENDING');
+}
+
 /**
  * HEAD_THEN_ADMIN workflows (PO, quotation, MPR) stay hidden from admins until
  * a Project Head or Head of Construction has approved. Returns false when the
- * given role should not yet be able to act on the workflow.
+ * given role should not yet be able to act on the workflow. A user holding the
+ * approval override (super admin) can always act.
  */
 export function isWorkflowOpenToRole(
   workflow: { approvalPolicy?: string | null; steps: { approverRole: string; status: string }[] },
   role: string,
+  extraPermissions?: readonly string[] | null,
 ): boolean {
+  if (canOverrideApprovals(role, extraPermissions)) return true;
   if (workflow.approvalPolicy !== 'HEAD_THEN_ADMIN' || !isAdminRole(role)) return true;
   return workflow.steps.some((s) => s.status === 'APPROVED' && isFirstLevelApproverRole(s.approverRole));
 }

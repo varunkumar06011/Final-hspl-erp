@@ -9,6 +9,8 @@ interface OpenTarget {
   /** API path (under /api) that serves the file */
   path: string;
   fileName: string;
+  /** Extra request headers, e.g. the unlock token of a PIN-locked document. */
+  headers?: Record<string, string>;
 }
 
 type Kind = 'image' | 'pdf' | 'other';
@@ -45,7 +47,7 @@ export function useFileViewer() {
     setUrl(null);
     setStatus('loading');
     api
-      .get(target.path, { responseType: 'blob' })
+      .get(target.path, { responseType: 'blob', headers: target.headers })
       .then((res) => {
         if (cancelled) return;
         const blob = res.data as Blob;
@@ -69,8 +71,8 @@ export function useFileViewer() {
     };
   }, [target]);
 
-  const openFile = useCallback((route: string, id: string, fileName: string) => {
-    setTarget({ path: `/${route}/${id}/file`, fileName });
+  const openFile = useCallback((route: string, id: string, fileName: string, headers?: Record<string, string>) => {
+    setTarget({ path: `/${route}/${id}/file`, fileName, headers });
   }, []);
 
   /** Open a file by its full API path, e.g. `/material-purchase-requests/:id/receipt`. */
@@ -96,7 +98,7 @@ export function useFileViewer() {
       </DialogContent>
       <DialogActions>
         {target && status !== 'loading' && (
-          <Button onClick={() => void downloadPath(target.path, target.fileName)}>{t('shared.download')}</Button>
+          <Button onClick={() => void downloadPath(target.path, target.fileName, target.headers)}>{t('shared.download')}</Button>
         )}
         <Button variant="contained" onClick={close}>{t('shared.close')}</Button>
       </DialogActions>

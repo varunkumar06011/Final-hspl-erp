@@ -52,7 +52,7 @@ import {
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { PaymentStatus, PaymentMode, POPaymentType, isAdminRole } from '@hospital-erp/shared';
+import { PaymentStatus, PaymentMode, POPaymentType, isAdminRole, canOverrideApprovals, findApprovableStep } from '@hospital-erp/shared';
 import { enumLabel, formatCurrency, formatIndianNumber, STATUS_COLORS, todayLocalDate } from '../utils/enumOptions';
 import { dateLocale } from '../i18n';
 import api, { extractErrorMessage } from '../config/api';
@@ -587,11 +587,9 @@ export default function PaymentsPage() {
 
   function canApprove(row: PaymentRequestRow): boolean {
     if (!row.approvalWorkflow) return false;
-    if (!user || (!isAdminRole(user.role))) return false;
+    if (!user || (!isAdminRole(user.role) && !canOverrideApprovals(user.role, user.extraPermissions))) return false;
     if (row.status !== PaymentStatus.PENDING) return false;
-    const step = row.approvalWorkflow.steps.find(
-      (s) => s.approverRole === user.role && s.status === 'PENDING'
-    );
+    const step = findApprovableStep(row.approvalWorkflow.steps, user);
     if (!step) return false;
     const alreadyApproved = row.approvalWorkflow.steps.some(
       (s) => s.approverUserId === user.id && s.status === 'APPROVED'

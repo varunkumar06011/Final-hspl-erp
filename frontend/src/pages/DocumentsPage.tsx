@@ -29,6 +29,8 @@ import {
   Chip,
   Tabs,
   Tab,
+  Switch,
+  FormControlLabel,
 } from '@mui/material';
 import ResponsiveDialog from '../components/ResponsiveDialog';
 import {
@@ -36,6 +38,8 @@ import {
   Search as SearchIcon,
   Visibility as ViewIcon,
   Delete as DeleteIcon,
+  Lock as LockIcon,
+  LockOpen as LockOpenIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { formatDate } from '../utils/enumOptions';
@@ -48,12 +52,17 @@ import RefreshButton from '../components/RefreshButton';
 import { useTranslation } from 'react-i18next';
 import FilePicker from '../components/FilePicker';
 import DocumentLibraryTab from '../components/DocumentLibraryTab';
+import { PinPromptDialog, DocumentPinSettingsDialog } from '../components/DocumentPinDialogs';
 interface DocumentRow {
   id: string;
-  name: string;
+  /** null while a locked document is still locked (unless you uploaded it) */
+  name: string | null;
   description: string | null;
   resolveTo: string[];
-  fileName: string;
+  fileName: string | null;
+  /** true while the document is PIN-locked and not yet opened with the PIN */
+  locked?: boolean;
+  isLocked?: boolean;
   filePath: string;
   mimeType: string;
   uploadedBy: string;
@@ -74,12 +83,29 @@ function GeneralDocumentsTab() {
   const queryClient = useQueryClient();
   const { user } = useAuthStore();
 
+  // PIN-locked documents: unlock tokens (15 min) held in memory for this visit only.
+  const [unlocks, setUnlocks] = useState<Record<string, { token: string; until: number }>>({});
+  const [unlockRow, setUnlockRow] = useState<DocumentRow | null>(null);
+  const [removeLockRow, setRemoveLockRow] = useState<DocumentRow | null>(null);
+  const [pinSettingsOpen, setPinSettingsOpen] = useState(false);
+  const [lockOnUpload, setLockOnUpload] = useState(false);
+  const liveTokens = Object.entries(unlocks).filter(([, u]) => u.until > Date.now());
+  const tokenKey = liveTokens.map(([id]) => id).sort().join(',');
+
+  const { data: pinStatus } = useQuery({
+    queryKey: ['/documents/pin/status'],
+    queryFn: async () => (await api.get('/documents/pin/status')).data as { hasPin: boolean },
+  });
+
   const { data, isLoading, refetch } = useQuery({
-    queryKey: ['/documents', page, pageSize, search],
+    queryKey: ['/documents', page, pageSize, search, tokenKey],
     queryFn: async () => {
       const params: Record<string, unknown> = { page: page + 1, pageSize };
       if (search) params.search = search;
-      const response = await api.get('/documents', { params });
+      const response = await api.get('/documents', {
+        params,
+        headers: liveTokens.length ? { 'x-doc-unlocks': liveTokens.map(([, u]) => u.token).join(',') } : undefined,
+      });
       return response.data;
     },
   });
@@ -101,6 +127,7 @@ function GeneralDocumentsTab() {
       formData.append('name', String(form.name ?? ''));
       if (form.description) formData.append('description', String(form.description));
       formData.append('resolveTo', JSON.stringify(form.resolveTo ?? []));
+      if (lockOnUpload) formData.append('locked', 'true');
       const response = await api.post('/documents/upload', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
@@ -111,6 +138,7 @@ function GeneralDocumentsTab() {
       setDialogOpen(false);
       setForm({});
       setSelectedFile(null);
+      setLockOnUpload(false);
       setSuccessMsg(tr('okUploaded'));
       setTimeout(() => setSuccessMsg(''), 3000);
     },
@@ -143,9 +171,37 @@ function GeneralDocumentsTab() {
   }
 
   const { openFile, viewer } = useFileViewer();
-  function handleDownload(id: string, fileName: string) {
-    openFile('documents', id, fileName);
+  function handleDownload(row: DocumentRow) {
+    const unlock = unlocks[row.id];
+    openFile('documents', row.id, row.fileName ?? row.name ?? '', unlock && unlock.until > Date.now() ? { 'x-doc-unlock': unlock.token } : undefined);
   }
+
+  async function submitUnlock(pin: string) {
+    const row = unlockRow!;
+    const res = await api.post(`/documents/${row.id}/unlock`, { pin });
+    setUnlocks((prev) => ({ ...prev, [row.id]: { token: res.data.token, until: Date.now() + (res.data.expiresInSeconds ?? 900) * 1000 } }));
+    setUnlockRow(null);
+    await queryClient.invalidateQueries({ queryKey: ['/documents'] });
+  }
+
+  async function submitRemoveLock(pin: string) {
+    const row = removeLockRow!;
+    await api.post(`/documents/${row.id}/lock`, { locked: false, pin });
+    setRemoveLockRow(null);
+    await queryClient.invalidateQueries({ queryKey: ['/documents'] });
+  }
+
+  const lockMutation = useMutation({
+    mutationFn: async (id: string) => { await api.post(`/documents/${id}/lock`, { locked: true }); },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/documents'] });
+    },
+    onError: (err: unknown) => {
+      const code = (err as { response?: { data?: { code?: string } } })?.response?.data?.code;
+      if (code === 'DOCUMENT_PIN_REQUIRED') setPinSettingsOpen(true);
+      else setError(extractErrorMessage(err));
+    },
+  });
 
   return (
     <Box>
@@ -153,7 +209,10 @@ function GeneralDocumentsTab() {
       <Box sx={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', mb: 2, flexWrap: 'wrap' }}>
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', justifyContent: { xs: 'flex-end', md: 'flex-end' }, width: { xs: '100%', md: 'auto' } }}>
           <RefreshButton onClick={() => refetch()} />
-          <Button variant="contained" startIcon={<AddIcon />} onClick={() => { setForm({ resolveTo: [] }); setError(''); setSelectedFile(null); setDialogOpen(true); }}>
+          <Button variant="outlined" startIcon={<LockIcon />} onClick={() => setPinSettingsOpen(true)}>
+            {pinStatus?.hasPin ? tr('myPin') : tr('setPin')}
+          </Button>
+          <Button variant="contained" startIcon={<AddIcon />} onClick={() => { setForm({ resolveTo: [] }); setError(''); setSelectedFile(null); setLockOnUpload(false); setDialogOpen(true); }}>
             {tr('uploadDocument')}
           </Button>
         </Box>
@@ -196,18 +255,43 @@ function GeneralDocumentsTab() {
               ) : (
                 rows.map((row) => (
                   <TableRow key={row.id} hover>
-                    <TableCell data-label={tr('name')}>{row.name}</TableCell>
-                    <TableCell data-label={tr('description')}>{row.description ?? '—'}</TableCell>
-                    <TableCell data-label={tr('resolveTo')}>{getNamesForIds(row.resolveTo)}</TableCell>
+                    <TableCell data-label={tr('name')}>
+                      {row.locked ? (
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                          <LockIcon fontSize="small" color="warning" />
+                          <span>{row.name ?? tr('lockedDocument')}</span>
+                        </Box>
+                      ) : (
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                          {row.isLocked && <LockOpenIcon fontSize="small" color="success" />}
+                          <span>{row.name}</span>
+                        </Box>
+                      )}
+                    </TableCell>
+                    <TableCell data-label={tr('description')}>{row.locked ? '••••••' : (row.description ?? '—')}</TableCell>
+                    <TableCell data-label={tr('resolveTo')}>{row.locked ? '••••••' : getNamesForIds(row.resolveTo)}</TableCell>
                     <TableCell data-label={tr('file')}>
-                      <Chip label={row.fileName} size="small" variant="outlined" />
+                      {row.locked ? <Chip label={tr('lockedChip')} size="small" color="warning" variant="outlined" /> : <Chip label={row.fileName} size="small" variant="outlined" />}
                     </TableCell>
                     <TableCell data-label={tr('uploadedBy')}>{row.uploadedByUser?.name ?? '—'}</TableCell>
                     <TableCell data-label={tr('date')}>{formatDate(row.createdAt)}</TableCell>
                     <TableCell data-label={tr('actions')}>
-                      <CommentsButton entityType="DOCUMENT" entityId={row.id} entityLabel={row.name} url="/documents" />
-                      <IconButton size="small" onClick={() => handleDownload(row.id, row.fileName)}><ViewIcon fontSize="small" /></IconButton>
-                      <IconButton size="small" color="error" onClick={() => { if (confirm(tr('confirmDelete'))) deleteMutation.mutate(row.id); }}><DeleteIcon fontSize="small" /></IconButton>
+                      {row.locked ? (
+                        <Button size="small" startIcon={<LockIcon />} onClick={() => setUnlockRow(row)}>{tr('unlock')}</Button>
+                      ) : (
+                        <>
+                          <CommentsButton entityType="DOCUMENT" entityId={row.id} entityLabel={row.name ?? ''} url="/documents" />
+                          <IconButton size="small" onClick={() => handleDownload(row)}><ViewIcon fontSize="small" /></IconButton>
+                          {row.uploadedBy === user?.id && (row.isLocked ? (
+                            <IconButton size="small" title={tr('removeLock')} onClick={() => setRemoveLockRow(row)}><LockOpenIcon fontSize="small" /></IconButton>
+                          ) : (
+                            <IconButton size="small" title={tr('lockIt')} onClick={() => lockMutation.mutate(row.id)}><LockIcon fontSize="small" /></IconButton>
+                          ))}
+                        </>
+                      )}
+                      {(!row.locked || row.uploadedBy === user?.id) && (
+                        <IconButton size="small" color="error" onClick={() => { if (confirm(tr('confirmDelete'))) deleteMutation.mutate(row.id); }}><DeleteIcon fontSize="small" /></IconButton>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))
@@ -253,6 +337,18 @@ function GeneralDocumentsTab() {
                 ))}
               </Select>
             </FormControl>
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={lockOnUpload}
+                  onChange={(e) => {
+                    if (e.target.checked && !pinStatus?.hasPin) { setPinSettingsOpen(true); return; }
+                    setLockOnUpload(e.target.checked);
+                  }}
+                />
+              }
+              label={tr('lockOnUpload')}
+            />
             <FilePicker
               file={selectedFile}
               onChange={setSelectedFile}
@@ -278,6 +374,28 @@ function GeneralDocumentsTab() {
           </Button>
         </DialogActions>
       </ResponsiveDialog>
+
+      <PinPromptDialog
+        open={!!unlockRow}
+        title={tr('unlockTitle')}
+        helper={tr('unlockHelp', { name: unlockRow?.uploadedByUser?.name ?? '' })}
+        submitLabel={tr('unlock')}
+        onSubmit={submitUnlock}
+        onClose={() => setUnlockRow(null)}
+      />
+      <PinPromptDialog
+        open={!!removeLockRow}
+        title={tr('removeLockTitle')}
+        helper={tr('removeLockHelp')}
+        submitLabel={tr('removeLock')}
+        onSubmit={submitRemoveLock}
+        onClose={() => setRemoveLockRow(null)}
+      />
+      <DocumentPinSettingsDialog
+        open={pinSettingsOpen}
+        onClose={() => setPinSettingsOpen(false)}
+        onSaved={() => { if (dialogOpen) setLockOnUpload(true); }}
+      />
     </Box>
   );
 }

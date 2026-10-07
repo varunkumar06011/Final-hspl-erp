@@ -19,7 +19,7 @@ import CloseIcon from '@mui/icons-material/Close';
 import CheckIcon from '@mui/icons-material/Check';
 import CloseIconSmall from '@mui/icons-material/Close';
 import VisibilityIcon from '@mui/icons-material/Visibility';
-import { APPROVER_ROLES, isWorkflowOpenToRole, type UserResponse } from '@hospital-erp/shared';
+import { APPROVER_ROLES, isWorkflowOpenToRole, canOverrideApprovals, findApprovableStep, type UserResponse } from '@hospital-erp/shared';
 import api, { extractErrorMessage } from '../config/api';
 import ResponsiveDialog from './ResponsiveDialog';
 import ApprovalActionDialog from './ApprovalActionDialog';
@@ -192,9 +192,9 @@ function extractRecord(entityType: PendingEntityType, raw: Record<string, unknow
 // they haven't already decided on.
 
 function canUserApprove(record: RecordDisplay, user: UserResponse | null): boolean {
-  if (!user || !APPROVER_ROLES.some((role) => role === user.role)) return false;
+  if (!user || !(APPROVER_ROLES.some((role) => role === user.role) || canOverrideApprovals(user.role, user.extraPermissions))) return false;
   if (!record.approvalWorkflow?.steps) return false;
-  if (!isWorkflowOpenToRole({ approvalPolicy: record.approvalWorkflow.approvalPolicy, steps: record.approvalWorkflow.steps }, user.role)) return false;
+  if (!isWorkflowOpenToRole({ approvalPolicy: record.approvalWorkflow.approvalPolicy, steps: record.approvalWorkflow.steps }, user.role, user.extraPermissions)) return false;
   // Workflow already decided elsewhere (approved/rejected on another device or
   // by another admin) — never show approve/reject for it.
   const wfStatus = record.approvalWorkflow.status;
@@ -203,9 +203,7 @@ function canUserApprove(record: RecordDisplay, user: UserResponse | null): boole
     (step) => step.approverUserId === user.id && step.status !== 'PENDING',
   );
   if (alreadyDecided) return false;
-  return record.approvalWorkflow.steps.some(
-    (step) => step.approverRole === user.role && step.status === 'PENDING',
-  );
+  return !!findApprovableStep(record.approvalWorkflow.steps, user);
 }
 
 // ─── Status chip color helper ───────────────────────────────────────────────

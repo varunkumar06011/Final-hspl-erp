@@ -200,7 +200,7 @@
   "editReasonPlaceholder": "e.g. Vendor delivered 70 out of 100, closing PO at delivered quantity",
   "editSend": "Edit & Send for Re-approval",
   "changePtTitle": "Change Payment Type — {{n}}",
-  "changePtInfo": "Changing the payment type sends the PO back for re-approval. The new type applies once it is approved again.",
+  "changePtInfo": "Changing the payment type does not need re-approval; it applies to payments from now on.",
   "currentPt": "Current Payment Type",
   "newPt": "New Payment Type",
   "select": "— Select —",
@@ -281,5 +281,14 @@
     "CONSULTANCY": "Consultancy",
     "OTHER": "Other"
   },
-  "moreItems": "+{{n}} more items"
+  "moreItems": "+{{n}} more items",
+  "assignInfo": "Pick the budget head for this PO. It is charged to that head. No re-approval is needed, before or after approval.",
+  "dueOn": "Due {{d}}",
+  "setBudgetHeadChip": "Budget head not set",
+  "change": "Change",
+  "setIt": "Set",
+  "moreDetails": "More details",
+  "lessDetails": "Hide details",
+  "tabAll": "Purchase Orders",
+  "tabContracts": "Contracts"
 }

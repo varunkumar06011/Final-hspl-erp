@@ -153,7 +153,8 @@ async function getTokensForUsers(userIds: string[], eventType?: string): Promise
 
 export async function notifyAllHeads(
   projectId: string,
-  payload: NotificationPayload
+  payload: NotificationPayload,
+  excludeUserId?: string,
 ): Promise<void> {
   // Heads may not be assigned to a specific project, so we don't filter by projectId.
   // We query all active users with head roles.
@@ -161,6 +162,8 @@ export async function notifyAllHeads(
     where: {
       isActive: true,
       role: { in: [...APPROVER_ROLES] as string[] },
+      // The person who just acted does not need to be told about their own action.
+      ...(excludeUserId ? { id: { not: excludeUserId } } : {}),
     },
     select: { id: true },
   });
@@ -214,7 +217,8 @@ export async function notifyUser(
 export async function notifyApprovers(
   projectId: string,
   approverRoles: UserRole[],
-  payload: ApprovalNotificationPayload
+  payload: ApprovalNotificationPayload,
+  excludeUserId?: string,
 ): Promise<void> {
   // Approvers (heads) may not be assigned to a specific project, so we don't filter by projectId.
   // We query all active users with the given approver roles.
@@ -222,6 +226,7 @@ export async function notifyApprovers(
     where: {
       isActive: true,
       role: { in: approverRoles as string[] },
+      ...(excludeUserId ? { id: { not: excludeUserId } } : {}),
     },
     select: { id: true },
   });

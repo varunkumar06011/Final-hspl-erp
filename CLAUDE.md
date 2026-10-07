@@ -97,3 +97,26 @@ The assistant is branded **Miko** (UI strings in the `assistant` i18n namespace,
 - Env: `OPENAI_API_KEY` (funded account), optional `ASSISTANT_ENABLED`, `ASSISTANT_DAILY_LIMIT` (messages/user/day, default 150), `ASSISTANT_INTERNAL_URL` (default `http://127.0.0.1:$PORT`).
 - **Photos always become one draft MPR / service request.** With a photo attached, `engine.ts` only allows `create_mpr` and keeps just `requestType`, vendor (`vendorId`, or `newVendor` which the MPR route creates inline), the items' name/qty/unit/rate and `description`; everything else is dropped. The photo is attached to the DRAFT on confirm (never submitted) and the Supervisor named Akhil is notified (`notify.ts`) to review, edit and submit it.
 - UI labels for confirmation cards/tables are keys (`assistant` i18n namespace), not backend strings; add a key to both `en`/`te` when adding a tool field or list column.
+
+## Per-user module access
+
+Admin 1, Admin 2 and super admins can switch any module on or off per user (Module Access page, `/api/module-access`, `module-access.routes.ts`). Users keep their role's default sidebar until overridden.
+
+- Rules live in `shared/access.ts` (module registry, role defaults, override resolution, grants, API write-block rule). Overrides are stored in the `users.moduleAccess` JSON column.
+- `authMiddleware` folds module grants into the user's permissions and rejects writes into a switched-off module with `MODULE_DISABLED`. Admin 1 / Admin 2 / super admins are never restricted.
+- The sidebar, route guard, top bar, transaction register and global search all honour the overrides, and open sessions refresh via a socket event. When adding a module, register it in `shared/access.ts`.
+
+## Procurement flow notes
+
+- **Auto PO.** A quotation raised from an approved MPR is auto-approved, and `services/po-from-quotation.service.ts` immediately creates its PO as `PENDING_APPROVAL` (payment type `AFTER_DELIVERY`, no budget head). Nobody presses "Generate PO". Budget head and payment type are set afterwards with `POST /purchase-orders/:id/change-budget-head` and `/change-payment-type`; both work while pending and after approval and **never** send the PO back for approval (an approved PO that had no head is committed to the budget when the head is first set).
+- **Super admin (`'*'`).** `findApprovableStep`, `isWorkflowOpenToRole` and `isModuleEnabled` (all in `shared/`) honour the override: any step, any order, every module. One approval by a super admin settles the whole workflow (`approvalService.approve` chains through the remaining steps, each audited as an override). Frontend pages must pass `user.extraPermissions` to `hasPermission` / `canOverrideApprovals`.
+- **Notifications.** The person who approved/rejected is excluded from the push about their own action (`excludeUserId` on `notifyAllHeads` / `notifyApprovers`).
+- **Contracts live inside Purchase Orders** (Contracts tab, `?tab=contracts`; `GET /purchase-orders?kind=contract`). Sub-POs are numbered `<contract>-SUB01`. The old `/contracts` page redirects there; the standalone `contracts` module has no page of its own any more.
+- **Approval timing.** `components/ApprovalTiming.tsx` shows how long the Project Head / Head of Construction took, then how long the admins took (admin clock starts at the head's approval).
+- **Repeat shipments.** MPR list/get responses carry `shipmentNo` / `shipmentFlags`: same vendor + same material (by name) requested again is the 2nd, 3rd... shipment.
+- **Materials.** `GET /material-purchase-requests/material-catalog` feeds the material type-ahead; MPR create/update (`canonicalizeMaterialCodes`) forces a material that already exists to reuse its existing code.
+- **Fuzzy search.** `shared/fuzzy.ts` (`fuzzyFilter`) tolerates typos and spelling variants (lakshmi/laxmi). Vendor pickers use `components/VendorAutocomplete.tsx`; `createCrudRouter` takes `fuzzyFields` to retry a list search fuzzily when nothing matches. `hooks/useUrlState.ts` batches same-tick writes (react-router's functional `setSearchParams` otherwise drops the first one: this was why list searches did nothing).
+
+## Locked documents
+
+General documents (Documents → General) can be PIN-locked. The uploader sets a personal 6-digit **document PIN** (`users.documentPinHash`, separate from the login PIN; change needs the old PIN, or the login PIN to reset). A locked document (`documents.isLocked`) is masked in the list (no name for others, no description/file/people) until `POST /documents/:id/unlock` is called with the uploader's PIN; that returns a 15-minute token (own secret, not a login token) sent back as `x-doc-unlocks` (list) / `x-doc-unlock` (file). The `Document` model is excluded from global search so locked names cannot leak.

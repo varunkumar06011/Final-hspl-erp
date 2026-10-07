@@ -87,5 +87,8 @@
   "errPreview": "Failed to preview PDF",
   "ocrExtracted": "{{n}} new item(s) extracted from the document and added. Review and tick the ones you need.",
   "pdfLoadingTitle": "Quotation PDF Loading...",
-  "pdfLoadingText": "Loading PDF..."
+  "pdfLoadingText": "Loading PDF...",
+  "moreDetails": "More details",
+  "lessDetails": "Hide details",
+  "requestNo": "Request No."
 }

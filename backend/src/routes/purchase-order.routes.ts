@@ -168,13 +168,15 @@ router.get(
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const projectId = requireProjectId(req);
-      const { page, pageSize, vendorId, status, search, minAmount, maxAmount, dateFilter } = req.query as Record<string, unknown>;
+      const { page, pageSize, vendorId, status, search, minAmount, maxAmount, dateFilter, kind } = req.query as Record<string, unknown>;
       const pageNum = Number(page) || 1;
       const size = Number(pageSize) || 20;
 
       const where: Record<string, unknown> = { projectId, deletedAt: null };
       if (vendorId) where.vendorId = vendorId;
       if (status) where.status = status;
+      if (kind === 'contract') where.isContract = true;
+      else if (kind === 'po') where.isContract = false;
       if (search) {
         where.OR = [
           { poNumber: { contains: String(search), mode: 'insensitive' } },
@@ -853,11 +855,11 @@ router.post(
       }
 
       const adminRoles = await getActiveAdminRoles(projectId);
-      // Numbered <contract>-S01, -S02 ... (deleted ones keep their number); retry if two are raised at once.
+      // Numbered <contract>-SUB01, -SUB02 ... (deleted ones keep their number); retry if two are raised at once.
       const existingCount = await prisma.purchaseOrder.count({ where: { contractPoId: contract.id } });
       let created: { id: string; poNumber: string; approvalWorkflowId: string | null } | null = null;
       for (let attempt = 0; attempt < 5 && !created; attempt++) {
-        const poNumber = `${contract.poNumber}-S${String(existingCount + 1 + attempt).padStart(2, '0')}`;
+        const poNumber = `${contract.poNumber}-SUB${String(existingCount + 1 + attempt).padStart(2, '0')}`;
         try {
           created = await prisma.$transaction(async (tx) => {
             const sub = await tx.purchaseOrder.create({
@@ -1337,7 +1339,7 @@ router.post(
       const alreadyApproved = po.approvalWorkflow.steps.find(
         (s) => s.approverUserId === req.user!.id && s.status === 'APPROVED'
       );
-      if (alreadyApproved) {
+      if (alreadyApproved && !approvalService.canOverride(req.user!)) {
         res.status(400).json({ error: 'You have already approved this purchase order' });
         return;
       }
@@ -1863,9 +1865,9 @@ router.post(
   },
 );
 
-// POST /:id/change-payment-type — change payment type on an APPROVED PO.
-// The PO is sent back for re-approval; the new type applies to advance
-// payments / the invoice flow once it is approved again.
+// POST /:id/change-payment-type — set or change the payment type on a PO that is
+// waiting for approval or already approved. NO re-approval: the type only drives
+// how advances / invoices are paid, and it is recorded in the audit log.
 router.post(
   '/:id/change-payment-type',
   rbacMiddleware(Permission.CREATE_PO),
@@ -1880,16 +1882,11 @@ router.post(
         res.status(404).json({ error: 'Purchase order not found' });
         return;
       }
-      if (po.status !== POStatus.APPROVED) {
-        res.status(400).json({ error: 'Only approved POs can have their payment type changed' });
+      if (![POStatus.PENDING_APPROVAL, POStatus.APPROVED, POStatus.PARTIALLY_DELIVERED, POStatus.DELIVERED].includes(po.status as POStatus)) {
+        res.status(400).json({ error: 'The payment type can only be changed on pending, approved or delivered POs' });
         return;
       }
       const { paymentType, advanceAmount, reason } = req.body;
-      if (paymentType === po.paymentType) {
-        res.status(400).json({ error: 'Payment type is already ' + paymentType });
-        return;
-      }
-
       // Same rules as PO creation: ADVANCE / FULL_PAYMENT need an agreed
       // advance amount ≤ grandTotal; AFTER_DELIVERY carries none.
       let resolvedAdvanceAmount: number | null;
@@ -1910,40 +1907,18 @@ router.post(
 
       const oldValue = { paymentType: po.paymentType, advanceAmount: po.advanceAmount ? Number(po.advanceAmount) : null };
 
-      // The PO goes back to PENDING_APPROVAL and must pass the approval workflow
-      // again. editedAt makes re-approval skip the budget commitment step (the
-      // amount is unchanged, so the existing commitment stands).
-      const adminRoles = await getActiveAdminRoles(projectId);
-      const updated = await prisma.$transaction(async (tx) => {
-        const row = await tx.purchaseOrder.update({
-          where: { id: po.id },
-          data: {
-            paymentType,
-            advanceAmount: resolvedAdvanceAmount,
-            editReason: reason,
-            editedAt: new Date(),
-            editedBy: req.user!.id,
-            status: POStatus.PENDING_APPROVAL,
-          },
-          include: poInclude,
-        });
-
-        if (po.approvalWorkflowId) {
-          await tx.approvalStep.deleteMany({ where: { workflowId: po.approvalWorkflowId } });
-          await tx.approvalWorkflow.update({
-            where: { id: po.approvalWorkflowId },
-            data: {
-              status: 'VERIFICATION',
-              currentStep: 0,
-              approvalPolicy: HEAD_THEN_ADMIN_POLICY,
-              steps: {
-                create: headThenAdminSteps(adminRoles),
-              },
-            },
-          });
-        }
-
-        return row;
+      // Only the payment fields change; status, approval and commitment stay as they are.
+      // (editedAt is deliberately NOT touched: it would make a later approval skip the
+      // budget commitment.)
+      const updated = await prisma.purchaseOrder.update({
+        where: { id: po.id },
+        data: {
+          paymentType,
+          advanceAmount: resolvedAdvanceAmount,
+          editReason: reason ?? null,
+          editedBy: req.user!.id,
+        },
+        include: poInclude,
       });
 
       await logAudit({
@@ -1953,17 +1928,8 @@ router.post(
         entityId: po.id,
         projectId,
         oldValue,
-        newValue: { paymentType, advanceAmount: resolvedAdvanceAmount, reason, status: POStatus.PENDING_APPROVAL },
+        newValue: { paymentType, advanceAmount: resolvedAdvanceAmount, reason, noReapproval: true },
       });
-
-      notifyApprovers(projectId, [...FIRST_LEVEL_APPROVER_ROLES] as UserRole[], {
-        approvalId: po.approvalWorkflowId ?? '',
-        entityType: 'PURCHASE_ORDER',
-        entityId: po.id,
-        title: 'PO Payment Type Changed — Re-approval Required',
-        body: `${po.poNumber} payment type changed to ${paymentType} and needs re-approval`,
-        url: `/pos?id=${po.id}`,
-      }).catch((err) => console.error('[Push] PO payment type notification error:', err));
 
       res.json(updated);
     } catch (error) {
@@ -2335,15 +2301,14 @@ router.post(
   }
 );
 
-// POST /:id/change-budget-head — admin-only: change the budget head of an
-// approved (or partially delivered / delivered) PO. Moves the committed and
-// actual amounts from the old budget head to the new one atomically so the
-// old head gets its money back and the new head is charged.
-//
-// Allowed for ADMIN / ADMIN_2 only (MANAGE_FINANCE permission).
+// POST /:id/change-budget-head — assign or change the budget head of a PO.
+// Pending / rejected POs just take the new head. Approved (or partially delivered /
+// delivered) POs move the committed and actual amounts from the old budget head to
+// the new one atomically, or — when no head was set yet — commit the PO to the new
+// head. NO re-approval in either case.
 router.post(
   '/:id/change-budget-head',
-  rbacMiddleware(Permission.MANAGE_FINANCE),
+  rbacMiddleware(Permission.CREATE_PO),
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const projectId = requireProjectId(req);
@@ -2363,16 +2328,9 @@ router.post(
         return;
       }
 
-      // Only approved / partially delivered / delivered POs have committed
-      // budget that needs to be moved. Pending/rejected POs can be edited
-      // directly via the edit-unapproved flow.
-      if (![POStatus.APPROVED, POStatus.PARTIALLY_DELIVERED, POStatus.DELIVERED].includes(po.status as POStatus)) {
-        res.status(400).json({ error: 'Budget head can only be changed on approved or delivered POs' });
-        return;
-      }
-
-      if (!po.budgetHeadId) {
-        res.status(400).json({ error: 'This PO has no budget head to change' });
+      const isCommitted = [POStatus.APPROVED, POStatus.PARTIALLY_DELIVERED, POStatus.DELIVERED].includes(po.status as POStatus);
+      if (!isCommitted && po.status !== POStatus.PENDING_APPROVAL && po.status !== POStatus.REJECTED) {
+        res.status(400).json({ error: 'The budget head cannot be changed on this purchase order' });
         return;
       }
 
@@ -2388,6 +2346,54 @@ router.post(
       });
       if (!newBudgetHead) {
         res.status(400).json({ error: 'New budget head not found' });
+        return;
+      }
+
+      // Not committed yet (waiting for approval): the head is just recorded; the
+      // commitment is added when the PO is approved.
+      if (!isCommitted) {
+        const tagged = await prisma.purchaseOrder.update({
+          where: { id: po.id },
+          data: { budgetHeadId: newBudgetHeadId },
+          include: poInclude,
+        });
+        await logAudit({
+          userId: req.user!.id,
+          action: AuditAction.UPDATE,
+          entityType: 'PURCHASE_ORDER',
+          entityId: po.id,
+          projectId,
+          oldValue: { budgetHeadId: po.budgetHeadId },
+          newValue: { budgetHeadId: newBudgetHeadId, budgetHead: newBudgetHead.particulars, noReapproval: true },
+        });
+        res.json(tagged);
+        return;
+      }
+
+      // Approved PO that never had a head: commit its remaining value to the new head.
+      if (!po.budgetHeadId) {
+        const toCommit = Number(po.grandTotal);
+        const tagged = await prisma.$transaction(async (tx) => {
+          await tx.budgetHead.update({
+            where: { id: newBudgetHeadId },
+            data: { committedAmount: { increment: toCommit } },
+          });
+          return tx.purchaseOrder.update({
+            where: { id: po.id },
+            data: { budgetHeadId: newBudgetHeadId },
+            include: poInclude,
+          });
+        });
+        await logAudit({
+          userId: req.user!.id,
+          action: AuditAction.UPDATE,
+          entityType: 'PURCHASE_ORDER',
+          entityId: po.id,
+          projectId,
+          oldValue: { budgetHeadId: null },
+          newValue: { budgetHeadId: newBudgetHeadId, budgetHead: newBudgetHead.particulars, committed: toCommit, noReapproval: true },
+        });
+        res.json(tagged);
         return;
       }
 

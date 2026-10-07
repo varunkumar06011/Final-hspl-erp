@@ -10,6 +10,7 @@ import * as approvalService from './approval.service';
 import { HEAD_THEN_ADMIN_POLICY } from './approval.service';
 import { notifyApprovers } from './push.service';
 import { logAudit } from './audit.service';
+import { createPoFromApprovedQuotation } from './po-from-quotation.service';
 
 export interface QuotationLineItem {
   materialName: string;
@@ -230,6 +231,14 @@ export async function createQuotation(input: CreateQuotationInput) {
       body: `Quotation ${quotationNumber} from ${quotation.vendor?.name ?? 'vendor'} — ₹${grandTotal}`,
       url: `/quotations?id=${quotation.id}`,
     }).catch((err) => console.error('[Push] Quotation notification error:', err));
+  }
+
+  // An auto-approved quotation goes straight to a Purchase Order waiting for
+  // approval, so nobody has to generate it by hand. Never fails the quotation.
+  if (autoApproved) {
+    await createPoFromApprovedQuotation(quotation.id, createdBy).catch((err) =>
+      console.error('[Quotation] Auto PO creation failed (non-fatal):', err),
+    );
   }
 
   // If raised from a work task, link the quotation back to it and advance

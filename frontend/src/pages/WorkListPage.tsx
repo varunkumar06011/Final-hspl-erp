@@ -142,8 +142,8 @@ export default function WorkListPage() {
   const navigate = useNavigate();
   const { user } = useAuthStore();
 
-  const canCreateQuotation = !!user && hasPermission(user.role as UserRole, Permission.CREATE_QUOTATION);
-  const canManageWork = !!user && hasPermission(user.role as UserRole, Permission.MANAGE_WORK_TASKS);
+  const canCreateQuotation = !!user && hasPermission(user.role as UserRole, Permission.CREATE_QUOTATION, user.extraPermissions);
+  const canManageWork = !!user && hasPermission(user.role as UserRole, Permission.MANAGE_WORK_TASKS, user.extraPermissions);
 
   // Read NL query filters from URL on mount
   useUrlFilters({ search: (v) => { setSearch(v); setPage(0); }, status: (v) => { setStatusFilter(v); setPage(0); }, priority: (v) => { setPriorityFilter(v); setPage(0); }, type: (v) => { setTypeFilter(v); setPage(0); } });

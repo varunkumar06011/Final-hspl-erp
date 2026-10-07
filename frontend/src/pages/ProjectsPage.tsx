@@ -107,7 +107,7 @@ export default function ProjectsPage() {
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
 
-  const allowed = !!user && hasPermission(user.role, Permission.MANAGE_PROJECTS);
+  const allowed = !!user && hasPermission(user.role, Permission.MANAGE_PROJECTS, user.extraPermissions);
 
   const { data, isLoading } = useQuery({
     queryKey: ['/projects', { includeArchived: showArchived }],

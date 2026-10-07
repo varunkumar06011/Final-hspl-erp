@@ -253,7 +253,7 @@ export const changePOPaymentTypeSchema = z.object({
   body: z.object({
     paymentType: z.nativeEnum(POPaymentType),
     advanceAmount: money.optional(),
-    reason: z.string().trim().min(1, 'Reason is required').max(500),
+    reason: z.string().trim().max(500).optional(),
   }),
 });
 export const listPOsSchema = z.object({
@@ -264,6 +264,8 @@ export const listPOsSchema = z.object({
     minAmount: z.coerce.number().optional(),
     maxAmount: z.coerce.number().optional(),
     dateFilter: z.enum(['today', 'this_week', 'this_month', 'last_month']).optional(),
+    // 'contract' = contract POs only (the Contracts tab); 'po' = ordinary POs and sub-POs; default = everything
+    kind: z.enum(['all', 'po', 'contract']).optional(),
   }),
 });
 
@@ -1076,7 +1078,7 @@ export const createDocumentSchema = z.object({
   }),
 });
 export const listDocumentsSchema = z.object({
-  query: pagination.extend({}),
+  query: pagination.extend({ search: z.string().optional() }),
 });
 
 // ═══ Contracts ═══

@@ -28,6 +28,7 @@ import api, { extractErrorMessage } from '../config/api';
 import { enumLabel, formatCurrency, formatDate, STATUS_COLORS, unitLabel } from '../utils/enumOptions';
 import AcknowledgementCheckbox from './AcknowledgementCheckbox';
 import ResponsiveDialog from './ResponsiveDialog';
+import VendorAutocomplete from './VendorAutocomplete';
 
 const UNIT_VALUES = ['day', 'week', 'month', 'hrs', 'nos', 'job', 'visit', 'lumpsum', 'sqft', 'rft', 'kg', 'ton', 'ltr', 'set'];
 const GST_CHOICES = [0, 5, 12, 18, 28];
@@ -43,17 +44,6 @@ const toDateInput = (v?: string | null) => (v ? String(v).slice(0, 10) : '');
 interface Option {
   id: string;
   label: string;
-}
-
-function useVendorOptions(): Option[] {
-  const { data } = useQuery({
-    queryKey: ['/vendors', 'for-po'],
-    queryFn: async () => (await api.get('/vendors', { params: { pageSize: 100 } })).data,
-  });
-  return useMemo(
-    () => (data?.data ?? []).map((v: { id: string; vendorCode: string; name: string }) => ({ id: v.id, label: `${v.vendorCode} - ${v.name}` })),
-    [data],
-  );
 }
 
 function useBudgetHeadOptions(): Option[] {
@@ -77,7 +67,6 @@ function refreshPoData(queryClient: ReturnType<typeof useQueryClient>) {
 export function NewContractDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { t } = useTranslation('po');
   const queryClient = useQueryClient();
-  const vendors = useVendorOptions();
   const budgetHeads = useBudgetHeadOptions();
   const [vendorId, setVendorId] = useState('');
   const [title, setTitle] = useState('');
@@ -122,9 +111,7 @@ export function NewContractDialog({ open, onClose }: { open: boolean; onClose: (
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
           <Alert severity="info">{t('contractCreateHelp')}</Alert>
           {error && <Alert severity="error" onClose={() => setError('')}>{error}</Alert>}
-          <TextField select label={t('vendor')} value={vendorId} onChange={(e) => setVendorId(e.target.value)} required fullWidth>
-            {vendors.map((v) => <MenuItem key={v.id} value={v.id}>{v.label}</MenuItem>)}
-          </TextField>
+          <VendorAutocomplete label={t('vendor')} value={vendorId} onChange={(id) => setVendorId(id)} required />
           <TextField label={t('contractTitleLabel')} value={title} onChange={(e) => setTitle(e.target.value)} required fullWidth inputProps={{ maxLength: 200 }} />
           <TextField select label={t('contractTypeField')} value={type} onChange={(e) => setType(e.target.value)} fullWidth>
             <MenuItem value="">{t('none')}</MenuItem>

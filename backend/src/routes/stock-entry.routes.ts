@@ -9,6 +9,7 @@ import {
   AssetStatus,
   AssetMovementType,
   isApproverRole,
+  canOverrideApprovals,
 } from '@hospital-erp/shared';
 import { createStockEntrySchema, rejectStockEntrySchema } from '@hospital-erp/shared';
 import { Prisma } from '@prisma/client';
@@ -198,7 +199,7 @@ router.post(
       }
 
       const entryNumber = await generateProjectSequenceNumber('stockEntry', 'entryNumber', 'STK', 3, projectId);
-      const autoPost = isApproverRole(req.user!.role);
+      const autoPost = (isApproverRole(req.user!.role) || canOverrideApprovals(req.user!.role, req.user!.extraPermissions));
 
       const created = await prisma.$transaction(async (tx) => {
         const entry = await tx.stockEntry.create({
@@ -261,7 +262,7 @@ router.post(
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const projectId = requireProjectId(req);
-      if (!isApproverRole(req.user!.role)) {
+      if (!(isApproverRole(req.user!.role) || canOverrideApprovals(req.user!.role, req.user!.extraPermissions))) {
         res.status(403).json({ error: 'Only a project head or admin can approve a stock entry' });
         return;
       }
@@ -310,7 +311,7 @@ router.post(
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const projectId = requireProjectId(req);
-      if (!isApproverRole(req.user!.role)) {
+      if (!(isApproverRole(req.user!.role) || canOverrideApprovals(req.user!.role, req.user!.extraPermissions))) {
         res.status(403).json({ error: 'Only a project head or admin can reject a stock entry' });
         return;
       }

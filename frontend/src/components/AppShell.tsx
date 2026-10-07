@@ -18,7 +18,6 @@ import {
   BugReport as IssueIcon,
   Verified as InspectionIcon,
   Description as DocumentIcon,
-  Handshake as ContractIcon,
   History as AuditIcon,
   Settings as SettingsIcon,
   People as PeopleIcon,
@@ -106,7 +105,6 @@ const NAV_ITEMS = [
   { label: 'Issues', icon: <IssueIcon />, path: '/issues', section: 'Site Operations' },
   { label: 'Inspections', icon: <InspectionIcon />, path: '/inspections', section: 'Site Operations' },
   { label: 'Documents', icon: <DocumentIcon />, path: '/documents', section: 'Site Operations' },
-  { label: 'Contracts', icon: <ContractIcon />, path: '/contracts', section: 'Site Operations' },
   // ── Admin ──
   { label: 'Comments', icon: <CommentsNavIcon />, path: '/comments', section: 'Admin' },
   { label: 'Activity Log', icon: <ActivityNavIcon />, path: '/activity-log', section: 'Admin' },
@@ -150,7 +148,6 @@ const ADMIN_NAV_ITEMS = [
   { label: 'Issues', icon: <IssueIcon />, path: '/issues', section: 'Project' },
   { label: 'Site Photos', icon: <PhotoIcon />, path: '/photos', section: 'Project' },
   { label: 'Documents', icon: <DocumentIcon />, path: '/documents', section: 'Project' },
-  { label: 'Contracts', icon: <ContractIcon />, path: '/contracts', section: 'Project' },
   // ── Reports ──
   { label: 'Transaction Register', icon: <ReportsIcon />, path: '/transaction-register', section: 'Reports' },
   { label: 'Finance Dashboard', icon: <FinanceDashboardIcon />, path: '/finance-dashboard', section: 'Reports' },

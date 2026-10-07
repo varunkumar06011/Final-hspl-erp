@@ -141,7 +141,7 @@ const VOUCHER_TYPE_COLORS: Record<string, 'success' | 'error' | 'info' | 'warnin
 export default function VouchersPage() {
   const { t: tr } = useTranslation('vouchers2');
   const user = useAuthStore((s) => s.user);
-  const canReverseVoucher = !!user && hasPermission(user.role as UserRole, Permission.REVERSE_VOUCHER);
+  const canReverseVoucher = !!user && hasPermission(user.role as UserRole, Permission.REVERSE_VOUCHER, user.extraPermissions);
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(20);
   const [search, setSearch] = useState('');
