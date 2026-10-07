@@ -1,5 +1,5 @@
 /**
- * When someone saves a photo through Miko, one person is told about it: the
+ * When someone saves a photo-based draft request through Miko, one person is told about it: the
  * Supervisor named Akhil. Nobody else is notified.
  */
 import { prisma } from '../../config/prisma';
@@ -23,9 +23,9 @@ export async function notifyMikoPhotoSaved(
     await notifyUser(recipient.id, {
       entityType: 'MIKO_PHOTO',
       entityId: entityId ?? '',
-      title: 'New photo saved via Miko',
-      body: `${uploader.name} saved a photo: ${what}`,
-      url: url ?? '/documents',
+      title: 'New request from a photo via Miko',
+      body: `${uploader.name} saved a draft from a photo: ${what}. Review it, edit if needed and submit for approval.`,
+      url: url ?? '/material-purchase-requests',
     });
   } catch (err) {
     console.error('[Miko] photo notification failed:', err);

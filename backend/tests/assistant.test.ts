@@ -79,7 +79,6 @@ describe('assistant tool registry (hard limits)', () => {
       'create_quotation',
       'create_stock_entry',
       'create_vendor',
-      'save_to_library',
     ]);
   });
 
@@ -312,11 +311,12 @@ describe('service requests and photos', () => {
     const out = await runChat(user, 'AC service chey', [], [photo]);
 
     const keys = out.pending[0].summary.fields.map((f) => f.key);
-    expect(keys).toEqual(expect.arrayContaining(['requestType', 'serviceCategory', 'servicePeriod', 'photos']));
+    expect(keys).toEqual(expect.arrayContaining(['requestType', 'photos']));
     expect(db.assistantAction.create.mock.calls[0][0].data.args._images).toHaveLength(1);
     // The model saw the photo this turn, but the history returned to the client does not carry it.
     expect(JSON.stringify(mGenerate.mock.calls[0][0].contents)).toContain(photo.data);
     expect(JSON.stringify(out.history)).not.toContain(photo.data);
+    expect(keys).not.toContain('serviceCategory');
   });
 
   it('on confirm, sends the request without the photos and uploads them to the new record', async () => {
@@ -345,62 +345,22 @@ describe('service requests and photos', () => {
     expect(mNotify).toHaveBeenCalledTimes(1);
   });
 
-  it('save_to_library needs a photo and keeps it only on the stored action', async () => {
-    const call = { role: 'model', parts: [{ functionCall: { name: 'save_to_library', args: { fileName: 'ABC Traders - Cement quotation', vendorName: 'ABC Traders', documentType: 'quotation' } } }] };
+  it('with a photo only create_mpr is allowed and extra fields are dropped', async () => {
     db.assistantAction.create.mockResolvedValue({ id: 'a9' });
+    mGenerate
+      .mockResolvedValueOnce({ role: 'model', parts: [{ functionCall: { name: 'create_quotation', args: { vendorId: VENDOR_ID, items: [{ materialName: 'Cement', quantity: 5, unitPrice: 300 }] } } }] })
+      .mockResolvedValueOnce({
+        role: 'model',
+        parts: [{ functionCall: { name: 'create_mpr', args: { requestType: 'MATERIAL', newVendor: { name: 'Sri Lakshmi Traders' }, priority: 'Urgent', requiredBy: '2026-10-10', estimatedGstRate: 18, description: 'Cement for slab', items: [{ materialName: 'Cement', quantity: 5, unit: 'nos', estimatedRate: 380, specification: '53 grade', remarks: 'x' }] } } }],
+      })
+      .mockResolvedValueOnce({ role: 'model', parts: [{ text: 'Press Save.' }] });
 
-    mGenerate.mockResolvedValueOnce(call).mockResolvedValueOnce({ role: 'model', parts: [{ text: 'Attach a photo.' }] });
-    const none = await runChat(user, 'save this', []);
-    expect(none.pending).toHaveLength(0);
-    expect(db.assistantAction.create).not.toHaveBeenCalled();
+    const out = await runChat(user, 'photo', [], [photo]);
 
-    mGenerate.mockResolvedValueOnce(call).mockResolvedValueOnce({ role: 'model', parts: [{ text: 'Press Save.' }] });
-    const out = await runChat(user, 'save this', [], [photo]);
-    expect(out.pending[0].tool).toBe('save_to_library');
-    expect(out.pending[0].summary.fields.map((f) => f.key)).toEqual(expect.arrayContaining(['saveAs', 'documentType', 'vendor', 'photos']));
-    expect(db.assistantAction.create.mock.calls[0][0].data.args._images).toHaveLength(1);
-  });
-
-  it('on confirm, files the photo in the document library under the chosen name and notifies', async () => {
-    db.assistantAction.findFirst.mockResolvedValue({
-      id: 'abcdef12-0000-4000-8000-000000000000',
-      tool: 'save_to_library',
-      status: 'PENDING',
-      createdAt: new Date(),
-      args: { fileName: 'ABC Traders - Cement quotation', vendorName: 'ABC Traders', _images: [photo] },
-    });
-    db.assistantAction.updateMany.mockResolvedValue({ count: 1 });
-    db.assistantAction.update.mockResolvedValue({});
-    mCallApiForm.mockResolvedValue({ ok: true, status: 201, body: { id: VENDOR_ID } });
-
-    const out = await confirmAction('abcdef12-0000-4000-8000-000000000000', user);
-
-    expect(out.ok).toBe(true);
-    expect(mCallApi).not.toHaveBeenCalled();
-    expect(mCallApiForm.mock.calls[0][1]).toBe('/document-library/upload');
-    const form = mCallApiForm.mock.calls[0][2] as FormData;
-    expect(form.get('fileName')).toBe('ABC Traders - Cement quotation');
-    expect(form.get('entityId')).toBeNull();
-    expect(out.result).toMatchObject({ label: 'ABC Traders - Cement quotation', link: '/documents', photos: { attached: 1, total: 1 } });
-    expect(mNotify).toHaveBeenCalledTimes(1);
-  });
-
-  it('reports a failure and notifies nobody when the library upload is rejected', async () => {
-    db.assistantAction.findFirst.mockResolvedValue({
-      id: 'abcdef12-0000-4000-8000-000000000000',
-      tool: 'save_to_library',
-      status: 'PENDING',
-      createdAt: new Date(),
-      args: { fileName: 'X', _images: [photo] },
-    });
-    db.assistantAction.updateMany.mockResolvedValue({ count: 1 });
-    db.assistantAction.update.mockResolvedValue({});
-    mCallApiForm.mockResolvedValue({ ok: false, status: 403, body: { error: 'Forbidden' } });
-
-    const out = await confirmAction('abcdef12-0000-4000-8000-000000000000', user);
-
-    expect(out.ok).toBe(false);
-    expect(out.error).toBe('Forbidden');
-    expect(mNotify).not.toHaveBeenCalled();
+    expect(out.pending).toHaveLength(1);
+    expect(out.pending[0].tool).toBe('create_mpr');
+    const stored = db.assistantAction.create.mock.calls[0][0].data.args;
+    expect(Object.keys(stored).sort()).toEqual(['_images', 'description', 'items', 'newVendor', 'requestType']);
+    expect(stored.items[0]).toEqual({ materialName: 'Cement', quantity: 5, unit: 'nos', estimatedRate: 380 });
   });
 });

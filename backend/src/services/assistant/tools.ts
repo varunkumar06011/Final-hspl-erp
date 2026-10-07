@@ -10,7 +10,7 @@
  * cancel / update. Adding one is a code change here, not something the model
  * can talk its way into.
  */
-import { z, type ZodTypeAny } from 'zod';
+import type { ZodTypeAny } from 'zod';
 import {
   createVendorSchema,
   createMPRSchema,
@@ -162,8 +162,6 @@ export interface WriteTool {
   needsAck: boolean;
   /** Fields of the created record to build its label from, first present wins. */
   labelFields: string[];
-  /** Files the attached photos into the document library instead of POSTing JSON (needs a photo in the same turn). */
-  library?: boolean;
   /** Resolve labels + compute totals for the confirmation card. Throws ToolError on bad references. */
   summarize(args: Record<string, any>, ctx: ToolContext): Promise<ActionSummary>;
 }
@@ -648,43 +646,6 @@ const writeTools: WriteTool[] = [
         fields: [field('sourceType', a.sourceType), ...maybe('supplier', a.supplierName), ...maybe('reference', a.referenceNo), ...maybe('date', a.entryDate), ...maybe('notes', a.notes)],
         items,
         totals: [field('total', money(total))],
-      };
-    },
-  },
-
-  // ── Save the attached photo(s) to the document library ──
-  {
-    kind: 'write',
-    library: true,
-    schema: z.object({
-      body: z.object({
-        fileName: z.string().trim().min(1).max(150),
-        documentType: z.string().trim().max(60).optional(),
-        vendorName: z.string().trim().max(150).optional(),
-        description: z.string().trim().max(500).optional(),
-      }),
-    }),
-    path: '/document-library',
-    model: 'Document',
-    needsAck: false,
-    labelFields: ['fileName'],
-    declaration: {
-      name: 'save_to_library',
-      description:
-        'Propose saving the photo(s) attached to THIS message into the app document library under a clear name. Use it when the photo is a bill, quotation, challan, delivery note, site note or any document you cannot or should not turn into a record, or when the user just wants the photo filed. Requires a photo in the same message.',
-      parameters: O(
-        {
-          fileName: S('Name to save it as, in English, without extension: "<Vendor> - <document type> - <date or number>", e.g. "ABC Traders - Cement quotation - 2026-10-06". Use what you read in the photo.'),
-          documentType: S('What the photo is: quotation, invoice, challan, delivery note, material list, site photo, drawing, other.'),
-          vendorName: S('The vendor / shop / party in the photo, if any (English).'),
-          description: S('One or two lines on what the photo shows (items, amounts, dates).'),
-        },
-        ['fileName'],
-      ),
-    },
-    async summarize(a) {
-      return {
-        fields: [field('saveAs', a.fileName), ...maybe('documentType', a.documentType), ...maybe('vendor', a.vendorName), ...maybe('description', a.description)],
       };
     },
   },
