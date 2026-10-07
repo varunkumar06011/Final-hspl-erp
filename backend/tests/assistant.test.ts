@@ -329,13 +329,18 @@ describe('service requests and photos', () => {
     });
     db.assistantAction.updateMany.mockResolvedValue({ count: 1 });
     db.assistantAction.update.mockResolvedValue({});
-    mCallApi.mockResolvedValue({ ok: true, status: 201, body: { data: { id: VENDOR_ID, mprNumber: 'VGH-MPR001' } } });
+    mCallApi
+      .mockResolvedValueOnce({ ok: true, status: 200, body: { prefix: 'VGH-MAT-', next: 21, width: 4 } })
+      .mockResolvedValueOnce({ ok: true, status: 201, body: { data: { id: VENDOR_ID, mprNumber: 'VGH-MPR001' } } });
     mCallApiForm.mockResolvedValue({ ok: true, status: 201, body: {} });
 
     const out = await confirmAction('abcdef12-0000-4000-8000-000000000000', user);
 
     expect(out.ok).toBe(true);
-    expect(JSON.stringify(mCallApi.mock.calls[0][3])).not.toContain('_images');
+    expect(mCallApi.mock.calls[0][2]).toBe('/material-purchase-requests/next-material-code');
+    const posted = mCallApi.mock.calls[1][3];
+    expect(JSON.stringify(posted)).not.toContain('_images');
+    expect(posted.body.items[0].materialCode).toBe('VGH-MAT-0021');
     expect(mCallApiForm).toHaveBeenCalledTimes(1);
     const form = mCallApiForm.mock.calls[0][2] as FormData;
     expect(form.get('entityType')).toBe('MATERIAL_PURCHASE_REQUEST');

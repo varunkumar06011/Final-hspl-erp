@@ -315,6 +315,24 @@ export interface ConfirmResult {
   historyAppend?: ChatContent[];
 }
 
+/** Gives every item without a code the next number in the project's running series (e.g. VGH-MAT-0021), as the MPR form does. */
+async function fillMaterialCodes(args: Record<string, unknown>, user: AssistantUser): Promise<void> {
+  const items = Array.isArray(args.items) ? (args.items as Array<Record<string, unknown>>) : [];
+  const missing = items.filter((i) => !i.materialCode);
+  if (!missing.length) return;
+  const res = await callApi(user.auth, 'GET', '/material-purchase-requests/next-material-code');
+  const seq = res.ok ? ((res.body as { data?: unknown })?.data ?? res.body) as { prefix?: string; next?: number; width?: number } : null;
+  if (!seq || typeof seq.next !== 'number') return; // codes stay blank rather than blocking the request
+  let prefix = seq.prefix ?? 'MAT-';
+  if (prefix === 'MAT-') {
+    // First code in this project: use the project code like the others, e.g. VGH-MAT-0001.
+    const project = await prisma.project.findUnique({ where: { id: user.projectId }, select: { code: true } });
+    if (project?.code) prefix = `${project.code}-MAT-`;
+  }
+  let n = seq.next;
+  for (const item of missing) item.materialCode = `${prefix}${String(n++).padStart(seq.width ?? 4, '0')}`;
+}
+
 export async function confirmAction(actionId: string, user: AssistantUser): Promise<ConfirmResult> {
   const action = await prisma.assistantAction.findFirst({
     where: { id: actionId, userId: user.id, projectId: user.projectId },
@@ -338,6 +356,7 @@ export async function confirmAction(actionId: string, user: AssistantUser): Prom
 
   const { [IMAGES_KEY]: storedImages, ...storedArgs } = action.args as Record<string, unknown>;
   const photos = Array.isArray(storedImages) ? (storedImages as ChatImage[]) : [];
+  if (action.tool === 'create_mpr') await fillMaterialCodes(storedArgs, user);
   const body = { ...storedArgs, ...(tool.needsAck ? { acknowledged: true } : {}) };
   const res = await callApi(user.auth, 'POST', tool.path, { body });
 
