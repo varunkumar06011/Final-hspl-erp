@@ -206,7 +206,7 @@ export default function AssistantDrawer({ open, onClose }: Props) {
           message: text,
           history: historyRef.current,
           images: sending.map((p) => ({ mimeType: 'image/jpeg', data: p.dataUrl.split(',')[1] })),
-        });
+        }, { timeout: 150_000 }); // reading a photo and looking up the vendor can take over the default 30 s
         historyRef.current = data.history ?? [];
         addMsg({ role: 'assistant', text: data.reply ?? '', tables: data.tables ?? [], pending: data.pending ?? [] });
       } catch (err) {
