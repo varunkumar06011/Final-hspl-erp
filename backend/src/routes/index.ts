@@ -48,6 +48,7 @@ import projectRoutes from './project.routes';
 import searchRoutes from './search.routes';
 import assistantRoutes from './assistant.routes';
 import chatRoutes from './chat.routes';
+import moduleAccessRoutes from './module-access.routes';
 
 const router = Router();
 
@@ -100,5 +101,6 @@ router.use('/activity-log', activityLogRoutes);
 router.use('/search', searchRoutes);
 router.use('/assistant', assistantRoutes);
 router.use('/chat', chatRoutes);
+router.use('/module-access', moduleAccessRoutes);
 
 export default router;

@@ -2,5 +2,6 @@
 export * from './enums.js';
 export * from './events.js';
 export * from './constants.js';
+export * from './access.js';
 export * from './types.js';
 export * from './schemas/index.js';

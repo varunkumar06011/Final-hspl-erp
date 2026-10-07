@@ -8,7 +8,7 @@ import { Permission, UserRole } from '@hospital-erp/shared';
 import { ColorModeProvider } from './config/ColorModeContext';
 import { ToastProvider } from './components/ToastProvider';
 import AppShell from './components/AppShell';
-import ProtectedRoute from './components/ProtectedRoute';
+import ProtectedRoute, { NO_ACCESS_PATH } from './components/ProtectedRoute';
 import ErrorScreen, { preloadErrorAnimation } from './components/ErrorScreen';
 import OfflineBanner from './components/OfflineBanner';
 import { useOnlineStatus } from './hooks/useOnlineStatus';
@@ -101,6 +101,8 @@ const TransactionRegisterPage = lazyWithRetry(() => import('./pages/TransactionR
 const CommentsPage = lazyWithRetry(() => import('./pages/CommentsPage'));
 const ChatPage = lazyWithRetry(() => import('./pages/ChatPage'));
 const ActivityLogPage = lazyWithRetry(() => import('./pages/ActivityLogPage'));
+const ModuleAccessPage = lazyWithRetry(() => import('./pages/ModuleAccessPage'));
+const NoAccessPage = lazyWithRetry(() => import('./pages/NoAccessPage'));
 // Public legal/support pages — must be reachable without a session (login
 // checkbox links here; Apple also requires working privacy-policy and
 // support URLs pre-login).
@@ -159,6 +161,10 @@ const ROUTES = [
   { path: '/activity-log', element: <ActivityLogPage /> },
   { path: '/users', element: <UsersPage /> },
   { path: '/projects', element: <ProjectsPage /> },
+  // Admin 1 / Admin 2 only (the page and its API check it)
+  { path: '/module-access', element: <ModuleAccessPage /> },
+  // Landing page when every module is switched off for the user
+  { path: NO_ACCESS_PATH, element: <NoAccessPage /> },
   { path: '/settings', element: <SettingsPage /> },
   // ── Admin-only pages (additive — visible to all roles with permission, used by admin dashboard) ──
   { path: '/inward-funds', element: <InwardFundsPage /> },
@@ -228,7 +234,7 @@ export default function App() {
                       }
                     />
                   ))}
-                  {/* Transaction Register — Accountant + all Admin roles only (backend also enforces) */}
+                  {/* Transaction Register — Accountant + all Admin roles, or users it is switched on for (backend also enforces) */}
                   <Route
                     path="/transaction-register"
                     element={

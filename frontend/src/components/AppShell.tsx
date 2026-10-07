@@ -45,9 +45,12 @@ import {
   Forum as ChatNavIcon,
   History as ActivityNavIcon,
   Apartment as ProjectsIcon,
+  ToggleOn as ModuleAccessIcon,
 } from '@mui/icons-material';
 import { useAuthStore } from '../stores/authStore';
-import { hasPermission, Permission, UserRole, isAdminRole } from '@hospital-erp/shared';
+import { APP_MODULES, UserRole, isAdminRole, moduleForPath, type UserResponse } from '@hospital-erp/shared';
+import { canManageModuleAccess, canUseModule } from '../utils/moduleAccess';
+import { useSessionProfile } from '../hooks/useSessionProfile';
 import { onForegroundMessage, enableNotifications, isPushSupported, getPermissionState, PUSH_DEEP_LINK_KEY } from '../config/notifications';
 import NotificationBell from './NotificationBell';
 import api from '../config/api';
@@ -67,101 +70,147 @@ import type { TFunction } from 'i18next';
 
 
 const NAV_ITEMS = [
-  { label: 'Dashboard', icon: <DashboardIcon />, path: '/', permission: Permission.VIEW_DASHBOARD, section: '' },
+  { label: 'Dashboard', icon: <DashboardIcon />, path: '/', section: '' },
   { label: 'Chat', icon: <ChatNavIcon />, path: '/chat', section: '' },
-  { label: 'Work Calendar', icon: <WorkIcon />, path: '/work-calendar', permission: Permission.MANAGE_WORK_TASKS, section: '' },
+  { label: 'Work Calendar', icon: <WorkIcon />, path: '/work-calendar', section: '' },
   // ── Procurement ──
-  { label: 'Work', icon: <WorkIcon />, path: '/work', permission: Permission.MANAGE_WORK_TASKS, section: 'Procurement' },
-  { label: 'Material Requests', icon: <ReceiptIcon />, path: '/material-purchase-requests', permission: Permission.VIEW_MPR, section: 'Procurement' },
-  { label: 'Vendors', icon: <VendorIcon />, path: '/vendors', permission: Permission.VIEW_FINANCIALS, section: 'Procurement' },
-  { label: 'Quotations', icon: <ReceiptIcon />, path: '/quotations', permission: Permission.VIEW_FINANCIALS, section: 'Procurement' },
-  { label: 'Purchase Orders', icon: <ReceiptIcon />, path: '/pos', permission: Permission.VIEW_FINANCIALS, section: 'Procurement' },
-  { label: 'Gate Passes', icon: <GatePassIcon />, path: '/gate-passes', permission: Permission.VIEW_GATE_PASSES, section: 'Procurement' },
-  { label: 'Goods Receipts', icon: <ReceiptIcon />, path: '/goods-receipts', permission: Permission.MANAGE_INVENTORY, section: 'Procurement' },
-  { label: 'GST Records', icon: <ReceiptIcon />, path: '/gst-records', permission: Permission.VIEW_FINANCIALS, section: 'Procurement' },
+  { label: 'Work', icon: <WorkIcon />, path: '/work', section: 'Procurement' },
+  { label: 'Material Requests', icon: <ReceiptIcon />, path: '/material-purchase-requests', section: 'Procurement' },
+  { label: 'Vendors', icon: <VendorIcon />, path: '/vendors', section: 'Procurement' },
+  { label: 'Quotations', icon: <ReceiptIcon />, path: '/quotations', section: 'Procurement' },
+  { label: 'Purchase Orders', icon: <ReceiptIcon />, path: '/pos', section: 'Procurement' },
+  { label: 'Gate Passes', icon: <GatePassIcon />, path: '/gate-passes', section: 'Procurement' },
+  { label: 'Goods Receipts', icon: <ReceiptIcon />, path: '/goods-receipts', section: 'Procurement' },
+  { label: 'GST Records', icon: <ReceiptIcon />, path: '/gst-records', section: 'Procurement' },
   // ── Masters (Tally: Accounts Info) ──
-  { label: 'Chart of Accounts', icon: <LedgersIcon />, path: '/ledgers', permission: Permission.VIEW_FINANCIALS, section: 'Masters' },
-  { label: 'Bank Ledgers', icon: <BankIcon />, path: '/bank-accounts', permission: Permission.VIEW_FINANCIALS, section: 'Masters' },
-  { label: 'Cash Ledgers', icon: <CashIcon />, path: '/cash-accounts', permission: Permission.VIEW_FINANCIALS, section: 'Masters' },
-  { label: 'Budget Heads', icon: <BudgetIcon />, path: '/budget-heads', permission: Permission.VIEW_FINANCIALS, section: 'Masters' },
-  { label: 'Owner Account', icon: <OwnerIcon />, path: '/owner-accounts', permission: Permission.VIEW_FINANCIALS, section: 'Masters' },
+  { label: 'Chart of Accounts', icon: <LedgersIcon />, path: '/ledgers', section: 'Masters' },
+  { label: 'Bank Ledgers', icon: <BankIcon />, path: '/bank-accounts', section: 'Masters' },
+  { label: 'Cash Ledgers', icon: <CashIcon />, path: '/cash-accounts', section: 'Masters' },
+  { label: 'Budget Heads', icon: <BudgetIcon />, path: '/budget-heads', section: 'Masters' },
+  { label: 'Owner Account', icon: <OwnerIcon />, path: '/owner-accounts', section: 'Masters' },
   // ── Voucher Entry (Tally: Accounting Vouchers) ──
-  { label: 'Accounting Vouchers', icon: <VouchersIcon />, path: '/vouchers', permission: Permission.VIEW_FINANCIALS, section: 'Voucher Entry' },
-  { label: 'Payments', icon: <PaymentIcon />, path: '/payments', permission: Permission.VIEW_FINANCIALS, section: 'Voucher Entry' },
-  { label: 'Expenditure', icon: <VouchersIcon />, path: '/expenditure', permission: Permission.VIEW_FINANCIALS, section: 'Voucher Entry' },
-  { label: 'Sales (Invoices)', icon: <ReceiptIcon />, path: '/invoices', permission: Permission.VIEW_FINANCIALS, section: 'Voucher Entry' },
+  { label: 'Accounting Vouchers', icon: <VouchersIcon />, path: '/vouchers', section: 'Voucher Entry' },
+  { label: 'Payments', icon: <PaymentIcon />, path: '/payments', section: 'Voucher Entry' },
+  { label: 'Expenditure', icon: <VouchersIcon />, path: '/expenditure', section: 'Voucher Entry' },
+  { label: 'Sales (Invoices)', icon: <ReceiptIcon />, path: '/invoices', section: 'Voucher Entry' },
   // ── Reports (Tally: Display) ──
-  { label: 'Finance Dashboard', icon: <FinanceDashboardIcon />, path: '/finance-dashboard', permission: Permission.VIEW_FINANCIALS, section: 'Reports' },
-  { label: 'Accounting Reports', icon: <AccountingReportsIcon />, path: '/accounting-reports', permission: Permission.VIEW_FINANCIALS, section: 'Reports' },
-  { label: 'Finance Reports', icon: <ReportsIcon />, path: '/finance-reports', permission: Permission.VIEW_FINANCIALS, section: 'Reports' },
-  { label: 'Payment Report', icon: <PaymentReportIcon />, path: '/payment-reports', permission: Permission.VIEW_FINANCIALS, section: 'Reports', roles: [UserRole.PROJECT_HEAD] },
+  { label: 'Finance Dashboard', icon: <FinanceDashboardIcon />, path: '/finance-dashboard', section: 'Reports' },
+  { label: 'Accounting Reports', icon: <AccountingReportsIcon />, path: '/accounting-reports', section: 'Reports' },
+  { label: 'Finance Reports', icon: <ReportsIcon />, path: '/finance-reports', section: 'Reports' },
+  { label: 'Payment Report', icon: <PaymentReportIcon />, path: '/payment-reports', section: 'Reports' },
   // ── Site Operations ──
-  { label: 'Inventory', icon: <InventoryIcon />, path: '/inventory', permission: Permission.MANAGE_INVENTORY, section: 'Site Operations' },
-  { label: 'Assets', icon: <AssetsIcon />, path: '/assets', permission: Permission.MANAGE_INVENTORY, section: 'Site Operations' },
-  { label: 'Attendance', icon: <LabourIcon />, path: '/labour', permission: Permission.MANAGE_LABOUR, section: 'Site Operations' },
-  { label: 'Site Photos', icon: <PhotoIcon />, path: '/photos', permission: Permission.UPLOAD_PHOTOS, section: 'Site Operations' },
-  { label: 'Issues', icon: <IssueIcon />, path: '/issues', permission: Permission.MANAGE_ISSUES, section: 'Site Operations' },
-  { label: 'Inspections', icon: <InspectionIcon />, path: '/inspections', permission: Permission.MANAGE_INSPECTIONS, section: 'Site Operations' },
-  { label: 'Documents', icon: <DocumentIcon />, path: '/documents', permission: Permission.MANAGE_DOCUMENTS, section: 'Site Operations' },
-  { label: 'Contracts', icon: <ContractIcon />, path: '/contracts', permission: Permission.MANAGE_CONTRACTS, section: 'Site Operations' },
+  { label: 'Inventory', icon: <InventoryIcon />, path: '/inventory', section: 'Site Operations' },
+  { label: 'Assets', icon: <AssetsIcon />, path: '/assets', section: 'Site Operations' },
+  { label: 'Attendance', icon: <LabourIcon />, path: '/labour', section: 'Site Operations' },
+  { label: 'Site Photos', icon: <PhotoIcon />, path: '/photos', section: 'Site Operations' },
+  { label: 'Issues', icon: <IssueIcon />, path: '/issues', section: 'Site Operations' },
+  { label: 'Inspections', icon: <InspectionIcon />, path: '/inspections', section: 'Site Operations' },
+  { label: 'Documents', icon: <DocumentIcon />, path: '/documents', section: 'Site Operations' },
+  { label: 'Contracts', icon: <ContractIcon />, path: '/contracts', section: 'Site Operations' },
   // ── Admin ──
   { label: 'Comments', icon: <CommentsNavIcon />, path: '/comments', section: 'Admin' },
   { label: 'Activity Log', icon: <ActivityNavIcon />, path: '/activity-log', section: 'Admin' },
-  { label: 'Audit Log', icon: <AuditIcon />, path: '/audit', permission: Permission.VIEW_AUDIT_LOG, section: 'Admin' },
-  { label: 'Users', icon: <PeopleIcon />, path: '/users', permission: Permission.MANAGE_USERS, section: 'Admin' },
-  { label: 'Projects', icon: <ProjectsIcon />, path: '/projects', permission: Permission.MANAGE_PROJECTS, section: 'Admin' },
+  { label: 'Audit Log', icon: <AuditIcon />, path: '/audit', section: 'Admin' },
+  { label: 'Users', icon: <PeopleIcon />, path: '/users', section: 'Admin' },
+  { label: 'Projects', icon: <ProjectsIcon />, path: '/projects', section: 'Admin' },
   { label: 'Settings', icon: <SettingsIcon />, path: '/settings', section: 'Admin' },
 ];
 
 // ── Admin-only navigation (ADMIN + ADMIN_2) ──────────────────────────
-// Simplified grouping with plain-language labels. The existing NAV_ITEMS
-// array above is completely untouched — non-admin roles use it exactly
-// as before. This array is only used when role === ADMIN || ADMIN_2.
-// Same routes, just reorganized into clearer sections.
+// Simplified grouping with plain-language labels, used for admin roles and
+// the Accountant (see navItemsFor). Same routes as NAV_ITEMS, reorganized into
+// clearer sections. Which entries show is decided by module access
+// (shared/access.ts), not by fields here.
 const ADMIN_NAV_ITEMS = [
-  { label: 'Dashboard', icon: <DashboardIcon />, path: '/', permission: Permission.VIEW_DASHBOARD, section: '' },
+  { label: 'Dashboard', icon: <DashboardIcon />, path: '/', section: '' },
   { label: 'Chat', icon: <ChatNavIcon />, path: '/chat', section: '' },
-  { label: 'Work', icon: <WorkIcon />, path: '/work', permission: Permission.MANAGE_WORK_TASKS, section: '' },
+  { label: 'Work', icon: <WorkIcon />, path: '/work', section: '' },
   // ── Accounting (FIRST — client wants accounting first) ──
-  { label: 'Inward Funds', icon: <SavingsIcon />, path: '/inward-funds', permission: Permission.VIEW_FINANCIALS, section: 'Accounting' },
-  { label: 'Expenditure', icon: <VouchersIcon />, path: '/expenditure', permission: Permission.VIEW_FINANCIALS, section: 'Accounting' },
-  { label: 'Bank & Cash', icon: <BankIcon />, path: '/bank-accounts', permission: Permission.VIEW_FINANCIALS, section: 'Accounting' },
-  { label: 'Payments', icon: <PaymentIcon />, path: '/payments', permission: Permission.VIEW_FINANCIALS, section: 'Accounting' },
-  { label: 'Vouchers', icon: <VouchersIcon />, path: '/vouchers', permission: Permission.VIEW_FINANCIALS, section: 'Accounting' },
-  { label: 'GST Records', icon: <ReceiptIcon />, path: '/gst-records', permission: Permission.VIEW_FINANCIALS, section: 'Accounting' },
-  { label: 'Chart of Accounts', icon: <LedgersIcon />, path: '/ledgers', permission: Permission.VIEW_FINANCIALS, section: 'Accounting', roles: [UserRole.ACCOUNTANT] },
+  { label: 'Inward Funds', icon: <SavingsIcon />, path: '/inward-funds', section: 'Accounting' },
+  { label: 'Expenditure', icon: <VouchersIcon />, path: '/expenditure', section: 'Accounting' },
+  { label: 'Bank & Cash', icon: <BankIcon />, path: '/bank-accounts', section: 'Accounting' },
+  { label: 'Payments', icon: <PaymentIcon />, path: '/payments', section: 'Accounting' },
+  { label: 'Vouchers', icon: <VouchersIcon />, path: '/vouchers', section: 'Accounting' },
+  { label: 'GST Records', icon: <ReceiptIcon />, path: '/gst-records', section: 'Accounting' },
+  { label: 'Chart of Accounts', icon: <LedgersIcon />, path: '/ledgers', section: 'Accounting' },
   // ── Budget ──
-  { label: 'Budget Heads', icon: <BudgetIcon />, path: '/budget-heads', permission: Permission.VIEW_FINANCIALS, section: 'Budget' },
-  { label: 'Owner Account', icon: <OwnerIcon />, path: '/owner-accounts', permission: Permission.VIEW_FINANCIALS, section: 'Budget' },
+  { label: 'Budget Heads', icon: <BudgetIcon />, path: '/budget-heads', section: 'Budget' },
+  { label: 'Owner Account', icon: <OwnerIcon />, path: '/owner-accounts', section: 'Budget' },
   // ── Procurement ──
-  { label: 'Material Requests', icon: <ReceiptIcon />, path: '/material-purchase-requests', permission: Permission.VIEW_MPR, section: 'Procurement' },
-  { label: 'Vendors', icon: <VendorIcon />, path: '/vendors', permission: Permission.VIEW_FINANCIALS, section: 'Procurement' },
-  { label: 'Quotations', icon: <ReceiptIcon />, path: '/quotations', permission: Permission.VIEW_FINANCIALS, section: 'Procurement' },
-  { label: 'Purchase Orders', icon: <ReceiptIcon />, path: '/pos', permission: Permission.VIEW_FINANCIALS, section: 'Procurement' },
-  { label: 'Gate Passes', icon: <GatePassIcon />, path: '/gate-passes', permission: Permission.VIEW_GATE_PASSES, section: 'Procurement' },
-  { label: 'Goods Receipts', icon: <ReceiptIcon />, path: '/goods-receipts', permission: Permission.MANAGE_INVENTORY, section: 'Procurement' },
-  { label: 'Invoices', icon: <ReceiptIcon />, path: '/invoices', permission: Permission.VIEW_FINANCIALS, section: 'Procurement' },
+  { label: 'Material Requests', icon: <ReceiptIcon />, path: '/material-purchase-requests', section: 'Procurement' },
+  { label: 'Vendors', icon: <VendorIcon />, path: '/vendors', section: 'Procurement' },
+  { label: 'Quotations', icon: <ReceiptIcon />, path: '/quotations', section: 'Procurement' },
+  { label: 'Purchase Orders', icon: <ReceiptIcon />, path: '/pos', section: 'Procurement' },
+  { label: 'Gate Passes', icon: <GatePassIcon />, path: '/gate-passes', section: 'Procurement' },
+  { label: 'Goods Receipts', icon: <ReceiptIcon />, path: '/goods-receipts', section: 'Procurement' },
+  { label: 'Invoices', icon: <ReceiptIcon />, path: '/invoices', section: 'Procurement' },
   // ── Project ──
-  { label: 'Work Calendar', icon: <WorkIcon />, path: '/work-calendar', permission: Permission.MANAGE_WORK_TASKS, section: 'Project' },
-  { label: 'Work', icon: <WorkIcon />, path: '/work', permission: Permission.MANAGE_WORK_TASKS, section: 'Project' },
-  { label: 'Issues', icon: <IssueIcon />, path: '/issues', permission: Permission.MANAGE_ISSUES, section: 'Project' },
-  { label: 'Site Photos', icon: <PhotoIcon />, path: '/photos', permission: Permission.UPLOAD_PHOTOS, section: 'Project' },
-  { label: 'Documents', icon: <DocumentIcon />, path: '/documents', permission: Permission.MANAGE_DOCUMENTS, section: 'Project' },
-  { label: 'Contracts', icon: <ContractIcon />, path: '/contracts', permission: Permission.MANAGE_CONTRACTS, section: 'Project' },
+  { label: 'Work Calendar', icon: <WorkIcon />, path: '/work-calendar', section: 'Project' },
+  { label: 'Work', icon: <WorkIcon />, path: '/work', section: 'Project' },
+  { label: 'Issues', icon: <IssueIcon />, path: '/issues', section: 'Project' },
+  { label: 'Site Photos', icon: <PhotoIcon />, path: '/photos', section: 'Project' },
+  { label: 'Documents', icon: <DocumentIcon />, path: '/documents', section: 'Project' },
+  { label: 'Contracts', icon: <ContractIcon />, path: '/contracts', section: 'Project' },
   // ── Reports ──
-  { label: 'Transaction Register', icon: <ReportsIcon />, path: '/transaction-register', permission: Permission.VIEW_FINANCIALS, section: 'Reports' },
-  { label: 'Finance Dashboard', icon: <FinanceDashboardIcon />, path: '/finance-dashboard', permission: Permission.VIEW_FINANCIALS, section: 'Reports' },
-  { label: 'Accounting Reports', icon: <AccountingReportsIcon />, path: '/accounting-reports', permission: Permission.VIEW_FINANCIALS, section: 'Reports' },
-  { label: 'Finance Reports', icon: <ReportsIcon />, path: '/finance-reports', permission: Permission.VIEW_FINANCIALS, section: 'Reports' },
-  { label: 'Payment Report', icon: <PaymentReportIcon />, path: '/payment-reports', permission: Permission.VIEW_FINANCIALS, section: 'Reports' },
+  { label: 'Transaction Register', icon: <ReportsIcon />, path: '/transaction-register', section: 'Reports' },
+  { label: 'Finance Dashboard', icon: <FinanceDashboardIcon />, path: '/finance-dashboard', section: 'Reports' },
+  { label: 'Accounting Reports', icon: <AccountingReportsIcon />, path: '/accounting-reports', section: 'Reports' },
+  { label: 'Finance Reports', icon: <ReportsIcon />, path: '/finance-reports', section: 'Reports' },
+  { label: 'Payment Report', icon: <PaymentReportIcon />, path: '/payment-reports', section: 'Reports' },
   // ── Admin ──
   { label: 'Comments', icon: <CommentsNavIcon />, path: '/comments', section: 'Admin' },
   { label: 'Activity Log', icon: <ActivityNavIcon />, path: '/activity-log', section: 'Admin' },
-  { label: 'Audit Log', icon: <AuditIcon />, path: '/audit', permission: Permission.VIEW_AUDIT_LOG, section: 'Admin' },
-  { label: 'Users', icon: <PeopleIcon />, path: '/users', permission: Permission.MANAGE_USERS, section: 'Admin' },
-  { label: 'Projects', icon: <ProjectsIcon />, path: '/projects', permission: Permission.MANAGE_PROJECTS, section: 'Admin' },
+  { label: 'Audit Log', icon: <AuditIcon />, path: '/audit', section: 'Admin' },
+  { label: 'Users', icon: <PeopleIcon />, path: '/users', section: 'Admin' },
+  { label: 'Projects', icon: <ProjectsIcon />, path: '/projects', section: 'Admin' },
   { label: 'Settings', icon: <SettingsIcon />, path: '/settings', section: 'Admin' },
 ];
+
+interface NavItem {
+  label: string;
+  icon: React.ReactElement;
+  path: string;
+  section: string;
+}
+
+const MODULE_ACCESS_ITEM: NavItem = { label: 'Module Access', icon: <ModuleAccessIcon />, path: '/module-access', section: 'Admin' };
+
+const ICON_BY_PATH = new Map<string, React.ReactElement>(
+  [...ADMIN_NAV_ITEMS, ...NAV_ITEMS].map((item) => [item.path, item.icon]),
+);
+
+/**
+ * Sidebar for the signed-in user. Admin roles and the Accountant keep the
+ * simplified ADMIN_NAV_ITEMS layout, everyone else NAV_ITEMS. Each entry shows
+ * when its module is on for the user (role default, or what Admin 1 / Admin 2
+ * set on the Module Access page); a module switched on that the layout lacks is
+ * added to its section.
+ */
+function navItemsFor(user: UserResponse | null): NavItem[] {
+  if (!user) return [];
+  const layout: NavItem[] =
+    isAdminRole(user.role) || user.role === UserRole.ACCOUNTANT ? ADMIN_NAV_ITEMS : NAV_ITEMS;
+  const items = layout.filter((item) => {
+    const module = moduleForPath(item.path);
+    return !module || canUseModule(user, module.key);
+  });
+
+  for (const module of APP_MODULES) {
+    if (!module.path || items.some((i) => i.path === module.path) || !canUseModule(user, module.key)) continue;
+    const section = module.section === 'General' ? '' : module.section;
+    const item: NavItem = { label: module.label, icon: ICON_BY_PATH.get(module.path) ?? <ReceiptIcon />, path: module.path, section };
+    const lastOfSection = items.map((i) => i.section).lastIndexOf(section);
+    const firstAdmin = items.findIndex((i) => i.section === 'Admin');
+    const at = lastOfSection >= 0 ? lastOfSection + 1 : firstAdmin >= 0 ? firstAdmin : items.length;
+    items.splice(at, 0, item);
+  }
+
+  if (canManageModuleAccess(user)) {
+    const usersAt = items.findIndex((i) => i.path === '/users');
+    items.splice(usersAt >= 0 ? usersAt + 1 : items.length, 0, MODULE_ACCESS_ITEM);
+  }
+  return items;
+}
 
 const ROLE_COLORS: Record<string, string> = {
   [UserRole.SUPERVISOR]: '#546E7A',
@@ -263,13 +312,17 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout } = useAuthStore();
+  // Role / module access changes made by an admin apply without signing in again.
+  useSessionProfile();
+  const chatOn = canUseModule(user, 'chat');
+  const assistantOn = !!assistantStatus?.enabled && canUseModule(user, 'assistant');
 
   // Chat: live updates app-wide, plus the unread count shown next to "Chat" in the sidebar.
   useChatRealtime();
   const { data: unreadChat = 0 } = useQuery<number>({
     queryKey: ['chat', 'unread'],
     queryFn: async () => (await api.get('/chat/unread-count')).data?.count ?? 0,
-    enabled: !!user,
+    enabled: !!user && chatOn,
     refetchInterval: 60000,
   });
 
@@ -425,16 +478,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       <Toolbar />
       <Box sx={{ overflow: 'auto' }}>
         <List>
-          {/* Admin roles (ADMIN + ADMIN_2) and ACCOUNTANT use the simplified
-              ADMIN_NAV_ITEMS. All other roles use the original NAV_ITEMS. */}
-          {((isAdminRole(user?.role ?? '') || user?.role === UserRole.ACCOUNTANT) ? ADMIN_NAV_ITEMS : NAV_ITEMS)
-            .filter((item) => {
-              // Role restriction — if item has `roles`, only show for those roles
-              if ('roles' in item && Array.isArray(item.roles) && item.roles.length > 0) {
-                if (!user || !item.roles.includes(user.role as UserRole)) return false;
-              }
-              return !item.permission || (user && hasPermission(user.role as UserRole, item.permission, user.extraPermissions));
-            })
+          {navItemsFor(user)
             .map((item, idx, arr) => {
             const prevItem = idx > 0 ? arr[idx - 1] : null;
             const showSectionHeader = item.section !== '' && (!prevItem || prevItem.section !== item.section);
@@ -534,16 +578,18 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           <IconButton color="inherit" onClick={() => setNlQueryOpen(true)} title={t('shell.askErp')} sx={{ display: { xs: 'none', sm: 'inline-flex' } }}>
             <AutoAwesomeIcon />
           </IconButton>
-          {assistantStatus?.enabled && (
+          {assistantOn && (
             <IconButton color="inherit" onClick={() => setAssistantOpen(true)} title={tAssistant('open')} aria-label={tAssistant('open')}>
               <AssistantIcon />
             </IconButton>
           )}
-          <IconButton color="inherit" onClick={() => navigate('/chat')} title={t('nav.Chat', 'Chat')} aria-label={t('nav.Chat', 'Chat')}>
-            <Badge color="error" badgeContent={unreadChat} max={99} invisible={unreadChat === 0}>
-              <ChatNavIcon />
-            </Badge>
-          </IconButton>
+          {chatOn && (
+            <IconButton color="inherit" onClick={() => navigate('/chat')} title={t('nav.Chat', 'Chat')} aria-label={t('nav.Chat', 'Chat')}>
+              <Badge color="error" badgeContent={unreadChat} max={99} invisible={unreadChat === 0}>
+                <ChatNavIcon />
+              </Badge>
+            </IconButton>
+          )}
           {!isAdminRole(user?.role ?? '') && (
             <IconButton color="inherit" onClick={toggleColorMode} title={mode === 'dark' ? t('shell.switchToLight') : t('shell.switchToDark')}>
               {mode === 'dark' ? <LightModeIcon /> : <DarkModeIcon />}
@@ -681,7 +727,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       <NLQueryBar open={nlQueryOpen} onClose={() => setNlQueryOpen(false)} />
 
       {/* AI assistant — reads records and prepares creates for confirmation */}
-      {assistantStatus?.enabled && <AssistantDrawer open={assistantOpen} onClose={() => setAssistantOpen(false)} />}
+      {assistantOn && <AssistantDrawer open={assistantOpen} onClose={() => setAssistantOpen(false)} />}
 
       {/* Real-time presence — shows other users viewing the same page */}
       <PresenceBar />

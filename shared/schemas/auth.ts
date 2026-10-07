@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { UserRole, isAdminRole } from '../enums.js';
+import { APP_MODULES } from '../access.js';
 
 // ═══════════════════════════════════════════════════════════
 // Auth schemas — the contract between frontend and backend
@@ -84,7 +85,28 @@ export const userResponseSchema = z.object({
   projectId: z.string().uuid().nullable(),
   isActive: z.boolean(),
   termsAcceptedAt: z.string().nullable().optional(),
+  // Effective extra permissions: the user's own grants plus those of modules
+  // switched on for them. Feed this to hasPermission().
   extraPermissions: z.array(z.string()).optional(),
+  // The user's own grants only (before module grants) — module defaults use this.
+  directPermissions: z.array(z.string()).optional(),
+  // Per-module overrides set by Admin 1 / Admin 2 (module key → on/off).
+  moduleAccess: z.record(z.boolean()).optional(),
+});
+
+// PATCH /module-access/users — set module overrides for one or more users.
+// `changes`: module key → true (on), false (off), null (back to role default).
+// `replace`: drop every existing override first (used by "copy from user").
+export const updateModuleAccessSchema = z.object({
+  body: z.object({
+    userIds: z.array(z.string().uuid()).min(1).max(500),
+    changes: z
+      .record(z.boolean().nullable())
+      .refine((c) => Object.keys(c).every((k) => APP_MODULES.some((m) => m.key === k)), {
+        message: 'Unknown module',
+      }),
+    replace: z.boolean().optional(),
+  }),
 });
 
 // Custom role validator — accepts any UserRole enum value OR a dynamic admin role (ADMIN_3, ADMIN_4, ...)
@@ -196,6 +218,7 @@ export type PinLoginInput = z.infer<typeof pinLoginSchema>['body'];
 export type SetPinInput = z.infer<typeof setPinSchema>['body'];
 export type CreateUserInput = z.infer<typeof createUserSchema>['body'];
 export type UpdateUserInput = z.infer<typeof updateUserSchema>['body'];
+export type UpdateModuleAccessInput = z.infer<typeof updateModuleAccessSchema>['body'];
 export type CreateProjectInput = z.infer<typeof createProjectSchema>['body'];
 export type UpdateProjectInput = z.infer<typeof updateProjectSchema>['body'];
 export type PublicProject = z.infer<typeof publicProjectSchema>;

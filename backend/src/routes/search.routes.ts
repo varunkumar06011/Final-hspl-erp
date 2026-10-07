@@ -1,5 +1,6 @@
 import { Router, Response, NextFunction } from 'express';
 import { z } from 'zod';
+import { APP_MODULES, isModuleSwitchedOff } from '@hospital-erp/shared';
 import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middleware/auth';
 import { searchProject } from '../services/search/manager';
 
@@ -28,6 +29,14 @@ router.get('/', async (req: AuthenticatedRequest, res: Response, next: NextFunct
     const response = await searchProject({
       projectId: requireProjectId(req),
       role: req.user!.role,
+      extraPermissions: req.user!.extraPermissions,
+      // Records of modules an admin switched off for this user are left out.
+      hiddenPaths: APP_MODULES.filter(
+        (m) => m.path && isModuleSwitchedOff(
+          { role: req.user!.role, extraPermissions: req.user!.directPermissions, moduleAccess: req.user!.moduleAccess },
+          m.key,
+        ),
+      ).map((m) => m.path!),
       query: q,
       limit,
       perTypeLimit: perType,

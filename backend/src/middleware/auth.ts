@@ -1,7 +1,14 @@
 import { Request, Response, NextFunction } from 'express';
 import { verifyFirebaseToken } from '../config/firebase';
 import { prisma } from '../config/prisma';
-import { UserRole } from '@hospital-erp/shared';
+import {
+  UserRole,
+  ModuleAccessMap,
+  blockingModuleForApiPath,
+  effectiveExtraPermissions,
+  normalizeModuleAccess,
+} from '@hospital-erp/shared';
+import type { User } from '@prisma/client';
 import jwt from 'jsonwebtoken';
 import { isProjectUsable } from '../services/project.service';
 
@@ -17,7 +24,36 @@ export interface AuthenticatedRequest extends Request {
     projectId: string | null;
     isActive: boolean;
     termsAcceptedAt: Date | null;
+    /** Effective: the user's own grants plus those of modules switched on for them. */
     extraPermissions?: string[];
+    /** The user's own grants only (User.extraPermissions). */
+    directPermissions?: string[];
+    /** Module overrides set by Admin 1 / Admin 2 (module key → on/off). */
+    moduleAccess?: ModuleAccessMap;
+  };
+}
+
+type RequestUser = NonNullable<AuthenticatedRequest['user']>;
+
+/** Maps a user row to `req.user`, folding module access into the permissions. */
+export function toRequestUser(user: User, projectId: string | null): RequestUser {
+  const moduleAccess = normalizeModuleAccess(user.moduleAccess);
+  return {
+    id: user.id,
+    firebaseUid: user.firebaseUid,
+    phone: user.phone,
+    name: user.name,
+    role: user.role as UserRole,
+    projectId,
+    isActive: user.isActive,
+    termsAcceptedAt: user.termsAcceptedAt,
+    extraPermissions: effectiveExtraPermissions({
+      role: user.role,
+      extraPermissions: user.extraPermissions,
+      moduleAccess,
+    }),
+    directPermissions: user.extraPermissions,
+    moduleAccess,
   };
 }
 
@@ -45,6 +81,33 @@ export async function activeProjectId(
     if (await isProjectUsable(claimedProjectId)) return claimedProjectId;
   }
   return userProjectId;
+}
+
+const READ_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
+
+/**
+ * Refuses writes into a module an admin switched off for this user (reads stay
+ * open: other screens and dashboards still show that module's records).
+ */
+function passModuleGuard(req: AuthenticatedRequest, res: Response, next: NextFunction): void {
+  const user = req.user;
+  const url = req.originalUrl || req.url;
+  if (user && url && req.method && !READ_METHODS.has(req.method)) {
+    const apiPath = url.split('?')[0].replace(/^\/api(?=\/)/, '');
+    const blocked = blockingModuleForApiPath(
+      { role: user.role, extraPermissions: user.directPermissions, moduleAccess: user.moduleAccess },
+      apiPath,
+    );
+    if (blocked) {
+      res.status(403).json({
+        error: `The ${blocked.label} module is switched off for your account. Contact an administrator.`,
+        code: 'MODULE_DISABLED',
+        module: blocked.key,
+      });
+      return;
+    }
+  }
+  next();
 }
 
 export function requireProjectId(req: AuthenticatedRequest): string {
@@ -82,18 +145,8 @@ export async function authMiddleware(
       }
       // Dev tokens bypass the terms gate — they never reach production.
       // `X-Project-Id` lets local tests act inside a specific project.
-      req.user = {
-        id: user.id,
-        firebaseUid: user.firebaseUid,
-        phone: user.phone,
-        name: user.name,
-        role: user.role as UserRole,
-        projectId: await activeProjectId(req.headers['x-project-id'], user.projectId),
-        isActive: user.isActive,
-        termsAcceptedAt: user.termsAcceptedAt,
-        extraPermissions: user.extraPermissions,
-      };
-      next();
+      req.user = toRequestUser(user, await activeProjectId(req.headers['x-project-id'], user.projectId));
+      passModuleGuard(req, res, next);
       return;
     }
 
@@ -114,18 +167,8 @@ export async function authMiddleware(
           res.status(403).json(TERMS_REQUIRED);
           return;
         }
-        req.user = {
-          id: user.id,
-          firebaseUid: user.firebaseUid,
-          phone: user.phone,
-          name: user.name,
-          role: user.role as UserRole,
-          projectId: await activeProjectId(decoded.projectId, user.projectId),
-          isActive: user.isActive,
-          termsAcceptedAt: user.termsAcceptedAt,
-        extraPermissions: user.extraPermissions,
-        };
-        next();
+        req.user = toRequestUser(user, await activeProjectId(decoded.projectId, user.projectId));
+        passModuleGuard(req, res, next);
         return;
       } catch {
         res.status(401).json({ error: 'Invalid or expired token' });
@@ -155,19 +198,9 @@ export async function authMiddleware(
       return;
     }
 
-    req.user = {
-      id: user.id,
-      firebaseUid: user.firebaseUid,
-      phone: user.phone,
-      name: user.name,
-      role: user.role as UserRole,
-      projectId: user.projectId,
-      isActive: user.isActive,
-      termsAcceptedAt: user.termsAcceptedAt,
-        extraPermissions: user.extraPermissions,
-    };
+    req.user = toRequestUser(user, user.projectId);
 
-    next();
+    passModuleGuard(req, res, next);
   } catch (error) {
     res.status(401).json({ error: 'Invalid or expired token' });
   }

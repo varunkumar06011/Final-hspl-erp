@@ -431,6 +431,10 @@ export function resetSearchIndexForTests(): void {
 export interface SearchRequest {
   projectId: string;
   role: string;
+  /** The caller's effective extra permissions. */
+  extraPermissions?: readonly string[];
+  /** Page paths of modules switched off for the caller; records opening there are hidden. */
+  hiddenPaths?: readonly string[];
   query: string;
   limit?: number;
   perTypeLimit?: number;
@@ -446,10 +450,16 @@ export interface SearchResponse {
   results: (SearchHit & { typeLabel: string })[];
 }
 
-function canSee(role: string, model: string): boolean {
+function canSee(role: string, model: string, extraPermissions?: readonly string[]): boolean {
   const reg = REGISTRY[model];
   if (!reg) return isAdminRole(role);
-  return !reg.permission || hasPermission(role, reg.permission);
+  return !reg.permission || hasPermission(role, reg.permission, extraPermissions);
+}
+
+function isHiddenPath(path: string | null, hiddenPaths?: readonly string[]): boolean {
+  if (!path || !hiddenPaths?.length) return false;
+  const base = path.split('?')[0];
+  return hiddenPaths.some((p) => base === p || base.startsWith(`${p}/`));
 }
 
 export async function searchProject(req: SearchRequest): Promise<SearchResponse> {
@@ -467,7 +477,10 @@ export async function searchProject(req: SearchRequest): Promise<SearchResponse>
   const out: SearchOutput = bucket.index.search(req.query, {
     limit: Math.min(req.limit ?? 40, LIMITS.maxResults),
     perTypeLimit: req.perTypeLimit ?? 8,
-    allow: (doc) => (!only || only.has(doc.model)) && canSee(req.role, doc.model),
+    allow: (doc) =>
+      (!only || only.has(doc.model)) &&
+      canSee(req.role, doc.model, req.extraPermissions) &&
+      !isHiddenPath(doc.path, req.hiddenPaths),
   });
 
   return {

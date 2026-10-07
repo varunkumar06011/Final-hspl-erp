@@ -1,5 +1,5 @@
 import { Router, Response, NextFunction } from 'express';
-import { Permission, UserRole, isAdminRole } from '@hospital-erp/shared';
+import { Permission, isModuleEnabled } from '@hospital-erp/shared';
 import { prisma } from '../config/prisma';
 import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middleware/auth';
 import { rbacMiddleware } from '../middleware/rbac';
@@ -45,14 +45,14 @@ const emptyAgg = (vendorId: string): VendorMonthAgg => ({
 });
 
 // GET / — month-wise vendor transaction register for a year
-// Restricted to ACCOUNTANT and all admin roles (ADMIN, ADMIN_2, ADMIN_3...).
+// Accountant and admin roles by default; Admin 1 / Admin 2 can switch the module on or off per user.
 router.get(
   '/',
   rbacMiddleware(Permission.VIEW_FINANCIALS),
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
-      const role = req.user!.role;
-      if (role !== UserRole.ACCOUNTANT && !isAdminRole(role)) {
+      const { role, directPermissions, moduleAccess } = req.user!;
+      if (!isModuleEnabled({ role, extraPermissions: directPermissions, moduleAccess }, 'transactionRegister')) {
         res.status(403).json({ error: 'Transaction Register is restricted to Accountant and Admin roles' });
         return;
       }

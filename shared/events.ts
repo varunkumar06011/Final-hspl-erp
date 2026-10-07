@@ -66,6 +66,9 @@ export const SocketEvents = {
 
   // Notifications
   NOTIFICATION: 'notification',
+
+  // An admin changed this user's module access — refresh the session profile.
+  MODULE_ACCESS_CHANGED: 'user:module-access:changed',
 } as const;
 
 export type SocketEventName = (typeof SocketEvents)[keyof typeof SocketEvents];

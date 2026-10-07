@@ -259,6 +259,7 @@
     }
   },
   "sections": {
+    "General": "సాధారణం",
     "Procurement": "సేకరణ (ప్రొక్యూర్‌మెంట్)",
     "Masters": "మాస్టర్స్",
     "Voucher Entry": "వోచర్ నమోదు",
@@ -311,7 +312,9 @@
     "Vouchers": "వోచర్లు",
     "Invoices": "ఇన్వాయిస్‌లు",
     "Transaction Register": "లావాదేవీల రిజిస్టర్",
-    "Projects": "ప్రాజెక్ట్‌లు"
+    "Projects": "ప్రాజెక్ట్‌లు",
+    "Module Access": "మాడ్యూల్ యాక్సెస్",
+    "Miko Assistant": "మికో అసిస్టెంట్"
   },
   "roles": {
     "SUPERVISOR": "సూపర్‌వైజర్",

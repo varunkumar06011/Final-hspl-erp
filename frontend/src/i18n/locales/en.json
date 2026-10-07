@@ -259,6 +259,7 @@
     }
   },
   "sections": {
+    "General": "General",
     "Procurement": "Procurement",
     "Masters": "Masters",
     "Voucher Entry": "Voucher Entry",
@@ -311,7 +312,9 @@
     "Vouchers": "Vouchers",
     "Invoices": "Invoices",
     "Transaction Register": "Transaction Register",
-    "Projects": "Projects"
+    "Projects": "Projects",
+    "Module Access": "Module Access",
+    "Miko Assistant": "Miko Assistant"
   },
   "roles": {
     "SUPERVISOR": "Supervisor",

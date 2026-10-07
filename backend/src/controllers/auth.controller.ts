@@ -2,7 +2,8 @@ import { Request, Response, NextFunction } from 'express';
 import { verifyFirebaseToken } from '../config/firebase';
 import { prisma } from '../config/prisma';
 import { AuthenticatedRequest } from '../middleware/auth';
-import { APPROVER_ROLES, UserRole, getNextAdminRole } from '@hospital-erp/shared';
+import { APPROVER_ROLES, UserRole, getNextAdminRole, effectiveExtraPermissions, normalizeModuleAccess } from '@hospital-erp/shared';
+import type { User } from '@prisma/client';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import { isProjectUsable, resolveLoginProjectId } from '../services/project.service';
@@ -19,6 +20,16 @@ const pinAttempts = new Map<string, { count: number; lockedUntil: number }>();
 // authMiddleware reads it back; tokens without it fall back to User.projectId.
 function signJwt(userId: string, projectId: string): string {
   return jwt.sign({ userId, projectId }, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
+}
+
+// Session permissions for login responses: the user's own grants plus module grants.
+function accessFields(user: User) {
+  const moduleAccess = normalizeModuleAccess(user.moduleAccess);
+  return {
+    extraPermissions: effectiveExtraPermissions({ role: user.role, extraPermissions: user.extraPermissions, moduleAccess }),
+    directPermissions: user.extraPermissions,
+    moduleAccess,
+  };
 }
 
 const INVALID_PROJECT = { error: 'The selected project is not available. Please choose another.' };
@@ -73,6 +84,7 @@ export async function verifyToken(
       projectId: user.projectId,
       isActive: user.isActive,
       termsAcceptedAt: user.termsAcceptedAt,
+      ...accessFields(user),
     });
   } catch (error) {
     res.status(401).json({ error: 'Invalid or expired Firebase token' });
@@ -131,6 +143,7 @@ export async function register(
       projectId: user.projectId,
       isActive: user.isActive,
       termsAcceptedAt: user.termsAcceptedAt,
+      ...accessFields(user),
     });
   } catch (error) {
     res.status(401).json({ error: 'Invalid or expired Firebase token' });
@@ -309,6 +322,8 @@ export async function getMe(
     isActive: req.user!.isActive,
     termsAcceptedAt: req.user!.termsAcceptedAt,
     extraPermissions: req.user!.extraPermissions ?? [],
+    directPermissions: req.user!.directPermissions ?? [],
+    moduleAccess: req.user!.moduleAccess ?? {},
   });
 }
 
@@ -404,6 +419,7 @@ export async function devLogin(
       projectId,
       isActive: user.isActive,
       termsAcceptedAt: user.termsAcceptedAt,
+      ...accessFields(user),
     });
   } catch (error) {
     res.status(500).json({ error: 'Dev login failed' });
@@ -516,7 +532,7 @@ export async function pinLogin(
         projectId,
         isActive: user.isActive,
         termsAcceptedAt,
-        extraPermissions: user.extraPermissions,
+        ...accessFields(user),
       },
     });
   } catch (error) {
@@ -568,7 +584,7 @@ export async function setPin(
         projectId,
         isActive: user.isActive,
         termsAcceptedAt,
-        extraPermissions: user.extraPermissions,
+        ...accessFields(user),
       },
     });
   } catch (error) {
@@ -603,7 +619,9 @@ export async function switchProject(
         projectId,
         isActive: user.isActive,
         termsAcceptedAt: user.termsAcceptedAt,
-        extraPermissions: user.extraPermissions,
+        extraPermissions: user.extraPermissions ?? [],
+        directPermissions: user.directPermissions ?? [],
+        moduleAccess: user.moduleAccess ?? {},
       },
     });
   } catch (error) {

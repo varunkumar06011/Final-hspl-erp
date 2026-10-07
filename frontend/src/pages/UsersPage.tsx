@@ -30,6 +30,9 @@ import { formatDate } from '../utils/enumOptions';
 import ResponsiveTable from '../components/ResponsiveTable';
 
 import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom';
+import { useAuthStore } from '../stores/authStore';
+import { canManageModuleAccess } from '../utils/moduleAccess';
 interface UserRow {
   id: string;
   phone: string;
@@ -57,6 +60,11 @@ const SELECTABLE_ROLES = Object.values(UserRole);
 
 export default function UsersPage() {
   const { t: tr } = useTranslation('users');
+  const { t: ta } = useTranslation('access');
+  const navigate = useNavigate();
+  // Admin 1 / Admin 2 jump from a user to their module access.
+  const showModuleAccess = canManageModuleAccess(useAuthStore((s) => s.user));
+  const columns = showModuleAccess ? 6 : 5;
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [editingPhone, setEditingPhone] = useState<Record<string, string>>({});
@@ -171,13 +179,14 @@ export default function UsersPage() {
                 <TableCell>{tr('role')}</TableCell>
                 <TableCell>{tr('active')}</TableCell>
                 <TableCell>{tr('joined')}</TableCell>
+                {showModuleAccess && <TableCell>{ta('manage')}</TableCell>}
               </TableRow>
             </TableHead>
             <TableBody>
               {isLoading ? (
-                <TableRow><TableCell colSpan={5} align="center" sx={{ py: 4 }}><CircularProgress size={30} /></TableCell></TableRow>
+                <TableRow><TableCell colSpan={columns} align="center" sx={{ py: 4 }}><CircularProgress size={30} /></TableCell></TableRow>
               ) : users.length === 0 ? (
-                <TableRow><TableCell colSpan={5} align="center" sx={{ py: 4 }}>{tr('none')}</TableCell></TableRow>
+                <TableRow><TableCell colSpan={columns} align="center" sx={{ py: 4 }}>{tr('none')}</TableCell></TableRow>
               ) : users.map((user) => {
                 const isEditing = editingPhone[user.id] !== undefined;
                 const isDynamicAdmin = isAdminRole(user.role) && !(user.role in FIXED_ROLE_LABELS);
@@ -243,6 +252,13 @@ export default function UsersPage() {
                     />
                   </TableCell>
                   <TableCell data-label={tr('joined')}>{formatDate(user.createdAt)}</TableCell>
+                  {showModuleAccess && (
+                    <TableCell data-label={ta('manage')}>
+                      <Button size="small" variant="outlined" onClick={() => navigate(`/module-access?user=${user.id}`)}>
+                        {ta('manage')}
+                      </Button>
+                    </TableCell>
+                  )}
                 </TableRow>
                 );
               })}

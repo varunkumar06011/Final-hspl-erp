@@ -109,7 +109,7 @@ export interface SearchOptions {
   limit: number;
   perTypeLimit: number;
   /** Return false to hide a doc (permissions). */
-  allow?: (doc: { model: string; id: string }) => boolean;
+  allow?: (doc: { model: string; id: string; path: string | null }) => boolean;
 }
 
 const K1 = 1.2;
