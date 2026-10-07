@@ -24,9 +24,16 @@ function assistantUser(req: AuthenticatedRequest): AssistantUser {
 const chatSchema = z.object({
   message: z.string().trim().min(1).max(4000),
   history: z.unknown().optional(),
-  // Photos from the camera / gallery, downscaled by the client (~2.5 MB of base64 each at most).
+  // Photos from the camera / gallery (downscaled by the client, ~2.5 MB of base64 each at most) or PDFs (up to ~5 MB).
   images: z
-    .array(z.object({ mimeType: z.enum(['image/jpeg', 'image/png', 'image/webp']), data: z.string().min(100).max(2_500_000).regex(/^[A-Za-z0-9+/]+=*$/) }))
+    .array(
+      z
+        .object({
+          mimeType: z.enum(['image/jpeg', 'image/png', 'image/webp', 'application/pdf']),
+          data: z.string().min(100).max(7_000_000).regex(/^[A-Za-z0-9+/]+=*$/),
+        })
+        .refine((f) => f.mimeType === 'application/pdf' || f.data.length <= 2_500_000, { message: 'Image too large' }),
+    )
     .max(3)
     .optional(),
 });

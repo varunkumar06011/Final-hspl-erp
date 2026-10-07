@@ -19,7 +19,7 @@ export interface ChatPart {
   text?: string;
   functionCall?: { name: string; args?: Record<string, unknown> };
   functionResponse?: { name: string; response: Record<string, unknown> };
-  /** A photo the user attached this turn (never kept in the history sent back to the client). */
+  /** A photo or PDF the user attached this turn (never kept in the history sent back to the client). */
   inlineData?: { mimeType: string; data: string };
   // Legacy fields from histories written by the earlier Gemini provider; ignored.
   thoughtSignature?: string;
@@ -130,10 +130,11 @@ function toMessages(system: string, contents: ChatContent[]): OpenAIMessage[] {
         role: 'user',
         content: [
           ...(text ? [{ type: 'text', text }] : []),
-          ...images.map((p) => ({
-            type: 'image_url',
-            image_url: { url: `data:${p.inlineData!.mimeType};base64,${p.inlineData!.data}` },
-          })),
+          ...images.map((p, i) =>
+            p.inlineData!.mimeType === 'application/pdf'
+              ? { type: 'file', file: { filename: `document-${i + 1}.pdf`, file_data: `data:application/pdf;base64,${p.inlineData!.data}` } }
+              : { type: 'image_url', image_url: { url: `data:${p.inlineData!.mimeType};base64,${p.inlineData!.data}` } },
+          ),
         ],
       });
     }

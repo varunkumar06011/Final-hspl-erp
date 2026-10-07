@@ -24,6 +24,7 @@ import {
   AttachFile as AttachIcon,
   AutoAwesome as AssistantIcon,
   Close as CloseIcon,
+  PictureAsPdf as PdfIcon,
   Mic as MicIcon,
   MicOff as MicOffIcon,
   OpenInNew as OpenIcon,
@@ -83,6 +84,18 @@ const DATE_VALUE = /^\d{4}-\d{2}-\d{2}T/;
 
 const MAX_PHOTOS = 3;
 const MAX_PHOTO_EDGE = 1600;
+const MAX_PDF_BYTES = 5 * 1024 * 1024;
+const isPdfUrl = (src: string) => src.startsWith('data:application/pdf');
+
+/** Reads a PDF as a data URL (PDFs are sent as they are, not re-encoded). */
+function pdfToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result));
+    r.onerror = () => reject(new Error('unreadable pdf'));
+    r.readAsDataURL(file);
+  });
+}
 
 /** Shrinks a camera/gallery photo to a JPEG data URL small enough to send in a chat message. */
 async function photoToDataUrl(file: File): Promise<string> {
@@ -126,6 +139,8 @@ export default function AssistantDrawer({ open, onClose }: Props) {
   const [listening, setListening] = useState(false);
   const [photos, setPhotos] = useState<{ id: number; dataUrl: string }[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [dragging, setDragging] = useState(false);
+  const dragDepth = useRef(0);
 
   const historyRef = useRef<GeminiContent[]>([]);
   const idRef = useRef(0);
@@ -175,7 +190,12 @@ export default function AssistantDrawer({ open, onClose }: Props) {
       }
       for (const file of files.slice(0, room)) {
         try {
-          const dataUrl = await photoToDataUrl(file);
+          const isPdf = file.type === 'application/pdf' || /.pdf$/i.test(file.name);
+          if (isPdf && file.size > MAX_PDF_BYTES) {
+            addMsg({ role: 'error', text: t('pdfTooBig') });
+            continue;
+          }
+          const dataUrl = isPdf ? await pdfToDataUrl(file) : await photoToDataUrl(file);
           idRef.current += 1;
           const id = idRef.current;
           setPhotos((prev) => (prev.length >= MAX_PHOTOS ? prev : [...prev, { id, dataUrl }]));
@@ -205,7 +225,7 @@ export default function AssistantDrawer({ open, onClose }: Props) {
         const { data } = await api.post('/assistant/chat', {
           message: text,
           history: historyRef.current,
-          images: sending.map((p) => ({ mimeType: 'image/jpeg', data: p.dataUrl.split(',')[1] })),
+          images: sending.map((p) => ({ mimeType: isPdfUrl(p.dataUrl) ? 'application/pdf' : 'image/jpeg', data: p.dataUrl.split(',')[1] })),
         }, { timeout: 150_000 }); // reading a photo and looking up the vendor can take over the default 30 s
         historyRef.current = data.history ?? [];
         addMsg({ role: 'assistant', text: data.reply ?? '', tables: data.tables ?? [], pending: data.pending ?? [] });
@@ -336,8 +356,40 @@ export default function AssistantDrawer({ open, onClose }: Props) {
       anchor="right"
       open={open}
       onClose={onClose}
-      PaperProps={{ sx: { width: { xs: '100%', sm: 460 }, display: 'flex', flexDirection: 'column' } }}
+      // Above page dialogs, menus and snackbars so Miko is never hidden behind them.
+      sx={{ zIndex: (theme) => theme.zIndex.tooltip + 100 }}
+      PaperProps={{
+        sx: { width: { xs: '100%', sm: 460 }, display: 'flex', flexDirection: 'column', position: 'relative' },
+        onDragEnter: (e: React.DragEvent) => {
+          if (!e.dataTransfer.types.includes('Files')) return;
+          e.preventDefault();
+          dragDepth.current += 1;
+          setDragging(true);
+        },
+        onDragOver: (e: React.DragEvent) => {
+          if (e.dataTransfer.types.includes('Files')) e.preventDefault();
+        },
+        onDragLeave: () => {
+          dragDepth.current = Math.max(0, dragDepth.current - 1);
+          if (dragDepth.current === 0) setDragging(false);
+        },
+        onDrop: (e: React.DragEvent) => {
+          e.preventDefault();
+          dragDepth.current = 0;
+          setDragging(false);
+          const files = Array.from(e.dataTransfer.files).filter((f) => f.type.startsWith('image/') || f.type === 'application/pdf' || /.pdf$/i.test(f.name));
+          if (files.length === 0) addMsg({ role: 'error', text: t('photoError') });
+          else if (!busy) void addPhotos(files);
+        },
+      }}
     >
+      {dragging && (
+        <Box sx={{ position: 'absolute', inset: 0, zIndex: 10, bgcolor: 'rgba(25,118,210,0.12)', border: 3, borderStyle: 'dashed', borderColor: 'primary.main', display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
+          <Typography variant="h6" color="primary">
+            {t('dropHere')}
+          </Typography>
+        </Box>
+      )}
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 2, py: 1.25, borderBottom: 1, borderColor: 'divider' }}>
         <AssistantIcon color="primary" />
         <Typography variant="h6" sx={{ flexGrow: 1 }}>
@@ -378,9 +430,16 @@ export default function AssistantDrawer({ open, onClose }: Props) {
               <Paper key={m.id} elevation={0} sx={{ alignSelf: 'flex-end', maxWidth: '85%', px: 1.5, py: 1, bgcolor: 'primary.main', color: 'primary.contrastText', borderRadius: 2, whiteSpace: 'pre-wrap' }}>
                 {m.images && m.images.length > 0 && (
                   <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', mb: m.text ? 0.75 : 0 }}>
-                    {m.images.map((src, i) => (
-                      <Box key={i} component="img" src={src} alt="" sx={{ width: 72, height: 72, objectFit: 'cover', borderRadius: 1 }} />
-                    ))}
+                    {m.images.map((src, i) =>
+                      isPdfUrl(src) ? (
+                        <Box key={i} sx={{ width: 72, height: 72, borderRadius: 1, bgcolor: 'rgba(255,255,255,0.2)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+                          <PdfIcon />
+                          <Typography variant="caption">PDF</Typography>
+                        </Box>
+                      ) : (
+                        <Box key={i} component="img" src={src} alt="" sx={{ width: 72, height: 72, objectFit: 'cover', borderRadius: 1 }} />
+                      ),
+                    )}
                   </Box>
                 )}
                 <Typography variant="body2">{m.text}</Typography>
@@ -572,7 +631,14 @@ export default function AssistantDrawer({ open, onClose }: Props) {
         <Box sx={{ display: 'flex', gap: 1, px: 1.5, pt: 1.5, flexWrap: 'wrap', borderTop: 1, borderColor: 'divider' }}>
           {photos.map((p) => (
             <Box key={p.id} sx={{ position: 'relative' }}>
-              <Box component="img" src={p.dataUrl} alt="" sx={{ width: 64, height: 64, objectFit: 'cover', borderRadius: 1, display: 'block' }} />
+              {isPdfUrl(p.dataUrl) ? (
+                <Box sx={{ width: 64, height: 64, borderRadius: 1, border: 1, borderColor: 'divider', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'error.main' }}>
+                  <PdfIcon />
+                  <Typography variant="caption">PDF</Typography>
+                </Box>
+              ) : (
+                <Box component="img" src={p.dataUrl} alt="" sx={{ width: 64, height: 64, objectFit: 'cover', borderRadius: 1, display: 'block' }} />
+              )}
               <IconButton
                 size="small"
                 aria-label={t('removePhoto')}
@@ -588,7 +654,7 @@ export default function AssistantDrawer({ open, onClose }: Props) {
       <input
         ref={fileInputRef}
         type="file"
-        accept="image/*"
+        accept="image/*,application/pdf"
         multiple
         hidden
         onChange={(e) => {

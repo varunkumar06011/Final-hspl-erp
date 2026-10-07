@@ -123,12 +123,14 @@
     "paymentCode": "Code",
     "amount": "Amount"
   },
-  "attach": "Attach photo",
-  "removePhoto": "Remove photo",
-  "photoDefault": "Read this photo and prepare the request from it.",
-  "photoError": "Could not read that photo. Try a JPG or PNG.",
-  "photoMax": "You can attach up to {{n}} photos.",
+  "attach": "Attach photo or PDF",
+  "removePhoto": "Remove file",
+  "photoDefault": "Read this photo or PDF and prepare the request from it.",
+  "photoError": "Could not read that file. Try a JPG, PNG or PDF.",
+  "photoMax": "You can attach up to {{n}} files.",
   "photosSaved_one": "{{count}} photo attached to the record.",
   "photosSaved_other": "{{count}} photos attached to the record.",
-  "photosPartial": "Only {{attached}} of {{total}} photos could be attached."
+  "photosPartial": "Only {{attached}} of {{total}} photos could be attached.",
+  "pdfTooBig": "That PDF is too large (5 MB max).",
+  "dropHere": "Drop photo or PDF here"
 }

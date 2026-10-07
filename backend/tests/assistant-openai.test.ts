@@ -43,6 +43,18 @@ describe('openai provider', () => {
     expect(tool).toEqual({ role: 'tool', tool_call_id: assistant.tool_calls[0].id, content: '{"total":1}' });
   });
 
+  it('sends a PDF as a file part and an image as image_url', async () => {
+    fetchMock.mockResolvedValue(ok({ content: 'done' }));
+    await generate({
+      system: 'sys',
+      tools,
+      contents: [{ role: 'user', parts: [{ text: 'read' }, { inlineData: { mimeType: 'application/pdf', data: 'JVBERi0' } }, { inlineData: { mimeType: 'image/jpeg', data: 'AAA' } }] }],
+    });
+    const content = JSON.parse(fetchMock.mock.calls[0][1].body).messages[1].content;
+    expect(content[1]).toEqual({ type: 'file', file: { filename: 'document-1.pdf', file_data: 'data:application/pdf;base64,JVBERi0' } });
+    expect(content[2].image_url.url).toBe('data:image/jpeg;base64,AAA');
+  });
+
   it('returns text and function calls in the neutral format', async () => {
     fetchMock.mockResolvedValue(
       ok({ content: 'ok', tool_calls: [{ id: 'x', type: 'function', function: { name: 'list_records', arguments: '{"q":"cement"}' } }] }),
