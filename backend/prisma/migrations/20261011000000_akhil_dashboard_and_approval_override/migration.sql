@@ -3,10 +3,10 @@
 --
 -- APPROVAL_OVERRIDE lets him approve/reject any pending approval step. Every use is
 -- recorded in the audit log and the step comment as "super admin override".
-UPDATE "User"
-SET "extraPermissions" = ARRAY(
-  SELECT DISTINCT p
-  FROM unnest(COALESCE("extraPermissions", ARRAY[]::text[]) || ARRAY['VIEW_DASHBOARD', 'APPROVAL_OVERRIDE']) AS p
+UPDATE "users"
+SET "extraPermissions" = array_cat(
+  array_remove(array_remove("extraPermissions", 'VIEW_DASHBOARD'), 'APPROVAL_OVERRIDE'),
+  ARRAY['VIEW_DASHBOARD', 'APPROVAL_OVERRIDE']::text[]
 )
 WHERE "role" = 'SUPERVISOR'
   AND "name" ILIKE '%akhil%'
