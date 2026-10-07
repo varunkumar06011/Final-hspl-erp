@@ -719,14 +719,12 @@ router.post(
         }
       }
 
-      if (!HEAD_ROLES.includes(req.user!.role as UserRole) && !isAdminRole(req.user!.role)) {
+      if (!HEAD_ROLES.includes(req.user!.role as UserRole) && !isAdminRole(req.user!.role) && !approvalService.canOverride(req.user!)) {
         res.status(403).json({ error: 'Only heads can approve invoices' });
         return;
       }
 
-      const step = invoice.approvalWorkflow.steps.find(
-        (s) => s.approverRole === req.user!.role && s.status === 'PENDING'
-      );
+      const step = approvalService.findApprovableStep(invoice.approvalWorkflow.steps, req.user!);
       if (!step) {
         res.status(400).json({ error: 'No pending step for your role, or you may have already approved' });
         return;
@@ -778,14 +776,12 @@ router.post(
         return;
       }
 
-      if (!HEAD_ROLES.includes(req.user!.role as UserRole) && !isAdminRole(req.user!.role)) {
+      if (!HEAD_ROLES.includes(req.user!.role as UserRole) && !isAdminRole(req.user!.role) && !approvalService.canOverride(req.user!)) {
         res.status(403).json({ error: 'Only heads can reject invoices' });
         return;
       }
 
-      const step = invoice.approvalWorkflow.steps.find(
-        (s) => s.approverRole === req.user!.role && s.status === 'PENDING'
-      );
+      const step = approvalService.findApprovableStep(invoice.approvalWorkflow.steps, req.user!);
       if (!step) {
         res.status(400).json({ error: 'No pending step for your role' });
         return;

@@ -716,14 +716,12 @@ router.post(
         res.status(400).json({ error: `Cannot approve an MPR that is ${mpr.status.replace(/_/g, ' ').toLowerCase()}` });
         return;
       }
-      if (!HEAD_ROLES.includes(req.user!.role as UserRole) && !isAdminRole(req.user!.role)) {
+      if (!HEAD_ROLES.includes(req.user!.role as UserRole) && !isAdminRole(req.user!.role) && !approvalService.canOverride(req.user!)) {
         res.status(403).json({ error: 'Only heads can approve material purchase requests' });
         return;
       }
 
-      const step = mpr.approvalWorkflow.steps.find(
-        (s) => s.approverRole === req.user!.role && s.status === 'PENDING'
-      );
+      const step = approvalService.findApprovableStep(mpr.approvalWorkflow.steps, req.user!);
       if (!step) {
         res.status(400).json({ error: 'No pending step for your role, or you may have already approved' });
         return;
@@ -782,14 +780,12 @@ router.post(
         res.status(400).json({ error: `Cannot reject an MPR that is ${mpr.status.replace(/_/g, ' ').toLowerCase()}` });
         return;
       }
-      if (!HEAD_ROLES.includes(req.user!.role as UserRole) && !isAdminRole(req.user!.role)) {
+      if (!HEAD_ROLES.includes(req.user!.role as UserRole) && !isAdminRole(req.user!.role) && !approvalService.canOverride(req.user!)) {
         res.status(403).json({ error: 'Only heads can reject material purchase requests' });
         return;
       }
 
-      const step = mpr.approvalWorkflow.steps.find(
-        (s) => s.approverRole === req.user!.role && s.status === 'PENDING'
-      );
+      const step = approvalService.findApprovableStep(mpr.approvalWorkflow.steps, req.user!);
       if (!step) {
         res.status(400).json({ error: 'No pending step for your role, or you may have already decided' });
         return;

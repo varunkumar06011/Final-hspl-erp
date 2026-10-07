@@ -937,15 +937,13 @@ router.post(
       }
 
       // Check user is one of the approver roles
-      if (!isAdminRole(req.user!.role) && !isFirstLevelApproverRole(req.user!.role)) {
+      if (!isAdminRole(req.user!.role) && !isFirstLevelApproverRole(req.user!.role) && !approvalService.canOverride(req.user!)) {
         res.status(403).json({ error: 'Only Project Head, Head of Construction or Admin can approve quotations' });
         return;
       }
 
       // Find the pending step for this user's role
-      const step = quotation.approvalWorkflow.steps.find(
-        (s) => s.approverRole === req.user!.role && s.status === 'PENDING'
-      );
+      const step = approvalService.findApprovableStep(quotation.approvalWorkflow.steps, req.user!);
       if (!step) {
         res.status(400).json({ error: 'No pending step for your role, or you may have already approved' });
         return;
@@ -1007,15 +1005,13 @@ router.post(
       }
 
       // Check user is one of the approver roles
-      if (!isAdminRole(req.user!.role) && !isFirstLevelApproverRole(req.user!.role)) {
+      if (!isAdminRole(req.user!.role) && !isFirstLevelApproverRole(req.user!.role) && !approvalService.canOverride(req.user!)) {
         res.status(403).json({ error: 'Only Project Head, Head of Construction or Admin can reject quotations' });
         return;
       }
 
       // Find the pending step for this user's role
-      const step = quotation.approvalWorkflow.steps.find(
-        (s) => s.approverRole === req.user!.role && s.status === 'PENDING'
-      );
+      const step = approvalService.findApprovableStep(quotation.approvalWorkflow.steps, req.user!);
       if (!step) {
         res.status(400).json({ error: 'No pending step for your role, or you may have already decided' });
         return;

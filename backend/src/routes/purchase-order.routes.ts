@@ -1321,15 +1321,13 @@ router.post(
       }
 
       // Check user is one of the PO approver roles (Admin or Admin 2)
-      if (!isPoApprover(req.user!.role)) {
+      if (!isPoApprover(req.user!.role) && !approvalService.canOverride(req.user!)) {
         res.status(403).json({ error: 'Only Project Head, Head of Construction or Admin can approve purchase orders' });
         return;
       }
 
       // Find the step for this user's role
-      const step = po.approvalWorkflow.steps.find(
-        (s) => s.approverRole === req.user!.role && s.status === 'PENDING'
-      );
+      const step = approvalService.findApprovableStep(po.approvalWorkflow.steps, req.user!);
       if (!step) {
         res.status(400).json({ error: 'No pending approval step for your role, or you may have already approved' });
         return;
@@ -1446,14 +1444,12 @@ router.post(
         return;
       }
 
-      if (!isPoApprover(req.user!.role)) {
+      if (!isPoApprover(req.user!.role) && !approvalService.canOverride(req.user!)) {
         res.status(403).json({ error: 'Only Project Head, Head of Construction or Admin can reject purchase orders' });
         return;
       }
 
-      const step = po.approvalWorkflow.steps.find(
-        (s) => s.approverRole === req.user!.role && s.status === 'PENDING'
-      );
+      const step = approvalService.findApprovableStep(po.approvalWorkflow.steps, req.user!);
       if (!step) {
         res.status(400).json({ error: 'No pending step for your role' });
         return;

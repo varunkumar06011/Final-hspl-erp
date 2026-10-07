@@ -1113,14 +1113,12 @@ router.post(
         return;
       }
 
-      if (!isAdminRole(req.user!.role)) {
+      if (!isAdminRole(req.user!.role) && !approvalService.canOverride(req.user!)) {
         res.status(403).json({ error: 'Only Admin can approve payment requests' });
         return;
       }
 
-      const step = pr.approvalWorkflow.steps.find(
-        (s) => s.approverRole === req.user!.role && s.status === 'PENDING'
-      );
+      const step = approvalService.findApprovableStep(pr.approvalWorkflow.steps, req.user!);
       if (!step) {
         res.status(400).json({ error: 'No pending step for your role, or you may have already approved' });
         return;
@@ -1172,14 +1170,12 @@ router.post(
         return;
       }
 
-      if (!isAdminRole(req.user!.role)) {
+      if (!isAdminRole(req.user!.role) && !approvalService.canOverride(req.user!)) {
         res.status(403).json({ error: 'Only Admin can reject payment requests' });
         return;
       }
 
-      const step = pr.approvalWorkflow.steps.find(
-        (s) => s.approverRole === req.user!.role && s.status === 'PENDING'
-      );
+      const step = approvalService.findApprovableStep(pr.approvalWorkflow.steps, req.user!);
       if (!step) {
         res.status(400).json({ error: 'No pending step for your role' });
         return;

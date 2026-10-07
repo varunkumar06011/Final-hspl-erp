@@ -7,7 +7,6 @@ import {
   BankTxnType,
   CashTxnType,
   AccountTxnRefType,
-  ApprovalStepStatus,
   LedgerGroup,
   LedgerLinkType,
 } from '@hospital-erp/shared';
@@ -281,9 +280,7 @@ router.post(
         res.status(403).json({ error: 'User not found' });
         return;
       }
-      const step = jv.approvalWorkflow.steps.find(
-        (s) => s.approverRole === user.role && s.status === ApprovalStepStatus.PENDING
-      );
+      const step = approvalService.findApprovableStep(jv.approvalWorkflow.steps, user);
       if (!step) {
         res.status(400).json({ error: 'No pending step for your role' });
         return;
@@ -338,9 +335,7 @@ router.post(
         res.status(403).json({ error: 'User not found' });
         return;
       }
-      const step = jv.approvalWorkflow.steps.find(
-        (s) => s.approverRole === user.role && s.status === ApprovalStepStatus.PENDING
-      );
+      const step = approvalService.findApprovableStep(jv.approvalWorkflow.steps, user);
       if (!step) {
         res.status(400).json({ error: 'No pending step for your role' });
         return;

@@ -1,5 +1,5 @@
 import { prisma } from '../config/prisma';
-import { APPROVER_ROLES, ApprovalStatus, ApprovalStepStatus, UserRole, APPROVAL_CONFIG, AuditAction, isAdminRole, isApproverRole, isFirstLevelApproverRole } from '@hospital-erp/shared';
+import { canOverrideApprovals, APPROVER_ROLES, ApprovalStatus, ApprovalStepStatus, UserRole, APPROVAL_CONFIG, AuditAction, isAdminRole, isApproverRole, isFirstLevelApproverRole } from '@hospital-erp/shared';
 import { notifyAllHeads, notifyApprovers, notifyUser, NotificationPayload } from './push.service';
 import { logAudit } from './audit.service';
 
@@ -282,6 +282,30 @@ export async function initiate({
   return workflow;
 }
 
+/** Route-level check: may this user decide any approval step (super admin / granted override)? */
+export function canOverride(user: { role: string; extraPermissions?: string[] | null }): boolean {
+  return canOverrideApprovals(user.role, user.extraPermissions);
+}
+
+/**
+ * The pending step this user may decide: the one for their own role, or — for a
+ * user holding APPROVAL_OVERRIDE (super admin) — the earliest pending step.
+ */
+export function findApprovableStep<
+  S extends { approverRole: string; status: string; stepNumber: number },
+>(steps: S[], user: { role: string; extraPermissions?: string[] | null }): S | undefined {
+  const own = steps.find((s) => s.approverRole === user.role && s.status === ApprovalStepStatus.PENDING);
+  if (own || !canOverrideApprovals(user.role, user.extraPermissions)) return own;
+  return [...steps]
+    .sort((a, b) => a.stepNumber - b.stepNumber)
+    .find((s) => s.status === ApprovalStepStatus.PENDING);
+}
+
+/** Marks an override decision so the audit trail shows it was not a normal role approval. */
+function overrideNote(step: { approverRole: string }, userName: string, verb: 'Approved' | 'Rejected') {
+  return `${verb} by ${userName} (super admin override of ${step.approverRole} step)`;
+}
+
 /** Admins cannot act on a HEAD_THEN_ADMIN request until a head has approved it. */
 async function assertHeadApprovedFirst(
   step: { workflowId: string; workflow: { approvalPolicy: string | null } },
@@ -326,22 +350,31 @@ export async function approve(
     throw new Error('User not found');
   }
 
-  if (user.role !== step.approverRole) {
+  const isOverride =
+    user.role !== step.approverRole && canOverrideApprovals(user.role, user.extraPermissions);
+  if (user.role !== step.approverRole && !isOverride) {
     throw new Error(`Only ${step.approverRole} can approve this step`);
   }
 
-  await assertHeadApprovedFirst(step, user.role);
+  if (!isOverride) await assertHeadApprovedFirst(step, user.role);
 
-  const existingDecision = await prisma.approvalStep.findFirst({
-    where: {
-      workflowId: step.workflowId,
-      approverUserId: userId,
-      status: { in: [ApprovalStepStatus.APPROVED, ApprovalStepStatus.REJECTED] },
-    },
-  });
+  // An override user may decide several steps of the same workflow (head + admin).
+  const existingDecision = isOverride
+    ? null
+    : await prisma.approvalStep.findFirst({
+        where: {
+          workflowId: step.workflowId,
+          approverUserId: userId,
+          status: { in: [ApprovalStepStatus.APPROVED, ApprovalStepStatus.REJECTED] },
+        },
+      });
 
   if (existingDecision) {
     throw new Error('You have already decided on this workflow');
+  }
+
+  if (isOverride) {
+    comments = [overrideNote(step, user.name, 'Approved'), comments?.trim()].filter(Boolean).join(' — ');
   }
 
   const updatedStep = await prisma.approvalStep.update({
@@ -363,7 +396,12 @@ export async function approve(
     entityId: step.workflow.entityId,
     projectId: step.workflow.projectId,
     oldValue: { stepStatus: ApprovalStepStatus.PENDING, stepNumber: step.stepNumber },
-    newValue: { stepStatus: ApprovalStepStatus.APPROVED, stepNumber: step.stepNumber, comments },
+    newValue: {
+      stepStatus: ApprovalStepStatus.APPROVED,
+      stepNumber: step.stepNumber,
+      comments,
+      ...(isOverride ? { override: true, overriddenRole: step.approverRole } : {}),
+    },
   }).catch((err) => console.error('[Audit] Approval log error:', err));
 
   const workflow = await prisma.approvalWorkflow.findUnique({
@@ -456,7 +494,7 @@ export async function approve(
   const entityInfo = await findEntityCreator(workflow.entityType, workflow.entityId);
 
   // A head just signed off — only now does the request go to the admins.
-  if (workflow.approvalPolicy === HEAD_THEN_ADMIN_POLICY && isFirstLevelApproverRole(user.role)) {
+  if (workflow.approvalPolicy === HEAD_THEN_ADMIN_POLICY && isFirstLevelApproverRole(step.approverRole)) {
     const adminRoles = workflow.steps
       .filter((s) => isAdminRole(s.approverRole) && s.status === ApprovalStepStatus.PENDING)
       .map((s) => s.approverRole as UserRole);
@@ -512,21 +550,29 @@ export async function reject(stepId: string, userId: string, reason: string) {
     throw new Error('User not found');
   }
 
-  if (user.role !== step.approverRole) {
+  const isOverride =
+    user.role !== step.approverRole && canOverrideApprovals(user.role, user.extraPermissions);
+  if (user.role !== step.approverRole && !isOverride) {
     throw new Error(`Only ${step.approverRole} can reject this step`);
   }
 
-  await assertHeadApprovedFirst(step, user.role);
+  if (!isOverride) await assertHeadApprovedFirst(step, user.role);
 
-  const existingDecision = await prisma.approvalStep.findFirst({
-    where: {
-      workflowId: step.workflowId,
-      approverUserId: userId,
-      status: { in: [ApprovalStepStatus.APPROVED, ApprovalStepStatus.REJECTED] },
-    },
-  });
+  const existingDecision = isOverride
+    ? null
+    : await prisma.approvalStep.findFirst({
+        where: {
+          workflowId: step.workflowId,
+          approverUserId: userId,
+          status: { in: [ApprovalStepStatus.APPROVED, ApprovalStepStatus.REJECTED] },
+        },
+      });
   if (existingDecision) {
     throw new Error('You have already decided on this workflow');
+  }
+
+  if (isOverride) {
+    reason = [overrideNote(step, user.name, 'Rejected'), reason?.trim()].filter(Boolean).join(' — ');
   }
 
   const updatedStep = await prisma.approvalStep.update({
@@ -548,7 +594,12 @@ export async function reject(stepId: string, userId: string, reason: string) {
     entityId: step.workflow.entityId,
     projectId: step.workflow.projectId,
     oldValue: { stepStatus: ApprovalStepStatus.PENDING, stepNumber: step.stepNumber },
-    newValue: { stepStatus: ApprovalStepStatus.REJECTED, stepNumber: step.stepNumber, reason },
+    newValue: {
+      stepStatus: ApprovalStepStatus.REJECTED,
+      stepNumber: step.stepNumber,
+      reason,
+      ...(isOverride ? { override: true, overriddenRole: step.approverRole } : {}),
+    },
   }).catch((err) => console.error('[Audit] Rejection log error:', err));
 
   const workflow = await prisma.approvalWorkflow.findUnique({

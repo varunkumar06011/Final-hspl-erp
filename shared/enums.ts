@@ -678,6 +678,10 @@ export enum Permission {
   // Material Purchase Requests — raise internal material requests, share as PDF to vendors
   CREATE_MPR = 'CREATE_MPR',
   VIEW_MPR = 'VIEW_MPR',
+  // Approve/reject any pending approval step regardless of the step's role.
+  // Never in PERMISSION_MATRIX: granted per user via extraPermissions (or '*').
+  // Every use is written to the audit log as an override.
+  APPROVAL_OVERRIDE = 'APPROVAL_OVERRIDE',
 }
 
 export const PERMISSION_MATRIX: Record<UserRole, Permission[]> = {
@@ -862,6 +866,14 @@ export function hasPermission(
     return PERMISSION_MATRIX[UserRole.ADMIN]?.includes(permission) ?? false;
   }
   return PERMISSION_MATRIX[role as UserRole]?.includes(permission) ?? false;
+}
+
+/** True when this user may approve/reject any pending step (super admin or granted override). */
+export function canOverrideApprovals(
+  role: UserRole | string,
+  extraPermissions?: readonly string[] | null,
+): boolean {
+  return hasPermission(role, Permission.APPROVAL_OVERRIDE, extraPermissions);
 }
 
 /**
