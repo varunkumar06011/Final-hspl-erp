@@ -1,7 +1,7 @@
 import { useState, lazy, Suspense } from 'react';
 import { Box, Card, CardContent, Typography, Skeleton, Alert, Chip, useMediaQuery, useTheme, CircularProgress } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
-import { UserRole, isAdminRole } from '@hospital-erp/shared';
+import { UserRole, isAdminRole, canOverrideApprovals } from '@hospital-erp/shared';
 import api from '../config/api';
 import { formatCurrency } from '../utils/enumOptions';
 import { AnimatedNumber } from '../components/AnimatedNumber';
@@ -32,7 +32,11 @@ export default function DashboardPage() {
   // finance summaries). PROJECT_HEAD and other allowed roles see the existing
   // dashboard. This branch is driven solely by the logged-in user's role from
   // authStore, not by user ID, phone number, or any hardcoded allowlist.
-  const isAdmin = isAdminRole(user?.role ?? '') || user?.role === UserRole.ACCOUNTANT;
+  // Users granted APPROVAL_OVERRIDE (super admin '*') get the same full dashboard.
+  const isAdmin =
+    isAdminRole(user?.role ?? '') ||
+    user?.role === UserRole.ACCOUNTANT ||
+    canOverrideApprovals(user?.role ?? '', user?.extraPermissions);
   if (isAdmin) {
     return (
       <Suspense fallback={<Box sx={{ display: 'flex', justifyContent: 'center', py: 10 }}><CircularProgress /></Box>}>
