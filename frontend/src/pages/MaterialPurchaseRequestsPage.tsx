@@ -4,7 +4,7 @@ import {
   Box, Typography, Button, Chip, IconButton, DialogTitle, DialogContent, DialogActions,
   TextField, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, CircularProgress,
   MenuItem, InputAdornment, Grid, Alert, ToggleButtonGroup, ToggleButton, Divider, Autocomplete, Tabs, Tab,
-  Accordion, AccordionSummary, AccordionDetails,
+  Accordion, AccordionSummary, AccordionDetails, Pagination,
 } from '@mui/material';
 import {
   ExpandMore as ExpandMoreIcon,
@@ -230,16 +230,21 @@ export default function MaterialPurchaseRequestsPage() {
     try { localStorage.setItem(MPR_DRAFT_KEY, JSON.stringify(draft)); } catch { /* ignore quota errors */ }
   }, [requestTypeTab, serviceCategory, servicePeriodStart, servicePeriodEnd, requiredBy, department, priority, description, deliveryAddress, contactPerson, contactNumber, billingAddress, stateCode, requestRaisedById, technicalRequirements, items, selectedVendorId, editRow]);
 
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 20;
+  useEffect(() => { setPage(1); }, [requestTypeTab, search, statusFilter]);
+
   const { data, isLoading } = useQuery({
-    queryKey: ['mprs', requestTypeTab, search, statusFilter],
+    queryKey: ['mprs', requestTypeTab, search, statusFilter, page],
     queryFn: async () => {
-      const params: Record<string, string> = { requestType: requestTypeTab };
+      const params: Record<string, string> = { requestType: requestTypeTab, page: String(page), limit: String(PAGE_SIZE) };
       if (search) params.search = search;
       if (statusFilter) params.status = statusFilter;
       const res = await api.get('/material-purchase-requests', { params });
       return res.data;
     },
   });
+  const totalPages = Math.max(1, Math.ceil((data?.total ?? 0) / PAGE_SIZE));
 
   const { data: usersData } = useQuery({
     queryKey: ['/work-tasks/assignable-users'],
@@ -1018,6 +1023,11 @@ export default function MaterialPurchaseRequestsPage() {
               </Accordion>
             );
           })}
+        </Box>
+      )}
+      {totalPages > 1 && (
+        <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>
+          <Pagination count={totalPages} page={page} onChange={(_e, p) => setPage(p)} color="primary" />
         </Box>
       )}
 
