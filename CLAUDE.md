@@ -120,3 +120,7 @@ Admin 1, Admin 2 and super admins can switch any module on or off per user (Modu
 ## Locked documents
 
 General documents (Documents → General) can be PIN-locked. The uploader sets a personal 6-digit **document PIN** (`users.documentPinHash`, separate from the login PIN; change needs the old PIN, or the login PIN to reset). A locked document (`documents.isLocked`) is masked in the list (no name for others, no description/file/people) until `POST /documents/:id/unlock` is called with the uploader's PIN; that returns a 15-minute token (own secret, not a login token) sent back as `x-doc-unlocks` (list) / `x-doc-unlock` (file). The `Document` model is excluded from global search so locked names cannot leak.
+
+## Inventory matching and merging
+
+Goods receipts and stock entries find the inventory item for a material through `services/inventory-match.service.ts` (`findInventoryItemForMaterial`): by **material code** first (`inventory_items.materialCode`, the code the material carries in material requests), then by the alias of a merged duplicate, then by plain name; a match without a code gets it. `GET /inventory/duplicates` groups look-alike items (same code, or names equal ignoring spelling; different sizes/numbers or item types are never grouped) and `POST /inventory/merge` (admins/supervisors) folds one into another: movements and assets move across, stock and value add up, the source is retired and its name/code kept in `aliases` so later receipts land on the kept item. UI: Inventory → "Merge duplicates".

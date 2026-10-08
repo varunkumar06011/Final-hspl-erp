@@ -7,6 +7,7 @@ import {
 } from '@hospital-erp/shared';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../config/prisma';
+import { findInventoryItemForMaterial, materialCodeForName } from '../services/inventory-match.service';
 import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middleware/auth';
 import { rbacMiddleware } from '../middleware/rbac';
 import { validateMiddleware } from '../middleware/validate';
@@ -535,9 +536,9 @@ router.post(
         for (const line of receipt.items) {
           if (Number(line.acceptedQty) <= 0) continue;
           const lineItemType = (line.itemType as InventoryItemType) || InventoryItemType.CONSUMABLE;
-          let inventoryItem = await tx.inventoryItem.findFirst({
-            where: { projectId, name: { equals: line.materialName, mode: 'insensitive' }, deletedAt: null },
-          });
+          // Matched by material code first (then merged-duplicate aliases, then name), so a
+          // misspelt line still lands on the right stock item.
+          let inventoryItem = await findInventoryItemForMaterial(tx, projectId, line.materialName);
           if (inventoryItem && inventoryItem.itemType !== lineItemType) {
             throw new Error(`Item "${line.materialName}" already exists in inventory as ${inventoryItem.itemType.toLowerCase()}, but this receipt marks it as ${lineItemType.toLowerCase()}. Change the item type on this receipt to match, or rename the material.`);
           }
@@ -552,6 +553,7 @@ router.post(
                 projectId,
                 name: line.materialName,
                 sku: await generateInventorySku(tx, projectId, autoCategory),
+                materialCode: await materialCodeForName(tx, projectId, line.materialName),
                 category: autoCategory,
                 unit: line.unit || 'nos',
                 itemType: lineItemType,

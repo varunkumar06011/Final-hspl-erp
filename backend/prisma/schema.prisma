@@ -753,6 +753,10 @@ model InventoryItem {
   projectId     String    @db.Uuid
   name          String
   sku           String?
+  // Project-wide material code (VGH-MAT-0021) shared with material requests; one material, one code.
+  materialCode  String?
+  // Lower-cased names / codes of items merged into this one, so later receipts keep landing here.
+  aliases       String[]  @default([])
   category      String?
   unit          String
   itemType      String    @default("CONSUMABLE") // InventoryItemType enum: CONSUMABLE | ASSET
@@ -773,6 +777,7 @@ model InventoryItem {
 
   @@unique([projectId, name])
   @@index([projectId, deletedAt])
+  @@index([projectId, materialCode])
   @@map("inventory_items")
 }
 

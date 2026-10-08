@@ -1,5 +1,6 @@
 import { Router, Response, NextFunction } from 'express';
-import { Permission, AuditAction, InventoryTxnType, InventoryItemType, AssetStatus, AssetMovementType, isAdminRole } from '@hospital-erp/shared';
+import { findDuplicateGroups, mergeInventoryItems } from '../services/inventory-match.service';
+import { canOverrideApprovals, Permission, AuditAction, InventoryTxnType, InventoryItemType, AssetStatus, AssetMovementType, isAdminRole } from '@hospital-erp/shared';
 import {
   createInventoryItemSchema,
   updateInventoryItemSchema,
@@ -53,6 +54,57 @@ async function generateInventorySku(projectId: string, category: string | null):
 
 const router = Router();
 router.use(authMiddleware);
+
+// GET /duplicates — groups of items that look like the same material
+router.get(
+  '/duplicates',
+  rbacMiddleware(Permission.MANAGE_INVENTORY),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      res.json({ data: await findDuplicateGroups(requireProjectId(req)) });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+// POST /merge — fold a duplicate item into the one to keep (admins and supervisors)
+router.post(
+  '/merge',
+  rbacMiddleware(Permission.MANAGE_INVENTORY),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      if (!(isAdminRole(req.user!.role) || req.user!.role === 'SUPERVISOR' || canOverrideApprovals(req.user!.role, req.user!.extraPermissions))) {
+        res.status(403).json({ error: 'Only Admins and Supervisors can merge inventory items' });
+        return;
+      }
+      const { sourceId, targetId } = req.body as { sourceId?: string; targetId?: string };
+      if (!sourceId || !targetId) {
+        res.status(400).json({ error: 'sourceId and targetId are required' });
+        return;
+      }
+      let result;
+      try {
+        result = await mergeInventoryItems(projectId, sourceId, targetId);
+      } catch (err) {
+        res.status(400).json({ error: err instanceof Error ? err.message : 'Merge failed' });
+        return;
+      }
+      await logAudit({
+        userId: req.user!.id,
+        action: AuditAction.UPDATE,
+        entityType: 'INVENTORY_ITEM',
+        entityId: targetId,
+        projectId,
+        newValue: { action: 'MERGE', mergedFrom: sourceId, ...result.summary },
+      });
+      res.json(result);
+    } catch (error) {
+      next(error);
+    }
+  },
+);
 
 // GET /items — list inventory items
 router.get(

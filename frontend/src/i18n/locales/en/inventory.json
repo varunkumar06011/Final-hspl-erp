@@ -125,5 +125,15 @@
   "goToGatePass": "Open Gate Pass",
   "goToReceipts": "Open Goods Receipts",
   "goToPos": "Open POs",
-  "stockPhoto": "Add bill / photo proof (optional)"
+  "stockPhoto": "Add bill / photo proof (optional)",
+  "mergeButton": "Merge duplicates",
+  "mergeTitle": "Merge duplicate items",
+  "mergeHelp": "These items look like the same material under different spellings. Pick the one to keep; the other is folded into it (stock, history and assets move across) and future receipts with its name land on the kept item.",
+  "mergeNone": "No duplicate-looking items found.",
+  "mergeKeepHint": "Select the item to keep",
+  "mergeKeeping": "Keeping",
+  "mergeInto": "Merge into kept item",
+  "mergeMoves": "{{n}} movements",
+  "mergeConfirm": "Merge \"{{from}}\" into \"{{to}}\"? This cannot be undone.",
+  "mergeDone": "Merged \"{{from}}\" into \"{{to}}\"."
 }

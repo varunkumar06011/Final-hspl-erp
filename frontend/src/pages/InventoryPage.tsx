@@ -52,12 +52,14 @@ import ResponsiveTable from '../components/ResponsiveTable';
 import RefreshButton from '../components/RefreshButton';
 import InventorySummary, { InventorySummaryData } from '../components/inventory/InventorySummary';
 import ReceiveStockDialog from '../components/inventory/ReceiveStockDialog';
+import MergeDuplicatesDialog from '../components/inventory/MergeDuplicatesDialog';
 import StockEntriesTab from '../components/inventory/StockEntriesTab';
 
 import { useTranslation } from 'react-i18next';
 import FilePicker from '../components/FilePicker';
 export default function InventoryPage() {
   const { t: tr } = useTranslation('inventory');
+  const [mergeOpen, setMergeOpen] = useState(false);
   const navigate = useNavigate();
   const [tab, setTab] = useState(0);
   const [page, setPage] = useState(0);
@@ -257,6 +259,7 @@ export default function InventoryPage() {
             {tr('stockMovement')}
           </Button>
           {tab === 0 && <Button variant="outlined" startIcon={<AddIcon />} onClick={openCreate}>{tr('newItem')}</Button>}
+          {tab === 0 && <Button variant="outlined" color="warning" onClick={() => setMergeOpen(true)}>{tr('mergeButton')}</Button>}
         </Box>
       </Box>
 
@@ -577,6 +580,7 @@ export default function InventoryPage() {
         </DialogActions>
       </ResponsiveDialog>
 
+      <MergeDuplicatesDialog open={mergeOpen} onClose={() => setMergeOpen(false)} onDone={(m) => setNotice(m)} />
       <ReceiveStockDialog open={receiveOpen} onClose={() => setReceiveOpen(false)} onDone={(m) => setNotice(m)} />
     </Box>
   );

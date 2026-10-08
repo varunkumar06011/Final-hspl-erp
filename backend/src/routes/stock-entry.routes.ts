@@ -14,6 +14,7 @@ import {
 import { createStockEntrySchema, rejectStockEntrySchema } from '@hospital-erp/shared';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../config/prisma';
+import { findInventoryItemForMaterial, materialCodeForName } from '../services/inventory-match.service';
 import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middleware/auth';
 import { rbacMiddleware } from '../middleware/rbac';
 import { validateMiddleware } from '../middleware/validate';
@@ -70,9 +71,7 @@ async function postEntry(
       throw new Error(`Asset items need a whole-number quantity (${line.materialName}: ${qty})`);
     }
 
-    let item = await tx.inventoryItem.findFirst({
-      where: { projectId: entry.projectId, name: { equals: line.materialName, mode: 'insensitive' }, deletedAt: null },
-    });
+    let item = await findInventoryItemForMaterial(tx, entry.projectId, line.materialName);
     if (item && item.itemType !== lineType) {
       throw new Error(
         `"${line.materialName}" already exists in inventory as ${item.itemType.toLowerCase()}, but this entry marks it as ${lineType.toLowerCase()}.`,
@@ -85,6 +84,7 @@ async function postEntry(
           projectId: entry.projectId,
           name: line.materialName,
           sku: await generateSku(tx, entry.projectId, category),
+          materialCode: await materialCodeForName(tx, entry.projectId, line.materialName),
           category,
           unit: line.unit || 'nos',
           itemType: lineType,
