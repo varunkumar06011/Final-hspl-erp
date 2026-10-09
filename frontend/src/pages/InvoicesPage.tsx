@@ -27,6 +27,7 @@ import {
   Snackbar,
 } from '@mui/material';
 import ResponsiveDialog from '../components/ResponsiveDialog';
+import StalledChip from '../components/StalledChip';
 import ApprovalStepsDisplay from '../components/ApprovalStepsDisplay';
 import ApprovalCommentsInline from '../components/ApprovalCommentsInline';
 import {
@@ -695,6 +696,7 @@ export default function InvoicesPage() {
                         size="small"
                         color={STATUS_COLORS[row.paymentStatus] ?? 'default'}
                       />
+                      <StalledChip type="INVOICE" id={row.id} />
                     </TableCell>
                     <TableCell data-label={t('colStock')}>
                       <Chip

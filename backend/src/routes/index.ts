@@ -49,6 +49,7 @@ import searchRoutes from './search.routes';
 import assistantRoutes from './assistant.routes';
 import chatRoutes from './chat.routes';
 import moduleAccessRoutes from './module-access.routes';
+import stalledRoutes from './stalled.routes';
 
 const router = Router();
 
@@ -56,6 +57,7 @@ router.use('/auth', authRoutes);
 router.use('/projects', projectRoutes);
 router.use('/audit', auditRoutes);
 router.use('/dashboard', dashboardRoutes);
+router.use('/stalled', stalledRoutes);
 router.use('/vendors', vendorRoutes);
 router.use('/quotations', quotationRoutes);
 router.use('/work-tasks', workTaskRoutes);

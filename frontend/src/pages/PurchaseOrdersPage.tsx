@@ -32,6 +32,7 @@ import {
   Tab,
 } from '@mui/material';
 import ResponsiveDialog from '../components/ResponsiveDialog';
+import StalledChip from '../components/StalledChip';
 import ApprovalStepsDisplay from '../components/ApprovalStepsDisplay';
 import RefreshButton from '../components/RefreshButton';
 import {
@@ -946,6 +947,7 @@ export default function PurchaseOrdersPage() {
                               {t('dueOn', { d: formatDate(row.deliveryDate) })}
                             </Typography>
                           )}
+                          <StalledChip type="PO" id={row.id} />
                           {row.isContract && <Chip label={t('contractBadge')} size="small" color="secondary" variant="outlined" />}
                           {row.contractPo && <Chip label={t('subPoOf', { n: row.contractPo.poNumber })} size="small" variant="outlined" />}
                           {needsClassification(row) && (

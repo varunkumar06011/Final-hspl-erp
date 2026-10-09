@@ -24,6 +24,7 @@ import {
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import VendorAutocomplete from '../components/VendorAutocomplete';
+import StalledChip from '../components/StalledChip';
 import CopyText from '../components/CopyText';
 import ApprovalTiming from '../components/ApprovalTiming';
 import { MPRStatus, MPRRequestType, UserRole, isApproverRole, isWorkflowOpenToRole, canOverrideApprovals, findApprovableStep, isSuperAdmin } from '@hospital-erp/shared';
@@ -796,6 +797,7 @@ export default function MaterialPurchaseRequestsPage() {
                         size="small"
                         color={(STATUS_COLORS[row.status] as any) ?? 'default'}
                       />
+                      <StalledChip type="MPR" id={row.id} />
                       {(row.shipmentNo ?? 1) >= 2 && (
                         <Chip
                           label={row.shipmentNo === 2 ? t('shipment2') : row.shipmentNo === 3 ? t('shipment3') : t('shipmentN', { n: row.shipmentNo })}

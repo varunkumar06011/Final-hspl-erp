@@ -24,6 +24,7 @@ import { Add as AddIcon, FactCheck as InspectIcon, Inventory as PostIcon, Visibi
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import ResponsiveDialog from '../components/ResponsiveDialog';
+import StalledChip from '../components/StalledChip';
 import ResponsiveTable from '../components/ResponsiveTable';
 import LinkedFiles from '../components/LinkedFiles';
 import api, { extractErrorMessage } from '../config/api';
@@ -434,7 +435,7 @@ export default function GoodsReceiptsPage() {
                 const types = new Set(receipt.items.map((i) => i.itemType || 'CONSUMABLE'));
                 return (
                 <TableRow key={receipt.id} hover>
-                  <TableCell data-label={t('colReceipt')}>{receipt.receiptNumber}</TableCell>
+                  <TableCell data-label={t('colReceipt')}>{receipt.receiptNumber} <StalledChip type="GOODS_RECEIPT" id={receipt.id} /></TableCell>
                   <TableCell data-label={t('colPO')}>{receipt.purchaseOrder.poNumber}</TableCell>
                   <TableCell data-label={t('colGatepass')}>{receipt.gatePass?.passNumber ?? '—'}</TableCell>
                   <TableCell data-label={t('vendor')}>{receipt.purchaseOrder.vendor.name}</TableCell>

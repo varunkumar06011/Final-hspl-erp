@@ -33,6 +33,7 @@ import {
   FormControlLabel,
 } from '@mui/material';
 import ResponsiveDialog from '../components/ResponsiveDialog';
+import StalledChip from '../components/StalledChip';
 import ApprovalStepsDisplay from '../components/ApprovalStepsDisplay';
 import ApprovalCommentsInline from '../components/ApprovalCommentsInline';
 import AcknowledgementCheckbox from '../components/AcknowledgementCheckbox';
@@ -910,6 +911,7 @@ export default function PaymentsPage() {
                       <TableCell data-label={tr('status')}>
                         <Stack spacing={0.5} alignItems="flex-start">
                           <Chip label={enumLabel(row.status)} size="small" color={STATUS_COLORS[row.status] ?? 'default'} />
+                          <StalledChip type="PAYMENT_REQUEST" id={row.id} />
                           {row.status === PaymentStatus.PAID && row.payments[0] && (
                             <Typography variant="caption" color="text.secondary">
                               {row.payments[0].bankAccount ? tr('via', { v: row.payments[0].bankAccount.accountName }) : row.payments[0].cashAccount ? tr('via', { v: row.payments[0].cashAccount.name }) : tr('via', { v: enumLabel(row.payments[0].mode) })}

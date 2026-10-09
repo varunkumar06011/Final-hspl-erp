@@ -501,5 +501,14 @@
     "waitingHead": "Waiting for Project Head / Head of Construction: {{d}}",
     "waitingAdmin": "Waiting for Admin: {{d}}"
   },
+  "stalled": {
+    "QUOTATION_OR_PO": "Approved, no quotation yet",
+    "PO": "Approved, waiting for PO",
+    "GOODS_RECEIPT": "Approved, waiting for goods receipt",
+    "GOODS_RECEIPT_POST": "Inspected, waiting to post",
+    "PAYMENT_REQUEST": "Approved, waiting for payment request",
+    "PAYMENT": "Approved, waiting for payment",
+    "tooltip": "Approved but not moved to the next step for {{d}}"
+  },
   "newMaterialHint": "New material. It will get a new code."
 }

@@ -24,6 +24,7 @@ import {
   Checkbox,
 } from '@mui/material';
 import ResponsiveDialog from '../components/ResponsiveDialog';
+import StalledChip from '../components/StalledChip';
 import ApprovalStepsDisplay from '../components/ApprovalStepsDisplay';
 import {
   Add as AddIcon,
@@ -836,6 +837,7 @@ export default function QuotationsPage() {
                       </Box>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, flexWrap: 'wrap' }}>
                         <Chip label={enumLabel(approvalStatus)} size="small" color={STATUS_COLORS[approvalStatus] ?? 'default'} />
+                        <StalledChip type="QUOTATION" id={row.id} />
                         <Typography component="span" sx={{ fontWeight: 700, fontSize: '0.9rem' }}>{formatCurrency(row.grandTotal)}</Typography>
                         {agingLabel && displayAgingStatus !== 'APPROVED' && displayAgingStatus !== 'REJECTED' && (
                           <Typography variant="caption" sx={{ color: displayAgingStatus === 'OVERDUE' ? 'error.main' : (theme.palette.mode === 'dark' ? 'warning.main' : 'warning.dark'), fontWeight: displayAgingStatus === 'OVERDUE' ? 700 : 500 }}>
