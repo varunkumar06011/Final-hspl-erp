@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState, type MouseEvent } from 'react';
 import {
   Avatar,
   Box,
@@ -64,7 +64,7 @@ export function roleLabel(role: unknown): string {
   return String(role ?? '')
     .replace(/_/g, ' ')
     .toLowerCase()
-    .replace(/w/g, (c) => c.toUpperCase());
+    .replace(/(^|\s)\w/g, (c) => c.toUpperCase());
 }
 
 export function timeAgo(iso: string): string {
@@ -146,6 +146,8 @@ interface CommentsButtonProps {
   /** Route of the page holding the record — where a notification click lands. */
   url?: string;
   size?: 'small' | 'medium';
+  /** Show a text button ("Comments") instead of the bare icon, e.g. in a card's action row. */
+  labelled?: boolean;
 }
 
 /**
@@ -159,24 +161,33 @@ export default function CommentsButton({
   entityLabel,
   url,
   size = 'small',
+  labelled = false,
 }: CommentsButtonProps) {
   const { t: tr } = useTranslation('comments');
   const [open, setOpen] = useState(false);
   if (!entityId) return null;
+  const onOpen = (e: MouseEvent) => {
+    e.stopPropagation();
+    setOpen(true);
+  };
   return (
     <>
-      <Tooltip title={tr('comments')}>
-        <IconButton
-          size={size}
-          sx={{ p: { xs: 1, sm: 0.5 } }}
-          onClick={(e) => {
-            e.stopPropagation();
-            setOpen(true);
-          }}
+      {labelled ? (
+        <Button
+          size="small"
+          variant="outlined"
+          startIcon={<CommentIcon />}
+          onClick={onOpen}
         >
-          <CommentIcon fontSize="small" />
-        </IconButton>
-      </Tooltip>
+          {tr('comments')}
+        </Button>
+      ) : (
+        <Tooltip title={tr('comments')}>
+          <IconButton size={size} sx={{ p: { xs: 1, sm: 0.5 } }} onClick={onOpen}>
+            <CommentIcon fontSize="small" />
+          </IconButton>
+        </Tooltip>
+      )}
       {open && (
         <CommentsDialog
           entityType={entityType}
