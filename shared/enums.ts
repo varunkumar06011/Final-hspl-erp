@@ -651,6 +651,8 @@ export enum Permission {
   MANAGE_USERS = 'MANAGE_USERS',
   // Create / edit / archive projects (admin roles only)
   MANAGE_PROJECTS = 'MANAGE_PROJECTS',
+  // Open the Module Access page (granted per user via extraPermissions, not by role)
+  MANAGE_MODULE_ACCESS = 'MANAGE_MODULE_ACCESS',
   // Approvals config
   MANAGE_APPROVALS_CONFIG = 'MANAGE_APPROVALS_CONFIG',
   // Payments

@@ -211,3 +211,11 @@ export function blockingModuleForApiPath(subject: ModuleAccessSubject, apiPath: 
   if (!switchedOff) return undefined;
   return owners.some((m) => isModuleEnabled(subject, m.key)) ? undefined : switchedOff;
 }
+
+/** Who may open Module Access: full-control admins, or a user granted MANAGE_MODULE_ACCESS personally. */
+export function canManageModuleAccess(
+  role: string,
+  extraPermissions?: readonly string[] | null,
+): boolean {
+  return hasFullModuleControl(role, extraPermissions) || !!extraPermissions?.includes(Permission.MANAGE_MODULE_ACCESS);
+}

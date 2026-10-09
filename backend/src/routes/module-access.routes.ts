@@ -4,6 +4,7 @@ import {
   AuditAction,
   SocketEvents,
   hasFullModuleControl,
+  canManageModuleAccess,
   normalizeModuleAccess,
   updateModuleAccessSchema,
   type ModuleAccessMap,
@@ -22,8 +23,8 @@ const router = Router();
 router.use(authMiddleware);
 router.use((req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   const user = req.user!;
-  if (!hasFullModuleControl(user.role, user.directPermissions)) {
-    res.status(403).json({ error: 'Only Admin 1 and Admin 2 can manage module access' });
+  if (!canManageModuleAccess(user.role, user.directPermissions)) {
+    res.status(403).json({ error: 'You do not have permission to manage module access' });
     return;
   }
   next();

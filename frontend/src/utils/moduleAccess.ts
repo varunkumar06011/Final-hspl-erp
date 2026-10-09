@@ -1,6 +1,6 @@
 import {
   APP_MODULES,
-  hasFullModuleControl,
+  canManageModuleAccess as sharedCanManage,
   isModuleEnabled,
   isModuleSwitchedOff,
   type ModuleAccessSubject,
@@ -33,7 +33,7 @@ export function moduleSwitchedOff(user: UserResponse | null, key: string): boole
 }
 
 export function canManageModuleAccess(user: UserResponse | null): boolean {
-  return !!user && hasFullModuleControl(user.role, user.directPermissions ?? user.extraPermissions);
+  return !!user && sharedCanManage(user.role, user.directPermissions ?? user.extraPermissions);
 }
 
 /** Where to send the user when the page they asked for is not available: their first module. */
