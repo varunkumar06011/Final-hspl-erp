@@ -775,7 +775,7 @@ export default function PurchaseOrdersPage() {
                       <TableCell sx={{ fontWeight: 700 }} align="right">{t('netPayable')}</TableCell>
                       <TableCell sx={{ fontWeight: 700 }} align="right">{t('paid')}</TableCell>
                       <TableCell sx={{ fontWeight: 700 }} align="right">{t('toPay')}</TableCell>
-                      <TableCell sx={{ fontWeight: 700 }} align="right">{t('actions')}</TableCell>
+                      <TableCell sx={{ fontWeight: 700, position: 'sticky', right: 0, bgcolor: 'background.paper', zIndex: 1 }} align="right">{t('actions')}</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
@@ -827,9 +827,9 @@ export default function PurchaseOrdersPage() {
                           </TableCell>
                           <TableCell align="right" sx={{ color: 'success.main', fontWeight: 600 }}>{formatCurrency(Number(row.paidToDate ?? 0))}</TableCell>
                           <TableCell align="right" sx={{ fontWeight: 700, color: Number(row.amountToPayNow ?? 0) > 0 ? 'error.main' : 'text.secondary' }}>{formatCurrency(Number(row.amountToPayNow ?? 0))}</TableCell>
-                          <TableCell align="right">
-                            <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'flex-end' }}>
-                              <CommentsButton entityType="PURCHASE_ORDER" entityId={row.id} entityLabel={row.poNumber} url="/pos" />
+                          <TableCell align="right" sx={{ position: 'sticky', right: 0, bgcolor: 'background.paper', zIndex: 1 }}>
+                            <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'flex-end', alignItems: 'center', flexWrap: 'nowrap' }}>
+                              <CommentsButton labelled entityType="PURCHASE_ORDER" entityId={row.id} entityLabel={row.poNumber} url="/pos" />
                               <IconButton size="small" onClick={() => navigate(`/combined-records?type=po&id=${row.id}`)} title={t('openCombined')}><CombinedIcon fontSize="small" /></IconButton>
                               <IconButton size="small" onClick={() => previewPDF(row.id)} title={t('previewPdf')} disabled={pdfLoading}>{pdfLoading ? <CircularProgress size={16} /> : <PdfIcon fontSize="small" />}</IconButton>
                               <IconButton size="small" onClick={() => downloadPDF(row.id, row.poNumber)} title={t('downloadPdf')}><DownloadIcon fontSize="small" /></IconButton>
