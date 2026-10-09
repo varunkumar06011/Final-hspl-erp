@@ -104,6 +104,8 @@
   "addQuotation": "Add quotation",
   "poAfterApproval": "The PO is created automatically when the request is approved.",
   "poAfterFinalize": "The PO is created automatically when a quotation is finalized.",
+  "poDescription": "Description",
+  "poComments": "Comments ({{count}})",
   "siteBillsNoDelivery": "Bought at site: no delivery step.",
   "noDelivery": "No delivery recorded yet.",
   "goToGoodsReceipts": "Record delivery in Goods Receipts",

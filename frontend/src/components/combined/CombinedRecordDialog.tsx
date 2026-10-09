@@ -46,6 +46,7 @@ import ApprovalStepsDisplay from '../ApprovalStepsDisplay';
 import ApprovalTiming from '../ApprovalTiming';
 import ItemsGist from '../ItemsGist';
 import CopyText from '../CopyText';
+import CommentsButton, { CommentContent, timeAgo, type CommentRow } from '../CommentsButton';
 import { useFileViewer } from '../FileViewerDialog';
 import { useToast } from '../ToastProvider';
 import { enumLabel, formatCurrency, formatDate, formatDateTime } from '../../utils/enumOptions';
@@ -641,6 +642,12 @@ function PoCard({
   const amountMissing = Number(po.grandTotal) <= 0;
   const step = po.status === 'PENDING_APPROVAL' ? approvableStep(po.approvalWorkflow, user) : null;
   const dead = !LIVE_PO.includes(po.status);
+  // Same query as the comment thread dialog, so posting there refreshes this list too.
+  const { data: poComments = [] } = useQuery<CommentRow[]>({
+    queryKey: ['comments', 'PURCHASE_ORDER', po.id],
+    queryFn: async () =>
+      (await api.get('/comments', { params: { entityType: 'PURCHASE_ORDER', entityId: po.id } })).data?.data ?? [],
+  });
 
   return (
     <Card variant="outlined" sx={{ p: 1.5, opacity: dead ? 0.65 : 1 }}>
@@ -654,7 +661,30 @@ function PoCard({
       {po.isSiteBillBatch && po.reimburseTo && <Typography variant="body2" color="text.secondary">{t('reimburseTo', { name: po.reimburseTo })}</Typography>}
       {amountMissing && !dead && <Alert severity="error" sx={{ mt: 1 }}>{t('amountMissing')}</Alert>}
       <ItemsGist items={po.items} max={30} />
-      {po.notes && <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5, whiteSpace: 'pre-line' }}>{po.notes}</Typography>}
+      {po.notes && (
+        <Box sx={{ mt: 1, p: 1, borderRadius: 1, bgcolor: 'action.hover' }}>
+          <Typography variant="caption" fontWeight={700} color="text.secondary" display="block">{t('poDescription')}</Typography>
+          <Typography variant="body2" sx={{ whiteSpace: 'pre-line', overflowWrap: 'anywhere' }}>{po.notes}</Typography>
+        </Box>
+      )}
+
+      <Box sx={{ mt: 1 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+          <Typography variant="caption" fontWeight={700} color="text.secondary">{t('poComments', { count: poComments.length })}</Typography>
+          <Box sx={{ ml: 'auto' }}>
+            <CommentsButton labelled entityType="PURCHASE_ORDER" entityId={po.id} entityLabel={po.poNumber} url="/pos" />
+          </Box>
+        </Box>
+        {poComments.map((c) => (
+          <Box key={c.id} sx={{ ml: c.parentId ? 2 : 0, mt: 0.75, pl: c.parentId ? 1.5 : 0, borderLeft: c.parentId ? 2 : 0, borderColor: 'divider' }}>
+            <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 0.75, flexWrap: 'wrap' }}>
+              <Typography variant="subtitle2">{c.author.name}</Typography>
+              <Typography variant="caption" color="text.secondary">{timeAgo(c.createdAt)}</Typography>
+            </Box>
+            <CommentContent comment={c} />
+          </Box>
+        ))}
+      </Box>
 
       {po.siteBills.length > 0 && (
         <Box sx={{ mt: 1 }}>
