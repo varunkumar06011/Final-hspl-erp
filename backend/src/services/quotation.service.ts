@@ -3,6 +3,7 @@ import {
   AuditAction,
   QuotationStatus,
   ApprovalStatus,
+  POStatus,
   VendorType,
   FIRST_LEVEL_APPROVER_ROLES,
   canFinalizeQuotation,
@@ -420,4 +421,86 @@ export async function rejectQuotation(quotationId: string, projectId: string, us
     newValue: { status: QuotationStatus.REJECTED, reason },
   });
   return { quotationId: quotation.id };
+}
+
+const DEAD_PO_STATUSES: string[] = [POStatus.DELETED, POStatus.REJECTED, POStatus.CANCELLED];
+const COMMITTED_PO_STATUSES: string[] = [POStatus.APPROVED, POStatus.PARTIALLY_DELIVERED, POStatus.DELIVERED];
+
+/**
+ * Cancel a finalized quotation together with the PO raised from it. Refused when that PO
+ * is already approved or has goods receipts, invoices or payments: those need their own
+ * reversal first. A pending PO is closed (DELETED) and any budget it holds is released.
+ */
+export async function cancelQuotation(quotationId: string, projectId: string, user: ActingUser, reason: string) {
+  if (!canFinalizeQuotation(user.role, user.extraPermissions)) {
+    throw new QuotationActionError('Only the Project Head, Head of Construction, Admin 1, Admin 2 or a super admin can cancel quotations', 403);
+  }
+  const quotation = await prisma.quotation.findFirst({ where: { id: quotationId, projectId, deletedAt: null } });
+  if (!quotation) throw new QuotationActionError('Quotation not found', 404);
+  if (!FINALIZED_QUOTATION_STATUSES.includes(quotation.status)) {
+    throw new QuotationActionError(
+      `Only a finalized quotation can be cancelled. This one is ${quotation.status.replace(/_/g, ' ').toLowerCase()}; use "Not selected" for quotations still waiting.`
+    );
+  }
+
+  const pos = await prisma.purchaseOrder.findMany({
+    where: { quotationId: quotation.id, projectId, deletedAt: null, isContract: false, status: { notIn: DEAD_PO_STATUSES } },
+    select: { id: true, poNumber: true, status: true, budgetHeadId: true, grandTotal: true, editedAt: true, approvalWorkflowId: true },
+  });
+  const committed = pos.filter((p) => COMMITTED_PO_STATUSES.includes(p.status));
+  if (committed.length > 0) {
+    throw new QuotationActionError(
+      `${committed.map((p) => p.poNumber).join(', ')} already approved. Deactivate it on the Purchase Orders page first, then cancel the quotation.`
+    );
+  }
+
+  const poIds = pos.map((p) => p.id);
+  if (poIds.length > 0) {
+    const where = { projectId, deletedAt: null, poId: { in: poIds } };
+    const [receipts, invoices, payments] = await Promise.all([
+      prisma.goodsReceipt.count({ where }),
+      prisma.vendorInvoice.count({ where }),
+      prisma.paymentRequest.count({ where }),
+    ]);
+    if (receipts + invoices + payments > 0) {
+      throw new QuotationActionError('The PO for this quotation already has goods receipts, invoices or payments, so it cannot be cancelled here.');
+    }
+  }
+
+  await prisma.$transaction(async (tx) => {
+    const claimed = await tx.quotation.updateMany({
+      where: { id: quotation.id, status: quotation.status },
+      data: { status: QuotationStatus.CANCELLED },
+    });
+    if (claimed.count === 0) {
+      throw new QuotationActionError('This quotation was just changed by someone else. Refresh and try again.', 409);
+    }
+    for (const po of pos) {
+      await tx.purchaseOrder.update({ where: { id: po.id }, data: { status: POStatus.DELETED } });
+      // An approved PO that was edited keeps its commitment while it waits for re-approval.
+      if (po.budgetHeadId && po.editedAt) {
+        const head = await tx.budgetHead.findUnique({ where: { id: po.budgetHeadId }, select: { committedAmount: true } });
+        const release = Math.min(Number(po.grandTotal), Number(head?.committedAmount ?? 0));
+        if (release > 0) {
+          await tx.budgetHead.update({ where: { id: po.budgetHeadId }, data: { committedAmount: { decrement: release } } });
+        }
+      }
+      if (po.approvalWorkflowId) {
+        await tx.approvalWorkflow.updateMany({
+          where: { id: po.approvalWorkflowId, status: { notIn: [ApprovalStatus.APPROVED, ApprovalStatus.REJECTED] } },
+          data: { status: ApprovalStatus.REJECTED },
+        });
+      }
+    }
+  });
+
+  await logAudit({
+    userId: user.id,
+    action: AuditAction.DELETE,
+    entityType: 'QUOTATION',
+    entityId: quotation.id,
+    projectId,
+    newValue: { status: QuotationStatus.CANCELLED, previousStatus: quotation.status, reason, purchaseOrders: pos.map((p) => p.poNumber) },
+  });
+  return { quotationId: quotation.id, cancelledPoIds: poIds };
 }

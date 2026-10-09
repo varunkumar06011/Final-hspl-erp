@@ -14,6 +14,7 @@ import {
   quotationInclude,
   finalizeQuotation,
   rejectQuotation,
+  cancelQuotation,
   QuotationActionError,
   type QuotationLineItem,
 } from '../services/quotation.service';
@@ -894,6 +895,34 @@ router.post(
       const projectId = requireProjectId(req);
       const reason = req.body.reason || req.body.comments || 'Not selected';
       await rejectQuotation(req.params.id, projectId, req.user!, reason);
+      const updated = await prisma.quotation.findUnique({
+        where: { id: req.params.id },
+        include: quotationInclude,
+      });
+      res.json(updated);
+    } catch (error) {
+      if (error instanceof QuotationActionError) {
+        res.status(error.status).json({ error: error.message });
+        return;
+      }
+      next(error);
+    }
+  }
+);
+
+// POST /:id/cancel — cancel a finalized quotation and its unapproved PO. Needs a reason.
+router.post(
+  '/:id/cancel',
+  rbacMiddleware(Permission.VIEW_FINANCIALS),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      const reason = typeof req.body?.reason === 'string' ? req.body.reason.trim() : '';
+      if (reason.length < 3) {
+        res.status(400).json({ error: 'A reason (at least 3 characters) is needed to cancel a quotation' });
+        return;
+      }
+      await cancelQuotation(req.params.id, projectId, req.user!, reason);
       const updated = await prisma.quotation.findUnique({
         where: { id: req.params.id },
         include: quotationInclude,

@@ -96,6 +96,8 @@
   "statusNotSelected": "Not selected",
   "finalize": "Finalize",
   "notSelected": "Not selected",
+  "cancelQuotation": "Cancel quotation",
+  "cancelled": "Quotation cancelled",
   "finalized": "Quotation finalized",
   "finalizedWithPo": "Quotation finalized. Purchase Order {{po}} was created and sent for approval.",
   "openCombined": "Combined record"

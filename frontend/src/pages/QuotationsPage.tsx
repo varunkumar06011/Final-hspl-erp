@@ -157,6 +157,9 @@ export default function QuotationsPage() {
   const [acknowledged, setAcknowledged] = useState(false);
   // Finalize ('approve') or close as not selected ('reject'); quotations have no approval steps.
   const [approvalAction, setApprovalAction] = useState<{ row: QuotationRow; action: 'approve' | 'reject' } | null>(null);
+  // Cancel a finalized quotation (and its unapproved PO); reuses the reason dialog.
+  const [cancelRow, setCancelRow] = useState<QuotationRow | null>(null);
+  const [cancelError, setCancelError] = useState('');
   const toast = useToast();
   const [timelineRow, setTimelineRow] = useState<QuotationRow | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -367,6 +370,22 @@ export default function QuotationsPage() {
       toast.success(result?.purchaseOrder ? t('finalizedWithPo', { po: result.purchaseOrder.poNumber }) : t('finalized'));
     },
     onError: (err: unknown) => setError(extractErrorMessage(err)),
+  });
+
+  const cancelMutation = useMutation({
+    mutationFn: async ({ quotationId, reason }: { quotationId: string; reason: string }) => {
+      const response = await api.post(`/quotations/${quotationId}/cancel`, { reason });
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/quotations'] });
+      queryClient.invalidateQueries({ queryKey: ['/pos'] });
+      queryClient.invalidateQueries({ queryKey: ['/combined-records'] });
+      queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
+      setCancelRow(null);
+      toast.success(t('cancelled'));
+    },
+    onError: (err: unknown) => setCancelError(extractErrorMessage(err)),
   });
 
   const rejectMutation = useMutation({
@@ -1035,6 +1054,9 @@ export default function QuotationsPage() {
                               <Button size="small" color="error" startIcon={<CloseIcon />} onClick={() => setApprovalAction({ row, action: 'reject' })}>{t('notSelected')}</Button>
                             </>
                           )}
+                          {(effectiveStatus === QuotationStatus.APPROVED || effectiveStatus === QuotationStatus.CONVERTED_TO_PO) && (
+                            <Button size="small" color="error" startIcon={<CloseIcon />} onClick={() => { setCancelError(''); setCancelRow(row); }}>{t('cancelQuotation')}</Button>
+                          )}
                           <Button size="small" startIcon={<CombinedIcon />} onClick={() => navigate(`/combined-records?type=quotation&id=${row.id}`)}>{t('openCombined')}</Button>
                           {effectiveStatus !== QuotationStatus.APPROVED && effectiveStatus !== QuotationStatus.CONVERTED_TO_PO && (
                             <Button size="small" color="error" startIcon={<DeleteIcon />} onClick={() => setDeleteRow(row)}>{t('delete')}</Button>
@@ -1334,6 +1356,21 @@ export default function QuotationsPage() {
               acknowledged: true,
             });
           }
+        }}
+      />
+
+      <ApprovalActionDialog
+        open={cancelRow !== null}
+        action="reject"
+        entityLabel={cancelRow?.quotationNumber ?? ''}
+        rejectLabel={t('cancelQuotation')}
+        pending={cancelMutation.isPending}
+        error={cancelError}
+        onClearError={() => setCancelError('')}
+        onClose={() => setCancelRow(null)}
+        onConfirm={(payload) => {
+          if (!cancelRow) return;
+          cancelMutation.mutate({ quotationId: cancelRow.id, reason: payload.reason! });
         }}
       />
 
