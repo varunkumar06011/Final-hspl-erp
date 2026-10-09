@@ -50,6 +50,8 @@ import assistantRoutes from './assistant.routes';
 import chatRoutes from './chat.routes';
 import moduleAccessRoutes from './module-access.routes';
 import stalledRoutes from './stalled.routes';
+import siteBillRoutes from './site-bills.routes';
+import combinedRecordRoutes from './combined-records.routes';
 
 const router = Router();
 
@@ -97,6 +99,8 @@ router.use('/vouchers', voucherRoutes);
 router.use('/accounting-reports', accountingReportRoutes);
 router.use('/payment-reports', paymentReportRoutes);
 router.use('/material-purchase-requests', mprRoutes);
+router.use('/site-bills', siteBillRoutes);
+router.use('/combined-records', combinedRecordRoutes);
 router.use('/transaction-register', transactionRegisterRoutes);
 router.use('/comments', commentRoutes);
 router.use('/activity-log', activityLogRoutes);

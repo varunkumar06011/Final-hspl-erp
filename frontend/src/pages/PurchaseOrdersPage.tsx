@@ -54,6 +54,7 @@ import {
   Payment as PaymentIcon,
   TableChart as TableChartIcon,
   MenuBook as PostLedgerIcon,
+  AccountTree as CombinedIcon,
 } from '@mui/icons-material';
 import LedgerAutocomplete, { LedgerOption } from '../components/LedgerAutocomplete';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -64,7 +65,7 @@ import { Permission, hasPermission, POStatus, UserRole, POPaymentType, GST_RATES
 import { formatCurrency, formatDate, formatDateTime, formatIndianNumber, STATUS_COLORS, QTY_UNIT_OPTIONS, enumLabel, unitLabel } from '../utils/enumOptions';
 import { useTranslation, Trans } from 'react-i18next';
 import { num, toIncGst, round2 } from '../utils/taxCalc';
-import api, { extractErrorMessage } from '../config/api';
+import api, { extractErrorMessage, budgetOverrunOf, type BudgetOverrun } from '../config/api';
 import { useAuthStore } from '../stores/authStore';
 import AcknowledgementCheckbox from '../components/AcknowledgementCheckbox';
 import ApprovalActionDialog from '../components/ApprovalActionDialog';
@@ -215,6 +216,8 @@ export default function PurchaseOrdersPage() {
   const [poNotes, setPoNotes] = useState('');
   const [referredBy, setReferredBy] = useState('');
   const [approvalAction, setApprovalAction] = useState<{ row: PORow; action: 'approve' | 'reject' } | null>(null);
+  // Set when an approval was refused for going over budget: the dialog then asks for a reason and an explicit yes.
+  const [overBudget, setOverBudget] = useState<BudgetOverrun | null>(null);
   const [approvalPopup, setApprovalPopup] = useState<PORow | null>(null);
   const [trailRow, setTrailRow] = useState<PORow | null>(null);
   const [editRow, setEditRow] = useState<PORow | null>(null);
@@ -363,7 +366,7 @@ export default function PurchaseOrdersPage() {
         paymentTerms,
         deliveryDate,
         acknowledged,
-        budgetHeadId: selectedBudgetHeadId,
+        budgetHeadId: selectedBudgetHeadId || undefined,
         notes: poNotes.trim() || undefined,
         referredBy: referredBy.trim() || undefined,
         deductions: deductions
@@ -417,6 +420,7 @@ export default function PurchaseOrdersPage() {
       context?.prevQueries.forEach(([key, data]) => {
         queryClient.setQueryData(key, data);
       });
+      setOverBudget(budgetOverrunOf(err));
       setError(extractErrorMessage(err));
     },
     onSettled: () => {
@@ -425,6 +429,7 @@ export default function PurchaseOrdersPage() {
     },
     onSuccess: () => {
       setApprovalAction(null);
+      setOverBudget(null);
     },
   });
 
@@ -618,10 +623,6 @@ export default function PurchaseOrdersPage() {
 
   function handleCreatePO() {
     if (createSubmissionLocked.current || createMutation.isPending) return;
-    if (!isNonVendor && !selectedBudgetHeadId) {
-      setError(t('errBudgetHead'));
-      return;
-    }
     createSubmissionLocked.current = true;
     setError('');
     createMutation.mutate();
@@ -829,6 +830,7 @@ export default function PurchaseOrdersPage() {
                           <TableCell align="right">
                             <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'flex-end' }}>
                               <CommentsButton entityType="PURCHASE_ORDER" entityId={row.id} entityLabel={row.poNumber} url="/pos" />
+                              <IconButton size="small" onClick={() => navigate(`/combined-records?type=po&id=${row.id}`)} title={t('openCombined')}><CombinedIcon fontSize="small" /></IconButton>
                               <IconButton size="small" onClick={() => previewPDF(row.id)} title={t('previewPdf')} disabled={pdfLoading}>{pdfLoading ? <CircularProgress size={16} /> : <PdfIcon fontSize="small" />}</IconButton>
                               <IconButton size="small" onClick={() => downloadPDF(row.id, row.poNumber)} title={t('downloadPdf')}><DownloadIcon fontSize="small" /></IconButton>
                               {canApprove(row) && (
@@ -1632,7 +1634,7 @@ export default function PurchaseOrdersPage() {
           <Button
             variant="contained"
             onClick={handleCreatePO}
-            disabled={(!selectedVendorId || (isNonVendor ? !selectedMprId : (!selectedQuotationId || !selectedBudgetHeadId)) || !acknowledged || (!isNonVendor && (paymentType === POPaymentType.ADVANCE || paymentType === POPaymentType.FULL_PAYMENT) && (!advanceAmount || Number(advanceAmount) <= 0))) || createMutation.isPending || createSubmissionLocked.current}
+            disabled={(!selectedVendorId || (isNonVendor ? !selectedMprId : !selectedQuotationId) || !acknowledged || (!isNonVendor && (paymentType === POPaymentType.ADVANCE || paymentType === POPaymentType.FULL_PAYMENT) && (!advanceAmount || Number(advanceAmount) <= 0))) || createMutation.isPending || createSubmissionLocked.current}
           >
             {createMutation.isPending ? <CircularProgress size={20} /> : t('createPoBtn')}
           </Button>
@@ -1666,7 +1668,8 @@ export default function PurchaseOrdersPage() {
         pending={approveMutation.isPending || rejectMutation.isPending}
         error={error}
         onClearError={() => setError('')}
-        onClose={() => setApprovalAction(null)}
+        onClose={() => { setApprovalAction(null); setOverBudget(null); }}
+        overBudget={overBudget}
         onConfirm={(payload) => {
           if (!approvalAction) return;
           if (approvalAction.action === 'approve') {
@@ -2636,10 +2639,11 @@ function EditUnapprovedPODialog({ row, onClose, onSuccess }: { row: PORow | null
     mutationFn: async () => {
       await api.post(`/purchase-orders/${row!.id}/edit-unapproved`, {
         paymentType,
-        advanceAmount: (paymentType === POPaymentType.ADVANCE || paymentType === POPaymentType.FULL_PAYMENT) ? Number(advanceAmount) : undefined,
+        // Full payment follows the edited total on the server.
+        advanceAmount: paymentType === POPaymentType.ADVANCE ? Number(advanceAmount) : undefined,
         paymentTerms: paymentTerms || undefined,
         deliveryDate: deliveryDate || undefined,
-        budgetHeadId,
+        budgetHeadId: budgetHeadId || undefined,
         notes,
         referredBy: referredBy.trim() || undefined,
         items: items.map((i) => ({
@@ -2731,7 +2735,6 @@ function EditUnapprovedPODialog({ row, onClose, onSuccess }: { row: PORow | null
             onChange={(e) => setBudgetHeadId(e.target.value)}
             fullWidth
             size="small"
-            required
           >
             <MenuItem value="">{t('selectBudgetHead')}</MenuItem>
             {budgetHeads.map((h) => <MenuItem key={h.id} value={h.id}>{h.particulars}</MenuItem>)}
@@ -2858,7 +2861,7 @@ function EditUnapprovedPODialog({ row, onClose, onSuccess }: { row: PORow | null
         <Button
           variant="contained"
           onClick={() => mutation.mutate()}
-          disabled={mutation.isPending || !budgetHeadId || items.length === 0}
+          disabled={mutation.isPending || items.length === 0}
         >
           {mutation.isPending ? <CircularProgress size={20} /> : t('saveChanges')}
         </Button>

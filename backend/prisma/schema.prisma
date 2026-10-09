@@ -240,6 +240,9 @@ model Quotation {
   fileMimeType       String?
   createdBy          String    @db.Uuid
   approvalWorkflowId String?   @unique @db.Uuid
+  // Quotations are not approved: one is finalized (picked) and that raises its PO.
+  finalizedAt        DateTime?
+  finalizedBy        String?   @db.Uuid
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
   deletedAt          DateTime?
@@ -335,6 +338,10 @@ model PurchaseOrder {
   // Ledger credited for this PO's payable when it is NOT the vendor's own ledger
   // (e.g. a loan account the payment was made against). null = the vendor ledger.
   accrualLedgerId    String?   @db.Uuid
+  // One PO for several site bills (material_purchase_requests.sitePoId points here);
+  // reimburseTo = who paid at site and gets the money back.
+  isSiteBillBatch    Boolean   @default(false)
+  reimburseTo        String?
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
   deletedAt          DateTime?
@@ -1838,6 +1845,14 @@ model MaterialPurchaseRequest {
   receiptFilePath     String?
   receiptFileName     String?
   receiptFileMimeType String?
+  // ── Site bills: bought and paid at site (≤ SITE_BILL_LIMIT), no approval of their own.
+  // The bill photo sits in receiptFile*, the payer in requestRaisedById. Several bills
+  // are combined into one PO (sitePoId); a bill whose PO died can be used again.
+  isSiteBill      Boolean  @default(false)
+  billDate        DateTime?
+  billShopName    String?
+  billPaymentMode String? // SiteBillPaymentMode: CASH | UPI | BANK_TRANSFER | CHEQUE
+  sitePoId        String?  @db.Uuid
   createdBy       String   @db.Uuid
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
@@ -1857,6 +1872,8 @@ model MaterialPurchaseRequest {
   @@index([projectId, status, date])
   @@index([projectId, requestType])
   @@index([vendorId])
+  @@index([projectId, isSiteBill])
+  @@index([sitePoId])
   @@map("material_purchase_requests")
 }
 

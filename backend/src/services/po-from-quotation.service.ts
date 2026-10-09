@@ -10,17 +10,18 @@ const DEAD_STATUSES = [POStatus.DELETED, POStatus.CANCELLED, POStatus.REJECTED];
 /**
  * Raises the Purchase Order for an approved quotation automatically, so nobody
  * has to press "Generate PO". The PO is created PENDING_APPROVAL (waiting for the
- * heads and an admin) with the quotation's items and totals. Budget head and
- * payment type are NOT asked for here: the payment type starts as AFTER_DELIVERY
- * and the budget head is empty; both are set afterwards by editing the PO, which
- * works before and after approval without sending it back for approval.
+ * heads and an admin) with the quotation's items and totals. Nothing else is asked
+ * for here: the payment type starts as FULL_PAYMENT (advance = the whole amount),
+ * the budget head is empty and the description comes from the quotation (or its
+ * request). Budget head and payment type can be set or changed any time, before
+ * or after approval, without sending the PO back for approval.
  *
  * Returns null when the quotation is not approved or already has a live PO.
  */
 export async function createPoFromApprovedQuotation(quotationId: string, userId: string) {
   const quotation = await prisma.quotation.findFirst({
     where: { id: quotationId, deletedAt: null },
-    include: { items: true, vendor: { select: { name: true } } },
+    include: { items: true, vendor: { select: { name: true } }, mpr: { select: { description: true } } },
   });
   if (!quotation || quotation.status !== 'APPROVED') return null;
 
@@ -49,8 +50,9 @@ export async function createPoFromApprovedQuotation(quotationId: string, userId:
         quotationId: quotation.id,
         poNumber,
         status: POStatus.PENDING_APPROVAL,
-        paymentType: POPaymentType.AFTER_DELIVERY,
-        notes: quotation.notes ?? null,
+        paymentType: grandTotal > 0 ? POPaymentType.FULL_PAYMENT : POPaymentType.AFTER_DELIVERY,
+        advanceAmount: grandTotal > 0 ? grandTotal : null,
+        notes: quotation.notes ?? quotation.mpr?.description ?? null,
         totalAmount,
         gstAmount,
         grandTotal,

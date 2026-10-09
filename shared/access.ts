@@ -53,6 +53,11 @@ export const APP_MODULES: readonly AppModule[] = [
   { key: 'work', label: 'Work', section: 'General', path: '/work', permission: Permission.MANAGE_WORK_TASKS, grants: [Permission.MANAGE_WORK_TASKS], apiPrefixes: ['/work-tasks'] },
   { key: 'workCalendar', label: 'Work Calendar', section: 'General', path: '/work-calendar', permission: Permission.MANAGE_WORK_TASKS, grants: [Permission.MANAGE_WORK_TASKS], apiPrefixes: ['/work-tasks'] },
   // ── Procurement ──
+  // One page for the whole MPR → quotation → PO → delivery → invoice → payment chain.
+  // Uses the same endpoints as the separate pages, so their own permissions still apply.
+  { key: 'combinedRecords', label: 'Combined Records', section: 'Procurement', path: '/combined-records', permission: Permission.VIEW_MPR, grants: [Permission.VIEW_MPR], apiPrefixes: ['/combined-records'] },
+  // Bills of up to ₹5,000 paid at site; several are combined into one PO.
+  { key: 'siteBills', label: 'Site Bills', section: 'Procurement', path: '/site-bills', permission: Permission.CREATE_MPR, grants: [Permission.VIEW_MPR, Permission.CREATE_MPR], apiPrefixes: ['/site-bills'] },
   { key: 'mpr', label: 'Material Requests', section: 'Procurement', path: '/material-purchase-requests', permission: Permission.VIEW_MPR, grants: [Permission.VIEW_MPR, Permission.CREATE_MPR], apiPrefixes: ['/material-purchase-requests'] },
   { key: 'vendors', label: 'Vendors', section: 'Procurement', path: '/vendors', permission: Permission.VIEW_FINANCIALS, grants: [Permission.VIEW_FINANCIALS, Permission.CREATE_VENDOR], apiPrefixes: ['/vendors'] },
   { key: 'quotations', label: 'Quotations', section: 'Procurement', path: '/quotations', permission: Permission.VIEW_FINANCIALS, grants: [Permission.VIEW_FINANCIALS, Permission.CREATE_QUOTATION], apiPrefixes: ['/quotations'] },

@@ -39,17 +39,24 @@ function pairByName<W extends { materialName: string }, T extends { materialName
 
 /**
  * Push the MPR's current lines into every live quotation raised against it:
- * quantities are updated, new lines are added at price 0. Returns the ids of
- * the quotations that were touched.
+ * quantities are updated, new lines are added at price 0. A finalized quotation
+ * that covers only part of the request (materials split between vendors) gets
+ * quantity updates only; new materials then go to the quotations still waiting,
+ * or to the finalized one when it is the only finalized quotation. Returns the
+ * ids of the quotations that were touched.
  */
 export async function syncQuotationsFromMpr(mprId: string, lines: MprLine[], gstRate: number): Promise<string[]> {
   const quotations = await prisma.quotation.findMany({
     where: { mprId, deletedAt: null, status: { notIn: [QuotationStatus.DELETED, QuotationStatus.REJECTED] } },
     include: { items: true },
   });
+  const isFinalized = (status: string) => status === QuotationStatus.APPROVED || status === QuotationStatus.CONVERTED_TO_PO;
+  const finalizedCount = quotations.filter((q) => isFinalized(q.status)).length;
   await prisma.$transaction(async (tx) => {
     for (const q of quotations) {
+      const mayAddLines = !isFinalized(q.status) || finalizedCount === 1;
       for (const { wanted, match } of pairByName(lines, q.items)) {
+        if (!match && !mayAddLines) continue;
         if (match) {
           await tx.quotationItem.update({
             where: { id: match.id },

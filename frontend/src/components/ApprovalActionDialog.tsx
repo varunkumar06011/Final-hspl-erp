@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
-import { Alert, Button, DialogActions, DialogContent, DialogTitle, TextField } from '@mui/material';
+import { Alert, Button, Checkbox, DialogActions, DialogContent, DialogTitle, FormControlLabel, TextField } from '@mui/material';
 import { useTranslation } from 'react-i18next';
 import ResponsiveDialog from './ResponsiveDialog';
 import AcknowledgementCheckbox from './AcknowledgementCheckbox';
+import type { BudgetOverrun } from '../config/api';
+import { formatCurrency } from '../utils/enumOptions';
 
 interface ApprovalActionDialogProps {
   open: boolean;
@@ -13,6 +15,11 @@ interface ApprovalActionDialogProps {
   onClearError?: () => void;
   onClose: () => void;
   onConfirm: (payload: { comments?: string; reason?: string; acknowledged: true }) => void;
+  /** Set after an approval was refused for going over budget: asks for a reason and an explicit yes. */
+  overBudget?: BudgetOverrun | null;
+  /** Wording for the approve / reject title and button (default Approve / Reject), e.g. Finalize / Not selected. */
+  approveLabel?: string;
+  rejectLabel?: string;
 }
 
 export default function ApprovalActionDialog({
@@ -24,33 +31,56 @@ export default function ApprovalActionDialog({
   onClearError,
   onClose,
   onConfirm,
+  overBudget,
+  approveLabel,
+  rejectLabel,
 }: ApprovalActionDialogProps) {
   const { t } = useTranslation();
   const [notes, setNotes] = useState('');
   const [acknowledged, setAcknowledged] = useState(false);
+  const [overBudgetYes, setOverBudgetYes] = useState(false);
 
   useEffect(() => {
     if (!open) {
       setNotes('');
       setAcknowledged(false);
+      setOverBudgetYes(false);
     }
   }, [open]);
 
   const isReject = action === 'reject';
+  const needsOverBudgetYes = !isReject && !!overBudget;
+  const actionLabel = isReject ? rejectLabel ?? t('approval.reject') : approveLabel ?? t('approval.approve');
 
   return (
     <ResponsiveDialog open={open} onClose={pending ? undefined : onClose} fullWidth maxWidth="sm">
-      <DialogTitle>{isReject ? t('approval.reject') : t('approval.approve')} {entityLabel}</DialogTitle>
+      <DialogTitle>{actionLabel} {entityLabel}</DialogTitle>
       <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '12px !important' }}>
-        {error && <Alert severity="error" sx={{ width: '100%' }} onClose={onClearError}>{error}</Alert>}
+        {needsOverBudgetYes ? (
+          <Alert severity="warning" sx={{ width: '100%' }}>
+            {t('approval.overBudgetText', {
+              head: overBudget!.budgetHead,
+              allocated: formatCurrency(overBudget!.allocated),
+              after: formatCurrency(overBudget!.afterApproval),
+            })}
+          </Alert>
+        ) : (
+          error && <Alert severity="error" sx={{ width: '100%' }} onClose={onClearError}>{error}</Alert>
+        )}
         <TextField
-          label={isReject ? t('approval.reasonForRejection') : t('approval.commentsOptional')}
+          label={isReject ? t('approval.reasonForRejection') : needsOverBudgetYes ? t('approval.overBudgetReason') : t('approval.commentsOptional')}
           value={notes}
           onChange={(event) => setNotes(event.target.value)}
           multiline
           minRows={3}
-          required={isReject}
+          required={isReject || needsOverBudgetYes}
         />
+        {needsOverBudgetYes && (
+          <FormControlLabel
+            control={<Checkbox checked={overBudgetYes} onChange={(e) => setOverBudgetYes(e.target.checked)} color="warning" />}
+            label={t('approval.overBudgetYes')}
+          />
+        )}
         <AcknowledgementCheckbox
           checked={acknowledged}
           onChange={setAcknowledged}
@@ -61,14 +91,16 @@ export default function ApprovalActionDialog({
         <Button onClick={onClose} disabled={pending}>{t('approval.cancel')}</Button>
         <Button
           variant="contained"
-          color={isReject ? 'error' : 'success'}
-          disabled={pending || !acknowledged || (isReject && !notes.trim())}
+          color={isReject ? 'error' : needsOverBudgetYes ? 'warning' : 'success'}
+          disabled={
+            pending || !acknowledged || (isReject && !notes.trim()) || (needsOverBudgetYes && (!overBudgetYes || !notes.trim()))
+          }
           onClick={() => onConfirm({
             ...(isReject ? { reason: notes.trim() } : notes.trim() ? { comments: notes.trim() } : {}),
             acknowledged: true,
           })}
         >
-          {isReject ? t('approval.reject') : t('approval.approve')}
+          {actionLabel}
         </Button>
       </DialogActions>
     </ResponsiveDialog>

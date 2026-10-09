@@ -218,7 +218,10 @@
     "status": "స్థితి",
     "approver": "ఆమోదకుడు",
     "comments": "వ్యాఖ్యలు",
-    "role": "పాత్ర"
+    "role": "పాత్ర",
+    "overBudgetText": "ఈ PO ఆమోదిస్తే బడ్జెట్ హెడ్ \"{{head}}\" మించిపోతుంది: కేటాయించినది {{allocated}}, ఆమోదం తర్వాత {{after}}.",
+    "overBudgetReason": "బడ్జెట్ మించినా ఆమోదించడానికి కారణం",
+    "overBudgetYes": "అవును, బడ్జెట్ మించినా నేను దీన్ని ఆమోదిస్తున్నాను"
   },
   "common": {
     "logout": "లాగ్ అవుట్",
@@ -275,6 +278,8 @@
     "Chat": "చాట్",
     "Work Calendar": "పని క్యాలెండర్",
     "Work": "పని",
+    "Combined Records": "కలిపిన రికార్డులు",
+    "Site Bills": "సైట్ బిల్లులు",
     "Material Requests": "సామగ్రి అభ్యర్థనలు",
     "Vendors": "విక్రేతలు",
     "Quotations": "కొటేషన్లు",

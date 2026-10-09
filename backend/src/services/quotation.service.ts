@@ -3,11 +3,11 @@ import {
   AuditAction,
   QuotationStatus,
   ApprovalStatus,
+  VendorType,
   FIRST_LEVEL_APPROVER_ROLES,
+  canFinalizeQuotation,
 } from '@hospital-erp/shared';
 import { generateProjectSequenceNumber } from './sequence.service';
-import * as approvalService from './approval.service';
-import { HEAD_THEN_ADMIN_POLICY } from './approval.service';
 import { notifyApprovers } from './push.service';
 import { logAudit } from './audit.service';
 import { createPoFromApprovedQuotation } from './po-from-quotation.service';
@@ -33,6 +33,8 @@ export interface CreateQuotationInput {
   fileName?: string | null;
   fileMimeType?: string | null;
   notes?: string | null;
+  /** Audit tag for system-made quotations (AUTO_FROM_MPR). */
+  source?: string;
 }
 
 const quotationInclude = {
@@ -58,18 +60,31 @@ async function generateQuotationNumber(projectId: string): Promise<string> {
 
 export { generateQuotationNumber };
 
+/** Statuses of a quotation that is still waiting to be finalized or not selected. */
+export const OPEN_QUOTATION_STATUSES: string[] = [QuotationStatus.SUBMITTED, QuotationStatus.UNDER_REVIEW, 'PENDING'];
+/** Statuses of a finalized quotation (the one bought from). */
+export const FINALIZED_QUOTATION_STATUSES: string[] = [QuotationStatus.APPROVED, QuotationStatus.CONVERTED_TO_PO];
+
+const normName = (name: string) => name.trim().toLowerCase().replace(/\s+/g, ' ');
+
+/** A refused quotation action; `status` is the HTTP status to answer with. */
+export class QuotationActionError extends Error {
+  constructor(message: string, public status = 400) {
+    super(message);
+  }
+}
+
 /**
- * Core quotation creation logic — shared by the quotations endpoint and the
- * "generate quotation from work task" endpoint. Validates the vendor, auto-
- * registers any new vendor materials, computes totals, creates the quotation
- * with its line items, kicks off the approval workflow, logs an audit entry,
- * and notifies approvers via push.
+ * Core quotation creation logic — shared by the quotations endpoint, the
+ * "generate quotation from work task" endpoint and the automatic quotation an
+ * approved Material Purchase Request gets. Validates the vendor, auto-registers
+ * any new vendor materials, computes totals, creates the quotation with its line
+ * items and logs an audit entry.
  *
- * A quotation raised against an approved Material Purchase Request (mprId) is
- * auto-approved: the request itself already went through approval, so the
- * quotation is stored as APPROVED with an already-approved workflow and no
- * approver is asked again. Quotations from work tasks / standalone still go
- * through the normal approval workflow.
+ * Quotations have no approval process: a new quotation waits (SUBMITTED) until
+ * one of the finalizers picks it with `finalizeQuotation`, which approves it and
+ * raises its PO. Several quotations (from different vendors) can wait side by side
+ * for the same request.
  *
  * Returns the created quotation with the standard includes.
  */
@@ -86,6 +101,7 @@ export async function createQuotation(input: CreateQuotationInput) {
     fileName = null,
     fileMimeType = null,
     notes = null,
+    source,
   } = input;
 
   // Validate vendor exists and belongs to project
@@ -140,16 +156,14 @@ export async function createQuotation(input: CreateQuotationInput) {
   const grandTotal = totalAmount + gstAmount;
 
   const quotationNumber = providedNumber ?? (await generateQuotationNumber(projectId));
-  const autoApproved = !!mprId;
 
-  // Create quotation
   const quotation = await prisma.quotation.create({
     data: {
       projectId,
       vendorId,
       mprId,
       quotationNumber,
-      status: autoApproved ? QuotationStatus.APPROVED : QuotationStatus.SUBMITTED,
+      status: QuotationStatus.SUBMITTED,
       totalAmount,
       gstAmount,
       grandTotal,
@@ -173,37 +187,6 @@ export async function createQuotation(input: CreateQuotationInput) {
     }).catch((err) => console.error('[Quotation] Failed to sync MPR status:', err));
   }
 
-  // Initiate approval workflow — HEAD_THEN_ADMIN: a Project Head or Head of
-  // Construction approves first; then any one admin completes the approval.
-  // Auto-approved quotations get a workflow that is already APPROVED, with no
-  // steps, so nothing shows up in anyone's approval queue.
-  const workflow = autoApproved
-    ? await prisma.approvalWorkflow.create({
-        data: {
-          entityType: 'QUOTATION',
-          entityId: quotation.id,
-          projectId,
-          status: ApprovalStatus.APPROVED,
-          currentStep: 0,
-          minApprovers: 2,
-          approvalPolicy: HEAD_THEN_ADMIN_POLICY,
-        },
-      })
-    : await approvalService.initiate({
-        entityType: 'QUOTATION',
-        entityId: quotation.id,
-        projectId,
-        minApprovers: 2,
-        approvalPolicy: HEAD_THEN_ADMIN_POLICY,
-      });
-
-  // Link the workflow and return the full record (with includes) in one call.
-  const result = await prisma.quotation.update({
-    where: { id: quotation.id },
-    data: { approvalWorkflowId: workflow.id },
-    include: quotationInclude,
-  });
-
   await logAudit({
     userId: createdBy,
     action: AuditAction.CREATE,
@@ -216,29 +199,22 @@ export async function createQuotation(input: CreateQuotationInput) {
       totalAmount,
       grandTotal,
       acknowledged: true,
-      ...(autoApproved ? { autoApproved: true, reason: 'Raised against an approved Material Purchase Request', mprId } : {}),
+      ...(mprId ? { mprId } : {}),
+      ...(source ? { source } : {}),
     },
   });
 
-  // Only the first-level heads are told now; admins are notified once a head approves.
-  // Auto-approved quotations need no approver, so nobody is notified.
-  if (!autoApproved) {
+  // The heads are told a quotation is waiting to be finalized. The automatic
+  // quotation of a just-approved request needs no push: its approver is looking at it.
+  if (source !== 'AUTO_FROM_MPR') {
     notifyApprovers(projectId, [...FIRST_LEVEL_APPROVER_ROLES], {
-      approvalId: workflow.id,
+      approvalId: '',
       entityType: 'QUOTATION',
       entityId: quotation.id,
-      title: 'New Approval Required',
+      title: 'Quotation Ready to Finalize',
       body: `Quotation ${quotationNumber} from ${quotation.vendor?.name ?? 'vendor'} — ₹${grandTotal}`,
       url: `/quotations?id=${quotation.id}`,
     }).catch((err) => console.error('[Push] Quotation notification error:', err));
-  }
-
-  // An auto-approved quotation goes straight to a Purchase Order waiting for
-  // approval, so nobody has to generate it by hand. Never fails the quotation.
-  if (autoApproved) {
-    await createPoFromApprovedQuotation(quotation.id, createdBy).catch((err) =>
-      console.error('[Quotation] Auto PO creation failed (non-fatal):', err),
-    );
   }
 
   // If raised from a work task, link the quotation back to it and advance
@@ -260,5 +236,188 @@ export async function createQuotation(input: CreateQuotationInput) {
     });
   }
 
-  return result;
+  return quotation;
+}
+
+/**
+ * The first quotation of a just-approved vendor request, made from the request's
+ * own vendor, items and estimated rates, so nobody has to raise it by hand. More
+ * quotations (other vendors) can be added next to it. Does nothing for non-vendor
+ * requests, site bills, or a request that already has a quotation.
+ */
+export async function createQuotationFromMpr(mprId: string, projectId: string, userId: string) {
+  const mpr = await prisma.materialPurchaseRequest.findFirst({
+    where: { id: mprId, projectId, deletedAt: null },
+    include: { items: true, vendor: { select: { vendorType: true } } },
+  });
+  if (!mpr || !mpr.vendorId || mpr.isSiteBill || mpr.items.length === 0) return null;
+  if (mpr.vendor?.vendorType === VendorType.NON_VENDOR) return null;
+  const existing = await prisma.quotation.count({
+    where: { mprId, deletedAt: null, status: { not: QuotationStatus.DELETED } },
+  });
+  if (existing > 0) return null;
+
+  return createQuotation({
+    projectId,
+    vendorId: mpr.vendorId,
+    mprId,
+    createdBy: userId,
+    notes: mpr.description ?? null,
+    source: 'AUTO_FROM_MPR',
+    items: mpr.items.map((item) => ({
+      materialName: item.materialName,
+      quantity: Number(item.quantity),
+      unit: item.unit ?? undefined,
+      unitPrice: Number(item.estimatedRate ?? 0),
+      gstRate: Number(mpr.estimatedGstRate ?? 0),
+    })),
+  });
+}
+
+interface ActingUser {
+  id: string;
+  role: string;
+  extraPermissions?: readonly string[] | null;
+}
+
+/**
+ * When every material of the request is covered by a finalized quotation, the
+ * quotations still waiting are closed as "not selected". Returns their numbers.
+ */
+export async function closeUnselectedQuotations(mprId: string, projectId: string, userId: string): Promise<string[]> {
+  const [mprItems, quotations] = await Promise.all([
+    prisma.materialPurchaseRequestItem.findMany({ where: { mprId }, select: { materialName: true } }),
+    prisma.quotation.findMany({
+      where: { mprId, projectId, deletedAt: null },
+      include: { items: { select: { materialName: true } }, approvalWorkflow: { select: { id: true, status: true } } },
+    }),
+  ]);
+  const covered = new Set(
+    quotations
+      .filter((q) => FINALIZED_QUOTATION_STATUSES.includes(q.status))
+      .flatMap((q) => q.items.map((i) => normName(i.materialName))),
+  );
+  if (mprItems.length === 0 || !mprItems.every((i) => covered.has(normName(i.materialName)))) return [];
+
+  const open = quotations.filter((q) => OPEN_QUOTATION_STATUSES.includes(q.status));
+  for (const q of open) {
+    await prisma.quotation.update({ where: { id: q.id }, data: { status: QuotationStatus.REJECTED } });
+    if (q.approvalWorkflow && q.approvalWorkflow.status !== ApprovalStatus.APPROVED && q.approvalWorkflow.status !== ApprovalStatus.REJECTED) {
+      await prisma.approvalWorkflow.update({ where: { id: q.approvalWorkflow.id }, data: { status: ApprovalStatus.REJECTED } });
+    }
+    await logAudit({
+      userId,
+      action: AuditAction.REJECT,
+      entityType: 'QUOTATION',
+      entityId: q.id,
+      projectId,
+      newValue: { status: QuotationStatus.REJECTED, reason: 'NOT_SELECTED', note: 'Every material of the request was finalized from other quotations' },
+    });
+  }
+  return open.map((q) => q.quotationNumber);
+}
+
+/**
+ * Finalize (pick) a quotation: it becomes APPROVED, its PO is raised at once and
+ * waits for approval. Only the Project Head, Head of Construction, Admin 1,
+ * Admin 2 or a super admin may do it. For one request a material can be
+ * finalized only once, but different materials may come from different vendors
+ * (cement from A and steel from B gives two POs).
+ */
+export async function finalizeQuotation(quotationId: string, projectId: string, user: ActingUser, comments?: string) {
+  if (!canFinalizeQuotation(user.role, user.extraPermissions)) {
+    throw new QuotationActionError('Only the Project Head, Head of Construction, Admin 1, Admin 2 or a super admin can finalize quotations', 403);
+  }
+  const quotation = await prisma.quotation.findFirst({
+    where: { id: quotationId, projectId, deletedAt: null },
+    include: { items: true, approvalWorkflow: { select: { id: true, status: true } } },
+  });
+  if (!quotation) throw new QuotationActionError('Quotation not found', 404);
+
+  const alreadyFinalized = FINALIZED_QUOTATION_STATUSES.includes(quotation.status);
+  if (!alreadyFinalized && !OPEN_QUOTATION_STATUSES.includes(quotation.status)) {
+    throw new QuotationActionError(`Cannot finalize a quotation that is ${quotation.status.replace(/_/g, ' ').toLowerCase()}`);
+  }
+  if (quotation.items.length === 0 || Number(quotation.grandTotal) <= 0) {
+    throw new QuotationActionError('Enter the rates on this quotation before finalizing it');
+  }
+
+  if (alreadyFinalized) {
+    // An older approved quotation that never got its PO: raise it now.
+    const po = await createPoFromApprovedQuotation(quotation.id, user.id);
+    if (!po) throw new QuotationActionError('This quotation is already finalized');
+    return { quotationId: quotation.id, po, notSelected: [] as string[] };
+  }
+
+  if (quotation.mprId) {
+    const finalizedSiblings = await prisma.quotation.findMany({
+      where: { mprId: quotation.mprId, deletedAt: null, id: { not: quotation.id }, status: { in: FINALIZED_QUOTATION_STATUSES } },
+      select: { quotationNumber: true, items: { select: { materialName: true } } },
+    });
+    const takenBy = new Map<string, string>();
+    for (const q of finalizedSiblings) for (const i of q.items) takenBy.set(normName(i.materialName), q.quotationNumber);
+    const clash = quotation.items.find((i) => takenBy.has(normName(i.materialName)));
+    if (clash) {
+      throw new QuotationActionError(
+        `"${clash.materialName}" is already finalized in ${takenBy.get(normName(clash.materialName))}. A material can be finalized only once per request.`,
+      );
+    }
+  }
+
+  // Claim it atomically, so a double click or two finalizers cannot raise two POs.
+  const claimed = await prisma.quotation.updateMany({
+    where: { id: quotation.id, status: quotation.status },
+    data: { status: QuotationStatus.APPROVED, finalizedAt: new Date(), finalizedBy: user.id },
+  });
+  if (claimed.count === 0) throw new QuotationActionError('This quotation was just changed by someone else. Refresh and try again.', 409);
+
+  // An older quotation may still carry an open approval workflow: close it so it leaves the queues.
+  if (quotation.approvalWorkflow && quotation.approvalWorkflow.status !== ApprovalStatus.APPROVED) {
+    await prisma.approvalWorkflow.update({ where: { id: quotation.approvalWorkflow.id }, data: { status: ApprovalStatus.APPROVED } });
+  }
+
+  await logAudit({
+    userId: user.id,
+    action: AuditAction.APPROVE,
+    entityType: 'QUOTATION',
+    entityId: quotation.id,
+    projectId,
+    newValue: { status: QuotationStatus.APPROVED, finalized: true, ...(comments ? { comments } : {}) },
+  });
+
+  const po = await createPoFromApprovedQuotation(quotation.id, user.id);
+  const notSelected = quotation.mprId ? await closeUnselectedQuotations(quotation.mprId, projectId, user.id) : [];
+  return { quotationId: quotation.id, po, notSelected };
+}
+
+/** Close a waiting quotation as "not selected" (the finalizers' counterpart of finalize). */
+export async function rejectQuotation(quotationId: string, projectId: string, user: ActingUser, reason: string) {
+  if (!canFinalizeQuotation(user.role, user.extraPermissions)) {
+    throw new QuotationActionError('Only the Project Head, Head of Construction, Admin 1, Admin 2 or a super admin can reject quotations', 403);
+  }
+  const quotation = await prisma.quotation.findFirst({
+    where: { id: quotationId, projectId, deletedAt: null },
+    include: { approvalWorkflow: { select: { id: true, status: true } } },
+  });
+  if (!quotation) throw new QuotationActionError('Quotation not found', 404);
+  if (!OPEN_QUOTATION_STATUSES.includes(quotation.status)) {
+    throw new QuotationActionError(`Cannot reject a quotation that is already ${quotation.status.replace(/_/g, ' ').toLowerCase()}`);
+  }
+  const claimed = await prisma.quotation.updateMany({
+    where: { id: quotation.id, status: quotation.status },
+    data: { status: QuotationStatus.REJECTED },
+  });
+  if (claimed.count === 0) throw new QuotationActionError('This quotation was just changed by someone else. Refresh and try again.', 409);
+  if (quotation.approvalWorkflow && quotation.approvalWorkflow.status !== ApprovalStatus.REJECTED && quotation.approvalWorkflow.status !== ApprovalStatus.APPROVED) {
+    await prisma.approvalWorkflow.update({ where: { id: quotation.approvalWorkflow.id }, data: { status: ApprovalStatus.REJECTED } });
+  }
+  await logAudit({
+    userId: user.id,
+    action: AuditAction.REJECT,
+    entityType: 'QUOTATION',
+    entityId: quotation.id,
+    projectId,
+    newValue: { status: QuotationStatus.REJECTED, reason },
+  });
+  return { quotationId: quotation.id };
 }

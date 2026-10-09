@@ -218,7 +218,10 @@
     "status": "Status",
     "approver": "Approver",
     "comments": "Comments",
-    "role": "Role"
+    "role": "Role",
+    "overBudgetText": "Approving this PO goes over the budget head \"{{head}}\": allocated {{allocated}}, after approval {{after}}.",
+    "overBudgetReason": "Reason for approving over budget",
+    "overBudgetYes": "Yes, I am approving this over budget"
   },
   "common": {
     "logout": "Logout",
@@ -275,6 +278,8 @@
     "Chat": "Chat",
     "Work Calendar": "Work Calendar",
     "Work": "Work",
+    "Combined Records": "Combined Records",
+    "Site Bills": "Site Bills",
     "Material Requests": "Material Requests",
     "Vendors": "Vendors",
     "Quotations": "Quotations",

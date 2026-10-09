@@ -1,19 +1,20 @@
 import { Router, Response, NextFunction } from 'express';
-import { Permission, QuotationStatus, AuditAction, ApprovalStatus, ApprovalStepStatus, UserRole, isAdminRole, isFirstLevelApproverRole, FIRST_LEVEL_APPROVER_ROLES } from '@hospital-erp/shared';
-import { createQuotationSchema, listQuotationsSchema, approvalActionSchema } from '@hospital-erp/shared';
+import { Permission, QuotationStatus, AuditAction, ApprovalStatus, UserRole, isAdminRole, FIRST_LEVEL_APPROVER_ROLES } from '@hospital-erp/shared';
+import { createQuotationSchema, listQuotationsSchema, approvalActionSchema, finalizeQuotationSchema } from '@hospital-erp/shared';
 import { prisma } from '../config/prisma';
 import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middleware/auth';
 import { rbacMiddleware } from '../middleware/rbac';
 import { validateMiddleware } from '../middleware/validate';
 import { logAudit } from '../services/audit.service';
-import * as approvalService from '../services/approval.service';
-import { HEAD_THEN_ADMIN_POLICY, headThenAdminSteps } from '../services/approval.service';
 import { getStorageService, serveFile } from '../services/storage.service';
 import { notifyAdmins, notifyApprovers } from '../services/push.service';
 import {
   createQuotation,
   generateQuotationNumber,
   quotationInclude,
+  finalizeQuotation,
+  rejectQuotation,
+  QuotationActionError,
   type QuotationLineItem,
 } from '../services/quotation.service';
 import { streamQuotationPdf } from '../services/quotation-pdf.service';
@@ -71,28 +72,6 @@ async function reconcileQuotationStatuses(
   }
 }
 
-/**
- * Fetch all approver roles for quotation workflows — head roles plus every
- * active admin role in the project (ADMIN, ADMIN_2, ADMIN_3, ...). Used when
- * (re)building approval workflow steps so dynamic admins can also approve.
- */
-async function getQuotationApproverRoles(_projectId: string): Promise<string[]> {
-  const users = await prisma.user.findMany({
-    where: { isActive: true },
-    select: { role: true },
-  });
-  const roles = new Set<string>([
-    UserRole.PROJECT_HEAD,
-    UserRole.HEAD_OF_CONSTRUCTION,
-    UserRole.ACCOUNTS_HEAD,
-    UserRole.ADMIN,
-    UserRole.ADMIN_2,
-  ]);
-  for (const u of users) {
-    if (isAdminRole(u.role)) roles.add(u.role);
-  }
-  return Array.from(roles);
-}
 
 // ── Quotation Approval Aging (additive, read-only) ──────────────────
 // Calculates how long each quotation has been waiting for approval, based
@@ -414,10 +393,8 @@ router.post(
           res.status(400).json({ error: 'The Material Purchase Request must be approved before a quotation can be raised against it' });
           return;
         }
-        if (mpr.vendorId && mpr.vendorId !== vendorId) {
-          res.status(400).json({ error: 'Vendor does not match the vendor on the Material Purchase Request' });
-          return;
-        }
+        // Any vendor may quote against the request: the quotations sit side by
+        // side and one (or one per material) is finalized.
         if (mpr.vendor?.vendorType === 'NON_VENDOR') {
           res.status(400).json({ error: 'Non-vendor requests skip the Quotation step — a Purchase Order is raised directly from the approved request' });
           return;
@@ -822,59 +799,26 @@ router.post(
         updateData.fileMimeType = req.file.mimetype;
       }
 
-      // Build the approver step roles — heads + every active admin role
-      const approverRoles = headThenAdminSteps(await getQuotationApproverRoles(projectId)).map((s) => s.approverRole);
-
-      // Update quotation + reset approval workflow atomically.
+      // Update the quotation; it goes back to waiting to be finalized (quotations
+      // have no approval workflow any more, so an old one is dropped).
       const updated = await prisma.$transaction(async (tx) => {
         const q = await tx.quotation.update({
           where: { id: existing.id },
           data: {
             ...updateData,
             status: QuotationStatus.SUBMITTED,
+            finalizedAt: null,
+            finalizedBy: null,
+            approvalWorkflowId: null,
             ...(itemsWithAmounts
               ? { items: { deleteMany: {}, create: itemsWithAmounts } }
               : {}),
           },
         });
-
-        const stepCreates = approverRoles.map((role, idx) => ({
-          stepNumber: idx + 1,
-          approverRole: role,
-          status: ApprovalStepStatus.PENDING,
-        }));
-
         if (existing.approvalWorkflowId) {
           await tx.approvalStep.deleteMany({ where: { workflowId: existing.approvalWorkflowId } });
-          await tx.approvalWorkflow.update({
-            where: { id: existing.approvalWorkflowId },
-            data: {
-              status: ApprovalStatus.VERIFICATION,
-              currentStep: 0,
-              minApprovers: 2,
-              approvalPolicy: HEAD_THEN_ADMIN_POLICY,
-              steps: { create: stepCreates },
-            },
-          });
-        } else {
-          const workflow = await tx.approvalWorkflow.create({
-            data: {
-              entityType: 'QUOTATION',
-              entityId: existing.id,
-              projectId,
-              status: ApprovalStatus.VERIFICATION,
-              currentStep: 0,
-              minApprovers: 2,
-              approvalPolicy: HEAD_THEN_ADMIN_POLICY,
-              steps: { create: stepCreates },
-            },
-          });
-          await tx.quotation.update({
-            where: { id: existing.id },
-            data: { approvalWorkflowId: workflow.id },
-          });
+          await tx.approvalWorkflow.delete({ where: { id: existing.approvalWorkflowId } });
         }
-
         return q;
       });
 
@@ -892,13 +836,13 @@ router.post(
         },
       });
 
-      // Notify approvers via push notification
+      // Tell the heads it is waiting to be finalized again
       notifyApprovers(projectId, [...FIRST_LEVEL_APPROVER_ROLES] as UserRole[], {
-        approvalId: existing.approvalWorkflowId ?? '',
+        approvalId: '',
         entityType: 'QUOTATION',
         entityId: existing.id,
-        title: 'Quotation Resent for Approval',
-        body: `Quotation ${existing.quotationNumber} was re-edited and resent for approval`,
+        title: 'Quotation Re-edited — Ready to Finalize',
+        body: `Quotation ${existing.quotationNumber} was re-edited and is waiting to be finalized`,
         url: `/quotations?id=${existing.id}`,
       }).catch((err) => console.error('[Push] Quotation revise notification error:', err));
 
@@ -913,75 +857,34 @@ router.post(
   }
 );
 
-// POST /:id/approve — approve a quotation (any of 4 heads, in any order)
-router.post(
-  '/:id/approve',
-  rbacMiddleware(Permission.VIEW_FINANCIALS),
-  validateMiddleware(approvalActionSchema),
-  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
-    try {
-      const projectId = requireProjectId(req);
-      const quotation = await prisma.quotation.findFirst({
-        where: { id: req.params.id, projectId, deletedAt: null },
-        include: { approvalWorkflow: { include: { steps: true } } },
-      });
-      if (!quotation || !quotation.approvalWorkflow) {
-        res.status(404).json({ error: 'Quotation or approval workflow not found' });
-        return;
-      }
-
-      // Prevent approving a quotation that's already been rejected, approved, converted, or deleted
-      if (quotation.status === QuotationStatus.REJECTED || quotation.status === QuotationStatus.APPROVED || quotation.status === QuotationStatus.CONVERTED_TO_PO || quotation.status === QuotationStatus.DELETED) {
-        res.status(400).json({ error: `Cannot approve a quotation that is already ${quotation.status.replace(/_/g, ' ').toLowerCase()}` });
-        return;
-      }
-
-      // Check user is one of the approver roles
-      if (!isAdminRole(req.user!.role) && !isFirstLevelApproverRole(req.user!.role) && !approvalService.canOverride(req.user!)) {
-        res.status(403).json({ error: 'Only Project Head, Head of Construction or Admin can approve quotations' });
-        return;
-      }
-
-      // Find the pending step for this user's role
-      const step = approvalService.findApprovableStep(quotation.approvalWorkflow.steps, req.user!);
-      if (!step) {
-        res.status(400).json({ error: 'No pending step for your role, or you may have already approved' });
-        return;
-      }
-
-      // Check same person hasn't already approved
-      const alreadyApproved = quotation.approvalWorkflow.steps.find(
-        (s) => s.approverUserId === req.user!.id && s.status === 'APPROVED'
-      );
-      if (alreadyApproved && !approvalService.canOverride(req.user!)) {
-        res.status(400).json({ error: 'You have already approved this quotation' });
-        return;
-      }
-
-      const result = await approvalService.approve(step.id, req.user!.id, req.body.comments);
-
-      // The approval service now syncs the quotation status atomically
-      // with the workflow status. This is a safety net for any edge case
-      // where the atomic sync inside the service didn't cover.
-      if (result.isFullyApproved) {
-        await prisma.quotation.update({
-          where: { id: quotation.id },
-          data: { status: QuotationStatus.APPROVED },
-        }).catch((err) => console.error('[Quotation] Safety-net status sync failed (non-fatal, reconciliation will fix):', err));
-      }
-
-      const updated = await prisma.quotation.findUnique({
-        where: { id: quotation.id },
-        include: quotationInclude,
-      });
-      res.json(updated);
-    } catch (error) {
-      next(error);
+// POST /:id/finalize — pick this quotation (no approval process for quotations):
+// it becomes APPROVED and its PO is raised straight away, waiting for approval.
+// Project Head, Head of Construction, Admin 1, Admin 2 or a super admin.
+async function handleFinalize(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+  try {
+    const projectId = requireProjectId(req);
+    const result = await finalizeQuotation(req.params.id, projectId, req.user!, req.body.comments);
+    const updated = await prisma.quotation.findUnique({ where: { id: result.quotationId }, include: quotationInclude });
+    res.json({
+      ...updated,
+      purchaseOrder: result.po ? { id: result.po.id, poNumber: result.po.poNumber } : null,
+      notSelected: result.notSelected,
+    });
+  } catch (error) {
+    if (error instanceof QuotationActionError) {
+      res.status(error.status).json({ error: error.message });
+      return;
     }
+    next(error);
   }
-);
+}
 
-// POST /:id/reject — reject a quotation (any of 4 heads, in any order)
+router.post('/:id/finalize', rbacMiddleware(Permission.VIEW_FINANCIALS), validateMiddleware(finalizeQuotationSchema), handleFinalize);
+
+// POST /:id/approve — kept for older clients (and the assistant): same as finalize.
+router.post('/:id/approve', rbacMiddleware(Permission.VIEW_FINANCIALS), validateMiddleware(approvalActionSchema), handleFinalize);
+
+// POST /:id/reject — close a waiting quotation as not selected (same people as finalize).
 router.post(
   '/:id/reject',
   rbacMiddleware(Permission.VIEW_FINANCIALS),
@@ -989,59 +892,18 @@ router.post(
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const projectId = requireProjectId(req);
-      const quotation = await prisma.quotation.findFirst({
-        where: { id: req.params.id, projectId, deletedAt: null },
-        include: { approvalWorkflow: { include: { steps: true } } },
-      });
-      if (!quotation || !quotation.approvalWorkflow) {
-        res.status(404).json({ error: 'Quotation or approval workflow not found' });
-        return;
-      }
-
-      // Prevent rejecting a quotation that's already been decided
-      if (quotation.status === QuotationStatus.REJECTED || quotation.status === QuotationStatus.APPROVED || quotation.status === QuotationStatus.CONVERTED_TO_PO || quotation.status === QuotationStatus.DELETED) {
-        res.status(400).json({ error: `Cannot reject a quotation that is already ${quotation.status.replace(/_/g, ' ').toLowerCase()}` });
-        return;
-      }
-
-      // Check user is one of the approver roles
-      if (!isAdminRole(req.user!.role) && !isFirstLevelApproverRole(req.user!.role) && !approvalService.canOverride(req.user!)) {
-        res.status(403).json({ error: 'Only Project Head, Head of Construction or Admin can reject quotations' });
-        return;
-      }
-
-      // Find the pending step for this user's role
-      const step = approvalService.findApprovableStep(quotation.approvalWorkflow.steps, req.user!);
-      if (!step) {
-        res.status(400).json({ error: 'No pending step for your role, or you may have already decided' });
-        return;
-      }
-
-      // Check same person hasn't already decided
-      const alreadyDecided = quotation.approvalWorkflow.steps.find(
-        (s) => s.approverUserId === req.user!.id && (s.status === 'APPROVED' || s.status === 'REJECTED')
-      );
-      if (alreadyDecided) {
-        res.status(400).json({ error: 'You have already decided on this quotation' });
-        return;
-      }
-
-      const reason = req.body.reason || req.body.comments || 'Rejected';
-      await approvalService.reject(step.id, req.user!.id, reason);
-
-      // The approval service now syncs the quotation status atomically.
-      // This is a safety net for any edge case.
-      await prisma.quotation.update({
-        where: { id: quotation.id },
-        data: { status: QuotationStatus.REJECTED },
-      }).catch((err) => console.error('[Quotation] Safety-net status sync failed (non-fatal, reconciliation will fix):', err));
-
+      const reason = req.body.reason || req.body.comments || 'Not selected';
+      await rejectQuotation(req.params.id, projectId, req.user!, reason);
       const updated = await prisma.quotation.findUnique({
-        where: { id: quotation.id },
+        where: { id: req.params.id },
         include: quotationInclude,
       });
       res.json(updated);
     } catch (error) {
+      if (error instanceof QuotationActionError) {
+        res.status(error.status).json({ error: error.message });
+        return;
+      }
       next(error);
     }
   }

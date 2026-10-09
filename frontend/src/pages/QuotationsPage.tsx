@@ -43,7 +43,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import CopyText from '../components/CopyText';
 import ApprovalTiming from '../components/ApprovalTiming';
 import VendorAutocomplete from '../components/VendorAutocomplete';
-import { QuotationStatus, GST_RATES, ApprovalStatus, isAdminRole, isApproverRole, isWorkflowOpenToRole, canOverrideApprovals, findApprovableStep } from '@hospital-erp/shared';
+import { QuotationStatus, GST_RATES, ApprovalStatus, isAdminRole, canFinalizeQuotation } from '@hospital-erp/shared';
 import { formatCurrency, formatDate, STATUS_COLORS, QTY_UNIT_OPTIONS, enumLabel, unitLabel } from '../utils/enumOptions';
 import ItemsGist from '../components/ItemsGist';
 import { useTranslation, Trans } from 'react-i18next';
@@ -61,6 +61,8 @@ import { useApprovalDeepLink } from '../utils/useApprovalDeepLink';
 import CommentsButton from '../components/CommentsButton';
 import LinkedFiles from '../components/LinkedFiles';
 import FilePicker from '../components/FilePicker';
+import { useToast } from '../components/ToastProvider';
+import { AccountTree as CombinedIcon } from '@mui/icons-material';
 
 interface QuotationItem {
   id?: string;
@@ -128,9 +130,18 @@ interface QuotationRow {
   } | null;
 }
 
+// A quotation waits until one is finalized (picked); there is no approval process.
+const WAITING_STATUSES: string[] = [QuotationStatus.SUBMITTED, QuotationStatus.UNDER_REVIEW, 'PENDING'];
+const isWaiting = (status: string) => WAITING_STATUSES.includes(status);
+
 export default function QuotationsPage() {
   const theme = useTheme();
   const { t } = useTranslation('quotations');
+  const statusLabel = (status: string) =>
+    isWaiting(status) ? t('statusWaiting')
+      : status === QuotationStatus.APPROVED ? t('statusFinalized')
+        : status === QuotationStatus.REJECTED ? t('statusNotSelected')
+          : enumLabel(status);
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(20);
   const [search, setSearch] = useState('');
@@ -144,7 +155,9 @@ export default function QuotationsPage() {
   const [lineItems, setLineItems] = useState<QuotationItem[]>([]);
   const [selectedMaterialNames, setSelectedMaterialNames] = useState<Set<string>>(new Set());
   const [acknowledged, setAcknowledged] = useState(false);
-  const [approvalAction, setApprovalAction] = useState<{ row: QuotationRow; step: ApprovalStep; action: 'approve' | 'reject' } | null>(null);
+  // Finalize ('approve') or close as not selected ('reject'); quotations have no approval steps.
+  const [approvalAction, setApprovalAction] = useState<{ row: QuotationRow; action: 'approve' | 'reject' } | null>(null);
+  const toast = useToast();
   const [timelineRow, setTimelineRow] = useState<QuotationRow | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [quotationNotes, setQuotationNotes] = useState('');
@@ -338,16 +351,20 @@ export default function QuotationsPage() {
     return true;
   };
 
+  // Finalize: the quotation is approved and its PO is raised at once (waiting for approval).
   const approveMutation = useMutation({
-    mutationFn: async ({ quotationId, comments, acknowledged }: { quotationId: string; comments?: string; acknowledged: true }) => {
-      const response = await api.post(`/quotations/${quotationId}/approve`, { comments, acknowledged });
-      return response.data;
+    mutationFn: async ({ quotationId, comments }: { quotationId: string; comments?: string; acknowledged: true }) => {
+      const response = await api.post(`/quotations/${quotationId}/finalize`, { comments });
+      return response.data as { purchaseOrder?: { poNumber: string } | null; notSelected?: string[] };
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['/quotations'] });
       queryClient.invalidateQueries({ queryKey: ['/quotations/approval-aging'] });
+      queryClient.invalidateQueries({ queryKey: ['/pos'] });
+      queryClient.invalidateQueries({ queryKey: ['/combined-records'] });
       queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
       setApprovalAction(null);
+      toast.success(result?.purchaseOrder ? t('finalizedWithPo', { po: result.purchaseOrder.poNumber }) : t('finalized'));
     },
     onError: (err: unknown) => setError(extractErrorMessage(err)),
   });
@@ -392,8 +409,7 @@ export default function QuotationsPage() {
 
   // Auto-open approval dialog when navigated from a push notification
   useApprovalDeepLink(rows, (row) => {
-    const step = canApprove(row);
-    if (step) setApprovalAction({ row, step, action: 'approve' });
+    if (canFinalize(row)) setApprovalAction({ row, action: 'approve' });
   });
 
   // Deep-link from the Work tab: ?create=true&workTaskId=xxx&vendorId=yyy
@@ -555,18 +571,12 @@ export default function QuotationsPage() {
   // GST rate options for the dropdown
   const gstRateOptions = GST_RATES;
 
-  function canApprove(row: QuotationRow): ApprovalStep | null {
-    if (!row.approvalWorkflow || !user || !(isApproverRole(user.role) || canOverrideApprovals(user.role, user.extraPermissions))) return null;
-    if (!isWorkflowOpenToRole(row.approvalWorkflow, user.role, user.extraPermissions)) return null;
-    // If the workflow is already APPROVED/REJECTED, no further approval is possible
-    const wfStatus = row.approvalWorkflow.status;
-    if (wfStatus === ApprovalStatus.APPROVED || wfStatus === ApprovalStatus.REJECTED) return null;
-    if (![QuotationStatus.SUBMITTED, QuotationStatus.UNDER_REVIEW].includes(row.status as QuotationStatus)) return null;
-    const alreadyDecided = row.approvalWorkflow.steps.some(
-      (step) => step.approverUserId === user.id && step.status !== 'PENDING'
-    );
-    if (alreadyDecided) return null;
-    return findApprovableStep(row.approvalWorkflow.steps, user) ?? null;
+  /** Project Head, Head of Construction, Admin 1, Admin 2 or a super admin may pick a waiting quotation. */
+  function canFinalize(row: QuotationRow): boolean {
+    if (!user || !canFinalizeQuotation(user.role, user.extraPermissions)) return false;
+    const wfStatus = row.approvalWorkflow?.status;
+    if (wfStatus === ApprovalStatus.APPROVED || wfStatus === ApprovalStatus.REJECTED) return false;
+    return isWaiting(row.status);
   }
 
 
@@ -770,7 +780,7 @@ export default function QuotationsPage() {
         ) : (
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
             {rows.map((row) => {
-              const pendingStep = canApprove(row);
+              const finalizable = canFinalize(row);
               const aging = agingMap.get(row.id);
               const agingStatus = aging?.agingStatus ?? 'NORMAL';
               const agingLabel = aging?.agingLabel ?? '';
@@ -804,7 +814,6 @@ export default function QuotationsPage() {
                 highlightId === row.id ? (theme.palette.mode === 'dark' ? 'rgba(255, 202, 40, 0.14)' : 'warning.light') :
                 'background.paper';
 
-              const approvalStatus = row.approvalWorkflow?.status ?? effectiveStatus;
 
               return (
                 <Accordion
@@ -836,7 +845,11 @@ export default function QuotationsPage() {
                         </Typography>
                       </Box>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, flexWrap: 'wrap' }}>
-                        <Chip label={enumLabel(approvalStatus)} size="small" color={STATUS_COLORS[approvalStatus] ?? 'default'} />
+                        <Chip
+                          label={statusLabel(effectiveStatus)}
+                          size="small"
+                          color={isWaiting(effectiveStatus) ? 'warning' : effectiveStatus === QuotationStatus.APPROVED ? 'success' : STATUS_COLORS[effectiveStatus] ?? 'default'}
+                        />
                         <StalledChip type="QUOTATION" id={row.id} />
                         <Typography component="span" sx={{ fontWeight: 700, fontSize: '0.9rem' }}>{formatCurrency(row.grandTotal)}</Typography>
                         {agingLabel && displayAgingStatus !== 'APPROVED' && displayAgingStatus !== 'REJECTED' && (
@@ -889,7 +902,7 @@ export default function QuotationsPage() {
                   {/* Status bar */}
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 0.75, pb: 0.75, borderBottom: '1px solid', borderColor: 'action.hover' }}>
                     <Chip
-                      label={enumLabel(effectiveStatus)}
+                      label={statusLabel(effectiveStatus)}
                       size="small"
                       color={
                         displayAgingStatus === 'DELETED' ? 'error' :
@@ -1016,12 +1029,13 @@ export default function QuotationsPage() {
                           ) : (
                             <Button size="small" startIcon={<EditIcon />} onClick={() => { setNotesEditRow(row); setNotesEditValue(row.notes ?? ''); }}>{t('editDescription')}</Button>
                           )}
-                          {pendingStep && (
+                          {finalizable && (
                             <>
-                              <Button size="small" color="success" startIcon={<CheckIcon />} onClick={() => setApprovalAction({ row, step: pendingStep, action: 'approve' })}>{t('approve')}</Button>
-                              <Button size="small" color="error" startIcon={<CloseIcon />} onClick={() => setApprovalAction({ row, step: pendingStep, action: 'reject' })}>{t('reject')}</Button>
+                              <Button size="small" variant="contained" color="success" startIcon={<CheckIcon />} onClick={() => setApprovalAction({ row, action: 'approve' })}>{t('finalize')}</Button>
+                              <Button size="small" color="error" startIcon={<CloseIcon />} onClick={() => setApprovalAction({ row, action: 'reject' })}>{t('notSelected')}</Button>
                             </>
                           )}
+                          <Button size="small" startIcon={<CombinedIcon />} onClick={() => navigate(`/combined-records?type=quotation&id=${row.id}`)}>{t('openCombined')}</Button>
                           {effectiveStatus !== QuotationStatus.APPROVED && effectiveStatus !== QuotationStatus.CONVERTED_TO_PO && (
                             <Button size="small" color="error" startIcon={<DeleteIcon />} onClick={() => setDeleteRow(row)}>{t('delete')}</Button>
                           )}
@@ -1076,7 +1090,11 @@ export default function QuotationsPage() {
             <VendorAutocomplete
               label={t('vendorLabel')}
               value={selectedVendorId}
-              onChange={(id) => { setSelectedVendorId(id); setLineItems([]); setSelectedMaterialNames(new Set()); }}
+              onChange={(id) => {
+                setSelectedVendorId(id);
+                // A quotation for a material request keeps the requested items when another vendor is picked.
+                if (!mprIdRef.current) { setLineItems([]); setSelectedMaterialNames(new Set()); }
+              }}
               disabled={editOpen && !reviseMode}
               required
             />
@@ -1295,6 +1313,8 @@ export default function QuotationsPage() {
         open={approvalAction !== null}
         action={approvalAction?.action ?? 'approve'}
         entityLabel={t('entityQuotationCap')}
+        approveLabel={t('finalize')}
+        rejectLabel={t('notSelected')}
         pending={approveMutation.isPending || rejectMutation.isPending}
         error={error}
         onClearError={() => setError('')}

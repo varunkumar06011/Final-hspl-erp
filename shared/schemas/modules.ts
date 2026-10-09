@@ -26,6 +26,7 @@ import {
   JVType,
   JournalAccountType,
   VoucherType,
+  SiteBillPaymentMode,
 } from '../enums.js';
 
 const uuid = z.string().uuid();
@@ -164,6 +165,13 @@ export const updateQuotationSchema = z.object({
     notes: z.string().trim().max(2000).optional(),
   }),
 });
+// Pick this quotation to buy from: it becomes approved and its PO is raised.
+export const finalizeQuotationSchema = z.object({
+  params: z.object({ id: uuid }),
+  body: z.object({
+    comments: z.string().trim().max(500).optional(),
+  }),
+});
 export const listQuotationsSchema = z.object({
   query: pagination.extend({
     search: z.string().optional(),
@@ -226,7 +234,8 @@ export const editUnapprovedPOSchema = z.object({
     advanceAmount: money.optional(),
     paymentTerms: z.string().max(500).optional(),
     deliveryDate: z.coerce.date().optional().or(z.literal('').transform(() => undefined)),
-    budgetHeadId: uuid,
+    // Optional: a budget head can be set or changed at any time (change-budget-head).
+    budgetHeadId: uuid.optional(),
     notes: z.string().trim().max(1000).optional(),
     referredBy: z.string().trim().max(200).optional(),
     items: z.array(z.object({
@@ -1825,6 +1834,49 @@ export const listMPRSchema = z.object({
     status: z.string().optional(),
     requestType: z.enum(['MATERIAL', 'SERVICE']).optional(),
     vendorId: uuid.optional(),
+  }),
+});
+
+// ═══ Site bills (≤ SITE_BILL_LIMIT, paid at site, reimbursed through one combined PO) ═══
+const siteBillItem = z.object({
+  materialName: nonEmptyText(200),
+  quantity: positiveQty,
+  unit: z.string().trim().max(20).optional(),
+  rate: money,
+});
+
+// multipart/form-data: `items` arrives as a JSON string, the bill photo/PDF as `file`.
+export const createSiteBillSchema = z.object({
+  body: z.object({
+    billDate: z.coerce.date(),
+    shopName: z.string().trim().min(1).max(200),
+    paymentMode: z.nativeEnum(SiteBillPaymentMode),
+    description: z.string().trim().max(1000).optional(),
+    paidById: uuid.optional(),
+    items: z.preprocess(
+      (val) => (typeof val === 'string' ? JSON.parse(val) : val),
+      z.array(siteBillItem).min(1, 'At least one item is required'),
+    ),
+  }),
+});
+
+export const listSiteBillsSchema = z.object({
+  query: z.object({
+    filter: z.enum(['open', 'in_po', 'all']).optional(),
+    dateFrom: z.coerce.date().optional(),
+    dateTo: z.coerce.date().optional(),
+    paymentMode: z.nativeEnum(SiteBillPaymentMode).optional(),
+    search: z.string().optional(),
+  }),
+});
+
+export const generateSiteBillPoSchema = z.object({
+  body: z.object({
+    billIds: z.array(uuid).min(1, 'Select at least one bill').max(200),
+    paymentType: z.nativeEnum(POPaymentType).default(POPaymentType.FULL_PAYMENT),
+    reimburseTo: z.string().trim().max(200).optional(),
+    budgetHeadId: uuid.optional(),
+    notes: z.string().trim().max(1000).optional(),
   }),
 });
 

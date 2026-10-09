@@ -21,6 +21,7 @@ import {
   RequestQuote as QuotationIcon,
   ReceiptLong as ReceiptIcon,
   Balance as VarianceIcon,
+  AccountTree as CombinedIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import VendorAutocomplete from '../components/VendorAutocomplete';
@@ -628,9 +629,10 @@ export default function MaterialPurchaseRequestsPage() {
     return findApprovableStep(row.approvalWorkflow.steps, user) ?? null;
   }
 
-  function raiseQuotation(row: MPRRow) {
-    if (!row.vendorId) return;
-    navigate(`/quotations?create=true&vendorId=${row.vendorId}&mprId=${row.id}`);
+  // The request's own vendor gets its quotation automatically on approval; this adds
+  // one more (usually from another vendor) to compare and finalize.
+  function raiseQuotation(row: MPRRow, sameVendor = true) {
+    navigate(`/quotations?create=true${sameVendor && row.vendorId ? `&vendorId=${row.vendorId}` : ''}&mprId=${row.id}`);
   }
 
   function downloadReceipt(mprId: string, fileName: string) {
@@ -1008,8 +1010,11 @@ export default function MaterialPurchaseRequestsPage() {
                     {row.status === MPRStatus.QUOTATIONS_RECEIVED && (
                       <IconButton size="small" onClick={() => openEdit(row)} title={t('editReviseQuotation')}><EditIcon fontSize="small" /></IconButton>
                     )}
-                    {row.status === MPRStatus.QUOTATIONS_RECEIVED && !isNonVendor && row.vendorId && (
-                      <Button size="small" startIcon={<QuotationIcon />} onClick={() => raiseQuotation(row)}>{t('raiseAnother')}</Button>
+                    {row.status === MPRStatus.QUOTATIONS_RECEIVED && !isNonVendor && (
+                      <Button size="small" startIcon={<QuotationIcon />} onClick={() => raiseQuotation(row, false)}>{t('raiseAnother')}</Button>
+                    )}
+                    {row.status !== MPRStatus.DRAFT && (
+                      <Button size="small" startIcon={<CombinedIcon />} onClick={() => navigate(`/combined-records?type=mpr&id=${row.id}`)}>{t('openCombined')}</Button>
                     )}
                     {(row.status === MPRStatus.APPROVED || row.status === MPRStatus.QUOTATIONS_RECEIVED) && (
                       <Button size="small" color="success" onClick={() => closeMutation.mutate(row.id)} disabled={closeMutation.isPending}>{t('markClosed')}</Button>

@@ -53,10 +53,10 @@
   "approve": "ఆమోదించు",
   "reject": "తిరస్కరించు",
   "cancel": "రద్దు చేయి",
-  "raiseQuotation": "కొటేషన్ అభ్యర్థించండి",
+  "raiseQuotation": "కొటేషన్ జోడించు",
   "uploadReceiptClose": "రసీదు అప్‌లోడ్ చేసి ముగించండి",
   "poRaised": "PO: {{n}}",
-  "raiseAnother": "మరో కొటేషన్ అభ్యర్థించండి",
+  "raiseAnother": "మరో కొటేషన్ జోడించు",
   "markClosed": "ముగించినట్లు గుర్తించండి",
   "editTitle": "{{n}} సవరించండి",
   "vendorSection": "విక్రేత",
@@ -146,5 +146,6 @@
   "shipment2": "2వ షిప్‌మెంట్ అభ్యర్థించారు",
   "shipment3": "3వ షిప్‌మెంట్ అభ్యర్థించారు",
   "shipmentN": "{{n}}వ షిప్‌మెంట్ అభ్యర్థించారు",
-  "shipmentOf": "{{name}} — షిప్‌మెంట్ {{n}}"
+  "shipmentOf": "{{name}} — షిప్‌మెంట్ {{n}}",
+  "openCombined": "కలిపిన రికార్డు"
 }

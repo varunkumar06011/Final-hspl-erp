@@ -45,6 +45,8 @@ import {
   History as ActivityNavIcon,
   Apartment as ProjectsIcon,
   ToggleOn as ModuleAccessIcon,
+  AccountTree as CombinedRecordsIcon,
+  ReceiptLong as SiteBillsIcon,
 } from '@mui/icons-material';
 import { useAuthStore } from '../stores/authStore';
 import { APP_MODULES, UserRole, isAdminRole, moduleForPath, type UserResponse } from '@hospital-erp/shared';
@@ -74,7 +76,9 @@ const NAV_ITEMS = [
   { label: 'Work Calendar', icon: <WorkIcon />, path: '/work-calendar', section: '' },
   // ── Procurement ──
   { label: 'Work', icon: <WorkIcon />, path: '/work', section: 'Procurement' },
+  { label: 'Combined Records', icon: <CombinedRecordsIcon />, path: '/combined-records', section: 'Procurement' },
   { label: 'Material Requests', icon: <ReceiptIcon />, path: '/material-purchase-requests', section: 'Procurement' },
+  { label: 'Site Bills', icon: <SiteBillsIcon />, path: '/site-bills', section: 'Procurement' },
   { label: 'Vendors', icon: <VendorIcon />, path: '/vendors', section: 'Procurement' },
   { label: 'Quotations', icon: <ReceiptIcon />, path: '/quotations', section: 'Procurement' },
   { label: 'Purchase Orders', icon: <ReceiptIcon />, path: '/pos', section: 'Procurement' },
@@ -135,7 +139,9 @@ const ADMIN_NAV_ITEMS = [
   { label: 'Budget Heads', icon: <BudgetIcon />, path: '/budget-heads', section: 'Budget' },
   { label: 'Owner Account', icon: <OwnerIcon />, path: '/owner-accounts', section: 'Budget' },
   // ── Procurement ──
+  { label: 'Combined Records', icon: <CombinedRecordsIcon />, path: '/combined-records', section: 'Procurement' },
   { label: 'Material Requests', icon: <ReceiptIcon />, path: '/material-purchase-requests', section: 'Procurement' },
+  { label: 'Site Bills', icon: <SiteBillsIcon />, path: '/site-bills', section: 'Procurement' },
   { label: 'Vendors', icon: <VendorIcon />, path: '/vendors', section: 'Procurement' },
   { label: 'Quotations', icon: <ReceiptIcon />, path: '/quotations', section: 'Procurement' },
   { label: 'Purchase Orders', icon: <ReceiptIcon />, path: '/pos', section: 'Procurement' },

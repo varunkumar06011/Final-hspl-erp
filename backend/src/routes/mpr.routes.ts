@@ -24,6 +24,7 @@ import { notifyApprovers } from '../services/push.service';
 import { createNonVendorPoFromMpr, findLivePoForMpr } from '../services/non-vendor-po.service';
 import { REVISABLE_PO_STATUSES, syncQuotationsFromMpr, syncPoFromQuotation, hasUnpricedItems } from '../services/mpr-revision.service';
 import { ensureVendorLedger } from './ledger.routes';
+import { createQuotationFromMpr } from '../services/quotation.service';
 import multer from 'multer';
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
@@ -287,7 +288,8 @@ router.get(
 
       const requestType = req.query.requestType as string | undefined;
 
-      const where: Record<string, unknown> = { projectId, deletedAt: null };
+      // Site bills live on their own page (Site Bills); keep them out of this list.
+      const where: Record<string, unknown> = { projectId, deletedAt: null, isSiteBill: false };
       if (status) where.status = status;
       if (requestType) where.requestType = requestType;
       if (vendorId) where.vendorId = vendorId;
@@ -863,6 +865,10 @@ router.post(
         // Non-vendor requests have no quotation — go straight to a PO (amount 0, to be filled in).
         await createNonVendorPoFromMpr(mpr.id, projectId, req.user!.id)
           .catch((err) => console.error('[MPR] Non-vendor PO auto-create failed (non-fatal):', err));
+        // Vendor requests get their first quotation at once (request's vendor + rates),
+        // ready to be finalized; quotations from other vendors can be added beside it.
+        await createQuotationFromMpr(mpr.id, projectId, req.user!.id)
+          .catch((err) => console.error('[MPR] Auto quotation failed (non-fatal):', err));
       }
 
       const updated = await prisma.materialPurchaseRequest.findUnique({

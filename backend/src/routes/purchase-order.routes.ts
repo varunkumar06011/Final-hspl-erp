@@ -516,9 +516,13 @@ router.post(
         res.status(400).json({ error: 'An approved quotation is required' });
         return;
       }
-      if (!budgetHeadId) {
-        res.status(400).json({ error: 'Budget head is required' });
-        return;
+      // The budget head is optional here: it can be set later (change-budget-head).
+      if (budgetHeadId) {
+        const head = await prisma.budgetHead.findFirst({ where: { id: budgetHeadId, projectId, deletedAt: null }, select: { id: true } });
+        if (!head) {
+          res.status(400).json({ error: 'Budget head not found' });
+          return;
+        }
       }
 
       // Validate quotation exists, belongs to project, is approved, and matches vendor
@@ -1344,29 +1348,37 @@ router.post(
         return;
       }
 
-      // Non-vendor POs start at amount 0 — prices and budget head must be
-      // filled in (Edit) before the PO can be approved.
-      if (po.mprId && !po.quotationId && (Number(po.grandTotal) <= 0 || !po.budgetHeadId)) {
-        res.status(400).json({ error: 'Enter the item prices and budget head on this non-vendor purchase order (Edit) before approving it' });
+      // The only thing that stops an approval is a missing amount. Budget head,
+      // description and payment type can be filled in any time (no re-approval).
+      // Contract POs carry no amount of their own, so they are never blocked.
+      if (!po.isContract && Number(po.grandTotal) <= 0) {
+        res.status(400).json({ error: 'Enter the item prices on this purchase order (Edit) before approving it — the amount is 0', code: 'PO_AMOUNT_MISSING' });
         return;
       }
 
       // ── Budget overrun check: warn but allow approval with override reason ──
       // If committing this PO's grand total would exceed the budget head's allocated
       // amount, require a non-empty comment (override reason) from the approver.
-      // Skip for edited POs: their commitment was already adjusted at edit time,
-      // so re-approval does not add any additional commitment.
-      if (po.budgetHeadId && !po.editedAt) {
+      // An edited PO's commitment was already booked at edit time, so for it the
+      // head's committed amount already includes this PO (nothing more is added).
+      if (po.budgetHeadId) {
         const head = await prisma.budgetHead.findFirst({
           where: { id: po.budgetHeadId, projectId, deletedAt: null },
           select: { allocatedAmount: true, committedAmount: true, particulars: true },
         });
         if (head) {
-          const projectedCommitted = Number(head.committedAmount) + Number(po.grandTotal);
+          const projectedCommitted = Number(head.committedAmount) + (po.editedAt ? 0 : Number(po.grandTotal));
           if (projectedCommitted > Number(head.allocatedAmount)) {
             if (!req.body.comments || req.body.comments.trim().length === 0) {
               res.status(400).json({
                 error: `Budget overrun: approving this PO will push budget head "${head.particulars}" committed amount to ${projectedCommitted}, exceeding the allocated ${Number(head.allocatedAmount)}. Provide an override reason in the comments to proceed.`,
+                code: 'BUDGET_OVERRUN',
+                budget: {
+                  budgetHead: head.particulars,
+                  allocated: Number(head.allocatedAmount),
+                  committed: Number(head.committedAmount),
+                  afterApproval: projectedCommitted,
+                },
               });
               return;
             }
@@ -1686,15 +1698,19 @@ router.post(
         res.status(403).json({ error: 'Only an admin can edit an approved purchase order' });
         return;
       }
-      const { paymentTerms, deliveryDate, budgetHeadId, items: newItems, deductions, notes, referredBy } = req.body;
+      const { paymentTerms, deliveryDate, items: newItems, deductions, notes, referredBy } = req.body;
+      // The budget head is optional: omitted keeps the PO's current one (which may be none).
+      const budgetHeadId: string | null = req.body.budgetHeadId ?? po.budgetHeadId ?? null;
 
       // Validate budget head exists and belongs to project
-      const budgetHead = await prisma.budgetHead.findFirst({
-        where: { id: budgetHeadId, projectId, deletedAt: null },
-      });
-      if (!budgetHead) {
-        res.status(400).json({ error: 'Budget head not found' });
-        return;
+      if (budgetHeadId) {
+        const budgetHead = await prisma.budgetHead.findFirst({
+          where: { id: budgetHeadId, projectId, deletedAt: null },
+        });
+        if (!budgetHead) {
+          res.status(400).json({ error: 'Budget head not found' });
+          return;
+        }
       }
 
       // Recalculate amounts from new items
@@ -1722,7 +1738,8 @@ router.post(
       const newPaymentType: string = req.body.paymentType ?? po.paymentType;
       let newAdvanceAmount: number | null;
       if (newPaymentType === POPaymentType.ADVANCE || newPaymentType === POPaymentType.FULL_PAYMENT) {
-        const amt = Number(req.body.advanceAmount ?? po.advanceAmount ?? (newPaymentType === POPaymentType.FULL_PAYMENT ? grandTotal : 0));
+        // Full payment follows the edited total unless an amount is given.
+        const amt = Number(req.body.advanceAmount ?? (newPaymentType === POPaymentType.FULL_PAYMENT ? grandTotal : po.advanceAmount ?? 0));
         if (!Number.isFinite(amt) || amt <= 0) {
           res.status(400).json({ error: 'Advance amount is required for advance / full payment POs' });
           return;
@@ -1750,8 +1767,19 @@ router.post(
 
       const adminRoles = await getActiveAdminRoles(projectId);
       const result = await prisma.$transaction(async (tx) => {
-        // Adjust budget head commitment if budget head or total changed
-        if (po.budgetHeadId && po.budgetHeadId !== budgetHeadId) {
+        // Adjust budget head commitment if budget head or total changed. After this
+        // edit the PO counts as committed (editedAt set, approval adds nothing), so a
+        // PO that had committed nothing yet (never approved, never edited) books its
+        // full total now instead of a delta.
+        const committedBefore = po.status === POStatus.APPROVED || (po.status === POStatus.PENDING_APPROVAL && !!po.editedAt);
+        if (!budgetHeadId) {
+          // PO stays without a budget head
+        } else if (!committedBefore) {
+          await tx.budgetHead.update({
+            where: { id: budgetHeadId },
+            data: { committedAmount: { increment: grandTotal } },
+          });
+        } else if (po.budgetHeadId && po.budgetHeadId !== budgetHeadId) {
           // Old budget head: remove commitment
           await tx.budgetHead.update({
             where: { id: po.budgetHeadId },
@@ -2351,11 +2379,21 @@ router.post(
 
       // Not committed yet (waiting for approval): the head is just recorded; the
       // commitment is added when the PO is approved.
+      // An edited PO is the exception: its commitment was booked at edit time
+      // (approval then skips it), so the commitment moves with the head.
       if (!isCommitted) {
-        const tagged = await prisma.purchaseOrder.update({
-          where: { id: po.id },
-          data: { budgetHeadId: newBudgetHeadId },
-          include: poInclude,
+        const tagged = await prisma.$transaction(async (tx) => {
+          if (po.editedAt && po.status === POStatus.PENDING_APPROVAL) {
+            if (po.budgetHeadId) {
+              await tx.budgetHead.update({ where: { id: po.budgetHeadId }, data: { committedAmount: { decrement: Number(po.grandTotal) } } });
+            }
+            await tx.budgetHead.update({ where: { id: newBudgetHeadId }, data: { committedAmount: { increment: Number(po.grandTotal) } } });
+          }
+          return tx.purchaseOrder.update({
+            where: { id: po.id },
+            data: { budgetHeadId: newBudgetHeadId },
+            include: poInclude,
+          });
         });
         await logAudit({
           userId: req.user!.id,

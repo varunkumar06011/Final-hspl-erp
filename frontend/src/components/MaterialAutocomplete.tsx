@@ -37,6 +37,7 @@ export default function MaterialAutocomplete({
   onTyped,
   onPicked,
   sx,
+  label,
 }: {
   value: string;
   catalog: CatalogMaterial[];
@@ -45,6 +46,8 @@ export default function MaterialAutocomplete({
   /** An existing material was chosen from the list. */
   onPicked: (material: CatalogMaterial) => void;
   sx?: object;
+  /** Optional field label (tables usually have a column header instead). */
+  label?: string;
 }) {
   const { t } = useTranslation();
   return (
@@ -75,7 +78,7 @@ export default function MaterialAutocomplete({
         </li>
       )}
       noOptionsText={t('newMaterialHint')}
-      renderInput={(params) => <TextField {...params} size="small" />}
+      renderInput={(params) => <TextField {...params} size="small" label={label} />}
       sx={{ minWidth: 190, ...sx }}
     />
   );

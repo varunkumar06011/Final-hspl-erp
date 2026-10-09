@@ -29,7 +29,7 @@
   "view": "View",
   "downloadPdf": "Download PDF",
   "share": "Share",
-  "reEditResend": "Re-edit & Resend",
+  "reEditResend": "Re-edit",
   "edit": "Edit",
   "editDescription": "Edit Description",
   "enterPrices": "Enter prices for new items",
@@ -66,7 +66,7 @@
   "notesLabel": "Description / Notes",
   "notesPlaceholder": "Optional description or notes for this quotation",
   "cancel": "Cancel",
-  "updateResend": "Update & Resend",
+  "updateResend": "Update",
   "update": "Update",
   "create": "Create",
   "deleteTitle": "Delete Quotation",
@@ -90,5 +90,13 @@
   "pdfLoadingText": "Loading PDF...",
   "moreDetails": "More details",
   "lessDetails": "Hide details",
-  "requestNo": "Request No."
+  "requestNo": "Request No.",
+  "statusWaiting": "Waiting to finalize",
+  "statusFinalized": "Finalized",
+  "statusNotSelected": "Not selected",
+  "finalize": "Finalize",
+  "notSelected": "Not selected",
+  "finalized": "Quotation finalized",
+  "finalizedWithPo": "Quotation finalized. Purchase Order {{po}} was created and sent for approval.",
+  "openCombined": "Combined record"
 }

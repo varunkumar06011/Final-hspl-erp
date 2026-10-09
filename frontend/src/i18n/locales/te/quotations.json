@@ -29,7 +29,7 @@
   "view": "చూడండి",
   "downloadPdf": "PDF డౌన్‌లోడ్",
   "share": "షేర్ చేయండి",
-  "reEditResend": "మళ్లీ సవరించి పంపండి",
+  "reEditResend": "మళ్లీ సవరించు",
   "edit": "సవరించు",
   "editDescription": "వివరణ సవరించండి",
   "enterPrices": "కొత్త ఐటమ్‌లకు ధరలు నమోదు చేయండి",
@@ -66,7 +66,7 @@
   "notesLabel": "వివరణ / గమనికలు",
   "notesPlaceholder": "ఈ కొటేషన్ కోసం ఐచ్ఛిక వివరణ లేదా గమనికలు",
   "cancel": "రద్దు చేయి",
-  "updateResend": "నవీకరించి మళ్లీ పంపండి",
+  "updateResend": "నవీకరించు",
   "update": "నవీకరించు",
   "create": "సృష్టించు",
   "deleteTitle": "కొటేషన్ తొలగించండి",
@@ -90,5 +90,13 @@
   "pdfLoadingText": "PDF లోడ్ అవుతోంది...",
   "moreDetails": "మరిన్ని వివరాలు",
   "lessDetails": "వివరాలు దాచండి",
-  "requestNo": "అభ్యర్థన సంఖ్య"
+  "requestNo": "అభ్యర్థన సంఖ్య",
+  "statusWaiting": "ఖరారు కోసం వేచి ఉంది",
+  "statusFinalized": "ఖరారు చేయబడింది",
+  "statusNotSelected": "ఎంపిక కాలేదు",
+  "finalize": "ఖరారు చేయి",
+  "notSelected": "ఎంపిక కాలేదు",
+  "finalized": "కొటేషన్ ఖరారు చేయబడింది",
+  "finalizedWithPo": "కొటేషన్ ఖరారు చేయబడింది. కొనుగోలు ఆర్డర్ {{po}} సృష్టించబడి ఆమోదానికి పంపబడింది.",
+  "openCombined": "కలిపిన రికార్డు"
 }

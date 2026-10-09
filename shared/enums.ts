@@ -884,6 +884,39 @@ export function isSuperAdmin(extraPermissions?: readonly string[] | null): boole
 }
 
 /**
+ * Quotations have no approval process: one of these picks ("finalizes") the
+ * quotation to buy from, which makes it approved and raises its PO.
+ */
+export const QUOTATION_FINALIZER_ROLES = [
+  UserRole.PROJECT_HEAD,
+  UserRole.HEAD_OF_CONSTRUCTION,
+  UserRole.ADMIN,
+  UserRole.ADMIN_2,
+] as const;
+
+/** Project Head, Head of Construction, Admin 1, Admin 2 or a super admin. */
+export function canFinalizeQuotation(
+  role: UserRole | string,
+  extraPermissions?: readonly string[] | null,
+): boolean {
+  return QUOTATION_FINALIZER_ROLES.some((r) => r === role) || canOverrideApprovals(role, extraPermissions);
+}
+
+/** How the site person paid for a site bill. */
+export enum SiteBillPaymentMode {
+  CASH = 'CASH',
+  UPI = 'UPI',
+  BANK_TRANSFER = 'BANK_TRANSFER',
+  CHEQUE = 'CHEQUE',
+}
+
+/** A site bill (paid by the site person, reimbursed later) may be at most this much. */
+export const SITE_BILL_LIMIT = 5000;
+
+/** The vendor every combined site-bill PO is raised against (one per project, created on first use). */
+export const SITE_PURCHASES_VENDOR_NAME = 'Site Purchases (Reimbursement)';
+
+/**
  * The pending approval step this user may decide: the one for their own role, or
  * — for a user holding APPROVAL_OVERRIDE (super admin) — the earliest pending step.
  */

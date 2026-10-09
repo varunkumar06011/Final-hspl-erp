@@ -96,6 +96,8 @@ const ProjectsPage = lazyWithRetry(() => import('./pages/ProjectsPage'));
 const InwardFundsPage = lazyWithRetry(() => import('./pages/InwardFundsPage'));
 const ExpenditurePage = lazyWithRetry(() => import('./pages/ExpenditurePage'));
 const MaterialPurchaseRequestsPage = lazyWithRetry(() => import('./pages/MaterialPurchaseRequestsPage'));
+const CombinedRecordsPage = lazyWithRetry(() => import('./pages/CombinedRecordsPage'));
+const SiteBillsPage = lazyWithRetry(() => import('./pages/SiteBillsPage'));
 const TransactionRegisterPage = lazyWithRetry(() => import('./pages/TransactionRegisterPage'));
 const CommentsPage = lazyWithRetry(() => import('./pages/CommentsPage'));
 const ChatPage = lazyWithRetry(() => import('./pages/ChatPage'));
@@ -170,6 +172,8 @@ const ROUTES = [
   { path: '/inward-funds', element: <InwardFundsPage /> },
   { path: '/expenditure', element: <ExpenditurePage /> },
   { path: '/material-purchase-requests', element: <MaterialPurchaseRequestsPage /> },
+  { path: '/combined-records', element: <CombinedRecordsPage /> },
+  { path: '/site-bills', element: <SiteBillsPage /> },
 ];
 
 // Inside the native shell the app is served from a bundled origin — there is

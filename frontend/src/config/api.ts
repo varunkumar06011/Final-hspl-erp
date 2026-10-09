@@ -65,6 +65,22 @@ api.interceptors.response.use(
   }
 );
 
+/** Budget numbers the PO approve endpoint returns when approving would go over a budget head. */
+export interface BudgetOverrun {
+  budgetHead: string;
+  allocated: number;
+  committed: number;
+  afterApproval: number;
+}
+
+/** The over-budget details of a refused PO approval, or null for any other error. */
+export function budgetOverrunOf(err: unknown): BudgetOverrun | null {
+  if (axios.isAxiosError(err) && err.response?.data?.code === 'BUDGET_OVERRUN') {
+    return (err.response.data.budget ?? null) as BudgetOverrun | null;
+  }
+  return null;
+}
+
 export function extractErrorMessage(err: unknown): string {
   if (axios.isAxiosError(err)) {
     const data = err.response?.data;

@@ -53,10 +53,10 @@
   "approve": "Approve",
   "reject": "Reject",
   "cancel": "Cancel",
-  "raiseQuotation": "Raise Quotation",
+  "raiseQuotation": "Add Quotation",
   "uploadReceiptClose": "Upload Receipt & Close",
   "poRaised": "PO: {{n}}",
-  "raiseAnother": "Raise Another Quotation",
+  "raiseAnother": "Add Another Quotation",
   "markClosed": "Mark Closed",
   "editTitle": "Edit {{n}}",
   "vendorSection": "Vendor",
@@ -146,5 +146,6 @@
   "shipment2": "2nd shipment requested",
   "shipment3": "3rd shipment requested",
   "shipmentN": "{{n}}th shipment requested",
-  "shipmentOf": "{{name}} — shipment {{n}}"
+  "shipmentOf": "{{name}} — shipment {{n}}",
+  "openCombined": "Combined record"
 }
