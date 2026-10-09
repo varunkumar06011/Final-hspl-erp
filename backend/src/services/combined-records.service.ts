@@ -1,4 +1,11 @@
-import { Permission, hasPermission } from '@hospital-erp/shared';
+import {
+  Permission,
+  canOverrideApprovals,
+  findApprovableStep,
+  hasPermission,
+  isApproverRole,
+  isWorkflowOpenToRole,
+} from '@hospital-erp/shared';
 import { prisma } from '../config/prisma';
 
 /**
@@ -183,11 +190,45 @@ export interface CombinedListQuery {
 }
 
 interface Viewer {
+  id?: string;
   role: string;
   extraPermissions?: readonly string[] | null;
 }
 
 const money = (v: unknown) => Number(v ?? 0);
+
+/** Light workflow select used by the list, to tell whether the viewer can decide the pending step. */
+const listWorkflow = {
+  select: {
+    id: true, status: true, approvalPolicy: true,
+    steps: { select: { stepNumber: true, approverRole: true, status: true, approverUserId: true } },
+  },
+};
+
+/** The step this viewer may approve or reject now, or null (same rules as the approve endpoints). */
+function decidableStep(
+  wf: { status: string; approvalPolicy?: string | null; steps: { stepNumber: number; approverRole: string; status: string; approverUserId: string | null }[] } | null,
+  viewer: Viewer,
+) {
+  if (!wf || wf.status === 'APPROVED' || wf.status === 'REJECTED') return null;
+  const override = canOverrideApprovals(viewer.role, viewer.extraPermissions);
+  if (!isApproverRole(viewer.role) && !override) return null;
+  if (!isWorkflowOpenToRole(wf, viewer.role, viewer.extraPermissions)) return null;
+  if (!override && wf.steps.some((st) => st.approverUserId === viewer.id && st.status !== 'PENDING')) return null;
+  return findApprovableStep(wf.steps, viewer) ?? null;
+}
+
+/** The one approve/reject the viewer can take straight from the list: the request, else a pending PO with an amount. */
+function nextDecision(
+  r: { mpr?: { id: string; mprNumber: string; status: string; approvalWorkflow: Parameters<typeof decidableStep>[0] } | null; pos: { id: string; poNumber: string; status: string; grandTotal: unknown; approvalWorkflow: Parameters<typeof decidableStep>[0] }[] },
+  viewer: Viewer,
+): { kind: 'mpr' | 'po'; id: string; label: string } | null {
+  if (r.mpr && r.mpr.status === 'SUBMITTED' && decidableStep(r.mpr.approvalWorkflow, viewer)) {
+    return { kind: 'mpr', id: r.mpr.id, label: r.mpr.mprNumber };
+  }
+  const po = r.pos.find((p) => p.status === 'PENDING_APPROVAL' && money(p.grandTotal) > 0 && decidableStep(p.approvalWorkflow, viewer));
+  return po ? { kind: 'po', id: po.id, label: po.poNumber } : null;
+}
 
 /** Every record of the project (lightweight), newest activity first. */
 export async function listCombinedRecords(projectId: string, viewer: Viewer, query: CombinedListQuery) {
@@ -201,6 +242,7 @@ export async function listCombinedRecords(projectId: string, viewer: Viewer, que
         id: true, mprNumber: true, date: true, updatedAt: true, status: true, requestType: true, description: true,
         estimatedTotal: true, vendor: { select: { name: true, vendorType: true } },
         items: { select: { materialName: true } },
+        approvalWorkflow: listWorkflow,
       },
     }),
     fin
@@ -219,6 +261,7 @@ export async function listCombinedRecords(projectId: string, viewer: Viewer, que
             id: true, poNumber: true, quotationId: true, mprId: true, status: true, grandTotal: true, netPayable: true,
             date: true, updatedAt: true, isSiteBillBatch: true, reimburseTo: true,
             vendor: { select: { name: true } }, items: { select: { materialName: true } },
+            approvalWorkflow: listWorkflow,
           },
         })
       : [],
@@ -361,6 +404,7 @@ export async function listCombinedRecords(projectId: string, viewer: Viewer, que
         bills: rBills.length,
       },
       ...stages,
+      action: fin ? nextDecision(r, viewer) : null,
       _doc: doc,
     };
   });

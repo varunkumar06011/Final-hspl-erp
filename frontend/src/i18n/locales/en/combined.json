@@ -191,5 +191,7 @@
   "unit": "Unit",
   "nextStep": "Next",
   "material": "Material",
-  "service": "Service"
+  "service": "Service",
+  "decideRequest": "Request {{n}} is waiting for your approval",
+  "decidePo": "PO {{n}} is waiting for your approval"
 }
