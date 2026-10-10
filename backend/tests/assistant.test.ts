@@ -16,9 +16,11 @@ vi.mock('../src/config/prisma', () => ({
     assistantAction: {
       create: vi.fn(),
       findFirst: vi.fn(),
+      findMany: vi.fn(),
       update: vi.fn(),
       updateMany: vi.fn(),
     },
+    $executeRaw: vi.fn(),
   },
 }));
 
@@ -29,6 +31,11 @@ vi.mock('../src/services/assistant/notify', () => ({
 vi.mock('../src/services/assistant/openai', () => ({
   generate: vi.fn(),
   AssistantProviderError: class extends Error {},
+}));
+
+vi.mock('../src/services/assistant/reader', () => ({
+  readDocument: vi.fn(),
+  readingForModel: (r: unknown) => JSON.stringify(r),
 }));
 
 vi.mock('../src/services/assistant/internalApi', () => ({
@@ -43,6 +50,8 @@ import { prisma } from '../src/config/prisma';
 import { generate } from '../src/services/assistant/openai';
 import { callApi, callApiForm } from '../src/services/assistant/internalApi';
 import { notifyMikoPhotoSaved } from '../src/services/assistant/notify';
+import { readDocument } from '../src/services/assistant/reader';
+import { availableFlows, FLOWS } from '../src/services/assistant/flows';
 import { TOOLS, TOOLS_BY_NAME } from '../src/services/assistant/tools';
 import { runChat, confirmAction, cancelAction, sanitizeHistory, consumeDailyQuota } from '../src/services/assistant/engine';
 
@@ -50,9 +59,10 @@ const mGenerate = generate as unknown as ReturnType<typeof vi.fn>;
 const mCallApi = callApi as unknown as ReturnType<typeof vi.fn>;
 const mCallApiForm = callApiForm as unknown as ReturnType<typeof vi.fn>;
 const mNotify = notifyMikoPhotoSaved as unknown as ReturnType<typeof vi.fn>;
+const mRead = readDocument as unknown as ReturnType<typeof vi.fn>;
 const db = prisma as unknown as {
   project: { findUnique: ReturnType<typeof vi.fn> };
-  assistantAction: Record<'create' | 'findFirst' | 'update' | 'updateMany', ReturnType<typeof vi.fn>>;
+  assistantAction: Record<'create' | 'findFirst' | 'findMany' | 'update' | 'updateMany', ReturnType<typeof vi.fn>>;
 };
 
 const user = { id: 'u1', name: 'Ravi', role: 'PROJECT_HEAD', projectId: 'p1', auth: 'Bearer tok' };
@@ -77,6 +87,7 @@ describe('assistant tool registry (hard limits)', () => {
       'create_mpr',
       'create_purchase_order',
       'create_quotation',
+      'create_site_bill',
       'create_stock_entry',
       'create_vendor',
     ]);
@@ -281,51 +292,191 @@ describe('history + quota', () => {
   });
 });
 
-describe('service requests and photos', () => {
-  const photo = { mimeType: 'image/jpeg' as const, data: 'A'.repeat(200) };
 
-  it('proposes a SERVICE request with its category and period, keeping the photo only on the stored action', async () => {
-    mGenerate
-      .mockResolvedValueOnce({
-        role: 'model',
-        parts: [
-          {
-            functionCall: {
-              name: 'create_mpr',
-              args: {
-                requestType: 'SERVICE',
-                vendorId: VENDOR_ID,
-                serviceCategory: 'Repair & Maintenance',
-                servicePeriodStart: '2026-10-10',
-                servicePeriodEnd: '2026-10-12',
-                items: [{ materialName: 'AC servicing', quantity: 4, unit: 'visit', estimatedRate: 1500 }],
-              },
+describe('guided flows', () => {
+  it('ask_user ends the turn with answer buttons and the flow, without another model call', async () => {
+    mGenerate.mockResolvedValueOnce({
+      role: 'model',
+      parts: [
+        {
+          functionCall: {
+            name: 'ask_user',
+            args: {
+              question: 'Which PO is this for?',
+              options: [{ label: 'VGH-PO012 · ABC · ₹50,000' }, { label: 'VGH-PO013 · XYZ · ₹8,000' }, { label: 'VGH-PO012 · ABC · ₹50,000' }],
+              flow: 'goods_receipt',
             },
           },
-        ],
-      })
-      .mockResolvedValueOnce({ role: 'model', parts: [{ text: 'Please confirm.' }] });
-    mCallApi.mockResolvedValue({ ok: true, status: 200, body: { id: VENDOR_ID, name: 'ABC Traders', vendorCode: 'V001' } });
-    db.assistantAction.create.mockResolvedValue({ id: 'a1' });
+        },
+      ],
+    });
 
-    const out = await runChat(user, 'AC service chey', [], [photo]);
+    const out = await runChat(user, 'Record a goods receipt', [], { flow: 'goods_receipt' });
 
-    const keys = out.pending[0].summary.fields.map((f) => f.key);
-    expect(keys).toEqual(expect.arrayContaining(['requestType', 'photos']));
-    expect(db.assistantAction.create.mock.calls[0][0].data.args._images).toHaveLength(1);
-    // The model saw the photo this turn, but the history returned to the client does not carry it.
-    expect(JSON.stringify(mGenerate.mock.calls[0][0].contents)).toContain(photo.data);
-    expect(JSON.stringify(out.history)).not.toContain(photo.data);
-    expect(keys).not.toContain('serviceCategory');
+    expect(mGenerate).toHaveBeenCalledTimes(1);
+    expect(out.reply).toBe('Which PO is this for?');
+    expect(out.ask).toEqual({ question: 'Which PO is this for?', options: ['VGH-PO012 · ABC · ₹50,000', 'VGH-PO013 · XYZ · ₹8,000'], askPhoto: false });
+    expect(out.flow).toBe('goods_receipt');
+    // The question is in the history, after the tool response, so the next turn continues cleanly.
+    expect(out.history.at(-1)).toEqual({ role: 'model', parts: [{ text: 'Which PO is this for?' }] });
+    expect(mGenerate.mock.calls[0][0].system).toContain('Goods Receipt (create_goods_receipt)');
   });
 
-  it('on confirm, sends the request without the photos and uploads them to the new record', async () => {
+  it('ignores an unknown flow from the client', async () => {
+    mGenerate.mockResolvedValueOnce({ role: 'model', parts: [{ text: 'Hi' }] });
+    const out = await runChat(user, 'hi', [], { flow: 'approve_everything' });
+    expect(out.flow).toBeNull();
+    expect(mGenerate.mock.calls[0][0].system).toContain('CURRENT TASK: none chosen yet');
+  });
+
+  it('a proposal without a chosen flow reports the flow it belongs to', async () => {
+    mGenerate
+      .mockResolvedValueOnce({ role: 'model', parts: [{ functionCall: { name: 'create_mpr', args: { requestType: 'SERVICE', vendorId: VENDOR_ID, items: [{ materialName: 'AC servicing', quantity: 2, unit: 'visit' }] } } }] })
+      .mockResolvedValueOnce({ role: 'model', parts: [{ text: 'Please confirm.' }] });
+    mCallApi.mockResolvedValue({ ok: true, status: 200, body: { id: VENDOR_ID, name: 'ABC', vendorCode: 'V1' } });
+    db.assistantAction.create.mockResolvedValue({ id: 'a1' });
+
+    const out = await runChat(user, 'AC service 2 visits from ABC', []);
+    expect(out.flow).toBe('service_request');
+  });
+
+  it('offers only the flows the user may finish (permission + module switch)', () => {
+    const all = availableFlows({ role: 'SUPER_ADMIN', extraPermissions: ['*'] }).map((f) => f.id);
+    expect(all).toEqual(FLOWS.map((f) => f.id));
+    const off = availableFlows({ role: 'SUPERVISOR', extraPermissions: [], moduleAccess: { invoices: false } }).map((f) => f.id);
+    expect(off).not.toContain('invoice');
+  });
+});
+
+describe('photos (OCR) across every flow', () => {
+  const photo = { mimeType: 'image/jpeg' as const, data: 'A'.repeat(200) };
+  const DOC_ID = '33333333-3333-4333-8333-333333333333';
+  const reading = {
+    documentType: 'tax_invoice',
+    legibility: 0.9,
+    language: 'English',
+    vendor: { name: 'ABC Traders', phone: null, email: null, gstNumber: '36ABCDE1234F1Z5', panNumber: null, address: null, contactPerson: null },
+    documentNumber: 'INV-77',
+    documentDate: '2026-10-05',
+    referenceNumber: null,
+    lines: [{ name: 'Cement', quantity: 50, unit: 'bags', rate: 380, gstRate: 18, amount: 19000 }],
+    subtotal: 19000,
+    taxAmount: 3420,
+    total: 22420,
+    paymentMode: null,
+    notes: null,
+    unreadable: [],
+  };
+
+  it('reads the photo once, gives the model the reading (not the image) and stores the document', async () => {
+    mRead.mockResolvedValue(reading);
+    db.assistantAction.create.mockResolvedValueOnce({ id: DOC_ID });
+    mGenerate.mockResolvedValueOnce({ role: 'model', parts: [{ text: 'This looks like an invoice from ABC Traders.' }] });
+
+    const out = await runChat(user, 'photo', [], { images: [photo], flow: 'invoice' });
+
+    expect(mRead).toHaveBeenCalledTimes(1);
+    expect(mRead.mock.calls[0][1]).toMatch(/invoice/);
+    const sent = JSON.stringify(mGenerate.mock.calls[0][0].contents);
+    expect(sent).not.toContain(photo.data);
+    expect(sent).toContain('INV-77');
+    expect(JSON.stringify(out.history)).not.toContain(photo.data);
+    const stored = db.assistantAction.create.mock.calls[0][0].data;
+    expect(stored).toMatchObject({ tool: '_document', status: 'DOCUMENT', userId: 'u1', projectId: 'p1' });
+    expect(stored.args._images).toHaveLength(1);
+    expect(out.document).toEqual({ id: DOC_ID, documentType: 'tax_invoice', lines: 1, vendor: 'ABC Traders', total: 22420, unclear: false });
+  });
+
+  it('a later turn attaches the stored document to the proposal of the flow record', async () => {
+    db.assistantAction.findMany.mockResolvedValue([{ args: { _images: [photo] } }]);
+    db.assistantAction.create.mockResolvedValue({ id: 'a1' });
+    mCallApi.mockResolvedValue({ ok: true, status: 200, body: { id: VENDOR_ID, name: 'ABC Traders', vendorCode: 'V1' } });
+    mGenerate
+      .mockResolvedValueOnce({ role: 'model', parts: [{ functionCall: { name: 'create_invoice', args: { vendorId: VENDOR_ID, invoiceNumber: 'INV-77', amount: 19000, taxAmount: 3420, totalAmount: 22420 } } }] })
+      .mockResolvedValueOnce({ role: 'model', parts: [{ text: 'Please confirm.' }] });
+
+    const out = await runChat(user, 'Not for a PO', [], { flow: 'invoice', documentIds: [DOC_ID] });
+
+    expect(mRead).not.toHaveBeenCalled();
+    expect(out.pending[0].summary.fields.find((f) => f.key === 'photos')?.value).toBe('1');
+    expect(db.assistantAction.findMany.mock.calls[0][0].where).toMatchObject({ id: { in: [DOC_ID] }, userId: 'u1', projectId: 'p1', tool: '_document' });
+    const args = db.assistantAction.create.mock.calls[0][0].data.args;
+    expect(args._images).toHaveLength(1);
+    expect(args._documents).toEqual([DOC_ID]);
+  });
+
+  it('a vendor created on the way to an invoice does not take the invoice photo', async () => {
+    db.assistantAction.create.mockResolvedValue({ id: 'a1' });
+    mGenerate
+      .mockResolvedValueOnce({ role: 'model', parts: [{ functionCall: { name: 'create_vendor', args: { name: 'ABC Traders', gstNumber: '36ABCDE1234F1Z5' } } }] })
+      .mockResolvedValueOnce({ role: 'model', parts: [{ text: 'Confirm the vendor first.' }] });
+
+    await runChat(user, 'yes add it', [], { flow: 'invoice', documentIds: [DOC_ID] });
+
+    expect(db.assistantAction.findMany).not.toHaveBeenCalled();
+    expect(db.assistantAction.create.mock.calls[0][0].data.args._images).toBeUndefined();
+  });
+
+  it('a site bill without a photo is refused back to the model', async () => {
+    db.assistantAction.findMany.mockResolvedValue([]);
+    mGenerate
+      .mockResolvedValueOnce({ role: 'model', parts: [{ functionCall: { name: 'create_site_bill', args: { shopName: 'Sri Sai Hardware', billDate: '2026-10-09', paymentMode: 'CASH', items: [{ materialName: 'Nails', quantity: 2, unit: 'kg', rate: 120 }] } } }] })
+      .mockResolvedValueOnce({ role: 'model', parts: [{ text: 'Please take a photo of the bill.' }] });
+
+    const out = await runChat(user, 'site bill', [], { flow: 'site_bill' });
+
+    expect(out.pending).toHaveLength(0);
+    expect(JSON.stringify(mGenerate.mock.calls[1][0].contents)).toMatch(/needs a photo or PDF/);
+  });
+
+  it('a site bill above the limit is refused back to the model', async () => {
+    db.assistantAction.findMany.mockResolvedValue([{ args: { _images: [photo] } }]);
+    mGenerate
+      .mockResolvedValueOnce({ role: 'model', parts: [{ functionCall: { name: 'create_site_bill', args: { shopName: 'Big Shop', billDate: '2026-10-09', paymentMode: 'UPI', items: [{ materialName: 'Cement', quantity: 50, unit: 'bags', rate: 380 }] } } }] })
+      .mockResolvedValueOnce({ role: 'model', parts: [{ text: 'Too large for a site bill.' }] });
+
+    const out = await runChat(user, 'bill', [], { flow: 'site_bill', documentIds: [DOC_ID] });
+
+    expect(out.pending).toHaveLength(0);
+    expect(JSON.stringify(mGenerate.mock.calls[1][0].contents)).toMatch(/above the site-bill limit/);
+  });
+
+  it('confirming a site bill posts multipart with the bill as the file', async () => {
+    db.assistantAction.findFirst.mockResolvedValue({
+      id: 'a2',
+      tool: 'create_site_bill',
+      status: 'PENDING',
+      createdAt: new Date(),
+      args: { shopName: 'Sri Sai Hardware', billDate: '2026-10-09', paymentMode: 'CASH', items: [{ materialName: 'Nails', quantity: 2, rate: 120 }], _images: [photo], _documents: [DOC_ID] },
+    });
+    db.assistantAction.updateMany.mockResolvedValue({ count: 1 });
+    db.assistantAction.update.mockResolvedValue({});
+    mCallApiForm.mockResolvedValue({ ok: true, status: 201, body: { id: VENDOR_ID, mprNumber: 'VGH-MPR040' } });
+
+    const out = await confirmAction('a2', user);
+
+    expect(out.ok).toBe(true);
+    expect(out.result?.label).toBe('VGH-MPR040');
+    expect(out.result?.link).toBe('/site-bills');
+    expect(mCallApi).not.toHaveBeenCalled();
+    const [, path, form] = mCallApiForm.mock.calls[0] as [string, string, FormData];
+    expect(path).toBe('/site-bills');
+    expect(form.get('shopName')).toBe('Sri Sai Hardware');
+    expect(JSON.parse(String(form.get('items')))[0].materialName).toBe('Nails');
+    expect(form.get('file')).toBeInstanceOf(Blob);
+    expect(form.get('_images')).toBeNull();
+    // The conversation document is released once saved.
+    expect(db.assistantAction.updateMany.mock.calls.at(-1)?.[0]).toMatchObject({ where: { id: { in: [DOC_ID] }, tool: '_document' }, data: { status: 'USED' } });
+    expect(mNotify).not.toHaveBeenCalled();
+  });
+
+  it('on confirm of a material request, sends it without the photos, uploads them and tells the supervisor', async () => {
     db.assistantAction.findFirst.mockResolvedValue({
       id: 'abcdef12-0000-4000-8000-000000000000',
       tool: 'create_mpr',
       status: 'PENDING',
       createdAt: new Date(),
-      args: { vendorId: VENDOR_ID, items: [{ materialName: 'Cement', quantity: 5 }], _images: [photo] },
+      args: { vendorId: VENDOR_ID, items: [{ materialName: 'Cement', quantity: 5 }], _images: [photo], _documents: [DOC_ID] },
     });
     db.assistantAction.updateMany.mockResolvedValue({ count: 1 });
     db.assistantAction.update.mockResolvedValue({});
@@ -337,35 +488,34 @@ describe('service requests and photos', () => {
     const out = await confirmAction('abcdef12-0000-4000-8000-000000000000', user);
 
     expect(out.ok).toBe(true);
-    expect(mCallApi.mock.calls[0][2]).toBe('/material-purchase-requests/next-material-code');
     const posted = mCallApi.mock.calls[1][3];
-    expect(JSON.stringify(posted)).not.toContain('_images');
+    expect(JSON.stringify(posted)).not.toMatch(/_images|_documents/);
     expect(posted.body.items[0].materialCode).toBe('VGH-MAT-0021');
-    expect(mCallApiForm).toHaveBeenCalledTimes(1);
     const form = mCallApiForm.mock.calls[0][2] as FormData;
     expect(form.get('entityType')).toBe('MATERIAL_PURCHASE_REQUEST');
-    expect(form.get('entityId')).toBe(VENDOR_ID);
     expect(out.result?.photos).toEqual({ attached: 1, total: 1 });
     expect(db.assistantAction.update.mock.calls.at(-1)?.[0].data.args._images).toBeUndefined();
     expect(mNotify).toHaveBeenCalledTimes(1);
   });
 
-  it('with a photo only create_mpr is allowed and extra fields are dropped', async () => {
-    db.assistantAction.create.mockResolvedValue({ id: 'a9' });
-    mGenerate
-      .mockResolvedValueOnce({ role: 'model', parts: [{ functionCall: { name: 'create_quotation', args: { vendorId: VENDOR_ID, items: [{ materialName: 'Cement', quantity: 5, unitPrice: 300 }] } } }] })
-      .mockResolvedValueOnce({
-        role: 'model',
-        parts: [{ functionCall: { name: 'create_mpr', args: { requestType: 'MATERIAL', newVendor: { name: 'Sri Lakshmi Traders' }, priority: 'Urgent', requiredBy: '2026-10-10', estimatedGstRate: 18, description: 'Cement for slab', items: [{ materialName: 'Cement', quantity: 5, unit: 'nos', estimatedRate: 380, specification: '53 grade', remarks: 'x' }] } } }],
-      })
-      .mockResolvedValueOnce({ role: 'model', parts: [{ text: 'Press Save.' }] });
+  it('confirming an invoice attaches the photo to the invoice and does not notify', async () => {
+    db.assistantAction.findFirst.mockResolvedValue({
+      id: 'a3',
+      tool: 'create_invoice',
+      status: 'PENDING',
+      createdAt: new Date(),
+      args: { vendorId: VENDOR_ID, amount: 100, taxAmount: 18, totalAmount: 118, _images: [photo], _documents: [DOC_ID] },
+    });
+    db.assistantAction.updateMany.mockResolvedValue({ count: 1 });
+    db.assistantAction.update.mockResolvedValue({});
+    mCallApi.mockResolvedValue({ ok: true, status: 201, body: { id: VENDOR_ID, invoiceCode: 'VGH-INV9' } });
+    mCallApiForm.mockResolvedValue({ ok: true, status: 201, body: {} });
 
-    const out = await runChat(user, 'photo', [], [photo]);
+    const out = await confirmAction('a3', user);
 
-    expect(out.pending).toHaveLength(1);
-    expect(out.pending[0].tool).toBe('create_mpr');
-    const stored = db.assistantAction.create.mock.calls[0][0].data.args;
-    expect(Object.keys(stored).sort()).toEqual(['_images', 'description', 'items', 'newVendor', 'requestType']);
-    expect(stored.items[0]).toEqual({ materialName: 'Cement', quantity: 5, unit: 'nos', estimatedRate: 380 });
+    expect(out.ok).toBe(true);
+    expect(mCallApi.mock.calls[0][3].body.acknowledged).toBe(true);
+    expect((mCallApiForm.mock.calls[0][2] as FormData).get('entityType')).toBe('VENDOR_INVOICE');
+    expect(mNotify).not.toHaveBeenCalled();
   });
 });

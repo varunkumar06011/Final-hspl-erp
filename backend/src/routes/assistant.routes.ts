@@ -3,8 +3,20 @@ import { z } from 'zod';
 import { env } from '../config/env';
 import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middleware/auth';
 import { logger } from '../utils/logger';
-import { runChat, confirmAction, cancelAction, consumeDailyQuota, type AssistantUser } from '../services/assistant/engine';
+import {
+  runChat,
+  confirmAction,
+  cancelAction,
+  consumeDailyQuota,
+  type AssistantUser,
+} from '../services/assistant/engine';
 import { AssistantProviderError } from '../services/assistant/openai';
+import { FLOW_IDS, availableFlows } from '../services/assistant/flows';
+import {
+  AUDIO_MIME_TYPES,
+  consumeTranscribeBudget,
+  transcribeAudio,
+} from '../services/assistant/transcribe';
 
 const router = Router();
 router.use(authMiddleware);
@@ -30,12 +42,34 @@ const chatSchema = z.object({
       z
         .object({
           mimeType: z.enum(['image/jpeg', 'image/png', 'image/webp', 'application/pdf']),
-          data: z.string().min(100).max(7_000_000).regex(/^[A-Za-z0-9+/]+=*$/),
+          data: z
+            .string()
+            .min(100)
+            .max(7_000_000)
+            .regex(/^[A-Za-z0-9+/]+=*$/),
         })
-        .refine((f) => f.mimeType === 'application/pdf' || f.data.length <= 2_500_000, { message: 'Image too large' }),
+        .refine((f) => f.mimeType === 'application/pdf' || f.data.length <= 2_500_000, {
+          message: 'Image too large',
+        }),
     )
     .max(3)
     .optional(),
+  // Guided flow picked from Miko's menu, and documents read on earlier turns of this conversation.
+  flow: z.enum(FLOW_IDS as [string, ...string[]]).optional(),
+  documentIds: z.array(z.string().uuid()).max(6).optional(),
+});
+
+const transcribeSchema = z.object({
+  // One recording (up to 2 minutes of speech, ~0.5 MB of base64 in practice; 8 MB is a hard ceiling).
+  audio: z
+    .string()
+    .min(200)
+    .max(8_000_000)
+    .regex(/^[A-Za-z0-9+/]+=*$/),
+  mimeType: z.enum(AUDIO_MIME_TYPES),
+  language: z.enum(['en', 'te']).optional(),
+  // Live previews run while the user is still speaking; they are not counted as chat messages.
+  live: z.boolean().optional(),
 });
 
 // GET /assistant/status — lets the UI hide the assistant when it is switched off.
@@ -43,12 +77,19 @@ router.get('/status', (_req: AuthenticatedRequest, res: Response) => {
   res.json({ enabled: isConfigured(), dailyLimit: env.ASSISTANT_DAILY_LIMIT });
 });
 
+// GET /assistant/flows — the create flows this user may start (Miko's start menu).
+router.get('/flows', (req: AuthenticatedRequest, res: Response) => {
+  res.json({ flows: availableFlows(req.user!).map((f) => ({ id: f.id, tool: f.tool, photo: f.tool === 'create_site_bill' ? 'required' : 'optional' })) });
+});
+
 // POST /assistant/chat — one user message. Reads run now; creates come back as
 // pending proposals the user must confirm.
 router.post('/chat', async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
     if (!isConfigured()) {
-      res.status(503).json({ error: 'The AI assistant is not enabled', code: 'ASSISTANT_DISABLED' });
+      res
+        .status(503)
+        .json({ error: 'The AI assistant is not enabled', code: 'ASSISTANT_DISABLED' });
       return;
     }
     const parsed = chatSchema.safeParse(req.body);
@@ -58,24 +99,98 @@ router.post('/chat', async (req: AuthenticatedRequest, res: Response, next: Next
     }
     const quota = consumeDailyQuota(req.user!.id);
     if (!quota.ok) {
-      res.status(429).json({ error: 'Daily assistant limit reached', code: 'ASSISTANT_LIMIT', limit: quota.limit });
+      res
+        .status(429)
+        .json({
+          error: 'Daily assistant limit reached',
+          code: 'ASSISTANT_LIMIT',
+          limit: quota.limit,
+        });
       return;
     }
 
     const started = Date.now();
-    const result = await runChat(assistantUser(req), parsed.data.message, parsed.data.history, parsed.data.images ?? []);
+    const result = await runChat(
+      assistantUser(req),
+      parsed.data.message,
+      parsed.data.history,
+      { images: parsed.data.images ?? [], flow: parsed.data.flow, documentIds: parsed.data.documentIds ?? [] },
+    );
     logger.info({
       event: 'assistant_chat',
       userId: req.user!.id,
       ms: Date.now() - started,
       pending: result.pending.map((p) => p.tool),
       images: parsed.data.images?.length ?? 0,
+      flow: result.flow,
+      asked: !!result.ask,
     });
     res.json(result);
   } catch (error) {
     if (error instanceof AssistantProviderError) {
       logger.error({ event: 'assistant_provider_error', message: error.message });
-      res.status(error.status === 429 ? 429 : 502).json({ error: error.message, code: 'ASSISTANT_PROVIDER' });
+      res
+        .status(error.status === 429 ? 429 : 502)
+        .json({ error: error.message, code: 'ASSISTANT_PROVIDER' });
+      return;
+    }
+    next(error);
+  }
+});
+
+// POST /assistant/transcribe — the mic button. Returns the spoken words as text for the user to review.
+router.post('/transcribe', async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  try {
+    if (!isConfigured()) {
+      res
+        .status(503)
+        .json({ error: 'The AI assistant is not enabled', code: 'ASSISTANT_DISABLED' });
+      return;
+    }
+    const parsed = transcribeSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: 'Audio is required' });
+      return;
+    }
+    const userId = req.user!.id;
+    if (!consumeTranscribeBudget(userId)) {
+      res.status(429).json({ error: 'Too many voice requests', code: 'ASSISTANT_LIMIT' });
+      return;
+    }
+    if (!parsed.data.live) {
+      const quota = consumeDailyQuota(userId);
+      if (!quota.ok) {
+        res
+          .status(429)
+          .json({
+            error: 'Daily assistant limit reached',
+            code: 'ASSISTANT_LIMIT',
+            limit: quota.limit,
+          });
+        return;
+      }
+    }
+
+    const started = Date.now();
+    const data = Buffer.from(parsed.data.audio, 'base64');
+    const text = await transcribeAudio({
+      data,
+      mimeType: parsed.data.mimeType,
+      language: parsed.data.language,
+    });
+    logger.info({
+      event: 'assistant_transcribe',
+      userId,
+      live: !!parsed.data.live,
+      bytes: data.length,
+      ms: Date.now() - started,
+    });
+    res.json({ text });
+  } catch (error) {
+    if (error instanceof AssistantProviderError) {
+      res
+        .status(error.status === 429 ? 429 : 502)
+        .json({ error: error.message, code: 'ASSISTANT_PROVIDER' });
       return;
     }
     next(error);
@@ -83,36 +198,49 @@ router.post('/chat', async (req: AuthenticatedRequest, res: Response, next: Next
 });
 
 // POST /assistant/actions/:id/confirm — user pressed Confirm on a proposal.
-router.post('/actions/:id/confirm', async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
-  try {
-    if (!isConfigured()) {
-      res.status(503).json({ error: 'The AI assistant is not enabled', code: 'ASSISTANT_DISABLED' });
-      return;
+router.post(
+  '/actions/:id/confirm',
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      if (!isConfigured()) {
+        res
+          .status(503)
+          .json({ error: 'The AI assistant is not enabled', code: 'ASSISTANT_DISABLED' });
+        return;
+      }
+      if (!z.string().uuid().safeParse(req.params.id).success) {
+        res.status(400).json({ error: 'Invalid action id' });
+        return;
+      }
+      const out = await confirmAction(req.params.id, assistantUser(req));
+      logger.info({
+        event: 'assistant_confirm',
+        userId: req.user!.id,
+        actionId: req.params.id,
+        ok: out.ok,
+      });
+      res.status(out.ok ? 201 : out.status).json(out);
+    } catch (error) {
+      next(error);
     }
-    if (!z.string().uuid().safeParse(req.params.id).success) {
-      res.status(400).json({ error: 'Invalid action id' });
-      return;
-    }
-    const out = await confirmAction(req.params.id, assistantUser(req));
-    logger.info({ event: 'assistant_confirm', userId: req.user!.id, actionId: req.params.id, ok: out.ok });
-    res.status(out.ok ? 201 : out.status).json(out);
-  } catch (error) {
-    next(error);
-  }
-});
+  },
+);
 
 // POST /assistant/actions/:id/cancel
-router.post('/actions/:id/cancel', async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
-  try {
-    if (!z.string().uuid().safeParse(req.params.id).success) {
-      res.status(400).json({ error: 'Invalid action id' });
-      return;
+router.post(
+  '/actions/:id/cancel',
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      if (!z.string().uuid().safeParse(req.params.id).success) {
+        res.status(400).json({ error: 'Invalid action id' });
+        return;
+      }
+      const ok = await cancelAction(req.params.id, assistantUser(req));
+      res.json({ ok });
+    } catch (error) {
+      next(error);
     }
-    const ok = await cancelAction(req.params.id, assistantUser(req));
-    res.json({ ok });
-  } catch (error) {
-    next(error);
-  }
-});
+  },
+);
 
 export default router;

@@ -26,7 +26,8 @@ const apiLimiter = rateLimit({
   legacyHeaders: false,
   // The AI assistant calls this server's own API on the user's behalf; those
   // loopback calls carry a per-process secret and must not eat the user's quota.
-  skip: (req) => req.headers[INTERNAL_HEADER] === INTERNAL_SECRET,
+  // Voice transcription sends live previews while the user speaks; it has its own per-user budget.
+  skip: (req) => req.headers[INTERNAL_HEADER] === INTERNAL_SECRET || req.path === '/assistant/transcribe',
 });
 app.use('/api', apiLimiter);
 

@@ -9,6 +9,11 @@
   "micStop": "Stop listening",
   "micUnsupported": "Voice input is not supported in this browser",
   "micError": "Could not hear you. Please try again.",
+  "listening": "Listening… {{time}}",
+  "micHint": "Press stop when you finish",
+  "transcribing": "Turning your speech into text…",
+  "micDenied": "The microphone is blocked. Allow it in your browser or phone settings to speak to Miko.",
+  "micEmpty": "I could not hear any words. Please try again.",
   "welcomeTitle": "Hey, I am Miko!",
   "welcomeBody": "How can I help you?",
   "ex1": "Show unapproved POs",
@@ -40,7 +45,8 @@
     "create_goods_receipt": "New goods receipt",
     "create_invoice": "New invoice",
     "create_stock_entry": "New stock entry",
-    "save_to_library": "Save photo to library"
+    "save_to_library": "Save photo to library",
+    "create_site_bill": "New site bill"
   },
   "field": {
     "name": "Name",
@@ -77,7 +83,9 @@
     "technicalRequirements": "Technical requirements",
     "contactNumber": "Contact number",
     "saveAs": "Save as",
-    "documentType": "Document type"
+    "documentType": "Document type",
+    "shop": "Shop",
+    "paymentMode": "Payment mode"
   },
   "total": {
     "subtotal": "Subtotal",
@@ -125,12 +133,78 @@
   },
   "attach": "Attach photo or PDF",
   "removePhoto": "Remove file",
-  "photoDefault": "Read this photo or PDF and prepare the request from it.",
+  "photoDefault": "Read this document and fill in the details from it.",
   "photoError": "Could not read that file. Try a JPG, PNG or PDF.",
   "photoMax": "You can attach up to {{n}} files.",
   "photosSaved_one": "{{count}} photo attached to the record.",
   "photosSaved_other": "{{count}} photos attached to the record.",
   "photosPartial": "Only {{attached}} of {{total}} photos could be attached.",
   "pdfTooBig": "That PDF is too large (5 MB max).",
-  "dropHere": "Drop photo or PDF here"
+  "dropHere": "Drop photo or PDF here",
+  "menuTitle": "What would you like to create?",
+  "menuHint": "Pick one and I will ask only what is needed. You can also send a photo of a bill, challan or quotation.",
+  "menuOr": "Or ask me anything",
+  "whatNext": "What next?",
+  "creating": "Creating: {{name}}",
+  "stopFlow": "Stop",
+  "docsAttached_one": "{{count}} document attached",
+  "docsAttached_other": "{{count}} documents attached",
+  "docRead": "Read as {{type}}",
+  "docLines_one": "{{count}} line",
+  "docLines_other": "{{count}} lines",
+  "docUnclear": "Some parts were hard to read. Please check the details.",
+  "takePhoto": "Take photo",
+  "uploadFile": "Upload photo / PDF",
+  "scanHint": "Tip: take a photo of the document and I will fill everything in.",
+  "continueAfterSave": "Saved. Continue.",
+  "flows": {
+    "material_request": {
+      "label": "Material request",
+      "start": "I want to create a material request."
+    },
+    "service_request": {
+      "label": "Service request",
+      "start": "I want to create a service request."
+    },
+    "quotation": {
+      "label": "Quotation",
+      "start": "I want to record a quotation."
+    },
+    "purchase_order": {
+      "label": "Purchase order",
+      "start": "I want to create a purchase order."
+    },
+    "goods_receipt": {
+      "label": "Goods receipt",
+      "start": "I want to record a goods receipt."
+    },
+    "invoice": {
+      "label": "Vendor invoice",
+      "start": "I want to record a vendor invoice."
+    },
+    "stock_entry": {
+      "label": "Stock entry",
+      "start": "I want to make a stock entry."
+    },
+    "site_bill": {
+      "label": "Site bill",
+      "start": "I want to record a site bill."
+    },
+    "vendor": {
+      "label": "New vendor",
+      "start": "I want to add a new vendor."
+    }
+  },
+  "docType": {
+    "material_list": "material list",
+    "quotation": "quotation",
+    "purchase_order": "purchase order",
+    "tax_invoice": "tax invoice",
+    "shop_bill": "shop bill",
+    "delivery_challan": "delivery challan",
+    "visiting_card": "visiting card",
+    "gst_certificate": "GST certificate",
+    "service_estimate": "service estimate",
+    "other": "document"
+  }
 }

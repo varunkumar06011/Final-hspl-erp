@@ -19,10 +19,13 @@ import {
   createGoodsReceiptSchema,
   createInvoiceSchema,
   createStockEntrySchema,
+  createSiteBillSchema,
+  SITE_BILL_LIMIT,
 } from '@hospital-erp/shared';
 import { callApi, apiErrorMessage } from './internalApi';
 import { REGISTRY } from '../search/registry';
 import type { FunctionDeclaration } from './openai';
+import { FLOW_IDS } from './flows';
 
 export interface ToolContext {
   /** The caller's own Authorization header, forwarded to every internal call. */
@@ -63,6 +66,7 @@ const O = (properties: Record<string, unknown>, required: string[] = []) => ({
   required,
 });
 const A = (items: unknown, description: string) => ({ type: 'ARRAY', items, description });
+const B = (description: string) => ({ type: 'BOOLEAN', description });
 
 // ─── formatting ─────────────────────────────────────────────────────────────
 const inr = new Intl.NumberFormat('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
@@ -164,9 +168,24 @@ export interface WriteTool {
   labelFields: string[];
   /** Resolve labels + compute totals for the confirmation card. Throws ToolError on bad references. */
   summarize(args: Record<string, any>, ctx: ToolContext): Promise<ActionSummary>;
+  /**
+   * The endpoint takes multipart/form-data with the document as `file` (the first attached
+   * photo/PDF); a proposal without an attached document is refused.
+   */
+  fileField?: string;
+  /** Attachment.entityType the attached photos are saved under after create (none = not attached). */
+  attachAs?: string;
+  /** Page of the created record, when the search registry's link is not the right one. */
+  link?: (record: Record<string, unknown>) => string | null;
 }
 
-export type Tool = ReadTool | WriteTool;
+/** A question with tap-able answers shown to the user; ends the turn. */
+export interface AskTool {
+  kind: 'ask';
+  declaration: FunctionDeclaration;
+}
+
+export type Tool = ReadTool | WriteTool | AskTool;
 
 // ─── lookups used to build confirmation cards ───────────────────────────────
 async function lookup(ctx: ToolContext, path: string, id: string, what: string): Promise<any> {
@@ -307,13 +326,14 @@ const writeTools: WriteTool[] = [
     kind: 'write',
     schema: createVendorSchema,
     path: '/vendors',
+    attachAs: 'VENDOR',
     model: 'Vendor',
     needsAck: false,
     labelFields: ['name'],
     declaration: {
       name: 'create_vendor',
       description:
-        'Propose creating a new vendor/supplier. Only call after the user has agreed to create it (never auto-create when a name is not found — ask first). The user must confirm before it is saved.',
+        'Propose creating a new vendor/supplier: when the user asked for one, or a quotation / invoice / PO needs a vendor that does not exist yet (check list_records vendors first). The user must confirm before it is saved.',
       parameters: O(
         {
           name: S('Vendor / company name.'),
@@ -352,13 +372,14 @@ const writeTools: WriteTool[] = [
     kind: 'write',
     schema: createMPRSchema,
     path: '/material-purchase-requests',
+    attachAs: 'MATERIAL_PURCHASE_REQUEST',
     model: 'MaterialPurchaseRequest',
     needsAck: false,
     labelFields: ['mprNumber'],
     declaration: {
       name: 'create_mpr',
       description:
-        'Propose a Material Purchase Request (requestType MATERIAL) or a Service Request (requestType SERVICE) for a vendor. It is saved as a DRAFT; the user submits it for approval in the app. Needs the vendor (existing vendorId, or newVendor only if the user agreed to create one) and at least one item with a quantity. For SERVICE, each item is a service/work line (materialName = what work, e.g. "AC servicing", quantity = hours/days/visits/jobs, unit from the service units).',
+        'Propose a Material Purchase Request (requestType MATERIAL) or a Service Request (requestType SERVICE) for a vendor. It is saved as a DRAFT; the user submits it for approval in the app. Needs the vendor (existing vendorId; if no vendor matches, newVendor, which is created together with the request) and at least one item with a quantity. For SERVICE, each item is a service/work line (materialName = what work, e.g. "AC servicing", quantity = hours/days/visits/jobs, unit from the service units).',
       parameters: O(
         {
           requestType: E(['MATERIAL', 'SERVICE'], 'Default MATERIAL.'),
@@ -427,6 +448,7 @@ const writeTools: WriteTool[] = [
     kind: 'write',
     schema: createQuotationSchema,
     path: '/quotations',
+    attachAs: 'QUOTATION',
     model: 'Quotation',
     needsAck: true,
     labelFields: ['quotationNumber'],
@@ -481,6 +503,7 @@ const writeTools: WriteTool[] = [
     kind: 'write',
     schema: createPOSchema,
     path: '/purchase-orders',
+    attachAs: 'PURCHASE_ORDER',
     model: 'PurchaseOrder',
     needsAck: true,
     labelFields: ['poNumber'],
@@ -530,6 +553,7 @@ const writeTools: WriteTool[] = [
     kind: 'write',
     schema: createGoodsReceiptSchema,
     path: '/goods-receipts',
+    attachAs: 'GOODS_RECEIPT',
     model: 'GoodsReceipt',
     needsAck: false,
     labelFields: ['receiptNumber'],
@@ -566,6 +590,7 @@ const writeTools: WriteTool[] = [
     kind: 'write',
     schema: createInvoiceSchema,
     path: '/invoices',
+    attachAs: 'VENDOR_INVOICE',
     model: 'VendorInvoice',
     needsAck: true,
     labelFields: ['invoiceCode', 'invoiceNumber'],
@@ -603,6 +628,7 @@ const writeTools: WriteTool[] = [
     kind: 'write',
     schema: createStockEntrySchema,
     path: '/stock-entries',
+    attachAs: 'STOCK_ENTRY',
     model: 'StockEntry',
     needsAck: false,
     labelFields: ['entryNumber'],
@@ -649,9 +675,78 @@ const writeTools: WriteTool[] = [
       };
     },
   },
+
+  // ── Site bill ──
+  {
+    kind: 'write',
+    schema: createSiteBillSchema,
+    path: '/site-bills',
+    model: 'MaterialPurchaseRequest',
+    needsAck: false,
+    labelFields: ['mprNumber'],
+    fileField: 'file',
+    attachAs: 'MATERIAL_PURCHASE_REQUEST',
+    link: () => '/site-bills',
+    declaration: {
+      name: 'create_site_bill',
+      description: `Propose recording a small bill already paid at site (total up to ₹${SITE_BILL_LIMIT}). Needs a photo or PDF of the bill attached in this conversation; it is saved with the bill. Several site bills are later combined into one reimbursement PO in the app.`,
+      parameters: O(
+        {
+          shopName: S('Shop / seller name from the bill.'),
+          billDate: S('Bill date, YYYY-MM-DD.'),
+          paymentMode: E(['CASH', 'UPI', 'BANK_TRANSFER', 'CHEQUE'], 'How it was paid.'),
+          description: S('What it was bought for (optional).'),
+          items: A(
+            O({ materialName: S('Item name in English.'), quantity: N('Quantity.'), unit: S('Unit as on the bill.'), rate: N('Rate per unit in rupees, GST included as charged.') }, ['materialName', 'quantity', 'rate']),
+            'Bill lines.',
+          ),
+        },
+        ['shopName', 'billDate', 'paymentMode', 'items'],
+      ),
+    },
+    async summarize(a) {
+      let total = 0;
+      const items = (a.items as any[]).map((i) => {
+        const amount = num(i.quantity) * num(i.rate);
+        total += amount;
+        return { name: i.materialName, qty: String(i.quantity), unit: i.unit, rate: money(num(i.rate)), amount: money(amount) };
+      });
+      if (total > SITE_BILL_LIMIT) {
+        throw new ToolError(`The bill total ${money(total)} is above the site-bill limit of ${money(SITE_BILL_LIMIT)}. Tell the user and offer a Material Request (create_mpr) instead.`);
+      }
+      return {
+        fields: [field('shop', a.shopName), field('date', a.billDate), field('paymentMode', a.paymentMode), ...maybe('description', a.description)],
+        items,
+        totals: [field('total', money(total))],
+      };
+    },
+  },
 ];
 
-export const TOOLS: Tool[] = [...readTools, ...writeTools];
+// ─── ask tool (quick-reply question) ────────────────────────────────────────
+export const MAX_ASK_OPTIONS = 10;
+const askTool: AskTool = {
+  kind: 'ask',
+  declaration: {
+    name: 'ask_user',
+    description:
+      'Ask the user ONE short question and show answer buttons they can tap. Use it whenever the answer is a choice: which flow, which vendor / PO / quotation / material request, payment type, GST %, yes / no, skip. The turn ends here and the app shows the question, so do not repeat it in text. Free-text questions (quantities, names) can also go here with no options.',
+    parameters: O(
+      {
+        question: S('The question, short, in the user\'s language.'),
+        options: A(
+          O({ label: S('Button text, short (e.g. "VGH-PO012 · ABC Traders · ₹50,000", "Yes", "Skip"). Tapping it sends this text as the reply.') }, ['label']),
+          `Answer buttons, at most ${MAX_ASK_OPTIONS}. Empty for a free-text answer.`,
+        ),
+        flow: E(FLOW_IDS, 'The create flow this question belongs to.'),
+        askPhoto: B('Show a "Take photo" button (e.g. to scan a bill, challan or quotation).'),
+      },
+      ['question'],
+    ),
+  },
+};
+
+export const TOOLS: Tool[] = [...readTools, ...writeTools, askTool];
 export const TOOLS_BY_NAME: Record<string, Tool> = Object.fromEntries(TOOLS.map((t) => [t.declaration.name, t]));
 export const DECLARATIONS: FunctionDeclaration[] = TOOLS.map((t) => t.declaration);
 
@@ -666,6 +761,7 @@ export function createdRecordLink(tool: WriteTool, body: any): string | null {
   const rec = unwrap(body) ?? {};
   const reg = REGISTRY[tool.model];
   try {
+    if (tool.link) return tool.link(rec);
     return rec.id && reg?.path ? reg.path(String(rec.id), rec) : null;
   } catch {
     return null;
