@@ -139,8 +139,8 @@ export async function streamPurchaseOrderPdf(res: NodeJS.WritableStream, po: any
   const vData = [
     ['Name', text(po.vendor?.name)],
     ['Contact', text(po.vendor?.phone ?? po.vendor?.contactPersonPhone)],
-    ['GSTIN', text(po.vendor?.gstNumber)],
-    ['PAN', text(po.vendor?.panNumber)],
+    ['Bank A/C', text(po.vendor?.bankAccountNumber)],
+    ['IFSC', text(po.vendor?.ifscCode)],
   ];
 
   let vy = vBoxTop + 29;
