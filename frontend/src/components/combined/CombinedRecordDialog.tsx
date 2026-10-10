@@ -760,7 +760,7 @@ function PoCard({
           </>
         )}
         {amountMissing && !dead && <Button variant="contained" color="warning" size="small" startIcon={<EditIcon />} onClick={onOpen}>{t('enterPrices')}</Button>}
-        <Button size="small" startIcon={<PdfIcon />} onClick={onPdf}>{t('pdf')}</Button>
+        <Button size="small" startIcon={<PdfIcon />} onClick={onPdf} disabled={!['APPROVED', 'DELIVERED', 'PARTIALLY_DELIVERED'].includes(po.status)}>{t('pdf')}</Button>
         <Button size="small" startIcon={<OpenIcon />} onClick={onOpen}>{t('openInPo')}</Button>
       </Actions>
     </Card>

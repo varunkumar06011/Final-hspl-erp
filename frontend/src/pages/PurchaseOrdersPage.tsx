@@ -190,6 +190,10 @@ interface PORow {
 const HEAD_ROLES = [UserRole.PROJECT_HEAD, UserRole.HEAD_OF_CONSTRUCTION, UserRole.ACCOUNTS_HEAD];
 // Admin roles (ADMIN, ADMIN_2, ADMIN_3, ...) are checked dynamically via isAdminRole().
 
+// The PO PDF is issued only after approval (the backend enforces this too).
+const poPdfReady = (status: string) =>
+  status === POStatus.APPROVED || status === POStatus.DELIVERED || status === POStatus.PARTIALLY_DELIVERED;
+
 export default function PurchaseOrdersPage() {
   const theme = useTheme();
   const { t } = useTranslation('po');
@@ -831,8 +835,8 @@ export default function PurchaseOrdersPage() {
                             <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'flex-end', alignItems: 'center', flexWrap: 'nowrap' }}>
                               <CommentsButton labelled entityType="PURCHASE_ORDER" entityId={row.id} entityLabel={row.poNumber} url="/pos" />
                               <IconButton size="small" onClick={() => navigate(`/combined-records?type=po&id=${row.id}`)} title={t('openCombined')}><CombinedIcon fontSize="small" /></IconButton>
-                              <IconButton size="small" onClick={() => previewPDF(row.id)} title={t('previewPdf')} disabled={pdfLoading}>{pdfLoading ? <CircularProgress size={16} /> : <PdfIcon fontSize="small" />}</IconButton>
-                              <IconButton size="small" onClick={() => downloadPDF(row.id, row.poNumber)} title={t('downloadPdf')}><DownloadIcon fontSize="small" /></IconButton>
+                              <IconButton size="small" onClick={() => previewPDF(row.id)} title={t('previewPdf')} disabled={pdfLoading || !poPdfReady(row.status)}>{pdfLoading ? <CircularProgress size={16} /> : <PdfIcon fontSize="small" />}</IconButton>
+                              <IconButton size="small" onClick={() => downloadPDF(row.id, row.poNumber)} title={t('downloadPdf')} disabled={!poPdfReady(row.status)}><DownloadIcon fontSize="small" /></IconButton>
                               {canApprove(row) && (
                                 <>
                                   <IconButton size="small" color="success" onClick={() => setApprovalAction({ row, action: 'approve' })} title={t('approve')}><CheckIcon fontSize="small" /></IconButton>
@@ -1232,8 +1236,8 @@ export default function PurchaseOrdersPage() {
 
                         {/* Actions — bottom row */}
                         <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, mt: 1, pt: 1, borderTop: '1px solid', borderColor: 'divider' }}>
-                          <Button size="small" variant="outlined" startIcon={pdfLoading ? <CircularProgress size={16} /> : <PdfIcon />} onClick={() => previewPDF(row.id)} disabled={pdfLoading}>{t('open')}</Button>
-                          <Button size="small" variant="outlined" startIcon={<DownloadIcon />} onClick={() => downloadPDF(row.id, row.poNumber)}>{t('pdf')}</Button>
+                          <Button size="small" variant="outlined" startIcon={pdfLoading ? <CircularProgress size={16} /> : <PdfIcon />} onClick={() => previewPDF(row.id)} disabled={pdfLoading || !poPdfReady(row.status)}>{t('open')}</Button>
+                          <Button size="small" variant="outlined" startIcon={<DownloadIcon />} onClick={() => downloadPDF(row.id, row.poNumber)} disabled={!poPdfReady(row.status)}>{t('pdf')}</Button>
                           <CommentsButton labelled entityType="PURCHASE_ORDER" entityId={row.id} entityLabel={row.poNumber} url="/pos" />
                           <Button size="small" variant="outlined" startIcon={<WhatsAppIcon />} onClick={() => shareOnWhatsApp(buildPOShareMessage({ poNumber: row.poNumber, vendorName: row.vendor?.name, grandTotal: Number(row.grandTotal), status: row.status, date: row.date, totalDeductions: Number(row.totalDeductions ?? 0), netPayable: Number(row.netPayable ?? row.grandTotal), deductions: row.deductions ?? undefined, notes: row.notes ?? undefined }))}>{t('share')}</Button>
                           {row.status !== POStatus.DELETED && (

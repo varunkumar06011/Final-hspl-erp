@@ -1603,7 +1603,13 @@ router.post(
   }
 );
 
-// GET /:id/pdf — generate and download PDF
+const PDF_ALLOWED_STATUSES: POStatus[] = [
+  POStatus.APPROVED,
+  POStatus.DELIVERED,
+  POStatus.PARTIALLY_DELIVERED,
+];
+
+// GET /:id/pdf — generate and download PDF (approved POs only)
 router.get(
   '/:id/pdf',
   rbacMiddleware(Permission.VIEW_FINANCIALS),
@@ -1630,6 +1636,15 @@ router.get(
       });
       if (!po) {
         res.status(404).json({ error: 'Purchase order not found' });
+        return;
+      }
+
+      // The PO document is only issued once it has been approved.
+      if (!PDF_ALLOWED_STATUSES.includes(po.status as POStatus)) {
+        res.status(409).json({
+          error: 'PO PDF can be downloaded only after the PO is approved',
+          code: 'PO_NOT_APPROVED',
+        });
         return;
       }
 
