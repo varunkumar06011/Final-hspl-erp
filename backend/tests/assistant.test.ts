@@ -53,7 +53,7 @@ import { notifyMikoPhotoSaved } from '../src/services/assistant/notify';
 import { readDocument } from '../src/services/assistant/reader';
 import { availableFlows, FLOWS } from '../src/services/assistant/flows';
 import { TOOLS, TOOLS_BY_NAME } from '../src/services/assistant/tools';
-import { runChat, confirmAction, cancelAction, sanitizeHistory, consumeDailyQuota } from '../src/services/assistant/engine';
+import { runChat, confirmAction, editAction, cancelAction, sanitizeHistory, consumeDailyQuota } from '../src/services/assistant/engine';
 
 const mGenerate = generate as unknown as ReturnType<typeof vi.fn>;
 const mCallApi = callApi as unknown as ReturnType<typeof vi.fn>;
@@ -517,5 +517,109 @@ describe('photos (OCR) across every flow', () => {
     expect(mCallApi.mock.calls[0][3].body.acknowledged).toBe(true);
     expect((mCallApiForm.mock.calls[0][2] as FormData).get('entityType')).toBe('VENDOR_INVOICE');
     expect(mNotify).not.toHaveBeenCalled();
+  });
+});
+
+describe('editing a proposal on its card', () => {
+  const stored = () => ({
+    id: 'e1',
+    userId: 'u1',
+    projectId: 'p1',
+    tool: 'create_site_bill',
+    status: 'PENDING',
+    createdAt: new Date(),
+    args: {
+      shopName: 'CHALUVADI BOOK DEPOT',
+      billDate: '2026-10-21',
+      paymentMode: 'CASH',
+      items: [
+        { materialName: 'note book', quantity: 2, unit: 'nos', rate: 50 },
+        { materialName: 'Pc', quantity: 1, unit: 'nos', rate: 100 },
+      ],
+      _images: [{ mimeType: 'image/jpeg', data: 'A'.repeat(200) }],
+      _documents: ['d1'],
+    },
+  });
+
+  it('applies edited fields and lines, re-totals, and keeps the photo', async () => {
+    db.assistantAction.findFirst.mockResolvedValue(stored());
+    db.assistantAction.updateMany.mockResolvedValue({ count: 1 });
+
+    const out = await editAction('e1', user, {
+      fields: { shopName: 'Chaluvadi Book Depot', paymentMode: 'UPI' },
+      items: [
+        { src: 0, values: { materialName: 'Note book', quantity: '3', rate: '60' } },
+        { src: null, values: { materialName: 'Pen', quantity: 1, unit: 'nos', rate: 10 } },
+      ],
+    });
+
+    expect(out.ok).toBe(true);
+    expect(out.summary?.totals?.find((t) => t.key === 'total')?.value).toBe('₹190');
+    expect(out.edit?.items?.rows).toHaveLength(2);
+    const saved = db.assistantAction.updateMany.mock.calls[0][0];
+    expect(saved.where).toEqual({ id: 'e1', status: 'PENDING' });
+    expect(saved.data.args.shopName).toBe('Chaluvadi Book Depot');
+    expect(saved.data.args.items[0]).toEqual({ materialName: 'Note book', quantity: 3, unit: 'nos', rate: 60 });
+    expect(saved.data.args._images).toHaveLength(1);
+    expect(saved.data.args._documents).toEqual(['d1']);
+  });
+
+  it('refuses fields that are not editable and keeps the stored proposal', async () => {
+    db.assistantAction.findFirst.mockResolvedValue(stored());
+    const out = await editAction('e1', user, { fields: { vendorId: '1' } });
+    expect(out.status).toBe(422);
+    expect(out.error).toMatch(/cannot be edited/);
+    expect(db.assistantAction.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('refuses edits the form itself would refuse (bill above the site-bill limit, bad number)', async () => {
+    db.assistantAction.findFirst.mockResolvedValue(stored());
+    const big = await editAction('e1', user, { items: [{ src: 0, values: { quantity: 500, rate: 50 } }] });
+    expect(big.status).toBe(422);
+    expect(big.error).toMatch(/site-bill limit/);
+    const bad = await editAction('e1', user, { items: [{ src: 0, values: { quantity: 'abc' } }] });
+    expect(bad.status).toBe(422);
+    const noName = await editAction('e1', user, { items: [{ src: 0, values: { materialName: '' } }] });
+    expect(noName.status).toBe(422);
+    expect(db.assistantAction.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('only the owner can edit, and only while pending', async () => {
+    db.assistantAction.findFirst.mockResolvedValue(null);
+    expect((await editAction('e1', user, {})).status).toBe(404);
+    expect(db.assistantAction.findFirst.mock.calls[0][0].where).toEqual({ id: 'e1', userId: 'u1', projectId: 'p1' });
+    db.assistantAction.findFirst.mockResolvedValue({ ...stored(), status: 'EXECUTED' });
+    expect((await editAction('e1', user, {})).status).toBe(409);
+    db.assistantAction.findFirst.mockResolvedValue({ ...stored(), createdAt: new Date(Date.now() - 31 * 60 * 1000) });
+    db.assistantAction.updateMany.mockResolvedValue({ count: 1 });
+    expect((await editAction('e1', user, {})).status).toBe(410);
+  });
+
+  it('an invoice total follows the amount and tax', async () => {
+    db.assistantAction.findFirst.mockResolvedValue({
+      ...stored(),
+      tool: 'create_invoice',
+      args: { vendorId: VENDOR_ID, amount: 100, taxAmount: 18, totalAmount: 118 },
+    });
+    db.assistantAction.updateMany.mockResolvedValue({ count: 1 });
+    mCallApi.mockResolvedValue({ ok: true, status: 200, body: { name: 'ABC', vendorCode: 'V1' } });
+
+    const out = await editAction('e1', user, { fields: { amount: '200' } });
+
+    expect(out.ok).toBe(true);
+    expect(db.assistantAction.updateMany.mock.calls[0][0].data.args.totalAmount).toBe(218);
+  });
+
+  it('proposals carry their edit form', async () => {
+    mGenerate
+      .mockResolvedValueOnce({ role: 'model', parts: [{ functionCall: { name: 'create_vendor', args: { name: 'ABC Traders', phone: '9876543210' } } }] })
+      .mockResolvedValueOnce({ role: 'model', parts: [{ text: 'Confirm.' }] });
+    db.assistantAction.create.mockResolvedValue({ id: 'a1' });
+
+    const out = await runChat(user, 'add vendor', []);
+
+    const edit = out.pending[0].edit;
+    expect(edit?.fields.find((f) => f.key === 'name')).toMatchObject({ kind: 'text', value: 'ABC Traders' });
+    expect(edit?.fields.find((f) => f.key === 'vendorType')).toMatchObject({ kind: 'select' });
   });
 });

@@ -6,6 +6,7 @@ import { logger } from '../utils/logger';
 import {
   runChat,
   confirmAction,
+  editAction,
   cancelAction,
   consumeDailyQuota,
   type AssistantUser,
@@ -225,6 +226,35 @@ router.post(
     }
   },
 );
+
+const cell = z.union([z.string().max(600), z.number(), z.null()]);
+const editSchema = z.object({
+  fields: z.record(z.string().max(40), cell).optional(),
+  items: z
+    .array(z.object({ src: z.number().int().min(0).max(1000).nullable(), values: z.record(z.string().max(40), cell) }))
+    .max(100)
+    .optional(),
+});
+
+// PATCH /assistant/actions/:id — the user edited the card before confirming.
+router.patch('/actions/:id', async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  try {
+    if (!z.string().uuid().safeParse(req.params.id).success) {
+      res.status(400).json({ error: 'Invalid action id' });
+      return;
+    }
+    const parsed = editSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: 'Invalid changes' });
+      return;
+    }
+    const out = await editAction(req.params.id, assistantUser(req), parsed.data);
+    logger.info({ event: 'assistant_edit', userId: req.user!.id, actionId: req.params.id, ok: out.ok });
+    res.status(out.status).json(out);
+  } catch (error) {
+    next(error);
+  }
+});
 
 // POST /assistant/actions/:id/cancel
 router.post(

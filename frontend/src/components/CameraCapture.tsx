@@ -19,6 +19,8 @@ interface CameraCaptureProps {
   /** Render as a labelled outlined button instead of a bare camera icon. */
   label?: boolean;
   size?: 'small' | 'medium';
+  /** z-index of the preview dialog, for callers that sit above the normal dialog layer (e.g. a drawer). */
+  zIndex?: number;
 }
 
 /**
@@ -31,6 +33,7 @@ export default function CameraCapture({
   disabled,
   label,
   size = 'small',
+  zIndex,
 }: CameraCaptureProps) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
@@ -152,7 +155,13 @@ export default function CameraCapture({
         </Tooltip>
       )}
 
-      <Dialog open={open} onClose={handleClose} fullWidth maxWidth="sm">
+      <Dialog
+        open={open}
+        onClose={handleClose}
+        fullWidth
+        maxWidth="sm"
+        sx={zIndex ? { zIndex } : undefined}
+      >
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           {t('shared.takePhoto')}
           <IconButton size="small" onClick={handleClose} aria-label={t('shared.cancel')}>

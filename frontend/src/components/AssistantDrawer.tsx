@@ -10,6 +10,7 @@ import {
   Drawer,
   IconButton,
   Link,
+  MenuItem,
   Paper,
   Table,
   TableBody,
@@ -24,8 +25,11 @@ import {
   AttachFile as AttachIcon,
   AutoAwesome as AssistantIcon,
   Build as ServiceIcon,
+  AddCircleOutline as AddIcon,
   Close as CloseIcon,
+  DeleteOutline as RemoveIcon,
   Description as DocumentIcon,
+  EditOutlined as EditIcon,
   Inventory2 as MaterialIcon,
   LocalShipping as ReceiptIcon,
   PersonAdd as VendorIcon,
@@ -63,10 +67,29 @@ interface ActionSummary {
   items?: SummaryItem[];
   totals?: { key: string; value: string }[];
 }
+/** One input of a card's Edit form. */
+interface EditField {
+  key: string;
+  kind: 'text' | 'number' | 'date' | 'select';
+  options?: string[];
+  value: string;
+}
+interface EditState {
+  fields: EditField[];
+  items?: { columns: Omit<EditField, 'value'>[]; rows: Record<string, string>[] };
+}
 interface PendingAction {
   id: string;
   tool: string;
   summary: ActionSummary;
+  edit: EditState | null;
+}
+/** The open Edit form of one card. `src` is the index of the line in the saved proposal (null = new line). */
+interface Editor {
+  fields: Record<string, string>;
+  rows: { src: number | null; values: Record<string, string> }[];
+  saving: boolean;
+  error?: string;
 }
 interface ListTable {
   entity: string;
@@ -136,6 +159,8 @@ const STATUS_COLS = /(status|type)$/i;
 const DATE_VALUE = /^\d{4}-\d{2}-\d{2}T/;
 
 const MAX_PHOTOS = 3;
+// Miko's drawer sits above page dialogs (tooltip + 100); the camera preview must sit above the drawer.
+const CAMERA_Z = 1700;
 const MAX_PHOTO_EDGE = 1600;
 const MAX_PDF_BYTES = 5 * 1024 * 1024;
 const isPdfUrl = (src: string) => src.startsWith('data:application/pdf');
@@ -216,6 +241,9 @@ export default function AssistantDrawer({ open, onClose }: Props) {
 
   const [messages, setMessages] = useState<Msg[]>([]);
   const [actions, setActions] = useState<Record<string, ActionState>>({});
+  // Cards changed through Edit: the server's latest summary and form for that proposal.
+  const [edited, setEdited] = useState<Record<string, { summary: ActionSummary; edit: EditState | null }>>({});
+  const [editors, setEditors] = useState<Record<string, Editor>>({});
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
   const [mic, setMic] = useState<MicState>('idle');
@@ -568,6 +596,84 @@ export default function AssistantDrawer({ open, onClose }: Props) {
     }
   };
 
+  const openEditor = (a: PendingAction) => {
+    const edit = (edited[a.id] ?? a).edit;
+    if (!edit) return;
+    setEditors((prev) => ({
+      ...prev,
+      [a.id]: {
+        fields: Object.fromEntries(edit.fields.map((f) => [f.key, f.value])),
+        rows: (edit.items?.rows ?? []).map((values, i) => ({ src: i, values: { ...values } })),
+        saving: false,
+      },
+    }));
+  };
+
+  const closeEditor = (id: string) =>
+    setEditors((prev) => {
+      const rest = { ...prev };
+      delete rest[id];
+      return rest;
+    });
+
+  const patchEditor = (id: string, fn: (e: Editor) => Editor) =>
+    setEditors((prev) => (prev[id] ? { ...prev, [id]: fn(prev[id]) } : prev));
+
+  const saveEdit = async (a: PendingAction) => {
+    const ed = editors[a.id];
+    const edit = (edited[a.id] ?? a).edit;
+    if (!ed || !edit || ed.saving) return;
+    patchEditor(a.id, (e) => ({ ...e, saving: true, error: undefined }));
+    try {
+      const { data } = await api.patch(`/assistant/actions/${a.id}`, {
+        fields: ed.fields,
+        ...(edit.items ? { items: ed.rows } : {}),
+      });
+      setEdited((prev) => ({ ...prev, [a.id]: { summary: data.summary, edit: data.edit ?? null } }));
+      closeEditor(a.id);
+    } catch (err) {
+      const res = (err as { response?: { status?: number; data?: { error?: string } } })?.response;
+      const msg =
+        res?.status === 409 || res?.status === 410 || res?.status === 404
+          ? t('edit.gone')
+          : (res?.data?.error ?? errorText(err));
+      patchEditor(a.id, (e) => ({ ...e, saving: false, error: msg }));
+    }
+  };
+
+  /** One input of the Edit form. */
+  const editInput = (
+    def: Omit<EditField, 'value'>,
+    value: string,
+    label: string,
+    onChange: (v: string) => void,
+    sx?: object,
+  ) => (
+    <TextField
+      key={def.key}
+      size="small"
+      label={label}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      select={def.kind === 'select'}
+      type={def.kind === 'date' ? 'date' : 'text'}
+      inputProps={def.kind === 'number' ? { inputMode: 'decimal' } : undefined}
+      InputLabelProps={def.kind === 'date' ? { shrink: true } : undefined}
+      sx={sx}
+    >
+      {def.kind === 'select' && [
+        <MenuItem key="" value="">
+          —
+        </MenuItem>,
+        ...(def.options ?? []).map((o) => (
+          <MenuItem key={o} value={o}>
+            {enumLabel(o)}
+          </MenuItem>
+        )),
+      ]}
+    </TextField>
+  );
+
   const newChat = () => {
     cancelRecording();
     historyRef.current = [];
@@ -577,6 +683,8 @@ export default function AssistantDrawer({ open, onClose }: Props) {
     setPhotos([]);
     setFlow(null);
     setDocs([]);
+    setEdited({});
+    setEditors({});
   };
 
   const go = (link: string | null) => {
@@ -924,7 +1032,12 @@ export default function AssistantDrawer({ open, onClose }: Props) {
                   ))}
                   {m.ask.askPhoto && (
                     <>
-                      <CameraCapture onCapture={(file) => void sendFiles([file])} label disabled={mic !== 'idle'} />
+                      <CameraCapture
+                        onCapture={(file) => void sendFiles([file])}
+                        label
+                        disabled={mic !== 'idle'}
+                        zIndex={CAMERA_Z}
+                      />
                       <Button
                         size="small"
                         variant="outlined"
@@ -988,6 +1101,8 @@ export default function AssistantDrawer({ open, onClose }: Props) {
 
               {m.pending.map((a) => {
                 const st = actions[a.id] ?? { status: 'idle' as const };
+                const cur = edited[a.id] ?? a;
+                const editor = st.status === 'idle' ? editors[a.id] : undefined;
                 return (
                   <Paper
                     key={a.id}
@@ -1004,9 +1119,10 @@ export default function AssistantDrawer({ open, onClose }: Props) {
                         columnGap: 1.5,
                         rowGap: 0.25,
                         mb: 1,
+                        ...(editor ? { display: 'none' } : {}),
                       }}
                     >
-                      {a.summary.fields.map((f, i) => (
+                      {cur.summary.fields.map((f, i) => (
                         <Box key={i} sx={{ display: 'contents' }}>
                           <Typography variant="caption" color="text.secondary">
                             {t(`field.${f.key}`, { defaultValue: f.key })}
@@ -1018,8 +1134,8 @@ export default function AssistantDrawer({ open, onClose }: Props) {
                       ))}
                     </Box>
 
-                    {a.summary.items && a.summary.items.length > 0 && (
-                      <Box sx={{ overflowX: 'auto', mb: 1 }}>
+                    {cur.summary.items && cur.summary.items.length > 0 && (
+                      <Box sx={{ overflowX: 'auto', mb: 1, ...(editor ? { display: 'none' } : {}) }}>
                         <Table size="small">
                           <TableHead>
                             <TableRow>
@@ -1030,7 +1146,7 @@ export default function AssistantDrawer({ open, onClose }: Props) {
                             </TableRow>
                           </TableHead>
                           <TableBody>
-                            {a.summary.items.map((it, i) => (
+                            {cur.summary.items.map((it, i) => (
                               <TableRow key={i}>
                                 <TableCell>{it.name}</TableCell>
                                 <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
@@ -1049,11 +1165,11 @@ export default function AssistantDrawer({ open, onClose }: Props) {
                       </Box>
                     )}
 
-                    {a.summary.totals?.map((tt, i) => (
+                    {cur.summary.totals?.map((tt, i) => (
                       <Box
                         key={i}
                         sx={{
-                          display: 'flex',
+                          display: editor ? 'none' : 'flex',
                           justifyContent: 'space-between',
                           fontWeight: tt.key === 'total' ? 700 : 400,
                         }}
@@ -1067,8 +1183,111 @@ export default function AssistantDrawer({ open, onClose }: Props) {
                       </Box>
                     ))}
 
+                    {editor && cur.edit && (
+                      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.25, mt: 0.5 }}>
+                        {cur.edit.fields.map((f) =>
+                          editInput(
+                            f,
+                            editor.fields[f.key] ?? '',
+                            t(`edit.field.${f.key}`, { defaultValue: f.key }),
+                            (v) => patchEditor(a.id, (e) => ({ ...e, fields: { ...e.fields, [f.key]: v } })),
+                          ),
+                        )}
+                        {cur.edit.items && (
+                          <>
+                            <Typography variant="subtitle2" sx={{ mt: 0.5 }}>
+                              {t('edit.items')}
+                            </Typography>
+                            {editor.rows.map((row, ri) => (
+                              <Paper key={ri} variant="outlined" sx={{ p: 1, display: 'flex', flexDirection: 'column', gap: 1 }}>
+                                {cur.edit!.items!.columns.map((c, ci) =>
+                                  ci === 0
+                                    ? (
+                                      <Box key={c.key} sx={{ display: 'flex', gap: 0.5, alignItems: 'flex-start' }}>
+                                        {editInput(
+                                          c,
+                                          row.values[c.key] ?? '',
+                                          t(`edit.col.${c.key}`, { defaultValue: c.key }),
+                                          (v) =>
+                                            patchEditor(a.id, (e) => ({
+                                              ...e,
+                                              rows: e.rows.map((r, i) => (i === ri ? { ...r, values: { ...r.values, [c.key]: v } } : r)),
+                                            })),
+                                          { flex: 1 },
+                                        )}
+                                        <IconButton
+                                          size="small"
+                                          aria-label={t('edit.removeItem')}
+                                          disabled={editor.rows.length <= 1}
+                                          onClick={() =>
+                                            patchEditor(a.id, (e) => ({ ...e, rows: e.rows.filter((_, i) => i !== ri) }))
+                                          }
+                                        >
+                                          <RemoveIcon fontSize="small" />
+                                        </IconButton>
+                                      </Box>
+                                    )
+                                    : null,
+                                )}
+                                <Box sx={{ display: 'flex', gap: 1 }}>
+                                  {cur.edit!.items!.columns.slice(1).map((c) =>
+                                    editInput(
+                                      c,
+                                      row.values[c.key] ?? '',
+                                      t(`edit.col.${c.key}`, { defaultValue: c.key }),
+                                      (v) =>
+                                        patchEditor(a.id, (e) => ({
+                                          ...e,
+                                          rows: e.rows.map((r, i) => (i === ri ? { ...r, values: { ...r.values, [c.key]: v } } : r)),
+                                        })),
+                                      { flex: 1, minWidth: 0 },
+                                    ),
+                                  )}
+                                </Box>
+                              </Paper>
+                            ))}
+                            <Button
+                              size="small"
+                              startIcon={<AddIcon />}
+                              sx={{ alignSelf: 'flex-start' }}
+                              onClick={() =>
+                                patchEditor(a.id, (e) => ({
+                                  ...e,
+                                  rows: [
+                                    ...e.rows,
+                                    { src: null, values: Object.fromEntries(cur.edit!.items!.columns.map((c) => [c.key, ''])) },
+                                  ],
+                                }))
+                              }
+                            >
+                              {t('edit.addItem')}
+                            </Button>
+                          </>
+                        )}
+                        {editor.error && (
+                          <Alert severity="error" sx={{ py: 0 }}>
+                            {editor.error}
+                          </Alert>
+                        )}
+                        <Box sx={{ display: 'flex', gap: 1 }}>
+                          <Button
+                            variant="contained"
+                            size="small"
+                            disabled={editor.saving}
+                            startIcon={editor.saving ? <CircularProgress size={14} /> : undefined}
+                            onClick={() => void saveEdit(a)}
+                          >
+                            {t('edit.save')}
+                          </Button>
+                          <Button size="small" disabled={editor.saving} onClick={() => closeEditor(a.id)}>
+                            {t('edit.cancel')}
+                          </Button>
+                        </Box>
+                      </Box>
+                    )}
+
                     <Box sx={{ mt: 1.5 }}>
-                      {st.status === 'idle' && (
+                      {st.status === 'idle' && !editor && (
                         <>
                           <Typography
                             variant="caption"
@@ -1077,7 +1296,7 @@ export default function AssistantDrawer({ open, onClose }: Props) {
                           >
                             {t('reviewNote')}
                           </Typography>
-                          <Box sx={{ display: 'flex', gap: 1 }}>
+                          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
                             <Button
                               variant="contained"
                               size="small"
@@ -1085,6 +1304,11 @@ export default function AssistantDrawer({ open, onClose }: Props) {
                             >
                               {t('confirm')}
                             </Button>
+                            {cur.edit && (
+                              <Button size="small" startIcon={<EditIcon />} onClick={() => openEditor(a)}>
+                                {t('edit.button')}
+                              </Button>
+                            )}
                             <Button size="small" onClick={() => void discard(a)}>
                               {t('discard')}
                             </Button>
@@ -1321,6 +1545,7 @@ export default function AssistantDrawer({ open, onClose }: Props) {
           onCapture={(file) => void addPhotos([file])}
           disabled={busy || photos.length >= MAX_PHOTOS}
           size="medium"
+          zIndex={CAMERA_Z}
         />
         {micSupported() && (
           <Tooltip title={mic === 'recording' ? t('micStop') : t('mic')}>

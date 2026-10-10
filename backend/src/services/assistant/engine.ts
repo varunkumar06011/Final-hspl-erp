@@ -16,6 +16,7 @@ import { generate, type ChatContent, type ChatPart } from './openai';
 import { callApi, callApiForm, apiErrorMessage } from './internalApi';
 import { notifyMikoPhotoSaved } from './notify';
 import { readDocument, readingForModel, type DocumentReading } from './reader';
+import { applyEdit, editState, type EditPatch, type EditState } from './edit';
 import { FLOW_BY_ID, FLOWS, flowPrompt } from './flows';
 import {
   IMAGES_KEY,
@@ -61,6 +62,8 @@ export interface PendingAction {
   id: string;
   tool: string;
   summary: ActionSummary;
+  /** What the card's Edit form shows (null = this record cannot be edited on the card). */
+  edit: EditState | null;
 }
 
 /** A question with tap-able answers. */
@@ -263,7 +266,7 @@ async function propose(tool: WriteTool, name: string, rawArgs: Record<string, an
       status: 'PENDING',
     },
   });
-  return { id: action.id, tool: name, summary };
+  return { id: action.id, tool: name, summary, edit: editState(name, args) };
 }
 
 // ─── ask_user ───────────────────────────────────────────────────────────────
@@ -536,6 +539,49 @@ export async function confirmAction(actionId: string, user: AssistantUser): Prom
       { role: 'model', parts: [{ text: `Saved: ${label}.` }] },
     ],
   };
+}
+
+export interface EditResult {
+  ok: boolean;
+  status: number;
+  error?: string;
+  summary?: ActionSummary;
+  edit?: EditState | null;
+}
+
+/** The user changed fields on the confirmation card: re-validate, re-summarize and store the new arguments. */
+export async function editAction(actionId: string, user: AssistantUser, patch: EditPatch): Promise<EditResult> {
+  const action = await prisma.assistantAction.findFirst({ where: { id: actionId, userId: user.id, projectId: user.projectId } });
+  if (!action) return { ok: false, status: 404, error: 'Action not found' };
+  if (action.status !== 'PENDING') return { ok: false, status: 409, error: `This action is already ${action.status.toLowerCase()}` };
+  if (Date.now() - action.createdAt.getTime() > ACTION_TTL_MS) {
+    await prisma.assistantAction.updateMany({ where: { id: action.id, status: 'PENDING' }, data: { status: 'EXPIRED' } });
+    return { ok: false, status: 410, error: 'This action expired. Ask again to prepare a fresh one.' };
+  }
+  const tool = TOOLS_BY_NAME[action.tool];
+  if (!tool || tool.kind !== 'write') return { ok: false, status: 400, error: 'Unknown action' };
+
+  const { [IMAGES_KEY]: images, [DOCUMENTS_KEY]: docs, ...stored } = action.args as Record<string, unknown>;
+  try {
+    const args = applyEdit(action.tool, stored, patch);
+    const parsed = tool.schema.safeParse({ body: tool.needsAck ? { ...args, acknowledged: true } : args });
+    if (!parsed.success) throw new ToolError(issuesOf(parsed.error));
+    const summary = await tool.summarize(args, { auth: user.auth });
+    if (Array.isArray(images) && images.length) summary.fields.push({ key: 'photos', value: String(images.length) });
+    // Only a still-pending proposal may change (a confirm in another tab wins).
+    const saved = await prisma.assistantAction.updateMany({
+      where: { id: action.id, status: 'PENDING' },
+      data: {
+        args: { ...args, ...(images !== undefined ? { [IMAGES_KEY]: images } : {}), ...(docs !== undefined ? { [DOCUMENTS_KEY]: docs } : {}) } as object,
+        summary: summary as object,
+      },
+    });
+    if (saved.count !== 1) return { ok: false, status: 409, error: 'This action is already being processed' };
+    return { ok: true, status: 200, summary, edit: editState(action.tool, args) };
+  } catch (err) {
+    if (err instanceof ToolError) return { ok: false, status: 422, error: err.message };
+    throw err;
+  }
 }
 
 export async function cancelAction(actionId: string, user: AssistantUser): Promise<boolean> {
