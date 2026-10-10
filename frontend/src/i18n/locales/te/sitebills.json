@@ -42,7 +42,6 @@
   "withinLimit": "సైట్ బిల్లు పరిమితి {{limit}} లోపల ఉంది. బిల్లుకు ఆమోదం అవసరం లేదు.",
   "descriptionOptional": "వివరణ (ఐచ్ఛికం)",
   "attachBill": "బిల్లు ఫోటో / PDF జోడించు",
-  "billRequired": "సరైన బిల్లు ఫోటో లేదా PDF తప్పనిసరి.",
   "saveAddAnother": "సేవ్ చేసి మరొకటి జోడించు",
   "saveBill": "బిల్లు సేవ్ చేయి",
   "generatePoTitle": "{{count}} బిల్లులకు ఒకే PO",

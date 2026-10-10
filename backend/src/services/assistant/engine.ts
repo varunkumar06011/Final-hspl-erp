@@ -250,9 +250,6 @@ async function propose(tool: WriteTool, name: string, rawArgs: Record<string, an
   // The documents belong to the flow's own record: a vendor created on the way to an invoice does not take the invoice photo.
   const ownsDocuments = !flow || FLOW_BY_ID[flow].tool === name || !!tool.fileField;
   const files = ownsDocuments && (tool.attachAs || tool.fileField) ? await loadDocumentImages(user, documentIds) : [];
-  if (tool.fileField && files.length === 0) {
-    throw new ToolError('This record needs a photo or PDF of the document. Ask the user to take one (ask_user with askPhoto true).');
-  }
 
   const summary = await tool.summarize(args, { auth: user.auth });
   if (files.length) summary.fields.push({ key: 'photos', value: String(files.length) });
@@ -437,13 +434,13 @@ const fileName = (label: string, p: ChatImage, i: number, n: number) =>
   `${label}${p.mimeType === 'application/pdf' ? ' document' : ' photo'}${n > 1 ? ` ${i + 1}` : ''}.${IMAGE_EXT[p.mimeType] ?? 'jpg'}`;
 
 /** multipart body for endpoints that take the document as a file (arrays/objects as JSON strings, like the app's forms). */
-function formBody(body: Record<string, unknown>, fileField: string, file: ChatImage, label: string): FormData {
+function formBody(body: Record<string, unknown>, fileField: string, file: ChatImage | undefined, label: string): FormData {
   const form = new FormData();
   for (const [k, v] of Object.entries(body)) {
     if (v === undefined || v === null) continue;
     form.append(k, typeof v === 'object' ? JSON.stringify(v) : String(v));
   }
-  form.append(fileField, blobOf(file), fileName(label, file, 0, 1));
+  if (file) form.append(fileField, blobOf(file), fileName(label, file, 0, 1));
   return form;
 }
 
@@ -476,10 +473,6 @@ export async function confirmAction(actionId: string, user: AssistantUser): Prom
 
   let res;
   if (tool.fileField) {
-    if (!photos.length) {
-      await prisma.assistantAction.update({ where: { id: action.id }, data: { status: 'FAILED', error: 'No document attached', executedAt: new Date() } });
-      return { ok: false, status: 422, error: 'A photo or PDF of the document is required. Attach one and ask again.' };
-    }
     res = await callApiForm(user.auth, tool.path, formBody(body, tool.fileField, photos[0], 'Bill'));
   } else {
     res = await callApi(user.auth, 'POST', tool.path, { body });

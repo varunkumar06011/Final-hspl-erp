@@ -58,7 +58,7 @@ router.get(
   },
 );
 
-// POST / — record one bill (multipart: fields + `file`, the bill photo/PDF, required)
+// POST / — record one bill (multipart: fields + `file`, the bill photo/PDF, optional)
 router.post(
   '/',
   rbacMiddleware(Permission.CREATE_MPR),
@@ -67,11 +67,7 @@ router.post(
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const projectId = requireProjectId(req);
-      if (!req.file) {
-        res.status(400).json({ error: 'Attach a photo or PDF of the bill' });
-        return;
-      }
-      if (!allowedBillFileTypes.includes(req.file.mimetype)) {
+      if (req.file && !allowedBillFileTypes.includes(req.file.mimetype)) {
         res.status(400).json({ error: 'The bill must be a PDF or an image' });
         return;
       }
@@ -88,13 +84,17 @@ router.post(
       }
 
       const mprNumber = await generateProjectSequenceNumber('materialPurchaseRequest', 'mprNumber', 'MPR', 3, projectId);
-      const subPath = req.file.mimetype.startsWith('image/') ? 'images' : 'documents';
-      const uploaded = await getStorageService().upload(
-        req.file.buffer,
-        `site-bills/${subPath}/${mprNumber}-${req.file.originalname}`,
-        req.file.mimetype,
-        'documents',
-      );
+      let file: { filePath: string; fileName: string; mimeType: string } | null = null;
+      if (req.file) {
+        const subPath = req.file.mimetype.startsWith('image/') ? 'images' : 'documents';
+        const uploaded = await getStorageService().upload(
+          req.file.buffer,
+          `site-bills/${subPath}/${mprNumber}-${req.file.originalname}`,
+          req.file.mimetype,
+          'documents',
+        );
+        file = { filePath: uploaded.filePath, fileName: req.file.originalname, mimeType: req.file.mimetype };
+      }
 
       const bill = await createSiteBill({
         projectId,
@@ -105,7 +105,7 @@ router.post(
         description: req.body.description,
         paidById,
         items: req.body.items,
-        file: { filePath: uploaded.filePath, fileName: req.file.originalname, mimeType: req.file.mimetype },
+        file,
         mprNumber,
       });
       res.status(201).json(bill);

@@ -96,7 +96,7 @@ export interface CreateSiteBillInput {
   description?: string | null;
   paidById?: string | null;
   items: SiteBillItemInput[];
-  file: { filePath: string; fileName: string; mimeType: string };
+  file: { filePath: string; fileName: string; mimeType: string } | null;
   mprNumber: string;
 }
 
@@ -121,9 +121,9 @@ export async function createSiteBill(input: CreateSiteBillInput) {
       estimatedGstRate: 0,
       estimatedGstAmount: 0,
       estimatedTotal: total,
-      receiptFilePath: input.file.filePath,
-      receiptFileName: input.file.fileName,
-      receiptFileMimeType: input.file.mimeType,
+      receiptFilePath: input.file?.filePath ?? null,
+      receiptFileName: input.file?.fileName ?? null,
+      receiptFileMimeType: input.file?.mimeType ?? null,
       createdBy: input.userId,
       items: {
         create: lines.map((l) => ({

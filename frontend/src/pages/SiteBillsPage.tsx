@@ -282,7 +282,7 @@ function AddBillDialog({ open, onClose }: { open: boolean; onClose: () => void }
   const total = items.reduce((s, i) => s + (Number(i.quantity) || 0) * (Number(i.rate) || 0), 0);
   const overLimit = total > SITE_BILL_LIMIT;
   const validItems = items.filter((i) => i.materialName.trim() && Number(i.quantity) > 0);
-  const canSave = !!shopName.trim() && !!file && validItems.length > 0 && total > 0 && !overLimit;
+  const canSave = !!shopName.trim() && validItems.length > 0 && total > 0 && !overLimit;
 
   const reset = () => {
     setBillDate(todayIso());
@@ -308,7 +308,7 @@ function AddBillDialog({ open, onClose }: { open: boolean; onClose: () => void }
         unit: i.unit || undefined,
         rate: Number(i.rate) || 0,
       }))));
-      form.append('file', file!);
+      if (file) form.append('file', file);
       await api.post('/site-bills', form, { headers: { 'Content-Type': 'multipart/form-data' } });
       return addAnother;
     },
@@ -381,7 +381,6 @@ function AddBillDialog({ open, onClose }: { open: boolean; onClose: () => void }
         <TextField size="small" label={t('descriptionOptional')} value={description} onChange={(e) => setDescription(e.target.value)} multiline minRows={2} />
         <Box>
           <FilePicker file={file} onChange={setFile} label={t('attachBill')} accept="image/*,application/pdf" />
-          <Typography variant="caption" color={file ? 'text.secondary' : 'warning.main'} display="block" sx={{ mt: 0.5 }}>{t('billRequired')}</Typography>
         </Box>
       </DialogContent>
       <DialogActions sx={{ flexWrap: 'wrap', gap: 1 }}>

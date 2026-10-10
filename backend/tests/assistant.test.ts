@@ -417,16 +417,16 @@ describe('photos (OCR) across every flow', () => {
     expect(db.assistantAction.create.mock.calls[0][0].data.args._images).toBeUndefined();
   });
 
-  it('a site bill without a photo is refused back to the model', async () => {
+  it('a site bill without a photo can still be proposed', async () => {
     db.assistantAction.findMany.mockResolvedValue([]);
+    db.assistantAction.create.mockResolvedValue({ id: 'a1' });
     mGenerate
       .mockResolvedValueOnce({ role: 'model', parts: [{ functionCall: { name: 'create_site_bill', args: { shopName: 'Sri Sai Hardware', billDate: '2026-10-09', paymentMode: 'CASH', items: [{ materialName: 'Nails', quantity: 2, unit: 'kg', rate: 120 }] } } }] })
-      .mockResolvedValueOnce({ role: 'model', parts: [{ text: 'Please take a photo of the bill.' }] });
+      .mockResolvedValueOnce({ role: 'model', parts: [{ text: 'Please confirm.' }] });
 
     const out = await runChat(user, 'site bill', [], { flow: 'site_bill' });
 
-    expect(out.pending).toHaveLength(0);
-    expect(JSON.stringify(mGenerate.mock.calls[1][0].contents)).toMatch(/needs a photo or PDF/);
+    expect(out.pending).toHaveLength(1);
   });
 
   it('a site bill above the limit is refused back to the model', async () => {

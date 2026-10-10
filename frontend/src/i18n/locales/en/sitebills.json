@@ -42,7 +42,6 @@
   "withinLimit": "Within the site bill limit of {{limit}}. No approval needed for the bill.",
   "descriptionOptional": "Description (optional)",
   "attachBill": "Attach bill photo / PDF",
-  "billRequired": "A photo or PDF of the proper bill is required.",
   "saveAddAnother": "Save & add another",
   "saveBill": "Save bill",
   "generatePoTitle": "One PO for {{count}} bill(s)",
