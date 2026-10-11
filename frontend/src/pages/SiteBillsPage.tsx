@@ -35,7 +35,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { POPaymentType, SITE_BILL_LIMIT, SiteBillPaymentMode } from '@hospital-erp/shared';
 import api, { extractErrorMessage } from '../config/api';
-import { useAuthStore } from '../stores/authStore';
 import ResponsiveDialog from '../components/ResponsiveDialog';
 import FilePicker from '../components/FilePicker';
 import ItemsGist from '../components/ItemsGist';
@@ -57,6 +56,7 @@ interface SiteBillRow {
   paidBy: { id: string; name: string } | null;
   fileName: string | null;
   hasFile: boolean;
+  budgetHead: { id: string; particulars: string } | null;
   po: { id: string; poNumber: string; status: string } | null;
   previousPo: { id: string; poNumber: string; status: string } | null;
 }
@@ -67,6 +67,22 @@ interface ListResponse {
 }
 
 type Filter = 'open' | 'in_po' | 'all';
+
+interface BudgetHeadOption {
+  id: string;
+  particulars: string;
+}
+
+/** Budget heads for the pickers (empty when the user cannot view finance). */
+function useBudgetHeads(enabled: boolean): BudgetHeadOption[] {
+  const { data } = useQuery({
+    queryKey: ['/budget-heads', 'all'],
+    queryFn: async () => (await api.get('/budget-heads', { params: { page: 1, pageSize: 100 } })).data,
+    enabled,
+    retry: false,
+  });
+  return data?.data ?? [];
+}
 
 const todayIso = () => new Date().toISOString().slice(0, 10);
 const sameDay = (a: string, b: string) => a.slice(0, 10) === b.slice(0, 10);
@@ -82,6 +98,7 @@ export default function SiteBillsPage() {
   const queryClient = useQueryClient();
   const toast = useToast();
   const { openPath, viewer } = useFileViewer();
+  const budgetHeads = useBudgetHeads(true);
   const [filter, setFilter] = useState<Filter>('open');
   const [search, setSearch] = useState('');
   const [paymentMode, setPaymentMode] = useState('');
@@ -108,6 +125,12 @@ export default function SiteBillsPage() {
       return next;
     });
   const selectToday = () => setSelected(new Set(openRows.filter((r) => sameDay(r.billDate, todayIso())).map((r) => r.id)));
+
+  const setHead = useMutation({
+    mutationFn: async ({ id, budgetHeadId }: { id: string; budgetHeadId: string | null }) => api.post(`/site-bills/${id}/budget-head`, { budgetHeadId }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['/site-bills'] }),
+    onError: (err) => toast.error(extractErrorMessage(err)),
+  });
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => api.delete(`/site-bills/${id}`),
@@ -192,6 +215,7 @@ export default function SiteBillsPage() {
                       ) : (
                         <Chip size="small" color="warning" label={t('notInPo')} />
                       )}
+                      {!row.hasFile && <Chip size="small" variant="outlined" color="warning" label={t('noBill')} />}
                       {row.previousPo && <Chip size="small" variant="outlined" label={t('previousPo', { po: row.previousPo.poNumber, status: enumLabel(row.previousPo.status) })} />}
                       <Box sx={{ flex: 1 }} />
                       <Typography fontWeight={700}>{formatCurrency(row.total)}</Typography>
@@ -201,6 +225,22 @@ export default function SiteBillsPage() {
                       {row.paidBy && <Typography variant="caption" color="text.secondary">{t('paidBy', { name: row.paidBy.name })}</Typography>}
                       {row.description && <Typography variant="caption" color="text.secondary">· {row.description}</Typography>}
                       <Box sx={{ flex: 1 }} />
+                      {!row.po && budgetHeads.length > 0 ? (
+                        <TextField
+                          select
+                          size="small"
+                          variant="standard"
+                          value={row.budgetHead?.id ?? ''}
+                          onChange={(e) => setHead.mutate({ id: row.id, budgetHeadId: e.target.value || null })}
+                          SelectProps={{ displayEmpty: true, renderValue: (v) => (v ? budgetHeads.find((h) => h.id === v)?.particulars ?? '' : t('budgetHeadNotAssigned')) }}
+                          sx={{ minWidth: 150, maxWidth: 240 }}
+                        >
+                          <MenuItem value="">{t('noBudgetHead')}</MenuItem>
+                          {budgetHeads.map((h) => <MenuItem key={h.id} value={h.id}>{h.particulars}</MenuItem>)}
+                        </TextField>
+                      ) : (
+                        <Typography variant="caption" color={row.budgetHead ? 'text.secondary' : 'warning.main'}>{row.budgetHead?.particulars ?? t('budgetHeadNotAssigned')}</Typography>
+                      )}
                       {row.hasFile && (
                         <Button size="small" startIcon={<ViewIcon />} onClick={() => openPath(`/material-purchase-requests/${row.id}/receipt`, row.fileName ?? 'bill')}>{t('viewBill')}</Button>
                       )}
@@ -277,6 +317,8 @@ function AddBillDialog({ open, onClose }: { open: boolean; onClose: () => void }
   const [description, setDescription] = useState('');
   const [items, setItems] = useState<ItemDraft[]>([emptyItem()]);
   const [file, setFile] = useState<File | null>(null);
+  const [budgetHeadId, setBudgetHeadId] = useState('');
+  const budgetHeads = useBudgetHeads(open);
   const [error, setError] = useState('');
 
   const total = items.reduce((s, i) => s + (Number(i.quantity) || 0) * (Number(i.rate) || 0), 0);
@@ -291,6 +333,7 @@ function AddBillDialog({ open, onClose }: { open: boolean; onClose: () => void }
     setDescription('');
     setItems([emptyItem()]);
     setFile(null);
+    setBudgetHeadId('');
     setError('');
   };
   const close = () => { reset(); onClose(); };
@@ -308,6 +351,7 @@ function AddBillDialog({ open, onClose }: { open: boolean; onClose: () => void }
         unit: i.unit || undefined,
         rate: Number(i.rate) || 0,
       }))));
+      if (budgetHeadId) form.append('budgetHeadId', budgetHeadId);
       if (file) form.append('file', file);
       await api.post('/site-bills', form, { headers: { 'Content-Type': 'multipart/form-data' } });
       return addAnother;
@@ -321,6 +365,7 @@ function AddBillDialog({ open, onClose }: { open: boolean; onClose: () => void }
         setDescription('');
         setItems([emptyItem()]);
         setFile(null);
+        setBudgetHeadId('');
         setError('');
       } else close();
     },
@@ -378,6 +423,12 @@ function AddBillDialog({ open, onClose }: { open: boolean; onClose: () => void }
           <Typography variant="caption">{overLimit ? t('overLimit', { limit: formatCurrency(SITE_BILL_LIMIT) }) : t('withinLimit', { limit: formatCurrency(SITE_BILL_LIMIT) })}</Typography>
         </Alert>
 
+        {budgetHeads.length > 0 && (
+          <TextField select size="small" label={t('budgetHeadOptional')} value={budgetHeadId} onChange={(e) => setBudgetHeadId(e.target.value)}>
+            <MenuItem value="">{t('noBudgetHead')}</MenuItem>
+            {budgetHeads.map((h) => <MenuItem key={h.id} value={h.id}>{h.particulars}</MenuItem>)}
+          </TextField>
+        )}
         <TextField size="small" label={t('descriptionOptional')} value={description} onChange={(e) => setDescription(e.target.value)} multiline minRows={2} />
         <Box>
           <FilePicker file={file} onChange={setFile} label={t('attachBill')} accept="image/*,application/pdf" />
@@ -406,36 +457,23 @@ function GeneratePoDialog({
   onDone: (po: { id: string; poNumber: string }) => void;
 }) {
   const { t } = useTranslation('sitebills');
-  const { user } = useAuthStore();
   const [paymentType, setPaymentType] = useState<string>(POPaymentType.FULL_PAYMENT);
-  const [reimburseTo, setReimburseTo] = useState('');
-  const [budgetHeadId, setBudgetHeadId] = useState('');
   const [notes, setNotes] = useState('');
   const [error, setError] = useState('');
   const total = bills.reduce((s, b) => s + b.total, 0);
-  const payers = Array.from(new Set(bills.map((b) => b.paidBy?.name).filter(Boolean))).join(', ');
+  const headIds = new Set(bills.map((b) => b.budgetHead?.id ?? null));
+  const sharedHead = headIds.size === 1 ? bills[0]?.budgetHead ?? null : null;
   const modes = Array.from(new Set(bills.map((b) => b.paymentMode).filter(Boolean))) as string[];
-
-  const { data: heads } = useQuery({
-    queryKey: ['/budget-heads', 'all'],
-    queryFn: async () => (await api.get('/budget-heads', { params: { page: 1, pageSize: 100 } })).data,
-    enabled: open,
-  });
-  const budgetHeads: { id: string; particulars: string }[] = heads?.data ?? [];
 
   const generate = useMutation({
     mutationFn: async () =>
       (await api.post('/site-bills/generate-po', {
         billIds: bills.map((b) => b.id),
         paymentType,
-        reimburseTo: reimburseTo.trim() || undefined,
-        budgetHeadId: budgetHeadId || undefined,
         notes: notes.trim() || undefined,
       })).data as { id: string; poNumber: string },
     onSuccess: (po) => {
       setNotes('');
-      setBudgetHeadId('');
-      setReimburseTo('');
       setError('');
       onDone(po);
     },
@@ -460,11 +498,7 @@ function GeneratePoDialog({
         <TextField select size="small" label={t('poPaymentType')} value={paymentType} onChange={(e) => setPaymentType(e.target.value)}>
           {Object.values(POPaymentType).map((p) => <MenuItem key={p} value={p}>{enumLabel(p)}</MenuItem>)}
         </TextField>
-        <TextField size="small" label={t('reimburseTo')} placeholder={payers || user?.name || ''} value={reimburseTo} onChange={(e) => setReimburseTo(e.target.value)} helperText={t('reimburseToHelp', { names: payers || '—' })} />
-        <TextField select size="small" label={t('budgetHeadOptional')} value={budgetHeadId} onChange={(e) => setBudgetHeadId(e.target.value)} helperText={t('budgetHeadLater')}>
-          <MenuItem value="">{t('noBudgetHead')}</MenuItem>
-          {budgetHeads.map((h) => <MenuItem key={h.id} value={h.id}>{h.particulars}</MenuItem>)}
-        </TextField>
+        <Alert severity={sharedHead ? 'success' : 'warning'} icon={false}>{sharedHead ? t('poHeadShared', { name: sharedHead.particulars }) : t('poHeadMixed')}</Alert>
         <TextField size="small" label={t('descriptionOptional')} value={notes} onChange={(e) => setNotes(e.target.value)} multiline minRows={2} />
       </DialogContent>
       <DialogActions>

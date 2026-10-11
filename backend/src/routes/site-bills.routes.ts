@@ -1,6 +1,6 @@
 import { Router, Response, NextFunction } from 'express';
 import multer from 'multer';
-import { Permission, createSiteBillSchema, listSiteBillsSchema, generateSiteBillPoSchema } from '@hospital-erp/shared';
+import { Permission, createSiteBillSchema, listSiteBillsSchema, generateSiteBillPoSchema, setSiteBillBudgetHeadSchema } from '@hospital-erp/shared';
 import { prisma } from '../config/prisma';
 import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middleware/auth';
 import { rbacMiddleware } from '../middleware/rbac';
@@ -14,6 +14,7 @@ import {
   generateSiteBillPo,
   listSiteBills,
   priceSiteBill,
+  setSiteBillBudgetHead,
 } from '../services/site-bill.service';
 
 /**
@@ -106,6 +107,7 @@ router.post(
         paidById,
         items: req.body.items,
         file,
+        budgetHeadId: req.body.budgetHeadId ?? null,
         mprNumber,
       });
       res.status(201).json(bill);
@@ -115,7 +117,23 @@ router.post(
   },
 );
 
-// POST /generate-po — one PO for the selected bills, sent straight for approval
+// POST /:id/budget-head — set or clear the budget head of a bill that is not in a PO yet
+router.post(
+  '/:id/budget-head',
+  rbacMiddleware(Permission.CREATE_MPR),
+  validateMiddleware(setSiteBillBudgetHeadSchema),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      await setSiteBillBudgetHead(projectId, req.params.id, req.user!.id, req.body.budgetHeadId);
+      res.json({ ok: true });
+    } catch (error) {
+      sendError(res, next, error);
+    }
+  },
+);
+
+// POST /generate-po —one PO for the selected bills, sent straight for approval
 router.post(
   '/generate-po',
   rbacMiddleware(Permission.CREATE_MPR),

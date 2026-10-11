@@ -97,11 +97,18 @@ export interface CreateSiteBillInput {
   paidById?: string | null;
   items: SiteBillItemInput[];
   file: { filePath: string; fileName: string; mimeType: string } | null;
+  budgetHeadId?: string | null;
   mprNumber: string;
+}
+
+async function assertBudgetHead(projectId: string, budgetHeadId: string) {
+  const head = await prisma.budgetHead.findFirst({ where: { id: budgetHeadId, projectId, deletedAt: null }, select: { id: true } });
+  if (!head) throw new SiteBillError('Budget head not found');
 }
 
 export async function createSiteBill(input: CreateSiteBillInput) {
   const { lines, total } = priceSiteBill(input.items);
+  if (input.budgetHeadId) await assertBudgetHead(input.projectId, input.budgetHeadId);
   const vendorId = await ensureSitePurchasesVendor(input.projectId, input.userId);
 
   const bill = await prisma.materialPurchaseRequest.create({
@@ -121,6 +128,7 @@ export async function createSiteBill(input: CreateSiteBillInput) {
       estimatedGstRate: 0,
       estimatedGstAmount: 0,
       estimatedTotal: total,
+      billBudgetHeadId: input.budgetHeadId || null,
       receiptFilePath: input.file?.filePath ?? null,
       receiptFileName: input.file?.fileName ?? null,
       receiptFileMimeType: input.file?.mimeType ?? null,
@@ -183,6 +191,7 @@ export async function listSiteBills(projectId: string, f: ListSiteBillsFilter) {
       items: { orderBy: { createdAt: 'asc' } },
       requestRaisedBy: { select: { id: true, name: true } },
       createdByUser: { select: { id: true, name: true } },
+      billBudgetHead: { select: { id: true, particulars: true } },
     },
     orderBy: [{ billDate: 'desc' }, { createdAt: 'desc' }],
     take: 1000,
@@ -219,6 +228,7 @@ export async function listSiteBills(projectId: string, f: ListSiteBillsFilter) {
         createdAt: b.createdAt,
         fileName: b.receiptFileName,
         hasFile: !!b.receiptFilePath,
+        budgetHead: b.billBudgetHead,
         po: livePo ? { id: livePo.id, poNumber: livePo.poNumber, status: livePo.status } : null,
         // The PO this bill was in before it was rejected/cancelled (bill is free again).
         previousPo: po && !livePo ? { id: po.id, poNumber: po.poNumber, status: po.status } : null,
@@ -239,6 +249,28 @@ export async function listSiteBills(projectId: string, f: ListSiteBillsFilter) {
     data: rows,
     summary: { count: rows.length, openCount: open.length, openTotal: round2(open.reduce((s, r) => s + r.total, 0)), limit: SITE_BILL_LIMIT },
   };
+}
+
+/** Set or clear the budget head of a bill that is not in a live PO. */
+export async function setSiteBillBudgetHead(projectId: string, billId: string, userId: string, budgetHeadId: string | null) {
+  const bill = await prisma.materialPurchaseRequest.findFirst({
+    where: { id: billId, projectId, deletedAt: null, isSiteBill: true, status: { not: MPRStatus.CANCELLED } },
+  });
+  if (!bill) throw new SiteBillError('Site bill not found', 404);
+  if (bill.sitePoId && (await livePoIds([bill.sitePoId])).size > 0) {
+    throw new SiteBillError('This bill is already in a purchase order. Change the budget head on that PO instead.');
+  }
+  if (budgetHeadId) await assertBudgetHead(projectId, budgetHeadId);
+  await prisma.materialPurchaseRequest.update({ where: { id: bill.id }, data: { billBudgetHeadId: budgetHeadId } });
+  await logAudit({
+    userId,
+    action: AuditAction.UPDATE,
+    entityType: 'material_purchase_requests',
+    entityId: bill.id,
+    projectId,
+    oldValue: { budgetHeadId: bill.billBudgetHeadId },
+    newValue: { budgetHeadId, siteBill: true },
+  });
 }
 
 /** Cancel a bill that is not (or no longer) in a live PO. */
@@ -298,10 +330,12 @@ export async function generateSiteBillPo(input: GenerateSiteBillPoInput) {
   }
   const deadPoIds = linkedPoIds.filter((id) => !alive.has(id));
 
-  if (input.budgetHeadId) {
-    const head = await prisma.budgetHead.findFirst({ where: { id: input.budgetHeadId, projectId, deletedAt: null }, select: { id: true } });
-    if (!head) throw new SiteBillError('Budget head not found');
-  }
+  // The bills carry their own heads. A PO has one head, so it takes it only when every bill
+  // shares the same one; mixed or missing heads leave the PO unassigned (change-budget-head later).
+  const billHeads = new Set(bills.map((b) => b.billBudgetHeadId ?? null));
+  const sharedHead = billHeads.size === 1 ? [...billHeads][0] : null;
+  const poBudgetHeadId = input.budgetHeadId ?? sharedHead ?? null;
+  if (input.budgetHeadId) await assertBudgetHead(projectId, input.budgetHeadId);
 
   const lines = bills.flatMap((b) =>
     b.items.map((i) => ({
@@ -344,7 +378,7 @@ export async function generateSiteBillPo(input: GenerateSiteBillPoInput) {
         grandTotal: total,
         totalDeductions: 0,
         netPayable: total,
-        budgetHeadId: input.budgetHeadId ?? null,
+        budgetHeadId: poBudgetHeadId,
         isSiteBillBatch: true,
         reimburseTo,
         createdBy: userId,

@@ -24,8 +24,9 @@ vi.mock('../src/routes/ledger.routes', () => ({ ensureVendorLedger: vi.fn(async 
 
 import { priceSiteBill, generateSiteBillPo, SiteBillError } from '../src/services/site-bill.service';
 
-const bill = (id: string, total: number, sitePoId: string | null = null) => ({
+const bill = (id: string, total: number, sitePoId: string | null = null, billBudgetHeadId: string | null = null) => ({
   id,
+  billBudgetHeadId,
   mprNumber: `MPR-${id}`,
   sitePoId,
   billShopName: 'Shop',
@@ -79,6 +80,18 @@ describe('generateSiteBillPo', () => {
     expect(data.items.create).toHaveLength(2);
     expect(prismaMock.materialPurchaseRequest.updateMany.mock.calls[0][0].data).toEqual({ sitePoId: 'po1', status: 'CLOSED' });
     expect(po.poNumber).toBe('VGH-PO061');
+  });
+
+  it('takes the budget head when every bill has the same one, none when they differ', async () => {
+    prismaMock.materialPurchaseRequest.updateMany.mockResolvedValue({ count: 2 });
+
+    prismaMock.materialPurchaseRequest.findMany.mockResolvedValue([bill('a', 100, null, 'h1'), bill('b', 200, null, 'h1')]);
+    await generateSiteBillPo({ projectId: 'p1', userId: 'u1', billIds: ['a', 'b'], paymentType: 'FULL_PAYMENT' });
+    expect(prismaMock.purchaseOrder.create.mock.calls[0][0].data.budgetHeadId).toBe('h1');
+
+    prismaMock.materialPurchaseRequest.findMany.mockResolvedValue([bill('a', 100, null, 'h1'), bill('b', 200, null, 'h2')]);
+    await generateSiteBillPo({ projectId: 'p1', userId: 'u1', billIds: ['a', 'b'], paymentType: 'FULL_PAYMENT' });
+    expect(prismaMock.purchaseOrder.create.mock.calls[1][0].data.budgetHeadId).toBeNull();
   });
 
   it('refuses bills that are already in a live PO', async () => {

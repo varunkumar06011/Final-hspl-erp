@@ -126,6 +126,7 @@ const ENTITIES: Record<string, EntityDef> = {
   goods_receipts: { path: '/goods-receipts', model: 'GoodsReceipt', columns: ['receiptNumber', 'purchaseOrder.poNumber', 'status', 'createdAt'], clientFilter: true },
   stock_entries: { path: '/stock-entries', model: 'StockEntry', columns: ['entryNumber', 'sourceType', 'supplierName', 'status', 'entryDate'], clientFilter: true },
   inventory_items: { path: '/inventory/items', model: 'InventoryItem', columns: ['name', 'sku', 'category', 'currentStock', 'unit'] },
+  budget_heads: { path: '/budget-heads', model: 'BudgetHead', columns: ['slNo', 'particulars', 'allocatedAmount', 'status'] },
   payments: { path: '/payments', model: 'PaymentRequest', columns: ['paymentCode', 'vendor.name', 'status', 'amount', 'createdAt'] },
 };
 const ENTITY_NAMES = Object.keys(ENTITIES);
@@ -689,13 +690,14 @@ const writeTools: WriteTool[] = [
     link: () => '/site-bills',
     declaration: {
       name: 'create_site_bill',
-      description: `Propose recording a small bill already paid at site (total up to ₹${SITE_BILL_LIMIT}). Needs a photo or PDF of the bill attached in this conversation; it is saved with the bill. Several site bills are later combined into one reimbursement PO in the app.`,
+      description: `Propose recording a small bill already paid at site (total up to ₹${SITE_BILL_LIMIT}). A photo or PDF of the bill is optional (e.g. an auto fare has no bill); if one is attached in this conversation it is saved with the bill. Several site bills are later combined into one reimbursement PO in the app.`,
       parameters: O(
         {
-          shopName: S('Shop / seller name from the bill.'),
+          shopName: S('Shop / seller name from the bill. If the user gives none, use a short group name for what was bought (e.g. "Electrical" for MCB and cables, "Local transport (auto)" for an auto fare).'),
           billDate: S('Bill date, YYYY-MM-DD.'),
           paymentMode: E(['CASH', 'UPI', 'BANK_TRANSFER', 'CHEQUE'], 'How it was paid.'),
           description: S('What it was bought for (optional).'),
+          budgetHeadId: S('Budget head uuid (optional). Only when the user names one; find it with list_records on budget_heads. Never ask for it.'),
           items: A(
             O({ materialName: S('Item name in English.'), quantity: N('Quantity.'), unit: S('Unit as on the bill.'), rate: N('Rate per unit in rupees, GST included as charged.') }, ['materialName', 'quantity', 'rate']),
             'Bill lines.',
@@ -704,7 +706,7 @@ const writeTools: WriteTool[] = [
         ['shopName', 'billDate', 'paymentMode', 'items'],
       ),
     },
-    async summarize(a) {
+    async summarize(a, ctx) {
       let total = 0;
       const items = (a.items as any[]).map((i) => {
         const amount = num(i.quantity) * num(i.rate);
@@ -714,8 +716,9 @@ const writeTools: WriteTool[] = [
       if (total > SITE_BILL_LIMIT) {
         throw new ToolError(`The bill total ${money(total)} is above the site-bill limit of ${money(SITE_BILL_LIMIT)}. Tell the user and offer a Material Request (create_mpr) instead.`);
       }
+      const head = a.budgetHeadId ? await lookup(ctx, '/budget-heads', String(a.budgetHeadId), 'Budget head') : null;
       return {
-        fields: [field('shop', a.shopName), field('date', a.billDate), field('paymentMode', a.paymentMode), ...maybe('description', a.description)],
+        fields: [field('shop', a.shopName), field('date', a.billDate), field('paymentMode', a.paymentMode), ...maybe('budgetHead', head?.particulars), ...maybe('description', a.description)],
         items,
         totals: [field('total', money(total))],
       };

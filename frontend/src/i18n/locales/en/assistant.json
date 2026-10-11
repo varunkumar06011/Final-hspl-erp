@@ -68,6 +68,7 @@
     "mpr": "Material request",
     "quotation": "Quotation",
     "paymentType": "Payment type",
+    "budgetHead": "Budget head",
     "advance": "Advance",
     "deliveryDate": "Delivery date",
     "paymentTerms": "Payment terms",

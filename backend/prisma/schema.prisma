@@ -1457,6 +1457,7 @@ model BudgetHead {
   bankTransactions BankTransaction[] @relation("BankTxnBudgetHead")
   cashTransactions CashTransaction[] @relation("CashTxnBudgetHead")
   inventoryTxns    InventoryTransaction[]
+  siteBills        MaterialPurchaseRequest[] @relation("SiteBillBudgetHead")
 
   @@unique([projectId, slNo])
   @@index([projectId])
@@ -1853,6 +1854,7 @@ model MaterialPurchaseRequest {
   billShopName    String?
   billPaymentMode String? // SiteBillPaymentMode: CASH | UPI | BANK_TRANSFER | CHEQUE
   sitePoId        String?  @db.Uuid
+  billBudgetHeadId String? @db.Uuid // optional: head this site bill is charged to
   createdBy       String   @db.Uuid
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
@@ -1860,6 +1862,7 @@ model MaterialPurchaseRequest {
 
   project       Project @relation(fields: [projectId], references: [id])
   vendor        Vendor? @relation(fields: [vendorId], references: [id])
+  billBudgetHead BudgetHead? @relation("SiteBillBudgetHead", fields: [billBudgetHeadId], references: [id])
   createdByUser User    @relation("MPRCreatedBy", fields: [createdBy], references: [id])
   requestRaisedBy User? @relation("MPRRaisedBy", fields: [requestRaisedById], references: [id])
   approvalWorkflow ApprovalWorkflow? @relation(fields: [approvalWorkflowId], references: [id])
@@ -1874,6 +1877,7 @@ model MaterialPurchaseRequest {
   @@index([vendorId])
   @@index([projectId, isSiteBill])
   @@index([sitePoId])
+  @@index([billBudgetHeadId])
   @@map("material_purchase_requests")
 }
 

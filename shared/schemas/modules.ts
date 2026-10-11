@@ -1853,11 +1853,18 @@ export const createSiteBillSchema = z.object({
     paymentMode: z.nativeEnum(SiteBillPaymentMode),
     description: z.string().trim().max(1000).optional(),
     paidById: uuid.optional(),
+    budgetHeadId: uuid.optional(),
     items: z.preprocess(
       (val) => (typeof val === 'string' ? JSON.parse(val) : val),
       z.array(siteBillItem).min(1, 'At least one item is required'),
     ),
   }),
+});
+
+// Set (or clear, with null) the budget head of one site bill that is not in a PO yet.
+export const setSiteBillBudgetHeadSchema = z.object({
+  params: z.object({ id: uuid }),
+  body: z.object({ budgetHeadId: uuid.nullable() }),
 });
 
 export const listSiteBillsSchema = z.object({
@@ -1874,6 +1881,7 @@ export const generateSiteBillPoSchema = z.object({
   body: z.object({
     billIds: z.array(uuid).min(1, 'Select at least one bill').max(200),
     paymentType: z.nativeEnum(POPaymentType).default(POPaymentType.FULL_PAYMENT),
+    // reimburseTo / budgetHeadId are no longer asked: the payers and the bills' own heads decide.
     reimburseTo: z.string().trim().max(200).optional(),
     budgetHeadId: uuid.optional(),
     notes: z.string().trim().max(1000).optional(),

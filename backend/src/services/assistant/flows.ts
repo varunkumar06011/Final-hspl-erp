@@ -117,8 +117,8 @@ Must have: source, items with unit and quantity.
     module: 'siteBills',
     documentHint: `a small shop bill / receipt paid at site (up to ₹${SITE_BILL_LIMIT})`,
     guide: `Site Bill (create_site_bill): a small purchase already paid at site, up to ₹${SITE_BILL_LIMIT} in total. A photo or PDF of the bill is optional.
-1. If there is no photo yet, you may offer to take one (ask_user with askPhoto true, with a "Skip" answer), but never insist; otherwise ask for the details by text.
-2. From the photo or the user: shop name, bill date, items (name, qty, unit, rate). If the date is missing use today. If the total is above ₹${SITE_BILL_LIMIT}, say it is too large for a site bill and offer a Material Request instead.
+1. The user may type everything in one line ("auto transport 300 cash"): use it, do not ask for a photo. Only offer a photo (ask_user with askPhoto true and a "No bill" answer) when there is neither a photo nor enough details, and never insist.
+2. From the photo or the user: shop name, bill date, items (name, qty, unit, rate). Missing shop name: do not ask, pick a short group name from the items ("Electrical" for MCB and cables, "Local transport (auto)" for an auto fare). A single amount with no quantity is one item, qty 1. If the date is missing use today. Never ask for the budget head; set budgetHeadId only if the user names one (list_records on budget_heads). If the total is above ₹${SITE_BILL_LIMIT}, say it is too large for a site bill and offer a Material Request instead.
 3. Payment mode: ask_user "How was it paid?" with options Cash, UPI, Bank transfer, Cheque, unless the bill shows it.
 4. Propose.`,
   },
