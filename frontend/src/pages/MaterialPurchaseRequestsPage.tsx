@@ -4,7 +4,7 @@ import {
   Box, Typography, Button, Chip, IconButton, DialogTitle, DialogContent, DialogActions,
   TextField, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, CircularProgress,
   MenuItem, InputAdornment, Grid, Alert, ToggleButtonGroup, ToggleButton, Divider, Autocomplete, Tabs, Tab,
-  Accordion, AccordionSummary, AccordionDetails, Pagination,
+  Accordion, AccordionSummary, AccordionDetails, Pagination, Collapse,
 } from '@mui/material';
 import {
   ExpandMore as ExpandMoreIcon,
@@ -26,6 +26,7 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import VendorAutocomplete from '../components/VendorAutocomplete';
 import StalledChip from '../components/StalledChip';
+import { DetailSection, DetailField } from '../components/DetailSection';
 import CopyText from '../components/CopyText';
 import ApprovalTiming from '../components/ApprovalTiming';
 import { MPRStatus, MPRRequestType, UserRole, isApproverRole, isWorkflowOpenToRole, canOverrideApprovals, findApprovableStep, isSuperAdmin } from '@hospital-erp/shared';
@@ -123,6 +124,8 @@ export default function MaterialPurchaseRequestsPage() {
   const [requestTypeTab, setRequestTypeTab] = useState<MPRRequestType>(MPRRequestType.MATERIAL);
   const isServiceTab = requestTypeTab === MPRRequestType.SERVICE;
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [detailRows, setDetailRows] = useState<Set<string>>(new Set());
+  const toggleDetails = (id: string) => setDetailRows((prev) => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; });
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [createOpen, setCreateOpen] = useState(false);
@@ -820,36 +823,103 @@ export default function MaterialPurchaseRequestsPage() {
                 </AccordionSummary>
                 <AccordionDetails sx={{ borderTop: '1px solid', borderColor: 'divider', p: 1.25 }}>
                   <Box sx={{ minWidth: 0 }}>
-                      <Box sx={{ mb: 0.5 }}><ApprovalTiming startedAt={row.createdAt} workflow={row.approvalWorkflow} /></Box>
-                      <Typography variant="body2" color="text.secondary">
-                        {t('dateLine', { date: formatDate(row.date), required: row.requiredBy ? formatDate(row.requiredBy) : '—', dept: row.department ?? '—' })}
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        {t('requestedLine', { by: row.createdByUser?.name ?? '—', priority: t(`priority.${row.priority ?? 'Normal'}`, row.priority ?? 'Normal'), n: row.items.length })}
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        {t('vendorLine', { v: row.vendor ? `${row.vendor.name} (${row.vendor.vendorCode})` : '—' })}
-                        {row.vendor && (
-                          <Chip
-                            label={isNonVendor ? t('nonVendor') : t('vendor')}
-                            size="small"
-                            sx={{ ml: 0.75, height: 18, fontSize: '0.65rem' }}
-                            color={isNonVendor ? 'default' : 'primary'}
-                            variant="outlined"
-                          />
+                  {/* Key facts — only what people look for first (vendor, status and items are in the header) */}
+                  {(() => {
+                    const est = row.items.reduce((s, i) => s + (Number(i.estimatedRate) || 0) * (Number(i.quantity) || 0), 0);
+                    const estTotal = est + (est * (Number(row.estimatedGstRate) || 0)) / 100;
+                    return (
+                      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', sm: 'repeat(4, 1fr)' }, gap: 1, mb: 1 }}>
+                        {estTotal > 0 && (
+                          <Box>
+                            <Typography variant="caption" color="text.secondary">{t('estimatedTotal')}</Typography>
+                            <Typography sx={{ fontWeight: 700 }}>{`₹${estTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}</Typography>
+                          </Box>
                         )}
-                      </Typography>
-                      {row.requestType === 'SERVICE' && (row.serviceCategory || row.servicePeriodStart || row.servicePeriodEnd) && (
-                        <Typography variant="body2" color="text.secondary">
-                          {row.serviceCategory ?? '—'}
-                          {(row.servicePeriodStart || row.servicePeriodEnd) && t('periodLine', { from: row.servicePeriodStart ? formatDate(row.servicePeriodStart) : '—', to: row.servicePeriodEnd ? formatDate(row.servicePeriodEnd) : '—' })}
-                        </Typography>
-                      )}
-                      {row.description && (
-                        <Typography variant="body2" sx={{ mt: 0.5, color: 'text.primary' }}>{row.description}</Typography>
-                      )}
+                        <Box>
+                          <Typography variant="caption" color="text.secondary">{t('requiredBy')}</Typography>
+                          <Typography sx={{ fontWeight: 600 }}>{row.requiredBy ? formatDate(row.requiredBy) : '—'}</Typography>
+                        </Box>
+                        <Box>
+                          <Typography variant="caption" color="text.secondary">{t('fRequestedBy')}</Typography>
+                          <Typography sx={{ fontWeight: 600 }} noWrap>{row.createdByUser?.name ?? '—'}</Typography>
+                        </Box>
+                        <Box>
+                          <Typography variant="caption" color="text.secondary">{t('priorityLabel')}</Typography>
+                          <Typography sx={{ fontWeight: 600 }}>{t(`priority.${row.priority ?? 'Normal'}`, row.priority ?? 'Normal')}</Typography>
+                        </Box>
+                      </Box>
+                    );
+                  })()}
 
-                  {/* Items summary */}
+                  <Box sx={{ mb: 0.5 }}><ApprovalTiming startedAt={row.createdAt} workflow={row.approvalWorkflow} /></Box>
+
+                  {row.description && (
+                    <Typography variant="body2" sx={{ mt: 0.5, color: 'text.primary' }}>{row.description}</Typography>
+                  )}
+
+                  {/* Main actions — the rest live under More details */}
+                  <Box sx={{ display: 'flex', gap: 0.5, mt: 1, pt: 1, borderTop: '1px solid', borderColor: 'divider', flexWrap: 'wrap', alignItems: 'center' }}>
+                    <IconButton size="small" onClick={() => previewPDF(row.id)} title={t('previewPdf')} disabled={pdfLoading}>
+                      {pdfLoading ? <CircularProgress size={16} /> : <PdfIcon fontSize="small" />}
+                    </IconButton>
+                    <CommentsButton entityType="MATERIAL_PURCHASE_REQUEST" entityId={row.id} entityLabel={row.mprNumber} url="/material-purchase-requests" />
+                    {row.status === MPRStatus.DRAFT && (
+                      <Button size="small" startIcon={<SendIcon />} onClick={() => submitMutation.mutate(row.id)} disabled={submitMutation.isPending}>{t('submitForApproval')}</Button>
+                    )}
+                    {pendingStep && (row.status === MPRStatus.SUBMITTED || row.status === MPRStatus.APPROVED) && (
+                      <>
+                        <Button size="small" color="success" startIcon={<CheckIcon />} onClick={() => setApprovalAction({ row, step: pendingStep, action: 'approve' })}>{t('approve')}</Button>
+                        {row.status === MPRStatus.SUBMITTED && (
+                          <Button size="small" color="error" startIcon={<CloseIcon />} onClick={() => setApprovalAction({ row, step: pendingStep, action: 'reject' })}>{t('reject')}</Button>
+                        )}
+                      </>
+                    )}
+                    {row.status === MPRStatus.APPROVED && !isNonVendor && row.vendorId && (
+                      <Button size="small" variant="contained" startIcon={<QuotationIcon />} onClick={() => raiseQuotation(row)}>{t('raiseQuotation')}</Button>
+                    )}
+                    {isNonVendor && row.purchaseOrders?.map((po) => (
+                      <Chip key={po.id} label={t('poRaised', { n: po.poNumber })} size="small" color="success" variant="outlined" sx={{ alignSelf: 'center' }} />
+                    ))}
+                    {row.status === MPRStatus.APPROVED && isNonVendor && !row.purchaseOrders?.length && (
+                      <Button size="small" variant="contained" startIcon={<ReceiptIcon />} onClick={() => setReceiptRow(row)}>{t('uploadReceiptClose')}</Button>
+                    )}
+                  </Box>
+
+                  <Button size="small" sx={{ mt: 1, px: 0.5 }} onClick={() => toggleDetails(row.id)} endIcon={<ExpandMoreIcon sx={{ transform: detailRows.has(row.id) ? 'rotate(180deg)' : 'none', transition: 'transform .2s' }} />}>
+                    {detailRows.has(row.id) ? t('lessDetails') : t('moreDetails')}
+                  </Button>
+                  <Collapse in={detailRows.has(row.id)} unmountOnExit>
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, mt: 1 }}>
+                      <DetailSection title={t('sectionRequest')}>
+                        <DetailField label={t('fDate')}>{formatDate(row.date)}</DetailField>
+                        <DetailField label={t('requiredBy')}>{row.requiredBy ? formatDate(row.requiredBy) : '—'}</DetailField>
+                        <DetailField label={t('department')}>{row.department ?? '—'}</DetailField>
+                        <DetailField label={t('fRequestedBy')}>{row.createdByUser?.name ?? '—'}</DetailField>
+                        <DetailField label={t('priorityLabel')}>{t(`priority.${row.priority ?? 'Normal'}`, row.priority ?? 'Normal')}</DetailField>
+                        <DetailField label={t('fItems')}>{row.items.length}</DetailField>
+                        <DetailField label={t('vendor')}>
+                          {row.vendor ? `${row.vendor.name} (${row.vendor.vendorCode})` : '—'}
+                          {row.vendor && (
+                            <Chip
+                              label={isNonVendor ? t('nonVendor') : t('vendor')}
+                              size="small"
+                              sx={{ ml: 0.75, height: 18, fontSize: '0.65rem' }}
+                              color={isNonVendor ? 'default' : 'primary'}
+                              variant="outlined"
+                            />
+                          )}
+                        </DetailField>
+                        {row.requestType === 'SERVICE' && (row.serviceCategory || row.servicePeriodStart || row.servicePeriodEnd) && (
+                          <>
+                            <DetailField label={t('serviceCategory')}>{row.serviceCategory ?? '—'}</DetailField>
+                            <DetailField label={t('fPeriod')}>
+                              {row.servicePeriodStart ? formatDate(row.servicePeriodStart) : '—'} – {row.servicePeriodEnd ? formatDate(row.servicePeriodEnd) : '—'}
+                            </DetailField>
+                          </>
+                        )}
+                      </DetailSection>
+
+                      <DetailSection title={t('sectionItems')} single>
                   {(() => {
                     const rateOf = (i: MPRItem) => Number(i.estimatedRate) || 0;
                     const hasPrice = row.items.some((i) => rateOf(i) > 0);
@@ -918,113 +988,78 @@ export default function MaterialPurchaseRequestsPage() {
                       </TableContainer>
                     );
                   })()}
+                      </DetailSection>
 
-                  {/* Quotations raised against this MPR */}
-                  {row.quotations && row.quotations.length > 0 && (
-                    <Box sx={{ mt: 1 }}>
-                      <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary' }}>{t('quotations')} </Typography>
-                      {row.quotations.map((q) => (
-                        <Chip key={q.id} label={`${q.quotationNumber} · ${enumLabel(q.status)} · ₹${Number(q.grandTotal).toLocaleString('en-IN')}`} size="small" sx={{ mr: 0.5, mb: 0.5 }} />
-                      ))}
-                    </Box>
-                  )}
+                      {row.quotations && row.quotations.length > 0 && (
+                        <DetailSection title={t('sectionQuotations')} single>
+                          {row.quotations.map((q) => (
+                            <Chip key={q.id} label={`${q.quotationNumber} · ${enumLabel(q.status)} · ₹${Number(q.grandTotal).toLocaleString('en-IN')}`} size="small" sx={{ mr: 0.5, mb: 0.5 }} />
+                          ))}
+                        </DetailSection>
+                      )}
 
-                  {/* Receipt attached (non-vendor fast path) */}
-                  {row.receiptFilePath && (
-                    <Box sx={{ mt: 1 }}>
-                      <Button size="small" startIcon={<ReceiptIcon />} onClick={() => downloadReceipt(row.id, row.receiptFileName ?? 'receipt')}>
-                        {row.receiptFileName ?? t('receiptAttached')}
-                      </Button>
-                    </Box>
-                  )}
+                      {row.approvalWorkflow && (
+                        <DetailSection title={t('approvalStatus')} single>
+                          <ApprovalStepsDisplay steps={row.approvalWorkflow.steps} />
+                        </DetailSection>
+                      )}
 
-                  {/* Approval workflow */}
-                  {row.approvalWorkflow && (
-                    <Box sx={{ mt: 1.5 }}>
-                      <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>{t('approvalStatus')}</Typography>
-                      <ApprovalStepsDisplay steps={row.approvalWorkflow.steps} />
-                    </Box>
-                  )}
+                      {(row.receiptFilePath || expandedId === row.id) && (
+                        <DetailSection title={t('sectionFiles')} single>
+                          {row.receiptFilePath && (
+                            <Box sx={{ mb: 1 }}>
+                              <Button size="small" startIcon={<ReceiptIcon />} onClick={() => downloadReceipt(row.id, row.receiptFileName ?? 'receipt')}>
+                                {row.receiptFileName ?? t('receiptAttached')}
+                              </Button>
+                            </Box>
+                          )}
+                          {expandedId === row.id && <LinkedFiles recordType="MPR" recordId={row.id} />}
+                        </DetailSection>
+                      )}
 
-                  {/* Actions */}
-                  <Box sx={{ display: 'flex', gap: 0.5, mt: 1, pt: 1, borderTop: '1px solid', borderColor: 'action.hover', flexWrap: 'wrap' }}>
-                    <IconButton size="small" onClick={() => previewPDF(row.id)} title={t('previewPdf')} disabled={pdfLoading}>
-                      {pdfLoading ? <CircularProgress size={16} /> : <PdfIcon fontSize="small" />}
-                    </IconButton>
-                    <CommentsButton entityType="MATERIAL_PURCHASE_REQUEST" entityId={row.id} entityLabel={row.mprNumber} url="/material-purchase-requests" />
-                    <IconButton size="small" onClick={() => downloadPDF(row.id, row.mprNumber)} title={t('downloadPdf')}>
-                      <DownloadIcon fontSize="small" />
-                    </IconButton>
-                    {row.status !== MPRStatus.CLOSED && row.status !== MPRStatus.CANCELLED && (
-                      <Button size="small" startIcon={<SwitchIcon />} onClick={() => switchTypeMutation.mutate(row.id)} disabled={switchTypeMutation.isPending}>
-                        {row.requestType === 'SERVICE' ? t('switchToMaterial') : t('switchToService')}
-                      </Button>
-                    )}
-                    {(row.status !== MPRStatus.DRAFT) && (
-                      <Button size="small" startIcon={<VarianceIcon />} onClick={() => setVarianceRow(row)}>{t('variance')}</Button>
-                    )}
-                    {row.status === MPRStatus.DRAFT && (
-                      <>
-                        <IconButton size="small" onClick={() => openEdit(row)} title={t('edit')}><EditIcon fontSize="small" /></IconButton>
-                        <Button size="small" startIcon={<SendIcon />} onClick={() => submitMutation.mutate(row.id)} disabled={submitMutation.isPending}>{t('submitForApproval')}</Button>
-                        <IconButton size="small" onClick={() => deleteMutation.mutate(row.id)} title={t('delete')}><DeleteIcon fontSize="small" /></IconButton>
-                      </>
-                    )}
-                    {row.status === MPRStatus.SUBMITTED && (
-                      <>
-                        <IconButton size="small" onClick={() => openEdit(row)} title={t('editReRaise')}><EditIcon fontSize="small" /></IconButton>
-                        {pendingStep && (
-                          <>
-                            <Button size="small" color="success" startIcon={<CheckIcon />} onClick={() => setApprovalAction({ row, step: pendingStep, action: 'approve' })}>{t('approve')}</Button>
-                            <Button size="small" color="error" startIcon={<CloseIcon />} onClick={() => setApprovalAction({ row, step: pendingStep, action: 'reject' })}>{t('reject')}</Button>
-                          </>
-                        )}
-                        <Button size="small" color="error" startIcon={<CloseIcon />} onClick={() => cancelMutation.mutate(row.id)} disabled={cancelMutation.isPending}>{t('cancel')}</Button>
-                      </>
-                    )}
-                    {row.status === MPRStatus.APPROVED && (
-                      <>
-                        <IconButton size="small" onClick={() => openEdit(row)} title={t('editReRaise')}><EditIcon fontSize="small" /></IconButton>
-                        {pendingStep && (
-                          <Button size="small" color="success" startIcon={<CheckIcon />} onClick={() => setApprovalAction({ row, step: pendingStep, action: 'approve' })}>{t('approve')}</Button>
-                        )}
-                        {(user?.role === UserRole.ADMIN_2 || isSuperAdmin(user?.extraPermissions)) && (
-                          <IconButton
-                            size="small"
-                            color="error"
-                            onClick={() => { if (window.confirm(t('confirmDeleteApproved', { n: row.mprNumber }))) deleteMutation.mutate(row.id); }}
-                            title={t('delete')}
-                          ><DeleteIcon fontSize="small" /></IconButton>
-                        )}
-                      </>
-                    )}
-                    {row.status === MPRStatus.APPROVED && !isNonVendor && row.vendorId && (
-                      <Button size="small" variant="contained" startIcon={<QuotationIcon />} onClick={() => raiseQuotation(row)}>{t('raiseQuotation')}</Button>
-                    )}
-                    {isNonVendor && row.purchaseOrders?.map((po) => (
-                      <Chip key={po.id} label={t('poRaised', { n: po.poNumber })} size="small" color="success" variant="outlined" sx={{ alignSelf: 'center' }} />
-                    ))}
-                    {row.status === MPRStatus.APPROVED && isNonVendor && !row.purchaseOrders?.length && (
-                      <Button size="small" variant="contained" startIcon={<ReceiptIcon />} onClick={() => setReceiptRow(row)}>{t('uploadReceiptClose')}</Button>
-                    )}
-                    {row.status === MPRStatus.QUOTATIONS_RECEIVED && (
-                      <IconButton size="small" onClick={() => openEdit(row)} title={t('editReviseQuotation')}><EditIcon fontSize="small" /></IconButton>
-                    )}
-                    {row.status === MPRStatus.QUOTATIONS_RECEIVED && !isNonVendor && (
-                      <Button size="small" startIcon={<QuotationIcon />} onClick={() => raiseQuotation(row, false)}>{t('raiseAnother')}</Button>
-                    )}
-                    {row.status !== MPRStatus.DRAFT && (
-                      <Button size="small" startIcon={<CombinedIcon />} onClick={() => navigate(`/combined-records?type=mpr&id=${row.id}`)}>{t('openCombined')}</Button>
-                    )}
-                    {(row.status === MPRStatus.APPROVED || row.status === MPRStatus.QUOTATIONS_RECEIVED) && (
-                      <Button size="small" color="success" onClick={() => closeMutation.mutate(row.id)} disabled={closeMutation.isPending}>{t('markClosed')}</Button>
-                    )}
-                  </Box>
-                  {expandedId === row.id && (
-                    <Box sx={{ mt: 1.5, pt: 1, borderTop: '1px solid', borderColor: 'divider' }}>
-                      <LinkedFiles recordType="MPR" recordId={row.id} />
+                      <DetailSection title={t('sectionActions')} single>
+                        <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', alignItems: 'center' }}>
+                          <Button size="small" startIcon={<DownloadIcon />} onClick={() => downloadPDF(row.id, row.mprNumber)}>{t('downloadPdf')}</Button>
+                          {row.status !== MPRStatus.CLOSED && row.status !== MPRStatus.CANCELLED && (
+                            <Button size="small" startIcon={<SwitchIcon />} onClick={() => switchTypeMutation.mutate(row.id)} disabled={switchTypeMutation.isPending}>
+                              {row.requestType === 'SERVICE' ? t('switchToMaterial') : t('switchToService')}
+                            </Button>
+                          )}
+                          {(row.status !== MPRStatus.DRAFT) && (
+                            <Button size="small" startIcon={<VarianceIcon />} onClick={() => setVarianceRow(row)}>{t('variance')}</Button>
+                          )}
+                          {row.status !== MPRStatus.DRAFT && (
+                            <Button size="small" startIcon={<CombinedIcon />} onClick={() => navigate(`/combined-records?type=mpr&id=${row.id}`)}>{t('openCombined')}</Button>
+                          )}
+                          {(row.status === MPRStatus.DRAFT || row.status === MPRStatus.SUBMITTED || row.status === MPRStatus.APPROVED || row.status === MPRStatus.QUOTATIONS_RECEIVED) && (
+                            <Button size="small" startIcon={<EditIcon />} onClick={() => openEdit(row)}>
+                              {row.status === MPRStatus.DRAFT ? t('edit') : row.status === MPRStatus.QUOTATIONS_RECEIVED ? t('editReviseQuotation') : t('editReRaise')}
+                            </Button>
+                          )}
+                          {row.status === MPRStatus.QUOTATIONS_RECEIVED && !isNonVendor && (
+                            <Button size="small" startIcon={<QuotationIcon />} onClick={() => raiseQuotation(row, false)}>{t('raiseAnother')}</Button>
+                          )}
+                          {(row.status === MPRStatus.APPROVED || row.status === MPRStatus.QUOTATIONS_RECEIVED) && (
+                            <Button size="small" color="success" onClick={() => closeMutation.mutate(row.id)} disabled={closeMutation.isPending}>{t('markClosed')}</Button>
+                          )}
+                          {row.status === MPRStatus.SUBMITTED && (
+                            <Button size="small" color="error" startIcon={<CloseIcon />} onClick={() => cancelMutation.mutate(row.id)} disabled={cancelMutation.isPending}>{t('cancel')}</Button>
+                          )}
+                          {row.status === MPRStatus.DRAFT && (
+                            <Button size="small" color="error" startIcon={<DeleteIcon />} onClick={() => deleteMutation.mutate(row.id)}>{t('delete')}</Button>
+                          )}
+                          {row.status === MPRStatus.APPROVED && (user?.role === UserRole.ADMIN_2 || isSuperAdmin(user?.extraPermissions)) && (
+                            <Button
+                              size="small"
+                              color="error"
+                              startIcon={<DeleteIcon />}
+                              onClick={() => { if (window.confirm(t('confirmDeleteApproved', { n: row.mprNumber }))) deleteMutation.mutate(row.id); }}
+                            >{t('delete')}</Button>
+                          )}
+                        </Box>
+                      </DetailSection>
                     </Box>
-                  )}
+                  </Collapse>
                   </Box>
                 </AccordionDetails>
               </Accordion>

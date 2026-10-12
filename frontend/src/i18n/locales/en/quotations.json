@@ -100,5 +100,9 @@
   "cancelled": "Quotation cancelled",
   "finalized": "Quotation finalized",
   "finalizedWithPo": "Quotation finalized. Purchase Order {{po}} was created and sent for approval.",
-  "openCombined": "Combined record"
+  "openCombined": "Combined record",
+  "sectionQuotation": "Quotation",
+  "sectionAmounts": "Amounts",
+  "sectionFiles": "Files",
+  "sectionActions": "More actions"
 }

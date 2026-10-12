@@ -100,5 +100,9 @@
   "cancelled": "కొటేషన్ రద్దు చేయబడింది",
   "finalized": "కొటేషన్ ఖరారు చేయబడింది",
   "finalizedWithPo": "కొటేషన్ ఖరారు చేయబడింది. కొనుగోలు ఆర్డర్ {{po}} సృష్టించబడి ఆమోదానికి పంపబడింది.",
-  "openCombined": "కలిపిన రికార్డు"
+  "openCombined": "కలిపిన రికార్డు",
+  "sectionQuotation": "కొటేషన్",
+  "sectionAmounts": "మొత్తాలు",
+  "sectionFiles": "ఫైళ్లు",
+  "sectionActions": "ఇతర చర్యలు"
 }

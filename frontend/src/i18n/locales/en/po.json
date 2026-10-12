@@ -297,5 +297,11 @@
   "convertHelp": "This PO becomes the contract's main PO. Its items, amount and payments stay as they are and carry into the contract total. Afterwards you can add sub-POs ({{n}}-SUB01, -SUB02 ...) for further work; each adds to the total. There is no fixed amount: the contract continues until you close it.",
   "convertBtn": "Convert to contract",
   "entityConvert": "conversion of this PO into a contract",
-  "mainPoRow": "Main PO"
+  "mainPoRow": "Main PO",
+  "sectionOrder": "Order",
+  "sectionAmounts": "Amounts",
+  "sectionBudgetPayment": "Budget & payment",
+  "sectionPeople": "People & dates",
+  "sectionFiles": "Files",
+  "sectionActions": "More actions"
 }

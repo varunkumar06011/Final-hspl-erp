@@ -147,5 +147,16 @@
   "shipment3": "3rd shipment requested",
   "shipmentN": "{{n}}th shipment requested",
   "shipmentOf": "{{name}} — shipment {{n}}",
-  "openCombined": "Combined record"
+  "openCombined": "Combined record",
+  "moreDetails": "More details",
+  "lessDetails": "Hide details",
+  "sectionRequest": "Request",
+  "sectionItems": "Items",
+  "sectionQuotations": "Quotations",
+  "sectionFiles": "Files",
+  "sectionActions": "More actions",
+  "fRequestedBy": "Requested by",
+  "fDate": "Date",
+  "fItems": "Items",
+  "fPeriod": "Service period"
 }

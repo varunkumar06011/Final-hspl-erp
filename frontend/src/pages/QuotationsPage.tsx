@@ -25,6 +25,7 @@ import {
 } from '@mui/material';
 import ResponsiveDialog from '../components/ResponsiveDialog';
 import StalledChip from '../components/StalledChip';
+import { DetailSection, DetailField } from '../components/DetailSection';
 import ApprovalStepsDisplay from '../components/ApprovalStepsDisplay';
 import {
   Add as AddIcon,
@@ -887,15 +888,11 @@ export default function QuotationsPage() {
                   </AccordionSummary>
                   <AccordionDetails sx={{ borderTop: '1px solid', borderColor: 'divider', bgcolor: 'background.paper', color: 'text.primary', p: 1.25 }}>
                     <Box sx={{ minWidth: 0 }}>
-                  {/* Key facts — the few things people actually look for */}
-                  <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', sm: 'repeat(4, 1fr)' }, gap: 1, mb: 1 }}>
+                  {/* Key facts — only what people look for first (vendor and status are in the header) */}
+                  <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', sm: 'repeat(3, 1fr)' }, gap: 1, mb: 1 }}>
                     <Box>
                       <Typography variant="caption" color="text.secondary">{t('grandTotal')}</Typography>
                       <Typography sx={{ fontWeight: 700 }}>{formatCurrency(row.grandTotal)}</Typography>
-                    </Box>
-                    <Box>
-                      <Typography variant="caption" color="text.secondary">{t('vendor')}</Typography>
-                      <Typography sx={{ fontWeight: 600 }} noWrap>{row.vendor?.name ?? '—'}</Typography>
                     </Box>
                     <Box>
                       <Typography variant="caption" color="text.secondary">{t('quotationDate')}</Typography>
@@ -914,164 +911,125 @@ export default function QuotationsPage() {
                   {/* Materials — simple list: material, qty, rate, amount */}
                   {row.items && row.items.length > 0 && <ItemsGist items={row.items} max={50} />}
 
-                  <Button size="small" sx={{ mt: 0.5, px: 0.5 }} onClick={() => toggleDetails(row.id)} endIcon={<ExpandMoreIcon sx={{ transform: detailRows.has(row.id) ? 'rotate(180deg)' : 'none', transition: 'transform .2s' }} />}>
-                    {detailRows.has(row.id) ? t('lessDetails') : t('moreDetails')}
-                  </Button>
-                  <Collapse in={detailRows.has(row.id)} unmountOnExit>
-                  {/* Status bar */}
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 0.75, pb: 0.75, borderBottom: '1px solid', borderColor: 'action.hover' }}>
-                    <Chip
-                      label={statusLabel(effectiveStatus)}
-                      size="small"
-                      color={
-                        displayAgingStatus === 'DELETED' ? 'error' :
-                        displayAgingStatus === 'OVERDUE' ? 'error' :
-                        displayAgingStatus === 'ATTENTION' ? 'warning' :
-                        displayAgingStatus === 'APPROVED' ? 'success' :
-                        displayAgingStatus === 'REJECTED' ? 'default' :
-                        STATUS_COLORS[effectiveStatus] ?? 'default'
-                      }
-                      sx={displayAgingStatus === 'DELETED' ? { bgcolor: '#d32f2f', color: '#fff', textDecoration: 'line-through' } : undefined}
-                    />
-                    {agingLabel && displayAgingStatus !== 'APPROVED' && displayAgingStatus !== 'REJECTED' && (
-                      <Typography variant="caption" sx={{
-                        color: displayAgingStatus === 'OVERDUE' ? 'error.main' : displayAgingStatus === 'ATTENTION' ? (theme.palette.mode === 'dark' ? 'warning.main' : 'warning.dark') : 'text.secondary',
-                        fontWeight: displayAgingStatus === 'OVERDUE' ? 700 : 500,
-                      }}>
-                        {agingLabel}
-                      </Typography>
+                  {/* Main actions — the rest live under More details */}
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, mt: 1, pt: 1, borderTop: '1px solid', borderColor: 'divider' }}>
+                    <Button size="small" variant="outlined" startIcon={pdfLoading ? <CircularProgress size={16} /> : <PdfIcon />} onClick={() => previewQuotationPDF(row.id)} disabled={pdfLoading}>{t('open')}</Button>
+                    <Button size="small" variant="outlined" startIcon={<TimelineIcon />} onClick={() => setTimelineRow(row)}>{t('view')}</Button>
+                    <CommentsButton entityType="QUOTATION" entityId={row.id} entityLabel={row.quotationNumber} url="/quotations" />
+                    <Button size="small" variant="outlined" startIcon={<ShareIcon />} onClick={() => handleShareWhatsApp(row)}>{t('share')}</Button>
+                    {effectiveStatus !== QuotationStatus.DELETED && (
+                      <>
+                        {row.mpr && (effectiveStatus === QuotationStatus.APPROVED || effectiveStatus === QuotationStatus.CONVERTED_TO_PO) && row.items.some((i) => Number(i.unitPrice) <= 0) && (
+                          <Button size="small" variant="contained" color="warning" startIcon={<EditIcon />} onClick={() => openEdit(row)}>{t('enterPrices')}</Button>
+                        )}
+                        {finalizable && (
+                          <>
+                            <Button size="small" variant="contained" color="success" startIcon={<CheckIcon />} onClick={() => setApprovalAction({ row, action: 'approve' })}>{t('finalize')}</Button>
+                            <Button size="small" color="error" startIcon={<CloseIcon />} onClick={() => setApprovalAction({ row, action: 'reject' })}>{t('notSelected')}</Button>
+                          </>
+                        )}
+                      </>
                     )}
                   </Box>
 
-                  {/* Two-column label/value grid */}
-                  <Box sx={{
-                    display: 'grid',
-                    gridTemplateColumns: { xs: '1fr', sm: '140px 1fr 140px 1fr' },
-                    gap: { xs: 0.25, sm: '2px 12px' },
-                    alignItems: 'baseline',
-                  }}>
-                    <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>{t('quotationNo')}</Typography>
-                    <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem' }}>{row.quotationNumber}</Typography>
+                  <Button size="small" sx={{ mt: 1, px: 0.5 }} onClick={() => toggleDetails(row.id)} endIcon={<ExpandMoreIcon sx={{ transform: detailRows.has(row.id) ? 'rotate(180deg)' : 'none', transition: 'transform .2s' }} />}>
+                    {detailRows.has(row.id) ? t('lessDetails') : t('moreDetails')}
+                  </Button>
+                  <Collapse in={detailRows.has(row.id)} unmountOnExit>
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, mt: 1 }}>
+                      <DetailSection title={t('sectionQuotation')}>
+                        <DetailField label={t('quotationNo')}>{row.quotationNumber}</DetailField>
+                        <DetailField label={t('vendor')}>{row.vendor?.vendorCode} - {row.vendor?.name ?? '—'}</DetailField>
+                        <DetailField label={t('category')}>{row.vendor?.category ? enumLabel(row.vendor.category) : '—'}</DetailField>
+                        <DetailField label={t('quotationDate')}>{formatDate(row.date)}</DetailField>
+                        <DetailField label={t('generatedOn')}>{formatDate(row.createdAt)}</DetailField>
+                        <DetailField label={t('createdBy')}>{row.createdByUser?.name ?? '—'}</DetailField>
+                      </DetailSection>
 
-                    <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>{t('vendor')}</Typography>
-                    <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem' }}>{row.vendor?.vendorCode} - {row.vendor?.name ?? '—'}</Typography>
+                      <DetailSection title={t('sectionAmounts')}>
+                        <DetailField label={t('total')}>{formatCurrency(row.totalAmount)}</DetailField>
+                        <DetailField label={t('gst')}>{formatCurrency(row.gstAmount)}</DetailField>
+                        <DetailField label={t('grandTotal')}>{formatCurrency(row.grandTotal)}</DetailField>
+                      </DetailSection>
 
-                    <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>{t('category')}</Typography>
-                    <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem' }}>{row.vendor?.category ? enumLabel(row.vendor.category) : '—'}</Typography>
-
-                    <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>{t('quotationDate')}</Typography>
-                    <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem' }}>{formatDate(row.date)}</Typography>
-
-                    <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>{t('generatedOn')}</Typography>
-                    <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem' }}>{formatDate(row.createdAt)}</Typography>
-
-                    <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>{t('total')}</Typography>
-                    <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem' }}>{formatCurrency(row.totalAmount)}</Typography>
-
-                    <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>{t('gst')}</Typography>
-                    <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem' }}>{formatCurrency(row.gstAmount)}</Typography>
-
-                    <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>{t('grandTotal')}</Typography>
-                    <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem' }}>{formatCurrency(row.grandTotal)}</Typography>
-
-                    <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>{t('createdBy')}</Typography>
-                    <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem' }}>{row.createdByUser?.name ?? '—'}</Typography>
-                  </Box>
-
-                  {/* Materials — full width compact table */}
-                  {row.items && row.items.length > 0 && (
-                    <Box sx={{ mt: 0.5 }}>
-                      <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem', display: 'block', mb: 0.5 }}>
-                        {row.mpr ? t('materialsMpr', { n: row.mpr.mprNumber }) : t('materials')}
-                      </Typography>
-                      {/* On narrow phones the fixed-width money columns can't shrink below
-                          their content — give the table a floor and let it scroll sideways
-                          instead of clipping Material/Unit Price/GST/Amount. */}
-                      <Box sx={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', mx: -0.5, px: 0.5 }}>
-                      <Box component="table" sx={{ width: '100%', minWidth: 430, borderCollapse: 'collapse', fontSize: '0.8rem' }}>
-                        <Box component="thead">
-                          <Box component="tr" sx={{ borderBottom: '1px solid', borderColor: 'divider' }}>
-                            <Box component="th" sx={{ textAlign: 'left', py: 0.25, px: 0.5, fontWeight: 600, fontSize: '0.7rem', color: 'text.secondary', textTransform: 'uppercase' }}>{t('colMaterial')}</Box>
-                            {row.mpr && (
-                              <Box component="th" sx={{ textAlign: 'right', py: 0.25, px: 0.5, fontWeight: 600, fontSize: '0.7rem', color: 'text.secondary', textTransform: 'uppercase' }}>{t('colRequested')}</Box>
-                            )}
-                            <Box component="th" sx={{ textAlign: 'right', py: 0.25, px: 0.5, fontWeight: 600, fontSize: '0.7rem', color: 'text.secondary', textTransform: 'uppercase' }}>{t('colQty')}</Box>
-                            <Box component="th" sx={{ textAlign: 'right', py: 0.25, px: 0.5, fontWeight: 600, fontSize: '0.7rem', color: 'text.secondary', textTransform: 'uppercase' }}>{t('colUnitPrice')}</Box>
-                            <Box component="th" sx={{ textAlign: 'right', py: 0.25, px: 0.5, fontWeight: 600, fontSize: '0.7rem', color: 'text.secondary', textTransform: 'uppercase' }}>{t('colGst')}</Box>
-                            <Box component="th" sx={{ textAlign: 'right', py: 0.25, px: 0.5, fontWeight: 600, fontSize: '0.7rem', color: 'text.secondary', textTransform: 'uppercase' }}>{t('colAmountInc')}</Box>
-                          </Box>
-                        </Box>
-                        <Box component="tbody">
-                          {row.items.map((item, i) => {
-                            const requested = row.mpr?.items.find((mi) => mi.materialName.trim().toLowerCase() === item.materialName.trim().toLowerCase());
-                            const qtyDiff = requested ? num(item.quantity) - Number(requested.quantity) : 0;
-                            return (
-                            <Box key={i} component="tr" sx={{ borderBottom: '1px solid', borderColor: 'action.hover', '&:last-child': { borderBottom: 'none' } }}>
-                              <Box component="td" sx={{ py: 0.25, px: 0.5, fontWeight: 600, fontSize: '0.8rem' }}>{item.materialName}</Box>
-                              {row.mpr && (
-                                <Box component="td" sx={{ py: 0.25, px: 0.5, textAlign: 'right', fontSize: '0.8rem', whiteSpace: 'nowrap', color: !requested ? 'text.disabled' : qtyDiff !== 0 ? 'warning.main' : 'success.main' }}>
-                                  {requested ? `${requested.quantity}${requested.unit ? ` ${requested.unit}` : ''}${qtyDiff !== 0 ? ` (${qtyDiff > 0 ? '+' : ''}${round2(qtyDiff)})` : ''}` : '—'}
-                                </Box>
-                              )}
-                              <Box component="td" sx={{ py: 0.25, px: 0.5, textAlign: 'right', fontSize: '0.8rem', whiteSpace: 'nowrap' }}>{item.quantity}{item.unit ? ` ${item.unit}` : ''}</Box>
-                              <Box component="td" sx={{ py: 0.25, px: 0.5, textAlign: 'right', fontSize: '0.8rem', whiteSpace: 'nowrap' }}>{formatCurrency(Number(item.unitPrice))}</Box>
-                              <Box component="td" sx={{ py: 0.25, px: 0.5, textAlign: 'right', fontSize: '0.8rem', whiteSpace: 'nowrap' }}>{num(item.gstRate)}% ({formatCurrency(Number(item.amount) * num(item.gstRate) / 100)})</Box>
-                              <Box component="td" sx={{ py: 0.25, px: 0.5, textAlign: 'right', fontWeight: 600, fontSize: '0.8rem', whiteSpace: 'nowrap' }}>{formatCurrency(toIncGst(item.amount, item.gstRate))}</Box>
+                      {row.items && row.items.length > 0 && (
+                        <DetailSection title={row.mpr ? t('materialsMpr', { n: row.mpr.mprNumber }) : t('materials')} single>
+                          <Box sx={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', mx: -0.5, px: 0.5 }}>
+                          <Box component="table" sx={{ width: '100%', minWidth: 430, borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+                            <Box component="thead">
+                              <Box component="tr" sx={{ borderBottom: '1px solid', borderColor: 'divider' }}>
+                                <Box component="th" sx={{ textAlign: 'left', py: 0.25, px: 0.5, fontWeight: 600, fontSize: '0.7rem', color: 'text.secondary', textTransform: 'uppercase' }}>{t('colMaterial')}</Box>
+                                {row.mpr && (
+                                  <Box component="th" sx={{ textAlign: 'right', py: 0.25, px: 0.5, fontWeight: 600, fontSize: '0.7rem', color: 'text.secondary', textTransform: 'uppercase' }}>{t('colRequested')}</Box>
+                                )}
+                                <Box component="th" sx={{ textAlign: 'right', py: 0.25, px: 0.5, fontWeight: 600, fontSize: '0.7rem', color: 'text.secondary', textTransform: 'uppercase' }}>{t('colQty')}</Box>
+                                <Box component="th" sx={{ textAlign: 'right', py: 0.25, px: 0.5, fontWeight: 600, fontSize: '0.7rem', color: 'text.secondary', textTransform: 'uppercase' }}>{t('colUnitPrice')}</Box>
+                                <Box component="th" sx={{ textAlign: 'right', py: 0.25, px: 0.5, fontWeight: 600, fontSize: '0.7rem', color: 'text.secondary', textTransform: 'uppercase' }}>{t('colGst')}</Box>
+                                <Box component="th" sx={{ textAlign: 'right', py: 0.25, px: 0.5, fontWeight: 600, fontSize: '0.7rem', color: 'text.secondary', textTransform: 'uppercase' }}>{t('colAmountInc')}</Box>
+                              </Box>
                             </Box>
-                            );
-                          })}
-                        </Box>
-                      </Box>
-                      </Box>
-                    </Box>
-                  )}
+                            <Box component="tbody">
+                              {row.items.map((item, i) => {
+                                const requested = row.mpr?.items.find((mi) => mi.materialName.trim().toLowerCase() === item.materialName.trim().toLowerCase());
+                                const qtyDiff = requested ? num(item.quantity) - Number(requested.quantity) : 0;
+                                return (
+                                <Box key={i} component="tr" sx={{ borderBottom: '1px solid', borderColor: 'action.hover', '&:last-child': { borderBottom: 'none' } }}>
+                                  <Box component="td" sx={{ py: 0.25, px: 0.5, fontWeight: 600, fontSize: '0.8rem' }}>{item.materialName}</Box>
+                                  {row.mpr && (
+                                    <Box component="td" sx={{ py: 0.25, px: 0.5, textAlign: 'right', fontSize: '0.8rem', whiteSpace: 'nowrap', color: !requested ? 'text.disabled' : qtyDiff !== 0 ? 'warning.main' : 'success.main' }}>
+                                      {requested ? `${requested.quantity}${requested.unit ? ` ${requested.unit}` : ''}${qtyDiff !== 0 ? ` (${qtyDiff > 0 ? '+' : ''}${round2(qtyDiff)})` : ''}` : '—'}
+                                    </Box>
+                                  )}
+                                  <Box component="td" sx={{ py: 0.25, px: 0.5, textAlign: 'right', fontSize: '0.8rem', whiteSpace: 'nowrap' }}>{item.quantity}{item.unit ? ` ${item.unit}` : ''}</Box>
+                                  <Box component="td" sx={{ py: 0.25, px: 0.5, textAlign: 'right', fontSize: '0.8rem', whiteSpace: 'nowrap' }}>{formatCurrency(Number(item.unitPrice))}</Box>
+                                  <Box component="td" sx={{ py: 0.25, px: 0.5, textAlign: 'right', fontSize: '0.8rem', whiteSpace: 'nowrap' }}>{num(item.gstRate)}% ({formatCurrency(Number(item.amount) * num(item.gstRate) / 100)})</Box>
+                                  <Box component="td" sx={{ py: 0.25, px: 0.5, textAlign: 'right', fontWeight: 600, fontSize: '0.8rem', whiteSpace: 'nowrap' }}>{formatCurrency(toIncGst(item.amount, item.gstRate))}</Box>
+                                </Box>
+                                );
+                              })}
+                            </Box>
+                          </Box>
+                          </Box>
+                        </DetailSection>
+                      )}
 
-                  </Collapse>
+                      {row.approvalWorkflow && (
+                        <DetailSection title={t('approvalStatus')} single>
+                          <ApprovalStepsDisplay steps={row.approvalWorkflow.steps} />
+                        </DetailSection>
+                      )}
 
-                  {/* File + Actions — bottom row */}
-                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, mt: 1, pt: 1, borderTop: '1px solid', borderColor: 'divider' }}>
-                    {expandedQuotationId === row.id && <LinkedFiles recordType="QUOTATION" recordId={row.id} />}
-                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
-                      <Button size="small" variant="outlined" startIcon={pdfLoading ? <CircularProgress size={16} /> : <PdfIcon />} onClick={() => previewQuotationPDF(row.id)} disabled={pdfLoading}>{t('open')}</Button>
-                      <Button size="small" variant="outlined" startIcon={<TimelineIcon />} onClick={() => setTimelineRow(row)}>{t('view')}</Button>
-                      <CommentsButton entityType="QUOTATION" entityId={row.id} entityLabel={row.quotationNumber} url="/quotations" />
-                      <Button size="small" variant="outlined" startIcon={<DownloadIcon />} onClick={() => downloadQuotationPDF(row.id, row.quotationNumber)}>{t('downloadPdf')}</Button>
-                      <Button size="small" variant="outlined" startIcon={<ShareIcon />} onClick={() => handleShareWhatsApp(row)}>{t('share')}</Button>
+                      {expandedQuotationId === row.id && (
+                        <DetailSection title={t('sectionFiles')} single>
+                          <LinkedFiles recordType="QUOTATION" recordId={row.id} />
+                        </DetailSection>
+                      )}
+
                       {effectiveStatus !== QuotationStatus.DELETED && (
-                        <>
-                          {row.mpr && (effectiveStatus === QuotationStatus.APPROVED || effectiveStatus === QuotationStatus.CONVERTED_TO_PO) && row.items.some((i) => Number(i.unitPrice) <= 0) ? (
-                            <Button size="small" variant="contained" color="warning" startIcon={<EditIcon />} onClick={() => openEdit(row)}>{t('enterPrices')}</Button>
-                          ) : isAdmin && effectiveStatus !== QuotationStatus.CONVERTED_TO_PO ? (
-                            <Button size="small" startIcon={<EditIcon />} onClick={() => openEdit(row, true)}>{t('reEditResend')}</Button>
-                          ) : effectiveStatus === QuotationStatus.SUBMITTED || effectiveStatus === QuotationStatus.UNDER_REVIEW ? (
-                            <Button size="small" startIcon={<EditIcon />} onClick={() => openEdit(row)}>{t('edit')}</Button>
-                          ) : (
-                            <Button size="small" startIcon={<EditIcon />} onClick={() => { setNotesEditRow(row); setNotesEditValue(row.notes ?? ''); }}>{t('editDescription')}</Button>
-                          )}
-                          {finalizable && (
-                            <>
-                              <Button size="small" variant="contained" color="success" startIcon={<CheckIcon />} onClick={() => setApprovalAction({ row, action: 'approve' })}>{t('finalize')}</Button>
-                              <Button size="small" color="error" startIcon={<CloseIcon />} onClick={() => setApprovalAction({ row, action: 'reject' })}>{t('notSelected')}</Button>
-                            </>
-                          )}
-                          {(effectiveStatus === QuotationStatus.APPROVED || effectiveStatus === QuotationStatus.CONVERTED_TO_PO) && (
-                            <Button size="small" color="error" startIcon={<CloseIcon />} onClick={() => { setCancelError(''); setCancelRow(row); }}>{t('cancelQuotation')}</Button>
-                          )}
-                          <Button size="small" startIcon={<CombinedIcon />} onClick={() => navigate(`/combined-records?type=quotation&id=${row.id}`)}>{t('openCombined')}</Button>
-                          {effectiveStatus !== QuotationStatus.APPROVED && effectiveStatus !== QuotationStatus.CONVERTED_TO_PO && (
-                            <Button size="small" color="error" startIcon={<DeleteIcon />} onClick={() => setDeleteRow(row)}>{t('delete')}</Button>
-                          )}
-                        </>
+                        <DetailSection title={t('sectionActions')} single>
+                          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
+                            <Button size="small" startIcon={<DownloadIcon />} onClick={() => downloadQuotationPDF(row.id, row.quotationNumber)}>{t('downloadPdf')}</Button>
+                            {!(row.mpr && (effectiveStatus === QuotationStatus.APPROVED || effectiveStatus === QuotationStatus.CONVERTED_TO_PO) && row.items.some((i) => Number(i.unitPrice) <= 0)) && (
+                              isAdmin && effectiveStatus !== QuotationStatus.CONVERTED_TO_PO ? (
+                                <Button size="small" startIcon={<EditIcon />} onClick={() => openEdit(row, true)}>{t('reEditResend')}</Button>
+                              ) : effectiveStatus === QuotationStatus.SUBMITTED || effectiveStatus === QuotationStatus.UNDER_REVIEW ? (
+                                <Button size="small" startIcon={<EditIcon />} onClick={() => openEdit(row)}>{t('edit')}</Button>
+                              ) : (
+                                <Button size="small" startIcon={<EditIcon />} onClick={() => { setNotesEditRow(row); setNotesEditValue(row.notes ?? ''); }}>{t('editDescription')}</Button>
+                              )
+                            )}
+                            <Button size="small" startIcon={<CombinedIcon />} onClick={() => navigate(`/combined-records?type=quotation&id=${row.id}`)}>{t('openCombined')}</Button>
+                            {(effectiveStatus === QuotationStatus.APPROVED || effectiveStatus === QuotationStatus.CONVERTED_TO_PO) && (
+                              <Button size="small" color="error" startIcon={<CloseIcon />} onClick={() => { setCancelError(''); setCancelRow(row); }}>{t('cancelQuotation')}</Button>
+                            )}
+                            {effectiveStatus !== QuotationStatus.APPROVED && effectiveStatus !== QuotationStatus.CONVERTED_TO_PO && (
+                              <Button size="small" color="error" startIcon={<DeleteIcon />} onClick={() => setDeleteRow(row)}>{t('delete')}</Button>
+                            )}
+                          </Box>
+                        </DetailSection>
                       )}
                     </Box>
-                  </Box>
-                  {row.approvalWorkflow && detailRows.has(row.id) && (
-                    <Box sx={{ mt: 1.5 }}>
-                      {/* Approval details accordion for each quotation with a workflow */}
-                      <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>{t('approvalStatus')}</Typography>
-                      <ApprovalStepsDisplay steps={row.approvalWorkflow.steps} />
-                    </Box>
-                  )}
+                  </Collapse>
                     </Box>
                   </AccordionDetails>
                 </Accordion>

@@ -32,6 +32,7 @@ import {
   Tab,
 } from '@mui/material';
 import ResponsiveDialog from '../components/ResponsiveDialog';
+import { DetailSection, DetailField } from '../components/DetailSection';
 import StalledChip from '../components/StalledChip';
 import ApprovalStepsDisplay from '../components/ApprovalStepsDisplay';
 import RefreshButton from '../components/RefreshButton';
@@ -50,7 +51,6 @@ import {
   Edit as EditIcon,
   Autorenew as AutoRenewIcon,
   Replay as ResubmitIcon,
-  SwapHoriz as SwapBudgetIcon,
   Payment as PaymentIcon,
   TableChart as TableChartIcon,
   MenuBook as PostLedgerIcon,
@@ -989,7 +989,7 @@ export default function PurchaseOrdersPage() {
                     </AccordionSummary>
                     <AccordionDetails sx={{ borderTop: '1px solid', borderColor: 'divider', bgcolor: 'background.paper', color: 'text.primary', p: 1.25 }}>
                       <Box sx={{ minWidth: 0 }}>
-                        {/* Key facts — the few things people actually look for */}
+                        {/* Key facts — only what people look for first */}
                         <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', sm: 'repeat(4, 1fr)' }, gap: 1, mb: 1 }}>
                           <Box>
                             <Typography variant="caption" color="text.secondary">{t('grandTotal')}</Typography>
@@ -1007,30 +1007,6 @@ export default function PurchaseOrdersPage() {
                             <Typography variant="caption" color="text.secondary">{t('approvedBy')}</Typography>
                             <Typography sx={{ fontWeight: 600 }} noWrap>{approverNames}</Typography>
                           </Box>
-                          {!isUmbrellaContract(row) && (
-                            <>
-                              <Box>
-                                <Typography variant="caption" color="text.secondary">{t('budgetHead')}</Typography>
-                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
-                                  <Typography sx={{ fontWeight: 600, color: row.budgetHead ? 'text.primary' : 'warning.main' }}>{row.budgetHead?.particulars ?? t('notSet')}</Typography>
-                                  {canClassify(row) && (
-                                    <Button size="small" sx={{ minWidth: 0, py: 0, px: 0.5 }} onClick={() => { setBudgetHeadRow(row); setNewBudgetHeadId(''); setBudgetHeadReason(''); }}>
-                                      {row.budgetHead ? t('change') : t('setIt')}
-                                    </Button>
-                                  )}
-                                </Box>
-                              </Box>
-                              <Box>
-                                <Typography variant="caption" color="text.secondary">{t('paymentType')}</Typography>
-                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
-                                  <Typography sx={{ fontWeight: 600 }}>{enumLabel(row.paymentType)}</Typography>
-                                  {canClassify(row) && (
-                                    <Button size="small" sx={{ minWidth: 0, py: 0, px: 0.5 }} onClick={() => setPaymentTypeRow(row)}>{t('change')}</Button>
-                                  )}
-                                </Box>
-                              </Box>
-                            </>
-                          )}
                         </Box>
 
                         <Box sx={{ mb: 1 }}><ApprovalTiming startedAt={row.createdAt} workflow={row.approvalWorkflow} /></Box>
@@ -1043,195 +1019,6 @@ export default function PurchaseOrdersPage() {
                           <Typography variant="body2" sx={{ mt: 1, fontSize: '0.85rem', whiteSpace: 'pre-wrap', overflowWrap: 'break-word' }}>{row.notes}</Typography>
                         )}
 
-                        <Button size="small" sx={{ mt: 0.5, px: 0.5 }} onClick={() => toggleDetails(row.id)} endIcon={<ExpandMoreIcon sx={{ transform: detailRows.has(row.id) ? 'rotate(180deg)' : 'none', transition: 'transform .2s' }} />}>
-                          {detailRows.has(row.id) ? t('lessDetails') : t('moreDetails')}
-                        </Button>
-                        <Collapse in={detailRows.has(row.id)} unmountOnExit>
-                        {/* Status bar */}
-                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 0.75, pb: 0.75, borderBottom: '1px solid', borderColor: 'action.hover', gap: 1, flexWrap: 'wrap' }}>
-                          <Chip
-                            label={enumLabel(effectiveStatus)}
-                            size="small"
-                            color={effectiveStatus === POStatus.DELETED ? 'error' : (STATUS_COLORS[effectiveStatus] ?? 'default')}
-                            sx={effectiveStatus === POStatus.DELETED ? { bgcolor: '#d32f2f', color: '#fff', textDecoration: 'line-through' } : undefined}
-                          />
-                          <Chip
-                            size="small"
-                            label={enumLabel(row.paymentType)}
-                            color={row.paymentType === POPaymentType.ADVANCE ? 'warning' : row.paymentType === POPaymentType.FULL_PAYMENT ? 'success' : 'info'}
-                            variant="outlined"
-                          />
-                        </Box>
-
-                        {/* Two-column label/value grid */}
-                        <Box sx={{
-                          display: 'grid',
-                          gridTemplateColumns: { xs: '1fr', sm: '140px 1fr 140px 1fr' },
-                          gap: { xs: 0.25, sm: '2px 12px' },
-                          alignItems: 'baseline',
-                        }}>
-                          <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>{t('poNo')}</Typography>
-                          <Typography component="div" variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem', minWidth: 0 }}>
-                            {row.poNumber}
-                            {row.parentPo && (
-                              <Typography component="span" variant="caption" color="text.secondary" sx={{ display: 'block' }}>{t('fromPo', { n: row.parentPo.poNumber })}</Typography>
-                            )}
-                            {row.contractPo && (
-                              <Typography component="span" variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                                {t('subPoOf', { n: row.contractPo.poNumber })}{row.periodLabel ? ` · ${row.periodLabel}` : ''}
-                              </Typography>
-                            )}
-                            {row.childPos && row.childPos.length > 0 && (
-                              <Typography component="span" variant="caption" color="secondary.main" sx={{ display: 'block' }}>{t('regenLine', { list: row.childPos.map((c) => c.poNumber).join(', ') })}</Typography>
-                            )}
-                          </Typography>
-
-                          <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>{t('vendor')}</Typography>
-                          <Typography component="div" variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem', minWidth: 0 }}>{row.vendor?.vendorCode} - {row.vendor?.name ?? '—'}</Typography>
-
-                          <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>{t('quotationNo')}</Typography>
-                          <Typography component="div" variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem', minWidth: 0 }}>{row.quotation?.quotationNumber ?? row.mpr?.mprNumber ?? row.contractPo?.poNumber ?? '—'}</Typography>
-
-                          <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>{t('poDate')}</Typography>
-                          <Typography component="div" variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem', minWidth: 0 }}>
-                            {row.quotation && new Date(row.date) < new Date(row.quotation.date) ? (
-                              <>
-                                <Box component="span" sx={{ color: 'error.main', fontWeight: 600 }}>{formatDate(row.date)}</Box>
-                                <Typography component="span" variant="caption" color="error" sx={{ display: 'block' }}>{t('beforeQuotation', { d: formatDate(row.quotation.date) })}</Typography>
-                              </>
-                            ) : formatDate(row.date)}
-                          </Typography>
-
-                          <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>{t('paymentType')}</Typography>
-                          <Typography component="div" variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem', minWidth: 0 }}>
-                            {enumLabel(row.paymentType)}
-                          </Typography>
-
-                          <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>{t('budgetHead')}</Typography>
-                          <Typography component="div" variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem', minWidth: 0 }}>{row.budgetHead?.particulars ?? '—'}</Typography>
-
-                          <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>{t('total')}</Typography>
-                          <Typography component="div" variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem', minWidth: 0 }}>{formatCurrency(row.totalAmount)}</Typography>
-
-                          <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>{t('gst')}</Typography>
-                          <Typography component="div" variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem', minWidth: 0 }}>{formatCurrency(row.gstAmount)}</Typography>
-
-                          <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>{t('grandTotal')}</Typography>
-                          <Typography component="div" variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem', minWidth: 0 }}>{formatCurrency(row.grandTotal)}</Typography>
-
-                          <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>{t('netPayable')}</Typography>
-                          <Typography component="div" variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem', minWidth: 0 }}>
-                            {formatCurrency(netPayable)}
-                            <Typography component="span" variant="caption" color="text.secondary" sx={{ display: 'block' }}>({netPayableCaption})</Typography>
-                          </Typography>
-
-                          <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>{t('paid')}</Typography>
-                          <Typography component="div" variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem', minWidth: 0, color: 'success.main' }}>{formatCurrency(Number(row.paidToDate ?? 0))}</Typography>
-
-                          <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>{t('toPayNow')}</Typography>
-                          <Typography component="div" variant="body2" sx={{ fontWeight: 700, fontSize: '0.85rem', minWidth: 0, color: Number(row.amountToPayNow ?? 0) > 0 ? 'error.main' : 'text.secondary' }}>{formatCurrency(Number(row.amountToPayNow ?? 0))}</Typography>
-
-                          <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>{t('createdBy')}</Typography>
-                          <Typography component="div" variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem', minWidth: 0 }}>{row.createdByUser?.name ?? '—'}</Typography>
-
-                          <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>{t('approvedBy')}</Typography>
-                          <Typography component="div" variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem', minWidth: 0 }}>{approverNames}</Typography>
-
-                          <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>{t('referredBy')}</Typography>
-                          <Typography component="div" variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem', minWidth: 0 }}>{row.referredBy ?? '—'}</Typography>
-
-                          <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>{t('createdOn')}</Typography>
-                          <Typography component="div" variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem', minWidth: 0 }}>{formatDateTime(row.createdAt)}</Typography>
-
-                          <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem' }}>{t('approvedOn')}</Typography>
-                          <Typography component="div" variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem', minWidth: 0 }}>{approvedOn ? formatDateTime(approvedOn) : '—'}</Typography>
-                        </Box>
-
-                        {/* Deductions */}
-                        {hasDeductions && (
-                          <Box sx={{ mt: 0.75 }}>
-                            <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem', display: 'block', mb: 0.25 }}>{t('deductions')}</Typography>
-                            <Typography color="error" fontWeight={600} variant="body2">-{formatCurrency(Number(row.totalDeductions ?? 0))}</Typography>
-                            {row.deductions!.map((d, i) => (
-                              <Typography key={i} variant="caption" color="text.secondary" display="block">
-                                {d.reason}: {formatCurrency(d.amount)}
-                              </Typography>
-                            ))}
-                          </Box>
-                        )}
-
-                        {/* Items — full width compact table, with Quoted (and, if this
-                            quotation was itself raised against an MPR, Requested) columns
-                            so a short-delivery / price-change against the quotation is visible. */}
-                        {row.items && row.items.length > 0 && (
-                          <Box sx={{ mt: 0.5 }}>
-                            <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem', display: 'block', mb: 0.5 }}>
-                              {row.quotation?.mpr ? t('itemsFromQuotationMpr', { q: row.quotation.quotationNumber, m: row.quotation.mpr.mprNumber }) : row.quotation ? t('itemsFromQuotationOnly', { q: row.quotation.quotationNumber }) : t('items')}
-                            </Typography>
-                            <Box sx={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', mx: -0.5, px: 0.5 }}>
-                            <Box component="table" sx={{ width: '100%', minWidth: 430, borderCollapse: 'collapse', fontSize: '0.8rem' }}>
-                              <Box component="thead">
-                                <Box component="tr" sx={{ borderBottom: '1px solid', borderColor: 'divider' }}>
-                                  <Box component="th" sx={{ textAlign: 'left', py: 0.25, px: 0.5, fontWeight: 600, fontSize: '0.7rem', color: 'text.secondary', textTransform: 'uppercase' }}>{t('material')}</Box>
-                                  {row.quotation?.mpr && (
-                                    <Box component="th" sx={{ textAlign: 'right', py: 0.25, px: 0.5, fontWeight: 600, fontSize: '0.7rem', color: 'text.secondary', textTransform: 'uppercase' }}>{t('requested')}</Box>
-                                  )}
-                                  {row.quotation?.items && (
-                                    <>
-                                      <Box component="th" sx={{ textAlign: 'right', py: 0.25, px: 0.5, fontWeight: 600, fontSize: '0.7rem', color: 'text.secondary', textTransform: 'uppercase' }}>{t('quotedQty')}</Box>
-                                      <Box component="th" sx={{ textAlign: 'right', py: 0.25, px: 0.5, fontWeight: 600, fontSize: '0.7rem', color: 'text.secondary', textTransform: 'uppercase' }}>{t('quotedPrice')}</Box>
-                                    </>
-                                  )}
-                                  <Box component="th" sx={{ textAlign: 'right', py: 0.25, px: 0.5, fontWeight: 600, fontSize: '0.7rem', color: 'text.secondary', textTransform: 'uppercase' }}>{t('orderedQty')}</Box>
-                                  <Box component="th" sx={{ textAlign: 'right', py: 0.25, px: 0.5, fontWeight: 600, fontSize: '0.7rem', color: 'text.secondary', textTransform: 'uppercase' }}>{t('unitPrice')}</Box>
-                                  <Box component="th" sx={{ textAlign: 'right', py: 0.25, px: 0.5, fontWeight: 600, fontSize: '0.7rem', color: 'text.secondary', textTransform: 'uppercase' }}>{t('gst')}</Box>
-                                  <Box component="th" sx={{ textAlign: 'right', py: 0.25, px: 0.5, fontWeight: 600, fontSize: '0.7rem', color: 'text.secondary', textTransform: 'uppercase' }}>{t('amountInc')}</Box>
-                                </Box>
-                              </Box>
-                              <Box component="tbody">
-                                {row.items.map((item, i) => {
-                                  const norm = (s: string) => s.trim().toLowerCase();
-                                  const requested = row.quotation?.mpr?.items.find((mi) => norm(mi.materialName) === norm(item.materialName));
-                                  const quoted = row.quotation?.items?.find((qi) => norm(qi.materialName) === norm(item.materialName));
-                                  const qtyVsQuoted = quoted ? Number(item.quantity) - Number(quoted.quantity) : 0;
-                                  const priceVsQuoted = quoted ? Number(item.unitPrice) - Number(quoted.unitPrice) : 0;
-                                  return (
-                                  <Box key={i} component="tr" sx={{ borderBottom: '1px solid', borderColor: 'action.hover', '&:last-child': { borderBottom: 'none' } }}>
-                                    <Box component="td" sx={{ py: 0.25, px: 0.5, fontWeight: 600, fontSize: '0.8rem' }}>{item.materialName}</Box>
-                                    {row.quotation?.mpr && (
-                                      <Box component="td" sx={{ py: 0.25, px: 0.5, textAlign: 'right', fontSize: '0.8rem', whiteSpace: 'nowrap', color: 'text.secondary' }}>
-                                        {requested ? `${requested.quantity}${requested.unit ? ` ${requested.unit}` : ''}` : '—'}
-                                      </Box>
-                                    )}
-                                    {row.quotation?.items && (
-                                      <>
-                                        <Box component="td" sx={{ py: 0.25, px: 0.5, textAlign: 'right', fontSize: '0.8rem', whiteSpace: 'nowrap', color: !quoted ? 'text.disabled' : qtyVsQuoted !== 0 ? 'warning.main' : 'text.secondary' }}>
-                                          {quoted ? `${quoted.quantity}${quoted.unit ? ` ${quoted.unit}` : ''}` : '—'}
-                                        </Box>
-                                        <Box component="td" sx={{ py: 0.25, px: 0.5, textAlign: 'right', fontSize: '0.8rem', whiteSpace: 'nowrap', color: !quoted ? 'text.disabled' : priceVsQuoted !== 0 ? 'warning.main' : 'text.secondary' }}>
-                                          {quoted ? formatCurrency(Number(quoted.unitPrice)) : '—'}
-                                        </Box>
-                                      </>
-                                    )}
-                                    <Box component="td" sx={{ py: 0.25, px: 0.5, textAlign: 'right', fontSize: '0.8rem', whiteSpace: 'nowrap', fontWeight: qtyVsQuoted !== 0 ? 700 : 400, color: qtyVsQuoted !== 0 ? 'warning.main' : undefined }}>
-                                      {item.quantity}{item.unit ? ` ${item.unit}` : ''}{qtyVsQuoted !== 0 ? ` (${qtyVsQuoted > 0 ? '+' : ''}${round2(qtyVsQuoted)})` : ''}
-                                    </Box>
-                                    <Box component="td" sx={{ py: 0.25, px: 0.5, textAlign: 'right', fontSize: '0.8rem', whiteSpace: 'nowrap', fontWeight: priceVsQuoted !== 0 ? 700 : 400, color: priceVsQuoted !== 0 ? 'warning.main' : undefined }}>
-                                      {formatCurrency(Number(item.unitPrice))}{priceVsQuoted !== 0 ? ` (${priceVsQuoted > 0 ? '+' : ''}${formatCurrency(priceVsQuoted)})` : ''}
-                                    </Box>
-                                    <Box component="td" sx={{ py: 0.25, px: 0.5, textAlign: 'right', fontSize: '0.8rem', whiteSpace: 'nowrap' }}>{num(item.gstRate)}% ({formatCurrency(Number(item.amount) * num(item.gstRate) / 100)})</Box>
-                                    <Box component="td" sx={{ py: 0.25, px: 0.5, textAlign: 'right', fontWeight: 600, fontSize: '0.8rem', whiteSpace: 'nowrap' }}>{formatCurrency(toIncGst(item.amount, item.gstRate))}</Box>
-                                  </Box>
-                                  );
-                                })}
-                              </Box>
-                            </Box>
-                            </Box>
-                          </Box>
-                        )}
-
-                        </Collapse>
-
                         {row.isContract && expandedPoId === row.id && (
                           <ContractPanel
                             contract={{ id: row.id, poNumber: row.poNumber, budgetHeadId: row.budgetHeadId, paymentTerms: row.paymentTerms, notes: row.notes }}
@@ -1240,7 +1027,7 @@ export default function PurchaseOrdersPage() {
                           />
                         )}
 
-                        {/* Actions — bottom row */}
+                        {/* Main actions — the rest live under More details */}
                         <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, mt: 1, pt: 1, borderTop: '1px solid', borderColor: 'divider' }}>
                           <Button size="small" variant="outlined" startIcon={pdfLoading ? <CircularProgress size={16} /> : <PdfIcon />} onClick={() => previewPDF(row.id)} disabled={pdfLoading || !poPdfReady(row.status)}>{t('open')}</Button>
                           <Button size="small" variant="outlined" startIcon={<DownloadIcon />} onClick={() => downloadPDF(row.id, row.poNumber)} disabled={!poPdfReady(row.status)}>{t('pdf')}</Button>
@@ -1254,17 +1041,8 @@ export default function PurchaseOrdersPage() {
                                   <Button size="small" color="error" startIcon={<CloseIcon />} onClick={() => setApprovalAction({ row, action: 'reject' })}>{t('reject')}</Button>
                                 </>
                               )}
-                              {canConvertToContract(row) && (
-                                <Button size="small" color="secondary" onClick={() => setConvertRow(row)}>{t('convertToContract')}</Button>
-                              )}
                               {!isUmbrellaContract(row) && (row.status === POStatus.APPROVED || row.status === POStatus.PARTIALLY_DELIVERED) && (
                                 <Button size="small" color="primary" startIcon={<GatePassIcon />} onClick={() => navigate(`/goods-receipts?po=${row.id}`)}>{t('receiveGoods')}</Button>
-                              )}
-                              {!isUmbrellaContract(row) && (row.status === POStatus.APPROVED || row.status === POStatus.PARTIALLY_DELIVERED) && (
-                                <Button size="small" startIcon={<GatePassIcon />} onClick={() => navigate('/gate-passes')}>{t('gatePass')}</Button>
-                              )}
-                              {!isUmbrellaContract(row) && (row.status === POStatus.APPROVED || row.status === POStatus.PARTIALLY_DELIVERED || row.status === POStatus.DELIVERED) && (
-                                <Button size="small" startIcon={<TimelineIcon />} onClick={() => setTrailRow(row)}>{t('trail')}</Button>
                               )}
                               {row.status === POStatus.PARTIALLY_DELIVERED && !row.parentPoId && (
                                 <Button size="small" color="warning" startIcon={<EditIcon />} onClick={() => setEditRow(row)}>{t('matchDelivered')}</Button>
@@ -1272,42 +1050,199 @@ export default function PurchaseOrdersPage() {
                               {row.status === POStatus.REJECTED && (
                                 <Button size="small" color="warning" startIcon={<ResubmitIcon />} disabled={resubmitMutation.isPending} onClick={() => resubmitMutation.mutate(row.id)}>{t('resubmitForApproval')}</Button>
                               )}
-                              {!isUmbrellaContract(row) && (row.status === POStatus.PENDING_APPROVAL || row.status === POStatus.REJECTED || (row.status === POStatus.APPROVED && !!user && isAdminRole(user.role))) && (
-                                <Button size="small" color="primary" startIcon={<EditIcon />} onClick={() => setEditUnapprovedRow(row)}>{t('editPo')}</Button>
-                              )}
-                              {(row.status === POStatus.APPROVED || row.status === POStatus.DELIVERED || row.status === POStatus.PARTIALLY_DELIVERED) && (
-                                <Button size="small" startIcon={<EditIcon />} onClick={() => { setNotesEditRow(row); setNotesEditValue(row.notes ?? ''); setReferredByEditValue(row.referredBy ?? ''); }}>{t('editDetails')}</Button>
-                              )}
-                              {!isUmbrellaContract(row) && (row.status === POStatus.APPROVED || row.status === POStatus.DELIVERED || row.status === POStatus.PARTIALLY_DELIVERED) && user && (isAdminRole(user.role) || user.role === UserRole.ACCOUNTANT) && (
-                                <Button size="small" color="secondary" startIcon={<PostLedgerIcon />} onClick={() => setPostLedgerRow(row)}>{t('postLedger')}</Button>
-                              )}
-                              {!isUmbrellaContract(row) && [POStatus.PENDING_APPROVAL, POStatus.APPROVED, POStatus.PARTIALLY_DELIVERED, POStatus.DELIVERED].includes(row.status as POStatus) && (
-                                <Button size="small" color="info" startIcon={<SwapBudgetIcon />} onClick={() => { setBudgetHeadRow(row); setNewBudgetHeadId(''); setBudgetHeadReason(''); }}>{t('budgetHead')}</Button>
-                              )}
-                              {!isUmbrellaContract(row) && [POStatus.PENDING_APPROVAL, POStatus.APPROVED, POStatus.PARTIALLY_DELIVERED, POStatus.DELIVERED].includes(row.status as POStatus) && (
-                                <Button size="small" color="secondary" startIcon={<PaymentIcon />} onClick={() => setPaymentTypeRow(row)}>{t('paymentType')}</Button>
-                              )}
-                              {row.status === POStatus.DELIVERED && !row.parentPoId && Array.isArray(row.regenerationData) && (row.regenerationData as unknown[]).length > 0 && (!row.childPos || row.childPos.length === 0) && (
-                                <Button size="small" color="secondary" startIcon={<AutoRenewIcon />} onClick={() => setRegenRow(row)}>{t('regenPo')}</Button>
-                              )}
-                              {row.status !== POStatus.APPROVED && row.status !== POStatus.PARTIALLY_DELIVERED && row.status !== POStatus.DELIVERED && (
-                                <Button size="small" color="error" startIcon={<DeleteIcon />} onClick={() => setDeleteRow(row)}>{t('delete')}</Button>
-                              )}
                             </>
                           )}
                         </Box>
 
-                        {row.approvalWorkflow && (
-                          <Box sx={{ mt: 1.5 }}>
-                            <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>{t('approvalStatus')}</Typography>
-                            <ApprovalStepsDisplay steps={row.approvalWorkflow.steps} />
+                        <Button size="small" sx={{ mt: 1, px: 0.5 }} onClick={() => toggleDetails(row.id)} endIcon={<ExpandMoreIcon sx={{ transform: detailRows.has(row.id) ? 'rotate(180deg)' : 'none', transition: 'transform .2s' }} />}>
+                          {detailRows.has(row.id) ? t('lessDetails') : t('moreDetails')}
+                        </Button>
+                        <Collapse in={detailRows.has(row.id)} unmountOnExit>
+                          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, mt: 1 }}>
+                            <DetailSection title={t('sectionOrder')}>
+                              <DetailField label={t('poNo')}>
+                                {row.poNumber}
+                                {row.parentPo && (
+                                  <Typography component="span" variant="caption" color="text.secondary" sx={{ display: 'block' }}>{t('fromPo', { n: row.parentPo.poNumber })}</Typography>
+                                )}
+                                {row.contractPo && (
+                                  <Typography component="span" variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                                    {t('subPoOf', { n: row.contractPo.poNumber })}{row.periodLabel ? ` · ${row.periodLabel}` : ''}
+                                  </Typography>
+                                )}
+                                {row.childPos && row.childPos.length > 0 && (
+                                  <Typography component="span" variant="caption" color="secondary.main" sx={{ display: 'block' }}>{t('regenLine', { list: row.childPos.map((c) => c.poNumber).join(', ') })}</Typography>
+                                )}
+                              </DetailField>
+                              <DetailField label={t('vendor')}>{row.vendor?.vendorCode} - {row.vendor?.name ?? '—'}</DetailField>
+                              <DetailField label={t('quotationNo')}>{row.quotation?.quotationNumber ?? row.mpr?.mprNumber ?? row.contractPo?.poNumber ?? '—'}</DetailField>
+                              <DetailField label={t('poDate')}>
+                                {row.quotation && new Date(row.date) < new Date(row.quotation.date) ? (
+                                  <>
+                                    <Box component="span" sx={{ color: 'error.main', fontWeight: 600 }}>{formatDate(row.date)}</Box>
+                                    <Typography component="span" variant="caption" color="error" sx={{ display: 'block' }}>{t('beforeQuotation', { d: formatDate(row.quotation.date) })}</Typography>
+                                  </>
+                                ) : formatDate(row.date)}
+                              </DetailField>
+                              <DetailField label={t('referredBy')}>{row.referredBy ?? '—'}</DetailField>
+                            </DetailSection>
+
+                            <DetailSection title={t('sectionAmounts')}>
+                              <DetailField label={t('total')}>{formatCurrency(row.totalAmount)}</DetailField>
+                              <DetailField label={t('gst')}>{formatCurrency(row.gstAmount)}</DetailField>
+                              <DetailField label={t('grandTotal')}>{formatCurrency(row.grandTotal)}</DetailField>
+                              <DetailField label={t('netPayable')}>
+                                {formatCurrency(netPayable)}
+                                <Typography component="span" variant="caption" color="text.secondary" sx={{ display: 'block' }}>({netPayableCaption})</Typography>
+                              </DetailField>
+                              <DetailField label={t('paid')} color="success.main">{formatCurrency(Number(row.paidToDate ?? 0))}</DetailField>
+                              <DetailField label={t('toPayNow')} color={Number(row.amountToPayNow ?? 0) > 0 ? 'error.main' : 'text.secondary'}>{formatCurrency(Number(row.amountToPayNow ?? 0))}</DetailField>
+                              {hasDeductions && (
+                                <DetailField label={t('deductions')} color="error.main">
+                                  -{formatCurrency(Number(row.totalDeductions ?? 0))}
+                                  {row.deductions!.map((d, i) => (
+                                    <Typography key={i} component="span" variant="caption" color="text.secondary" sx={{ display: 'block', fontWeight: 400 }}>
+                                      {d.reason}: {formatCurrency(d.amount)}
+                                    </Typography>
+                                  ))}
+                                </DetailField>
+                              )}
+                            </DetailSection>
+
+                            {!isUmbrellaContract(row) && (
+                              <DetailSection title={t('sectionBudgetPayment')}>
+                                <DetailField label={t('budgetHead')} color={row.budgetHead ? undefined : 'warning.main'}>
+                                  {row.budgetHead?.particulars ?? t('notSet')}
+                                  {canClassify(row) && (
+                                    <Button size="small" sx={{ minWidth: 0, py: 0, px: 0.75 }} onClick={() => { setBudgetHeadRow(row); setNewBudgetHeadId(''); setBudgetHeadReason(''); }}>
+                                      {row.budgetHead ? t('change') : t('setIt')}
+                                    </Button>
+                                  )}
+                                </DetailField>
+                                <DetailField label={t('paymentType')}>
+                                  {enumLabel(row.paymentType)}
+                                  {canClassify(row) && (
+                                    <Button size="small" sx={{ minWidth: 0, py: 0, px: 0.75 }} onClick={() => setPaymentTypeRow(row)}>{t('change')}</Button>
+                                  )}
+                                </DetailField>
+                              </DetailSection>
+                            )}
+
+                            <DetailSection title={t('sectionPeople')}>
+                              <DetailField label={t('createdBy')}>{row.createdByUser?.name ?? '—'}</DetailField>
+                              <DetailField label={t('createdOn')}>{formatDateTime(row.createdAt)}</DetailField>
+                              <DetailField label={t('approvedBy')}>{approverNames}</DetailField>
+                              <DetailField label={t('approvedOn')}>{approvedOn ? formatDateTime(approvedOn) : '—'}</DetailField>
+                            </DetailSection>
+
+                            {row.items && row.items.length > 0 && (
+                              <DetailSection title={row.quotation?.mpr ? t('itemsFromQuotationMpr', { q: row.quotation.quotationNumber, m: row.quotation.mpr.mprNumber }) : row.quotation ? t('itemsFromQuotationOnly', { q: row.quotation.quotationNumber }) : t('items')} single>
+                                <Box sx={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', mx: -0.5, px: 0.5 }}>
+                                <Box component="table" sx={{ width: '100%', minWidth: 430, borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+                                  <Box component="thead">
+                                    <Box component="tr" sx={{ borderBottom: '1px solid', borderColor: 'divider' }}>
+                                      <Box component="th" sx={{ textAlign: 'left', py: 0.25, px: 0.5, fontWeight: 600, fontSize: '0.7rem', color: 'text.secondary', textTransform: 'uppercase' }}>{t('material')}</Box>
+                                      {row.quotation?.mpr && (
+                                        <Box component="th" sx={{ textAlign: 'right', py: 0.25, px: 0.5, fontWeight: 600, fontSize: '0.7rem', color: 'text.secondary', textTransform: 'uppercase' }}>{t('requested')}</Box>
+                                      )}
+                                      {row.quotation?.items && (
+                                        <>
+                                          <Box component="th" sx={{ textAlign: 'right', py: 0.25, px: 0.5, fontWeight: 600, fontSize: '0.7rem', color: 'text.secondary', textTransform: 'uppercase' }}>{t('quotedQty')}</Box>
+                                          <Box component="th" sx={{ textAlign: 'right', py: 0.25, px: 0.5, fontWeight: 600, fontSize: '0.7rem', color: 'text.secondary', textTransform: 'uppercase' }}>{t('quotedPrice')}</Box>
+                                        </>
+                                      )}
+                                      <Box component="th" sx={{ textAlign: 'right', py: 0.25, px: 0.5, fontWeight: 600, fontSize: '0.7rem', color: 'text.secondary', textTransform: 'uppercase' }}>{t('orderedQty')}</Box>
+                                      <Box component="th" sx={{ textAlign: 'right', py: 0.25, px: 0.5, fontWeight: 600, fontSize: '0.7rem', color: 'text.secondary', textTransform: 'uppercase' }}>{t('unitPrice')}</Box>
+                                      <Box component="th" sx={{ textAlign: 'right', py: 0.25, px: 0.5, fontWeight: 600, fontSize: '0.7rem', color: 'text.secondary', textTransform: 'uppercase' }}>{t('gst')}</Box>
+                                      <Box component="th" sx={{ textAlign: 'right', py: 0.25, px: 0.5, fontWeight: 600, fontSize: '0.7rem', color: 'text.secondary', textTransform: 'uppercase' }}>{t('amountInc')}</Box>
+                                    </Box>
+                                  </Box>
+                                  <Box component="tbody">
+                                    {row.items.map((item, i) => {
+                                      const norm = (s: string) => s.trim().toLowerCase();
+                                      const requested = row.quotation?.mpr?.items.find((mi) => norm(mi.materialName) === norm(item.materialName));
+                                      const quoted = row.quotation?.items?.find((qi) => norm(qi.materialName) === norm(item.materialName));
+                                      const qtyVsQuoted = quoted ? Number(item.quantity) - Number(quoted.quantity) : 0;
+                                      const priceVsQuoted = quoted ? Number(item.unitPrice) - Number(quoted.unitPrice) : 0;
+                                      return (
+                                      <Box key={i} component="tr" sx={{ borderBottom: '1px solid', borderColor: 'action.hover', '&:last-child': { borderBottom: 'none' } }}>
+                                        <Box component="td" sx={{ py: 0.25, px: 0.5, fontWeight: 600, fontSize: '0.8rem' }}>{item.materialName}</Box>
+                                        {row.quotation?.mpr && (
+                                          <Box component="td" sx={{ py: 0.25, px: 0.5, textAlign: 'right', fontSize: '0.8rem', whiteSpace: 'nowrap', color: 'text.secondary' }}>
+                                            {requested ? `${requested.quantity}${requested.unit ? ` ${requested.unit}` : ''}` : '—'}
+                                          </Box>
+                                        )}
+                                        {row.quotation?.items && (
+                                          <>
+                                            <Box component="td" sx={{ py: 0.25, px: 0.5, textAlign: 'right', fontSize: '0.8rem', whiteSpace: 'nowrap', color: !quoted ? 'text.disabled' : qtyVsQuoted !== 0 ? 'warning.main' : 'text.secondary' }}>
+                                              {quoted ? `${quoted.quantity}${quoted.unit ? ` ${quoted.unit}` : ''}` : '—'}
+                                            </Box>
+                                            <Box component="td" sx={{ py: 0.25, px: 0.5, textAlign: 'right', fontSize: '0.8rem', whiteSpace: 'nowrap', color: !quoted ? 'text.disabled' : priceVsQuoted !== 0 ? 'warning.main' : 'text.secondary' }}>
+                                              {quoted ? formatCurrency(Number(quoted.unitPrice)) : '—'}
+                                            </Box>
+                                          </>
+                                        )}
+                                        <Box component="td" sx={{ py: 0.25, px: 0.5, textAlign: 'right', fontSize: '0.8rem', whiteSpace: 'nowrap', fontWeight: qtyVsQuoted !== 0 ? 700 : 400, color: qtyVsQuoted !== 0 ? 'warning.main' : undefined }}>
+                                          {item.quantity}{item.unit ? ` ${item.unit}` : ''}{qtyVsQuoted !== 0 ? ` (${qtyVsQuoted > 0 ? '+' : ''}${round2(qtyVsQuoted)})` : ''}
+                                        </Box>
+                                        <Box component="td" sx={{ py: 0.25, px: 0.5, textAlign: 'right', fontSize: '0.8rem', whiteSpace: 'nowrap', fontWeight: priceVsQuoted !== 0 ? 700 : 400, color: priceVsQuoted !== 0 ? 'warning.main' : undefined }}>
+                                          {formatCurrency(Number(item.unitPrice))}{priceVsQuoted !== 0 ? ` (${priceVsQuoted > 0 ? '+' : ''}${formatCurrency(priceVsQuoted)})` : ''}
+                                        </Box>
+                                        <Box component="td" sx={{ py: 0.25, px: 0.5, textAlign: 'right', fontSize: '0.8rem', whiteSpace: 'nowrap' }}>{num(item.gstRate)}% ({formatCurrency(Number(item.amount) * num(item.gstRate) / 100)})</Box>
+                                        <Box component="td" sx={{ py: 0.25, px: 0.5, textAlign: 'right', fontWeight: 600, fontSize: '0.8rem', whiteSpace: 'nowrap' }}>{formatCurrency(toIncGst(item.amount, item.gstRate))}</Box>
+                                      </Box>
+                                      );
+                                    })}
+                                  </Box>
+                                </Box>
+                                </Box>
+                              </DetailSection>
+                            )}
+
+                            {row.approvalWorkflow && (
+                              <DetailSection title={t('approvalStatus')} single>
+                                <ApprovalStepsDisplay steps={row.approvalWorkflow.steps} />
+                              </DetailSection>
+                            )}
+
+                            {expandedPoId === row.id && (
+                              <DetailSection title={t('sectionFiles')} single>
+                                <LinkedFiles recordType="PO" recordId={row.id} />
+                              </DetailSection>
+                            )}
+
+                            {row.status !== POStatus.DELETED && (
+                              <DetailSection title={t('sectionActions')} single>
+                                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
+                                  {canConvertToContract(row) && (
+                                    <Button size="small" color="secondary" onClick={() => setConvertRow(row)}>{t('convertToContract')}</Button>
+                                  )}
+                                  {!isUmbrellaContract(row) && (row.status === POStatus.APPROVED || row.status === POStatus.PARTIALLY_DELIVERED) && (
+                                    <Button size="small" startIcon={<GatePassIcon />} onClick={() => navigate('/gate-passes')}>{t('gatePass')}</Button>
+                                  )}
+                                  {!isUmbrellaContract(row) && (row.status === POStatus.APPROVED || row.status === POStatus.PARTIALLY_DELIVERED || row.status === POStatus.DELIVERED) && (
+                                    <Button size="small" startIcon={<TimelineIcon />} onClick={() => setTrailRow(row)}>{t('trail')}</Button>
+                                  )}
+                                  {!isUmbrellaContract(row) && (row.status === POStatus.PENDING_APPROVAL || row.status === POStatus.REJECTED || (row.status === POStatus.APPROVED && !!user && isAdminRole(user.role))) && (
+                                    <Button size="small" color="primary" startIcon={<EditIcon />} onClick={() => setEditUnapprovedRow(row)}>{t('editPo')}</Button>
+                                  )}
+                                  {(row.status === POStatus.APPROVED || row.status === POStatus.DELIVERED || row.status === POStatus.PARTIALLY_DELIVERED) && (
+                                    <Button size="small" startIcon={<EditIcon />} onClick={() => { setNotesEditRow(row); setNotesEditValue(row.notes ?? ''); setReferredByEditValue(row.referredBy ?? ''); }}>{t('editDetails')}</Button>
+                                  )}
+                                  {!isUmbrellaContract(row) && (row.status === POStatus.APPROVED || row.status === POStatus.DELIVERED || row.status === POStatus.PARTIALLY_DELIVERED) && user && (isAdminRole(user.role) || user.role === UserRole.ACCOUNTANT) && (
+                                    <Button size="small" color="secondary" startIcon={<PostLedgerIcon />} onClick={() => setPostLedgerRow(row)}>{t('postLedger')}</Button>
+                                  )}
+                                  {row.status === POStatus.DELIVERED && !row.parentPoId && Array.isArray(row.regenerationData) && (row.regenerationData as unknown[]).length > 0 && (!row.childPos || row.childPos.length === 0) && (
+                                    <Button size="small" color="secondary" startIcon={<AutoRenewIcon />} onClick={() => setRegenRow(row)}>{t('regenPo')}</Button>
+                                  )}
+                                  {row.status !== POStatus.APPROVED && row.status !== POStatus.PARTIALLY_DELIVERED && row.status !== POStatus.DELIVERED && (
+                                    <Button size="small" color="error" startIcon={<DeleteIcon />} onClick={() => setDeleteRow(row)}>{t('delete')}</Button>
+                                  )}
+                                </Box>
+                              </DetailSection>
+                            )}
                           </Box>
-                        )}
-                        {expandedPoId === row.id && (
-                          <Box sx={{ mt: 1.5, pt: 1, borderTop: '1px solid', borderColor: 'divider' }}>
-                            <LinkedFiles recordType="PO" recordId={row.id} />
-                          </Box>
-                        )}
+                        </Collapse>
                       </Box>
                     </AccordionDetails>
                   </Accordion>
