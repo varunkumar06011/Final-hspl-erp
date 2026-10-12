@@ -61,7 +61,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import CopyText from '../components/CopyText';
 import ApprovalTiming from '../components/ApprovalTiming';
 import VendorAutocomplete from '../components/VendorAutocomplete';
-import { Permission, hasPermission, POStatus, UserRole, POPaymentType, GST_RATES, ApprovalStatus, isAdminRole, isWorkflowOpenToRole, canOverrideApprovals, findApprovableStep } from '@hospital-erp/shared';
+import { isUmbrellaContract, Permission, hasPermission, POStatus, UserRole, POPaymentType, GST_RATES, ApprovalStatus, isAdminRole, isWorkflowOpenToRole, canOverrideApprovals, findApprovableStep } from '@hospital-erp/shared';
 import { formatCurrency, formatDate, formatDateTime, formatIndianNumber, STATUS_COLORS, QTY_UNIT_OPTIONS, enumLabel, unitLabel } from '../utils/enumOptions';
 import { useTranslation, Trans } from 'react-i18next';
 import { num, toIncGst, round2 } from '../utils/taxCalc';
@@ -80,7 +80,7 @@ import { shareOnWhatsApp, buildPOShareMessage } from '../utils/whatsappShare';
 import CommentsButton from '../components/CommentsButton';
 import LinkedFiles from '../components/LinkedFiles';
 import ItemsGist from '../components/ItemsGist';
-import { NewContractDialog, ContractPanel } from '../components/ContractPO';
+import { NewContractDialog, ContractPanel, ConvertToContractDialog } from '../components/ContractPO';
 
 interface POItemLedgerPost {
   id: string;
@@ -170,6 +170,7 @@ interface PORow {
   regenerationData?: unknown;
   // Contract POs: umbrella agreement (isContract) and its per-period sub-POs (contractPo set)
   isContract?: boolean;
+  isSiteBillBatch?: boolean;
   contractTitle?: string | null;
   contractType?: string | null;
   contractPoId?: string | null;
@@ -237,6 +238,7 @@ export default function PurchaseOrdersPage() {
   const [postLedgerRow, setPostLedgerRow] = useState<PORow | null>(null);
   const [expandedPoId, setExpandedPoId] = useState<string | null>(null);
   const [contractOpen, setContractOpen] = useState(false);
+  const [convertRow, setConvertRow] = useState<PORow | null>(null);
   const [tab, setTab] = useState<'all' | 'contract'>('all');
   const [detailRows, setDetailRows] = useState<Set<string>>(new Set());
   const toggleDetails = (id: string) => setDetailRows((prev) => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; });
@@ -603,10 +605,14 @@ export default function PurchaseOrdersPage() {
   const LIVE_FOR_CLASSIFY = [POStatus.PENDING_APPROVAL, POStatus.APPROVED, POStatus.PARTIALLY_DELIVERED, POStatus.DELIVERED] as string[];
   // Budget head and payment type can be set/changed any time the PO is live, without re-approval.
   function canClassify(row: PORow): boolean {
-    return !!user && !row.isContract && LIVE_FOR_CLASSIFY.includes(row.status) && hasPermission(user.role, Permission.CREATE_PO, user.extraPermissions);
+    return !!user && !isUmbrellaContract(row) && LIVE_FOR_CLASSIFY.includes(row.status) && hasPermission(user.role, Permission.CREATE_PO, user.extraPermissions);
+  }
+  // Any live PO that is not already a contract / sub-PO / site-bill batch can become a contract.
+  function canConvertToContract(row: PORow): boolean {
+    return !!user && !row.isContract && !row.contractPoId && !row.isSiteBillBatch && LIVE_FOR_CLASSIFY.includes(row.status) && hasPermission(user.role, Permission.CREATE_PO, user.extraPermissions);
   }
   function needsClassification(row: PORow): boolean {
-    return !row.isContract && !row.budgetHeadId && LIVE_FOR_CLASSIFY.includes(row.status);
+    return !isUmbrellaContract(row) && !row.budgetHeadId && LIVE_FOR_CLASSIFY.includes(row.status);
   }
 
   function canApprove(row: PORow): boolean {
@@ -801,7 +807,7 @@ export default function PurchaseOrdersPage() {
                           <TableCell>{formatDate(row.date)}</TableCell>
                           <TableCell>{row.vendor?.vendorCode} - {row.vendor?.name ?? '—'}</TableCell>
                           <TableCell className="truncate-cell" title={(row.items ?? []).map((i) => `${i.materialName} × ${i.quantity} ${i.unit ?? ''}`).join('\n') || (row.notes ?? '')}>
-                            {row.isContract ? (row.contractTitle ?? '—') : ((row.items ?? []).map((i) => `${i.materialName} × ${formatIndianNumber(i.quantity)} ${i.unit ?? ''}`.trim()).join('; ') || row.notes || '—')}
+                            {isUmbrellaContract(row) ? (row.contractTitle ?? '—') : ((row.items ?? []).map((i) => `${i.materialName} × ${formatIndianNumber(i.quantity)} ${i.unit ?? ''}`.trim()).join('; ') || row.notes || '—')}
                           </TableCell>
                           <TableCell>
                             <Chip
@@ -846,16 +852,16 @@ export default function PurchaseOrdersPage() {
                               {(row.status === POStatus.APPROVED || row.status === POStatus.DELIVERED || row.status === POStatus.PARTIALLY_DELIVERED) && (
                                 <IconButton size="small" onClick={() => { setNotesEditRow(row); setNotesEditValue(row.notes ?? ''); setReferredByEditValue(row.referredBy ?? ''); }} title={t('editPoDetails')}><EditIcon fontSize="small" /></IconButton>
                               )}
-                              {!row.isContract && (row.status === POStatus.APPROVED || row.status === POStatus.DELIVERED || row.status === POStatus.PARTIALLY_DELIVERED) && user && (isAdminRole(user.role) || user.role === UserRole.ACCOUNTANT) && (
+                              {!isUmbrellaContract(row) && (row.status === POStatus.APPROVED || row.status === POStatus.DELIVERED || row.status === POStatus.PARTIALLY_DELIVERED) && user && (isAdminRole(user.role) || user.role === UserRole.ACCOUNTANT) && (
                                 <IconButton size="small" color="secondary" onClick={() => setPostLedgerRow(row)} title={t('postToLedger')}><PostLedgerIcon fontSize="small" /></IconButton>
                               )}
-                              {!row.isContract && [POStatus.PENDING_APPROVAL, POStatus.APPROVED, POStatus.PARTIALLY_DELIVERED, POStatus.DELIVERED].includes(row.status as POStatus) && (
+                              {!isUmbrellaContract(row) && [POStatus.PENDING_APPROVAL, POStatus.APPROVED, POStatus.PARTIALLY_DELIVERED, POStatus.DELIVERED].includes(row.status as POStatus) && (
                                 <IconButton size="small" color="secondary" onClick={() => setPaymentTypeRow(row)} title={t('changePaymentType')}><PaymentIcon fontSize="small" /></IconButton>
                               )}
                               {row.status === POStatus.REJECTED && (
                                 <IconButton size="small" color="warning" disabled={resubmitMutation.isPending} onClick={() => resubmitMutation.mutate(row.id)} title={t('resubmitForApproval')}><ResubmitIcon fontSize="small" /></IconButton>
                               )}
-                              {!row.isContract && (row.status === POStatus.PENDING_APPROVAL || row.status === POStatus.REJECTED || (row.status === POStatus.APPROVED && !!user && isAdminRole(user.role))) && (
+                              {!isUmbrellaContract(row) && (row.status === POStatus.PENDING_APPROVAL || row.status === POStatus.REJECTED || (row.status === POStatus.APPROVED && !!user && isAdminRole(user.role))) && (
                                 <IconButton size="small" color="primary" onClick={() => setEditUnapprovedRow(row)} title={t('editPo')}><EditIcon fontSize="small" /></IconButton>
                               )}
                             </Box>
@@ -946,7 +952,7 @@ export default function PurchaseOrdersPage() {
                             sx={effectiveStatus === POStatus.DELETED ? { bgcolor: '#d32f2f', color: '#fff', textDecoration: 'line-through' } : undefined}
                           />
                           <Typography component="span" sx={{ fontWeight: 700, fontSize: '0.9rem' }}>
-                            {row.isContract ? (row.contractTitle ?? t('contractBadge')) : formatCurrency(row.grandTotal)}
+                            {isUmbrellaContract(row) ? (row.contractTitle ?? t('contractBadge')) : formatCurrency(row.grandTotal)}
                           </Typography>
                           {row.deliveryDate && (
                             <Typography component="span" variant="caption" color="text.secondary">
@@ -973,7 +979,7 @@ export default function PurchaseOrdersPage() {
                             <Typography variant="caption" color="warning.main" title={row.editReason}>{t('edited')}</Typography>
                           )}
                         </Box>
-                        {!row.isContract && (row.items ?? []).length > 0 && (
+                        {!isUmbrellaContract(row) && (row.items ?? []).length > 0 && (
                           <Typography variant="caption" color="text.secondary" noWrap>
                             {(row.items ?? []).slice(0, 2).map((i) => `${i.materialName} × ${formatIndianNumber(i.quantity)}${i.unit ? ' ' + i.unit : ''}`).join(', ')}
                             {(row.items ?? []).length > 2 ? ` +${(row.items ?? []).length - 2}` : ''}
@@ -1001,7 +1007,7 @@ export default function PurchaseOrdersPage() {
                             <Typography variant="caption" color="text.secondary">{t('approvedBy')}</Typography>
                             <Typography sx={{ fontWeight: 600 }} noWrap>{approverNames}</Typography>
                           </Box>
-                          {!row.isContract && (
+                          {!isUmbrellaContract(row) && (
                             <>
                               <Box>
                                 <Typography variant="caption" color="text.secondary">{t('budgetHead')}</Typography>
@@ -1030,7 +1036,7 @@ export default function PurchaseOrdersPage() {
                         <Box sx={{ mb: 1 }}><ApprovalTiming startedAt={row.createdAt} workflow={row.approvalWorkflow} /></Box>
 
                         {/* Items — simple list: material, qty, rate, amount */}
-                        {!row.isContract && row.items && row.items.length > 0 && <ItemsGist items={row.items} max={50} />}
+                        {!isUmbrellaContract(row) && row.items && row.items.length > 0 && <ItemsGist items={row.items} max={50} />}
 
                         {/* Description — only when there is one */}
                         {row.notes && (
@@ -1248,13 +1254,16 @@ export default function PurchaseOrdersPage() {
                                   <Button size="small" color="error" startIcon={<CloseIcon />} onClick={() => setApprovalAction({ row, action: 'reject' })}>{t('reject')}</Button>
                                 </>
                               )}
-                              {!row.isContract && (row.status === POStatus.APPROVED || row.status === POStatus.PARTIALLY_DELIVERED) && (
+                              {canConvertToContract(row) && (
+                                <Button size="small" color="secondary" onClick={() => setConvertRow(row)}>{t('convertToContract')}</Button>
+                              )}
+                              {!isUmbrellaContract(row) && (row.status === POStatus.APPROVED || row.status === POStatus.PARTIALLY_DELIVERED) && (
                                 <Button size="small" color="primary" startIcon={<GatePassIcon />} onClick={() => navigate(`/goods-receipts?po=${row.id}`)}>{t('receiveGoods')}</Button>
                               )}
-                              {!row.isContract && (row.status === POStatus.APPROVED || row.status === POStatus.PARTIALLY_DELIVERED) && (
+                              {!isUmbrellaContract(row) && (row.status === POStatus.APPROVED || row.status === POStatus.PARTIALLY_DELIVERED) && (
                                 <Button size="small" startIcon={<GatePassIcon />} onClick={() => navigate('/gate-passes')}>{t('gatePass')}</Button>
                               )}
-                              {!row.isContract && (row.status === POStatus.APPROVED || row.status === POStatus.PARTIALLY_DELIVERED || row.status === POStatus.DELIVERED) && (
+                              {!isUmbrellaContract(row) && (row.status === POStatus.APPROVED || row.status === POStatus.PARTIALLY_DELIVERED || row.status === POStatus.DELIVERED) && (
                                 <Button size="small" startIcon={<TimelineIcon />} onClick={() => setTrailRow(row)}>{t('trail')}</Button>
                               )}
                               {row.status === POStatus.PARTIALLY_DELIVERED && !row.parentPoId && (
@@ -1263,19 +1272,19 @@ export default function PurchaseOrdersPage() {
                               {row.status === POStatus.REJECTED && (
                                 <Button size="small" color="warning" startIcon={<ResubmitIcon />} disabled={resubmitMutation.isPending} onClick={() => resubmitMutation.mutate(row.id)}>{t('resubmitForApproval')}</Button>
                               )}
-                              {!row.isContract && (row.status === POStatus.PENDING_APPROVAL || row.status === POStatus.REJECTED || (row.status === POStatus.APPROVED && !!user && isAdminRole(user.role))) && (
+                              {!isUmbrellaContract(row) && (row.status === POStatus.PENDING_APPROVAL || row.status === POStatus.REJECTED || (row.status === POStatus.APPROVED && !!user && isAdminRole(user.role))) && (
                                 <Button size="small" color="primary" startIcon={<EditIcon />} onClick={() => setEditUnapprovedRow(row)}>{t('editPo')}</Button>
                               )}
                               {(row.status === POStatus.APPROVED || row.status === POStatus.DELIVERED || row.status === POStatus.PARTIALLY_DELIVERED) && (
                                 <Button size="small" startIcon={<EditIcon />} onClick={() => { setNotesEditRow(row); setNotesEditValue(row.notes ?? ''); setReferredByEditValue(row.referredBy ?? ''); }}>{t('editDetails')}</Button>
                               )}
-                              {!row.isContract && (row.status === POStatus.APPROVED || row.status === POStatus.DELIVERED || row.status === POStatus.PARTIALLY_DELIVERED) && user && (isAdminRole(user.role) || user.role === UserRole.ACCOUNTANT) && (
+                              {!isUmbrellaContract(row) && (row.status === POStatus.APPROVED || row.status === POStatus.DELIVERED || row.status === POStatus.PARTIALLY_DELIVERED) && user && (isAdminRole(user.role) || user.role === UserRole.ACCOUNTANT) && (
                                 <Button size="small" color="secondary" startIcon={<PostLedgerIcon />} onClick={() => setPostLedgerRow(row)}>{t('postLedger')}</Button>
                               )}
-                              {!row.isContract && [POStatus.PENDING_APPROVAL, POStatus.APPROVED, POStatus.PARTIALLY_DELIVERED, POStatus.DELIVERED].includes(row.status as POStatus) && (
+                              {!isUmbrellaContract(row) && [POStatus.PENDING_APPROVAL, POStatus.APPROVED, POStatus.PARTIALLY_DELIVERED, POStatus.DELIVERED].includes(row.status as POStatus) && (
                                 <Button size="small" color="info" startIcon={<SwapBudgetIcon />} onClick={() => { setBudgetHeadRow(row); setNewBudgetHeadId(''); setBudgetHeadReason(''); }}>{t('budgetHead')}</Button>
                               )}
-                              {!row.isContract && [POStatus.PENDING_APPROVAL, POStatus.APPROVED, POStatus.PARTIALLY_DELIVERED, POStatus.DELIVERED].includes(row.status as POStatus) && (
+                              {!isUmbrellaContract(row) && [POStatus.PENDING_APPROVAL, POStatus.APPROVED, POStatus.PARTIALLY_DELIVERED, POStatus.DELIVERED].includes(row.status as POStatus) && (
                                 <Button size="small" color="secondary" startIcon={<PaymentIcon />} onClick={() => setPaymentTypeRow(row)}>{t('paymentType')}</Button>
                               )}
                               {row.status === POStatus.DELIVERED && !row.parentPoId && Array.isArray(row.regenerationData) && (row.regenerationData as unknown[]).length > 0 && (!row.childPos || row.childPos.length === 0) && (
@@ -1323,6 +1332,7 @@ export default function PurchaseOrdersPage() {
       )}
 
       <NewContractDialog open={contractOpen} onClose={() => setContractOpen(false)} />
+      <ConvertToContractDialog po={convertRow ? { id: convertRow.id, poNumber: convertRow.poNumber } : null} onClose={() => setConvertRow(null)} />
 
       {/* Create PO Dialog */}
       <ResponsiveDialog open={createOpen} onClose={() => { setCreateOpen(false); resetForm(); }} maxWidth="md" fullWidth sx={{ '& .MuiDialog-paper': { margin: { xs: 1 } } }}>

@@ -149,6 +149,61 @@ export function NewContractDialog({ open, onClose }: { open: boolean; onClose: (
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Convert an existing PO into a contract
+// ─────────────────────────────────────────────────────────────────────────────
+
+export function ConvertToContractDialog({ po, onClose }: { po: { id: string; poNumber: string } | null; onClose: () => void }) {
+  const { t } = useTranslation('po');
+  const queryClient = useQueryClient();
+  const [title, setTitle] = useState('');
+  const [type, setType] = useState('');
+  const [end, setEnd] = useState('');
+  const [acknowledged, setAcknowledged] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (po) { setTitle(''); setType(''); setEnd(''); setAcknowledged(false); setError(''); }
+  }, [po]);
+
+  const mutation = useMutation({
+    mutationFn: async () =>
+      (await api.post(`/purchase-orders/${po!.id}/convert-to-contract`, {
+        contractTitle: title.trim() || undefined,
+        contractType: type || undefined,
+        contractEnd: end || undefined,
+        acknowledged,
+      })).data,
+    onSuccess: () => { refreshPoData(queryClient); onClose(); },
+    onError: (err: unknown) => setError(extractErrorMessage(err)),
+  });
+
+  return (
+    <ResponsiveDialog open={!!po} onClose={onClose} maxWidth="sm" fullWidth>
+      <DialogTitle>{t('convertDialogTitle', { n: po?.poNumber })}</DialogTitle>
+      <DialogContent>
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
+          <Alert severity="info">{t('convertHelp', { n: po?.poNumber })}</Alert>
+          {error && <Alert severity="error" onClose={() => setError('')}>{error}</Alert>}
+          <TextField label={t('contractTitleLabel')} value={title} onChange={(e) => setTitle(e.target.value)} fullWidth inputProps={{ maxLength: 200 }} />
+          <TextField select label={t('contractTypeField')} value={type} onChange={(e) => setType(e.target.value)} fullWidth>
+            <MenuItem value="">{t('none')}</MenuItem>
+            {CONTRACT_PO_TYPES.map((c) => <MenuItem key={c} value={c}>{contractTypeLabel(t, c)}</MenuItem>)}
+          </TextField>
+          <TextField type="date" label={t('contractEnd')} value={end} onChange={(e) => setEnd(e.target.value)} InputLabelProps={{ shrink: true }} />
+          <AcknowledgementCheckbox checked={acknowledged} onChange={setAcknowledged} entityLabel={t('entityConvert')} />
+        </Box>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose}>{t('cancel')}</Button>
+        <Button variant="contained" disabled={!acknowledged || mutation.isPending} onClick={() => mutation.mutate()}>
+          {mutation.isPending ? <CircularProgress size={20} /> : t('convertBtn')}
+        </Button>
+      </DialogActions>
+    </ResponsiveDialog>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Sub-PO
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -348,6 +403,7 @@ interface ContractSummary {
   };
   subPos: {
     id: string;
+    isMain?: boolean;
     poNumber: string;
     status: string;
     periodLabel: string | null;
@@ -484,7 +540,7 @@ export function ContractPanel({ contract, canManage, onOpenSubPo }: {
 
   const { contract: c, totals, subPos } = data;
   const closed = !!c.contractClosedAt;
-  const approved = c.status === 'APPROVED';
+  const approved = ['APPROVED', 'PARTIALLY_DELIVERED', 'DELIVERED'].includes(c.status);
 
   return (
     <Box sx={{ mt: 1.5, pt: 1, borderTop: '1px solid', borderColor: 'divider' }}>
@@ -551,9 +607,9 @@ export function ContractPanel({ contract, canManage, onOpenSubPo }: {
               key={s.id}
               sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr auto', sm: '1.1fr 1.2fr 0.9fr 0.9fr 0.9fr auto' }, gap: 1, alignItems: 'center', p: 1, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}
             >
-              <Typography variant="body2" fontWeight={700}>{s.poNumber}</Typography>
+              <Typography variant="body2" fontWeight={700}>{s.poNumber}{s.isMain && <Chip size="small" color="secondary" variant="outlined" label={t('mainPoRow')} sx={{ ml: 0.75 }} />}</Typography>
               <Typography variant="body2" color="text.secondary" sx={{ gridColumn: { xs: '1 / -1', sm: 'auto' }, order: { xs: 3, sm: 0 } }}>
-                {s.periodLabel ?? '—'}
+                {s.periodLabel ?? (s.isMain ? t('mainPoRow') : '—')}
                 {s.periodFrom && ` (${formatDate(s.periodFrom)}${s.periodTo ? ` – ${formatDate(s.periodTo)}` : ''})`}
               </Typography>
               <Chip size="small" label={enumLabel(s.status)} color={STATUS_COLORS[s.status] ?? 'default'} sx={{ justifySelf: 'start' }} />

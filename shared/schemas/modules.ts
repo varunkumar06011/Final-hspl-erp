@@ -316,6 +316,27 @@ export const createContractPOSchema = z.object({
   }),
 });
 
+// Turn an existing PO into a contract. The PO keeps its items, amount and payments; every
+// sub-PO raised later adds to the contract total. All fields are optional (title defaults).
+export const convertToContractSchema = z.object({
+  params: z.object({ id: uuid }),
+  body: z.object({
+    contractTitle: z.string().trim().max(200).optional(),
+    contractType: z.string().trim().max(60).optional(),
+    estimatedValue: z.preprocess((v) => (v === '' || v === null ? undefined : v), money.optional()),
+    contractStart: optionalDate,
+    contractEnd: optionalDate,
+    acknowledged: acknowledgement,
+  }),
+});
+
+/**
+ * An umbrella contract is one raised from scratch: it carries no amount of its own. A contract
+ * converted from a PO keeps that PO's amount, so it still receives goods, invoices and payments.
+ */
+export const isUmbrellaContract = (po: { isContract?: boolean | null; grandTotal?: unknown }) =>
+  !!po.isContract && Number(po.grandTotal ?? 0) === 0;
+
 // One billing period of a contract (week / month / milestone). Amounts vary per period.
 export const createSubPOSchema = z.object({
   params: z.object({ id: uuid }),

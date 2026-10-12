@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { POPaymentType, createContractPOSchema, createSubPOSchema, updateContractTermsSchema } from '@hospital-erp/shared';
+import { POPaymentType, createContractPOSchema, createSubPOSchema, updateContractTermsSchema, convertToContractSchema, isUmbrellaContract } from '@hospital-erp/shared';
 
 const uuid = '3f2b8c1e-9d4a-4e6b-8a57-1c2d3e4f5a6b';
 const line = { materialName: 'Mason - 12 workers', quantity: 12, unit: 'day', unitPrice: 900, gstRate: 0 };
@@ -40,5 +40,18 @@ describe('contract PO schemas', () => {
     expect(parse({ estimatedValue: null }).success).toBe(true);
     expect(parse({ closed: true }).success).toBe(true);
     expect(parse({ estimatedValue: -1 }).success).toBe(false);
+  });
+});
+
+describe('converting a PO into a contract', () => {
+  it('needs only the acknowledgement; title, type and dates are optional', () => {
+    expect(convertToContractSchema.safeParse({ params: { id: uuid }, body: { acknowledged: true } }).success).toBe(true);
+    expect(convertToContractSchema.safeParse({ params: { id: uuid }, body: {} }).success).toBe(false);
+  });
+
+  it('treats only an amount-less contract as an umbrella; a converted PO keeps working as a PO', () => {
+    expect(isUmbrellaContract({ isContract: true, grandTotal: 0 })).toBe(true);
+    expect(isUmbrellaContract({ isContract: true, grandTotal: '250000.00' })).toBe(false);
+    expect(isUmbrellaContract({ isContract: false, grandTotal: 0 })).toBe(false);
   });
 });

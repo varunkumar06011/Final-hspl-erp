@@ -291,5 +291,11 @@
   "lessDetails": "Hide details",
   "tabAll": "Purchase Orders",
   "tabContracts": "Contracts",
-  "openCombined": "Combined record"
+  "openCombined": "Combined record",
+  "convertToContract": "Convert to contract",
+  "convertDialogTitle": "Convert {{n}} to a contract",
+  "convertHelp": "This PO becomes the contract's main PO. Its items, amount and payments stay as they are and carry into the contract total. Afterwards you can add sub-POs ({{n}}-SUB01, -SUB02 ...) for further work; each adds to the total. There is no fixed amount: the contract continues until you close it.",
+  "convertBtn": "Convert to contract",
+  "entityConvert": "conversion of this PO into a contract",
+  "mainPoRow": "Main PO"
 }

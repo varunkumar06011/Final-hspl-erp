@@ -1,5 +1,5 @@
 import { Router, Response, NextFunction } from 'express';
-import { GoodsReceiptStatus, Permission, AuditAction, InspectionStatus, InventoryItemType, AssetStatus, AssetMovementType, GatePassStatus, VoucherType, LedgerGroup, GST_LEDGER_NAMES } from '@hospital-erp/shared';
+import { isUmbrellaContract, GoodsReceiptStatus, Permission, AuditAction, InspectionStatus, InventoryItemType, AssetStatus, AssetMovementType, GatePassStatus, VoucherType, LedgerGroup, GST_LEDGER_NAMES } from '@hospital-erp/shared';
 import {
   createGoodsReceiptSchema,
   inspectGoodsReceiptSchema,
@@ -217,7 +217,7 @@ router.get(
     try {
       const projectId = requireProjectId(req);
       const pos = await prisma.purchaseOrder.findMany({
-        where: { projectId, deletedAt: null, isContract: false, status: { in: ['APPROVED', 'PARTIALLY_DELIVERED'] } },
+        where: { projectId, deletedAt: null, NOT: { isContract: true, grandTotal: 0 }, status: { in: ['APPROVED', 'PARTIALLY_DELIVERED'] } },
         include: {
           vendor: { select: { id: true, name: true, vendorCode: true } },
           items: true,
@@ -281,7 +281,7 @@ router.post(
         res.status(400).json({ error: 'Purchase order not found' });
         return;
       }
-      if (po.isContract) {
+      if (isUmbrellaContract(po)) {
         res.status(400).json({ error: 'This is a contract PO. Receive against one of its sub-POs' });
         return;
       }

@@ -60,7 +60,7 @@ export interface ChainShape {
 /** Steps of the record and what it is waiting for. */
 export function computeStages(c: ChainShape): { steps: Step[]; current: StepKey | 'DONE' | 'CLOSED'; next: NextAction } {
   const steps: Step[] = [];
-  const livePos = c.pos.filter((p) => !DEAD.includes(p.status) && !p.isContract);
+  const livePos = c.pos.filter((p) => !DEAD.includes(p.status));
   const deadPos = c.pos.filter((p) => DEAD.includes(p.status));
   const finalized = c.quotations.filter((q) => FINALIZED_Q.includes(q.status));
   const openQ = c.quotations.filter((q) => OPEN_Q.includes(q.status));
@@ -256,7 +256,7 @@ export async function listCombinedRecords(projectId: string, viewer: Viewer, que
       : [],
     fin
       ? prisma.purchaseOrder.findMany({
-          where: { ...base, status: { not: 'DELETED' }, isContract: false },
+          where: { ...base, status: { not: 'DELETED' }, NOT: { isContract: true, grandTotal: 0 } },
           select: {
             id: true, poNumber: true, quotationId: true, mprId: true, status: true, grandTotal: true, netPayable: true,
             date: true, updatedAt: true, isSiteBillBatch: true, reimburseTo: true,
@@ -502,7 +502,7 @@ export async function getCombinedRecord(projectId: string, viewer: Viewer, type:
   if (quotations.length) poOr.push({ quotationId: { in: quotations.map((q) => q.id) } });
   const pos = fin && poOr.length
     ? await prisma.purchaseOrder.findMany({
-        where: { ...base, OR: poOr, isContract: false },
+        where: { ...base, OR: poOr, NOT: { isContract: true, grandTotal: 0 } },
         include: {
           items: { orderBy: { createdAt: 'asc' } },
           vendor: { select: { id: true, name: true, vendorCode: true } },

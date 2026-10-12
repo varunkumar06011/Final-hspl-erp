@@ -80,7 +80,7 @@ export async function findStalled(projectId: string, scope: StalledScope, now = 
         projectId,
         deletedAt: null,
         status: 'APPROVED',
-        isContract: false,
+        NOT: { isContract: true, grandTotal: 0 },
         goodsReceipts: { none: { deletedAt: null } },
         invoices: { none: { deletedAt: null } },
         advancePaymentRequests: { none: { deletedAt: null } },

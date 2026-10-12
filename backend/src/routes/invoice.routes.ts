@@ -1,5 +1,5 @@
 import { Router, Response, NextFunction } from 'express';
-import { Permission, AuditAction, InvoiceVerificationStatus, PaymentStatus, StockStatus, UserRole, GoodsReceiptStatus, getRequiredApproverCount, isAdminRole } from '@hospital-erp/shared';
+import { isUmbrellaContract, Permission, AuditAction, InvoiceVerificationStatus, PaymentStatus, StockStatus, UserRole, GoodsReceiptStatus, getRequiredApproverCount, isAdminRole } from '@hospital-erp/shared';
 import { createInvoiceSchema, listInvoicesSchema, approvalActionSchema, updateInvoiceSchema } from '@hospital-erp/shared';
 import { prisma } from '../config/prisma';
 import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middleware/auth';
@@ -286,7 +286,7 @@ router.post(
           res.status(400).json({ error: 'Purchase order not found' });
           return;
         }
-        if (po.isContract) {
+        if (isUmbrellaContract(po)) {
           res.status(400).json({ error: 'This is a contract PO. Raise the invoice against one of its sub-POs' });
           return;
         }

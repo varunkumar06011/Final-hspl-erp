@@ -1,6 +1,6 @@
 import { Router, Response, NextFunction } from 'express';
 import { Permission, POStatus, POPaymentType, AuditAction, UserRole, GoodsReceiptStatus, isAdminRole, isFirstLevelApproverRole, FIRST_LEVEL_APPROVER_ROLES, VoucherType, GST_LEDGER_NAMES, VendorType, MPRStatus } from '@hospital-erp/shared';
-import { createPOSchema, listPOsSchema, approvalActionSchema, editPOSchema, editUnapprovedPOSchema, regeneratePOSchema, changePOPaymentTypeSchema, createContractPOSchema, createSubPOSchema, updateContractTermsSchema } from '@hospital-erp/shared';
+import { createPOSchema, listPOsSchema, approvalActionSchema, editPOSchema, editUnapprovedPOSchema, regeneratePOSchema, changePOPaymentTypeSchema, createContractPOSchema, convertToContractSchema, isUmbrellaContract, createSubPOSchema, updateContractTermsSchema } from '@hospital-erp/shared';
 import { prisma } from '../config/prisma';
 import { Prisma } from '@prisma/client';
 import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middleware/auth';
@@ -790,6 +790,78 @@ router.post(
   }
 );
 
+// POST /:id/convert-to-contract — turn an existing PO into a contract. The PO stays exactly as it
+// is (items, amount, budget commitment, receipts, invoices, payments carry over untouched); it just
+// becomes the contract's main PO, and sub-POs (<PO>-SUB01 ...) can be added until the contract is closed.
+router.post(
+  '/:id/convert-to-contract',
+  rbacMiddleware(Permission.CREATE_PO),
+  validateMiddleware(convertToContractSchema),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      const po = await prisma.purchaseOrder.findFirst({
+        where: { id: req.params.id, projectId, deletedAt: null },
+        include: { items: { select: { materialName: true }, take: 1, orderBy: { createdAt: 'asc' } } },
+      });
+      if (!po) {
+        res.status(404).json({ error: 'Purchase order not found' });
+        return;
+      }
+      if (po.isContract) {
+        res.status(400).json({ error: 'This purchase order is already a contract' });
+        return;
+      }
+      if (po.contractPoId) {
+        res.status(400).json({ error: 'A sub-PO cannot be converted into a contract' });
+        return;
+      }
+      if (po.isSiteBillBatch) {
+        res.status(400).json({ error: 'A site-bill reimbursement PO cannot be converted into a contract' });
+        return;
+      }
+      if (DEAD_PO_STATUSES.includes(po.status)) {
+        res.status(400).json({ error: 'A rejected, cancelled or deleted purchase order cannot be converted into a contract' });
+        return;
+      }
+
+      const b = req.body;
+      if (b.contractStart && b.contractEnd && new Date(b.contractEnd) < new Date(b.contractStart)) {
+        res.status(400).json({ error: 'Contract end date cannot be before the start date' });
+        return;
+      }
+      const contractTitle = (b.contractTitle as string | undefined)?.trim() || po.items[0]?.materialName || po.notes?.slice(0, 200) || po.poNumber;
+
+      const updated = await prisma.purchaseOrder.update({
+        where: { id: po.id },
+        data: {
+          isContract: true,
+          contractTitle,
+          contractType: b.contractType || null,
+          estimatedValue: b.estimatedValue === undefined ? null : b.estimatedValue,
+          contractStart: b.contractStart ?? po.date,
+          contractEnd: b.contractEnd ?? null,
+        },
+        include: poInclude,
+      });
+
+      await logAudit({
+        userId: req.user!.id,
+        action: AuditAction.UPDATE,
+        entityType: 'PURCHASE_ORDER',
+        entityId: po.id,
+        projectId,
+        oldValue: { isContract: false },
+        newValue: { isContract: true, convertedToContract: true, contractTitle, grandTotal: Number(po.grandTotal), acknowledged: true },
+      });
+
+      res.json(updated);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
 // POST /:id/sub-pos — raise the sub-PO for one billing period of an approved contract.
 // Same vendor/budget as the contract, amounts entered per period (no cap), own approval.
 router.post(
@@ -806,7 +878,7 @@ router.post(
         res.status(404).json({ error: 'Contract not found' });
         return;
       }
-      if (contract.status !== POStatus.APPROVED) {
+      if (!COMMITTED_PO_STATUSES.includes(contract.status)) {
         res.status(400).json({ error: 'Sub-POs can only be raised against an approved contract' });
         return;
       }
@@ -1063,7 +1135,24 @@ router.get(
           date: true,
         },
       });
-      const ids = subs.map((s) => s.id);
+      // A contract converted from a PO keeps that PO's own amount: it is the contract's main row.
+      const hasMain = Number(contract.grandTotal) > 0;
+      const mainRow = hasMain
+        ? {
+            id: contract.id,
+            poNumber: contract.poNumber,
+            status: contract.status,
+            paymentType: contract.paymentType,
+            grandTotal: contract.grandTotal,
+            totalDeductions: contract.totalDeductions,
+            periodLabel: null,
+            periodFrom: null,
+            periodTo: null,
+            date: contract.date,
+          }
+        : null;
+      const allRows = mainRow ? [mainRow, ...subs] : subs;
+      const ids = allRows.map((s) => s.id);
       const payments = ids.length
         ? await prisma.payment.findMany({
             where: {
@@ -1079,13 +1168,14 @@ router.get(
         if (subId) paidBySub.set(subId, (paidBySub.get(subId) ?? 0) + Number(p.amount));
       }
 
-      const rows = subs.map((s) => {
+      const rows = allRows.map((s) => {
         const grandTotal = Number(s.grandTotal);
         const payable = payableAfterDeductions(grandTotal, Number(s.totalDeductions ?? 0));
         const paid = paidBySub.get(s.id) ?? 0;
         const committed = COMMITTED_PO_STATUSES.includes(s.status);
         return {
           id: s.id,
+          isMain: s.id === contract.id,
           poNumber: s.poNumber,
           status: s.status,
           paymentType: s.paymentType,
@@ -1102,6 +1192,7 @@ router.get(
 
       const sum = (list: typeof rows, pick: (r: (typeof rows)[number]) => number) => list.reduce((a, r) => a + pick(r), 0);
       const approved = rows.filter((r) => COMMITTED_PO_STATUSES.includes(r.status));
+      const mainPo = rows.find((r) => r.isMain) ?? null;
       const pending = rows.filter((r) => r.status === POStatus.PENDING_APPROVAL);
       const approvedValue = sum(approved, (r) => r.grandTotal);
       const pendingValue = sum(pending, (r) => r.grandTotal);
@@ -1121,8 +1212,9 @@ router.get(
           contractClosedAt: contract.contractClosedAt,
           vendor: contract.vendor,
         },
+        mainPo,
         totals: {
-          subPoCount: rows.filter((r) => !DEAD_PO_STATUSES.includes(r.status)).length,
+          subPoCount: rows.filter((r) => !r.isMain && !DEAD_PO_STATUSES.includes(r.status)).length,
           approvedValue,
           pendingValue,
           paid: sum(rows, (r) => r.paid),
@@ -1351,7 +1443,7 @@ router.post(
       // The only thing that stops an approval is a missing amount. Budget head,
       // description and payment type can be filled in any time (no re-approval).
       // Contract POs carry no amount of their own, so they are never blocked.
-      if (!po.isContract && Number(po.grandTotal) <= 0) {
+      if (!isUmbrellaContract(po) && Number(po.grandTotal) <= 0) {
         res.status(400).json({ error: 'Enter the item prices on this purchase order (Edit) before approving it — the amount is 0', code: 'PO_AMOUNT_MISSING' });
         return;
       }
@@ -1698,7 +1790,7 @@ router.post(
         res.status(404).json({ error: 'Purchase order not found' });
         return;
       }
-      if (po.isContract) {
+      if (isUmbrellaContract(po)) {
         res.status(400).json({ error: CONTRACT_PO_ITEM_EDIT_ERROR });
         return;
       }

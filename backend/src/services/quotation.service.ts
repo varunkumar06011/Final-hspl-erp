@@ -444,7 +444,7 @@ export async function cancelQuotation(quotationId: string, projectId: string, us
   }
 
   const pos = await prisma.purchaseOrder.findMany({
-    where: { quotationId: quotation.id, projectId, deletedAt: null, isContract: false, status: { notIn: DEAD_PO_STATUSES } },
+    where: { quotationId: quotation.id, projectId, deletedAt: null, NOT: { isContract: true, grandTotal: 0 }, status: { notIn: DEAD_PO_STATUSES } },
     select: { id: true, poNumber: true, status: true, budgetHeadId: true, grandTotal: true, editedAt: true, approvalWorkflowId: true },
   });
   const committed = pos.filter((p) => COMMITTED_PO_STATUSES.includes(p.status));
