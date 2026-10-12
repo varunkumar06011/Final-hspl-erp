@@ -4,7 +4,7 @@ import { getStorageService } from './storage.service';
 import { prisma } from '../config/prisma';
 
 export async function streamPurchaseOrderPdf(res: NodeJS.WritableStream, po: any) {
-  const doc = new PDFDocument({ margin: 0, size: 'A4' });
+  const doc = new PDFDocument({ margin: 0, size: 'A4', bufferPages: true });
   doc.pipe(res as unknown as any);
 
   const pageW = 595;
@@ -43,7 +43,8 @@ export async function streamPurchaseOrderPdf(res: NodeJS.WritableStream, po: any
     select: { name: true },
   });
 
-  // ── Top header box ──
+  // ── Top header box (repeated on every page) ──
+  const drawHeader = async () => {
   const headerTop = 22;
   const headerH = 82;
   const poBoxW = 130;
@@ -88,7 +89,9 @@ export async function streamPurchaseOrderPdf(res: NodeJS.WritableStream, po: any
   doc.roundedRect(poBoxX, headerTop + 8, poBoxW, 66, 4).fill('#ffffff').stroke(border);
   doc.fillColor(primary).font('Helvetica-Bold').fontSize(9).text('PO NUMBER', poBoxX, headerTop + 20, { width: poBoxW, align: 'center' });
   doc.fillColor(dark).font('Helvetica-Bold').fontSize(13).text(po.poNumber, poBoxX, headerTop + 40, { width: poBoxW, align: 'center' });
+  };
 
+  await drawHeader();
   let y = 116;
 
   // ── Subtitle header ──
@@ -207,25 +210,20 @@ export async function streamPurchaseOrderPdf(res: NodeJS.WritableStream, po: any
   const colGst = colPrice + wPrice + colGap;
   const colTotal = colGst + wGst + colGap;
 
-  doc.rect(left, y, width, 26).fill(primary);
-  doc.fillColor('#fff').font('Helvetica-Bold').fontSize(9);
-  doc.text('S.No', colSno, y + 7, { width: wSno, align: 'center' });
-  doc.text('Item Description', colDesc + 4, y + 7, { width: wDesc - 8 });
-  doc.text('Qty', colQty, y + 7, { width: wQty, align: 'center' });
-  doc.text('Unit', colUnit, y + 7, { width: wUnit, align: 'center' });
-  doc.text('Unit Price', colPrice + 4, y + 7, { width: wPrice - 8, align: 'right' });
-  doc.text('GST', colGst + 4, y + 7, { width: wGst - 8, align: 'right' });
-  doc.text('Total (Inc. GST)', colTotal + 4, y + 7, { width: wTotal - 8, align: 'right' });
-  y += 26;
+  const drawTableHead = () => {
+    doc.rect(left, y, width, 26).fill(primary);
+    doc.fillColor('#fff').font('Helvetica-Bold').fontSize(9);
+    doc.text('S.No', colSno, y + 7, { width: wSno, align: 'center' });
+    doc.text('Item Description', colDesc + 4, y + 7, { width: wDesc - 8 });
+    doc.text('Qty', colQty, y + 7, { width: wQty, align: 'center' });
+    doc.text('Unit', colUnit, y + 7, { width: wUnit, align: 'center' });
+    doc.text('Unit Price', colPrice + 4, y + 7, { width: wPrice - 8, align: 'right' });
+    doc.text('GST', colGst + 4, y + 7, { width: wGst - 8, align: 'right' });
+    doc.text('Total (Inc. GST)', colTotal + 4, y + 7, { width: wTotal - 8, align: 'right' });
+    y += 26;
+  };
 
-  // Reserve room for notes, totals, signatures and the footer before sizing rows.
-  const poNotes = (po as { notes?: string | null }).notes;
-  const bottomReserve = 154 + (poNotes && poNotes.trim().length > 0 ? 58 : 0);
-  const rowH = Math.max(10, Math.min(21, (pageH - y - bottomReserve) / Math.max(1, po.items.length)));
-  const rowFontSize = rowH < 14 ? 6.5 : rowH < 17 ? 7 : 8;
-  const rowTextOffset = Math.max(2, (rowH - rowFontSize) / 2 - 1);
-
-  for (let i = 0; i < po.items.length; i++) {
+  const drawRow = (i: number, rowH: number, rowFontSize: number, rowTextOffset: number) => {
     const item = po.items[i];
     if (i % 2 === 0) doc.rect(left, y, width, rowH).fill(primaryLight);
     doc.rect(left, y, width, rowH).stroke(border);
@@ -250,115 +248,192 @@ export async function streamPurchaseOrderPdf(res: NodeJS.WritableStream, po: any
     doc.fillColor(dark).font('Helvetica-Bold').fontSize(rowFontSize);
     doc.text(fmtMoney(itemIncTotal), colTotal + 4, y + rowTextOffset, { width: wTotal - 8, align: 'right', lineBreak: false });
     y += rowH;
-  }
-
-  // ── PO Description / Notes (highlighted) ──
-  if (poNotes && poNotes.trim().length > 0) {
-    y += 5;
-    const notesW = width;
-    const notesLabel = 'PO Description / Notes';
-    doc.font('Helvetica-Bold').fontSize(8.5);
-    const notesTextH = doc.heightOfString(poNotes.trim(), { width: notesW - 24, align: 'left' });
-    const notesBoxH = Math.max(30, 18 + notesTextH + 10);
-    // Light amber background to highlight the description
-    doc.rect(left, y, notesW, notesBoxH).fill('#FFF8E1').stroke('#FFB300');
-    doc.fillColor('#E65100').font('Helvetica-Bold').fontSize(8.5).text(notesLabel, left + 8, y + 6, { width: notesW - 16 });
-    doc.fillColor(dark).font('Helvetica').fontSize(9).text(poNotes.trim(), left + 8, y + 18, { width: notesW - 24, align: 'left' });
-    y += notesBoxH + 6;
-  }
-
-  // ── Totals ──
-  const totalsW = 240;
-  const totalsX = right - totalsW;
-
-  const drawTotal = (lbl: string, val: string, yy: number, bg = false) => {
-    const rowHeight = bg ? 22 : 20;
-    if (bg) doc.rect(totalsX, yy, totalsW, rowHeight).fill(primary);
-    else doc.rect(totalsX, yy, totalsW, rowHeight).fill(primaryLight).stroke(border);
-    const labelW = 165;
-    const valueW = totalsW - labelW - 16;
-    doc.fillColor(bg ? '#fff' : muted).font('Helvetica').fontSize(7.5).text(lbl, totalsX + 8, yy + 5, { width: labelW, lineBreak: false });
-    doc.fillColor(bg ? '#fff' : dark).font('Helvetica-Bold').fontSize(8).text(val, totalsX + 8 + labelW, yy + 5, { width: valueW, align: 'right', lineBreak: false });
-    return yy + rowHeight;
   };
 
-  // Highlighted advance row — amber background to draw attention to the amount payable now
-  const advanceHighlight = '#E65100';
-  const drawAdvanceTotal = (lbl: string, val: string, yy: number) => {
-    doc.rect(totalsX, yy, totalsW, 22).fill(advanceHighlight);
-    const labelW = 140;
-    const valueW = totalsW - labelW - 16;
-    doc.fillColor('#fff').font('Helvetica-Bold').fontSize(8).text(lbl, totalsX + 8, yy + 6, { width: labelW, lineBreak: false });
-    doc.fillColor('#fff').font('Helvetica-Bold').fontSize(8.5).text(val, totalsX + 8 + labelW, yy + 6, { width: valueW, align: 'right', lineBreak: false });
-    return yy + 22;
-  };
-
-  y += 6;
-  y = drawTotal('Subtotal (Excl. GST):', fmtMoney(Number(po.totalAmount)), y);
-  const gstRate = po.items.length > 0 ? Number(po.items[0]?.gstRate ?? 0) : 0;
-  const gstLabel = Number(po.gstAmount) > 0 ? `GST (${gstRate}%):` : 'GST (No Gst Applicable):';
-  y = drawTotal(gstLabel, Number(po.gstAmount) > 0 ? fmtMoney(Number(po.gstAmount)) : 'Rs. 0.00', y);
-  y = drawTotal('GRAND TOTAL (Inclusive of all taxes):', fmtMoney(Number(po.grandTotal)), y, true);
-
-  // ── Deductions breakdown ──
-  const deductionRows = Array.isArray((po as { deductions?: unknown }).deductions) ? (po as { deductions: { amount: number; reason: string }[] }).deductions : [];
-  if (deductionRows.length > 0) {
-    y += 6;
-    deductionRows.forEach((d) => {
-      y = drawTotal(`Less: ${d.reason}`, `-${fmtMoney(Number(d.amount))}`, y);
-    });
-    y = drawTotal('Total Deductions:', fmtMoney(Number(po.totalDeductions)), y);
-    y = drawTotal('NET PAYABLE:', fmtMoney(Number(po.netPayable)), y, true);
-  }
-
-  // For ADVANCE / FULL_PAYMENT POs, show the advance breakdown: advance now pay (highlighted), outstanding
-  // Skip when deductions exist — NET PAYABLE already represents the final amount.
-  if (deductionRows.length === 0 && po.advanceAmount !== null && po.advanceAmount !== undefined && Number(po.advanceAmount) > 0) {
-    const advanceVal = Number(po.advanceAmount);
-    const outstandingVal = Math.max(0, Number(po.grandTotal) - advanceVal);
-    y += 5;
-    y = drawAdvanceTotal('ADVANCE NOW PAY:', fmtMoney(advanceVal), y);
-    y = drawTotal('Outstanding (after advance):', fmtMoney(outstandingVal), y);
-  }
-  y += 10;
-
-  // ── Approval & Authorization boxes ──
+  // ── Approval & Authorization boxes (drawn on every page) ──
   // Fixed signatories only: Vinod Sir and Kaushal Sir — names only, no
   // role/designation labels.
   const signatories = ['Vinod Sir', 'Kaushal Sir'];
   const sigW = (width - 12) / signatories.length;
   const sigH = 48;
   const approvalHeadingH = 20;
+  const approvalBlockH = approvalHeadingH + sigH + 6;
 
-  doc.fillColor(primary).font('Helvetica-Bold').fontSize(10.5).text('APPROVAL & AUTHORIZATION:', left, y);
-  y += approvalHeadingH;
+  const drawApproval = (yy: number) => {
+    doc.fillColor(primary).font('Helvetica-Bold').fontSize(10.5).text('APPROVAL & AUTHORIZATION:', left, yy, { lineBreak: false });
+    yy += approvalHeadingH;
+    for (let i = 0; i < signatories.length; i++) {
+      const sx = left + i * (sigW + 12);
+      doc.roundedRect(sx, yy, sigW, sigH, 4).stroke(border);
+      doc.fillColor(dark).font('Helvetica-Bold').fontSize(8.5).text(signatories[i], sx + 6, yy + (sigH - 10) / 2, { width: sigW - 12, align: 'center', lineBreak: false });
+    }
+    return yy + sigH + 6;
+  };
 
-  for (let i = 0; i < signatories.length; i++) {
-    const sx = left + i * (sigW + 12);
-    doc.roundedRect(sx, y, sigW, sigH, 4).stroke(border);
-    doc.fillColor(dark).font('Helvetica-Bold').fontSize(8.5).text(signatories[i], sx + 6, y + (sigH - 10) / 2, { width: sigW - 12, align: 'center', lineBreak: false });
+  // ── Notes, totals, approval, referred-by and footer ("tail") ──
+  const poNotes = (po as { notes?: string | null }).notes;
+  const hasNotes = !!(poNotes && poNotes.trim().length > 0);
+  const deductionRows = Array.isArray((po as { deductions?: unknown }).deductions) ? (po as { deductions: { amount: number; reason: string }[] }).deductions : [];
+  const hasAdvance = deductionRows.length === 0 && po.advanceAmount !== null && po.advanceAmount !== undefined && Number(po.advanceAmount) > 0;
+
+  let notesBoxH = 0;
+  if (hasNotes) {
+    doc.font('Helvetica-Bold').fontSize(8.5);
+    notesBoxH = Math.max(30, 18 + doc.heightOfString(poNotes!.trim(), { width: width - 24, align: 'left' }) + 10);
   }
-  y += sigH + 6;
+  const tailH =
+    (hasNotes ? 5 + notesBoxH + 6 : 0) +
+    6 + 62 +
+    (deductionRows.length > 0 ? 6 + deductionRows.length * 20 + 20 + 22 : 0) +
+    (hasAdvance ? 5 + 22 + 20 : 0) +
+    10 + approvalBlockH + 26 + 2 + 14;
 
-  // ── Referred By — a separate field below the signature boxes, not part of
-  // the approval/authorization section. ──
-  const refName = po.referredBy?.trim();
-  doc.fillColor(muted).font('Helvetica-Bold').fontSize(8.5).text('Referred By:', left, y + 10, { width: 90 });
-  doc.fillColor(dark).font('Helvetica-Bold').fontSize(9.5).text(text(refName || '—'), left + 92, y + 10, { width: width - 92, lineBreak: false });
-  y += 26;
+  const drawTail = () => {
+    // ── PO Description / Notes (highlighted) ──
+    if (hasNotes) {
+      y += 5;
+      const notesW = width;
+      doc.rect(left, y, notesW, notesBoxH).fill('#FFF8E1').stroke('#FFB300');
+      doc.fillColor('#E65100').font('Helvetica-Bold').fontSize(8.5).text('PO Description / Notes', left + 8, y + 6, { width: notesW - 16 });
+      doc.fillColor(dark).font('Helvetica').fontSize(9).text(poNotes!.trim(), left + 8, y + 18, { width: notesW - 24, align: 'left' });
+      y += notesBoxH + 6;
+    }
 
-  // ── Footer ──
-  y += 2;
-  doc.moveTo(left, y).lineTo(right, y).stroke(primary);
-  doc.fillColor(muted).font('Helvetica').fontSize(6.5).text(`Generated from Hospital Construction ERP — ${new Date().toLocaleDateString('en-IN')}`, left, y + 4, { width, align: 'center' });
+    // ── Totals ──
+    const totalsW = 240;
+    const totalsX = right - totalsW;
+
+    const drawTotal = (lbl: string, val: string, yy: number, bg = false) => {
+      const rowHeight = bg ? 22 : 20;
+      if (bg) doc.rect(totalsX, yy, totalsW, rowHeight).fill(primary);
+      else doc.rect(totalsX, yy, totalsW, rowHeight).fill(primaryLight).stroke(border);
+      const labelW = 165;
+      const valueW = totalsW - labelW - 16;
+      doc.fillColor(bg ? '#fff' : muted).font('Helvetica').fontSize(7.5).text(lbl, totalsX + 8, yy + 5, { width: labelW, lineBreak: false });
+      doc.fillColor(bg ? '#fff' : dark).font('Helvetica-Bold').fontSize(8).text(val, totalsX + 8 + labelW, yy + 5, { width: valueW, align: 'right', lineBreak: false });
+      return yy + rowHeight;
+    };
+
+    // Highlighted advance row — amber background to draw attention to the amount payable now
+    const advanceHighlight = '#E65100';
+    const drawAdvanceTotal = (lbl: string, val: string, yy: number) => {
+      doc.rect(totalsX, yy, totalsW, 22).fill(advanceHighlight);
+      const labelW = 140;
+      const valueW = totalsW - labelW - 16;
+      doc.fillColor('#fff').font('Helvetica-Bold').fontSize(8).text(lbl, totalsX + 8, yy + 6, { width: labelW, lineBreak: false });
+      doc.fillColor('#fff').font('Helvetica-Bold').fontSize(8.5).text(val, totalsX + 8 + labelW, yy + 6, { width: valueW, align: 'right', lineBreak: false });
+      return yy + 22;
+    };
+
+    y += 6;
+    y = drawTotal('Subtotal (Excl. GST):', fmtMoney(Number(po.totalAmount)), y);
+    const gstRate = po.items.length > 0 ? Number(po.items[0]?.gstRate ?? 0) : 0;
+    const gstLabel = Number(po.gstAmount) > 0 ? `GST (${gstRate}%):` : 'GST (No Gst Applicable):';
+    y = drawTotal(gstLabel, Number(po.gstAmount) > 0 ? fmtMoney(Number(po.gstAmount)) : 'Rs. 0.00', y);
+    y = drawTotal('GRAND TOTAL (Inclusive of all taxes):', fmtMoney(Number(po.grandTotal)), y, true);
+
+    // ── Deductions breakdown ──
+    if (deductionRows.length > 0) {
+      y += 6;
+      deductionRows.forEach((d) => {
+        y = drawTotal(`Less: ${d.reason}`, `-${fmtMoney(Number(d.amount))}`, y);
+      });
+      y = drawTotal('Total Deductions:', fmtMoney(Number(po.totalDeductions)), y);
+      y = drawTotal('NET PAYABLE:', fmtMoney(Number(po.netPayable)), y, true);
+    }
+
+    // For ADVANCE / FULL_PAYMENT POs, show the advance breakdown.
+    // Skip when deductions exist — NET PAYABLE already represents the final amount.
+    if (hasAdvance) {
+      const advanceVal = Number(po.advanceAmount);
+      const outstandingVal = Math.max(0, Number(po.grandTotal) - advanceVal);
+      y += 5;
+      y = drawAdvanceTotal('ADVANCE NOW PAY:', fmtMoney(advanceVal), y);
+      y = drawTotal('Outstanding (after advance):', fmtMoney(outstandingVal), y);
+    }
+    y += 10;
+
+    y = drawApproval(y);
+
+    // ── Referred By — a separate field below the signature boxes. ──
+    const refName = po.referredBy?.trim();
+    doc.fillColor(muted).font('Helvetica-Bold').fontSize(8.5).text('Referred By:', left, y + 10, { width: 90 });
+    doc.fillColor(dark).font('Helvetica-Bold').fontSize(9.5).text(text(refName || '—'), left + 92, y + 10, { width: width - 92, lineBreak: false });
+    y += 26;
+
+    // ── Footer ──
+    y += 2;
+    doc.moveTo(left, y).lineTo(right, y).stroke(primary);
+    doc.fillColor(muted).font('Helvetica').fontSize(6.5).text(`Generated from Hospital Construction ERP — ${new Date().toLocaleDateString('en-IN')}`, left, y + 4, { width, align: 'center', lineBreak: false });
+  };
+
+  drawTableHead();
+
+  const maxBottom = pageH - 14;
+  const singleRowH = Math.min(21, (maxBottom - y - tailH) / Math.max(1, po.items.length));
+
+  if (singleRowH >= 10) {
+    // Everything fits on one sheet: original compact layout.
+    const rowH = singleRowH;
+    const rowFontSize = rowH < 14 ? 6.5 : rowH < 17 ? 7 : 8;
+    const rowTextOffset = Math.max(2, (rowH - rowFontSize) / 2 - 1);
+    for (let i = 0; i < po.items.length; i++) drawRow(i, rowH, rowFontSize, rowTextOffset);
+    drawTail();
+  } else {
+    // Too many items for one sheet: continue on further sheets. Every sheet
+    // carries the header and its own Approval & Authorization boxes.
+    const rowH = 18;
+    const rowFontSize = 8;
+    const rowTextOffset = 5;
+    const approvalTop = pageH - 26 - approvalBlockH;
+    const startNewSheet = async () => {
+      doc.addPage();
+      await drawHeader();
+      y = 116;
+      doc.fillColor(dark).font('Helvetica-Bold').fontSize(11).text('PURCHASE ORDER (continued)', left, y, { lineBreak: false });
+      y += 22;
+      drawTableHead();
+    };
+
+    let i = 0;
+    while (i < po.items.length) {
+      // Rows on this sheet must leave room for the approval boxes.
+      while (i < po.items.length && y + rowH <= approvalTop - 8) {
+        drawRow(i, rowH, rowFontSize, rowTextOffset);
+        i++;
+      }
+      if (i < po.items.length) {
+        drawApproval(approvalTop);
+        await startNewSheet();
+      }
+    }
+    if (y + tailH > maxBottom) {
+      drawApproval(approvalTop);
+      await startNewSheet();
+    }
+    drawTail();
+  }
+
+  // ── Page numbers (multi-sheet only) ──
+  const range = doc.bufferedPageRange();
+  if (range.count > 1) {
+    for (let p = 0; p < range.count; p++) {
+      doc.switchToPage(range.start + p);
+      doc.fillColor(muted).font('Helvetica').fontSize(7).text(`Page ${p + 1} of ${range.count}`, right - 100, pageH - 16, { width: 100, align: 'right', lineBreak: false });
+    }
+  }
 
   // ── Rejected watermark ──
   if (isRejected) {
-    doc.save();
-    doc.fillOpacity(0.15).fillColor('#D32F2F').font('Helvetica-Bold').fontSize(110);
-    doc.rotate(-35, { origin: [pageW / 2, pageH / 2] });
-    doc.text('REJECTED', 0, pageH / 2 - 55, { width: pageW, align: 'center', lineBreak: false });
-    doc.restore();
+    const wmRange = doc.bufferedPageRange();
+    for (let p = 0; p < wmRange.count; p++) {
+      doc.switchToPage(wmRange.start + p);
+      doc.save();
+      doc.fillOpacity(0.15).fillColor('#D32F2F').font('Helvetica-Bold').fontSize(110);
+      doc.rotate(-35, { origin: [pageW / 2, pageH / 2] });
+      doc.text('REJECTED', 0, pageH / 2 - 55, { width: pageW, align: 'center', lineBreak: false });
+      doc.restore();
+    }
   }
 
   doc.end();
