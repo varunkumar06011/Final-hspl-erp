@@ -37,7 +37,7 @@ const byId =
 export const REGISTRY: Record<string, EntityRegistration> = {
   Vendor: { path: byId('/vendors'), permission: Permission.VIEW_FINANCIALS, title: ['name'], subtitle: ['vendorCode'] },
   Quotation: { path: byId('/quotations'), permission: Permission.VIEW_FINANCIALS, title: ['quotationNumber'] },
-  PurchaseOrder: { label: 'Purchase Order', path: byId('/pos'), permission: Permission.VIEW_FINANCIALS, title: ['poNumber'] },
+  PurchaseOrder: { label: 'Purchase Order', path: byId('/pos'), permission: Permission.VIEW_FINANCIALS, title: ['poNumber'], subtitle: ['contractTitle', 'periodLabel', 'reimburseTo'] },
   VendorInvoice: { label: 'Invoice', path: byId('/invoices'), permission: Permission.VIEW_FINANCIALS, title: ['invoiceCode', 'invoiceNumber'], subtitle: ['invoiceNumber'] },
   PaymentRequest: { label: 'Payment Request', path: byId('/payments'), permission: Permission.VIEW_FINANCIALS, title: ['paymentCode', 'requestNumber'] },
   PaymentSheet: { label: 'Payment Sheet', path: () => '/payments', permission: Permission.VIEW_FINANCIALS },
@@ -57,7 +57,14 @@ export const REGISTRY: Record<string, EntityRegistration> = {
   GoodsReceipt: { label: 'Goods Receipt', path: byId('/goods-receipts'), permission: Permission.VIEW_FINANCIALS, title: ['receiptNumber'] },
   StockEntry: { label: 'Stock Entry', path: () => '/inventory', permission: Permission.MANAGE_INVENTORY, title: ['entryNumber'] },
   GatePass: { label: 'Gate Pass', path: byId('/gate-passes'), permission: Permission.VIEW_GATE_PASSES, title: ['passNumber'] },
-  MaterialPurchaseRequest: { label: 'Material Request', path: byId('/material-purchase-requests'), permission: Permission.VIEW_MPR, title: ['mprNumber'] },
+  MaterialPurchaseRequest: {
+    label: 'Material Request',
+    // Site bills are kept out of the MPR list; they live on the Site Bills page.
+    path: (id, row) => (row.isSiteBill ? `/site-bills?search=${encodeURIComponent(String(row.mprNumber ?? ''))}` : `/material-purchase-requests?id=${id}`),
+    permission: Permission.VIEW_MPR,
+    title: ['mprNumber'],
+    subtitle: ['billShopName'],
+  },
   InventoryItem: { label: 'Inventory Item', path: (id) => `/assets/${id}`, title: ['name'], subtitle: ['sku', 'category'] },
   Asset: {
     path: (_id, row) => (row.inventoryItemId ? `/assets/${row.inventoryItemId}` : '/assets'),

@@ -40,6 +40,7 @@ interface Row {
   id: string;
   title: string;
   isSiteBills: boolean;
+  isContract?: boolean;
   requestType: string | null;
   date: string | null;
   lastActivity: string | null;
@@ -191,6 +192,7 @@ export default function CombinedRecordsPage() {
                 <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
                   <Typography fontWeight={700}>{r.title}</Typography>
                   {r.isSiteBills && <Chip size="small" color="secondary" label={t('siteBillsChip', { count: r.numbers.bills })} />}
+                  {r.isContract && <Chip size="small" color="secondary" variant="outlined" label={t('contractChip')} />}
                   {r.requestType === 'SERVICE' && <Chip size="small" variant="outlined" label={t('typeService')} />}
                   <Typography variant="body2" color="text.secondary" noWrap sx={{ minWidth: 0, flexShrink: 1 }}>{r.vendors.join(', ') || '—'}</Typography>
                   <Box sx={{ flex: 1 }} />

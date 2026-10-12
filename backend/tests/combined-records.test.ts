@@ -101,3 +101,33 @@ describe('combined records stages', () => {
     expect(s.next).toBe('rejected');
   });
 });
+
+describe('contracts and site bills in a record', () => {
+  const none = { mpr: null, quotations: [], goodsReceipts: [], invoices: [], payments: [] };
+
+  it('an approved contract with no sub-PO yet waits for a sub-PO, not for delivery', () => {
+    const r = computeStages(chain({ ...none, pos: [{ status: 'APPROVED', grandTotal: 0, netPayable: 0, umbrella: true }] }));
+    expect(r.next).toBe('raiseSubPo');
+  });
+
+  it('a pending umbrella contract waits for approval, never for an amount', () => {
+    const r = computeStages(chain({ ...none, pos: [{ status: 'PENDING_APPROVAL', grandTotal: 0, netPayable: 0, umbrella: true }] }));
+    expect(r.next).toBe('approvePo');
+  });
+
+  it('a contract with an approved sub-PO moves on to delivery like a normal PO', () => {
+    const r = computeStages(chain({
+      ...none,
+      pos: [
+        { status: 'APPROVED', grandTotal: 0, netPayable: 0, umbrella: true },
+        { status: 'APPROVED', grandTotal: 5000, netPayable: 5000 },
+      ],
+    }));
+    expect(r.next).toBe('receiveGoods');
+  });
+
+  it('a site bill not yet combined into a PO is waiting to be combined', () => {
+    const r = computeStages(chain({ mpr: { status: 'APPROVED', nonVendor: true, isSiteBill: true }, pos: [] }));
+    expect(r.next).toBe('combineSiteBill');
+  });
+});

@@ -35,6 +35,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { POPaymentType, SITE_BILL_LIMIT, SiteBillPaymentMode } from '@hospital-erp/shared';
 import api, { extractErrorMessage } from '../config/api';
+import { useUrlFilters } from '../hooks/useUrlFilters';
 import ResponsiveDialog from '../components/ResponsiveDialog';
 import FilePicker from '../components/FilePicker';
 import ItemsGist from '../components/ItemsGist';
@@ -101,6 +102,7 @@ export default function SiteBillsPage() {
   const budgetHeads = useBudgetHeads(true);
   const [filter, setFilter] = useState<Filter>('open');
   const [search, setSearch] = useState('');
+  useUrlFilters({ search: setSearch });
   const [paymentMode, setPaymentMode] = useState('');
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [addOpen, setAddOpen] = useState(false);

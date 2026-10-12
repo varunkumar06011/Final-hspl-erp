@@ -28,6 +28,8 @@ export type NextAction =
   | 'addQuotation'
   | 'finalizeQuotation'
   | 'enterPoAmount'
+  | 'raiseSubPo'
+  | 'combineSiteBill'
   | 'approvePo'
   | 'receiveGoods'
   | 'addInvoice'
@@ -50,7 +52,8 @@ const APPROVED_PO = ['APPROVED', 'PARTIALLY_DELIVERED', 'DELIVERED'];
 export interface ChainShape {
   mpr?: { status: string; nonVendor: boolean; isSiteBill?: boolean } | null;
   quotations: { status: string }[];
-  pos: { status: string; grandTotal: number; netPayable: number; isContract?: boolean }[];
+  /** umbrella = a contract raised from scratch (no amount of its own): approval only, work happens on its sub-POs. */
+  pos: { status: string; grandTotal: number; netPayable: number; umbrella?: boolean }[];
   goodsReceipts: { status: string }[];
   invoices: { paymentStatus: string }[];
   /** Paid amount per payment request (only PAID ones count). */
@@ -61,6 +64,7 @@ export interface ChainShape {
 export function computeStages(c: ChainShape): { steps: Step[]; current: StepKey | 'DONE' | 'CLOSED'; next: NextAction } {
   const steps: Step[] = [];
   const livePos = c.pos.filter((p) => !DEAD.includes(p.status));
+  const workPos = livePos.filter((p) => !p.umbrella);
   const deadPos = c.pos.filter((p) => DEAD.includes(p.status));
   const finalized = c.quotations.filter((q) => FINALIZED_Q.includes(q.status));
   const openQ = c.quotations.filter((q) => OPEN_Q.includes(q.status));
@@ -90,7 +94,7 @@ export function computeStages(c: ChainShape): { steps: Step[]; current: StepKey 
 
   // ── Purchase order ── (a PO only rejected so far shows as rejected until a new one is raised)
   const poApproved = livePos.length > 0 && livePos.every((p) => APPROVED_PO.includes(p.status));
-  const poMissingAmount = livePos.some((p) => p.status === 'PENDING_APPROVAL' && p.grandTotal <= 0);
+  const poMissingAmount = workPos.some((p) => p.status === 'PENDING_APPROVAL' && p.grandTotal <= 0);
   const poRejected = livePos.length === 0 && deadPos.length > 0;
   const poReachable = requestDone && quotationDone;
   steps.push({
@@ -100,13 +104,13 @@ export function computeStages(c: ChainShape): { steps: Step[]; current: StepKey 
 
   // ── Delivery and invoice ── (site bills: bought, billed and paid at site already)
   const siteBill = !!c.mpr?.isSiteBill;
-  const delivered = livePos.length > 0 && livePos.every((p) => p.status === 'DELIVERED');
+  const delivered = workPos.length > 0 && workPos.every((p) => p.status === 'DELIVERED');
   const invoiced = c.invoices.length > 0;
   steps.push({ key: 'DELIVERY', state: siteBill ? 'skipped' : delivered ? 'done' : poApproved ? 'current' : 'todo' });
   steps.push({ key: 'INVOICE', state: siteBill ? 'skipped' : invoiced ? 'done' : poApproved ? 'current' : 'todo' });
 
   // ── Payment ──
-  const payable = livePos.reduce((s, p) => s + (p.netPayable || p.grandTotal), 0);
+  const payable = workPos.reduce((s, p) => s + (p.netPayable || p.grandTotal), 0);
   const paid = c.payments.filter((p) => p.status === 'PAID').reduce((s, p) => s + p.amount, 0);
   const fullyPaid = payable > 0 && paid >= payable - 0.5;
   steps.push({ key: 'PAYMENT', state: fullyPaid ? 'done' : poApproved ? 'current' : 'todo' });
@@ -118,9 +122,11 @@ export function computeStages(c: ChainShape): { steps: Step[]; current: StepKey 
   else if (c.mpr && c.mpr.status === 'SUBMITTED') [next, current] = ['approveRequest', 'REQUEST'];
   else if (!quotationDone) [next, current] = [openQ.length > 0 ? 'finalizeQuotation' : 'addQuotation', 'QUOTATION'];
   else if (poRejected) [next, current] = ['rejected', 'PO'];
+  else if (livePos.length === 0 && c.mpr?.isSiteBill) [next, current] = ['combineSiteBill', 'PO'];
   else if (livePos.length === 0) [next, current] = [finalized.length > 0 ? 'finalizeQuotation' : 'enterPoAmount', 'PO'];
   else if (poMissingAmount) [next, current] = ['enterPoAmount', 'PO'];
   else if (!poApproved) [next, current] = ['approvePo', 'PO'];
+  else if (workPos.length === 0) [next, current] = ['raiseSubPo', 'PO'];
   else if (!siteBill && !delivered && !invoiced) [next, current] = ['receiveGoods', 'DELIVERY'];
   else if (!siteBill && !invoiced) [next, current] = ['addInvoice', 'INVOICE'];
   else if (!fullyPaid) [next, current] = ['makePayment', 'PAYMENT'];
@@ -220,13 +226,13 @@ function decidableStep(
 
 /** The one approve/reject the viewer can take straight from the list: the request, else a pending PO with an amount. */
 function nextDecision(
-  r: { mpr?: { id: string; mprNumber: string; status: string; approvalWorkflow: Parameters<typeof decidableStep>[0] } | null; pos: { id: string; poNumber: string; status: string; grandTotal: unknown; approvalWorkflow: Parameters<typeof decidableStep>[0] }[] },
+  r: { mpr?: { id: string; mprNumber: string; status: string; approvalWorkflow: Parameters<typeof decidableStep>[0] } | null; pos: { id: string; poNumber: string; status: string; grandTotal: unknown; isContract: boolean; approvalWorkflow: Parameters<typeof decidableStep>[0] }[] },
   viewer: Viewer,
 ): { kind: 'mpr' | 'po'; id: string; label: string } | null {
   if (r.mpr && r.mpr.status === 'SUBMITTED' && decidableStep(r.mpr.approvalWorkflow, viewer)) {
     return { kind: 'mpr', id: r.mpr.id, label: r.mpr.mprNumber };
   }
-  const po = r.pos.find((p) => p.status === 'PENDING_APPROVAL' && money(p.grandTotal) > 0 && decidableStep(p.approvalWorkflow, viewer));
+  const po = r.pos.find((p) => p.status === 'PENDING_APPROVAL' && (money(p.grandTotal) > 0 || p.isContract) && decidableStep(p.approvalWorkflow, viewer));
   return po ? { kind: 'po', id: po.id, label: po.poNumber } : null;
 }
 
@@ -237,9 +243,10 @@ export async function listCombinedRecords(projectId: string, viewer: Viewer, que
 
   const [mprs, quotations, pos, siteBills, grs, invoices, payments] = await Promise.all([
     prisma.materialPurchaseRequest.findMany({
-      where: { ...base, isSiteBill: false },
+      // site bills already combined into a PO are shown through that PO's record; the rest are records of their own
+      where: { ...base, OR: [{ isSiteBill: false }, { isSiteBill: true, sitePoId: null }] },
       select: {
-        id: true, mprNumber: true, date: true, updatedAt: true, status: true, requestType: true, description: true,
+        id: true, mprNumber: true, date: true, updatedAt: true, status: true, requestType: true, description: true, isSiteBill: true, billShopName: true,
         estimatedTotal: true, vendor: { select: { name: true, vendorType: true } },
         items: { select: { materialName: true } },
         approvalWorkflow: listWorkflow,
@@ -256,9 +263,9 @@ export async function listCombinedRecords(projectId: string, viewer: Viewer, que
       : [],
     fin
       ? prisma.purchaseOrder.findMany({
-          where: { ...base, status: { not: 'DELETED' }, NOT: { isContract: true, grandTotal: 0 } },
+          where: { ...base, status: { not: 'DELETED' } },
           select: {
-            id: true, poNumber: true, quotationId: true, mprId: true, status: true, grandTotal: true, netPayable: true,
+            id: true, poNumber: true, quotationId: true, mprId: true, isContract: true, contractPoId: true, contractTitle: true, periodLabel: true, status: true, grandTotal: true, netPayable: true,
             date: true, updatedAt: true, isSiteBillBatch: true, reimburseTo: true,
             vendor: { select: { name: true } }, items: { select: { materialName: true } },
             approvalWorkflow: listWorkflow,
@@ -311,13 +318,24 @@ export async function listCombinedRecords(projectId: string, viewer: Viewer, que
     r.quotations.push(q);
     recByQuotation.set(q.id, r);
   }
-  for (const p of pos) {
+  const recByPo = new Map<string, Rec>();
+  for (const p of pos.filter((x) => !x.contractPoId)) {
     let r = (p.quotationId && recByQuotation.get(p.quotationId)) || (p.mprId && recByMpr.get(p.mprId)) || undefined;
     if (!r) {
       r = { type: 'po', id: p.id, quotations: [], pos: [] };
       records.push(r);
     }
     r.pos.push(p);
+    recByPo.set(p.id, r);
+  }
+  for (const p of pos.filter((x) => x.contractPoId)) {
+    let r = recByPo.get(p.contractPoId as string);
+    if (!r) {
+      r = { type: 'po', id: p.id, quotations: [], pos: [] };
+      records.push(r);
+    }
+    r.pos.push(p);
+    recByPo.set(p.id, r);
   }
 
   const grsByPo = groupBy(grs, (g) => g.poId);
@@ -336,12 +354,12 @@ export async function listCombinedRecords(projectId: string, viewer: Viewer, que
 
     const stages = computeStages({
       mpr: r.mpr
-        ? { status: r.mpr.status, nonVendor: r.mpr.vendor?.vendorType === 'NON_VENDOR' }
+        ? { status: r.mpr.status, nonVendor: r.mpr.vendor?.vendorType === 'NON_VENDOR', isSiteBill: r.mpr.isSiteBill }
         : isSiteBatch
           ? { status: 'APPROVED', nonVendor: true, isSiteBill: true }
           : null,
       quotations: r.quotations,
-      pos: r.pos.map((p) => ({ status: p.status, grandTotal: money(p.grandTotal), netPayable: money(p.netPayable) })),
+      pos: r.pos.map((p) => ({ status: p.status, grandTotal: money(p.grandTotal), netPayable: money(p.netPayable), umbrella: p.isContract && money(p.grandTotal) === 0 })),
       goodsReceipts: rGrs,
       invoices: rInv,
       payments: rPay.map((p) => ({ status: p.status, amount: money(p.amount) })),
@@ -377,8 +395,8 @@ export async function listCombinedRecords(projectId: string, viewer: Viewer, que
         ...rPay.flatMap((p) => [p.paymentCode, p.requestNumber]), ...rBills.map((b) => b.mprNumber),
       ].filter((n): n is string => !!n),
       texts: [
-        ...vendors, ...materials, r.mpr?.description, ...rBills.map((b) => b.billShopName),
-        ...r.pos.map((p) => p.reimburseTo), String(Math.round(amount)),
+        ...vendors, ...materials, r.mpr?.description, r.mpr?.billShopName, ...rBills.map((b) => b.billShopName),
+        ...r.pos.flatMap((p) => [p.reimburseTo, p.contractTitle, p.periodLabel]), String(Math.round(amount)),
       ].filter((t): t is string => !!t),
     };
 
@@ -387,7 +405,8 @@ export async function listCombinedRecords(projectId: string, viewer: Viewer, que
       type: r.type,
       id: r.id,
       title: r.mpr?.mprNumber ?? r.quotations[0]?.quotationNumber ?? r.pos[0]?.poNumber ?? '',
-      isSiteBills: isSiteBatch,
+      isSiteBills: isSiteBatch || !!r.mpr?.isSiteBill,
+      isContract: r.pos.some((p) => p.isContract),
       requestType: r.mpr?.requestType ?? null,
       date: startDate ?? null,
       lastActivity: dates.length ? new Date(Math.max(...dates.map((d) => d.getTime()))) : startDate ?? null,
@@ -433,7 +452,7 @@ export async function resolveRoot(projectId: string, type: string, id: string): 
   if (type === 'mpr') {
     const m = await prisma.materialPurchaseRequest.findFirst({ where, select: { id: true, isSiteBill: true, sitePoId: true } });
     if (!m) return null;
-    if (m.isSiteBill) return m.sitePoId ? { type: 'po', id: m.sitePoId } : null;
+    if (m.isSiteBill && m.sitePoId) return { type: 'po', id: m.sitePoId };
     return { type: 'mpr', id: m.id };
   }
   if (type === 'quotation') {
@@ -442,8 +461,10 @@ export async function resolveRoot(projectId: string, type: string, id: string): 
     return q.mprId ? { type: 'mpr', id: q.mprId } : { type: 'quotation', id: q.id };
   }
   if (type === 'po') {
-    const p = await prisma.purchaseOrder.findFirst({ where, select: { id: true, mprId: true, quotation: { select: { id: true, mprId: true } } } });
+    const p = await prisma.purchaseOrder.findFirst({ where, select: { id: true, mprId: true, contractPoId: true, quotation: { select: { id: true, mprId: true } } } });
     if (!p) return null;
+    // a sub-PO belongs to its contract's record
+    if (p.contractPoId) return resolveRoot(projectId, 'po', p.contractPoId);
     if (p.quotation?.mprId) return { type: 'mpr', id: p.quotation.mprId };
     if (p.mprId) return { type: 'mpr', id: p.mprId };
     if (p.quotation) return { type: 'quotation', id: p.quotation.id };
@@ -502,7 +523,7 @@ export async function getCombinedRecord(projectId: string, viewer: Viewer, type:
   if (quotations.length) poOr.push({ quotationId: { in: quotations.map((q) => q.id) } });
   const pos = fin && poOr.length
     ? await prisma.purchaseOrder.findMany({
-        where: { ...base, OR: poOr, NOT: { isContract: true, grandTotal: 0 } },
+        where: { ...base, OR: poOr },
         include: {
           items: { orderBy: { createdAt: 'asc' } },
           vendor: { select: { id: true, name: true, vendorCode: true } },
@@ -513,6 +534,22 @@ export async function getCombinedRecord(projectId: string, viewer: Viewer, type:
         orderBy: { createdAt: 'asc' },
       })
     : [];
+  // sub-POs of any contract found above
+  if (pos.length) {
+    const subs = await prisma.purchaseOrder.findMany({
+      where: { ...base, contractPoId: { in: pos.map((p) => p.id) } },
+      include: {
+        items: { orderBy: { createdAt: 'asc' } },
+        vendor: { select: { id: true, name: true, vendorCode: true } },
+        budgetHead: { select: { id: true, particulars: true, allocatedAmount: true, committedAmount: true } },
+        createdByUser: { select: { id: true, name: true } },
+        approvalWorkflow: workflowInclude,
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+    const have = new Set(pos.map((p) => p.id));
+    for (const sp of subs) if (!have.has(sp.id)) pos.push(sp);
+  }
   if (root.type !== 'mpr' && !fin) return null;
   if (root.type === 'po' && pos.length === 0) return null;
   if (root.type === 'quotation' && quotations.length === 0) return null;
@@ -561,12 +598,12 @@ export async function getCombinedRecord(projectId: string, viewer: Viewer, type:
   const isSiteBatch = pos.some((p) => p.isSiteBillBatch);
   const stages = computeStages({
     mpr: mpr
-      ? { status: mpr.status, nonVendor: mpr.vendor?.vendorType === 'NON_VENDOR' }
+      ? { status: mpr.status, nonVendor: mpr.vendor?.vendorType === 'NON_VENDOR', isSiteBill: mpr.isSiteBill }
       : isSiteBatch
         ? { status: 'APPROVED', nonVendor: true, isSiteBill: true }
         : null,
     quotations,
-    pos: pos.map((p) => ({ status: p.status, grandTotal: money(p.grandTotal), netPayable: money(p.netPayable) })),
+    pos: pos.map((p) => ({ status: p.status, grandTotal: money(p.grandTotal), netPayable: money(p.netPayable), umbrella: p.isContract && money(p.grandTotal) === 0 })),
     goodsReceipts,
     invoices,
     payments: payments.map((p) => ({ status: p.status, amount: money(p.amount) })),

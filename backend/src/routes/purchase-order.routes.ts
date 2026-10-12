@@ -175,7 +175,7 @@ router.get(
       const where: Record<string, unknown> = { projectId, deletedAt: null };
       if (vendorId) where.vendorId = vendorId;
       if (status) where.status = status;
-      if (kind === 'contract') where.isContract = true;
+      if (kind === 'contract') where.AND = [{ OR: [{ isContract: true }, { contractPoId: { not: null } }] }];
       else if (kind === 'po') where.isContract = false;
       if (search) {
         where.OR = [
