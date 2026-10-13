@@ -107,7 +107,7 @@ export async function createPoFromApprovedQuotation(quotationId: string, userId:
     entityType: 'PURCHASE_ORDER',
     entityId: po.id,
     title: 'New Approval Required',
-    body: `Purchase Order ${poNumber} — ${quotation.vendor?.name ?? 'vendor'} — ₹${grandTotal}`,
+    body: `Purchase Order ${poNumber} — ${quotation.vendor?.name ?? 'vendor'} — ₹${grandTotal}${quotation.mpr?.description?.trim() ? ` — For: ${quotation.mpr.description.trim().slice(0, 80)}` : ''}`,
     url: `/pos?id=${po.id}`,
   }).catch((err) => console.error('[Push] Auto PO notification error:', err));
 

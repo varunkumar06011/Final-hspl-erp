@@ -27,6 +27,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import VendorAutocomplete from '../components/VendorAutocomplete';
 import StalledChip from '../components/StalledChip';
 import { DetailSection, DetailField } from '../components/DetailSection';
+import WaitingOn from '../components/WaitingOn';
 import CopyText from '../components/CopyText';
 import ApprovalTiming from '../components/ApprovalTiming';
 import { MPRStatus, MPRRequestType, UserRole, isApproverRole, isWorkflowOpenToRole, canOverrideApprovals, findApprovableStep, isSuperAdmin } from '@hospital-erp/shared';
@@ -803,6 +804,7 @@ export default function MaterialPurchaseRequestsPage() {
                         color={(STATUS_COLORS[row.status] as any) ?? 'default'}
                       />
                       <StalledChip type="MPR" id={row.id} />
+                      {(row.status === MPRStatus.SUBMITTED || row.status === MPRStatus.APPROVED) && <WaitingOn workflow={row.approvalWorkflow} since={row.createdAt} />}
                       {(row.shipmentNo ?? 1) >= 2 && (
                         <Chip
                           label={row.shipmentNo === 2 ? t('shipment2') : row.shipmentNo === 3 ? t('shipment3') : t('shipmentN', { n: row.shipmentNo })}

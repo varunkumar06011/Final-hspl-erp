@@ -52,6 +52,7 @@ import moduleAccessRoutes from './module-access.routes';
 import stalledRoutes from './stalled.routes';
 import siteBillRoutes from './site-bills.routes';
 import combinedRecordRoutes from './combined-records.routes';
+import myWorkRoutes from './my-work.routes';
 
 const router = Router();
 
@@ -59,6 +60,7 @@ router.use('/auth', authRoutes);
 router.use('/projects', projectRoutes);
 router.use('/audit', auditRoutes);
 router.use('/dashboard', dashboardRoutes);
+router.use('/my-work', myWorkRoutes);
 router.use('/stalled', stalledRoutes);
 router.use('/vendors', vendorRoutes);
 router.use('/quotations', quotationRoutes);

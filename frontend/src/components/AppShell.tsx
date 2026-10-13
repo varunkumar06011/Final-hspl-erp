@@ -1,4 +1,4 @@
-import { Box, AppBar, Toolbar, Typography, IconButton, Avatar, Chip, Menu, MenuItem, Drawer, List, ListItem, ListItemIcon, ListItemText, useTheme, useMediaQuery, Snackbar, Alert, CircularProgress, Badge } from '@mui/material';
+import { Box, AppBar, Toolbar, Typography, IconButton, Avatar, Chip, Menu, MenuItem, Drawer, List, ListItem, ListItemIcon, ListItemText, useTheme, useMediaQuery, Snackbar, Alert, CircularProgress, Badge, Collapse, ButtonBase } from '@mui/material';
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -47,6 +47,8 @@ import {
   ToggleOn as ModuleAccessIcon,
   AccountTree as CombinedRecordsIcon,
   ReceiptLong as SiteBillsIcon,
+  AssignmentTurnedIn as MyWorkIcon,
+  ExpandMore as ExpandMoreIcon,
 } from '@mui/icons-material';
 import { useAuthStore } from '../stores/authStore';
 import { APP_MODULES, UserRole, isAdminRole, moduleForPath, type UserResponse } from '@hospital-erp/shared';
@@ -72,18 +74,19 @@ import type { TFunction } from 'i18next';
 
 const NAV_ITEMS = [
   { label: 'Dashboard', icon: <DashboardIcon />, path: '/', section: '' },
+  { label: 'My Work', icon: <MyWorkIcon />, path: '/my-work', section: '' },
   { label: 'Chat', icon: <ChatNavIcon />, path: '/chat', section: '' },
+  { label: 'Work', icon: <WorkIcon />, path: '/work', section: '' },
   { label: 'Work Calendar', icon: <WorkIcon />, path: '/work-calendar', section: '' },
   // ── Procurement ──
-  { label: 'Work', icon: <WorkIcon />, path: '/work', section: 'Procurement' },
   { label: 'Combined Records', icon: <CombinedRecordsIcon />, path: '/combined-records', section: 'Procurement' },
   { label: 'Material Requests', icon: <ReceiptIcon />, path: '/material-purchase-requests', section: 'Procurement' },
   { label: 'Site Bills', icon: <SiteBillsIcon />, path: '/site-bills', section: 'Procurement' },
-  { label: 'Vendors', icon: <VendorIcon />, path: '/vendors', section: 'Procurement' },
   { label: 'Quotations', icon: <ReceiptIcon />, path: '/quotations', section: 'Procurement' },
   { label: 'Purchase Orders', icon: <ReceiptIcon />, path: '/pos', section: 'Procurement' },
   { label: 'Gate Passes', icon: <GatePassIcon />, path: '/gate-passes', section: 'Procurement' },
   { label: 'Goods Receipts', icon: <ReceiptIcon />, path: '/goods-receipts', section: 'Procurement' },
+  { label: 'Vendors', icon: <VendorIcon />, path: '/vendors', section: 'Procurement' },
   { label: 'GST Records', icon: <ReceiptIcon />, path: '/gst-records', section: 'Procurement' },
   // ── Masters (Tally: Accounts Info) ──
   { label: 'Chart of Accounts', icon: <LedgersIcon />, path: '/ledgers', section: 'Masters' },
@@ -95,7 +98,7 @@ const NAV_ITEMS = [
   { label: 'Accounting Vouchers', icon: <VouchersIcon />, path: '/vouchers', section: 'Voucher Entry' },
   { label: 'Payments', icon: <PaymentIcon />, path: '/payments', section: 'Voucher Entry' },
   { label: 'Expenditure', icon: <VouchersIcon />, path: '/expenditure', section: 'Voucher Entry' },
-  { label: 'Sales (Invoices)', icon: <ReceiptIcon />, path: '/invoices', section: 'Voucher Entry' },
+  { label: 'Invoices', icon: <ReceiptIcon />, path: '/invoices', section: 'Voucher Entry' },
   // ── Reports (Tally: Display) ──
   { label: 'Finance Dashboard', icon: <FinanceDashboardIcon />, path: '/finance-dashboard', section: 'Reports' },
   { label: 'Accounting Reports', icon: <AccountingReportsIcon />, path: '/accounting-reports', section: 'Reports' },
@@ -125,6 +128,7 @@ const NAV_ITEMS = [
 // (shared/access.ts), not by fields here.
 const ADMIN_NAV_ITEMS = [
   { label: 'Dashboard', icon: <DashboardIcon />, path: '/', section: '' },
+  { label: 'My Work', icon: <MyWorkIcon />, path: '/my-work', section: '' },
   { label: 'Chat', icon: <ChatNavIcon />, path: '/chat', section: '' },
   { label: 'Work', icon: <WorkIcon />, path: '/work', section: '' },
   // ── Accounting (FIRST — client wants accounting first) ──
@@ -142,15 +146,14 @@ const ADMIN_NAV_ITEMS = [
   { label: 'Combined Records', icon: <CombinedRecordsIcon />, path: '/combined-records', section: 'Procurement' },
   { label: 'Material Requests', icon: <ReceiptIcon />, path: '/material-purchase-requests', section: 'Procurement' },
   { label: 'Site Bills', icon: <SiteBillsIcon />, path: '/site-bills', section: 'Procurement' },
-  { label: 'Vendors', icon: <VendorIcon />, path: '/vendors', section: 'Procurement' },
   { label: 'Quotations', icon: <ReceiptIcon />, path: '/quotations', section: 'Procurement' },
   { label: 'Purchase Orders', icon: <ReceiptIcon />, path: '/pos', section: 'Procurement' },
   { label: 'Gate Passes', icon: <GatePassIcon />, path: '/gate-passes', section: 'Procurement' },
   { label: 'Goods Receipts', icon: <ReceiptIcon />, path: '/goods-receipts', section: 'Procurement' },
   { label: 'Invoices', icon: <ReceiptIcon />, path: '/invoices', section: 'Procurement' },
+  { label: 'Vendors', icon: <VendorIcon />, path: '/vendors', section: 'Procurement' },
   // ── Project ──
   { label: 'Work Calendar', icon: <WorkIcon />, path: '/work-calendar', section: 'Project' },
-  { label: 'Work', icon: <WorkIcon />, path: '/work', section: 'Project' },
   { label: 'Issues', icon: <IssueIcon />, path: '/issues', section: 'Project' },
   { label: 'Site Photos', icon: <PhotoIcon />, path: '/photos', section: 'Project' },
   { label: 'Documents', icon: <DocumentIcon />, path: '/documents', section: 'Project' },
@@ -329,6 +332,14 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     refetchInterval: 60000,
   });
 
+  // Things waiting on this user, shown next to "My Work" in the sidebar.
+  const { data: myWorkCount = 0 } = useQuery<number>({
+    queryKey: ['/my-work', 'count'],
+    queryFn: async () => (await api.get('/my-work')).data?.needsAction?.length ?? 0,
+    enabled: !!user && canUseModule(user, 'myWork'),
+    refetchInterval: 60000,
+  });
+
   // Unread comments / mentions / replies, shown next to "Comments" in the sidebar.
   const { data: unreadComments = 0 } = useQuery<number>({
     queryKey: ['/comments/unread-count'],
@@ -471,6 +482,27 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     navigate('/login');
   };
 
+  // Sidebar sections fold away; the one holding the current page is always open
+  // and the choice is remembered on this device (storage can be blocked on iOS).
+  const [openSections, setOpenSections] = useState<Record<string, boolean>>(() => {
+    try {
+      return JSON.parse(localStorage.getItem('navOpenSections') ?? '{}') as Record<string, boolean>;
+    } catch {
+      return {};
+    }
+  });
+  const toggleSection = (section: string, currentlyOpen: boolean) => {
+    setOpenSections((prev) => {
+      const next = { ...prev, [section]: !currentlyOpen };
+      try {
+        localStorage.setItem('navOpenSections', JSON.stringify(next));
+      } catch {
+        /* storage unavailable */
+      }
+      return next;
+    });
+  };
+
   const handleNavigate = (path: string) => {
     navigate(path);
     if (isMobile) setMobileOpen(false);
@@ -481,30 +513,21 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       <Toolbar />
       <Box sx={{ overflow: 'auto' }}>
         <List>
-          {navItemsFor(user)
-            .map((item, idx, arr) => {
-            const prevItem = idx > 0 ? arr[idx - 1] : null;
-            const showSectionHeader = item.section !== '' && (!prevItem || prevItem.section !== item.section);
-            return (
-              <Box key={`${item.path}-${idx}`}>
-                {showSectionHeader && (
-                  <Typography
-                    variant="overline"
-                    sx={{
-                      display: 'block',
-                      px: 2.5,
-                      pt: 2,
-                      pb: 0.5,
-                      color: 'text.secondary',
-                      fontSize: '0.7rem',
-                      fontWeight: 700,
-                      letterSpacing: '0.08em',
-                    }}
-                  >
-                    {t(`sections.${item.section}`, item.section)}
-                  </Typography>
-                )}
+          {(() => {
+            const items = navItemsFor(user);
+            const groups: { section: string; items: NavItem[] }[] = [];
+            for (const item of items) {
+              const last = groups[groups.length - 1];
+              if (last && last.section === item.section) last.items.push(item);
+              else groups.push({ section: item.section, items: [item] });
+            }
+            return groups.map((group) => {
+              const holdsCurrent = group.items.some((i) => i.path === '/' ? location.pathname === '/' : location.pathname === i.path || location.pathname.startsWith(i.path + '/'));
+              // Unnamed top group is always shown; named sections open when they hold the current page, the user opened them, or (until chosen) it is the first one.
+              const open = group.section === '' || holdsCurrent || (openSections[group.section] ?? group.section === groups.find((g) => g.section !== '')?.section);
+              const rows = group.items.map((item) => (
                 <ListItem
+                  key={item.path}
                   button
                   onClick={() => handleNavigate(item.path)}
                   selected={location.pathname === item.path}
@@ -518,7 +541,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                   }}
                 >
                   <ListItemIcon sx={{ minWidth: 40 }}>{item.icon}</ListItemIcon>
-                  <ListItemText primary={t(`nav.${item.label}`, item.label)}primaryTypographyProps={{ fontSize: 14 }} />
+                  <ListItemText primary={t(`nav.${item.label}`, item.label)} primaryTypographyProps={{ fontSize: 14 }} />
+                  {item.path === '/my-work' && myWorkCount > 0 && (
+                    <Chip label={myWorkCount > 99 ? '99+' : myWorkCount} size="small" color="warning" sx={{ height: 20, fontWeight: 700 }} />
+                  )}
                   {item.path === '/chat' && unreadChat > 0 && (
                     <Chip label={unreadChat > 99 ? '99+' : unreadChat} size="small" color="error" sx={{ height: 20, fontWeight: 700 }} />
                   )}
@@ -526,9 +552,28 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                     <Chip label={unreadComments > 99 ? '99+' : unreadComments} size="small" color="error" sx={{ height: 20, fontWeight: 700 }} />
                   )}
                 </ListItem>
-              </Box>
-            );
-          })}
+              ));
+              if (group.section === '') return <Box key="top">{rows}</Box>;
+              return (
+                <Box key={group.section}>
+                  <ButtonBase
+                    onClick={() => toggleSection(group.section, open)}
+                    aria-expanded={open}
+                    sx={{ display: 'flex', width: '100%', justifyContent: 'space-between', px: 2.5, pt: 2, pb: 0.5 }}
+                  >
+                    <Typography
+                      variant="overline"
+                      sx={{ color: 'text.secondary', fontSize: '0.7rem', fontWeight: 700, letterSpacing: '0.08em', lineHeight: 1.6 }}
+                    >
+                      {t(`sections.${group.section}`, group.section)}
+                    </Typography>
+                    <ExpandMoreIcon fontSize="small" sx={{ color: 'text.secondary', transform: open ? 'none' : 'rotate(-90deg)', transition: 'transform .2s' }} />
+                  </ButtonBase>
+                  <Collapse in={open} timeout="auto">{rows}</Collapse>
+                </Box>
+              );
+            });
+          })()}
         </List>
       </Box>
     </>

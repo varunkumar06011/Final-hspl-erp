@@ -97,6 +97,7 @@ const InwardFundsPage = lazyWithRetry(() => import('./pages/InwardFundsPage'));
 const ExpenditurePage = lazyWithRetry(() => import('./pages/ExpenditurePage'));
 const MaterialPurchaseRequestsPage = lazyWithRetry(() => import('./pages/MaterialPurchaseRequestsPage'));
 const CombinedRecordsPage = lazyWithRetry(() => import('./pages/CombinedRecordsPage'));
+const MyWorkPage = lazyWithRetry(() => import('./pages/MyWorkPage'));
 const SiteBillsPage = lazyWithRetry(() => import('./pages/SiteBillsPage'));
 const TransactionRegisterPage = lazyWithRetry(() => import('./pages/TransactionRegisterPage'));
 const CommentsPage = lazyWithRetry(() => import('./pages/CommentsPage'));
@@ -173,6 +174,7 @@ const ROUTES = [
   { path: '/expenditure', element: <ExpenditurePage /> },
   { path: '/material-purchase-requests', element: <MaterialPurchaseRequestsPage /> },
   { path: '/combined-records', element: <CombinedRecordsPage /> },
+  { path: '/my-work', element: <MyWorkPage /> },
   { path: '/site-bills', element: <SiteBillsPage /> },
 ];
 

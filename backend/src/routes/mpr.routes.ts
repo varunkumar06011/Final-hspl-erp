@@ -801,7 +801,7 @@ router.post(
         entityType: 'MATERIAL_PURCHASE_REQUEST',
         entityId: record.id,
         title: 'New Approval Required',
-        body: `Material Purchase Request ${record.mprNumber} — ₹${Number(record.estimatedTotal).toLocaleString('en-IN')}`,
+        body: `Material Purchase Request ${record.mprNumber} — ₹${Number(record.estimatedTotal).toLocaleString('en-IN')}${record.description?.trim() ? ` — For: ${record.description.trim().slice(0, 80)}` : ''}`,
         url: `/material-purchase-requests?id=${record.id}`,
       }).catch((err) => console.error('[Push] MPR notification error:', err));
 

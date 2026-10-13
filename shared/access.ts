@@ -48,6 +48,7 @@ const FIN_MANAGE = [Permission.VIEW_FINANCIALS, Permission.MANAGE_FINANCE];
 export const APP_MODULES: readonly AppModule[] = [
   // ── General ──
   { key: 'dashboard', label: 'Dashboard', section: 'General', path: '/', permission: Permission.VIEW_DASHBOARD, grants: [Permission.VIEW_DASHBOARD], apiPrefixes: [] },
+  { key: 'myWork', label: 'My Work', section: 'General', path: '/my-work', grants: [], apiPrefixes: [] },
   { key: 'chat', label: 'Chat', section: 'General', path: '/chat', grants: [], apiPrefixes: ['/chat'] },
   { key: 'assistant', label: 'Miko Assistant', section: 'General', grants: [], apiPrefixes: ['/assistant'] },
   { key: 'work', label: 'Work', section: 'General', path: '/work', permission: Permission.MANAGE_WORK_TASKS, grants: [Permission.MANAGE_WORK_TASKS], apiPrefixes: ['/work-tasks'] },

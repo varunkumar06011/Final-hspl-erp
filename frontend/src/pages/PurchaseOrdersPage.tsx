@@ -33,6 +33,7 @@ import {
 } from '@mui/material';
 import ResponsiveDialog from '../components/ResponsiveDialog';
 import { DetailSection, DetailField } from '../components/DetailSection';
+import WaitingOn from '../components/WaitingOn';
 import StalledChip from '../components/StalledChip';
 import ApprovalStepsDisplay from '../components/ApprovalStepsDisplay';
 import RefreshButton from '../components/RefreshButton';
@@ -960,6 +961,7 @@ export default function PurchaseOrdersPage() {
                             </Typography>
                           )}
                           <StalledChip type="PO" id={row.id} />
+                          {effectiveStatus === POStatus.PENDING_APPROVAL && <WaitingOn workflow={row.approvalWorkflow} since={row.createdAt} />}
                           {row.isContract && <Chip label={t('contractBadge')} size="small" color="secondary" variant="outlined" />}
                           {row.contractPo && <Chip label={t('subPoOf', { n: row.contractPo.poNumber })} size="small" variant="outlined" />}
                           {needsClassification(row) && (

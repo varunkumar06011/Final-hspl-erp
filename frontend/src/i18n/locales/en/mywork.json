@@ -1,0 +1,51 @@
+{
+  "title": "My Work",
+  "subtitle": "What needs you, and what you started",
+  "refresh": "Refresh",
+  "search": "Search number, vendor, reason…",
+  "all": "All",
+  "longOnly": "Waiting 3+ days",
+  "loadError": "Could not load your work. Please try again.",
+  "noMatch": "Nothing matches your filters.",
+  "why": "Why",
+  "noWhy": "No reason was written for this",
+  "raisedBy": "Raised by {{name}}",
+  "waitingOn": "Waiting on {{who}}",
+  "waitingOnShort": "Waiting on {{who}} · {{when}}",
+  "daysShort": "{{n}}d",
+  "today": "today",
+  "tab": {
+    "needsAction": "Needs my action",
+    "waiting": "I am waiting on others",
+    "sentBack": "Sent back to me",
+    "drafts": "My drafts"
+  },
+  "empty": {
+    "needsAction": "Nothing is waiting on you. You are all caught up.",
+    "waiting": "Nothing you raised is waiting on someone else.",
+    "sentBack": "Nothing was sent back to you.",
+    "drafts": "You have no drafts."
+  },
+  "kind": {
+    "MPR": "Request",
+    "QUOTATION": "Quotation",
+    "PO": "Purchase order",
+    "INVOICE": "Invoice",
+    "PAYMENT": "Payment"
+  },
+  "act": {
+    "APPROVE": "Review & approve",
+    "FINALIZE": "Review & finalize",
+    "REVIEW": "Open",
+    "SUBMIT": "Open & submit",
+    "FIX": "Open & fix"
+  },
+  "flag": {
+    "OVER_ESTIMATE": "{{value}}% above the estimate",
+    "NO_BUDGET_HEAD": "Budget head not set",
+    "NEW_VENDOR": "New vendor (no earlier orders)",
+    "URGENT": "Marked urgent",
+    "NEEDED_SOON": "Needed very soon",
+    "WAITING_LONG": "Waiting {{value}} days"
+  }
+}
