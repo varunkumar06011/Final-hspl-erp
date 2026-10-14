@@ -91,11 +91,18 @@ export async function streamPurchaseOrderPdf(res: NodeJS.WritableStream, po: any
   doc.fillColor(dark).font('Helvetica-Bold').fontSize(13).text(po.poNumber, poBoxX, headerTop + 40, { width: poBoxW, align: 'center' });
   };
 
+  // Contracts: a sub-PO is titled as such and names its contract and period; a contract's own PO says so too.
+  const isSubPo = !!po.contractPo || !!po.contractPoId;
+  const docTitle = isSubPo ? 'SUB PURCHASE ORDER' : po.isContract ? 'CONTRACT PURCHASE ORDER' : 'PURCHASE ORDER';
+  const periodText = po.periodLabel
+    ? `${po.periodLabel}${po.periodFrom ? ` (${new Date(po.periodFrom).toLocaleDateString('en-IN')}${po.periodTo ? ` - ${new Date(po.periodTo).toLocaleDateString('en-IN')}` : ''})` : ''}`
+    : '';
+
   await drawHeader();
   let y = 116;
 
   // ── Subtitle header ──
-  doc.fillColor(dark).font('Helvetica-Bold').fontSize(14).text('PURCHASE ORDER', left, y);
+  doc.fillColor(dark).font('Helvetica-Bold').fontSize(14).text(docTitle, left, y);
   const isRejected = po.status === 'REJECTED';
   if (isRejected) {
     doc.fillColor('#D32F2F').font('Helvetica-Bold').fontSize(16).text('REJECTED', right - 150, y, { width: 150, align: 'right', lineBreak: false });
@@ -127,6 +134,13 @@ export async function streamPurchaseOrderPdf(res: NodeJS.WritableStream, po: any
 
   const vBoxTop = y;
   y = drawLabel('Date', new Date(po.createdAt).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' }), leftCol, y, leftW);
+  if (isSubPo) {
+    y = drawLabel('Contract PO', text(po.contractPo?.poNumber ?? po.poNumber.replace(/-SUBd+$/, '')), leftCol, y, leftW);
+    if (po.contractPo?.contractTitle) y = drawLabel('Contract', text(po.contractPo.contractTitle), leftCol, y, leftW);
+    if (periodText) y = drawLabel('Period', text(periodText), leftCol, y, leftW);
+  } else if (po.isContract && po.contractTitle) {
+    y = drawLabel('Contract', text(po.contractTitle), leftCol, y, leftW);
+  }
   y = drawLabel('Created By', text(po.createdByUser?.name), leftCol, y, leftW);
   y = drawLabel('Delivery Due Date', po.deliveryDate ? new Date(po.deliveryDate).toLocaleDateString('en-IN') : '—', leftCol, y, leftW);
   y = drawLabel('Payment Type', paymentTypeLabel, leftCol, y, leftW);
@@ -390,7 +404,7 @@ export async function streamPurchaseOrderPdf(res: NodeJS.WritableStream, po: any
       doc.addPage();
       await drawHeader();
       y = 116;
-      doc.fillColor(dark).font('Helvetica-Bold').fontSize(11).text('PURCHASE ORDER (continued)', left, y, { lineBreak: false });
+      doc.fillColor(dark).font('Helvetica-Bold').fontSize(11).text(`${docTitle} (continued)`, left, y, { lineBreak: false });
       y += 22;
       drawTableHead();
     };

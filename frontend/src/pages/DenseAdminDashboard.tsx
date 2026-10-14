@@ -43,6 +43,8 @@ interface DashboardData {
   totalExpenditure: number;
   bankExpenditure: number;
   cashExpenditure: number;
+  /** Net money moved bank → cash by contra vouchers (no effect on the balance). */
+  cashFromBank?: number;
   balance: number;
   bankBalance: number;
   cashBalance: number;
@@ -812,6 +814,7 @@ export default function DenseAdminDashboard() {
                 { label: t('rowLoanRepayments'), value: data?.loanRepayments ?? 0, sign: '−', color: 'error.main' },
                 { label: t('rowBankExp'), value: data?.bankExpenditure ?? 0, sign: '−', color: 'error.main' },
                 { label: t('rowCashExp'), value: data?.cashExpenditure ?? 0, sign: '−', color: 'error.main' },
+                ...(data?.cashFromBank ? [{ label: t('rowCashFromBank'), value: data.cashFromBank, sign: '↔ ', color: 'info.main' }] : []),
               ].map((r) => (
                 <TableRow key={r.label} hover>
                   <TableCell sx={{ py: 0.8, px: 1.6, fontSize: '0.74rem' }}>{r.label}</TableCell>

@@ -12,6 +12,7 @@ import {
   isAdminRole,
 } from '@hospital-erp/shared';
 import { recalcInvoicePaymentStatus } from '../services/invoice-payment.service';
+import { notifyPaymentsMade } from '../services/payment-notify.service';
 import {
   createVoucherSchema,
   listVouchersSchema,
@@ -78,6 +79,68 @@ const VOUCHER_TO_REF_TYPE: Record<string, AccountTxnRefType> = {
   [VoucherType.CREDIT_NOTE]: AccountTxnRefType.JOURNAL_VOUCHER,
   [VoucherType.DEBIT_NOTE]: AccountTxnRefType.JOURNAL_VOUCHER,
 };
+
+type LinkedLedger = { linkedEntityType: string | null; linkedEntityId: string | null } | null | undefined;
+const isMoneyLedger = (l: LinkedLedger) =>
+  !!l?.linkedEntityId && (l.linkedEntityType === 'BANK_ACCOUNT' || l.linkedEntityType === 'CASH_ACCOUNT');
+
+/**
+ * Tally contra: the voucher only moves money between the project's own bank / cash
+ * accounts (bank → cash, cash → bank, bank → bank). Its bank/cash rows are TRANSFER_IN /
+ * TRANSFER_OUT, never DEPOSIT / WITHDRAWAL / IN / OUT, so dashboards and reports do not
+ * read the move as income or spending. Decided by the ledgers, not the voucher type: a
+ * PAYMENT/RECEIPT whose every line is an account ledger is a contra under the wrong type,
+ * and an old contra into a ledger with no account behind it really did take money out of
+ * the tracked accounts.
+ */
+export function isMoneyTransfer(ledgers: LinkedLedger[]): boolean {
+  return ledgers.length >= 2 && ledgers.every(isMoneyLedger);
+}
+
+/** Bank/cash row type for one side of a voucher line (`moneyIn` = the account receives money). */
+export function bankTxnType(moneyIn: boolean, transfer: boolean): BankTxnType {
+  if (transfer) return moneyIn ? BankTxnType.TRANSFER_IN : BankTxnType.TRANSFER_OUT;
+  return moneyIn ? BankTxnType.DEPOSIT : BankTxnType.WITHDRAWAL;
+}
+export function cashTxnType(moneyIn: boolean, transfer: boolean): CashTxnType {
+  if (transfer) return moneyIn ? CashTxnType.TRANSFER_IN : CashTxnType.TRANSFER_OUT;
+  return moneyIn ? CashTxnType.IN : CashTxnType.OUT;
+}
+/** Row type when undoing a line (cancel / edit). A transfer is undone by a transfer the other way, not by a refund. */
+export function bankReversalType(originalMoneyIn: boolean, transfer: boolean): BankTxnType {
+  if (transfer) return originalMoneyIn ? BankTxnType.TRANSFER_OUT : BankTxnType.TRANSFER_IN;
+  return originalMoneyIn ? BankTxnType.REVERSAL_OUT : BankTxnType.REVERSAL_IN;
+}
+export function cashReversalType(originalMoneyIn: boolean, transfer: boolean): CashTxnType {
+  if (transfer) return originalMoneyIn ? CashTxnType.TRANSFER_OUT : CashTxnType.TRANSFER_IN;
+  return originalMoneyIn ? CashTxnType.REVERSAL_OUT : CashTxnType.REVERSAL_IN;
+}
+
+/**
+ * Tally rule: a contra moves money between the project's own bank / cash accounts only.
+ * Each line must be a ledger linked to a real bank or cash account; a plain "Cash" ledger
+ * with no account behind it would move nothing on the Cash / Bank pages or the dashboard.
+ */
+export function contraLedgerError(
+  voucherType: string,
+  entries: Array<{ ledgerId: string }>,
+  ledgerMap: Map<string, { name: string; linkedEntityType: string | null; linkedEntityId: string | null }>,
+): string | null {
+  if (voucherType !== VoucherType.CONTRA) return null;
+  const bad = entries.map((e) => ledgerMap.get(e.ledgerId)).filter((l) => !isMoneyLedger(l));
+  if (!bad.length) return null;
+  return `A contra voucher only moves money between bank and cash accounts. "${bad.map((l) => l?.name ?? '?').join('", "')}" is not linked to a bank or cash account. Pick the account's own ledger (add the account on the Bank Accounts / Cash Accounts page first), or use a Payment, Receipt or Journal voucher.`;
+}
+
+/** isMoneyTransfer for a stored voucher: looks up the ledgers of its lines. */
+async function voucherIsTransfer(entries: Array<{ ledgerId: string }>): Promise<boolean> {
+  const ledgers = await prisma.ledger.findMany({
+    where: { id: { in: [...new Set(entries.map((e) => e.ledgerId))] } },
+    select: { id: true, linkedEntityType: true, linkedEntityId: true },
+  });
+  const byId = new Map(ledgers.map((l) => [l.id, l]));
+  return isMoneyTransfer(entries.map((e) => byId.get(e.ledgerId)));
+}
 
 export async function generateVoucherNumber(voucherType: string, projectId: string): Promise<string> {
   const prefix = await voucherPrefix(voucherType, projectId);
@@ -312,6 +375,12 @@ router.post(
         return;
       }
       const ledgerMap = new Map(ledgers.map((l) => [l.id, l]));
+
+      const contraError = contraLedgerError(String(voucherType), entries as Array<{ ledgerId: string }>, ledgerMap);
+      if (contraError) {
+        res.status(400).json({ error: contraError });
+        return;
+      }
 
       // ── Payment-request-linked voucher ("Post to Ledgers" from Payments page) ──
       // The voucher posts normally and, in the same transaction, the payment
@@ -565,6 +634,8 @@ router.post(
         newValue: { jvNumber, voucherType, totalDebit, totalCredit, sourceInvoiceId },
       });
 
+      if (linkedPaymentRequest) void notifyPaymentsMade(projectId, [linkedPaymentRequest.id], req.user!.id);
+
       res.status(201).json({
         message: 'Voucher posted successfully',
         jvNumber,
@@ -595,6 +666,7 @@ router.post(
         res.status(400).json({ error: `Cannot cancel a ${voucher.status} voucher` });
         return;
       }
+      const transfer = await voucherIsTransfer(voucher.ledgerEntries);
 
       // Reverse: swap debit/credit on each ledger entry, update balances,
       // create reversing LedgerEntry rows, and reverse bank/cash transactions.
@@ -699,12 +771,12 @@ router.post(
               await tx.bankTransaction.create({
                 data: {
                   bankAccountId: bankAccount.id,
-                  type: wasDeposit ? BankTxnType.REVERSAL_OUT : BankTxnType.REVERSAL_IN,
+                  type: bankReversalType(wasDeposit, transfer),
                   amount: reverseAmount,
                   balanceAfter: Number(updatedBank.currentBalance),
                   date: new Date(),
                   description: `REVERSAL: ${voucher.jvNumber}`,
-                  referenceType: AccountTxnRefType.JOURNAL_VOUCHER,
+                  referenceType: transfer ? AccountTxnRefType.TRANSFER : AccountTxnRefType.JOURNAL_VOUCHER,
                   referenceId: voucher.id,
                   status: 'POSTED',
                   // A refunded expense keeps its budget head so recompute nets it.
@@ -733,12 +805,12 @@ router.post(
               await tx.cashTransaction.create({
                 data: {
                   cashAccountId: cashAccount.id,
-                  type: wasIn ? CashTxnType.REVERSAL_OUT : CashTxnType.REVERSAL_IN,
+                  type: cashReversalType(wasIn, transfer),
                   amount: reverseAmount,
                   balanceAfter: Number(updatedCash.currentBalance),
                   date: new Date(),
                   description: `REVERSAL: ${voucher.jvNumber}`,
-                  referenceType: AccountTxnRefType.JOURNAL_VOUCHER,
+                  referenceType: transfer ? AccountTxnRefType.TRANSFER : AccountTxnRefType.JOURNAL_VOUCHER,
                   referenceId: voucher.id,
                   status: 'POSTED',
                   budgetHeadId: !wasIn && !isReceiptVoucher ? paymentBudgetHeadId : null,
@@ -975,6 +1047,12 @@ router.patch(
       }
       const ledgerMap = new Map(ledgers.map((l) => [l.id, l]));
 
+      const contraError = contraLedgerError(voucher.voucherType, newEntries, ledgerMap);
+      if (contraError) {
+        res.status(400).json({ error: contraError });
+        return;
+      }
+
       // Validate budget heads
       const budgetHeadIds = newEntries.map((e) => e.budgetHeadId).filter((id): id is string => !!id);
       if (budgetHeadIds.length > 0) {
@@ -1152,11 +1230,14 @@ router.patch(
             where: { journalVoucherId: voucher.id },
             data: { voucherDate },
           });
+          // Undo rows of a contra are TRANSFER_IN/OUT too; their "REVERSAL:" description tells them apart.
+          const notAnUndoRow = { OR: [{ description: null }, { NOT: { description: { contains: 'REVERSAL: ' } } }] };
           await tx.bankTransaction.updateMany({
             where: {
               referenceId: voucher.id,
               status: 'POSTED',
               type: { notIn: [BankTxnType.REVERSAL_IN, BankTxnType.REVERSAL_OUT] },
+              ...notAnUndoRow,
             },
             data: { date: voucherDate },
           });
@@ -1165,6 +1246,7 @@ router.patch(
               referenceId: voucher.id,
               status: 'POSTED',
               type: { notIn: [CashTxnType.REVERSAL_IN, CashTxnType.REVERSAL_OUT] },
+              ...notAnUndoRow,
             },
             data: { date: voucherDate },
           });
@@ -1285,6 +1367,13 @@ router.patch(
         return;
       }
 
+      // Contra (money moved between own accounts) before and after the edit: undo and repost as transfers.
+      const oldTransfer = await voucherIsTransfer(voucher.ledgerEntries);
+      const newTransfer = isMoneyTransfer(newEntries.map((e) => ledgerMap.get(e.ledgerId)));
+      const newRefType = newTransfer
+        ? AccountTxnRefType.TRANSFER
+        : (VOUCHER_TO_REF_TYPE[voucher.voucherType ?? ''] ?? AccountTxnRefType.JOURNAL_VOUCHER);
+
       // Execute the edit atomically: reverse old, apply new
       await prisma.$transaction(async (tx) => {
         // 1. Reverse old ledger entry effects
@@ -1314,12 +1403,12 @@ router.patch(
               await tx.bankTransaction.create({
                 data: {
                   bankAccountId: bankAccount.id,
-                  type: wasDeposit ? BankTxnType.REVERSAL_OUT : BankTxnType.REVERSAL_IN,
+                  type: bankReversalType(wasDeposit, oldTransfer),
                   amount: reverseAmount,
                   balanceAfter: Number(updatedBank.currentBalance),
                   date: new Date(),
                   description: `EDIT REVERSAL: ${voucher.jvNumber}`,
-                  referenceType: AccountTxnRefType.JOURNAL_VOUCHER,
+                  referenceType: oldTransfer ? AccountTxnRefType.TRANSFER : AccountTxnRefType.JOURNAL_VOUCHER,
                   referenceId: voucher.id,
                   status: 'POSTED',
                   budgetHeadId: !wasDeposit && !isReceiptEdit ? oldBudgetHeadId : null,
@@ -1343,12 +1432,12 @@ router.patch(
               await tx.cashTransaction.create({
                 data: {
                   cashAccountId: cashAccount.id,
-                  type: wasIn ? CashTxnType.REVERSAL_OUT : CashTxnType.REVERSAL_IN,
+                  type: cashReversalType(wasIn, oldTransfer),
                   amount: reverseAmount,
                   balanceAfter: Number(updatedCash.currentBalance),
                   date: new Date(),
                   description: `EDIT REVERSAL: ${voucher.jvNumber}`,
-                  referenceType: AccountTxnRefType.JOURNAL_VOUCHER,
+                  referenceType: oldTransfer ? AccountTxnRefType.TRANSFER : AccountTxnRefType.JOURNAL_VOUCHER,
                   referenceId: voucher.id,
                   status: 'POSTED',
                   budgetHeadId: !wasIn && !isReceiptEdit ? oldBudgetHeadId : null,
@@ -1442,12 +1531,12 @@ router.patch(
               await tx.bankTransaction.create({
                 data: {
                   bankAccountId: bankAccount.id,
-                  type: isDeposit ? BankTxnType.DEPOSIT : BankTxnType.WITHDRAWAL,
+                  type: bankTxnType(isDeposit, newTransfer),
                   amount,
                   balanceAfter: Number(updatedBank.currentBalance),
                   date: voucherDate,
                   description: entry.description ?? description ?? `${voucher.voucherType} ${voucher.jvNumber}`,
-                  referenceType: VOUCHER_TO_REF_TYPE[voucher.voucherType ?? ''] ?? AccountTxnRefType.JOURNAL_VOUCHER,
+                  referenceType: newRefType,
                   referenceId: voucher.id,
                   status: 'POSTED',
                   budgetHeadId: newBudgetHeadId,
@@ -1471,12 +1560,12 @@ router.patch(
               await tx.cashTransaction.create({
                 data: {
                   cashAccountId: cashAccount.id,
-                  type: isIn ? CashTxnType.IN : CashTxnType.OUT,
+                  type: cashTxnType(isIn, newTransfer),
                   amount,
                   balanceAfter: Number(updatedCash.currentBalance),
                   date: voucherDate,
                   description: entry.description ?? description ?? `${voucher.voucherType} ${voucher.jvNumber}`,
-                  referenceType: VOUCHER_TO_REF_TYPE[voucher.voucherType ?? ''] ?? AccountTxnRefType.JOURNAL_VOUCHER,
+                  referenceType: newRefType,
                   referenceId: voucher.id,
                   status: 'POSTED',
                   budgetHeadId: newBudgetHeadId,
@@ -1602,6 +1691,8 @@ export async function postVoucher(args: PostVoucherArgs) {
     // 2. Create ledger entries + update balances
     const ledgerEntryResults: string[] = [];
     const bankTxnPromises: Promise<unknown>[] = [];
+    const transfer = isMoneyTransfer(args.entries.map((e) => args.ledgerMap.get(e.ledgerId)));
+    const refType = transfer ? AccountTxnRefType.TRANSFER : (VOUCHER_TO_REF_TYPE[args.voucherType] ?? AccountTxnRefType.JOURNAL_VOUCHER);
 
     for (const entry of args.entries) {
       const ledger = args.ledgerMap.get(entry.ledgerId);
@@ -1655,12 +1746,12 @@ export async function postVoucher(args: PostVoucherArgs) {
           await tx.bankTransaction.create({
             data: {
               bankAccountId: bankAccount.id,
-              type: isDeposit ? BankTxnType.DEPOSIT : BankTxnType.WITHDRAWAL,
+              type: bankTxnType(isDeposit, transfer),
               amount,
               balanceAfter: Number(updatedBank.currentBalance),
               date: args.voucherDate,
               description: entry.description ?? args.description ?? `${args.voucherType} ${args.jvNumber}`,
-              referenceType: VOUCHER_TO_REF_TYPE[args.voucherType] ?? AccountTxnRefType.JOURNAL_VOUCHER,
+              referenceType: refType,
               referenceId: jv.id,
               status: 'POSTED',
               budgetHeadId: args.budgetHeadId ?? null,
@@ -1684,12 +1775,12 @@ export async function postVoucher(args: PostVoucherArgs) {
           await tx.cashTransaction.create({
             data: {
               cashAccountId: cashAccount.id,
-              type: isIn ? CashTxnType.IN : CashTxnType.OUT,
+              type: cashTxnType(isIn, transfer),
               amount,
               balanceAfter: Number(updatedCash.currentBalance),
               date: args.voucherDate,
               description: entry.description ?? args.description ?? `${args.voucherType} ${args.jvNumber}`,
-              referenceType: VOUCHER_TO_REF_TYPE[args.voucherType] ?? AccountTxnRefType.JOURNAL_VOUCHER,
+              referenceType: refType,
               referenceId: jv.id,
               status: 'POSTED',
               budgetHeadId: args.budgetHeadId ?? null,

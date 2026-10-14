@@ -6,6 +6,7 @@ const db = vi.hoisted(() => ({
   purchaseOrder: { findMany: vi.fn(), groupBy: vi.fn() },
   vendorInvoice: { findMany: vi.fn() },
   paymentRequest: { findMany: vi.fn() },
+  goodsReceipt: { findMany: vi.fn() },
 }));
 vi.mock('../src/config/prisma', () => ({ prisma: db }));
 
@@ -63,6 +64,7 @@ describe('getMyWork', () => {
     db.purchaseOrder.groupBy.mockResolvedValue([]);
     db.vendorInvoice.findMany.mockResolvedValue([]);
     db.paymentRequest.findMany.mockResolvedValue([]);
+    db.goodsReceipt.findMany.mockResolvedValue([]);
   });
 
   const mpr = (over: Record<string, unknown>) => ({
@@ -144,5 +146,31 @@ describe('getMyWork', () => {
     expect(head.needsAction[0].flags.find((f) => f.code === 'OVER_ESTIMATE')?.value).toBe(20);
     const acct = await getMyWork('p1', { id: 'acct', role: 'ACCOUNTANT' });
     expect(acct.needsAction).toHaveLength(0);
+  });
+
+  it('reminds the store supervisor to receive paid POs and to inspect / post goods receipts', async () => {
+    const po = (over: Record<string, unknown>) => ({
+      id: 'po1', poNumber: 'VGH-PO010', status: 'APPROVED', paymentType: 'FULL_PAYMENT', grandTotal: 25000, notes: null,
+      createdBy: 'x', updatedAt: daysAgo(4), vendor: { id: 'v', name: 'Lakshmi Steels' }, createdByUser: { name: 'Ravi' },
+      items: [{ materialName: 'TMT 12mm', quantity: 10, unit: 'nos' }], mpr: { description: 'Columns block B' }, goodsReceipts: [], ...over,
+    });
+    // first findMany = POs awaiting approval (none), second = POs to receive
+    db.purchaseOrder.findMany.mockResolvedValueOnce([]).mockResolvedValueOnce([po({}), po({ id: 'po2', goodsReceipts: [{ id: 'g' }] })]);
+    db.goodsReceipt.findMany.mockResolvedValue([
+      { id: 'g1', receiptNumber: 'VGH-GRN004', status: 'PENDING_INSPECTION', createdAt: daysAgo(1), updatedAt: daysAgo(1), inspectedAt: null,
+        createdByUser: { name: 'Store' }, items: [{ materialName: 'Cement', deliveredQty: 50, unit: 'bags' }], purchaseOrder: { poNumber: 'VGH-PO009', vendor: { name: 'ABC' } } },
+    ]);
+
+    const r = await getMyWork('p1', { id: 'store', role: 'SUPERVISOR' });
+
+    const receive = r.needsAction.find((i) => i.action === 'RECEIVE')!;
+    expect(receive).toMatchObject({ kind: 'PO', id: 'po1', path: '/goods-receipts?po=po1', summary: 'TMT 12mm × 10 nos' });
+    expect(receive.flags.map((f) => f.code)).toEqual(['PAID_IN_ADVANCE', 'WAITING_LONG']);
+    expect(r.needsAction.some((i) => i.id === 'po2')).toBe(false); // its open receipt is the task instead
+    expect(r.needsAction.find((i) => i.kind === 'GRN')).toMatchObject({ action: 'INSPECT', number: 'VGH-GRN004', why: 'VGH-PO009' });
+
+    db.purchaseOrder.findMany.mockReset().mockResolvedValue([]);
+    const head = await getMyWork('p1', { id: 'head', role: 'PROJECT_HEAD' });
+    expect(head.needsAction.some((i) => i.action === 'RECEIVE' || i.kind === 'GRN')).toBe(false);
   });
 });

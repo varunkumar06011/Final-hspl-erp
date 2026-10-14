@@ -20,6 +20,7 @@ import { logAudit } from '../services/audit.service';
 import { generateProjectSequenceNumber } from '../services/sequence.service';
 import * as approvalService from '../services/approval.service';
 import { notifyApprovers } from '../services/push.service';
+import { notifyPaymentsMade } from '../services/payment-notify.service';
 import { getStorageService, serveFile } from '../services/storage.service';
 import { postVoucher, generateVoucherNumber } from './voucher.routes';
 import { ensureVendorLedger, ensureBankLedger, ensureCashLedger, findLedgerByName } from './ledger.routes';
@@ -1425,6 +1426,7 @@ router.post(
         oldValue: { status: PaymentStatus.APPROVED },
         newValue: { status: PaymentStatus.PAID, paymentAmount: String(req.body.amount) },
       });
+      void notifyPaymentsMade(projectId, [pr.id], req.user!.id);
 
       res.status(201).json(payment);
     } catch (error) {
@@ -1569,6 +1571,7 @@ router.post(
         oldValue: { status: PaymentStatus.APPROVED },
         newValue: { status: PaymentStatus.PAID, linkedVoucher: voucher.jvNumber },
       });
+      void notifyPaymentsMade(projectId, [pr.id], req.user!.id);
 
       res.status(201).json(payment);
     } catch (error) {
@@ -1726,6 +1729,7 @@ router.post(
         });
       }
 
+      void notifyPaymentsMade(projectId, requests.map((r) => r.id), req.user!.id);
       res.status(201).json({ voucher: voucher.jvNumber, payments });
     } catch (error) {
       next(error);

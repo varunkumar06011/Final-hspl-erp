@@ -83,6 +83,13 @@ interface PendingAction {
   tool: string;
   summary: ActionSummary;
   edit: EditState | null;
+  /** site_bill_over_limit: a site bill above the limit, offered as a material request instead. */
+  note?: string;
+}
+/** A fixed server message shown in the user's language (`notice.<key>`). */
+interface ChatNotice {
+  key: string;
+  values: Record<string, string>;
 }
 /** The open Edit form of one card. `src` is the index of the line in the saved proposal (null = new line). */
 interface Editor {
@@ -128,6 +135,7 @@ type Msg =
       pending: PendingAction[];
       ask: AskPrompt | null;
       document: DocumentNote | null;
+      notice?: ChatNotice | null;
     }
   | { id: number; role: 'menu' }
   | { id: number; role: 'error'; text: string };
@@ -246,6 +254,8 @@ export default function AssistantDrawer({ open, onClose }: Props) {
   const [editors, setEditors] = useState<Record<string, Editor>>({});
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
+  // The message being worked on carries a photo / PDF (reading it takes a little longer).
+  const [readingPhoto, setReadingPhoto] = useState(false);
   const [mic, setMic] = useState<MicState>('idle');
   const [micSeconds, setMicSeconds] = useState(0);
   const [photos, setPhotos] = useState<{ id: number; dataUrl: string }[]>([]);
@@ -270,12 +280,18 @@ export default function AssistantDrawer({ open, onClose }: Props) {
   const baseRef = useRef('');
   const startedAtRef = useRef(0);
 
-  const { data: flowOptions = [] } = useQuery<FlowOption[]>({
+  const { data: flowData } = useQuery<{ simple: boolean; flows: FlowOption[] }>({
     queryKey: ['assistant-flows'],
-    queryFn: async () => (await api.get('/assistant/flows')).data?.flows ?? [],
+    queryFn: async () => {
+      const d = (await api.get('/assistant/flows')).data;
+      return { simple: !!d?.simple, flows: d?.flows ?? [] };
+    },
     enabled: open,
     staleTime: 5 * 60 * 1000,
   });
+  const flowOptions = flowData?.flows ?? [];
+  /** Simple mode (Head of Construction): one big upload button, one big Yes. */
+  const simple = flowData?.simple ?? false;
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
@@ -488,6 +504,7 @@ export default function AssistantDrawer({ open, onClose }: Props) {
       }
       addMsg({ role: 'user', text, images: sending });
       setBusy(true);
+      setReadingPhoto(sending.length > 0);
       try {
         const { data } = await api.post(
           '/assistant/chat',
@@ -513,6 +530,7 @@ export default function AssistantDrawer({ open, onClose }: Props) {
           pending: data.pending ?? [],
           ask: data.ask ?? null,
           document: data.document ?? null,
+          notice: data.notice ?? null,
         });
       } catch (err) {
         addMsg({ role: 'error', text: errorText(err) });
@@ -547,6 +565,12 @@ export default function AssistantDrawer({ open, onClose }: Props) {
   const startFlow = (id: string) => {
     if (busy) return;
     setDocs([]);
+    if (id === 'site_bill') {
+      // Nothing to look up first: ask for the bill straight away (no waiting on the server).
+      setFlow(id);
+      addMsg({ role: 'assistant', text: t('siteBillAsk'), tables: [], pending: [], ask: { question: t('siteBillAsk'), options: [], askPhoto: true }, document: null });
+      return;
+    }
     void send(t(`flows.${id}.start`, { defaultValue: id }), { flow: id });
   };
 
@@ -704,6 +728,27 @@ export default function AssistantDrawer({ open, onClose }: Props) {
   const colLabel = (col: string) => t(`col.${col.replace(/\./g, '_')}`, { defaultValue: col });
 
   const examples = [t('ex1'), t('ex3')];
+
+  /** Simple mode start screen and "what next": just two huge buttons. */
+  const renderSimpleStart = () => (
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 2 }}>
+      <Typography variant="h5" sx={{ fontWeight: 700, textAlign: 'center' }}>
+        {t('simple.title')}
+      </Typography>
+      <CameraCapture big text={t('simple.camera')} onCapture={(file) => void sendFiles([file])} disabled={busy} zIndex={CAMERA_Z} />
+      <Button
+        variant="outlined"
+        size="large"
+        fullWidth
+        startIcon={<AttachIcon />}
+        onClick={() => quickFileRef.current?.click()}
+        disabled={busy}
+        sx={{ py: 1.75, fontSize: '1.1rem' }}
+      >
+        {t('simple.gallery')}
+      </Button>
+    </Box>
+  );
 
   const flowLabel = (id: string) => t(`flows.${id}.label`, { defaultValue: id });
 
@@ -878,7 +923,8 @@ export default function AssistantDrawer({ open, onClose }: Props) {
           gap: 1.5,
         }}
       >
-        {messages.length === 0 && (
+        {messages.length === 0 && simple && renderSimpleStart()}
+        {messages.length === 0 && !simple && (
           <Box sx={{ mt: 1 }}>
             <Box sx={{ textAlign: 'center', mb: 2 }}>
               <Typography variant="h6" gutterBottom>
@@ -909,7 +955,7 @@ export default function AssistantDrawer({ open, onClose }: Props) {
         {messages.map((m) => {
           if (m.role === 'menu') {
             return m.id === lastId && flowOptions.length > 0 ? (
-              <Box key={m.id}>{renderMenu(t('whatNext'), true)}</Box>
+              <Box key={m.id}>{simple ? renderSimpleStart() : renderMenu(t('whatNext'), true)}</Box>
             ) : null;
           }
           if (m.role === 'user') {
@@ -976,7 +1022,15 @@ export default function AssistantDrawer({ open, onClose }: Props) {
               key={m.id}
               sx={{ alignSelf: 'stretch', display: 'flex', flexDirection: 'column', gap: 1 }}
             >
-              {m.text && (
+              {m.notice && (
+                <Alert
+                  severity={m.notice.key === 'siteBillOverLimit' ? 'warning' : 'info'}
+                  sx={{ alignSelf: 'stretch', ...(simple ? { fontSize: '1.05rem' } : {}) }}
+                >
+                  {t(`notice.${m.notice.key}`, m.notice.values)}
+                </Alert>
+              )}
+              {m.text && !m.notice && (
                 <Paper
                   variant="outlined"
                   sx={{
@@ -1299,18 +1353,24 @@ export default function AssistantDrawer({ open, onClose }: Props) {
                           <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
                             <Button
                               variant="contained"
-                              size="small"
+                              size={simple ? 'large' : 'small'}
+                              fullWidth={simple}
+                              sx={simple ? { py: 1.5, fontSize: '1.2rem', fontWeight: 700 } : undefined}
                               onClick={() => void confirm(a)}
                             >
-                              {t('confirm')}
+                              {a.note === 'site_bill_over_limit'
+                                ? t(simple ? 'simple.yesMpr' : 'saveAsMpr')
+                                : simple
+                                  ? t('simple.yes')
+                                  : t('confirm')}
                             </Button>
-                            {cur.edit && (
+                            {cur.edit && !simple && (
                               <Button size="small" startIcon={<EditIcon />} onClick={() => openEditor(a)}>
                                 {t('edit.button')}
                               </Button>
                             )}
-                            <Button size="small" onClick={() => void discard(a)}>
-                              {t('discard')}
+                            <Button size={simple ? 'medium' : 'small'} onClick={() => void discard(a)}>
+                              {simple ? t('simple.no') : t('discard')}
                             </Button>
                           </Box>
                         </>
@@ -1368,7 +1428,7 @@ export default function AssistantDrawer({ open, onClose }: Props) {
         {busy && (
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, color: 'text.secondary' }}>
             <CircularProgress size={16} />
-            <Typography variant="body2">{t('thinking')}</Typography>
+            <Typography variant="body2">{t(readingPhoto ? 'readingPhoto' : 'thinking')}</Typography>
           </Box>
         )}
         <div ref={endRef} />

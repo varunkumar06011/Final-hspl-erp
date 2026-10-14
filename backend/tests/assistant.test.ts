@@ -51,7 +51,7 @@ import { generate } from '../src/services/assistant/openai';
 import { callApi, callApiForm } from '../src/services/assistant/internalApi';
 import { notifyMikoPhotoSaved } from '../src/services/assistant/notify';
 import { readDocument } from '../src/services/assistant/reader';
-import { availableFlows, FLOWS } from '../src/services/assistant/flows';
+import { availableFlows, isSimpleUser, FLOWS } from '../src/services/assistant/flows';
 import { TOOLS, TOOLS_BY_NAME } from '../src/services/assistant/tools';
 import { runChat, confirmAction, editAction, cancelAction, sanitizeHistory, consumeDailyQuota } from '../src/services/assistant/engine';
 
@@ -71,6 +71,22 @@ const VENDOR_ID = '11111111-1111-4111-8111-111111111111';
 beforeEach(() => {
   vi.clearAllMocks();
   db.project.findUnique.mockResolvedValue({ name: 'Vgrand', code: 'VGH' });
+});
+
+describe('simple mode', () => {
+  it('is on for the Head of Construction only', () => {
+    expect(isSimpleUser({ role: 'HEAD_OF_CONSTRUCTION', extraPermissions: [] })).toBe(true);
+    expect(isSimpleUser({ role: 'SUPERVISOR', extraPermissions: [] })).toBe(false);
+  });
+
+  it('forces the site bill flow and the plain-language prompt', async () => {
+    db.assistantAction.create.mockResolvedValue({ id: 'a1' });
+    mGenerate.mockResolvedValueOnce({ role: 'model', parts: [{ text: 'Please send a clearer photo.' }] });
+    await runChat({ ...user, simple: true }, 'hi', [], { flow: 'material_request' });
+    const sys = JSON.stringify(mGenerate.mock.calls[0][0]);
+    expect(sys).toMatch(/SIMPLE MODE/);
+    expect(sys).toContain("create_site_bill");
+  });
 });
 
 describe('assistant tool registry (hard limits)', () => {
@@ -429,16 +445,78 @@ describe('photos (OCR) across every flow', () => {
     expect(out.pending).toHaveLength(1);
   });
 
-  it('a site bill above the limit is refused back to the model', async () => {
+  it('a site bill above ₹5,000 becomes a material request card (existing shop vendor), with the bill photo', async () => {
     db.assistantAction.findMany.mockResolvedValue([{ args: { _images: [photo] } }]);
+    db.assistantAction.create.mockResolvedValue({ id: 'a1' });
+    mCallApi.mockImplementation(async (_auth: string, _m: string, path: string) =>
+      path === '/vendors'
+        ? { ok: true, status: 200, body: { data: [{ id: VENDOR_ID, name: 'big shop' }] } }
+        : { ok: true, status: 200, body: { id: VENDOR_ID, name: 'Big Shop', vendorCode: 'V1' } },
+    );
     mGenerate
-      .mockResolvedValueOnce({ role: 'model', parts: [{ functionCall: { name: 'create_site_bill', args: { shopName: 'Big Shop', billDate: '2026-10-09', paymentMode: 'UPI', items: [{ materialName: 'Cement', quantity: 50, unit: 'bags', rate: 380 }] } } }] })
-      .mockResolvedValueOnce({ role: 'model', parts: [{ text: 'Too large for a site bill.' }] });
+      .mockResolvedValueOnce({ role: 'model', parts: [{ functionCall: { name: 'create_site_bill', args: { shopName: 'Big Shop', billDate: '2026-10-09', items: [{ materialName: 'Cement', quantity: 50, unit: 'bags', rate: 380 }] } } }] })
+      .mockResolvedValueOnce({ role: 'model', parts: [{ text: 'Too large for a site bill; saved as a material request.' }] });
 
     const out = await runChat(user, 'bill', [], { flow: 'site_bill', documentIds: [DOC_ID] });
 
+    expect(out.pending).toHaveLength(1);
+    expect(out.pending[0]).toMatchObject({ tool: 'create_mpr', note: 'site_bill_over_limit' });
+    expect(out.flow).toBe('material_request');
+    const args = db.assistantAction.create.mock.calls[0][0].data.args;
+    expect(args).toMatchObject({ requestType: 'MATERIAL', vendorId: VENDOR_ID, items: [{ materialName: 'Cement', quantity: 50, unit: 'bags', estimatedRate: 380 }] });
+    expect(args.description).toMatch(/above the ₹5,000 site-bill limit/);
+    expect(args._images).toHaveLength(1);
+    expect(JSON.stringify(mGenerate.mock.calls[1][0].contents)).toMatch(/prepared as a material request/);
+  });
+
+  it('a bill photo in the site-bill flow goes straight to a site bill card, without the chat model', async () => {
+    mRead.mockResolvedValue({ ...reading, documentType: 'shop_bill', vendor: { ...reading.vendor, name: 'Sri Sai Hardware' }, documentDate: '2026-10-09', lines: [{ name: 'Nails', quantity: 2, unit: 'kg', rate: 120, gstRate: null, amount: 240 }], subtotal: 240, taxAmount: 0, total: 250 });
+    db.assistantAction.create.mockResolvedValueOnce({ id: DOC_ID }).mockResolvedValue({ id: 'a1' });
+    db.assistantAction.findMany.mockResolvedValue([{ args: { _images: [photo] } }]);
+
+    const out = await runChat(user, 'photo', [], { images: [photo], flow: 'site_bill' });
+
+    expect(mGenerate).not.toHaveBeenCalled();
+    expect(out.pending[0].tool).toBe('create_site_bill');
+    expect(out.notice).toEqual({ key: 'siteBillReady', values: { total: '₹250', limit: '₹5,000' } });
+    const args = db.assistantAction.create.mock.calls[1][0].data.args;
+    expect(args).toMatchObject({ shopName: 'Sri Sai Hardware', billDate: '2026-10-09', paymentMode: 'CASH' });
+    // the unitemised ₹10 on the bill total becomes its own line so the bill adds up
+    expect(args.items).toEqual([
+      { materialName: 'Nails', quantity: 2, unit: 'kg', rate: 120 },
+      { materialName: 'Tax / other charges on the bill', quantity: 1, rate: 10 },
+    ]);
+    expect(out.pending[0].summary.fields.map((f) => f.key)).not.toContain('paymentMode');
+    expect(out.history.at(-1)?.role).toBe('model');
+  });
+
+  it('a big bill photo becomes a material request against a new one-time supplier', async () => {
+    mRead.mockResolvedValue({ ...reading, documentType: 'shop_bill', vendor: { ...reading.vendor, name: 'Lakshmi Steels', phone: '9876543210' } });
+    db.assistantAction.create.mockResolvedValueOnce({ id: DOC_ID }).mockResolvedValue({ id: 'a1' });
+    db.assistantAction.findMany.mockResolvedValue([{ args: { _images: [photo] } }]);
+    mCallApi.mockResolvedValue({ ok: true, status: 200, body: { data: [] } });
+
+    const out = await runChat({ ...user, simple: true }, 'photo', [], { images: [photo] });
+
+    expect(mGenerate).not.toHaveBeenCalled();
+    expect(out.pending[0]).toMatchObject({ tool: 'create_mpr', note: 'site_bill_over_limit' });
+    expect(out.notice?.key).toBe('siteBillOverLimit');
+    expect(out.notice?.values.total).toBe('₹22,420');
+    expect(out.flow).toBe('material_request');
+    const args = db.assistantAction.create.mock.calls[1][0].data.args;
+    expect(args.newVendor).toEqual({ name: 'Lakshmi Steels', vendorType: 'NON_VENDOR' });
+  });
+
+  it('an unreadable bill photo falls back to the model, which asks', async () => {
+    mRead.mockResolvedValue({ ...reading, documentType: 'shop_bill', legibility: 0.1, lines: [], total: null });
+    db.assistantAction.create.mockResolvedValueOnce({ id: DOC_ID });
+    mGenerate.mockResolvedValueOnce({ role: 'model', parts: [{ text: 'Please send a clearer photo.' }] });
+
+    const out = await runChat(user, 'photo', [], { images: [photo], flow: 'site_bill' });
+
+    expect(mGenerate).toHaveBeenCalledTimes(1);
     expect(out.pending).toHaveLength(0);
-    expect(JSON.stringify(mGenerate.mock.calls[1][0].contents)).toMatch(/above the site-bill limit/);
+    expect(out.notice).toBeNull();
   });
 
   it('confirming a site bill posts multipart with the bill as the file', async () => {
@@ -546,7 +624,7 @@ describe('editing a proposal on its card', () => {
     db.assistantAction.updateMany.mockResolvedValue({ count: 1 });
 
     const out = await editAction('e1', user, {
-      fields: { shopName: 'Chaluvadi Book Depot', paymentMode: 'UPI' },
+      fields: { shopName: 'Chaluvadi Book Depot' },
       items: [
         { src: 0, values: { materialName: 'Note book', quantity: '3', rate: '60' } },
         { src: null, values: { materialName: 'Pen', quantity: 1, unit: 'nos', rate: 10 } },
@@ -572,7 +650,7 @@ describe('editing a proposal on its card', () => {
     expect(db.assistantAction.updateMany).not.toHaveBeenCalled();
   });
 
-  it('refuses edits the form itself would refuse (bill above the site-bill limit, bad number)', async () => {
+  it('refuses edits the form itself would refuse (bill above the site-bill limit, bad number, empty name)', async () => {
     db.assistantAction.findFirst.mockResolvedValue(stored());
     const big = await editAction('e1', user, { items: [{ src: 0, values: { quantity: 500, rate: 50 } }] });
     expect(big.status).toBe(422);

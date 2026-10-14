@@ -104,6 +104,7 @@
   "rowLoanRepayments": "Loan repayments",
   "rowBankExp": "Bank expenditure",
   "rowCashExp": "Cash expenditure",
+  "rowCashFromBank": "Moved bank → cash (contra; balance unchanged)",
   "availableBalance": "Available Balance",
   "bankAccountsBalance": "Bank accounts balance",
   "cashAccountsBalance": "Cash accounts balance",

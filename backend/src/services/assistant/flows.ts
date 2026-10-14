@@ -6,7 +6,7 @@
  * A flow is only a conversation guide. The record is still created by the
  * flow's write tool (tools.ts) through the normal propose -> confirm path.
  */
-import { Permission, SITE_BILL_LIMIT, hasPermission, isModuleSwitchedOff, type ModuleAccessMap } from '@hospital-erp/shared';
+import { Permission, SITE_BILL_LIMIT, UserRole, hasPermission, isModuleSwitchedOff, type ModuleAccessMap } from '@hospital-erp/shared';
 
 export interface FlowDef {
   id: string;
@@ -118,9 +118,8 @@ Must have: source, items with unit and quantity.
     documentHint: `a small shop bill / receipt paid at site (up to ₹${SITE_BILL_LIMIT})`,
     guide: `Site Bill (create_site_bill): a small purchase already paid at site, up to ₹${SITE_BILL_LIMIT} in total. A photo or PDF of the bill is optional.
 1. The user may type everything in one line ("auto transport 300 cash"): use it, do not ask for a photo. Only offer a photo (ask_user with askPhoto true and a "No bill" answer) when there is neither a photo nor enough details, and never insist.
-2. From the photo or the user: shop name, bill date, items (name, qty, unit, rate). Missing shop name: do not ask, pick a short group name from the items ("Electrical" for MCB and cables, "Local transport (auto)" for an auto fare). A single amount with no quantity is one item, qty 1. If the date is missing use today. Never ask for the budget head; set budgetHeadId only if the user names one (list_records on budget_heads). If the total is above ₹${SITE_BILL_LIMIT}, say it is too large for a site bill and offer a Material Request instead.
-3. Payment mode: ask_user "How was it paid?" with options Cash, UPI, Bank transfer, Cheque, unless the bill shows it.
-4. Propose.`,
+2. From the photo or the user: shop name, bill date, items (name, qty, unit, rate). Missing shop name: do not ask, pick a short group name from the items ("Electrical" for MCB and cables, "Local transport (auto)" for an auto fare). A single amount with no quantity is one item, qty 1. If the date is missing use today. Never ask for the budget head; set budgetHeadId only if the user names one (list_records on budget_heads). Never ask how it was paid.
+3. Propose with create_site_bill, whatever the total. Above ₹${SITE_BILL_LIMIT} the app turns it into a material request by itself; then say in one line that it is too large for a site bill and was prepared as a material request.`,
   },
   {
     id: 'vendor',
@@ -156,6 +155,25 @@ export function availableFlows(user: FlowSubject): FlowDef[] {
       !isModuleSwitchedOff({ role: user.role, extraPermissions: user.directPermissions ?? user.extraPermissions, moduleAccess: user.moduleAccess }, f.module),
   );
 }
+
+/** Flow id the simple-mode user (see isSimpleUser) is always in. */
+export const SIMPLE_FLOW_ID = 'site_bill';
+
+/**
+ * Users whose whole job in Miko is photographing site bills (the Head of Construction): no menu,
+ * no questions, one big upload button and one big Yes. Needs the site bill flow to be available.
+ */
+export function isSimpleUser(user: FlowSubject): boolean {
+  return user.role === UserRole.HEAD_OF_CONSTRUCTION && availableFlows(user).some((f) => f.id === SIMPLE_FLOW_ID);
+}
+
+/** Extra system-prompt block for simple-mode users. */
+export const SIMPLE_MODE_PROMPT = `SIMPLE MODE (this user is not comfortable with phones; their only job here is uploading site bills):
+- Every photo or PDF they send is a site bill. Never ask what kind of document it is and never show a menu.
+- Ask NOTHING you can fill in yourself: never ask how it was paid, the date is today if missing, the shop name comes from the bill (or a group name from the items), no budget head, no description. Propose the site bill straight away.
+- Only if the photo is unreadable or has no amount, ask ONE short question, or ask them to send a clearer photo.
+- Always call create_site_bill, whatever the amount. A bill above ₹${SITE_BILL_LIMIT} is turned into a material request by the app; then just say it will be saved as a material request and to press Yes.
+- Reply in at most two very short, simple sentences, in the language they wrote in (Telugu if they wrote Telugu). After proposing, just say: "Please check and press Yes." No jargon.`;
 
 /** System-prompt block for the active flow. */
 export function flowPrompt(flowId: string | undefined): string {

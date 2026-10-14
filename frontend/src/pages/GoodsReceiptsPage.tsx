@@ -305,6 +305,14 @@ export default function GoodsReceiptsPage() {
     setSearchParams({}, { replace: true });
   }, [poFromUrl, posQuery.data, setSearchParams]);
 
+  // Coming from My Work ("inspect" / "post to stock"): open that receipt.
+  const receiptFromUrl = searchParams.get('id');
+  useEffect(() => {
+    if (!receiptFromUrl) return;
+    setDetailId(receiptFromUrl);
+    setSearchParams({}, { replace: true });
+  }, [receiptFromUrl, setSearchParams]);
+
   const createMutation = useMutation({
     mutationFn: async () => {
       const poItems = selectedPo?.items ?? [];

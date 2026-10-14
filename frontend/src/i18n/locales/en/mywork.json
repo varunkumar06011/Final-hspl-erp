@@ -31,14 +31,18 @@
     "QUOTATION": "Quotation",
     "PO": "Purchase order",
     "INVOICE": "Invoice",
-    "PAYMENT": "Payment"
+    "PAYMENT": "Payment",
+    "GRN": "Goods receipt"
   },
   "act": {
     "APPROVE": "Review & approve",
     "FINALIZE": "Review & finalize",
     "REVIEW": "Open",
     "SUBMIT": "Open & submit",
-    "FIX": "Open & fix"
+    "FIX": "Open & fix",
+    "RECEIVE": "Receive goods at site",
+    "INSPECT": "Inspect goods",
+    "POST_STOCK": "Post to inventory"
   },
   "flag": {
     "OVER_ESTIMATE": "{{value}}% above the estimate",
@@ -46,6 +50,7 @@
     "NEW_VENDOR": "New vendor (no earlier orders)",
     "URGENT": "Marked urgent",
     "NEEDED_SOON": "Needed very soon",
-    "WAITING_LONG": "Waiting {{value}} days"
+    "WAITING_LONG": "Waiting {{value}} days",
+    "PAID_IN_ADVANCE": "Already paid: make sure the goods arrive"
   }
 }

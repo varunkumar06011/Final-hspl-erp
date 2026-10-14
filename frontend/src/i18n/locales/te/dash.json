@@ -104,6 +104,7 @@
   "rowLoanRepayments": "రుణ చెల్లింపులు",
   "rowBankExp": "బ్యాంక్ వ్యయం",
   "rowCashExp": "నగదు వ్యయం",
+  "rowCashFromBank": "బ్యాంక్ → నగదుకు మార్చినది (కాంట్రా; నిల్వ మారదు)",
   "availableBalance": "అందుబాటులో ఉన్న నిల్వ",
   "bankAccountsBalance": "బ్యాంక్ ఖాతాల నిల్వ",
   "cashAccountsBalance": "నగదు ఖాతాల నిల్వ",

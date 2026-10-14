@@ -30,7 +30,7 @@ function isFutureDate(dateInput: Date | string | undefined): boolean {
   const todayOnly = new Date(today.getFullYear(), today.getMonth(), today.getDate());
   return inputDateOnly > todayOnly;
 }
-import { postVoucher, generateVoucherNumber } from './voucher.routes';
+import { postVoucher, generateVoucherNumber, isMoneyTransfer } from './voucher.routes';
 
 // ── Base CRUD via factory ──
 const crudRouter = createCrudRouter({
@@ -176,14 +176,16 @@ router.post(
         [contraLedger.id, { id: contraLedger.id, name: contraLedger.name, group: contraLedger.group, linkedEntityType: contraLedger.linkedEntityType, linkedEntityId: contraLedger.linkedEntityId }],
       ]);
 
-      const jvNumber = await generateVoucherNumber(VoucherType.RECEIPT, projectId);
+      // The other side is itself one of our bank/cash accounts: that is a contra (money moved, not received or spent).
+      const voucherType = isMoneyTransfer([contraLedger, cashLedger]) ? VoucherType.CONTRA : VoucherType.RECEIPT;
+      const jvNumber = await generateVoucherNumber(voucherType, projectId);
       const voucherDate = date ? new Date(String(date)) : new Date();
 
       // Receipt: Dr Cash (money in), Cr Contra ledger (source of money)
       const result = await postVoucher({
         projectId,
         jvNumber,
-        voucherType: VoucherType.RECEIPT,
+        voucherType,
         voucherDate,
         description: description ?? `Cash In to ${cashLedger.name}`,
         totalDebit: amt,
@@ -272,14 +274,16 @@ router.post(
         [contraLedger.id, { id: contraLedger.id, name: contraLedger.name, group: contraLedger.group, linkedEntityType: contraLedger.linkedEntityType, linkedEntityId: contraLedger.linkedEntityId }],
       ]);
 
-      const jvNumber = await generateVoucherNumber(VoucherType.PAYMENT, projectId);
+      // The other side is itself one of our bank/cash accounts: that is a contra (money moved, not received or spent).
+      const voucherType = isMoneyTransfer([contraLedger, cashLedger]) ? VoucherType.CONTRA : VoucherType.PAYMENT;
+      const jvNumber = await generateVoucherNumber(voucherType, projectId);
       const voucherDate = date ? new Date(String(date)) : new Date();
 
       // Payment: Dr Contra ledger (where money goes), Cr Cash (money out)
       const result = await postVoucher({
         projectId,
         jvNumber,
-        voucherType: VoucherType.PAYMENT,
+        voucherType,
         voucherDate,
         description: description ?? `Cash Out from ${cashLedger.name}`,
         totalDebit: amt,
@@ -293,7 +297,7 @@ router.post(
         sourceInvoiceId: null,
         billSettlements: [],
         userId: req.user!.id,
-        budgetHeadId: budgetHeadId ?? null,
+        budgetHeadId: voucherType === VoucherType.CONTRA ? null : (budgetHeadId ?? null),
       });
 
       // Budget Head totals are now updated inside postVoucher's transaction

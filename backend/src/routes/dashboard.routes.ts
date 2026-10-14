@@ -1081,6 +1081,18 @@ router.get(
       // and loanRepayments is the NET repaid amount (received − still owed).
       const { shortAdvance, outstandingLoans, loanRepayments } = await getLoanPosition(projectId);
 
+      // Contra: money moved from the bank into cash (net of cash sent back to the bank).
+      // It funds cash spending but is neither inward funds nor expenditure, so it does not change the balance.
+      const [cashTransferIn, cashTransferOut] = await Promise.all(
+        ['TRANSFER_IN', 'TRANSFER_OUT'].map((type) =>
+          prisma.cashTransaction.aggregate({
+            where: { status: 'POSTED', type, cashAccount: { projectId, deletedAt: null } },
+            _sum: { amount: true },
+          }),
+        ),
+      );
+      const cashFromBank = Number(cashTransferIn._sum.amount ?? 0) - Number(cashTransferOut._sum.amount ?? 0);
+
       // Loan-ledger outflow transactions (repayments + advances) — kept out
       // of today's-outflow list below since they are money movements to
       // loan/advance accounts, not project spend. `date` feeds the filter.
@@ -1310,6 +1322,7 @@ router.get(
         totalExpenditure,
         bankExpenditure,
         cashExpenditure,
+        cashFromBank,
         balance,
         // Bank & cash
         bankBalance,
@@ -1834,8 +1847,9 @@ router.get(
       const projectId = requireProjectId(req);
       const limit = Math.min(Math.max(parseInt(String(req.query.limit ?? '5000'), 10) || 5000, 1), 5000);
 
-      const bankInflowTypes = ['DEPOSIT', 'TRANSFER_IN', 'MANUAL_DEPOSIT'];
-      const cashInflowTypes = ['IN', 'TRANSFER_IN'];
+      // Contra transfers (TRANSFER_IN) only move our own money between accounts: not inward funds.
+      const bankInflowTypes = ['DEPOSIT', 'MANUAL_DEPOSIT'];
+      const cashInflowTypes = ['IN'];
       const bankReversalOutTypes = ['REVERSAL_OUT']; // reversed receipts
       const cashReversalOutTypes = ['REVERSAL_OUT'];
 

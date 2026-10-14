@@ -76,7 +76,7 @@ export const EDITABLE: Record<string, EditSpec> = {
     items: { materialName: 'text', unit: 'text', quantity: 'number', unitCost: 'number' },
   },
   create_site_bill: {
-    fields: { shopName: 'text', billDate: 'date', paymentMode: ['CASH', 'UPI', 'BANK_TRANSFER', 'CHEQUE'], description: 'text' },
+    fields: { shopName: 'text', billDate: 'date', description: 'text' },
     items: { materialName: 'text', quantity: 'number', unit: 'text', rate: 'number' },
   },
 };

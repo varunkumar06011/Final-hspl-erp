@@ -17,7 +17,7 @@ import { rbacMiddleware } from '../middleware/rbac';
 import { validateMiddleware } from '../middleware/validate';
 import { logAudit } from '../services/audit.service';
 import { ensureBankLedger } from './ledger.routes';
-import { postVoucher, generateVoucherNumber } from './voucher.routes';
+import { postVoucher, generateVoucherNumber, isMoneyTransfer } from './voucher.routes';
 import { VoucherType } from '@hospital-erp/shared';
 
 // Reject future dates for accounting entries.
@@ -267,14 +267,16 @@ router.post(
         [contraLedger.id, contraLedger],
       ]);
 
-      const jvNumber = await generateVoucherNumber(VoucherType.RECEIPT, projectId);
+      // The other side is itself one of our bank/cash accounts: that is a contra (money moved, not received or spent).
+      const voucherType = isMoneyTransfer([contraLedger, bankLedger]) ? VoucherType.CONTRA : VoucherType.RECEIPT;
+      const jvNumber = await generateVoucherNumber(voucherType, projectId);
       const voucherDate = date ? new Date(String(date)) : new Date();
 
       // Receipt: Dr Bank (money in), Cr Contra ledger (source of money)
       const result = await postVoucher({
         projectId,
         jvNumber,
-        voucherType: VoucherType.RECEIPT,
+        voucherType,
         voucherDate,
         description: description ?? `Deposit to ${bankLedger.name}`,
         totalDebit: amt,
@@ -363,14 +365,16 @@ router.post(
         [contraLedger.id, contraLedger],
       ]);
 
-      const jvNumber = await generateVoucherNumber(VoucherType.PAYMENT, projectId);
+      // The other side is itself one of our bank/cash accounts: that is a contra (money moved, not received or spent).
+      const voucherType = isMoneyTransfer([contraLedger, bankLedger]) ? VoucherType.CONTRA : VoucherType.PAYMENT;
+      const jvNumber = await generateVoucherNumber(voucherType, projectId);
       const voucherDate = date ? new Date(String(date)) : new Date();
 
       // Payment: Dr Contra ledger (where money goes), Cr Bank (money out)
       const result = await postVoucher({
         projectId,
         jvNumber,
-        voucherType: VoucherType.PAYMENT,
+        voucherType,
         voucherDate,
         description: description ?? `Withdrawal from ${bankLedger.name}`,
         totalDebit: amt,
@@ -384,7 +388,7 @@ router.post(
         sourceInvoiceId: null,
         billSettlements: [],
         userId: req.user!.id,
-        budgetHeadId: budgetHeadId ?? null,
+        budgetHeadId: voucherType === VoucherType.CONTRA ? null : (budgetHeadId ?? null),
       });
 
       // Budget Head totals are now updated inside postVoucher's transaction

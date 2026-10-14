@@ -60,6 +60,7 @@ vi.mock('../src/services/audit.service', () => ({ logAudit: vi.fn(async () => {}
 vi.mock('../src/services/sequence.service', () => ({ generateSequenceNumber: vi.fn() }));
 vi.mock('../src/services/approval.service', () => ({}));
 vi.mock('../src/services/push.service', () => ({ notifyApprovers: vi.fn() }));
+vi.mock('../src/services/payment-notify.service', () => ({ notifyPaymentsMade: vi.fn() }));
 vi.mock('../src/services/storage.service', () => ({ getStorageService: vi.fn(), serveFile: vi.fn() }));
 vi.mock('../src/routes/voucher.routes', () => ({ postVoucher: vi.fn(), generateVoucherNumber: vi.fn() }));
 vi.mock('../src/routes/ledger.routes', () => ({

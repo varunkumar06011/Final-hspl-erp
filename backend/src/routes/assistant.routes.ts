@@ -12,7 +12,7 @@ import {
   type AssistantUser,
 } from '../services/assistant/engine';
 import { AssistantProviderError } from '../services/assistant/openai';
-import { FLOW_IDS, availableFlows } from '../services/assistant/flows';
+import { FLOW_IDS, SIMPLE_FLOW_ID, availableFlows, isSimpleUser } from '../services/assistant/flows';
 import {
   AUDIO_MIME_TYPES,
   consumeTranscribeBudget,
@@ -31,6 +31,7 @@ function assistantUser(req: AuthenticatedRequest): AssistantUser {
     role: req.user!.role,
     projectId: requireProjectId(req),
     auth: req.headers.authorization as string,
+    simple: isSimpleUser(req.user!),
   };
 }
 
@@ -80,7 +81,9 @@ router.get('/status', (_req: AuthenticatedRequest, res: Response) => {
 
 // GET /assistant/flows — the create flows this user may start (Miko's start menu).
 router.get('/flows', (req: AuthenticatedRequest, res: Response) => {
-  res.json({ flows: availableFlows(req.user!).map((f) => ({ id: f.id, tool: f.tool, photo: f.tool === 'create_site_bill' ? 'required' : 'optional' })) });
+  const simple = isSimpleUser(req.user!);
+  const flows = availableFlows(req.user!).filter((f) => !simple || f.id === SIMPLE_FLOW_ID);
+  res.json({ simple, flows: flows.map((f) => ({ id: f.id, tool: f.tool, photo: 'optional' })) });
 });
 
 // POST /assistant/chat — one user message. Reads run now; creates come back as

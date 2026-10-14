@@ -8,6 +8,9 @@ import {
   findApprovableStep,
   isWorkflowOpenToRole,
   QUOTATION_FINALIZER_ROLES,
+  GoodsReceiptStatus,
+  POPaymentType,
+  UserRole,
 } from '@hospital-erp/shared';
 import { prisma } from '../config/prisma';
 
@@ -20,11 +23,12 @@ import { prisma } from '../config/prisma';
 // decide quickly. Records are always filtered by the caller's project.
 // ═══════════════════════════════════════════════════════════
 
-export type WorkKind = 'MPR' | 'QUOTATION' | 'PO' | 'INVOICE' | 'PAYMENT';
-export type WorkAction = 'APPROVE' | 'FINALIZE' | 'REVIEW' | 'SUBMIT' | 'FIX';
+export type WorkKind = 'MPR' | 'QUOTATION' | 'PO' | 'INVOICE' | 'PAYMENT' | 'GRN';
+/** RECEIVE: goods of an approved PO still to arrive at site; INSPECT / POST_STOCK: a goods receipt still to be checked / put into stock. */
+export type WorkAction = 'APPROVE' | 'FINALIZE' | 'REVIEW' | 'SUBMIT' | 'FIX' | 'RECEIVE' | 'INSPECT' | 'POST_STOCK';
 
 export interface WorkFlag {
-  code: 'OVER_ESTIMATE' | 'NO_BUDGET_HEAD' | 'NEW_VENDOR' | 'URGENT' | 'NEEDED_SOON' | 'WAITING_LONG';
+  code: 'OVER_ESTIMATE' | 'NO_BUDGET_HEAD' | 'NEW_VENDOR' | 'URGENT' | 'NEEDED_SOON' | 'WAITING_LONG' | 'PAID_IN_ADVANCE';
   level: 'warn' | 'info';
   /** Number the flag talks about (percent over, days waiting, days left). */
   value?: number;
@@ -156,6 +160,14 @@ function canDecide(workflow: Workflow | null | undefined, viewer: Viewer, stepsD
   return !already;
 }
 
+/**
+ * Store / site staff (Supervisor) receive goods: every approved PO whose goods have not all
+ * arrived, whatever its payment type (advance and full-payment POs too, so paid material
+ * still reaches inventory), and every goods receipt not yet inspected or posted to stock.
+ * Heads, accountants and admins can do it as well but are not reminded of it.
+ */
+export const isGoodsReceiver = (viewer: Viewer) => viewer.role === UserRole.SUPERVISOR;
+
 const byOldest = (a: WorkItem, b: WorkItem) => new Date(a.waitingSince).getTime() - new Date(b.waitingSince).getTime();
 const byNewest = (a: WorkItem, b: WorkItem) => new Date(b.waitingSince).getTime() - new Date(a.waitingSince).getTime();
 
@@ -167,7 +179,8 @@ const WORKFLOW_SELECT = {
 const LINE_SELECT = { materialName: true, quantity: true, unit: true } as const;
 
 export async function getMyWork(projectId: string, viewer: Viewer): Promise<MyWork> {
-  const [mprs, quotations, pos, invoices, payments] = await Promise.all([
+  const receiver = isGoodsReceiver(viewer);
+  const [mprs, quotations, pos, invoices, payments, toReceive, openReceipts] = await Promise.all([
     prisma.materialPurchaseRequest.findMany({
       where: {
         projectId,
@@ -252,6 +265,38 @@ export async function getMyWork(projectId: string, viewer: Viewer): Promise<MyWo
         approvalWorkflow: { select: WORKFLOW_SELECT },
       },
     }),
+    receiver
+      ? prisma.purchaseOrder.findMany({
+          where: {
+            projectId,
+            deletedAt: null,
+            isSiteBillBatch: false, // bought and used at site already
+            NOT: { isContract: true, grandTotal: 0 }, // an umbrella contract has nothing to deliver
+            status: { in: [POStatus.APPROVED, POStatus.PARTIALLY_DELIVERED] },
+          },
+          orderBy: { updatedAt: 'asc' },
+          take: PER_TYPE_LIMIT,
+          include: {
+            vendor: { select: { name: true } },
+            createdByUser: { select: { name: true } },
+            items: { select: LINE_SELECT },
+            mpr: { select: { description: true } },
+            goodsReceipts: { where: { deletedAt: null, status: { in: [GoodsReceiptStatus.PENDING_INSPECTION, GoodsReceiptStatus.READY_TO_POST] } }, select: { id: true } },
+          },
+        })
+      : Promise.resolve([]),
+    receiver
+      ? prisma.goodsReceipt.findMany({
+          where: { projectId, deletedAt: null, status: { in: [GoodsReceiptStatus.PENDING_INSPECTION, GoodsReceiptStatus.READY_TO_POST] } },
+          orderBy: { createdAt: 'asc' },
+          take: PER_TYPE_LIMIT,
+          include: {
+            createdByUser: { select: { name: true } },
+            items: { select: { materialName: true, deliveredQty: true, unit: true } },
+            purchaseOrder: { select: { poNumber: true, vendor: { select: { name: true } } } },
+          },
+        })
+      : Promise.resolve([]),
   ]);
 
   // Vendors that already have an approved/delivered PO are "known"; the rest are new to the project.
@@ -451,6 +496,53 @@ export async function getMyWork(projectId: string, viewer: Viewer): Promise<MyWo
     } else {
       place(base, mine, 'pending');
     }
+  }
+
+  // ── Goods to receive at site (store / site staff) ──
+  for (const p of toReceive) {
+    // A PO with a receipt already open is handled through that receipt (below).
+    if (p.goodsReceipts.length > 0) continue;
+    if (p.status !== POStatus.APPROVED && p.status !== POStatus.PARTIALLY_DELIVERED) continue;
+    const since = p.updatedAt;
+    needsAction.push({
+      kind: 'PO',
+      id: p.id,
+      number: p.poNumber,
+      party: p.vendor?.name ?? null,
+      amount: Number(p.grandTotal) || null,
+      summary: summarizeLines(p.items),
+      why: clean(p.mpr?.description) ?? clean(p.notes),
+      status: p.status,
+      action: 'RECEIVE',
+      requestedBy: p.createdByUser?.name ?? null,
+      waitingOn: [],
+      waitingSince: since.toISOString(),
+      path: `/goods-receipts?po=${p.id}`,
+      flags: [
+        ...(p.paymentType !== POPaymentType.AFTER_DELIVERY ? [{ code: 'PAID_IN_ADVANCE' as const, level: 'info' as const }] : []),
+        ...buildFlags({ waitingSince: since }),
+      ],
+    });
+  }
+  for (const r of openReceipts) {
+    const inspect = r.status === GoodsReceiptStatus.PENDING_INSPECTION;
+    const since = inspect ? r.createdAt : (r.inspectedAt ?? r.updatedAt);
+    needsAction.push({
+      kind: 'GRN',
+      id: r.id,
+      number: r.receiptNumber,
+      party: r.purchaseOrder?.vendor?.name ?? null,
+      amount: null,
+      summary: summarizeLines(r.items.map((i) => ({ materialName: i.materialName, quantity: i.deliveredQty, unit: i.unit }))),
+      why: r.purchaseOrder?.poNumber ?? null,
+      status: r.status,
+      action: inspect ? 'INSPECT' : 'POST_STOCK',
+      requestedBy: r.createdByUser?.name ?? null,
+      waitingOn: [],
+      waitingSince: since.toISOString(),
+      path: `/goods-receipts?id=${r.id}`,
+      flags: buildFlags({ waitingSince: since }),
+    });
   }
 
   return {

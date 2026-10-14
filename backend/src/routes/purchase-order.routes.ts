@@ -1713,6 +1713,7 @@ router.get(
         include: {
           vendor: true,
           quotation: { select: { quotationNumber: true } },
+          contractPo: { select: { poNumber: true, contractTitle: true } },
           items: true,
           createdByUser: { select: { name: true } },
           approvalWorkflow: {

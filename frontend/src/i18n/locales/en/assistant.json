@@ -21,6 +21,9 @@
   "ex3": "Pending invoices above 1 lakh",
   "ex4": "ABC Traders కి 100 బస్తాల సిమెంట్ MPR చేయి",
   "thinking": "Working on it…",
+  "readingPhoto": "Reading the bill…",
+  "siteBillAsk": "Send a photo of the bill, or type it (for example: auto fare 300).",
+  "saveAsMpr": "Save as material request",
   "reviewNote": "Review the details below. Nothing is saved until you confirm.",
   "confirm": "Confirm & save",
   "discard": "Discard",
@@ -261,5 +264,17 @@
       "deliveredQty": "Delivered qty",
       "unitCost": "Cost (₹)"
     }
+  },
+  "simple": {
+    "title": "Send the bill photo",
+    "camera": "Take photo of bill",
+    "gallery": "Choose a photo from phone",
+    "yes": "Yes, save",
+    "no": "No",
+    "yesMpr": "Yes, save as material request"
+  },
+  "notice": {
+    "siteBillReady": "Bill read: {{total}}. Check the site bill below and press Confirm.",
+    "siteBillOverLimit": "This bill is {{total}}. A site bill can be at most {{limit}}, so it cannot be saved as a site bill. It is ready as a material request: press \"Save as material request\"."
   }
 }

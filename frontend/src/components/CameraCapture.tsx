@@ -19,6 +19,10 @@ interface CameraCaptureProps {
   /** Render as a labelled outlined button instead of a bare camera icon. */
   label?: boolean;
   size?: 'small' | 'medium';
+  /** Large full-width button for users who find small controls hard (implies `label`). */
+  big?: boolean;
+  /** Button text for the labelled/big button (defaults to the generic camera label). */
+  text?: string;
   /** z-index of the preview dialog, for callers that sit above the normal dialog layer (e.g. a drawer). */
   zIndex?: number;
 }
@@ -33,6 +37,8 @@ export default function CameraCapture({
   disabled,
   label,
   size = 'small',
+  big,
+  text,
   zIndex,
 }: CameraCaptureProps) {
   const { t } = useTranslation();
@@ -135,15 +141,17 @@ export default function CameraCapture({
           e.target.value = '';
         }}
       />
-      {label ? (
+      {label || big ? (
         <Button
-          variant="outlined"
-          size={size}
+          variant={big ? 'contained' : 'outlined'}
+          size={big ? 'large' : size}
+          fullWidth={big}
           startIcon={<CameraIcon />}
           onClick={handleOpen}
           disabled={disabled}
+          sx={big ? { py: 2, fontSize: '1.2rem', fontWeight: 700 } : undefined}
         >
-          {t('shared.camera')}
+          {text ?? t('shared.camera')}
         </Button>
       ) : (
         <Tooltip title={t('shared.takePhoto')}>

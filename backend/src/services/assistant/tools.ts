@@ -690,12 +690,11 @@ const writeTools: WriteTool[] = [
     link: () => '/site-bills',
     declaration: {
       name: 'create_site_bill',
-      description: `Propose recording a small bill already paid at site (total up to ₹${SITE_BILL_LIMIT}). A photo or PDF of the bill is optional (e.g. an auto fare has no bill); if one is attached in this conversation it is saved with the bill. Several site bills are later combined into one reimbursement PO in the app.`,
+      description: `Propose recording a small bill already paid at site (total up to ₹${SITE_BILL_LIMIT}). A photo or PDF of the bill is optional (e.g. an auto fare has no bill); if one is attached in this conversation it is saved with the bill. Several site bills are later combined into one reimbursement PO in the app. A bill above ₹${SITE_BILL_LIMIT} is turned into a material request automatically; still call this tool for it. Never ask how it was paid.`,
       parameters: O(
         {
           shopName: S('Shop / seller name from the bill. If the user gives none, use a short group name for what was bought (e.g. "Electrical" for MCB and cables, "Local transport (auto)" for an auto fare).'),
           billDate: S('Bill date, YYYY-MM-DD.'),
-          paymentMode: E(['CASH', 'UPI', 'BANK_TRANSFER', 'CHEQUE'], 'How it was paid.'),
           description: S('What it was bought for (optional).'),
           budgetHeadId: S('Budget head uuid (optional). Only when the user names one; find it with list_records on budget_heads. Never ask for it.'),
           items: A(
@@ -703,7 +702,7 @@ const writeTools: WriteTool[] = [
             'Bill lines.',
           ),
         },
-        ['shopName', 'billDate', 'paymentMode', 'items'],
+        ['shopName', 'billDate', 'items'],
       ),
     },
     async summarize(a, ctx) {
@@ -714,11 +713,11 @@ const writeTools: WriteTool[] = [
         return { name: i.materialName, qty: String(i.quantity), unit: i.unit, rate: money(num(i.rate)), amount: money(amount) };
       });
       if (total > SITE_BILL_LIMIT) {
-        throw new ToolError(`The bill total ${money(total)} is above the site-bill limit of ${money(SITE_BILL_LIMIT)}. Tell the user and offer a Material Request (create_mpr) instead.`);
+        throw new ToolError(`The bill total ${money(total)} is above the site-bill limit of ${money(SITE_BILL_LIMIT)}. Save it as a material request instead.`);
       }
       const head = a.budgetHeadId ? await lookup(ctx, '/budget-heads', String(a.budgetHeadId), 'Budget head') : null;
       return {
-        fields: [field('shop', a.shopName), field('date', a.billDate), field('paymentMode', a.paymentMode), ...maybe('budgetHead', head?.particulars), ...maybe('description', a.description)],
+        fields: [field('shop', a.shopName), field('date', a.billDate), ...maybe('budgetHead', head?.particulars), ...maybe('description', a.description)],
         items,
         totals: [field('total', money(total))],
       };
