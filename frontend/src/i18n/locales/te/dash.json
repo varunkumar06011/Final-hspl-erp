@@ -128,5 +128,7 @@
   "reversedLoan": "రద్దు చేసిన రుణం",
   "loanReceipt": "రుణ రసీదు",
   "noLoanReceipts": "నగదు రుణ రసీదులు కనబడలేదు.",
-  "noVoucherSnack": "ఈ చెల్లింపుకు వోచర్ జతచేయబడలేదు"
+  "noVoucherSnack": "ఈ చెల్లింపుకు వోచర్ జతచేయబడలేదు",
+  "showAmounts": "మొత్తాలను చూపించు",
+  "hideAmounts": "మొత్తాలను దాచు"
 }

@@ -4,13 +4,15 @@ import { useQuery } from '@tanstack/react-query';
 import { keyframes } from '@emotion/react';
 import {
   Box, Button, Card, CardContent, Chip, Dialog, DialogActions, DialogContent,
-  DialogTitle, LinearProgress, Snackbar, Stack, Table, TableBody, TableCell, TableHead,
+  DialogTitle, IconButton, LinearProgress, Snackbar, Stack, Table, TableBody, TableCell, TableHead,
   TableRow, TextField, Typography, Skeleton,
 } from '@mui/material';
 import {
   AccountBalance as AccountBalanceIcon,
   AccountBalanceWallet as WalletIcon,
   Close as CloseIcon,
+  Visibility as VisibilityIcon,
+  VisibilityOff as VisibilityOffIcon,
   History as HistoryIcon,
   AttachMoney as MoneyIcon,
   CalendarMonth as CalendarIcon,
@@ -25,6 +27,7 @@ import { Area, AreaChart, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAx
 import api from '../config/api';
 import { formatCurrency, formatDate } from '../utils/enumOptions';
 import { useAuthStore } from '../stores/authStore';
+import { useTimedReveal } from '../hooks/useTimedReveal';
 import RateTrackerWidget from '../components/RateTrackerWidget';
 import { VoucherPreviewDialog, usePrefetchVoucher } from '../components/VoucherPrint';
 import AllPendingTasksDialog from '../components/AllPendingTasksDialog';
@@ -177,14 +180,33 @@ function kpiFont(formatted: string) {
   return { xs: '1.15rem', sm: '1.4rem' };
 }
 
-function KpiCard({ title, value, subtitle, color, delta, spark, extra, onClick }: {
+const MASKED = '₹ ••••••';
+
+function EyeToggle({ revealed, onToggle }: { revealed: boolean; onToggle: () => void }) {
+  const { t } = useTranslation('dash');
+  return (
+    <IconButton
+      size="small"
+      aria-label={revealed ? t('hideAmounts') : t('showAmounts')}
+      title={revealed ? t('hideAmounts') : t('showAmounts')}
+      onClick={(e) => { e.stopPropagation(); onToggle(); }}
+      onKeyDown={(e) => e.stopPropagation()}
+      sx={{ p: 0.3, color: D.textDim, flexShrink: 0 }}
+    >
+      {revealed ? <VisibilityOffIcon sx={{ fontSize: 16 }} /> : <VisibilityIcon sx={{ fontSize: 16 }} />}
+    </IconButton>
+  );
+}
+
+function KpiCard({ title, value, subtitle, color, delta, spark, extra, onClick, revealed, onToggleReveal }: {
+  revealed: boolean; onToggleReveal: () => void;
   title: string; value: number; subtitle: string; color: string;
   delta?: { pct: number; up: boolean } | null;
   spark?: { v: number }[];
   extra?: ReactNode;
   onClick?: () => void;
 }) {
-  const formatted = formatCurrency(value);
+  const formatted = revealed ? formatCurrency(value) : MASKED;
   return (
     <Card
       onClick={onClick}
@@ -209,8 +231,9 @@ function KpiCard({ title, value, subtitle, color, delta, spark, extra, onClick }
               }}
             />
           )}
+          <EyeToggle revealed={revealed} onToggle={onToggleReveal} />
         </Stack>
-        <Typography title={formatted} sx={{ mt: 0.5, fontSize: kpiFont(formatted), fontWeight: 800, color: D.text, lineHeight: 1.15, whiteSpace: 'nowrap', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', fontFamily: NUM_FONT }}>
+        <Typography title={revealed ? formatted : undefined} sx={{ mt: 0.5, fontSize: kpiFont(formatted), fontWeight: 800, color: D.text, lineHeight: 1.15, whiteSpace: 'nowrap', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', fontFamily: NUM_FONT }}>
           {formatted}
         </Typography>
         <Typography sx={{ fontSize: '0.66rem', color: D.textDim, mt: 0.25 }}>{subtitle}</Typography>
@@ -225,6 +248,7 @@ export default function DenseAdminDashboard() {
   const { t } = useTranslation('dash');
   const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);
+  const { revealed, toggle: toggleReveal } = useTimedReveal(10000);
   const { data, isLoading } = useQuery<DashboardData>({
     queryKey: ['/dashboard', 'admin-summary'],
     queryFn: async () => (await api.get('/dashboard/admin-summary')).data,
@@ -370,10 +394,10 @@ export default function DenseAdminDashboard() {
 
       {/* ── KPI cards — 2×2 on mobile, 4-across on desktop, sparklines under values ── */}
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'repeat(2, minmax(0, 1fr))', lg: 'repeat(4, minmax(0, 1fr))' }, gap: { xs: 1, md: 1.2 }, mb: 1.4 }}>
-        <KpiCard title={t('inwardFunds')} value={data?.pureBankInward ?? 0} subtitle={t('allFundsReceived')} color={D.teal} spark={inwardSpark} onClick={() => setInwardOpen(true)} />
-        <KpiCard title={t('totalExpenditure')} value={data?.totalExpenditure ?? 0} subtitle={t('spendExclLoan')} color={D.red} delta={expenditureDelta} spark={expenditureSpark} onClick={() => setExpenditureOpen(true)} />
-        <KpiCard title={t('shortAdvanceLoan')} value={data?.outstandingLoans ?? 0} subtitle={t('stillToRepayLenders')} color={D.violet} onClick={() => setShortAdvanceOpen(true)} />
-        <KpiCard title={t('balance')} value={data?.balance ?? 0} subtitle={t('balanceFormula')} color={D.blue} onClick={() => setBalanceOpen(true)} />
+        <KpiCard title={t('inwardFunds')} revealed={revealed} onToggleReveal={toggleReveal} value={data?.pureBankInward ?? 0} subtitle={t('allFundsReceived')} color={D.teal} spark={inwardSpark} onClick={() => setInwardOpen(true)} />
+        <KpiCard title={t('totalExpenditure')} revealed={revealed} onToggleReveal={toggleReveal} value={data?.totalExpenditure ?? 0} subtitle={t('spendExclLoan')} color={D.red} delta={expenditureDelta} spark={expenditureSpark} onClick={() => setExpenditureOpen(true)} />
+        <KpiCard title={t('shortAdvanceLoan')} revealed={revealed} onToggleReveal={toggleReveal} value={data?.outstandingLoans ?? 0} subtitle={t('stillToRepayLenders')} color={D.violet} onClick={() => setShortAdvanceOpen(true)} />
+        <KpiCard title={t('balance')} revealed={revealed} onToggleReveal={toggleReveal} value={data?.balance ?? 0} subtitle={t('balanceFormula')} color={D.blue} onClick={() => setBalanceOpen(true)} />
       </Box>
 
       {/* ── Overview row: donut + action + work + spend range ── */}
@@ -718,8 +742,9 @@ export default function DenseAdminDashboard() {
                         <AccountBalanceIcon sx={{ fontSize: 14, color: '#fff' }} />
                       </Box>
                       <Typography sx={{ fontSize: '0.66rem', color: D.textDim, flex: 1 }} noWrap>{r.label}</Typography>
+                      <EyeToggle revealed={revealed} onToggle={toggleReveal} />
                     </Stack>
-                    <Typography sx={{ mt: 0.7, fontSize: { xs: '0.98rem', sm: '1.1rem' }, fontWeight: 800, color: D.text, fontFamily: NUM_FONT, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={formatCurrency(r.value)}>{formatCurrency(r.value)}</Typography>
+                    <Typography sx={{ mt: 0.7, fontSize: { xs: '0.98rem', sm: '1.1rem' }, fontWeight: 800, color: D.text, fontFamily: NUM_FONT, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={revealed ? formatCurrency(r.value) : undefined}>{revealed ? formatCurrency(r.value) : MASKED}</Typography>
                     <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mt: 0.4 }}>
                       <Typography sx={{ fontSize: '0.6rem', fontWeight: 700, color: r.color, fontFamily: NUM_FONT }}>{t('ofLiquid', { p: share.toFixed(1) })}</Typography>
                     </Stack>

@@ -128,5 +128,7 @@
   "reversedLoan": "Reversed Loan",
   "loanReceipt": "Loan Receipt",
   "noLoanReceipts": "No cash loan receipts found.",
-  "noVoucherSnack": "No voucher is linked to this payment"
+  "noVoucherSnack": "No voucher is linked to this payment",
+  "showAmounts": "Show amounts",
+  "hideAmounts": "Hide amounts"
 }
