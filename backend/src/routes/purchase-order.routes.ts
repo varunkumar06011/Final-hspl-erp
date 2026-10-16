@@ -1858,6 +1858,7 @@ router.get(
           vendor: true,
           quotation: { select: { quotationNumber: true } },
           contractPo: { select: { poNumber: true, contractTitle: true } },
+          parentPo: { select: { poNumber: true } },
           items: true,
           createdByUser: { select: { name: true } },
           approvalWorkflow: {

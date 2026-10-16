@@ -93,7 +93,9 @@ export async function streamPurchaseOrderPdf(res: NodeJS.WritableStream, po: any
 
   // Contracts: a sub-PO is titled as such and names its contract and period; a contract's own PO says so too.
   const isSubPo = !!po.contractPo || !!po.contractPoId;
-  const docTitle = isSubPo ? 'SUB PURCHASE ORDER' : po.isContract ? 'CONTRACT PURCHASE ORDER' : 'PURCHASE ORDER';
+  // Balance sub-PO of a normal PO: part payment, linked to its main PO by parentPoId.
+  const isPartPo = !!po.parentPoId && (po.regenerationNumber ?? 0) === 0;
+  const docTitle = isSubPo || isPartPo ? 'SUB PURCHASE ORDER' : po.isContract ? 'CONTRACT PURCHASE ORDER' : 'PURCHASE ORDER';
   const periodText = po.periodLabel
     ? `${po.periodLabel}${po.periodFrom ? ` (${new Date(po.periodFrom).toLocaleDateString('en-IN')}${po.periodTo ? ` - ${new Date(po.periodTo).toLocaleDateString('en-IN')}` : ''})` : ''}`
     : '';
@@ -135,9 +137,11 @@ export async function streamPurchaseOrderPdf(res: NodeJS.WritableStream, po: any
   const vBoxTop = y;
   y = drawLabel('Date', new Date(po.createdAt).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' }), leftCol, y, leftW);
   if (isSubPo) {
-    y = drawLabel('Contract PO', text(po.contractPo?.poNumber ?? po.poNumber.replace(/-SUBd+$/, '')), leftCol, y, leftW);
+    y = drawLabel('Contract PO', text(po.contractPo?.poNumber ?? po.poNumber.replace(/-SUB\d+$/, '')), leftCol, y, leftW);
     if (po.contractPo?.contractTitle) y = drawLabel('Contract', text(po.contractPo.contractTitle), leftCol, y, leftW);
     if (periodText) y = drawLabel('Period', text(periodText), leftCol, y, leftW);
+  } else if (isPartPo) {
+    y = drawLabel('Main PO', text(po.parentPo?.poNumber ?? po.poNumber.replace(/-SUB\d+$/, '')), leftCol, y, leftW);
   } else if (po.isContract && po.contractTitle) {
     y = drawLabel('Contract', text(po.contractTitle), leftCol, y, leftW);
   }
