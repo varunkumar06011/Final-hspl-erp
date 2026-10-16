@@ -3,6 +3,7 @@ import { Permission, isModuleEnabled } from '@hospital-erp/shared';
 import { prisma } from '../config/prisma';
 import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middleware/auth';
 import { rbacMiddleware } from '../middleware/rbac';
+import { EXCLUDE_PART_POS } from '../services/part-po.service';
 
 const router = Router();
 router.use(authMiddleware);
@@ -124,7 +125,7 @@ router.get(
           select: { vendorId: true, date: true, grandTotal: true, status: true },
         }),
         prisma.purchaseOrder.findMany({
-          where: { projectId, deletedAt: null, status: { not: 'DELETED' }, date: inYear },
+          where: { projectId, deletedAt: null, status: { not: 'DELETED' }, date: inYear, ...EXCLUDE_PART_POS },
           select: { vendorId: true, date: true, grandTotal: true, netPayable: true, status: true, budgetHeadId: true, budgetHead: { select: { particulars: true } } },
         }),
         prisma.vendorInvoice.findMany({

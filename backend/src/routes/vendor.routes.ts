@@ -8,6 +8,7 @@ import { rbacMiddleware } from '../middleware/rbac';
 import { notifyAllHeads } from '../services/push.service';
 import { generateProjectSequenceNumber } from '../services/sequence.service';
 import { ensureVendorLedger } from './ledger.routes';
+import { EXCLUDE_PART_POS } from '../services/part-po.service';
 
 interface MaterialInput {
   id?: string;
@@ -105,7 +106,7 @@ const router = createCrudRouter({
       // vendors instead of only invoiced ones. POs that DO have invoices are
       // already counted via the invoice amounts (avoids double counting).
       prisma.purchaseOrder.findMany({
-        where: { projectId, vendorId: { in: vendorIds }, deletedAt: null, status: { not: POStatus.DELETED } },
+        where: { projectId, vendorId: { in: vendorIds }, deletedAt: null, status: { not: POStatus.DELETED }, ...EXCLUDE_PART_POS },
         select: {
           vendorId: true,
           netPayable: true,

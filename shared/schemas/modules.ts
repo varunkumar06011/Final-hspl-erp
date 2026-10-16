@@ -365,6 +365,19 @@ export const createSubPOSchema = z.object({
   }),
 });
 
+// A balance sub-PO of a normal PO (<PO>-SUB01 ...): the next part payment of an already approved PO.
+// It is approved on its own but adds no budget commitment or vendor payable (the main PO holds the whole amount).
+export const createPartPOSchema = z.object({
+  params: z.object({ id: uuid }),
+  body: z.object({
+    amount: money,
+    paymentType: z.nativeEnum(POPaymentType).optional(),
+    advanceAmount: money.optional(),
+    paymentTerms: z.string().max(500).optional(),
+    notes: z.string().trim().max(1000).optional(),
+  }),
+});
+
 // Edit the contract's own terms at any time (estimate up/down, dates, close). No re-approval:
 // the estimate is indicative and every sub-PO is approved on its own.
 export const updateContractTermsSchema = z.object({

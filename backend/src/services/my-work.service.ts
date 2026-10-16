@@ -13,6 +13,7 @@ import {
   UserRole,
 } from '@hospital-erp/shared';
 import { prisma } from '../config/prisma';
+import { EXCLUDE_PART_POS } from './part-po.service';
 
 // ═══════════════════════════════════════════════════════════
 // "My Work" — one list per person of what needs them and what they started.
@@ -272,6 +273,7 @@ export async function getMyWork(projectId: string, viewer: Viewer): Promise<MyWo
             deletedAt: null,
             isSiteBillBatch: false, // bought and used at site already
             NOT: { isContract: true, grandTotal: 0 }, // an umbrella contract has nothing to deliver
+            AND: [EXCLUDE_PART_POS], // a balance sub-PO is received on its main PO
             status: { in: [POStatus.APPROVED, POStatus.PARTIALLY_DELIVERED] },
           },
           orderBy: { updatedAt: 'asc' },

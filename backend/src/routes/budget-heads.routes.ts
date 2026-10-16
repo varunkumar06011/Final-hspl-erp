@@ -10,6 +10,7 @@ import { prisma } from '../config/prisma';
 import { createCrudRouter } from '../utils/crudFactory';
 import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middleware/auth';
 import { rbacMiddleware, rbacFinanceManager } from '../middleware/rbac';
+import { EXCLUDE_PART_POS } from '../services/part-po.service';
 import { validateMiddleware } from '../middleware/validate';
 import { logAudit } from '../services/audit.service';
 
@@ -229,7 +230,7 @@ router.post(
         // Previously excluded only REJECTED, so DRAFT/PENDING_APPROVAL/CANCELLED POs
         // inflated committedAmount and hid available budget.
         const pos = await tx.purchaseOrder.findMany({
-          where: { projectId, budgetHeadId: head.id, deletedAt: null, status: { in: ['APPROVED', 'PARTIALLY_DELIVERED', 'DELIVERED'] } },
+          where: { projectId, budgetHeadId: head.id, deletedAt: null, status: { in: ['APPROVED', 'PARTIALLY_DELIVERED', 'DELIVERED'] }, ...EXCLUDE_PART_POS },
           select: {
             id: true,
             poNumber: true,
@@ -486,7 +487,7 @@ router.get(
       // 1. Approved POs with this budget head → committed events
       // ── C29: Only include genuinely committed POs, not drafts/pending/cancelled ──
       const pos = await prisma.purchaseOrder.findMany({
-        where: { projectId, budgetHeadId, deletedAt: null, status: { in: ['APPROVED', 'PARTIALLY_DELIVERED', 'DELIVERED'] } },
+        where: { projectId, budgetHeadId, deletedAt: null, status: { in: ['APPROVED', 'PARTIALLY_DELIVERED', 'DELIVERED'] }, ...EXCLUDE_PART_POS },
         select: {
           id: true,
           poNumber: true,

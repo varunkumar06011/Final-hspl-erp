@@ -1,6 +1,6 @@
 import { Router, Response, NextFunction } from 'express';
 import { Permission, POStatus, POPaymentType, AuditAction, UserRole, GoodsReceiptStatus, isAdminRole, isFirstLevelApproverRole, FIRST_LEVEL_APPROVER_ROLES, VoucherType, GST_LEDGER_NAMES, VendorType, MPRStatus } from '@hospital-erp/shared';
-import { createPOSchema, listPOsSchema, approvalActionSchema, editPOSchema, editUnapprovedPOSchema, regeneratePOSchema, changePOPaymentTypeSchema, createContractPOSchema, convertToContractSchema, isUmbrellaContract, createSubPOSchema, updateContractTermsSchema } from '@hospital-erp/shared';
+import { createPOSchema, listPOsSchema, approvalActionSchema, editPOSchema, editUnapprovedPOSchema, regeneratePOSchema, changePOPaymentTypeSchema, createContractPOSchema, convertToContractSchema, isUmbrellaContract, createSubPOSchema, createPartPOSchema, updateContractTermsSchema } from '@hospital-erp/shared';
 import { prisma } from '../config/prisma';
 import { Prisma } from '@prisma/client';
 import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middleware/auth';
@@ -15,6 +15,7 @@ import { ensureVendorLedger, findLedgerByName } from './ledger.routes';
 import { postVoucher, generateVoucherNumber } from './voucher.routes';
 import { getActiveAdminRoles, generatePONumber, createNonVendorPoFromMpr, findLivePoForMpr } from '../services/non-vendor-po.service';
 import { reconcilePoAccrualSafe, hasPoAccrual, payableAfterDeductions } from '../services/po-accrual.service';
+import { isPartPo, partPoBalance } from '../services/part-po.service';
 
 const router = Router();
 router.use(authMiddleware);
@@ -79,7 +80,7 @@ async function generateRegeneratedPONumber(parentPo: { poNumber: string; id: str
   const projectCode = originalMatch ? originalMatch[1] : 'VGH';
   const originalNum = originalMatch ? (originalMatch[2] ?? originalMatch[3]) : '001';
   const childCount = await prisma.purchaseOrder.count({
-    where: { parentPoId: parentPo.id },
+    where: { parentPoId: parentPo.id, regenerationNumber: { gt: 0 } },
   });
   return `${projectCode}-REGPO${originalNum}/${childCount + 1}`;
 }
@@ -128,7 +129,7 @@ const poInclude = {
   createdByUser: { select: { id: true, name: true } },
   editedByUser: { select: { id: true, name: true } },
   parentPo: { select: { id: true, poNumber: true } },
-  childPos: { select: { id: true, poNumber: true, regenerationNumber: true, status: true } },
+  childPos: { where: { deletedAt: null }, select: { id: true, poNumber: true, regenerationNumber: true, status: true, grandTotal: true } },
   contractPo: { select: { id: true, poNumber: true, contractTitle: true, contractType: true } },
   subPos: {
     where: { deletedAt: null },
@@ -862,6 +863,147 @@ router.post(
   }
 );
 
+// GET /:id/part-balance — how much of a PO is still unpaid and not covered by a sub-PO.
+router.get(
+  '/:id/part-balance',
+  rbacMiddleware(Permission.CREATE_PO),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      const po = await prisma.purchaseOrder.findFirst({ where: { id: req.params.id, projectId, deletedAt: null } });
+      if (!po) {
+        res.status(404).json({ error: 'Purchase order not found' });
+        return;
+      }
+      res.json(await partPoBalance(po));
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// POST /:id/part-pos — raise the next part-payment sub-PO (<PO>-SUB01 ...) of an approved normal PO.
+// Own approval and payment, but no extra budget commitment / vendor payable (see part-po.service.ts).
+router.post(
+  '/:id/part-pos',
+  rbacMiddleware(Permission.CREATE_PO),
+  validateMiddleware(createPartPOSchema),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      const main = await prisma.purchaseOrder.findFirst({ where: { id: req.params.id, projectId, deletedAt: null } });
+      if (!main) {
+        res.status(404).json({ error: 'Purchase order not found' });
+        return;
+      }
+      if (main.isContract || main.parentPoId || main.contractPoId || main.isSiteBillBatch) {
+        res.status(400).json({ error: 'Balance sub-POs can only be raised on a normal purchase order' });
+        return;
+      }
+      if (!COMMITTED_PO_STATUSES.includes(main.status)) {
+        res.status(400).json({ error: 'Sub-POs can only be raised against an approved purchase order' });
+        return;
+      }
+
+      const amount = Math.round(Number(req.body.amount) * 100) / 100;
+      const balance = await partPoBalance(main);
+      if (amount > balance.remaining) {
+        res.status(400).json({ error: `Amount (${amount}) exceeds the balance of ${balance.remaining} left on ${main.poNumber}` });
+        return;
+      }
+      const paymentType: string = req.body.paymentType ?? POPaymentType.FULL_PAYMENT;
+      let advanceAmount: number | null = null;
+      if (paymentType === POPaymentType.ADVANCE || paymentType === POPaymentType.FULL_PAYMENT) {
+        advanceAmount = paymentType === POPaymentType.FULL_PAYMENT ? amount : Number(req.body.advanceAmount);
+        if (!Number.isFinite(advanceAmount) || advanceAmount <= 0 || advanceAmount > amount) {
+          res.status(400).json({ error: 'Advance amount must be more than 0 and not more than the sub-PO amount' });
+          return;
+        }
+      }
+
+      const adminRoles = await getActiveAdminRoles(projectId);
+      const existingCount = await prisma.purchaseOrder.count({ where: { parentPoId: main.id, regenerationNumber: 0 } });
+      let created: { id: string; poNumber: string; approvalWorkflowId: string | null } | null = null;
+      for (let attempt = 0; attempt < 5 && !created; attempt++) {
+        const poNumber = `${main.poNumber}-SUB${String(existingCount + 1 + attempt).padStart(2, '0')}`;
+        try {
+          created = await prisma.$transaction(async (tx) => {
+            const sub = await tx.purchaseOrder.create({
+              data: {
+                projectId,
+                vendorId: main.vendorId,
+                poNumber,
+                status: POStatus.PENDING_APPROVAL,
+                paymentType,
+                advanceAmount,
+                paymentTerms: req.body.paymentTerms ?? main.paymentTerms ?? null,
+                notes: req.body.notes ?? null,
+                referredBy: main.referredBy,
+                totalAmount: amount,
+                gstAmount: 0,
+                grandTotal: amount,
+                totalDeductions: 0,
+                netPayable: amount,
+                budgetHeadId: main.budgetHeadId,
+                phaseId: main.phaseId,
+                createdBy: req.user!.id,
+                parentPoId: main.id,
+                regenerationNumber: 0,
+                items: {
+                  create: [{ materialName: `Balance payment of ${main.poNumber}`, quantity: 1, unit: 'lot', unitPrice: amount, amount, gstRate: 0 }],
+                },
+              },
+            });
+            const workflow = await tx.approvalWorkflow.create({
+              data: {
+                entityType: 'PURCHASE_ORDER',
+                entityId: sub.id,
+                projectId,
+                status: 'VERIFICATION',
+                currentStep: 0,
+                minApprovers: 1,
+                approvalPolicy: HEAD_THEN_ADMIN_POLICY,
+                steps: { create: headThenAdminSteps(adminRoles) },
+              },
+            });
+            await tx.purchaseOrder.update({ where: { id: sub.id }, data: { approvalWorkflowId: workflow.id } });
+            return { id: sub.id, poNumber, approvalWorkflowId: workflow.id };
+          });
+        } catch (err) {
+          const duplicate = err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002';
+          if (!duplicate) throw err;
+        }
+      }
+      if (!created) {
+        res.status(409).json({ error: 'Could not allocate a sub-PO number, please try again' });
+        return;
+      }
+
+      await logAudit({
+        userId: req.user!.id,
+        action: AuditAction.CREATE,
+        entityType: 'PURCHASE_ORDER',
+        entityId: created.id,
+        projectId,
+        newValue: { poNumber: created.poNumber, partOfPoId: main.id, partOfPoNumber: main.poNumber, amount, paymentType },
+      });
+
+      notifyApprovers(projectId, [...FIRST_LEVEL_APPROVER_ROLES] as UserRole[], {
+        approvalId: created.approvalWorkflowId ?? '',
+        entityType: 'PURCHASE_ORDER',
+        entityId: created.id,
+        title: 'New Approval Required',
+        body: `Sub-PO ${created.poNumber} (${main.poNumber}) — ₹${amount}`,
+        url: `/pos?id=${created.id}`,
+      }).catch((err) => console.error('[Push] Part sub-PO notification error:', err));
+
+      res.status(201).json(await prisma.purchaseOrder.findUnique({ where: { id: created.id }, include: poInclude }));
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
 // POST /:id/sub-pos — raise the sub-PO for one billing period of an approved contract.
 // Same vendor/budget as the contract, amounts entered per period (no cap), own approval.
 router.post(
@@ -1346,7 +1488,7 @@ router.delete(
         POStatus.DELIVERED,
       ];
       const bhId = existing.budgetHeadId;
-      if (bhId && committedStatuses.includes(existing.status)) {
+      if (bhId && committedStatuses.includes(existing.status) && !isPartPo(existing)) {
         await prisma.$transaction(async (tx) => {
           await tx.purchaseOrder.update({
             where: { id: existing.id },
@@ -1453,7 +1595,8 @@ router.post(
       // amount, require a non-empty comment (override reason) from the approver.
       // An edited PO's commitment was already booked at edit time, so for it the
       // head's committed amount already includes this PO (nothing more is added).
-      if (po.budgetHeadId) {
+      // A balance sub-PO adds no commitment (its main PO already holds the whole amount).
+      if (po.budgetHeadId && !isPartPo(po)) {
         const head = await prisma.budgetHead.findFirst({
           where: { id: po.budgetHeadId, projectId, deletedAt: null },
           select: { allocatedAmount: true, committedAmount: true, particulars: true },
@@ -1502,7 +1645,8 @@ router.post(
         // Skip for edited POs: their commitment was already adjusted at edit time
         // (delta = newGrandTotal - oldGrandTotal). Adding grandTotal again here
         // would double-count and permanently inflate the committed budget.
-        if (po.budgetHeadId && !po.editedAt) {
+        // A balance sub-PO skips both this and the payable below: its main PO already holds them.
+        if (po.budgetHeadId && !po.editedAt && !isPartPo(po)) {
           // Atomic increment — DB applies the delta, preventing lost updates
           // when multiple POs against the same budget head are approved concurrently.
           await prisma.budgetHead.update({
@@ -1513,7 +1657,7 @@ router.post(
 
         // ── Accounting: we now owe the vendor — Dr Purchase / Cr Vendor ledger ──
         // For an edited PO this posts only the difference vs. what is already booked.
-        await reconcilePoAccrualSafe(po.id, req.user!.id);
+        if (!isPartPo(po)) await reconcilePoAccrualSafe(po.id, req.user!.id);
       }
 
       const updated = await prisma.purchaseOrder.findUnique({
@@ -1793,6 +1937,10 @@ router.post(
       }
       if (isUmbrellaContract(po)) {
         res.status(400).json({ error: CONTRACT_PO_ITEM_EDIT_ERROR });
+        return;
+      }
+      if (isPartPo(po)) {
+        res.status(400).json({ error: 'A balance sub-PO cannot be edited. Delete it and raise a new one from the main PO.' });
         return;
       }
       const isApprovedPo = po.status === POStatus.APPROVED;
@@ -2332,7 +2480,7 @@ router.post(
       }
       // Check no child PO already exists
       const existingChild = await prisma.purchaseOrder.findFirst({
-        where: { parentPoId: po.id, deletedAt: null },
+        where: { parentPoId: po.id, deletedAt: null, regenerationNumber: { gt: 0 } },
       });
       if (existingChild) {
         res.status(400).json({ error: `Already regenerated to ${existingChild.poNumber}` });
@@ -2461,6 +2609,11 @@ router.post(
       });
       if (!po) {
         res.status(404).json({ error: 'Purchase order not found' });
+        return;
+      }
+
+      if (isPartPo(po)) {
+        res.status(400).json({ error: 'A balance sub-PO follows its main PO. Change the budget head on the main PO.' });
         return;
       }
 

@@ -6,6 +6,7 @@ import {
   approveGatePassSchema,
 } from '@hospital-erp/shared';
 import { prisma } from '../config/prisma';
+import { EXCLUDE_PART_POS } from '../services/part-po.service';
 import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middleware/auth';
 import { rbacMiddleware } from '../middleware/rbac';
 import { validateMiddleware } from '../middleware/validate';
@@ -119,7 +120,7 @@ router.get(
     try {
       const projectId = requireProjectId(req);
       const pos = await prisma.purchaseOrder.findMany({
-        where: { projectId, deletedAt: null, NOT: { isContract: true, grandTotal: 0 }, status: { in: ['APPROVED', 'PARTIALLY_DELIVERED'] } },
+        where: { projectId, deletedAt: null, NOT: { isContract: true, grandTotal: 0 }, AND: [EXCLUDE_PART_POS], status: { in: ['APPROVED', 'PARTIALLY_DELIVERED'] } },
         include: {
           vendor: { select: { id: true, name: true, vendorCode: true } },
           items: true,

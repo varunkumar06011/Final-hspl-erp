@@ -3,6 +3,7 @@ import { Permission } from '@hospital-erp/shared';
 import { prisma } from '../config/prisma';
 import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middleware/auth';
 import { rbacMiddleware } from '../middleware/rbac';
+import { EXCLUDE_PART_POS } from '../services/part-po.service';
 
 const router = Router();
 router.use(authMiddleware);
@@ -114,6 +115,7 @@ router.get(
               projectId,
               deletedAt: null,
               status: { in: ['APPROVED', 'DELIVERED', 'PARTIALLY_DELIVERED'] },
+              ...EXCLUDE_PART_POS, // balance sub-POs are slices of their main PO
             },
             _sum: { grandTotal: true },
           }),

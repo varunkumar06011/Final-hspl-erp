@@ -6,6 +6,7 @@ import {
   postGoodsReceiptSchema,
 } from '@hospital-erp/shared';
 import { Prisma } from '@prisma/client';
+import { EXCLUDE_PART_POS } from '../services/part-po.service';
 import { prisma } from '../config/prisma';
 import { findInventoryItemForMaterial, materialCodeForName } from '../services/inventory-match.service';
 import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middleware/auth';
@@ -217,7 +218,7 @@ router.get(
     try {
       const projectId = requireProjectId(req);
       const pos = await prisma.purchaseOrder.findMany({
-        where: { projectId, deletedAt: null, NOT: { isContract: true, grandTotal: 0 }, status: { in: ['APPROVED', 'PARTIALLY_DELIVERED'] } },
+        where: { projectId, deletedAt: null, NOT: { isContract: true, grandTotal: 0 }, AND: [EXCLUDE_PART_POS], status: { in: ['APPROVED', 'PARTIALLY_DELIVERED'] } },
         include: {
           vendor: { select: { id: true, name: true, vendorCode: true } },
           items: true,

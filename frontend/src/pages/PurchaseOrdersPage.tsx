@@ -82,6 +82,7 @@ import CommentsButton from '../components/CommentsButton';
 import LinkedFiles from '../components/LinkedFiles';
 import ItemsGist from '../components/ItemsGist';
 import { NewContractDialog, ContractPanel, ConvertToContractDialog } from '../components/ContractPO';
+import { PartPoDialog } from '../components/PartPoDialog';
 
 interface POItemLedgerPost {
   id: string;
@@ -240,6 +241,7 @@ export default function PurchaseOrdersPage() {
   const [expandedPoId, setExpandedPoId] = useState<string | null>(null);
   const [contractOpen, setContractOpen] = useState(false);
   const [convertRow, setConvertRow] = useState<PORow | null>(null);
+  const [partRow, setPartRow] = useState<PORow | null>(null);
   const [tab, setTab] = useState<'all' | 'contract'>('all');
   const [detailRows, setDetailRows] = useState<Set<string>>(new Set());
   const toggleDetails = (id: string) => setDetailRows((prev) => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; });
@@ -611,6 +613,10 @@ export default function PurchaseOrdersPage() {
   // Any live PO that is not already a contract / sub-PO / site-bill batch can become a contract.
   function canConvertToContract(row: PORow): boolean {
     return !!user && !row.isContract && !row.contractPoId && !row.isSiteBillBatch && LIVE_FOR_CLASSIFY.includes(row.status) && hasPermission(user.role, Permission.CREATE_PO, user.extraPermissions);
+  }
+  // An approved normal PO that is not itself a contract / sub-PO can take balance sub-POs (part payments).
+  function canAddPartPo(row: PORow): boolean {
+    return !!user && !row.isContract && !row.contractPoId && !row.parentPoId && !row.isSiteBillBatch && [POStatus.APPROVED, POStatus.PARTIALLY_DELIVERED, POStatus.DELIVERED].includes(row.status as POStatus) && hasPermission(user.role, Permission.CREATE_PO, user.extraPermissions);
   }
   function needsClassification(row: PORow): boolean {
     return !isUmbrellaContract(row) && !row.budgetHeadId && LIVE_FOR_CLASSIFY.includes(row.status);
@@ -1064,16 +1070,21 @@ export default function PurchaseOrdersPage() {
                             <DetailSection title={t('sectionOrder')}>
                               <DetailField label={t('poNo')}>
                                 {row.poNumber}
-                                {row.parentPo && (
+                                {row.parentPo && ((row.regenerationNumber ?? 0) > 0 ? (
                                   <Typography component="span" variant="caption" color="text.secondary" sx={{ display: 'block' }}>{t('fromPo', { n: row.parentPo.poNumber })}</Typography>
-                                )}
+                                ) : (
+                                  <Typography component="span" variant="caption" color="text.secondary" sx={{ display: 'block' }}>{t('partPoOf', { n: row.parentPo.poNumber })}</Typography>
+                                ))}
                                 {row.contractPo && (
                                   <Typography component="span" variant="caption" color="text.secondary" sx={{ display: 'block' }}>
                                     {t('subPoOf', { n: row.contractPo.poNumber })}{row.periodLabel ? ` · ${row.periodLabel}` : ''}
                                   </Typography>
                                 )}
-                                {row.childPos && row.childPos.length > 0 && (
-                                  <Typography component="span" variant="caption" color="secondary.main" sx={{ display: 'block' }}>{t('regenLine', { list: row.childPos.map((c) => c.poNumber).join(', ') })}</Typography>
+                                {row.childPos && row.childPos.some((c) => c.regenerationNumber > 0) && (
+                                  <Typography component="span" variant="caption" color="secondary.main" sx={{ display: 'block' }}>{t('regenLine', { list: row.childPos.filter((c) => c.regenerationNumber > 0).map((c) => c.poNumber).join(', ') })}</Typography>
+                                )}
+                                {row.childPos && row.childPos.some((c) => c.regenerationNumber === 0) && (
+                                  <Typography component="span" variant="caption" color="secondary.main" sx={{ display: 'block' }}>{t('partPoLine', { list: row.childPos.filter((c) => c.regenerationNumber === 0).map((c) => c.poNumber).join(', ') })}</Typography>
                                 )}
                               </DetailField>
                               <DetailField label={t('vendor')}>{row.vendor?.vendorCode} - {row.vendor?.name ?? '—'}</DetailField>
@@ -1216,6 +1227,9 @@ export default function PurchaseOrdersPage() {
                             {row.status !== POStatus.DELETED && (
                               <DetailSection title={t('sectionActions')} single>
                                 <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
+                                  {canAddPartPo(row) && (
+                                    <Button size="small" color="secondary" onClick={() => setPartRow(row)}>{t('partPoBtn')}</Button>
+                                  )}
                                   {canConvertToContract(row) && (
                                     <Button size="small" color="secondary" onClick={() => setConvertRow(row)}>{t('convertToContract')}</Button>
                                   )}
@@ -1234,7 +1248,7 @@ export default function PurchaseOrdersPage() {
                                   {!isUmbrellaContract(row) && (row.status === POStatus.APPROVED || row.status === POStatus.DELIVERED || row.status === POStatus.PARTIALLY_DELIVERED) && user && (isAdminRole(user.role) || user.role === UserRole.ACCOUNTANT) && (
                                     <Button size="small" color="secondary" startIcon={<PostLedgerIcon />} onClick={() => setPostLedgerRow(row)}>{t('postLedger')}</Button>
                                   )}
-                                  {row.status === POStatus.DELIVERED && !row.parentPoId && Array.isArray(row.regenerationData) && (row.regenerationData as unknown[]).length > 0 && (!row.childPos || row.childPos.length === 0) && (
+                                  {row.status === POStatus.DELIVERED && !row.parentPoId && Array.isArray(row.regenerationData) && (row.regenerationData as unknown[]).length > 0 && (!row.childPos || !row.childPos.some((c) => c.regenerationNumber > 0)) && (
                                     <Button size="small" color="secondary" startIcon={<AutoRenewIcon />} onClick={() => setRegenRow(row)}>{t('regenPo')}</Button>
                                   )}
                                   {row.status !== POStatus.APPROVED && row.status !== POStatus.PARTIALLY_DELIVERED && row.status !== POStatus.DELIVERED && (
@@ -1270,6 +1284,7 @@ export default function PurchaseOrdersPage() {
 
       <NewContractDialog open={contractOpen} onClose={() => setContractOpen(false)} />
       <ConvertToContractDialog po={convertRow ? { id: convertRow.id, poNumber: convertRow.poNumber } : null} onClose={() => setConvertRow(null)} />
+      <PartPoDialog po={partRow ? { id: partRow.id, poNumber: partRow.poNumber } : null} onClose={() => setPartRow(null)} />
 
       {/* Create PO Dialog */}
       <ResponsiveDialog open={createOpen} onClose={() => { setCreateOpen(false); resetForm(); }} maxWidth="md" fullWidth sx={{ '& .MuiDialog-paper': { margin: { xs: 1 } } }}>

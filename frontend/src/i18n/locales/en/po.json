@@ -303,5 +303,13 @@
   "sectionBudgetPayment": "Budget & payment",
   "sectionPeople": "People & dates",
   "sectionFiles": "Files",
-  "sectionActions": "More actions"
+  "sectionActions": "More actions",
+  "partPoBtn": "Add balance sub-PO",
+  "partPoTitle": "Balance sub-PO for {{n}}",
+  "partPoHelp": "Raises the next part payment of {{n}} as a sub-PO (SUB01, SUB02 ...). It needs its own approval, but adds no extra budget commitment or payable: {{n}} already holds the whole amount. Goods are received against {{n}} only.",
+  "partPoBalance": "Total {{total}} · paid {{paid}} · in sub-POs {{subs}} · balance {{left}}",
+  "partPoAmount": "Sub-PO amount",
+  "partPoCreate": "Raise sub-PO",
+  "partPoLine": "balance sub-POs → {{list}}",
+  "partPoOf": "Balance sub-PO of {{n}}"
 }

@@ -1,4 +1,5 @@
 import { prisma } from '../config/prisma';
+import { EXCLUDE_PART_POS } from './part-po.service';
 
 /**
  * "Approved but not moved forward": records that finished approval and are still
@@ -81,6 +82,7 @@ export async function findStalled(projectId: string, scope: StalledScope, now = 
         deletedAt: null,
         status: 'APPROVED',
         NOT: { isContract: true, grandTotal: 0 },
+        AND: [EXCLUDE_PART_POS],
         goodsReceipts: { none: { deletedAt: null } },
         invoices: { none: { deletedAt: null } },
         advancePaymentRequests: { none: { deletedAt: null } },
