@@ -891,7 +891,10 @@ router.post(
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const projectId = requireProjectId(req);
-      const main = await prisma.purchaseOrder.findFirst({ where: { id: req.params.id, projectId, deletedAt: null } });
+      const main = await prisma.purchaseOrder.findFirst({
+        where: { id: req.params.id, projectId, deletedAt: null },
+        include: { items: { orderBy: { createdAt: 'asc' } } },
+      });
       if (!main) {
         res.status(404).json({ error: 'Purchase order not found' });
         return;
@@ -919,6 +922,31 @@ router.post(
           res.status(400).json({ error: 'Advance amount must be more than 0 and not more than the sub-PO amount' });
           return;
         }
+      }
+
+      // The sub-PO lists the main PO's materials (same names, quantities, units); the sub-PO amount is
+      // spread over them in proportion to each line's value, so the lines add up to the amount exactly.
+      const weights = main.items.map((i) => Number(i.amount) * (1 + Number(i.gstRate ?? 0) / 100));
+      const weightSum = weights.reduce((s, w) => s + w, 0);
+      let subItems: { materialName: string; quantity: number; unit: string | null; unitPrice: number; amount: number; gstRate: number }[];
+      if (main.items.length === 0 || weightSum <= 0) {
+        subItems = [{ materialName: `Balance payment of ${main.poNumber}`, quantity: 1, unit: 'lot', unitPrice: amount, amount, gstRate: 0 }];
+      } else {
+        let assigned = 0;
+        subItems = main.items.map((i, idx) => {
+          const isLast = idx === main.items.length - 1;
+          const lineAmount = isLast ? Math.round((amount - assigned) * 100) / 100 : Math.round(((amount * weights[idx]) / weightSum) * 100) / 100;
+          assigned += lineAmount;
+          const qty = Number(i.quantity);
+          return {
+            materialName: i.materialName,
+            quantity: qty,
+            unit: i.unit,
+            unitPrice: qty > 0 ? Math.round((lineAmount / qty) * 100) / 100 : lineAmount,
+            amount: lineAmount,
+            gstRate: 0,
+          };
+        });
       }
 
       const adminRoles = await getActiveAdminRoles(projectId);
@@ -950,7 +978,7 @@ router.post(
                 parentPoId: main.id,
                 regenerationNumber: 0,
                 items: {
-                  create: [{ materialName: `Balance payment of ${main.poNumber}`, quantity: 1, unit: 'lot', unitPrice: amount, amount, gstRate: 0 }],
+                  create: subItems,
                 },
               },
             });
