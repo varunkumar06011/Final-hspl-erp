@@ -44,6 +44,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { enumLabel } from '../utils/enumOptions';
 import api, { extractErrorMessage } from '../config/api';
+import { fetchAllLedgers } from '../utils/ledgers';
 import ResponsiveDialog from '../components/ResponsiveDialog';
 import ResponsiveTable from '../components/ResponsiveTable';
 import RefreshButton from '../components/RefreshButton';
@@ -151,10 +152,7 @@ export default function BankAccountsPage() {
   // Fetch ledgers for the contra ledger picker (deposit/withdraw)
   const { data: ledgersData } = useQuery({
     queryKey: ['/ledgers', 'all-for-bank'],
-    queryFn: async () => {
-      const response = await api.get('/ledgers', { params: { page: 1, pageSize: 100 } });
-      return response.data;
-    },
+    queryFn: () => fetchAllLedgers(),
   });
   const ledgers: LedgerOption[] = (ledgersData?.data ?? []).map((l: any) => ({
     id: l.id,

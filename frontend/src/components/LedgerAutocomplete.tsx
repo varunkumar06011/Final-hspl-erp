@@ -18,7 +18,7 @@ import { Add as AddIcon } from '@mui/icons-material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import api, { extractErrorMessage } from '../config/api';
 import { ledgerGroupLabel } from '../utils/enumOptions';
-import { LedgerGroup } from '@hospital-erp/shared';
+import { LedgerGroup, fuzzyFilter } from '@hospital-erp/shared';
 
 import { useTranslation } from 'react-i18next';
 export interface LedgerOption {
@@ -46,6 +46,9 @@ interface LedgerAutocompleteProps {
 }
 
 const ALL_GROUPS = Object.values(LedgerGroup);
+
+/** Name without case, spaces and punctuation, for spotting the same ledger typed differently. */
+const squash = (value: string) => value.toLowerCase().replace(/[\s\p{P}\p{S}]+/gu, '');
 
 export default function LedgerAutocomplete({
   label,
@@ -205,14 +208,16 @@ export default function LedgerAutocomplete({
           return (option as LedgerOption).name;
         }}
         filterOptions={(options, params) => {
-          const filtered = options.filter((opt) =>
-            opt.name.toLowerCase().includes(params.inputValue.toLowerCase()),
-          );
-          // If typed text doesn't match any ledger, offer to create
-          if (
-            params.inputValue.trim() !== '' &&
-            !filtered.find((opt) => opt.name.toLowerCase() === params.inputValue.toLowerCase())
-          ) {
+          // Typo / word-order tolerant ("usl vinod kumar" finds "Vinod Kumar - USL"),
+          // and the group name matches too ("unsecured" lists that group's ledgers).
+          const filtered = fuzzyFilter(options, params.inputValue, (opt) => [
+            opt.name,
+            `${opt.name} ${ledgerGroupLabel(opt.group)}`,
+          ]);
+          // Offer to create only when no ledger already has this name
+          // (ignoring case, spaces and punctuation), so no near-duplicates are made.
+          const typed = squash(params.inputValue);
+          if (typed !== '' && !options.some((opt) => squash(opt.name) === typed)) {
             filtered.push({
               id: `__create__${params.inputValue}`,
               name: t('laCreateOption', { v: params.inputValue }),
@@ -259,6 +264,8 @@ export default function LedgerAutocomplete({
           />
         )}
         freeSolo
+        // Enter picks the best match instead of creating a new ledger from the typed text.
+        autoHighlight
         selectOnFocus
         clearOnBlur
         handleHomeEndKeys

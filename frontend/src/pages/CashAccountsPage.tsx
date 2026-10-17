@@ -41,6 +41,7 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { enumLabel } from '../utils/enumOptions';
 import api, { extractErrorMessage } from '../config/api';
+import { fetchAllLedgers } from '../utils/ledgers';
 import ResponsiveDialog from '../components/ResponsiveDialog';
 import ResponsiveTable from '../components/ResponsiveTable';
 import RefreshButton from '../components/RefreshButton';
@@ -149,10 +150,7 @@ export default function CashAccountsPage() {
   // Fetch ledgers for the contra ledger picker (cash in/out)
   const { data: ledgersData } = useQuery({
     queryKey: ['/ledgers', 'all-for-cash'],
-    queryFn: async () => {
-      const response = await api.get('/ledgers', { params: { page: 1, pageSize: 100 } });
-      return response.data;
-    },
+    queryFn: () => fetchAllLedgers(),
   });
   const ledgers: LedgerOption[] = (ledgersData?.data ?? []).map((l: any) => ({
     id: l.id,
@@ -160,6 +158,7 @@ export default function CashAccountsPage() {
     group: l.group,
     currentBalance: Number(l.currentBalance),
     isActive: l.isActive,
+    linkedEntityType: l.linkedEntityType,
   }));
 
   const { data: statementData, isLoading: stmtLoading } = useQuery({

@@ -36,6 +36,7 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Permission, UserRole, hasPermission } from '@hospital-erp/shared';
 import api, { extractErrorMessage } from '../config/api';
+import { fetchAllLedgers } from '../utils/ledgers';
 import RefreshButton from '../components/RefreshButton';
 import ResponsiveTable from '../components/ResponsiveTable';
 import ResponsiveDialog from '../components/ResponsiveDialog';
@@ -174,10 +175,7 @@ export default function FinanceReportsPage() {
   });
   const { data: ledgersData } = useQuery({
     queryKey: ['/ledgers', 'all-for-cashflow'],
-    queryFn: async () => {
-      const response = await api.get('/ledgers', { params: { page: 1, pageSize: 100 } });
-      return response.data;
-    },
+    queryFn: () => fetchAllLedgers(),
     enabled: outflowDialogOpen,
   });
   const { data: budgetHeadsData } = useQuery({
@@ -195,6 +193,9 @@ export default function FinanceReportsPage() {
     id: String(l.id),
     name: String(l.name),
     group: String(l.group ?? ''),
+    currentBalance: Number(l.currentBalance ?? 0),
+    isActive: l.isActive !== false,
+    linkedEntityType: l.linkedEntityType ? String(l.linkedEntityType) : null,
   }));
   const budgetHeads: { id: string; particulars: string; allocatedAmount: number; actualAmount: number }[] = budgetHeadsData?.data ?? [];
 

@@ -28,10 +28,11 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import { ledgerGroupLabel } from '../utils/enumOptions';
 import api from '../config/api';
+import { fetchAllLedgers } from '../utils/ledgers';
 import RefreshButton from '../components/RefreshButton';
 import ResponsiveTable from '../components/ResponsiveTable';
 import { formatCurrency, formatDate, todayLocalDate } from '../utils/enumOptions';
-import { LedgerGroup, isDebitNatureGroup } from '@hospital-erp/shared';
+import { LedgerGroup, isDebitNatureGroup, fuzzyFilter } from '@hospital-erp/shared';
 
 import { useTranslation } from 'react-i18next';
 const GROUP_ORDER = [
@@ -82,10 +83,7 @@ export default function AccountingReportsPage() {
   // Fetch all ledgers for autocomplete
   const { data: ledgersData } = useQuery({
     queryKey: ['/ledgers', 'all-for-reports'],
-    queryFn: async () => {
-      const response = await api.get('/ledgers', { params: { page: 1, pageSize: 100, isActive: true } });
-      return response.data;
-    },
+    queryFn: () => fetchAllLedgers({ isActive: true }),
   });
   const allLedgers: Ledger[] = ledgersData?.data ?? [];
 
@@ -190,6 +188,9 @@ export default function AccountingReportsPage() {
                 size="small"
                 options={allLedgers}
                 getOptionLabel={(option) => `${option.name} (${ledgerGroupLabel(option.group)})`}
+                filterOptions={(options, state) =>
+                  fuzzyFilter(options, state.inputValue, (o) => [o.name, `${o.name} ${ledgerGroupLabel(o.group)}`])
+                }
                 value={selectedLedger}
                 onChange={(_, value) => setSelectedLedger(value)}
                 renderInput={(params) => <TextField {...params} label={tr('selectLedger')} sx={{ minWidth: { xs: '100%', sm: 300 } }} />}

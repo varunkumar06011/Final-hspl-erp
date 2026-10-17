@@ -67,6 +67,7 @@ import { formatCurrency, formatDate, formatDateTime, formatIndianNumber, STATUS_
 import { useTranslation, Trans } from 'react-i18next';
 import { num, toIncGst, round2 } from '../utils/taxCalc';
 import api, { extractErrorMessage, budgetOverrunOf, type BudgetOverrun } from '../config/api';
+import { fetchAllLedgers } from '../utils/ledgers';
 import { useAuthStore } from '../stores/authStore';
 import AcknowledgementCheckbox from '../components/AcknowledgementCheckbox';
 import ApprovalActionDialog from '../components/ApprovalActionDialog';
@@ -1825,10 +1826,7 @@ function PostToLedgerDialog({ row, onClose }: { row: PORow | null; onClose: () =
 
   const { data: ledgersData } = useQuery({
     queryKey: ['/ledgers', 'all-active'],
-    queryFn: async () => {
-      const response = await api.get('/ledgers', { params: { pageSize: 500, isActive: 'true' } });
-      return response.data;
-    },
+    queryFn: () => fetchAllLedgers({ isActive: 'true' }),
     enabled: !!row,
   });
   // Only nominal (standalone) ledgers can receive item postings — posting to

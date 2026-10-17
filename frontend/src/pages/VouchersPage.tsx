@@ -46,6 +46,7 @@ import {
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { extractErrorMessage } from '../config/api';
+import { fetchAllLedgers } from '../utils/ledgers';
 import ResponsiveDialog from '../components/ResponsiveDialog';
 import ResponsiveTable from '../components/ResponsiveTable';
 import RefreshButton from '../components/RefreshButton';
@@ -214,10 +215,7 @@ export default function VouchersPage() {
   // Fetch all ledgers for entry selection (include inactive — Tally shows all)
   const { data: ledgersData } = useQuery({
     queryKey: ['/ledgers', 'all-for-voucher'],
-    queryFn: async () => {
-      const response = await api.get('/ledgers', { params: { page: 1, pageSize: 100 } });
-      return response.data;
-    },
+    queryFn: () => fetchAllLedgers(),
   });
 
   // Fetch budget heads for cost center allocation
