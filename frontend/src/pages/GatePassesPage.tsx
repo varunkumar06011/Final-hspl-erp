@@ -681,7 +681,7 @@ export default function GatePassesPage() {
               accept="image/*"
               size="small"
               startIcon={<PhotoCameraIcon />}
-              label={t('addPhoto')}
+              label={gatePassCategory === 'MATERIAL' ? t('addPhotoRequired') : t('addPhoto')}
               selectedLabel={photoProof ? t('photoName', { name: photoProof.name }) : undefined}
             />
 
@@ -704,7 +704,7 @@ export default function GatePassesPage() {
               createMutation.mutate();
             }}
             disabled={
-              (gatePassCategory === 'MATERIAL' && !selectedPoId) ||
+              (gatePassCategory === 'MATERIAL' && (!selectedPoId || !photoProof)) ||
               (gatePassCategory === 'VISITOR' && !visitorName.trim()) ||
               createMutation.isPending
             }

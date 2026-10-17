@@ -27,6 +27,21 @@ export function headThenAdminSteps(adminRoles: string[]) {
   return roles.map((approverRole, idx) => ({ stepNumber: idx + 1, approverRole, status: 'PENDING' as const }));
 }
 
+/**
+ * MPRs: approved by the Project Head or the Head of Construction alone; one of
+ * them is enough and no admin is involved. Steps exist only for those two roles
+ * (a super admin can still override).
+ */
+export const MPR_APPROVAL_POLICY = 'ANY_APPROVERS';
+
+export function mprApprovalSteps() {
+  return [UserRole.PROJECT_HEAD, UserRole.HEAD_OF_CONSTRUCTION].map((approverRole, idx) => ({
+    stepNumber: idx + 1,
+    approverRole,
+    status: 'PENDING' as const,
+  }));
+}
+
 function hasHeadApproval(steps: { status: string; approverRole: string }[]): boolean {
   return steps.some((s) => s.status === ApprovalStepStatus.APPROVED && isFirstLevelApproverRole(s.approverRole));
 }

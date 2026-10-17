@@ -66,6 +66,7 @@
   "remarks": "Remarks",
   "photoName": "Photo: {{name}}",
   "addPhoto": "Add photo proof (optional)",
+  "addPhotoRequired": "Add a photo of the gate pass (required)",
   "cancel": "Cancel",
   "deleteTitle": "Delete Gate Pass",
   "deleteConfirm": "Are you sure you want to delete gate pass <b>{{n}}</b>?",

@@ -79,10 +79,11 @@ Note: finalizing a quotation already raises its PO automatically, so this flow i
     module: 'goodsReceipts',
     documentHint: 'a delivery challan, way bill or vendor bill listing delivered goods',
     guide: `Goods Receipt (create_goods_receipt).
-Must have: an APPROVED / PARTIALLY_DELIVERED purchase order and the delivered quantity per item.
+Must have: an APPROVED / PARTIALLY_DELIVERED purchase order, its gate pass (with the gate pass photo) and the delivered quantity per item.
 1. PO: if a photo shows a PO number or vendor, search for it. Otherwise list_records purchase_orders with status APPROVED (and PARTIALLY_DELIVERED) and ask_user which PO (label "PO number · vendor · total"). One match -> use it without asking.
 2. get_record the PO to get its items. Quantities: if a photo gives delivered quantities, use them (match materialName exactly to the PO item names). Otherwise ask_user "Was everything delivered as ordered?" with options "Yes, everything" and "No, some items are short"; for "short" ask which quantities arrived, in ONE question.
-3. Propose (materialName must match the PO item names exactly).`,
+3. Gate pass is mandatory: list_records gate_passes (search the PO number), keep the APPROVED one of that PO that has no goods receipt yet and whose photoProofPath is set (get_record to check). One -> use it; several -> ask_user which. If there is none, or it has no photo, tell the user to create the gate pass / add its photo on the Gate Passes page first, and stop. Never propose without it.
+4. Propose (materialName must match the PO item names exactly).`,
   },
   {
     id: 'invoice',

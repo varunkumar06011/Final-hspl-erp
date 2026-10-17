@@ -90,7 +90,7 @@ interface AvailablePo {
   poNumber: string;
   paymentType: string;
   vendor: { name: string };
-  gatePasses: { id: string; passNumber: string }[];
+  gatePasses: { id: string; passNumber: string; hasPhoto: boolean }[];
   items: {
     id: string; materialName: string; unit: string | null;
     orderedQuantity: number; receivedQuantity: number; pendingQuantity: number; remainingQuantity: number;
@@ -274,11 +274,13 @@ function GRNDetailDialog({ id, open, onClose }: { id: string | null; open: boole
 
 export default function GoodsReceiptsPage() {
   const { t } = useTranslation('grn');
+  const navigate = useNavigate();
   const [createOpen, setCreateOpen] = useState(false);
   const [inspectReceipt, setInspectReceipt] = useState<Receipt | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
   const [selectedPoId, setSelectedPoId] = useState('');
   const [selectedGatepassId, setSelectedGatepassId] = useState('');
+  const [sitePhoto, setSitePhoto] = useState<File | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
   const [dispositions, setDispositions] = useState<Record<string, Disposition>>({});
   const [deliveredQty, setDeliveredQty] = useState<Record<string, number | string>>({});
@@ -323,9 +325,19 @@ export default function GoodsReceiptsPage() {
           unit: item.unit,
         }))
         .filter((item) => item.deliveredQty > 0);
-      return (await api.post('/goods-receipts', { poId: selectedPoId, gatePassId: selectedGatepassId || undefined, items })).data;
+      const receipt = (await api.post('/goods-receipts', { poId: selectedPoId, gatePassId: selectedGatepassId, items })).data;
+      // Site photo is optional: attach it to the receipt when one was chosen.
+      if (sitePhoto) {
+        const form = new FormData();
+        form.append('file', sitePhoto);
+        form.append('entityType', 'GOODS_RECEIPT');
+        form.append('entityId', receipt.id);
+        await api.post('/attachments/upload', form).catch(() => setError(t('sitePhotoFailed')));
+      }
+      return receipt;
     },
     onSuccess: () => {
+      setSitePhoto(null);
       queryClient.invalidateQueries({ queryKey: ['/goods-receipts'] });
       queryClient.invalidateQueries({ queryKey: ['/goods-receipts/available-pos'] });
       queryClient.invalidateQueries({ queryKey: ['/inventory/summary'] });
@@ -334,6 +346,16 @@ export default function GoodsReceiptsPage() {
       setSelectedGatepassId('');
       setDeliveredQty({});
     },
+    onError: (err: unknown) => setError(extractErrorMessage(err)),
+  });
+  // A gate pass issued without a photo can get it here, so the receipt is not blocked.
+  const gatePassPhotoMutation = useMutation({
+    mutationFn: async ({ id, file }: { id: string; file: File }) => {
+      const form = new FormData();
+      form.append('photoProof', file);
+      return (await api.post(`/gate-passes/${id}/photo`, form)).data;
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['/goods-receipts/available-pos'] }),
     onError: (err: unknown) => setError(extractErrorMessage(err)),
   });
   const inspectMutation = useMutation({
@@ -366,6 +388,7 @@ export default function GoodsReceiptsPage() {
   const receipts: Receipt[] = receiptsQuery.data?.data ?? [];
   useActiveRecord('GOODS_RECEIPT', detailId, receipts.find((r) => r.id === detailId)?.receiptNumber);
   const selectedPo = posQuery.data?.find((po) => po.id === selectedPoId);
+  const selectedGatepass = selectedPo?.gatePasses.find((gp) => gp.id === selectedGatepassId);
 
   function openInspection(receipt: Receipt) {
     setError('');
@@ -493,11 +516,33 @@ export default function GoodsReceiptsPage() {
               </MenuItem>
             ))}
           </TextField>
+          {selectedPo && selectedPo.gatePasses.length === 0 && (
+            <Alert severity="warning" sx={{ mt: 2 }} action={<Button color="inherit" size="small" onClick={() => navigate('/gate-passes')}>{t('openGatePasses')}</Button>}>
+              {t('gatepassRequired')}
+            </Alert>
+          )}
           {selectedPo && selectedPo.gatePasses.length > 0 && (
-            <TextField select fullWidth size="small" label={t('optionalGatepass')} value={selectedGatepassId} onChange={(event) => setSelectedGatepassId(event.target.value)} sx={{ mt: 2 }} helperText={t('gatepassOptionalHelp')}>
-              <MenuItem value="">{t('noGatepass')}</MenuItem>
-              {selectedPo.gatePasses.map((gp) => <MenuItem key={gp.id} value={gp.id}>{gp.passNumber}</MenuItem>)}
+            <TextField select required fullWidth size="small" label={t('gatepass')} value={selectedGatepassId} onChange={(event) => setSelectedGatepassId(event.target.value)} sx={{ mt: 2 }} helperText={t('gatepassRequiredHelp')}>
+              {selectedPo.gatePasses.map((gp) => <MenuItem key={gp.id} value={gp.id}>{gp.passNumber}{gp.hasPhoto ? '' : ` — ${t('noPhoto')}`}</MenuItem>)}
             </TextField>
+          )}
+          {selectedGatepass && !selectedGatepass.hasPhoto && (
+            <Alert severity="warning" sx={{ mt: 2 }}>
+              {t('gatepassPhotoRequired')}
+              <Button component="label" size="small" sx={{ ml: 1 }} disabled={gatePassPhotoMutation.isPending}>
+                {gatePassPhotoMutation.isPending ? <CircularProgress size={16} /> : t('addGatepassPhoto')}
+                <input hidden type="file" accept="image/*" capture="environment" onChange={(e) => { const f = e.target.files?.[0]; if (f) gatePassPhotoMutation.mutate({ id: selectedGatepass.id, file: f }); e.target.value = ''; }} />
+              </Button>
+            </Alert>
+          )}
+          {selectedPo && (
+            <Box sx={{ mt: 2 }}>
+              <Button component="label" size="small" variant="outlined">
+                {sitePhoto ? t('sitePhotoName', { name: sitePhoto.name }) : t('addSitePhoto')}
+                <input hidden type="file" accept="image/*" capture="environment" onChange={(e) => { setSitePhoto(e.target.files?.[0] ?? null); e.target.value = ''; }} />
+              </Button>
+              <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>{t('sitePhotoOptional')}</Typography>
+            </Box>
           )}
           {selectedPo && <Box sx={{ mt: 2 }}>
             <Typography variant="body2" fontWeight={600} sx={{ mb: 1 }}>
@@ -547,7 +592,7 @@ export default function GoodsReceiptsPage() {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setCreateOpen(false)}>{t('cancel')}</Button>
-          <Button variant="contained" onClick={() => createMutation.mutate()} disabled={!selectedPoId || createMutation.isPending}>
+          <Button variant="contained" onClick={() => createMutation.mutate()} disabled={!selectedPoId || !selectedGatepass?.hasPhoto || createMutation.isPending}>
             {createMutation.isPending ? <CircularProgress size={20} /> : t('createReceipt')}
           </Button>
         </DialogActions>

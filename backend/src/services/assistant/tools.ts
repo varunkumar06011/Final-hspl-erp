@@ -123,6 +123,7 @@ const ENTITIES: Record<string, EntityDef> = {
   quotations: { path: '/quotations', model: 'Quotation', columns: ['quotationNumber', 'vendor.name', 'status', 'grandTotal', 'createdAt'] },
   purchase_orders: { path: '/purchase-orders', model: 'PurchaseOrder', columns: ['poNumber', 'vendor.name', 'status', 'grandTotal', 'createdAt'] },
   invoices: { path: '/invoices', model: 'VendorInvoice', columns: ['invoiceCode', 'invoiceNumber', 'vendor.name', 'verificationStatus', 'totalAmount', 'date'] },
+  gate_passes: { path: '/gate-passes', model: 'GatePass', columns: ['passNumber', 'purchaseOrder.poNumber', 'status', 'date'], clientFilter: true },
   goods_receipts: { path: '/goods-receipts', model: 'GoodsReceipt', columns: ['receiptNumber', 'purchaseOrder.poNumber', 'status', 'createdAt'], clientFilter: true },
   stock_entries: { path: '/stock-entries', model: 'StockEntry', columns: ['entryNumber', 'sourceType', 'supplierName', 'status', 'entryDate'], clientFilter: true },
   inventory_items: { path: '/inventory/items', model: 'InventoryItem', columns: ['name', 'sku', 'category', 'currentStock', 'unit'] },
@@ -565,13 +566,13 @@ const writeTools: WriteTool[] = [
       parameters: O(
         {
           poId: S('Purchase order uuid.'),
-          gatePassId: S('Approved gate pass uuid (optional).'),
+          gatePassId: S('Approved gate pass uuid of this delivery. Mandatory; the gate pass must already have its photo.'),
           items: A(
             O({ materialName: S('Material name exactly as on the PO.'), deliveredQty: N('Quantity delivered.'), unit: S('Unit.') }, ['materialName', 'deliveredQty']),
             'Delivered items.',
           ),
         },
-        ['poId', 'items'],
+        ['poId', 'gatePassId', 'items'],
       ),
     },
     async summarize(a, ctx) {

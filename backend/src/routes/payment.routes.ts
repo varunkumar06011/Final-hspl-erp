@@ -21,6 +21,7 @@ import { generateProjectSequenceNumber } from '../services/sequence.service';
 import * as approvalService from '../services/approval.service';
 import { notifyApprovers } from '../services/push.service';
 import { notifyPaymentsMade } from '../services/payment-notify.service';
+import { streamPaymentConfirmationPdf } from '../services/payment-confirmation-pdf.service';
 import { getStorageService, serveFile } from '../services/storage.service';
 import { postVoucher, generateVoucherNumber } from './voucher.routes';
 import { ensureVendorLedger, ensureBankLedger, ensureCashLedger, findLedgerByName } from './ledger.routes';
@@ -1197,6 +1198,98 @@ router.post(
         include: prInclude,
       });
       res.json(updated);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// Everything the "payment done" message needs: the vendor's number for the
+// WhatsApp/SMS buttons and the Head of Construction's number (confirmations go
+// to him as well). Works for an APPROVED request (money sent, voucher still to
+// be recorded) and for a PAID one.
+async function loadConfirmation(projectId: string, id: string) {
+  const pr = await prisma.paymentRequest.findFirst({
+    where: { id, projectId, deletedAt: null },
+    include: {
+      project: { select: { name: true } },
+      vendor: { select: { name: true, vendorCode: true, phone: true, contactPersonPhone: true } },
+      invoice: { select: { invoiceCode: true } },
+      purchaseOrder: { select: { poNumber: true } },
+      payments: {
+        orderBy: { createdAt: 'desc' },
+        take: 1,
+        include: {
+          bankAccount: { select: { accountName: true } },
+          cashAccount: { select: { name: true } },
+          journalVoucher: { select: { jvNumber: true } },
+        },
+      },
+    },
+  });
+  if (!pr) return null;
+  if (pr.status !== PaymentStatus.APPROVED && pr.status !== PaymentStatus.PAID) return { pr, error: 'A payment confirmation is available once the request is approved' };
+  const p = pr.payments[0];
+  return {
+    pr,
+    data: {
+      projectName: pr.project.name,
+      paymentCode: pr.paymentCode,
+      vendorName: pr.vendor?.name ?? pr.description ?? 'Payee',
+      vendorCode: pr.vendor?.vendorCode ?? null,
+      amount: Number(pr.amount),
+      type: pr.type,
+      poNumber: pr.purchaseOrder?.poNumber ?? null,
+      invoiceCode: pr.invoice?.invoiceCode ?? null,
+      description: pr.description ?? null,
+      mode: p?.mode ?? pr.paymentMode ?? null,
+      reference: p?.reference ?? pr.chequeNumber ?? null,
+      account: p?.bankAccount?.accountName ?? p?.cashAccount?.name ?? null,
+      voucherNumber: p?.journalVoucher?.jvNumber ?? null,
+      paidOn: p?.date ?? new Date(),
+    },
+  };
+}
+
+// GET /:id/confirmation — contact numbers + facts for the payment-done message
+router.get(
+  '/:id/confirmation',
+  rbacMiddleware(Permission.VIEW_FINANCIALS),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const loaded = await loadConfirmation(requireProjectId(req), req.params.id);
+      if (!loaded) { res.status(404).json({ error: 'Payment request not found' }); return; }
+      if ('error' in loaded) { res.status(400).json({ error: loaded.error }); return; }
+      const head = await prisma.user.findFirst({
+        where: { isActive: true, role: UserRole.HEAD_OF_CONSTRUCTION },
+        select: { name: true, phone: true },
+        orderBy: { createdAt: 'asc' },
+      });
+      res.json({
+        ...loaded.data,
+        status: loaded.pr.status,
+        vendorPhone: loaded.pr.vendor?.phone ?? loaded.pr.vendor?.contactPersonPhone ?? null,
+        headName: head?.name ?? null,
+        headPhone: head?.phone ?? null,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// GET /:id/confirmation.pdf — the generated "payment done" slip
+router.get(
+  '/:id/confirmation.pdf',
+  rbacMiddleware(Permission.VIEW_FINANCIALS),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const loaded = await loadConfirmation(requireProjectId(req), req.params.id);
+      if (!loaded) { res.status(404).json({ error: 'Payment request not found' }); return; }
+      if ('error' in loaded) { res.status(400).json({ error: loaded.error }); return; }
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${loaded.pr.paymentCode}-payment-confirmation.pdf"`);
+      streamPaymentConfirmationPdf(res as unknown as NodeJS.WritableStream, loaded.data);
     } catch (error) {
       next(error);
     }

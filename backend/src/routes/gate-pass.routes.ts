@@ -236,6 +236,56 @@ router.get(
   },
 );
 
+// POST /:id/photo — add (or replace) the photo of a gate pass, e.g. one issued before the photo became mandatory
+router.post(
+  '/:id/photo',
+  rbacMiddleware(Permission.CREATE_GATE_PASS),
+  upload.single('photoProof'),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      const gatePass = await prisma.gatePass.findFirst({
+        where: { id: req.params.id, projectId, deletedAt: null },
+        select: { id: true, passNumber: true },
+      });
+      if (!gatePass) {
+        res.status(404).json({ error: 'Gate pass not found' });
+        return;
+      }
+      if (!req.file) {
+        res.status(400).json({ error: 'A photo of the gate pass is required' });
+        return;
+      }
+      if (!req.file.mimetype.startsWith('image/')) {
+        res.status(400).json({ error: 'Photo proof must be an image' });
+        return;
+      }
+      const uploadResult = await getStorageService().upload(
+        req.file.buffer,
+        `gate-passes/${gatePass.passNumber}-${req.file.originalname}`,
+        req.file.mimetype,
+        'documents',
+      );
+      const updated = await prisma.gatePass.update({
+        where: { id: gatePass.id },
+        data: { photoProofPath: uploadResult.filePath },
+        include: gatePassInclude,
+      });
+      await logAudit({
+        userId: req.user!.id,
+        action: AuditAction.UPDATE,
+        entityType: 'GATE_PASS',
+        entityId: gatePass.id,
+        projectId,
+        newValue: { photoAdded: true },
+      });
+      res.json(updated);
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
 // GET /:id
 router.get(
   '/:id',
@@ -435,6 +485,12 @@ router.post(
             .json({ error: 'An approved gate pass already exists for this purchase order' });
           return;
         }
+      }
+
+      // A material gate pass is the proof of a delivery: its photo is mandatory.
+      if (!isVisitorGatePass && !req.file && !photoProofPath) {
+        res.status(400).json({ error: 'A photo of the gate pass is required' });
+        return;
       }
 
       const passNumber = await generateUniquePassNumber(projectId);

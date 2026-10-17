@@ -224,7 +224,7 @@ router.get(
           items: true,
           gatePasses: {
             where: { deletedAt: null, status: 'APPROVED', goodsReceipts: { none: {} } },
-            select: { id: true, passNumber: true, date: true },
+            select: { id: true, passNumber: true, date: true, photoProofPath: true },
             orderBy: { createdAt: 'desc' },
           },
         },
@@ -238,7 +238,7 @@ router.get(
             poNumber: po.poNumber,
             paymentType: po.paymentType,
             vendor: po.vendor,
-            gatePasses: po.gatePasses,
+            gatePasses: po.gatePasses.map(({ photoProofPath, ...gp }) => ({ ...gp, hasPhoto: !!photoProofPath })),
             items: po.items.map((item) => {
               const ordered = Number(item.quantity);
               const key = item.id;
@@ -273,7 +273,7 @@ router.post(
     try {
       const projectId = requireProjectId(req);
 
-      // The approved PO is what authorises receiving goods. A gate pass is optional.
+      // The approved PO authorises receiving goods; the delivery's gate pass and its photo are mandatory.
       const po = await prisma.purchaseOrder.findFirst({
         where: { id: req.body.poId, projectId, deletedAt: null },
         include: { items: true },
@@ -291,22 +291,22 @@ router.post(
         return;
       }
 
-      const gatePass = req.body.gatePassId
-        ? await prisma.gatePass.findFirst({
-            where: { id: req.body.gatePassId, projectId, poId: po.id, status: 'APPROVED', deletedAt: null },
-            include: { items: true },
-          })
-        : null;
-      if (req.body.gatePassId) {
-        if (!gatePass) {
-          res.status(400).json({ error: 'The gate pass must be an approved gate pass of this purchase order' });
-          return;
-        }
-        const existing = await prisma.goodsReceipt.findFirst({ where: { gatePassId: gatePass.id, deletedAt: null }, select: { receiptNumber: true } });
-        if (existing) {
-          res.status(409).json({ error: `Gate pass ${gatePass.passNumber} already has goods receipt ${existing.receiptNumber}` });
-          return;
-        }
+      const gatePass = await prisma.gatePass.findFirst({
+        where: { id: req.body.gatePassId, projectId, poId: po.id, status: 'APPROVED', deletedAt: null },
+        include: { items: true },
+      });
+      if (!gatePass) {
+        res.status(400).json({ error: 'The gate pass must be an approved gate pass of this purchase order' });
+        return;
+      }
+      if (!gatePass.photoProofPath) {
+        res.status(400).json({ error: `Gate pass ${gatePass.passNumber} has no photo. Add the gate pass photo before receiving the goods`, code: 'GATE_PASS_PHOTO_MISSING' });
+        return;
+      }
+      const existing = await prisma.goodsReceipt.findFirst({ where: { gatePassId: gatePass.id, deletedAt: null }, select: { receiptNumber: true } });
+      if (existing) {
+        res.status(409).json({ error: `Gate pass ${gatePass.passNumber} already has goods receipt ${existing.receiptNumber}` });
+        return;
       }
 
       // Delivered quantities come from the request — the user enters what actually arrived

@@ -5,8 +5,6 @@ import {
   AuditAction,
   UserRole,
   VendorType,
-  isAdminRole,
-  getRequiredApproverCount,
   isSuperAdmin,
 } from '@hospital-erp/shared';
 import { createMPRSchema, updateMPRSchema, listMPRSchema, approvalActionSchema } from '@hospital-erp/shared';
@@ -18,7 +16,7 @@ import { logAudit } from '../services/audit.service';
 import { generateProjectSequenceNumber } from '../services/sequence.service';
 import { streamMprPdf } from '../services/mpr-pdf.service';
 import * as approvalService from '../services/approval.service';
-import { HEAD_THEN_ADMIN_POLICY } from '../services/approval.service';
+import { MPR_APPROVAL_POLICY, mprApprovalSteps } from '../services/approval.service';
 import { getStorageService, serveFile } from '../services/storage.service';
 import { notifyApprovers } from '../services/push.service';
 import { createNonVendorPoFromMpr, findLivePoForMpr } from '../services/non-vendor-po.service';
@@ -30,23 +28,9 @@ import multer from 'multer';
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
 const allowedReceiptFileTypes = ['application/pdf', 'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/bmp', 'image/tiff'];
 
-// "Half" approval = a PROJECT_HEAD or HEAD_OF_CONSTRUCTION approval on its own
-// (needs an admin too to finish); "full" approval = a single ADMIN approval —
-// this is the existing HEAD_GROUPS policy (see approval.service.ts), the same
-// one used for invoices and journal vouchers.
+// An MPR is approved by one of the heads (Project Head or Head of Construction)
+// on their own; admins no longer take part (see MPR_APPROVAL_POLICY).
 const HEAD_ROLES = [UserRole.PROJECT_HEAD, UserRole.HEAD_OF_CONSTRUCTION];
-
-async function getMprApproverRoles(_projectId: string): Promise<string[]> {
-  const users = await prisma.user.findMany({
-    where: { isActive: true },
-    select: { role: true },
-  });
-  const roles = new Set<string>(HEAD_ROLES as string[]);
-  for (const u of users) {
-    if (isAdminRole(u.role)) roles.add(u.role);
-  }
-  return Array.from(roles);
-}
 
 async function generateVendorCode(projectId: string): Promise<string> {
   return generateProjectSequenceNumber('vendor', 'vendorCode', '', 3, projectId);
@@ -646,11 +630,8 @@ router.put(
         updateData.estimatedTotal = estimatedSubtotal + estimatedGstAmount;
       }
 
-      let approverRoles: string[] = [];
       let record;
       if (wasSubmitted) {
-        approverRoles = await getMprApproverRoles(projectId);
-        const newTotal = Number(updateData.estimatedTotal ?? existing.estimatedTotal);
         record = await prisma.$transaction(async (tx) => {
           await tx.approvalWorkflow.deleteMany({
             where: { entityType: 'MATERIAL_PURCHASE_REQUEST', entityId: existing.id },
@@ -663,15 +644,9 @@ router.put(
               projectId,
               status: 'VERIFICATION',
               currentStep: 0,
-              minApprovers: getRequiredApproverCount(newTotal),
-              approvalPolicy: HEAD_THEN_ADMIN_POLICY,
-              steps: {
-                create: approverRoles.map((role, idx) => ({
-                  stepNumber: idx + 1,
-                  approverRole: role,
-                  status: 'PENDING',
-                })),
-              },
+              minApprovers: 1,
+              approvalPolicy: MPR_APPROVAL_POLICY,
+              steps: { create: mprApprovalSteps() },
             },
           });
 
@@ -759,8 +734,6 @@ router.post(
         return;
       }
 
-      const approverRoles = await getMprApproverRoles(projectId);
-
       const record = await prisma.$transaction(async (tx) => {
         // A prior submit (e.g. before this MPR was cancelled/reset to draft) may have
         // left a workflow behind — entityType+entityId is unique, so clear it first.
@@ -775,15 +748,9 @@ router.post(
             projectId,
             status: 'VERIFICATION',
             currentStep: 0,
-            minApprovers: getRequiredApproverCount(Number(existing.estimatedTotal)),
-            approvalPolicy: HEAD_THEN_ADMIN_POLICY,
-            steps: {
-              create: approverRoles.map((role, idx) => ({
-                stepNumber: idx + 1,
-                approverRole: role,
-                status: 'PENDING',
-              })),
-            },
+            minApprovers: 1,
+            approvalPolicy: MPR_APPROVAL_POLICY,
+            steps: { create: mprApprovalSteps() },
           },
         });
 
@@ -834,7 +801,7 @@ router.post(
         res.status(400).json({ error: `Cannot approve an MPR that is ${mpr.status.replace(/_/g, ' ').toLowerCase()}` });
         return;
       }
-      if (!HEAD_ROLES.includes(req.user!.role as UserRole) && !isAdminRole(req.user!.role) && !approvalService.canOverride(req.user!)) {
+      if (!HEAD_ROLES.includes(req.user!.role as UserRole) &&!approvalService.canOverride(req.user!)) {
         res.status(403).json({ error: 'Only heads can approve material purchase requests' });
         return;
       }
@@ -902,7 +869,7 @@ router.post(
         res.status(400).json({ error: `Cannot reject an MPR that is ${mpr.status.replace(/_/g, ' ').toLowerCase()}` });
         return;
       }
-      if (!HEAD_ROLES.includes(req.user!.role as UserRole) && !isAdminRole(req.user!.role) && !approvalService.canOverride(req.user!)) {
+      if (!HEAD_ROLES.includes(req.user!.role as UserRole) &&!approvalService.canOverride(req.user!)) {
         res.status(403).json({ error: 'Only heads can reject material purchase requests' });
         return;
       }

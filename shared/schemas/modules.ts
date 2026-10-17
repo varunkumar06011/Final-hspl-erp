@@ -693,9 +693,10 @@ const goodsReceiptDispositionItem = z.object({
 });
 export const createGoodsReceiptSchema = z.object({
   body: z.object({
-    // A goods receipt is raised against an approved PO; the gate pass is optional.
+    // A goods receipt is raised against an approved PO and needs the gate pass
+    // of the delivery (with its photo — checked by the route).
     poId: uuid,
-    gatePassId: uuid.optional().nullable(),
+    gatePassId: uuid,
     items: z.preprocess(
       (value) => (typeof value === 'string' ? JSON.parse(value) : value),
       z.array(goodsReceiptDeliveredItem).min(1),

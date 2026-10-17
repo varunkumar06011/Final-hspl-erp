@@ -66,6 +66,7 @@ import { useDeepLinkRow } from '../hooks/useDeepLinkRow';
 import { useActiveRecordSetter } from '../hooks/useActiveRecord';
 import { useUrlFilters } from '../hooks/useUrlFilters';
 import { shareOnWhatsApp, buildPaymentShareMessage } from '../utils/whatsappShare';
+import PaymentConfirmShare from '../components/PaymentConfirmShare';
 import CommentsButton from '../components/CommentsButton';
 import { LinkedFilesButton } from '../components/LinkedFiles';
 
@@ -210,6 +211,7 @@ export default function PaymentsPage() {
   const [approvalAction, setApprovalAction] = useState<{ row: PaymentRequestRow; action: 'approve' | 'reject' } | null>(null);
   const [editRow, setEditRow] = useState<PaymentRequestRow | null>(null);
   const [editForm, setEditForm] = useState<Record<string, unknown>>({});
+  const [voucherPromptRow, setVoucherPromptRow] = useState<PaymentRequestRow | null>(null);
   const [linkVoucherRow, setLinkVoucherRow] = useState<PaymentRequestRow | null>(null);
   const [selectedVoucherId, setSelectedVoucherId] = useState('');
   // One voucher settling several approved requests (e.g. 4 POs, one transfer)
@@ -925,7 +927,15 @@ export default function PaymentsPage() {
                       <TableCell data-label={tr('actions')}>
                         <Box sx={{ display: 'flex', gap: 0.5 }}>
                           <CommentsButton entityType="PAYMENT_REQUEST" entityId={row.id} entityLabel={row.requestNumber} url="/payments" />
-                          <IconButton size="small" sx={{ color: '#25D366' }} onClick={() => shareOnWhatsApp(buildPaymentShareMessage({ paymentCode: row.paymentCode, requestNumber: row.requestNumber, vendorName: row.vendor?.name, amount: Number(row.amount), status: row.status, type: row.type, description: row.description ?? undefined }))} title={tr('shareOnWhatsapp')}><WhatsAppIcon fontSize="small" /></IconButton>
+                          {row.status === PaymentStatus.APPROVED || row.status === PaymentStatus.PAID ? (
+                            <PaymentConfirmShare
+                              paymentId={row.id}
+                              onError={setError}
+                              onShared={({ status }) => { if (status === PaymentStatus.APPROVED && row.payments.length === 0) setVoucherPromptRow(row); }}
+                            />
+                          ) : (
+                            <IconButton size="small" sx={{ color: '#25D366' }} onClick={() => shareOnWhatsApp(buildPaymentShareMessage({ paymentCode: row.paymentCode, requestNumber: row.requestNumber, vendorName: row.vendor?.name, amount: Number(row.amount), status: row.status, type: row.type, description: row.description ?? undefined }))} title={tr('shareOnWhatsapp')}><WhatsAppIcon fontSize="small" /></IconButton>
+                          )}
                           <IconButton size="small" color="primary" onClick={() => openEdit(row)} title={tr('editPaymentDetails')}><EditIcon fontSize="small" /></IconButton>
                           {canApprove(row) && (
                             <>
@@ -1461,6 +1471,20 @@ export default function PaymentsPage() {
           }
         }}
       />
+
+      {/* After the "payment done" message went out: record the payment right away */}
+      <ResponsiveDialog open={!!voucherPromptRow} onClose={() => setVoucherPromptRow(null)} maxWidth="xs" fullWidth>
+        <DialogTitle>{tr('voucherPromptTitle')}</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2">{tr('voucherPromptBody', { code: voucherPromptRow?.paymentCode })}</Typography>
+        </DialogContent>
+        <DialogActions sx={{ flexWrap: 'wrap', gap: 1 }}>
+          <Button onClick={() => setVoucherPromptRow(null)}>{tr('voucherPromptLater')}</Button>
+          <Button variant="contained" startIcon={<PaymentsIcon />} onClick={() => { const id = voucherPromptRow?.id; setVoucherPromptRow(null); if (id) navigate(`/vouchers?paymentRequest=${id}`); }}>
+            {tr('voucherPromptNow')}
+          </Button>
+        </DialogActions>
+      </ResponsiveDialog>
 
       {/* Link Existing Voucher Dialog — payment already posted to ledgers */}
       <ResponsiveDialog open={!!linkVoucherRow} onClose={() => { setLinkVoucherRow(null); setSelectedVoucherId(''); }} maxWidth="sm" fullWidth>

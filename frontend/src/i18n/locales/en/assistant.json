@@ -123,6 +123,7 @@
     "verificationStatus": "Verification",
     "totalAmount": "Total",
     "receiptNumber": "Receipt no.",
+    "passNumber": "Gate pass no.",
     "purchaseOrder_poNumber": "PO no.",
     "entryNumber": "Entry no.",
     "sourceType": "Source",
