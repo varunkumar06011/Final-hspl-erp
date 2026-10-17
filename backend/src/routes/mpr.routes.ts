@@ -19,10 +19,10 @@ import * as approvalService from '../services/approval.service';
 import { MPR_APPROVAL_POLICY, mprApprovalSteps } from '../services/approval.service';
 import { getStorageService, serveFile } from '../services/storage.service';
 import { notifyApprovers } from '../services/push.service';
-import { createNonVendorPoFromMpr, findLivePoForMpr } from '../services/non-vendor-po.service';
+import { findLivePoForMpr } from '../services/non-vendor-po.service';
 import { REVISABLE_PO_STATUSES, syncQuotationsFromMpr, syncPoFromQuotation, hasUnpricedItems } from '../services/mpr-revision.service';
 import { ensureVendorLedger } from './ledger.routes';
-import { createQuotationFromMpr } from '../services/quotation.service';
+import { afterMprApproved } from '../services/mpr-approval.service';
 import multer from 'multer';
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
@@ -829,13 +829,7 @@ router.post(
           data: { status: MPRStatus.APPROVED },
         }).catch((err) => console.error('[MPR] Safety-net status sync failed (non-fatal):', err));
 
-        // Non-vendor requests have no quotation — go straight to a PO (amount 0, to be filled in).
-        await createNonVendorPoFromMpr(mpr.id, projectId, req.user!.id)
-          .catch((err) => console.error('[MPR] Non-vendor PO auto-create failed (non-fatal):', err));
-        // Vendor requests get their first quotation at once (request's vendor + rates),
-        // ready to be finalized; quotations from other vendors can be added beside it.
-        await createQuotationFromMpr(mpr.id, projectId, req.user!.id)
-          .catch((err) => console.error('[MPR] Auto quotation failed (non-fatal):', err));
+        await afterMprApproved(mpr.id, projectId, req.user!.id);
       }
 
       const updated = await prisma.materialPurchaseRequest.findUnique({

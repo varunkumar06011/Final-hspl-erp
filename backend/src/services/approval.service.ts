@@ -42,6 +42,11 @@ export function mprApprovalSteps() {
   }));
 }
 
+/** MPRs follow the heads-only rule even when their workflow predates it (old head-then-admin steps). */
+function isMprWorkflow(workflow: { entityType: string }): boolean {
+  return workflow.entityType === 'MATERIAL_PURCHASE_REQUEST';
+}
+
 function hasHeadApproval(steps: { status: string; approverRole: string }[]): boolean {
   return steps.some((s) => s.status === ApprovalStepStatus.APPROVED && isFirstLevelApproverRole(s.approverRole));
 }
@@ -440,7 +445,9 @@ export async function approve(
     ? approvedSteps.length >= 1
     : approvedSteps.length >= workflow.minApprovers;
 
-  const policySatisfied = countSatisfied && satisfiesApprovalPolicy(workflow.approvalPolicy, workflow.steps, workflow.minApprovers);
+  const policySatisfied = isMprWorkflow(workflow)
+    ? hasHeadApproval(workflow.steps)
+    : countSatisfied && satisfiesApprovalPolicy(workflow.approvalPolicy, workflow.steps, workflow.minApprovers);
 
   // A super admin's single approval settles the whole request: carry on through the
   // remaining pending steps (each audited as an override) instead of making them click again.
@@ -632,7 +639,7 @@ export async function reject(stepId: string, userId: string, reason: string) {
   const rejectedCount = workflow.steps.filter(
     (workflowStep) => workflowStep.status === ApprovalStepStatus.REJECTED
   ).length;
-  const isFullyRejected = workflow.approvalPolicy === HEAD_THEN_ADMIN_POLICY
+  const isFullyRejected = workflow.approvalPolicy === HEAD_THEN_ADMIN_POLICY || isMprWorkflow(workflow)
     ? rejectedCount >= 1
     : rejectedCount >= workflow.minApprovers;
   const newWorkflowStatus = isFullyRejected ? ApprovalStatus.REJECTED : workflow.status;

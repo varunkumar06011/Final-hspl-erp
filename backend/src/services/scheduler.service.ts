@@ -1,6 +1,7 @@
 import { prisma } from '../config/prisma';
 import { QuotationStatus, ApprovalStatus } from '@hospital-erp/shared';
 import { notifyAdmins } from './push.service';
+import { migrateLegacyMprWorkflows } from './mpr-approval.service';
 
 // ─── Quotation Approval Aging Scheduler ─────────────────────────────
 // Runs entirely on the backend (independent of any frontend activity).
@@ -117,6 +118,10 @@ async function checkOverdueQuotations(): Promise<void> {
     if (migratedPayments.count > 0) {
       console.log(`[Scheduler] Migrated ${migratedPayments.count} pending payment request workflow(s) to ADMIN_SINGLE_APPROVER policy`);
     }
+
+    // ── MPRs submitted before the heads-only rule: drop their admin steps and
+    //    approve the ones a head already signed. Idempotent.
+    await migrateLegacyMprWorkflows();
 
     // Find all quotations across ALL projects that are still pending
     // approval with an approval workflow.

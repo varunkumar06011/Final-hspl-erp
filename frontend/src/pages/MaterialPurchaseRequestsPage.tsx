@@ -30,7 +30,7 @@ import { DetailSection, DetailField } from '../components/DetailSection';
 import WaitingOn from '../components/WaitingOn';
 import CopyText from '../components/CopyText';
 import ApprovalTiming from '../components/ApprovalTiming';
-import { MPRStatus, MPRRequestType, UserRole, isApproverRole, isWorkflowOpenToRole, canOverrideApprovals, findApprovableStep, isSuperAdmin } from '@hospital-erp/shared';
+import { MPRStatus, MPRRequestType, UserRole, isFirstLevelApproverRole, isWorkflowOpenToRole, canOverrideApprovals, findApprovableStep, isSuperAdmin } from '@hospital-erp/shared';
 import { formatDate, STATUS_COLORS, QTY_UNIT_OPTIONS, SERVICE_UNIT_OPTIONS, SERVICE_CATEGORY_OPTIONS, enumLabel, unitLabel, serviceCategoryLabel } from '../utils/enumOptions';
 import { useTranslation } from 'react-i18next';
 import api, { extractErrorMessage } from '../config/api';
@@ -623,7 +623,8 @@ export default function MaterialPurchaseRequestsPage() {
   });
 
   function canApprove(row: MPRRow): ApprovalStep | null {
-    if (!row.approvalWorkflow || !user || !(isApproverRole(user.role) || canOverrideApprovals(user.role, user.extraPermissions))) return null;
+    // Only the Project Head / Head of Construction approve MPRs (super admin can override).
+    if (!row.approvalWorkflow || !user || !(isFirstLevelApproverRole(user.role) || canOverrideApprovals(user.role, user.extraPermissions))) return null;
     if (!isWorkflowOpenToRole(row.approvalWorkflow, user.role, user.extraPermissions)) return null;
     if (row.status !== MPRStatus.SUBMITTED && row.status !== MPRStatus.APPROVED) return null;
     const alreadyDecided = row.approvalWorkflow.steps.some(
