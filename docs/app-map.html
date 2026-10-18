@@ -1,0 +1,375 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>How the App Works</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #ffffff; --ink: #1d2433; --muted: #5b6475; --line: #dde1e8;
+    --accent: #0f6cbd; --chip: #eef4fb;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #14171c; --card: #1c2027; --ink: #e6e9ef; --muted: #a2aab8; --line: #2d333d; --accent: #5aa9f0; --chip: #22303f; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  header { padding: 28px 24px 8px; max-width: 1400px; margin: 0 auto; }
+  h1 { margin: 0 0 4px; font-size: 26px; }
+  header p { margin: 0; color: var(--muted); }
+  nav { position: sticky; top: 0; z-index: 5; background: var(--bg); border-bottom: 1px solid var(--line); }
+  nav .in { max-width: 1400px; margin: 0 auto; padding: 10px 24px; display: flex; flex-wrap: wrap; gap: 6px; }
+  nav a { text-decoration: none; color: var(--accent); background: var(--chip); padding: 4px 10px; border-radius: 999px; font-size: 13px; }
+  main { max-width: 1400px; margin: 0 auto; padding: 16px 24px 80px; }
+  section { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px; margin: 18px 0; scroll-margin-top: 60px; }
+  h2 { margin: 0 0 4px; font-size: 20px; }
+  .lead { color: var(--muted); margin: 0 0 12px; }
+  .tools { display: flex; gap: 6px; margin-bottom: 8px; }
+  .tools button { border: 1px solid var(--line); background: var(--card); color: var(--ink); border-radius: 6px; padding: 2px 10px; cursor: pointer; font-size: 13px; }
+  .diagram { overflow: auto; border: 1px dashed var(--line); border-radius: 8px; padding: 12px; background: #fff; }
+  .diagram svg { height: auto; }
+  .legend { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0 12px; }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; font-size: 13.5px; border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px 3px 4px; }
+  .legend i { width: 18px; height: 18px; border-radius: 50%; display: inline-block; border: 2px solid; }
+  ul.notes { margin: 12px 0 0; padding-left: 20px; }
+  ul.notes li { margin: 3px 0; }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; margin-top: 8px; }
+  th, td { border: 1px solid var(--line); padding: 7px 9px; text-align: left; vertical-align: top; }
+  th { background: var(--chip); }
+  @media (max-width: 640px) { header, main, nav .in { padding-left: 16px; padding-right: 16px; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>How the app works: the complete flow</h1>
+  <p>From "site needs material" to "vendor is paid", who does each step and what happens next. Use − / + on a chart to zoom. (Needs internet once to draw the charts.)</p>
+</header>
+<nav><div class="in">
+  <a href="#main">1. Main flow: material to payment</a>
+  <a href="#sitebill">2. Small site bills</a>
+  <a href="#money">3. Money and budget</a>
+  <a href="#daily">4. Daily site work</a>
+  <a href="#miko">5. Miko assistant</a>
+  <a href="#triggers">6. What triggers what</a>
+  <a href="#people">7. Who does what</a>
+</div></nav>
+
+<main>
+
+<div class="legend" id="legend">
+  <span><i style="background:#e3f4e8;border-color:#2e8b57"></i>Site team (Supervisor / Site Supervisor)</span>
+  <span><i style="background:#ffeccc;border-color:#d98a00"></i>Heads (Project Head / Head of Construction)</span>
+  <span><i style="background:#ece4fb;border-color:#7048c8"></i>Admins (Admin 1, Admin 2…)</span>
+  <span><i style="background:#ddeeff;border-color:#1f6fc4"></i>Accounts team</span>
+  <span><i style="background:#ffe4e4;border-color:#c0392b"></i>Vendor</span>
+  <span><i style="background:#f1f1f1;border-color:#888"></i>App does it automatically</span>
+  <span><i style="background:#fff8c4;border-color:#c9a800"></i>🔔 People get notified</span>
+</div>
+
+<!-- 1 ─────────────────────────────────────────────── -->
+<section id="main">
+  <h2>1. Main flow: from material request to vendor payment</h2>
+  <p class="lead">After the PO is approved, two tracks run side by side: <b>goods</b> (left) and <b>money</b> (right).</p>
+  <div class="tools"><button data-z="-">−</button><button data-z="+">+</button><button data-z="0">fit</button></div>
+  <div class="diagram"><pre class="mermaid">
+flowchart TD
+  START(["Site needs material or a service"]):::site
+  START --> SMALL{"Small buy, paid at the shop,<br/>up to ₹5,000?"}
+  SMALL -- "Yes" --> SB["Go to chart 2:<br/>Site Bill"]:::site
+  SMALL -- "No" --> MR["Write a Material Request<br/>what · how much · which vendor · rough rate"]:::site
+  MR --> N1["🔔 Project Head and<br/>Head of Construction notified"]:::bell
+  N1 --> A1{"Approve the request?<br/>(one head is enough)"}:::head
+  A1 -- "No" --> R1["Request rejected<br/>raiser sees the reason"]:::bad
+  A1 -- "Yes" --> KIND{"Regular vendor or<br/>one-off supplier?"}
+
+  KIND -- "One-off<br/>(transport, small local buy)" --> NV1["Buy it, upload the bill"]:::site
+  NV1 --> NV2(["Request closed"]):::auto
+
+  KIND -- "Regular vendor" --> Q1["App creates the first quotation<br/>from the request's vendor, items and rates"]:::auto
+  Q1 --> Q2["Optional: add quotations<br/>from other vendors to compare"]:::site
+  Q2 --> Q3{"Compare and pick the best<br/>(Finalize)"}:::head
+  Q3 -- "Not this one" --> QR["Marked 'not selected'"]:::bad
+  Q3 -- "Finalize" --> Q4["Other waiting quotations auto-closed<br/>once every material is covered"]:::auto
+  Q3 -- "Finalize" --> PO["App raises the Purchase Order (PO)<br/>automatically"]:::auto
+  PO --> N2["🔔 Heads notified"]:::bell
+  N2 --> A2{"Head approves the PO<br/>(first approval)"}:::head
+  A2 -- "Yes" --> N3["🔔 Admins notified"]:::bell
+  N3 --> A3{"Admin approves the PO<br/>(final approval)"}:::admin
+  A2 -- "No" --> R2["PO sent back:<br/>edit and resend"]:::bad
+  A3 -- "No" --> R2
+  R2 --> N2
+  A3 -- "Yes" --> OK["PO APPROVED<br/>budget amount reserved<br/>PO PDF ready to send to the vendor"]:::auto
+
+  %% ── Goods track
+  OK --> G1["Vendor sends the material"]:::vendor
+  G1 --> G2["Truck arrives: make a Gate Pass<br/>vehicle · driver · photo"]:::site
+  G2 --> N4["🔔 Heads notified"]:::bell
+  N4 --> G3{"Head / Admin approves<br/>the gate pass with OTP"}:::head
+  G3 --> G4["Record Goods Receipt:<br/>count what actually came"]:::site
+  G4 --> N5["🔔 Heads notified"]:::bell
+  N5 --> G5["Inspect quality:<br/>accept or reject quantities"]:::site
+  G5 --> G6["Post to stock"]:::site
+  G6 --> G7["Stock goes up<br/>equipment becomes tracked assets (QR)<br/>PO marked part / fully delivered"]:::auto
+  G7 --> G8{"Everything received?"}
+  G8 -- "Not yet" --> G1
+  G8 -- "Yes" --> DONE
+
+  %% ── Money track
+  OK --> M0{"Pay before delivery?"}
+  M0 -- "Yes, advance" --> M4
+  M0 -- "No, pay on bill" --> M1["Vendor sends its bill (invoice)"]:::vendor
+  M1 --> M2["Enter the invoice:<br/>snap a photo, app reads it"]:::acct
+  M2 --> N6["🔔 Heads notified"]:::bell
+  N6 --> M3{"Heads verify the invoice"}:::head
+  M3 -- "Rejected" --> M2
+  M3 -- "Verified" --> M3b["Vendor's account in the books<br/>shows the amount owed"]:::auto
+  M3b --> M4["Raise a Payment Request"]:::acct
+  M4 --> N7["🔔 Admins notified"]:::bell
+  N7 --> M5{"Admin approves the payment"}:::admin
+  M5 -- "Yes" --> M6["Pay from a bank or cash account"]:::acct
+  M6 --> M7["Bank / cash balance goes down<br/>books and budget updated"]:::auto
+  M7 --> N8["🔔 PO raiser and request raiser<br/>told it is paid"]:::bell
+  N8 --> M8["Share payment confirmation<br/>with the vendor (PDF / WhatsApp)"]:::acct
+  M8 --> DONE
+
+  DONE(["Purchase complete<br/>whole story on one page in Combined Records"]):::auto
+
+  classDef site fill:#e3f4e8,stroke:#2e8b57,color:#123,stroke-width:2px;
+  classDef head fill:#ffeccc,stroke:#d98a00,color:#321,stroke-width:2px;
+  classDef admin fill:#ece4fb,stroke:#7048c8,color:#213,stroke-width:2px;
+  classDef acct fill:#ddeeff,stroke:#1f6fc4,color:#123,stroke-width:2px;
+  classDef vendor fill:#ffe4e4,stroke:#c0392b,color:#311,stroke-width:2px;
+  classDef auto fill:#f1f1f1,stroke:#888,color:#222,stroke-dasharray:5 3;
+  classDef bell fill:#fff8c4,stroke:#c9a800,color:#321;
+  classDef bad fill:#fff,stroke:#c0392b,color:#a01,stroke-dasharray:3 3;
+  </pre></div>
+  <ul class="notes">
+    <li>Different materials in one request can go to <b>different vendors</b>: each finalized quotation gets its own PO.</li>
+    <li>Budget head and payment type can be changed on a PO at any time without sending it back for approval.</li>
+    <li>A PO can also be turned into a <b>contract</b>, with smaller sub-POs under it for work done in stages.</li>
+    <li>Supervisors see "goods still to receive" and "receipts to inspect" in <b>My Work</b>.</li>
+  </ul>
+</section>
+
+<!-- 2 ─────────────────────────────────────────────── -->
+<section id="sitebill">
+  <h2>2. Small site bills (up to ₹5,000)</h2>
+  <p class="lead">For small things bought and paid on the spot. No quotation, no waiting.</p>
+  <div class="tools"><button data-z="-">−</button><button data-z="+">+</button><button data-z="0">fit</button></div>
+  <div class="diagram"><pre class="mermaid">
+flowchart TD
+  A(["Small item needed urgently"]):::site --> B["Buy it at the shop,<br/>pay on the spot"]:::site
+  B --> C["Take a photo of the bill<br/>and add a Site Bill"]:::site
+  C --> D{"Bill above ₹5,000?"}
+  D -- "Yes" --> E["Turned into a normal<br/>Material Request (chart 1)"]:::auto
+  D -- "No" --> F["Saved as already approved"]:::auto
+  F --> G["Collect several bills and combine them<br/>into one reimbursement PO"]:::site
+  G --> H{"PO approval:<br/>head first, then admin"}:::head
+  H --> I["Payment request → admin approves → paid"]:::acct
+  I --> J["🔔 Each person told<br/>their bills were reimbursed"]:::bell
+  H -- "PO cancelled" --> K["Bills become free again<br/>to put on another PO"]:::auto
+
+  classDef site fill:#e3f4e8,stroke:#2e8b57,color:#123,stroke-width:2px;
+  classDef head fill:#ffeccc,stroke:#d98a00,color:#321,stroke-width:2px;
+  classDef acct fill:#ddeeff,stroke:#1f6fc4,color:#123,stroke-width:2px;
+  classDef auto fill:#f1f1f1,stroke:#888,color:#222,stroke-dasharray:5 3;
+  classDef bell fill:#fff8c4,stroke:#c9a800,color:#321;
+  </pre></div>
+</section>
+
+<!-- 3 ─────────────────────────────────────────────── -->
+<section id="money">
+  <h2>3. Money and budget</h2>
+  <p class="lead">Where money comes from, where it sits, where it goes, and how each budget head fills up.</p>
+  <div class="tools"><button data-z="-">−</button><button data-z="+">+</button><button data-z="0">fit</button></div>
+  <div class="diagram"><pre class="mermaid">
+flowchart LR
+  subgraph IN["Money comes in"]
+    direction TB
+    O["Owner / company<br/>puts money in"]:::acct
+    F["Other inward funds"]:::acct
+  end
+  subgraph HOLD["Money sits in"]
+    direction TB
+    BANK[("Bank accounts")]:::auto
+    CASH[("Cash in hand")]:::auto
+  end
+  subgraph OUT["Money goes out"]
+    direction TB
+    V["Vendor payments<br/>(advance or against bill)"]:::acct
+    X["Other expenses"]:::acct
+    S["Site bill reimbursements"]:::acct
+  end
+  O --> BANK
+  F --> BANK
+  F --> CASH
+  BANK <-- "Bank ↔ cash transfer<br/>(not counted as spending)" --> CASH
+  BANK --> V
+  BANK --> X
+  CASH --> V
+  CASH --> S
+  CASH --> X
+
+  subgraph BUD["Budget head (e.g. Civil Works)"]
+    direction TB
+    B1["1. Allocated<br/>(set by admins)"]:::admin
+    B2["2. Reserved<br/>when a PO is approved"]:::auto
+    B3["3. Billed<br/>when the invoice is verified"]:::auto
+    B4["4. Paid<br/>when the payment is made"]:::auto
+    B1 --> B2 --> B3 --> B4
+  end
+  V -. "updates" .-> B4
+  B2 -. "PO over budget?<br/>approver must give a reason" .-> W["⚠ Budget overrun warning"]:::bell
+
+  subgraph SEE["Everything shows up in"]
+    direction TB
+    R1["Dashboards"]:::auto
+    R2["Account books / ledgers"]:::auto
+    R3["Payment and finance reports"]:::auto
+    R4["Transaction register · GST records"]:::auto
+  end
+  OUT --> SEE
+  HOLD --> SEE
+  BUD --> SEE
+
+  classDef acct fill:#ddeeff,stroke:#1f6fc4,color:#123,stroke-width:2px;
+  classDef admin fill:#ece4fb,stroke:#7048c8,color:#213,stroke-width:2px;
+  classDef auto fill:#f1f1f1,stroke:#888,color:#222,stroke-dasharray:5 3;
+  classDef bell fill:#fff8c4,stroke:#c9a800,color:#321;
+  </pre></div>
+</section>
+
+<!-- 4 ─────────────────────────────────────────────── -->
+<section id="daily">
+  <h2>4. Daily site work</h2>
+  <p class="lead">Things that happen on site every day, outside of buying.</p>
+  <div class="tools"><button data-z="-">−</button><button data-z="+">+</button><button data-z="0">fit</button></div>
+  <div class="diagram"><pre class="mermaid">
+flowchart TD
+  SITE(["A day on site"]):::site
+  SITE --> AT["Mark attendance<br/>of workers and staff"]:::site
+  SITE --> PH["Upload site photos<br/>(progress)"]:::site
+  SITE --> WK["Work tasks and calendar<br/>what to do, by when"]:::site
+  SITE --> GP["Gate passes<br/>material going out · visitors"]:::site
+  SITE --> ST["Take material out of stock<br/>for use on site"]:::site
+  SITE --> IS["Report an issue"]:::site
+  SITE --> IN["Do an inspection"]:::site
+  SITE --> DOC["Store drawings and documents<br/>(can be PIN-locked)"]:::site
+
+  ST --> ST2["Stock goes down<br/>below minimum → shown as low stock"]:::auto
+  IS --> IS2["Open → in progress → resolved → closed"]:::head
+
+  SITE --> AS["Tools and machines (assets)"]:::site
+  AS --> AS1["Scan the QR sticker"]:::site
+  AS1 --> AS2["Issue to a person · take back ·<br/>send for repair · retire"]:::site
+  AS2 --> AS3["Full history kept<br/>warranty expiry reminders"]:::auto
+
+  classDef site fill:#e3f4e8,stroke:#2e8b57,color:#123,stroke-width:2px;
+  classDef head fill:#ffeccc,stroke:#d98a00,color:#321,stroke-width:2px;
+  classDef auto fill:#f1f1f1,stroke:#888,color:#222,stroke-dasharray:5 3;
+  </pre></div>
+</section>
+
+<!-- 5 ─────────────────────────────────────────────── -->
+<section id="miko">
+  <h2>5. Miko, the assistant (Telugu / English)</h2>
+  <p class="lead">A shortcut to create records by chatting or sending a photo. It only prepares records; you confirm, and then the normal flow above takes over.</p>
+  <div class="tools"><button data-z="-">−</button><button data-z="+">+</button><button data-z="0">fit</button></div>
+  <div class="diagram"><pre class="mermaid">
+flowchart LR
+  A(["Tap the robot icon"]):::site --> B["Pick what to make<br/>or just type / speak / send a photo of a bill"]:::site
+  B --> C["Miko reads the photo<br/>and asks only what is missing<br/>(tap-able answers)"]:::auto
+  C --> D["Shows a card with<br/>everything filled in"]:::auto
+  D --> E{"You confirm?"}:::site
+  E -- "Yes" --> F["Saved, exactly as if you made it yourself<br/>(request, quotation, PO, receipt,<br/>invoice, stock entry, site bill, vendor)"]:::auto
+  E -- "No" --> G["Nothing saved"]:::auto
+  F --> H["Normal approvals and<br/>notifications follow (chart 1)"]:::bell
+  F --> B
+  NOTE["Miko can never approve,<br/>pay, delete or change records"]:::bad
+
+  classDef site fill:#e3f4e8,stroke:#2e8b57,color:#123,stroke-width:2px;
+  classDef auto fill:#f1f1f1,stroke:#888,color:#222,stroke-dasharray:5 3;
+  classDef bell fill:#fff8c4,stroke:#c9a800,color:#321;
+  classDef bad fill:#fff,stroke:#c0392b,color:#a01,stroke-dasharray:3 3;
+  </pre></div>
+</section>
+
+<!-- 6 ─────────────────────────────────────────────── -->
+<section id="triggers">
+  <h2>6. What triggers what</h2>
+  <p class="lead">Every "when this happens → the app does that" in one list.</p>
+  <table>
+    <tr><th>When this happens…</th><th>…the app automatically does this</th><th>Who gets notified</th></tr>
+    <tr><td>Material Request is sent</td><td>Puts it in the heads' approval list</td><td>🔔 Project Head, Head of Construction</td></tr>
+    <tr><td>Material Request is approved (regular vendor)</td><td>Creates the first quotation from the request</td><td>🔔 Heads</td></tr>
+    <tr><td>Material Request is approved (one-off supplier)</td><td>Opens it for uploading the bill; then it closes</td><td>-</td></tr>
+    <tr><td>A quotation is finalized</td><td>Raises the Purchase Order; once all materials are covered, closes the other quotations as "not selected"</td><td>🔔 Heads (PO to approve)</td></tr>
+    <tr><td>Head approves a PO</td><td>Moves it to the admins</td><td>🔔 Admins</td></tr>
+    <tr><td>Admin approves a PO</td><td>Reserves the amount on the budget head; PO is ready for gate pass, receipt and payment</td><td>🔔 PO raiser + heads</td></tr>
+    <tr><td>Someone approves or rejects anything</td><td>Records who and when; shows how long heads and admins took</td><td>🔔 Raiser + heads (never the approver themselves)</td></tr>
+    <tr><td>Gate pass is made</td><td>Waits for OTP approval</td><td>🔔 Heads</td></tr>
+    <tr><td>Goods receipt is recorded</td><td>Waits for inspection</td><td>🔔 Heads</td></tr>
+    <tr><td>Goods receipt is posted</td><td>Stock goes up, equipment becomes QR-tracked assets, PO shows part / fully delivered</td><td>-</td></tr>
+    <tr><td>Invoice is entered</td><td>Reads the photo to fill details; waits for verification</td><td>🔔 Heads</td></tr>
+    <tr><td>Invoice is verified</td><td>Adds the amount owed to the vendor's account; budget "billed" goes up</td><td>-</td></tr>
+    <tr><td>Payment request is raised</td><td>Waits for admin approval</td><td>🔔 Admins</td></tr>
+    <tr><td>Payment is made</td><td>Bank / cash balance goes down, books and budget "paid" updated, confirmation ready to share</td><td>🔔 PO raiser + request raiser (site bills: each bill owner)</td></tr>
+    <tr><td>Stock falls below its minimum</td><td>Shown as low stock on the dashboard</td><td>-</td></tr>
+    <tr><td>Quotation waiting more than 24 hours</td><td>Hourly check sends a reminder (once per quotation)</td><td>🔔 Admins</td></tr>
+    <tr><td>Anything is created or changed</td><td>Saved in the audit / activity log; searchable from the top search bar right away</td><td>-</td></tr>
+  </table>
+</section>
+
+<!-- 7 ─────────────────────────────────────────────── -->
+<section id="people">
+  <h2>7. Who does what</h2>
+  <table>
+    <tr><th>Person</th><th>Main jobs</th><th>Approves</th></tr>
+    <tr><td>Site Supervisor</td><td>Gate passes at the gate</td><td>-</td></tr>
+    <tr><td>Supervisor</td><td>Material requests, site bills, quotations, goods receipts, inspection and posting to stock, inventory, assets, attendance, photos, issues, documents</td><td>-</td></tr>
+    <tr><td>Project Head / Head of Construction</td><td>Watch progress, raise requests if needed</td><td>Material requests (one is enough) · finalize quotations · first PO approval · gate passes (OTP) · invoices</td></tr>
+    <tr><td>Accountant / Accounts Head</td><td>Invoices, payment requests, paying from bank / cash, account books, reports</td><td>-</td></tr>
+    <tr><td>Admin 1, Admin 2, more admins</td><td>Users, projects (hospitals), module access, budgets</td><td>Final PO approval · payment requests · can finalize quotations</td></tr>
+    <tr><td>Super admin</td><td>Everything</td><td>Any step, in any order; one approval completes it</td></tr>
+  </table>
+  <ul class="notes">
+    <li>Each project (hospital) has its own separate data. People log in once and choose which project to enter.</li>
+    <li>Admins can switch individual menu sections on or off for any person.</li>
+    <li><b>My Work</b> shows each person only what is waiting on them.</li>
+  </ul>
+</section>
+
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"></script>
+<script>
+  mermaid.initialize({
+    startOnLoad: false,
+    theme: 'default',
+    securityLevel: 'loose',
+    flowchart: { useMaxWidth: false, htmlLabels: true, curve: 'basis' },
+  });
+  mermaid.run({ querySelector: '.mermaid' }).then(function () {
+    document.querySelectorAll('section').forEach(function (sec) {
+      var svg = sec.querySelector('.diagram svg');
+      if (!svg) return;
+      var natural = svg.getBoundingClientRect().width;
+      var box = sec.querySelector('.diagram');
+      var fit = function () { return Math.min(natural, box.clientWidth - 24); };
+      var w = fit();
+      var apply = function () { svg.style.width = w + 'px'; svg.style.maxWidth = 'none'; };
+      apply();
+      sec.querySelectorAll('.tools button').forEach(function (b) {
+        b.addEventListener('click', function () {
+          var z = b.getAttribute('data-z');
+          if (z === '+') w = w * 1.25;
+          else if (z === '-') w = w / 1.25;
+          else w = fit();
+          apply();
+        });
+      });
+    });
+  });
+</script>
+</body>
+</html>

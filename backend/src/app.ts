@@ -1,3 +1,4 @@
+import path from 'path';
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -41,6 +42,17 @@ app.get('/health', async (_req, res) => {
     logger.error({ event: 'health_check_db_down', err: (err as Error).message });
     res.status(503).json({ status: 'degraded', timestamp: new Date().toISOString(), db: 'down' });
   }
+});
+
+// Business flow chart of the app (docs/app-map.html), a plain page outside the app itself.
+// It draws its charts with Mermaid from jsDelivr, so its CSP allows that script and inline code.
+const APP_MAP_FILE = path.resolve(__dirname, '../../docs/app-map.html');
+app.get('/app-map', (_req, res) => {
+  res.setHeader(
+    'Content-Security-Policy',
+    "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:",
+  );
+  res.sendFile(APP_MAP_FILE);
 });
 
 app.use('/api', routes);
