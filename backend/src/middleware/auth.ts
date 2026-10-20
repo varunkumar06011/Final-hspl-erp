@@ -83,6 +83,38 @@ export async function activeProjectId(
   return userProjectId;
 }
 
+// Every API call passes through here, so the user row is kept for a few seconds
+// instead of costing a database round trip per click. Any write to a user made
+// through this server (role, deactivation, terms, module access…) clears it at
+// once; the TTL bounds staleness from other writers. Off under vitest, whose
+// mocked users change between tests.
+const USER_CACHE_MS = process.env.VITEST ? 0 : 10_000;
+const userCache = new Map<string, { user: User | null; expiresAt: number }>();
+
+async function cachedUser(key: string, load: () => Promise<User | null>): Promise<User | null> {
+  if (USER_CACHE_MS === 0) return load();
+  const hit = userCache.get(key);
+  if (hit && hit.expiresAt > Date.now()) return hit.user;
+  const user = await load();
+  if (userCache.size > 5_000) userCache.clear();
+  userCache.set(key, { user, expiresAt: Date.now() + USER_CACHE_MS });
+  return user;
+}
+
+type UserWriteMiddleware = (
+  params: { model?: string; action: string },
+  next: (params: { model?: string; action: string }) => Promise<unknown>,
+) => Promise<unknown>;
+const USER_WRITE_ACTIONS = new Set(['create', 'createMany', 'update', 'updateMany', 'upsert', 'delete', 'deleteMany']);
+const prismaWithMiddleware = prisma as unknown as { $use?: (fn: UserWriteMiddleware) => void };
+if (USER_CACHE_MS > 0 && typeof prismaWithMiddleware.$use === 'function') {
+  prismaWithMiddleware.$use(async (params, next) => {
+    const result = await next(params);
+    if (params.model === 'User' && USER_WRITE_ACTIONS.has(params.action)) userCache.clear();
+    return result;
+  });
+}
+
 const READ_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
 /**
@@ -154,7 +186,9 @@ export async function authMiddleware(
     if (idToken.split('.').length === 3) {
       try {
         const decoded = jwt.verify(idToken, JWT_SECRET) as { userId: string; projectId?: string };
-        const user = await prisma.user.findUnique({ where: { id: decoded.userId } });
+        const user = await cachedUser(`id:${decoded.userId}`, () =>
+          prisma.user.findUnique({ where: { id: decoded.userId } }),
+        );
         if (!user) {
           res.status(403).json({ error: 'User not found' });
           return;
@@ -179,9 +213,9 @@ export async function authMiddleware(
     // Firebase ID token (from OTP-based login)
     const decodedToken = await verifyFirebaseToken(idToken);
 
-    const user = await prisma.user.findUnique({
-      where: { firebaseUid: decodedToken.uid },
-    });
+    const user = await cachedUser(`uid:${decodedToken.uid}`, () =>
+      prisma.user.findUnique({ where: { firebaseUid: decodedToken.uid } }),
+    );
 
     if (!user) {
       res.status(403).json({ error: 'Not authorized. User not found in system.' });

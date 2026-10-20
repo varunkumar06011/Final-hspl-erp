@@ -50,6 +50,7 @@ import ItemsGist from '../components/ItemsGist';
 import { useTranslation, Trans } from 'react-i18next';
 import { num, gstMult, toIncGst, toPreTax, round2 } from '../utils/taxCalc';
 import api, { extractErrorMessage } from '../config/api';
+import { patchRow, pendingProps, removeRow, useOptimistic } from '../utils/optimistic';
 import { useAuthStore } from '../stores/authStore';
 import { useDeepLinkRow } from '../hooks/useDeepLinkRow';
 import { useActiveRecord } from '../hooks/useActiveRecord';
@@ -179,6 +180,8 @@ export default function QuotationsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  // Status changes show on the list at once and are undone if the server refuses.
+  const { apply, undo, restore } = useOptimistic();
   const { user } = useAuthStore();
   const isAdmin = user ? isAdminRole(user.role) : false;
 
@@ -313,17 +316,25 @@ export default function QuotationsPage() {
   });
 
   const updateNotesMutation = useMutation({
-    mutationFn: async () => {
-      const response = await api.patch(`/quotations/${notesEditRow!.id}`, { notes: notesEditValue.trim() });
+    mutationFn: async ({ id, notes }: { id: string; notes: string }) => {
+      const response = await api.patch(`/quotations/${id}`, { notes });
       return response.data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/quotations'] });
-      setNotesEditRow(null);
-      setNotesEditValue('');
       setError('');
     },
-    onError: (err: unknown) => setError(extractErrorMessage(err)),
+    onMutate: ({ id, notes }) => {
+      setNotesEditRow(null);
+      setNotesEditValue('');
+      return apply(['/quotations'], patchRow(id, { notes }));
+    },
+    onError: (err: unknown, _vars, snapshot) => {
+      undo(snapshot, err);
+      setError(extractErrorMessage(err));
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['/quotations'] });
+    },
   });
 
   const validateQuotationForm = (): boolean => {
@@ -362,15 +373,25 @@ export default function QuotationsPage() {
       return response.data as { purchaseOrder?: { poNumber: string } | null; notSelected?: string[] };
     },
     onSuccess: (result) => {
+      toast.success(result?.purchaseOrder ? t('finalizedWithPo', { po: result.purchaseOrder.poNumber }) : t('finalized'));
+    },
+    onMutate: ({ quotationId }) => {
+      const saved = approvalAction;
+      setApprovalAction(null);
+      return apply(['/quotations'], patchRow(quotationId, { status: QuotationStatus.APPROVED })).then((snapshot) => ({ snapshot, saved }));
+    },
+    onError: (err: unknown, _vars, context) => {
+      restore(context?.snapshot);
+      setError(extractErrorMessage(err));
+      setApprovalAction(context?.saved ?? null);
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['/quotations'] });
       queryClient.invalidateQueries({ queryKey: ['/quotations/approval-aging'] });
       queryClient.invalidateQueries({ queryKey: ['/pos'] });
       queryClient.invalidateQueries({ queryKey: ['/combined-records'] });
       queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
-      setApprovalAction(null);
-      toast.success(result?.purchaseOrder ? t('finalizedWithPo', { po: result.purchaseOrder.poNumber }) : t('finalized'));
     },
-    onError: (err: unknown) => setError(extractErrorMessage(err)),
   });
 
   const cancelMutation = useMutation({
@@ -379,14 +400,24 @@ export default function QuotationsPage() {
       return response.data;
     },
     onSuccess: () => {
+      toast.success(t('cancelled'));
+    },
+    onMutate: ({ quotationId }) => {
+      const saved = cancelRow;
+      setCancelRow(null);
+      return apply(['/quotations'], patchRow(quotationId, { status: QuotationStatus.CANCELLED })).then((snapshot) => ({ snapshot, saved }));
+    },
+    onError: (err: unknown, _vars, context) => {
+      restore(context?.snapshot);
+      setCancelError(extractErrorMessage(err));
+      setCancelRow(context?.saved ?? null);
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['/quotations'] });
       queryClient.invalidateQueries({ queryKey: ['/pos'] });
       queryClient.invalidateQueries({ queryKey: ['/combined-records'] });
       queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
-      setCancelRow(null);
-      toast.success(t('cancelled'));
     },
-    onError: (err: unknown) => setCancelError(extractErrorMessage(err)),
   });
 
   const rejectMutation = useMutation({
@@ -394,13 +425,21 @@ export default function QuotationsPage() {
       const response = await api.post(`/quotations/${quotationId}/reject`, { reason, acknowledged });
       return response.data;
     },
-    onSuccess: () => {
+    onMutate: ({ quotationId }) => {
+      const saved = approvalAction;
+      setApprovalAction(null);
+      return apply(['/quotations'], patchRow(quotationId, { status: QuotationStatus.REJECTED })).then((snapshot) => ({ snapshot, saved }));
+    },
+    onError: (err: unknown, _vars, context) => {
+      restore(context?.snapshot);
+      setError(extractErrorMessage(err));
+      setApprovalAction(context?.saved ?? null);
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['/quotations'] });
       queryClient.invalidateQueries({ queryKey: ['/quotations/approval-aging'] });
       queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
-      setApprovalAction(null);
     },
-    onError: (err: unknown) => setError(extractErrorMessage(err)),
   });
 
   const [deleteRow, setDeleteRow] = useState<QuotationRow | null>(null);
@@ -408,12 +447,18 @@ export default function QuotationsPage() {
     mutationFn: async (id: string) => {
       await api.delete(`/quotations/${id}`);
     },
-    onSuccess: () => {
+    onMutate: (id) => {
+      setDeleteRow(null);
+      return apply(['/quotations'], removeRow(id));
+    },
+    onError: (err: unknown, _vars, snapshot) => {
+      undo(snapshot, err);
+      setError(extractErrorMessage(err));
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['/quotations'] });
       queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
-      setDeleteRow(null);
     },
-    onError: (err: unknown) => setError(extractErrorMessage(err)),
   });
 
   const rows: QuotationRow[] = data?.data ?? [];
@@ -838,6 +883,7 @@ export default function QuotationsPage() {
               return (
                 <Accordion
                   key={row.id}
+                  {...pendingProps(row)}
                   ref={rowRef(row.id)}
                   expanded={expandedQuotationId === row.id}
                   onChange={(_event, expanded) => setExpandedQuotationId(expanded ? row.id : null)}
@@ -1376,7 +1422,7 @@ export default function QuotationsPage() {
           <Button
             variant="contained"
             disabled={updateNotesMutation.isPending}
-            onClick={() => updateNotesMutation.mutate()}
+            onClick={() => notesEditRow && updateNotesMutation.mutate({ id: notesEditRow.id, notes: notesEditValue.trim() })}
           >
             {updateNotesMutation.isPending ? <CircularProgress size={20} /> : t('save')}
           </Button>

@@ -34,6 +34,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { InspectionStatus } from '@hospital-erp/shared';
 import { enumToOptions, formatDate, STATUS_COLORS, enumLabel } from '../utils/enumOptions';
 import api, { extractErrorMessage } from '../config/api';
+import { insertRow, patchRow, pendingProps, removeRow, useOptimistic } from '../utils/optimistic';
 import ResponsiveTable from '../components/ResponsiveTable';
 import RefreshButton from '../components/RefreshButton';
 
@@ -74,34 +75,56 @@ export default function InspectionsPage() {
     },
   });
 
+  const { apply, undo } = useOptimistic();
+
+  type SaveVars = { id: string | null; payload: Record<string, unknown>; form: Record<string, unknown> };
   const createMutation = useMutation({
-    mutationFn: async (payload: Record<string, unknown>) => {
-      if (editingId) {
-        const response = await api.patch(`/inspections/${editingId}`, payload);
+    mutationFn: async ({ id, payload }: SaveVars) => {
+      if (id) {
+        const response = await api.patch(`/inspections/${id}`, payload);
         return response.data;
       }
       const response = await api.post('/inspections', payload);
       return response.data;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/inspections'] });
+    // Instant: the dialog closes and the list shows the change while it saves.
+    onMutate: ({ id, payload }) => {
       setCreateOpen(false);
       setEditingId(null);
       setForm({});
-      setSuccessMsg(editingId ? t('okUpdated') : t('okCreated'));
+      return apply(['/inspections'], id ? patchRow(id, payload) : insertRow({ status: 'SCHEDULED', ...payload }));
+    },
+    onSuccess: (_data, { id }) => {
+      setSuccessMsg(id ? t('okUpdated') : t('okCreated'));
       setTimeout(() => setSuccessMsg(''), 3000);
     },
-    onError: (err: unknown) => setError(extractErrorMessage(err)),
+    onError: (err: unknown, { id, form: typed }, snapshot) => {
+      undo(snapshot, err);
+      // Reopen the form with what was typed.
+      setEditingId(id);
+      setForm(typed);
+      setError(extractErrorMessage(err));
+      setCreateOpen(true);
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['/inspections'] });
+    },
   });
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => { await api.delete(`/inspections/${id}`); },
+    onMutate: (id) => apply(['/inspections'], removeRow(id)),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/inspections'] });
       setSuccessMsg(t('okDeleted'));
       setTimeout(() => setSuccessMsg(''), 3000);
     },
-    onError: (err: unknown) => setError(extractErrorMessage(err)),
+    onError: (err: unknown, _id, snapshot) => {
+      undo(snapshot, err);
+      setError(extractErrorMessage(err));
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['/inspections'] });
+    },
   });
 
   const rows: InspectionRow[] = data?.data ?? [];
@@ -177,7 +200,7 @@ export default function InspectionsPage() {
                 <TableRow><TableCell colSpan={7} align="center" sx={{ py: 4 }}><Typography color="text.secondary">{t('none')}</Typography></TableCell></TableRow>
               ) : (
                 rows.map((row) => (
-                  <TableRow key={row.id} hover>
+                  <TableRow key={row.id} hover {...pendingProps(row)}>
                     <TableCell data-label={t('name')}>{row.name}</TableCell>
                     <TableCell data-label={t('date')}>{formatDate(row.date)}</TableCell>
                     <TableCell data-label={t('scheduledDate')}>{row.scheduledDate ? formatDate(row.scheduledDate) : '—'}</TableCell>
@@ -258,10 +281,14 @@ export default function InspectionsPage() {
               setError('');
               if (!form.name) { setError(t('errName')); return; }
               createMutation.mutate({
-                name: form.name,
-                date: form.date || undefined,
-                scheduledDate: form.scheduledDate || undefined,
-                ...(editingId ? { status: form.status, correctiveAction: form.correctiveAction || undefined } : {}),
+                id: editingId,
+                form,
+                payload: {
+                  name: form.name,
+                  date: form.date || undefined,
+                  scheduledDate: form.scheduledDate || undefined,
+                  ...(editingId ? { status: form.status, correctiveAction: form.correctiveAction || undefined } : {}),
+                },
               });
             }}
             disabled={!form.name || createMutation.isPending}

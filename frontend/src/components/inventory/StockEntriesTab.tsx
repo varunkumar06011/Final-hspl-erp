@@ -20,6 +20,7 @@ import { isApproverRole } from '@hospital-erp/shared';
 import ResponsiveDialog from '../ResponsiveDialog';
 import AttachmentUpload from '../AttachmentUpload';
 import api, { extractErrorMessage } from '../../config/api';
+import { patchRow, pendingProps, useOptimistic } from '../../utils/optimistic';
 import { useAuthStore } from '../../stores/authStore';
 import { enumLabel, formatDate, formatIndianNumber, STATUS_COLORS } from '../../utils/enumOptions';
 
@@ -69,19 +70,29 @@ export default function StockEntriesTab() {
     queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
   };
 
+  // Decisions show on the card at once and are undone if the server refuses.
+  const { apply, undo } = useOptimistic();
   const approve = useMutation({
     mutationFn: async (id: string) => api.post(`/stock-entries/${id}/approve`),
-    onSuccess: refresh,
-    onError: (e: unknown) => setError(extractErrorMessage(e)),
+    onMutate: (id) => apply(['/stock-entries'], patchRow(id, { status: 'POSTED' })),
+    onError: (e: unknown, _id, snapshot) => {
+      undo(snapshot, e);
+      setError(extractErrorMessage(e));
+    },
+    onSettled: refresh,
   });
   const reject = useMutation({
     mutationFn: async ({ id, reason: r }: { id: string; reason: string }) => api.post(`/stock-entries/${id}/reject`, { reason: r }),
-    onSuccess: () => {
+    onMutate: ({ id, reason: r }) => {
       setRejecting(null);
       setReason('');
-      refresh();
+      return apply(['/stock-entries'], patchRow(id, { status: 'REJECTED', rejectionReason: r }));
     },
-    onError: (e: unknown) => setError(extractErrorMessage(e)),
+    onError: (e: unknown, _vars, snapshot) => {
+      undo(snapshot, e);
+      setError(extractErrorMessage(e));
+    },
+    onSettled: refresh,
   });
 
   if (isLoading) return <Box sx={{ p: 4, textAlign: 'center' }}><CircularProgress size={32} /></Box>;
@@ -97,7 +108,7 @@ export default function StockEntriesTab() {
           {entries.map((e) => {
             const total = e.items.reduce((s, i) => s + Number(i.quantity) * Number(i.unitCost), 0);
             return (
-              <Card key={e.id} variant="outlined" sx={{ p: 1.5 }}>
+              <Card key={e.id} {...pendingProps(e)} variant="outlined" sx={{ p: 1.5 }}>
                 <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={1} flexWrap="wrap" useFlexGap>
                   <Box sx={{ minWidth: 0 }}>
                     <Typography fontWeight={600}>{e.entryNumber} · {enumLabel(e.sourceType)}</Typography>

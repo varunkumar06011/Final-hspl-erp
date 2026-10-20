@@ -41,6 +41,7 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { enumLabel } from '../utils/enumOptions';
 import api, { extractErrorMessage } from '../config/api';
+import { insertRow, patchRow, pendingProps, removeRow, useOptimistic } from '../utils/optimistic';
 import { fetchAllLedgers } from '../utils/ledgers';
 import ResponsiveDialog from '../components/ResponsiveDialog';
 import ResponsiveTable from '../components/ResponsiveTable';
@@ -172,16 +173,30 @@ export default function CashAccountsPage() {
     enabled: !!statementAccountId,
   });
 
+  const { apply, undo } = useOptimistic();
+
   const createMutation = useMutation({
     mutationFn: async (payload: Record<string, unknown>) => {
       const response = await api.post('/cash-accounts', payload);
       return response.data;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/cash-accounts'] });
+    // Instant: the dialog closes and the new row shows (dimmed) while it saves.
+    onMutate: (payload) => {
+      const typed = form;
       closeDialog();
+      return apply(['/cash-accounts'], insertRow({ ...payload, currentBalance: payload.openingBalance })).then((snapshot) => ({ snapshot, typed }));
     },
-    onError: (err: unknown) => setError(extractErrorMessage(err)),
+    onError: (err: unknown, _payload, context) => {
+      undo(context?.snapshot, err);
+      // Reopen the form with what was typed.
+      setForm(context?.typed ?? {});
+      setEditing(null);
+      setError(extractErrorMessage(err));
+      setDialogOpen(true);
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['/cash-accounts'] });
+    },
   });
 
   const updateMutation = useMutation({
@@ -189,22 +204,39 @@ export default function CashAccountsPage() {
       const response = await api.patch(`/cash-accounts/${id}`, payload);
       return response.data;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/cash-accounts'] });
+    onMutate: ({ id, payload }) => {
+      const typed = form;
+      const row = editing;
       closeDialog();
+      return apply(['/cash-accounts'], patchRow(id, payload)).then((snapshot) => ({ snapshot, typed, row }));
     },
-    onError: (err: unknown) => setError(extractErrorMessage(err)),
+    onError: (err: unknown, _vars, context) => {
+      undo(context?.snapshot, err);
+      setForm(context?.typed ?? {});
+      setEditing(context?.row ?? null);
+      setError(extractErrorMessage(err));
+      setDialogOpen(true);
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['/cash-accounts'] });
+    },
   });
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
       await api.delete(`/cash-accounts/${id}`);
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/cash-accounts'] });
+    onMutate: (id) => {
       setDeleteConfirm(null);
+      return apply(['/cash-accounts'], removeRow(id));
     },
-    onError: (err: unknown) => setError(extractErrorMessage(err)),
+    onError: (err: unknown, _id, snapshot) => {
+      undo(snapshot, err);
+      setError(extractErrorMessage(err));
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['/cash-accounts'] });
+    },
   });
 
   const txnMutation = useMutation({
@@ -439,7 +471,7 @@ export default function CashAccountsPage() {
                 </TableCell></TableRow>
               ) : (
                 rows.map((row) => (
-                  <TableRow key={row.id} hover ref={rowRef(row.id)} sx={{ ...(highlightId === row.id && { bgcolor: 'warning.light', '&:hover': { bgcolor: 'warning.light' } }) }}>
+                  <TableRow key={row.id} hover {...pendingProps(row)} ref={rowRef(row.id)} sx={{ ...(highlightId === row.id && { bgcolor: 'warning.light', '&:hover': { bgcolor: 'warning.light' } }) }}>
                     <TableCell data-label={tr('accountName')} sx={{ fontWeight: 600 }}>{row.name}</TableCell>
                     <TableCell data-label={tr('opening')} align="right">{formatCurrency(row.openingBalance)}</TableCell>
                     <TableCell data-label={tr('currentBalance')} align="right" sx={{ fontWeight: 600, color: 'success.main' }}>{formatCurrency(row.currentBalance)}</TableCell>

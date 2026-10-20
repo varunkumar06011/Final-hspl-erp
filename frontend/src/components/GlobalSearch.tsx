@@ -181,6 +181,18 @@ function highlightMatch(text: string, query: string): React.ReactNode {
   return <Marked text={text} marks={[{ start: idx, end: idx + q.length }]} />;
 }
 
+// Recent answers by query, so retyping or backspacing shows results at once while a
+// fresh answer loads behind them. Lives for the page session (a project switch reloads).
+const RESULT_CACHE_MAX = 60;
+const resultCache = new Map<string, SearchResponse>();
+const cacheKey = (q: string) => q.trim().toLowerCase().replace(/\s+/g, ' ');
+function rememberResult(q: string, res: SearchResponse) {
+  const key = cacheKey(q);
+  resultCache.delete(key);
+  resultCache.set(key, res);
+  if (resultCache.size > RESULT_CACHE_MAX) resultCache.delete(resultCache.keys().next().value as string);
+}
+
 interface GlobalSearchProps {
   open: boolean;
   onClose: () => void;
@@ -256,6 +268,7 @@ export default function GlobalSearch({ open, onClose }: GlobalSearchProps) {
         params: { q, limit: 40, perType: 6 },
         signal: controller.signal,
       });
+      rememberResult(q, res.data);
       setResponse(res.data);
     } catch (err) {
       if (axios.isCancel(err)) return;
@@ -273,8 +286,10 @@ export default function GlobalSearch({ open, onClose }: GlobalSearchProps) {
       setLoading(false);
       return;
     }
-    setLoading(true);
-    debounceRef.current = setTimeout(() => doSearch(query), 150);
+    const cached = query.trim().length >= 2 ? resultCache.get(cacheKey(query)) : undefined;
+    if (cached) setResponse(cached);
+    setLoading(!cached);
+    debounceRef.current = setTimeout(() => doSearch(query), cached ? 250 : 120);
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };

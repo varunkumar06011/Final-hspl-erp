@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Box, Typography, Card, CardContent, Chip, IconButton, Tooltip, Alert, CircularProgress } from '@mui/material';
 import { Edit as EditIcon } from '@mui/icons-material';
 import api from '../config/api';
+import { optimistic, patchRow, rollback } from '../utils/optimistic';
 import { WorkTaskStatus, WorkTaskPriority } from '@hospital-erp/shared';
 import { formatDate, enumLabel } from '../utils/enumOptions';
 
@@ -60,12 +61,15 @@ export default function KanbanBoard({ onEdit }: KanbanBoardProps) {
     mutationFn: async ({ id, status }: { id: string; status: WorkTaskStatus }) => {
       return api.patch(`/work-tasks/${id}`, { status });
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/work-tasks'] });
-    },
-    onError: () => {
+    // The card lands in its new column at once; a refused move puts it back.
+    onMutate: ({ id, status }) => optimistic(queryClient, ['/work-tasks'], patchRow(id, { status })),
+    onError: (_err, _vars, snapshot) => {
+      rollback(queryClient, snapshot);
       setError(t('kbFail'));
       setTimeout(() => setError(''), 3000);
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['/work-tasks'] });
     },
   });
 

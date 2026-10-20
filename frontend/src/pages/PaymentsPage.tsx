@@ -57,6 +57,7 @@ import { PaymentStatus, PaymentMode, POPaymentType, isAdminRole, canOverrideAppr
 import { enumLabel, formatCurrency, formatIndianNumber, STATUS_COLORS, todayLocalDate } from '../utils/enumOptions';
 import { dateLocale } from '../i18n';
 import api, { extractErrorMessage } from '../config/api';
+import { patchRow, pendingProps, removeRow, useOptimistic } from '../utils/optimistic';
 import { useAuthStore } from '../stores/authStore';
 import ApprovalActionDialog from '../components/ApprovalActionDialog';
 import ResponsiveTable from '../components/ResponsiveTable';
@@ -219,6 +220,8 @@ export default function PaymentsPage() {
   const [multiVoucherId, setMultiVoucherId] = useState('');
   const [multiRequestIds, setMultiRequestIds] = useState<string[]>([]);
   const queryClient = useQueryClient();
+  // Status changes show on the list at once and are undone if the server refuses.
+  const { apply, undo, restore } = useOptimistic();
   const { user } = useAuthStore();
   const navigate = useNavigate();
 
@@ -439,12 +442,18 @@ export default function PaymentsPage() {
     mutationFn: async (id: string) => {
       await api.delete(`/payments/${id}`);
     },
-    onSuccess: () => {
+    onMutate: (id) => {
+      setDeleteRow(null);
+      return apply(['/payments'], removeRow(id));
+    },
+    onError: (err: unknown, _vars, snapshot) => {
+      undo(snapshot, err);
+      setError(extractErrorMessage(err));
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['/payments'] });
       queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
-      setDeleteRow(null);
     },
-    onError: (err: unknown) => setError(extractErrorMessage(err)),
   });
 
   // Edit details of a payment recorded on a previous date — saves directly,
@@ -455,13 +464,23 @@ export default function PaymentsPage() {
       return response.data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/payments'] });
-      queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
-      setEditRow(null);
       setSuccessMsg('Payment details updated.');
       setTimeout(() => setSuccessMsg(''), 3000);
     },
-    onError: (err: unknown) => setError(extractErrorMessage(err)),
+    onMutate: ({ id, payload }) => {
+      const saved = editRow;
+      setEditRow(null);
+      return apply(['/payments'], patchRow(id, payload)).then((snapshot) => ({ snapshot, saved }));
+    },
+    onError: (err: unknown, _vars, context) => {
+      restore(context?.snapshot);
+      setError(extractErrorMessage(err));
+      setEditRow(context?.saved ?? null);
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['/payments'] });
+      queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
+    },
   });
 
   function openEdit(row: PaymentRequestRow) {
@@ -883,7 +902,7 @@ export default function PaymentsPage() {
                   <TableRow><TableCell colSpan={11} align="center" sx={{ py: 4 }}><Typography color="text.secondary">{tr('noPaymentRequestsFound')}</Typography></TableCell></TableRow>
                 ) : (
                   rows.map((row) => (
-                    <TableRow key={row.id} hover ref={rowRef(row.id)} onClick={() => setActiveRecord({ type: 'PAYMENT', id: row.id, label: row.paymentCode })} sx={{ ...(highlightId === row.id && { bgcolor: 'warning.light', '&:hover': { bgcolor: 'warning.light' } }) }}>
+                    <TableRow key={row.id} hover {...pendingProps(row)} ref={rowRef(row.id)} onClick={() => setActiveRecord({ type: 'PAYMENT', id: row.id, label: row.paymentCode })} sx={{ ...(highlightId === row.id && { bgcolor: 'warning.light', '&:hover': { bgcolor: 'warning.light' } }) }}>
                       <TableCell data-label={tr('code')}>{row.paymentCode}</TableCell>
                       <TableCell data-label={tr('type')}><Chip label={enumLabel(row.type)} size="small" color={row.type === 'EXPENSE' ? 'secondary' : row.type === 'ADVANCE' ? 'warning' : 'primary'} variant="outlined" /></TableCell>
                       <TableCell data-label={tr('descriptionInvoicePo')}>

@@ -39,7 +39,9 @@ const ACTIVE_WINDOW_MS = 10 * 60_000;
 const EVICT_AFTER_MS = 30 * 60_000;
 const CLOCK_SKEW_MS = 30_000;
 const WRITE_DEBOUNCE_MS = 700;
-const FRESHEN_WAIT_MS = 2_000;
+// A search right after a save waits at most this long for the index to catch up;
+// the refresh carries on in the background.
+const FRESHEN_WAIT_MS = 400;
 const CONCURRENCY = 4;
 
 interface Bucket {

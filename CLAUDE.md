@@ -79,7 +79,17 @@ A voucher whose every line is a ledger linked to a bank/cash account (`isMoneyTr
 - **What is indexed comes from `schema.prisma`, not from a list.** `schemaGraph.ts` reads Prisma's model metadata: every table with `projectId` becomes a searchable record, every table without one that hangs off such a record (PO items, quotation items…) is folded into its parent's document, and comments/attachments fold into whatever record their `entityType`/`entityId` points at. New tables and columns are searchable after the migration with no code change.
 - **`registry.ts` is the only manual part**: where a result opens (`path`), who may see it (`permission`, mirror the module's list endpoint), and `EXCLUDED_MODELS` for tables kept out on purpose. A table with no registry entry is still indexed but is shown to admin roles only and has no link; add a one-line entry when its page exists. `tests/search-schema.test.ts` fails if a new table is neither indexable nor excluded.
 - Search is typo/partial-word tolerant, every typed word must match (best partial match otherwise), amounts and dates are matched in any common spelling, and a record is also found through the record it points at (a PO via its vendor's name). Records a role cannot see never lend text to others.
-- Freshness: writes through this server refresh the affected record immediately (Prisma `$use` hook, plus a `$transaction` wrapper); a 60 s timestamp poll covers other writers; a 10 min id reconcile catches hard deletes; indexes rebuild after 3 h and idle projects are evicted. `SEARCH_WARMUP=false` skips the start-up warm-up.
+- Freshness: writes through this server refresh the affected record immediately (Prisma `$use` hook, plus a `$transaction` wrapper); a 60 s timestamp poll covers other writers; a 10 min id reconcile catches hard deletes; indexes rebuild after 3 h and idle projects are evicted. `SEARCH_WARMUP=false` skips the start-up warm-up. A search right after a save waits at most 400 ms for that refresh (`FRESHEN_WAIT_MS`), then answers. The search dialog keeps recent answers per query in memory, shows them at once and refreshes them behind.
+
+## Speed: optimistic saves
+
+Saves should feel instant: the screen changes on click, the request runs behind it, and a refused request is undone with an error toast.
+
+- `frontend/src/utils/optimistic.ts`: `useOptimistic()` gives `apply` (call in `onMutate`), `undo` (in `onError`: rolls back + toast) and `restore` (roll back only, when a reopened dialog shows the error). Row helpers `patchRow`, `removeRow`, `insertRow` (new rows go only into lists on screen); spread `pendingProps(row)` on the row element to dim a row the server has not confirmed (`[data-pending]` in `index.css`). Always invalidate in `onSettled` so the server's copy replaces the guess.
+- Form dialogs close in `onMutate`; on failure they reopen with what was typed. Because the dialog closes before the request starts, a `mutationFn` must take everything it sends as mutation variables, never read dialog state (`editingId`, `form`, `notesEditRow`…) from the closure.
+- Approvals whose outcome depends on the workflow only dim the row (`patchRow(id, {})`); final outcomes (reject, cancel, delete, submit) show the new status.
+- Not optimistic yet: creates with line items or files (MPR, PO, GRN, invoice, quotation, payments, vouchers, site bills, uploads). They keep the button spinner.
+- Backend: responses are gzip-compressed (`compression` in `app.ts`), and `authMiddleware` keeps the user row for 10 s (cleared on any `User` write through this server) so a click costs one database round trip less.
 
 ## Internationalization (English / Telugu)
 
@@ -135,3 +145,15 @@ General documents (Documents → General) can be PIN-locked. The uploader sets a
 ## Inventory matching and merging
 
 Goods receipts and stock entries find the inventory item for a material through `services/inventory-match.service.ts` (`findInventoryItemForMaterial`): by **material code** first (`inventory_items.materialCode`, the code the material carries in material requests), then by the alias of a merged duplicate, then by plain name; a match without a code gets it. `GET /inventory/duplicates` groups look-alike items (same code, or names equal ignoring spelling; different sizes/numbers or item types are never grouped) and `POST /inventory/merge` (admins/supervisors) folds one into another: movements and assets move across, stock and value add up, the source is retired and its name/code kept in `aliases` so later receipts land on the kept item. UI: Inventory → "Merge duplicates".
+
+## Second brain (Notion)
+
+This project is documented in Akhil's Notion second brain: "Hospital Construction ERP (Final-hspl-erp)" (https://app.notion.com/p/3fcfb1c823578191b029cbe46451e533). Root page: https://app.notion.com/p/3fcfb1c82357815bb1c2f8b544e206aa
+
+When a session here finishes a feature, fix, schema change, new endpoint, new env variable, deploy change or architecture decision, and Notion tools are available, update that Notion page before ending the session:
+- Add a dated bullet to "Recent work" saying what changed in plain words.
+- Update any affected section (API endpoints, database tables, env variable NAMES, commands, deploy, rules) and the "Last commit" date.
+- Make the smallest edit; don't rewrite unrelated content.
+- Never put secret values in Notion (keys, passwords, tokens, connection strings, .env values). Variable names are fine.
+
+If Notion tools aren't available in the session, skip this; a nightly job also syncs recent commits.

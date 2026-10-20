@@ -82,11 +82,29 @@ export default function NotificationBell() {
     refetchInterval: 30000, // poll every 30s for new notifications
   });
 
+  // Reading clears the badge at once; a refused request puts the previous list back.
+  const markReadLocally = async (id: string | null) => {
+    await queryClient.cancelQueries({ queryKey: ['/notifications/app'] });
+    const previous = queryClient.getQueryData<NotificationResponse>(['/notifications/app']);
+    queryClient.setQueryData<NotificationResponse>(['/notifications/app'], (old) => {
+      if (!old) return old;
+      const cleared = old.data.filter((n) => !n.isRead && (id === null || n.id === id)).length;
+      return {
+        ...old,
+        data: old.data.map((n) => (id === null || n.id === id ? { ...n, isRead: true } : n)),
+        unreadCount: id === null ? 0 : Math.max(0, old.unreadCount - cleared),
+      };
+    });
+    return previous;
+  };
+
   const markReadMutation = useMutation({
     mutationFn: async (id: string) => {
       await api.patch(`/notifications/app/${id}/read`);
     },
-    onSuccess: () => {
+    onMutate: (id) => markReadLocally(id),
+    onError: (_err, _id, previous) => queryClient.setQueryData(['/notifications/app'], previous),
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['/notifications/app'] });
     },
   });
@@ -95,7 +113,9 @@ export default function NotificationBell() {
     mutationFn: async () => {
       await api.patch('/notifications/app/mark-all-read');
     },
-    onSuccess: () => {
+    onMutate: () => markReadLocally(null),
+    onError: (_err, _vars, previous) => queryClient.setQueryData(['/notifications/app'], previous),
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['/notifications/app'] });
     },
   });

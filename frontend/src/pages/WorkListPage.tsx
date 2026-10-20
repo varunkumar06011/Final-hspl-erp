@@ -48,6 +48,7 @@ import {
 } from '@hospital-erp/shared';
 import { enumToOptions, formatDate, STATUS_COLORS } from '../utils/enumOptions';
 import api, { extractErrorMessage } from '../config/api';
+import { insertRow, patchRow, pendingProps, removeRow, useOptimistic } from '../utils/optimistic';
 import { useAuthStore } from '../stores/authStore';
 import { useUrlFilters } from '../hooks/useUrlFilters';
 import KanbanBoard from '../components/KanbanBoard';
@@ -172,33 +173,55 @@ export default function WorkListPage() {
     queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
   };
 
+  const { apply, undo } = useOptimistic();
+
+  type SaveVars = { id: string | null; payload: Record<string, unknown>; form: Record<string, unknown> };
   const saveMutation = useMutation({
-    mutationFn: async (payload: Record<string, unknown>) => {
-      if (editingId) {
-        return (await api.patch(`/work-tasks/${editingId}`, payload)).data;
+    mutationFn: async ({ id, payload }: SaveVars) => {
+      if (id) {
+        return (await api.patch(`/work-tasks/${id}`, payload)).data;
       }
       return (await api.post('/work-tasks', payload)).data;
     },
-    onSuccess: () => {
-      invalidateAll();
+    // Instant: the dialog closes and the list shows the change while it saves.
+    onMutate: ({ id, payload }) => {
       setFormOpen(false);
       setEditingId(null);
       setForm({});
-      setSuccessMsg(editingId ? tr('okUpdated') : tr('okCreated'));
+      const assignee = (assignableUsers as { id: string; name: string }[] | undefined)?.find((u) => u.id === payload.assignedTo);
+      const shown = { ...payload, assignedToUser: assignee ? { id: assignee.id, name: assignee.name } : null };
+      return apply(['/work-tasks'], id ? patchRow(id, shown) : insertRow(shown));
+    },
+    onSuccess: (_data, { id }) => {
+      setSuccessMsg(id ? tr('okUpdated') : tr('okCreated'));
       setTimeout(() => setSuccessMsg(''), 3000);
     },
-    onError: (err: unknown) => setError(extractErrorMessage(err)),
+    onError: (err: unknown, { id, form: typed }, snapshot) => {
+      undo(snapshot, err);
+      // Reopen the form with what was typed.
+      setEditingId(id);
+      setForm(typed);
+      setError(extractErrorMessage(err));
+      setFormOpen(true);
+    },
+    onSettled: invalidateAll,
   });
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => { await api.delete(`/work-tasks/${id}`); },
-    onSuccess: () => {
-      invalidateAll();
+    onMutate: (id) => {
       setDeleteId(null);
+      return apply(['/work-tasks'], removeRow(id));
+    },
+    onSuccess: () => {
       setSuccessMsg(tr('okDeleted'));
       setTimeout(() => setSuccessMsg(''), 3000);
     },
-    onError: (err: unknown) => setError(extractErrorMessage(err)),
+    onError: (err: unknown, _id, snapshot) => {
+      undo(snapshot, err);
+      setError(extractErrorMessage(err));
+    },
+    onSettled: invalidateAll,
   });
 
   const rows: WorkTask[] = data?.data ?? [];
@@ -251,7 +274,7 @@ export default function WorkListPage() {
       assignedTo: form.assignedTo || undefined,
       followUpBy: String(form.followUpBy ?? '').trim() || undefined,
     };
-    saveMutation.mutate(payload);
+    saveMutation.mutate({ id: editingId, payload, form });
   }
 
   // ── Raise to Quotation — navigates to the Quotations page with the create
@@ -346,7 +369,7 @@ export default function WorkListPage() {
                 ) : rows.length === 0 ? (
                   <TableRow><TableCell colSpan={9} sx={{ textAlign: 'center', py: 4, color: 'text.secondary' }}>{tr('none')}</TableCell></TableRow>
                 ) : rows.map((task) => (
-                  <TableRow key={task.id} hover>
+                  <TableRow key={task.id} hover {...pendingProps(task)}>
                     <TableCell data-label={tr('title2')}>
                       <Typography variant="body2" fontWeight={600}>{task.title}</Typography>
                       {task.description && (

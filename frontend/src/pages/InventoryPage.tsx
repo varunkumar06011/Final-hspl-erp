@@ -46,6 +46,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { InventoryTxnType, InventoryItemType } from '@hospital-erp/shared';
 import { enumToOptions, enumLabel, formatIndianNumber, formatCurrency } from '../utils/enumOptions';
 import api, { extractErrorMessage } from '../config/api';
+import { insertRow, patchRow, pendingProps, removeRow, useOptimistic } from '../utils/optimistic';
 import CreatableSelect from '../components/CreatableSelect';
 import AttachmentUpload from '../components/AttachmentUpload';
 import ResponsiveTable from '../components/ResponsiveTable';
@@ -105,19 +106,32 @@ export default function InventoryPage() {
   });
   const stats = { lowStock: summary?.lowStockCount ?? 0 };
 
+  const { apply, undo } = useOptimistic();
+
   const createMutation = useMutation({
     mutationFn: async (payload: Record<string, unknown>) => {
       const response = await api.post('/inventory/items', payload);
       return response.data;
     },
-    onSuccess: () => {
+    // Instant: the dialog closes and the new item shows (dimmed) while it saves.
+    onMutate: (payload) => {
+      setDialogOpen(false);
+      setForm({});
+      return apply(['/inventory/items'], insertRow(payload));
+    },
+    onError: (err: unknown, payload, snapshot) => {
+      undo(snapshot, err);
+      // Reopen the form with what was typed.
+      setEditing(null);
+      setForm(payload);
+      setError(extractErrorMessage(err));
+      setDialogOpen(true);
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['/inventory/items'] });
       queryClient.invalidateQueries({ queryKey: ['/inventory/summary'] });
       queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
-      setDialogOpen(false);
-      setForm({});
     },
-    onError: (err: unknown) => setError(extractErrorMessage(err)),
   });
 
   const updateMutation = useMutation({
@@ -125,20 +139,34 @@ export default function InventoryPage() {
       const response = await api.patch(`/inventory/items/${id}`, payload);
       return response.data;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/inventory/items'] });
+    onMutate: ({ id, payload }) => {
       setDialogOpen(false);
+      return apply(['/inventory/items'], patchRow(id, payload));
     },
-    onError: (err: unknown) => setError(extractErrorMessage(err)),
+    onError: (err: unknown, _vars, snapshot) => {
+      undo(snapshot, err);
+      // The form still holds what was typed; show it again.
+      setError(extractErrorMessage(err));
+      setDialogOpen(true);
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['/inventory/items'] });
+    },
   });
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => { await api.delete(`/inventory/items/${id}`); },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/inventory/items'] });
+    onMutate: (id) => {
       setDeleteConfirm(null);
+      return apply(['/inventory/items'], removeRow(id));
     },
-    onError: (err: unknown) => setError(extractErrorMessage(err)),
+    onError: (err: unknown, _id, snapshot) => {
+      undo(snapshot, err);
+      setError(extractErrorMessage(err));
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['/inventory/items'] });
+    },
   });
 
   const txnMutation = useMutation({
@@ -371,6 +399,7 @@ export default function InventoryPage() {
                     <TableRow
                       key={row.id as string}
                       hover
+                      {...pendingProps(row)}
                       sx={{
                         ...(isAsset ? { cursor: 'pointer' } : {}),
                         ...(lowStock ? { bgcolor: 'rgba(211, 47, 47, 0.04)' } : {}),

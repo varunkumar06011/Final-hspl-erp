@@ -35,6 +35,7 @@ import {
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { extractErrorMessage } from '../config/api';
+import { insertRow, patchRow, pendingProps, removeRow, useOptimistic } from '../utils/optimistic';
 import ResponsiveDialog from '../components/ResponsiveDialog';
 import RefreshButton from '../components/RefreshButton';
 import ResponsiveTable from '../components/ResponsiveTable';
@@ -117,16 +118,30 @@ export default function OwnerAccountPage() {
     enabled: !!statementAccountId,
   });
 
+  const { apply, undo } = useOptimistic();
+
   const createMutation = useMutation({
     mutationFn: async (payload: Record<string, unknown>) => {
       const response = await api.post('/owner-accounts', payload);
       return response.data;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/owner-accounts'] });
+    // Instant: the dialog closes and the new row shows (dimmed) while it saves.
+    onMutate: (payload) => {
+      const typed = form;
       closeDialog();
+      return apply(['/owner-accounts'], insertRow({ ...payload, currentBalance: payload.openingBalance })).then((snapshot) => ({ snapshot, typed }));
     },
-    onError: (err: unknown) => setError(extractErrorMessage(err)),
+    onError: (err: unknown, _payload, context) => {
+      undo(context?.snapshot, err);
+      // Reopen the form with what was typed.
+      setForm(context?.typed ?? {});
+      setEditing(null);
+      setError(extractErrorMessage(err));
+      setDialogOpen(true);
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['/owner-accounts'] });
+    },
   });
 
   const updateMutation = useMutation({
@@ -134,22 +149,39 @@ export default function OwnerAccountPage() {
       const response = await api.patch(`/owner-accounts/${id}`, payload);
       return response.data;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/owner-accounts'] });
+    onMutate: ({ id, payload }) => {
+      const typed = form;
+      const row = editing;
       closeDialog();
+      return apply(['/owner-accounts'], patchRow(id, payload)).then((snapshot) => ({ snapshot, typed, row }));
     },
-    onError: (err: unknown) => setError(extractErrorMessage(err)),
+    onError: (err: unknown, _vars, context) => {
+      undo(context?.snapshot, err);
+      setForm(context?.typed ?? {});
+      setEditing(context?.row ?? null);
+      setError(extractErrorMessage(err));
+      setDialogOpen(true);
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['/owner-accounts'] });
+    },
   });
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
       await api.delete(`/owner-accounts/${id}`);
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/owner-accounts'] });
+    onMutate: (id) => {
       setDeleteConfirm(null);
+      return apply(['/owner-accounts'], removeRow(id));
     },
-    onError: (err: unknown) => setError(extractErrorMessage(err)),
+    onError: (err: unknown, _id, snapshot) => {
+      undo(snapshot, err);
+      setError(extractErrorMessage(err));
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['/owner-accounts'] });
+    },
   });
 
   const contribMutation = useMutation({
@@ -298,7 +330,7 @@ export default function OwnerAccountPage() {
                 rows.map((row) => {
                   const balance = Number(row.currentBalance);
                   return (
-                    <TableRow key={row.id} hover ref={rowRef(row.id)} sx={{ ...(highlightId === row.id && { bgcolor: 'warning.light', '&:hover': { bgcolor: 'warning.light' } }) }}>
+                    <TableRow key={row.id} hover {...pendingProps(row)} ref={rowRef(row.id)} sx={{ ...(highlightId === row.id && { bgcolor: 'warning.light', '&:hover': { bgcolor: 'warning.light' } }) }}>
                       <TableCell data-label={tr('ownerName')} sx={{ fontWeight: 600 }}>{row.ownerName}</TableCell>
                       <TableCell data-label={tr('opening')} align="right">{formatCurrency(row.openingBalance)}</TableCell>
                       <TableCell data-label={tr('currentBalance')} align="right" sx={{ fontWeight: 600, color: balance > 0 ? 'error.main' : balance < 0 ? 'success.main' : 'text.primary' }}>

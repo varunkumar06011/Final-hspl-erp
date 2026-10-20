@@ -43,6 +43,7 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { enumLabel } from '../utils/enumOptions';
 import api, { extractErrorMessage } from '../config/api';
+import { insertRow, patchRow, pendingProps, removeRow, useOptimistic } from '../utils/optimistic';
 import ResponsiveDialog from '../components/ResponsiveDialog';
 import ResponsiveTable from '../components/ResponsiveTable';
 import RefreshButton from '../components/RefreshButton';
@@ -109,19 +110,33 @@ export default function BudgetHeadsPage() {
     enabled: !!usageHeadId,
   });
 
+  const { apply, undo } = useOptimistic();
+
   const createMutation = useMutation({
     mutationFn: async (payload: Record<string, unknown>) => {
       const response = await api.post('/budget-heads', payload);
       return response.data;
     },
-    onSuccess: () => {
+    // Instant: the dialog closes and the new row shows (dimmed) while it saves.
+    onMutate: (payload) => {
+      const typed = form;
+      closeDialog();
+      return apply(['/budget-heads'], insertRow({ slNo: '—', ...payload })).then((snapshot) => ({ snapshot, typed }));
+    },
+    onError: (err: unknown, _payload, context) => {
+      undo(context?.snapshot, err);
+      // Reopen the form with what was typed.
+      setForm(context?.typed ?? {});
+      setEditing(null);
+      setError(extractErrorMessage(err));
+      setDialogOpen(true);
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['/budget-heads'] });
       queryClient.invalidateQueries({ queryKey: ['/budget-heads/summary'] });
       queryClient.invalidateQueries({ queryKey: ['/finance-reports/budget-vs-actual'] });
       queryClient.invalidateQueries({ queryKey: ['/dashboard', 'admin-summary'] });
-      closeDialog();
     },
-    onError: (err: unknown) => setError(extractErrorMessage(err)),
   });
 
   const updateMutation = useMutation({
@@ -129,28 +144,45 @@ export default function BudgetHeadsPage() {
       const response = await api.patch(`/budget-heads/${id}`, payload);
       return response.data;
     },
-    onSuccess: () => {
+    onMutate: ({ id, payload }) => {
+      const typed = form;
+      const row = editing;
+      closeDialog();
+      return apply(['/budget-heads'], patchRow(id, payload)).then((snapshot) => ({ snapshot, typed, row }));
+    },
+    onError: (err: unknown, _vars, context) => {
+      undo(context?.snapshot, err);
+      setForm(context?.typed ?? {});
+      setEditing(context?.row ?? null);
+      setError(extractErrorMessage(err));
+      setDialogOpen(true);
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['/budget-heads'] });
       queryClient.invalidateQueries({ queryKey: ['/budget-heads/summary'] });
       queryClient.invalidateQueries({ queryKey: ['/finance-reports/budget-vs-actual'] });
       queryClient.invalidateQueries({ queryKey: ['/dashboard', 'admin-summary'] });
-      closeDialog();
     },
-    onError: (err: unknown) => setError(extractErrorMessage(err)),
   });
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
       await api.delete(`/budget-heads/${id}`);
     },
-    onSuccess: () => {
+    onMutate: (id) => {
+      setDeleteConfirm(null);
+      return apply(['/budget-heads'], removeRow(id));
+    },
+    onError: (err: unknown, _id, snapshot) => {
+      undo(snapshot, err);
+      setError(extractErrorMessage(err));
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['/budget-heads'] });
       queryClient.invalidateQueries({ queryKey: ['/budget-heads/summary'] });
       queryClient.invalidateQueries({ queryKey: ['/finance-reports/budget-vs-actual'] });
       queryClient.invalidateQueries({ queryKey: ['/dashboard', 'admin-summary'] });
-      setDeleteConfirm(null);
     },
-    onError: (err: unknown) => setError(extractErrorMessage(err)),
   });
 
   const importMutation = useMutation({
@@ -350,6 +382,7 @@ export default function BudgetHeadsPage() {
                 <TableRow
                   key={row.id as string}
                   hover
+                  {...pendingProps(row)}
                   ref={rowRef(row.id as string)}
                   sx={{ ...(highlightId === row.id && { bgcolor: 'warning.light', '&:hover': { bgcolor: 'warning.light' } }), cursor: 'pointer' }}
                   onClick={() => setUsageHeadId(row.id as string)}

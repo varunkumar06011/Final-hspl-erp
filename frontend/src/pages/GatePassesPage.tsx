@@ -36,6 +36,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { formatDate, enumLabel } from '../utils/enumOptions';
 import { useTranslation, Trans } from 'react-i18next';
 import api, { extractErrorMessage } from '../config/api';
+import { patchRow, pendingProps, removeRow, useOptimistic } from '../utils/optimistic';
 import ResponsiveTable from '../components/ResponsiveTable';
 import RefreshButton from '../components/RefreshButton';
 import CommentsButton from '../components/CommentsButton';
@@ -123,6 +124,8 @@ export default function GatePassesPage() {
   );
   const [deleteRow, setDeleteRow] = useState<GatePassRow | null>(null);
   const queryClient = useQueryClient();
+  // Status changes show on the list at once and are undone if the server refuses.
+  const { apply, undo } = useOptimistic();
 
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['/gate-passes', page, pageSize, search, statusFilter],
@@ -188,24 +191,38 @@ export default function GatePassesPage() {
   const approveMutation = useMutation({
     mutationFn: async (id: string) => (await api.post(`/gate-passes/${id}/approve`)).data,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/gate-passes'] });
-      queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
-      queryClient.invalidateQueries({ queryKey: ['/goods-receipts/available-gatepasses'] });
       setSuccessMsg(t('approvedMsg'));
       setTimeout(() => setSuccessMsg(''), 5000);
     },
-    onError: (err: unknown) => setError(extractErrorMessage(err)),
+    onMutate: (id) => {
+      return apply(['/gate-passes'], patchRow(id, { status: 'APPROVED' }));
+    },
+    onError: (err: unknown, _vars, snapshot) => {
+      undo(snapshot, err);
+      setError(extractErrorMessage(err));
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['/gate-passes'] });
+      queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['/goods-receipts/available-gatepasses'] });
+    },
   });
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
       await api.delete(`/gate-passes/${id}`);
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/gate-passes'] });
+    onMutate: (id) => {
       setDeleteRow(null);
+      return apply(['/gate-passes'], removeRow(id));
     },
-    onError: (err: unknown) => setError(extractErrorMessage(err)),
+    onError: (err: unknown, _vars, snapshot) => {
+      undo(snapshot, err);
+      setError(extractErrorMessage(err));
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['/gate-passes'] });
+    },
   });
 
   const rows: GatePassRow[] = data?.data ?? [];
@@ -386,7 +403,7 @@ export default function GatePassesPage() {
                   </TableRow>
                 ) : (
                   rows.map((row) => (
-                    <TableRow key={row.id} hover onClick={() => setActiveRecord({ type: 'GATE_PASS', id: row.id, label: row.passNumber })}>
+                    <TableRow key={row.id} hover {...pendingProps(row)} onClick={() => setActiveRecord({ type: 'GATE_PASS', id: row.id, label: row.passNumber })}>
                       <TableCell data-label={t('passNumber')}>{row.passNumber}</TableCell>
                       <TableCell data-label={t('type')}><Chip size="small" label={row.gatePassCategory === 'VISITOR' ? t('visitor') : t('material')} color={row.gatePassCategory === 'VISITOR' ? 'info' : 'default'} /></TableCell>
                       <TableCell data-label={t('po')}>{row.purchaseOrder?.poNumber ?? '—'}</TableCell>

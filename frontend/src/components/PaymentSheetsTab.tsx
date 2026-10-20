@@ -42,6 +42,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { PaymentMode, PaymentStatus, isAdminRole } from '@hospital-erp/shared';
 import { formatCurrency, formatDate, STATUS_COLORS, enumLabel } from '../utils/enumOptions';
 import api, { extractErrorMessage } from '../config/api';
+import { patchRow, pendingProps, removeRow, useOptimistic } from '../utils/optimistic';
 import { useAuthStore } from '../stores/authStore';
 import { useFileViewer } from './FileViewerDialog';
 
@@ -241,27 +242,45 @@ export default function PaymentSheetsTab() {
     onError: (err) => setError(extractErrorMessage(err)),
   });
 
+  // Approvals and deletes show at once and are undone if the server refuses.
+  const { apply, undo } = useOptimistic();
   const approveMutation = useMutation({
     mutationFn: async (id: string) => api.patch(`/payment-sheets/${id}/approve`),
+    onMutate: (id) => {
+      setConfirmApproveId(null);
+      return apply(queryKey, patchRow(id, {}));
+    },
     onSuccess: () => {
+      setSuccessMsg(t('okDone'));
+    },
+    onError: (err, _id, snapshot) => {
+      undo(snapshot, err);
+      setError(extractErrorMessage(err));
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey });
       // A paid entry must leave the register's payable totals immediately
       queryClient.invalidateQueries({ queryKey: ['/transaction-register'] });
-      setConfirmApproveId(null);
-      setSuccessMsg(t('okDone'));
     },
-    onError: (err) => setError(extractErrorMessage(err)),
   });
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => api.delete(`/payment-sheets/${id}`),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey });
-      queryClient.invalidateQueries({ queryKey: ['/transaction-register'] });
+    onMutate: (id) => {
       setConfirmDeleteId(null);
+      return apply(queryKey, removeRow(id));
+    },
+    onSuccess: () => {
       setSuccessMsg(t('okDeleted'));
     },
-    onError: (err) => setError(extractErrorMessage(err)),
+    onError: (err, _id, snapshot) => {
+      undo(snapshot, err);
+      setError(extractErrorMessage(err));
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey });
+      queryClient.invalidateQueries({ queryKey: ['/transaction-register'] });
+    },
   });
 
   const updateMutation = useMutation({
@@ -473,7 +492,7 @@ export default function PaymentSheetsTab() {
               ) : rows.length === 0 ? (
                 <TableRow><TableCell colSpan={8} align="center" sx={{ py: 3, color: 'text.secondary' }}>No payment sheet entries for this date. Click "Add Entry" to record a payment against a purchase order or voucher.</TableCell></TableRow>
               ) : rows.map((r) => (
-                <TableRow key={r.id}>
+                <TableRow key={r.id} {...pendingProps(r)}>
                   <TableCell>
                     {r.purchaseOrder ? r.purchaseOrder.poNumber : (
                       <Stack direction="row" spacing={0.5} alignItems="center">

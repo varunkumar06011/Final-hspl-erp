@@ -516,5 +516,8 @@
     "PAYMENT": "Approved, waiting for payment",
     "tooltip": "Approved but not moved to the next step for {{d}}"
   },
-  "newMaterialHint": "New material. It will get a new code."
+  "newMaterialHint": "New material. It will get a new code.",
+  "optimistic": {
+    "notSaved": "Not saved: {{error}} Your change was undone."
+  }
 }

@@ -44,6 +44,7 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { formatDate } from '../utils/enumOptions';
 import api, { extractErrorMessage } from '../config/api';
+import { patchRow, pendingProps, removeRow, useOptimistic } from '../utils/optimistic';
 import { useAuthStore } from '../stores/authStore';
 import { useFileViewer } from '../components/FileViewerDialog';
 import ResponsiveTable from '../components/ResponsiveTable';
@@ -145,14 +146,21 @@ function GeneralDocumentsTab() {
     onError: (err: unknown) => setError(extractErrorMessage(err)),
   });
 
+  const { apply, undo, restore } = useOptimistic();
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => { await api.delete(`/documents/${id}`); },
+    onMutate: (id) => apply(['/documents'], removeRow(id)),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/documents'] });
       setSuccessMsg(tr('okDeleted'));
       setTimeout(() => setSuccessMsg(''), 3000);
     },
-    onError: (err: unknown) => setError(extractErrorMessage(err)),
+    onError: (err: unknown, _id, snapshot) => {
+      undo(snapshot, err);
+      setError(extractErrorMessage(err));
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['/documents'] });
+    },
   });
 
   const rows: DocumentRow[] = data?.data ?? [];
@@ -193,10 +201,12 @@ function GeneralDocumentsTab() {
 
   const lockMutation = useMutation({
     mutationFn: async (id: string) => { await api.post(`/documents/${id}/lock`, { locked: true }); },
-    onSuccess: () => {
+    onMutate: (id) => apply(['/documents'], patchRow(id, { isLocked: true })),
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['/documents'] });
     },
-    onError: (err: unknown) => {
+    onError: (err: unknown, _id, snapshot) => {
+      restore(snapshot);
       const code = (err as { response?: { data?: { code?: string } } })?.response?.data?.code;
       if (code === 'DOCUMENT_PIN_REQUIRED') setPinSettingsOpen(true);
       else setError(extractErrorMessage(err));
@@ -254,7 +264,7 @@ function GeneralDocumentsTab() {
                 <TableRow><TableCell colSpan={7} align="center" sx={{ py: 4 }}><Typography color="text.secondary">{tr('none')}</Typography></TableCell></TableRow>
               ) : (
                 rows.map((row) => (
-                  <TableRow key={row.id} hover>
+                  <TableRow key={row.id} hover {...pendingProps(row)}>
                     <TableCell data-label={tr('name')}>
                       {row.locked ? (
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>

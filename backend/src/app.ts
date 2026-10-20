@@ -1,6 +1,7 @@
 import path from 'path';
 import express from 'express';
 import cors from 'cors';
+import compression from 'compression';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import routes from './routes';
@@ -14,6 +15,8 @@ const app = express();
 
 app.use(helmet());
 app.use(cors({ origin: '*' }));
+// gzip the JSON replies (lists, search results): several times smaller on mobile data.
+app.use(compression());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 

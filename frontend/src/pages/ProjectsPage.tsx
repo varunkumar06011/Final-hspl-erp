@@ -28,6 +28,7 @@ import { Permission, hasPermission } from '@hospital-erp/shared';
 import ResponsiveDialog from '../components/ResponsiveDialog';
 import ResponsiveTable from '../components/ResponsiveTable';
 import api, { extractErrorMessage } from '../config/api';
+import { patchRow, useOptimistic } from '../utils/optimistic';
 import { useAuthStore } from '../stores/authStore';
 import { useSwitchProject } from '../hooks/useSwitchProject';
 import { enumLabel, formatCurrency, formatDate } from '../utils/enumOptions';
@@ -117,6 +118,7 @@ export default function ProjectsPage() {
   });
   const projects: ProjectRow[] = data?.data ?? [];
 
+  const { apply, undo } = useOptimistic();
   const refresh = () => {
     queryClient.invalidateQueries({ queryKey: ['/projects'] });
     queryClient.invalidateQueries({ queryKey: ['/settings'] });
@@ -160,11 +162,15 @@ export default function ProjectsPage() {
   const archiveMutation = useMutation({
     mutationFn: async ({ id, archived }: { id: string; archived: boolean }) =>
       (await api.patch(`/projects/${id}`, { archived })).data,
+    onMutate: ({ id, archived }) => apply(['/projects'], patchRow(id, { deletedAt: archived ? new Date().toISOString() : null })),
     onSuccess: () => {
       setError('');
-      refresh();
     },
-    onError: (err: unknown) => setError(extractErrorMessage(err)),
+    onError: (err: unknown, _vars, snapshot) => {
+      undo(snapshot, err);
+      setError(extractErrorMessage(err));
+    },
+    onSettled: refresh,
   });
 
   if (!allowed) return <Navigate to="/" replace />;

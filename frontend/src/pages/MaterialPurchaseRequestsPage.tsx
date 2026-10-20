@@ -34,6 +34,7 @@ import { MPRStatus, MPRRequestType, UserRole, isFirstLevelApproverRole, isWorkfl
 import { formatDate, STATUS_COLORS, QTY_UNIT_OPTIONS, SERVICE_UNIT_OPTIONS, SERVICE_CATEGORY_OPTIONS, enumLabel, unitLabel, serviceCategoryLabel } from '../utils/enumOptions';
 import { useTranslation } from 'react-i18next';
 import api, { extractErrorMessage } from '../config/api';
+import { patchRow, pendingProps, removeRow, useOptimistic } from '../utils/optimistic';
 import { useAuthStore } from '../stores/authStore';
 import ApprovalStepsDisplay from '../components/ApprovalStepsDisplay';
 import ApprovalActionDialog from '../components/ApprovalActionDialog';
@@ -120,6 +121,8 @@ interface VarianceRow {
 export default function MaterialPurchaseRequestsPage() {
   const { t } = useTranslation('mpr');
   const queryClient = useQueryClient();
+  // Status changes show on the list at once and are undone if the server refuses.
+  const { apply, undo, restore } = useOptimistic();
   const navigate = useNavigate();
   const { user } = useAuthStore();
   const [requestTypeTab, setRequestTypeTab] = useState<MPRRequestType>(MPRRequestType.MATERIAL);
@@ -513,13 +516,17 @@ export default function MaterialPurchaseRequestsPage() {
     mutationFn: async (id: string) => {
       await api.post(`/material-purchase-requests/${id}/submit`);
     },
-    onSuccess: () => {
+    onMutate: (id) => {
+      return apply(['mprs'], patchRow(id, { status: MPRStatus.SUBMITTED }));
+    },
+    onError: (err: unknown, _vars, snapshot) => {
+      undo(snapshot, err);
+      setError(extractErrorMessage(err));
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['mprs'] });
       queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['pending-items', 'mprs'] });
-    },
-    onError: (err: unknown) => {
-      setError(extractErrorMessage(err));
     },
   });
 
@@ -538,13 +545,17 @@ export default function MaterialPurchaseRequestsPage() {
     mutationFn: async (id: string) => {
       await api.post(`/material-purchase-requests/${id}/cancel`);
     },
-    onSuccess: () => {
+    onMutate: (id) => {
+      return apply(['mprs'], patchRow(id, { status: MPRStatus.CANCELLED }));
+    },
+    onError: (err: unknown, _vars, snapshot) => {
+      undo(snapshot, err);
+      setError(extractErrorMessage(err));
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['mprs'] });
       queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['pending-items', 'mprs'] });
-    },
-    onError: (err: unknown) => {
-      setError(extractErrorMessage(err));
     },
   });
 
@@ -552,13 +563,17 @@ export default function MaterialPurchaseRequestsPage() {
     mutationFn: async (id: string) => {
       await api.post(`/material-purchase-requests/${id}/close`);
     },
-    onSuccess: () => {
+    onMutate: (id) => {
+      return apply(['mprs'], patchRow(id, { status: MPRStatus.CLOSED }));
+    },
+    onError: (err: unknown, _vars, snapshot) => {
+      undo(snapshot, err);
+      setError(extractErrorMessage(err));
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['mprs'] });
       queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['pending-items', 'mprs'] });
-    },
-    onError: (err: unknown) => {
-      setError(extractErrorMessage(err));
     },
   });
 
@@ -566,13 +581,17 @@ export default function MaterialPurchaseRequestsPage() {
     mutationFn: async (id: string) => {
       await api.delete(`/material-purchase-requests/${id}`);
     },
-    onSuccess: () => {
+    onMutate: (id) => {
+      return apply(['mprs'], removeRow(id));
+    },
+    onError: (err: unknown, _vars, snapshot) => {
+      undo(snapshot, err);
+      setError(extractErrorMessage(err));
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['mprs'] });
       queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['pending-items', 'mprs'] });
-    },
-    onError: (err: unknown) => {
-      setError(extractErrorMessage(err));
     },
   });
 
@@ -580,26 +599,42 @@ export default function MaterialPurchaseRequestsPage() {
     mutationFn: async ({ mprId, comments }: { mprId: string; comments?: string }) => {
       await api.post(`/material-purchase-requests/${mprId}/approve`, { comments, acknowledged: true });
     },
-    onSuccess: () => {
+    onMutate: ({ mprId }) => {
+      const saved = approvalAction;
+      setApprovalAction(null);
+      return apply(['mprs'], patchRow(mprId, {})).then((snapshot) => ({ snapshot, saved }));
+    },
+    onError: (err: unknown, _vars, context) => {
+      restore(context?.snapshot);
+      setError(extractErrorMessage(err));
+      setApprovalAction(context?.saved ?? null);
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['mprs'] });
       queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['pending-items', 'mprs'] });
-      setApprovalAction(null);
     },
-    onError: (err: unknown) => setError(extractErrorMessage(err)),
   });
 
   const rejectMutation = useMutation({
     mutationFn: async ({ mprId, reason }: { mprId: string; reason: string }) => {
       await api.post(`/material-purchase-requests/${mprId}/reject`, { reason, acknowledged: true });
     },
-    onSuccess: () => {
+    onMutate: ({ mprId }) => {
+      const saved = approvalAction;
+      setApprovalAction(null);
+      return apply(['mprs'], patchRow(mprId, { status: MPRStatus.REJECTED })).then((snapshot) => ({ snapshot, saved }));
+    },
+    onError: (err: unknown, _vars, context) => {
+      restore(context?.snapshot);
+      setError(extractErrorMessage(err));
+      setApprovalAction(context?.saved ?? null);
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['mprs'] });
       queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['pending-items', 'mprs'] });
-      setApprovalAction(null);
     },
-    onError: (err: unknown) => setError(extractErrorMessage(err)),
   });
 
   const receiptMutation = useMutation({
@@ -771,6 +806,7 @@ export default function MaterialPurchaseRequestsPage() {
             return (
               <Accordion
                 key={row.id}
+                {...pendingProps(row)}
                 ref={rowRef(row.id)}
                 expanded={expandedId === row.id}
                 onChange={(_event, expanded) => setExpandedId(expanded ? row.id : null)}

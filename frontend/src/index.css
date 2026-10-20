@@ -88,3 +88,10 @@ html, body {
     min-width: 96px;
   }
 }
+
+/* ── Optimistic saves: a row shown before the server confirmed it ────────── */
+[data-pending='true'] {
+  opacity: 0.55;
+  pointer-events: none;
+  transition: opacity 0.2s;
+}

@@ -39,6 +39,7 @@ import {
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { extractErrorMessage } from '../config/api';
+import { patchRow, pendingProps, useOptimistic } from '../utils/optimistic';
 import ResponsiveDialog from '../components/ResponsiveDialog';
 import ResponsiveTable from '../components/ResponsiveTable';
 import RefreshButton from '../components/RefreshButton';
@@ -137,6 +138,8 @@ export default function JournalVouchersPage() {
   const [detailJv, setDetailJv] = useState<JournalVoucher | null>(null);
 
   const queryClient = useQueryClient();
+  // Status changes show on the list at once and are undone if the server refuses.
+  const { apply, undo } = useOptimistic();
 
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['/journal-vouchers', page, pageSize, search, statusFilter],
@@ -197,10 +200,16 @@ export default function JournalVouchersPage() {
       const response = await api.post(`/journal-vouchers/${id}/submit`);
       return response.data;
     },
-    onSuccess: () => {
+    onMutate: (id) => {
+      return apply(['/journal-vouchers'], patchRow(id, { status: 'PENDING_APPROVAL' }));
+    },
+    onError: (err: unknown, _vars, snapshot) => {
+      undo(snapshot, err);
+      setError(extractErrorMessage(err));
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['/journal-vouchers'] });
     },
-    onError: (err: unknown) => setError(extractErrorMessage(err)),
   });
 
   const approveMutation = useMutation({
@@ -208,11 +217,17 @@ export default function JournalVouchersPage() {
       const response = await api.post(`/journal-vouchers/${id}/approve`, { comments });
       return response.data;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/journal-vouchers'] });
+    onMutate: ({ id }) => {
       setDetailJv(null);
+      return apply(['/journal-vouchers'], patchRow(id, {}));
     },
-    onError: (err: unknown) => setError(extractErrorMessage(err)),
+    onError: (err: unknown, _vars, snapshot) => {
+      undo(snapshot, err);
+      setError(extractErrorMessage(err));
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['/journal-vouchers'] });
+    },
   });
 
   const rejectMutation = useMutation({
@@ -220,11 +235,17 @@ export default function JournalVouchersPage() {
       const response = await api.post(`/journal-vouchers/${id}/reject`, { reason });
       return response.data;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/journal-vouchers'] });
+    onMutate: ({ id }) => {
       setDetailJv(null);
+      return apply(['/journal-vouchers'], patchRow(id, { status: 'REJECTED' }));
     },
-    onError: (err: unknown) => setError(extractErrorMessage(err)),
+    onError: (err: unknown, _vars, snapshot) => {
+      undo(snapshot, err);
+      setError(extractErrorMessage(err));
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['/journal-vouchers'] });
+    },
   });
 
   const postMutation = useMutation({
@@ -232,15 +253,21 @@ export default function JournalVouchersPage() {
       const response = await api.post(`/journal-vouchers/${id}/post`);
       return response.data;
     },
-    onSuccess: () => {
+    onMutate: (id) => {
+      setDetailJv(null);
+      return apply(['/journal-vouchers'], patchRow(id, { status: 'POSTED' }));
+    },
+    onError: (err: unknown, _vars, snapshot) => {
+      undo(snapshot, err);
+      setError(extractErrorMessage(err));
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['/journal-vouchers'] });
       queryClient.invalidateQueries({ queryKey: ['/bank-accounts'] });
       queryClient.invalidateQueries({ queryKey: ['/cash-accounts'] });
       queryClient.invalidateQueries({ queryKey: ['/owner-accounts'] });
       queryClient.invalidateQueries({ queryKey: ['/budget-heads'] });
-      setDetailJv(null);
     },
-    onError: (err: unknown) => setError(extractErrorMessage(err)),
   });
 
   const cancelMutation = useMutation({
@@ -248,11 +275,17 @@ export default function JournalVouchersPage() {
       const response = await api.post(`/journal-vouchers/${id}/cancel`);
       return response.data;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/journal-vouchers'] });
+    onMutate: (id) => {
       setDetailJv(null);
+      return apply(['/journal-vouchers'], patchRow(id, { status: 'CANCELLED' }));
     },
-    onError: (err: unknown) => setError(extractErrorMessage(err)),
+    onError: (err: unknown, _vars, snapshot) => {
+      undo(snapshot, err);
+      setError(extractErrorMessage(err));
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['/journal-vouchers'] });
+    },
   });
 
   const resetForm = () => {
@@ -442,7 +475,7 @@ export default function JournalVouchersPage() {
                 </TableCell></TableRow>
               ) : (
                 rows.map((jv) => (
-                  <TableRow key={jv.id} hover>
+                  <TableRow key={jv.id} hover {...pendingProps(jv)}>
                     <TableCell sx={{ fontWeight: 600 }} data-label={tr('jvNumber')}>{jv.jvNumber}</TableCell>
                     <TableCell data-label={tr('date')}>{formatDate(jv.date)}</TableCell>
                     <TableCell data-label={tr('type')}><Chip label={enumLabel(jv.type)} size="small" variant="outlined" /></TableCell>

@@ -27,6 +27,7 @@ import {
 } from '@mui/icons-material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import api, { extractErrorMessage } from '../config/api';
+import { insertRow, patchRow, pendingProps, useOptimistic } from '../utils/optimistic';
 import i18n, { dateLocale } from '../i18n';
 import { useAuthStore } from '../stores/authStore';
 import ResponsiveDialog from './ResponsiveDialog';
@@ -303,14 +304,20 @@ function CommentsDialog({
     requestAnimationFrame(() => inputRef.current?.focus());
   };
 
+  const { apply, undo, restore } = useOptimistic();
+  const commentsKey = ['comments', entityType, entityId];
+
+  // The comment shows at once and the composer clears; a refused post puts the draft back.
+  interface PostVars {
+    editingId: string | null;
+    body: string;
+    mentionIds: string[];
+    draft: { text: string; tagged: Record<string, MentionUser>; replyTo: CommentRow | null };
+  }
   const postMutation = useMutation({
-    mutationFn: async () => {
-      // Only tags whose @Name is still in the text count.
-      const mentionIds = Object.values(tagged)
-        .filter((u) => text.includes(`@${u.name}`))
-        .map((u) => u.id);
-      if (editingId) {
-        await api.patch(`/comments/${editingId}`, { body: text.trim(), mentionIds });
+    mutationFn: async ({ editingId: id, body, mentionIds, draft }: PostVars) => {
+      if (id) {
+        await api.patch(`/comments/${id}`, { body, mentionIds });
         return;
       }
       await api.post('/comments', {
@@ -318,27 +325,65 @@ function CommentsDialog({
         entityId,
         entityLabel,
         url,
-        body: text.trim(),
+        body,
         mentionIds,
-        parentId: replyTo?.id,
+        parentId: draft.replyTo?.id,
       });
     },
-    onSuccess: () => {
+    onMutate: ({ editingId: id, body, draft }) => {
       resetComposer();
+      return apply(
+        commentsKey,
+        id
+          ? patchRow(id, { body, editedAt: new Date().toISOString() })
+          : insertRow(
+              {
+                entityType,
+                entityId,
+                body,
+                mentions: [],
+                parentId: draft.replyTo?.id ?? null,
+                author: { id: me?.id ?? '', name: me?.name ?? '', role: me?.role ?? '' },
+              },
+              'end',
+            ),
+      );
+    },
+    onError: (err, { editingId: id, draft }, snapshot) => {
+      restore(snapshot);
+      setText(draft.text);
+      setTagged(draft.tagged);
+      setEditingId(id);
+      setReplyTo(draft.replyTo);
+      setError(extractErrorMessage(err));
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['comments'] });
     },
-    onError: (err) => setError(extractErrorMessage(err)),
   });
+  const submitComment = () => {
+    // Only tags whose @Name is still in the text count.
+    const mentionIds = Object.values(tagged)
+      .filter((u) => text.includes(`@${u.name}`))
+      .map((u) => u.id);
+    postMutation.mutate({ editingId, body: text.trim(), mentionIds, draft: { text, tagged, replyTo } });
+  };
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
       await api.delete(`/comments/${id}`);
     },
-    onSuccess: (_d, id) => {
+    onMutate: (id) => {
       if (id === editingId) resetComposer();
+      return apply(commentsKey, patchRow(id, { deletedAt: new Date().toISOString(), deletedByName: me?.name ?? null }));
+    },
+    onError: (err, _id, snapshot) => {
+      undo(snapshot, err);
+      setError(extractErrorMessage(err));
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['comments'] });
     },
-    onError: (err) => setError(extractErrorMessage(err)),
   });
 
   // Top-level comments oldest first, each with its replies underneath.
@@ -357,7 +402,7 @@ function CommentsDialog({
   const canEdit = (c: CommentRow) => !c.deletedAt && c.author.id === me?.id;
 
   const renderComment = (c: CommentRow, isReply: boolean) => (
-    <Box key={c.id} sx={{ display: 'flex', gap: 1.25 }}>
+    <Box key={c.id} {...pendingProps(c)} sx={{ display: 'flex', gap: 1.25 }}>
       <Avatar sx={{ width: isReply ? 24 : 30, height: isReply ? 24 : 30, fontSize: isReply ? 12 : 14 }}>
         {c.author.name.charAt(0).toUpperCase()}
       </Avatar>
@@ -508,7 +553,7 @@ function CommentsDialog({
               }
               if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && text.trim()) {
                 e.preventDefault();
-                postMutation.mutate();
+                submitComment();
               }
             }}
           />
@@ -542,7 +587,7 @@ function CommentsDialog({
           endIcon={<SendIcon />}
           size="large"
           disabled={!text.trim() || postMutation.isPending}
-          onClick={() => postMutation.mutate()}
+          onClick={submitComment}
         >
           {editingId ? tr('save') : replyTo ? tr('reply') : tr('post')}
         </Button>

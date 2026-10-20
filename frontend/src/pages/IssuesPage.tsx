@@ -40,6 +40,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { IssueSeverity, IssueCategory, IssueStatus } from '@hospital-erp/shared';
 import { enumToOptions, formatDate, STATUS_COLORS, enumLabel } from '../utils/enumOptions';
 import api, { extractErrorMessage } from '../config/api';
+import { insertRow, patchRow, pendingProps, removeRow, useOptimistic } from '../utils/optimistic';
 import { useDeepLinkRow } from '../hooks/useDeepLinkRow';
 import { useUrlFilters } from '../hooks/useUrlFilters';
 import { useAuthStore } from '../stores/authStore';
@@ -107,36 +108,62 @@ export default function IssuesPage() {
     },
   });
 
+  const { apply, undo } = useOptimistic();
+
   const createMutation = useMutation({
-    mutationFn: async (payload: Record<string, unknown>) => {
-      if (editingId) {
-        const response = await api.patch(`/issues/${editingId}`, payload);
+    mutationFn: async ({ id, payload }: { id: string | null; payload: Record<string, unknown> }) => {
+      if (id) {
+        const response = await api.patch(`/issues/${id}`, payload);
         return response.data;
       }
       const response = await api.post('/issues', payload);
       return response.data;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/issues'] });
-      queryClient.invalidateQueries({ queryKey: ['/dashboard', 'summary'] });
+    // Instant: the dialog closes and the list shows the change while it saves.
+    onMutate: ({ id, payload }) => {
       setCreateOpen(false);
       setEditingId(null);
       setForm({});
-      setSuccessMsg(editingId ? tr('okUpdated') : tr('okCreated'));
+      return apply(
+        ['/issues'],
+        id
+          ? patchRow(id, payload)
+          : insertRow({ ...payload, status: IssueStatus.OPEN, dateRaised: new Date().toISOString(), createdByUser: user ? { id: user.id, name: user.name } : null }),
+      );
+    },
+    onSuccess: (_data, { id }) => {
+      setSuccessMsg(id ? tr('okUpdated') : tr('okCreated'));
       setTimeout(() => setSuccessMsg(''), 3000);
     },
-    onError: (err: unknown) => setError(extractErrorMessage(err)),
+    onError: (err: unknown, { id, payload }, snapshot) => {
+      undo(snapshot, err);
+      // Reopen the form with what was typed.
+      setEditingId(id);
+      setForm(payload);
+      setError(extractErrorMessage(err));
+      setCreateOpen(true);
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['/issues'] });
+      queryClient.invalidateQueries({ queryKey: ['/dashboard', 'summary'] });
+    },
   });
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => { await api.delete(`/issues/${id}`); },
+    onMutate: (id) => apply(['/issues'], removeRow(id)),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/issues'] });
-      queryClient.invalidateQueries({ queryKey: ['/dashboard', 'summary'] });
       setSuccessMsg(tr('okDeleted'));
       setTimeout(() => setSuccessMsg(''), 3000);
     },
-    onError: (err: unknown) => setError(extractErrorMessage(err)),
+    onError: (err: unknown, _id, snapshot) => {
+      undo(snapshot, err);
+      setError(extractErrorMessage(err));
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['/issues'] });
+      queryClient.invalidateQueries({ queryKey: ['/dashboard', 'summary'] });
+    },
   });
 
   const closeMutation = useMutation({
@@ -310,7 +337,7 @@ export default function IssuesPage() {
                 <TableRow><TableCell colSpan={8} align="center" sx={{ py: 4 }}><Typography color="text.secondary">{tr('none')}</Typography></TableCell></TableRow>
               ) : (
                 rows.map((row) => (
-                  <TableRow key={row.id} hover ref={rowRef(row.id)} sx={{ ...(highlightId === row.id && { bgcolor: 'warning.light', '&:hover': { bgcolor: 'warning.light' } }) }}>
+                  <TableRow key={row.id} hover {...pendingProps(row)} ref={rowRef(row.id)} sx={{ ...(highlightId === row.id && { bgcolor: 'warning.light', '&:hover': { bgcolor: 'warning.light' } }) }}>
                     <TableCell data-label={tr('title2')}>{row.title}</TableCell>
                     <TableCell data-label={tr('category')}>{enumLabel(row.category)}</TableCell>
                     <TableCell data-label={tr('severity')}><Chip label={enumLabel(row.severity)} size="small" color={STATUS_COLORS[row.severity] ?? 'default'} /></TableCell>
@@ -407,11 +434,14 @@ export default function IssuesPage() {
                 return;
               }
               createMutation.mutate({
-                title: form.title,
-                category: form.category,
-                severity: form.severity,
-                description: form.description || undefined,
-                addressTo: form.addressTo,
+                id: editingId,
+                payload: {
+                  title: form.title,
+                  category: form.category,
+                  severity: form.severity,
+                  description: form.description || undefined,
+                  addressTo: form.addressTo,
+                },
               });
             }}
             disabled={!form.title || createMutation.isPending}

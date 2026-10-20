@@ -30,6 +30,7 @@ import { WorkTaskType, WorkTaskStatus, WorkTaskPriority } from '@hospital-erp/sh
 import { enumToOptions, STATUS_COLORS } from '../utils/enumOptions';
 import { dateLocale } from '../i18n';
 import api, { extractErrorMessage } from '../config/api';
+import { insertRow, patchRow, pendingProps, removeRow, useOptimistic } from '../utils/optimistic';
 
 import { useTranslation } from 'react-i18next';
 interface WorkTask {
@@ -187,40 +188,64 @@ export default function WorkCalendarPage() {
     queryClient.invalidateQueries({ queryKey: ['/dashboard', 'summary'] });
   }, [queryClient]);
 
+  const { apply, undo } = useOptimistic();
+  // The calendar and the work list cache tasks under different keys; both change at once.
+  const TASK_KEYS = [['/work-tasks/calendar'], ['/work-tasks']];
+
+  type SaveVars = { id: string | null; payload: Record<string, unknown>; form: Record<string, unknown> };
   const saveMutation = useMutation({
-    mutationFn: async (payload: Record<string, unknown>) => {
-      if (editingId) {
-        return (await api.patch(`/work-tasks/${editingId}`, payload)).data;
+    mutationFn: async ({ id, payload }: SaveVars) => {
+      if (id) {
+        return (await api.patch(`/work-tasks/${id}`, payload)).data;
       }
       return (await api.post('/work-tasks', payload)).data;
     },
-    onSuccess: () => {
-      invalidateAll();
+    // Instant: the dialog closes and the calendar shows the change while it saves.
+    onMutate: ({ id, payload }) => {
       setFormOpen(false);
       setEditingId(null);
       setForm({});
-      setSuccessMsg(editingId ? tr('okUpdated') : tr('okCreated'));
+      return apply(TASK_KEYS, id ? patchRow(id, payload) : insertRow(payload));
+    },
+    onSuccess: (_data, { id }) => {
+      setSuccessMsg(id ? tr('okUpdated') : tr('okCreated'));
       setTimeout(() => setSuccessMsg(''), 3000);
     },
-    onError: (err: unknown) => setError(extractErrorMessage(err)),
+    onError: (err: unknown, { id, form: typed }, snapshot) => {
+      undo(snapshot, err);
+      // Reopen the form with what was typed.
+      setEditingId(id);
+      setForm(typed);
+      setError(extractErrorMessage(err));
+      setFormOpen(true);
+    },
+    onSettled: invalidateAll,
   });
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => { await api.delete(`/work-tasks/${id}`); },
+    onMutate: (id) => apply(TASK_KEYS, removeRow(id)),
     onSuccess: () => {
-      invalidateAll();
       setSuccessMsg(tr('okDeleted'));
       setTimeout(() => setSuccessMsg(''), 3000);
     },
-    onError: (err: unknown) => setError(extractErrorMessage(err)),
+    onError: (err: unknown, _id, snapshot) => {
+      undo(snapshot, err);
+      setError(extractErrorMessage(err));
+    },
+    onSettled: invalidateAll,
   });
 
   const statusMutation = useMutation({
     mutationFn: async ({ id, status }: { id: string; status: string }) => {
       return (await api.patch(`/work-tasks/${id}`, { status })).data;
     },
-    onSuccess: () => invalidateAll(),
-    onError: (err: unknown) => setError(extractErrorMessage(err)),
+    onMutate: ({ id, status }) => apply(TASK_KEYS, patchRow(id, { status })),
+    onError: (err: unknown, _vars, snapshot) => {
+      undo(snapshot, err);
+      setError(extractErrorMessage(err));
+    },
+    onSettled: invalidateAll,
   });
 
   const tKey = todayKey();
@@ -279,7 +304,7 @@ export default function WorkCalendarPage() {
       linkedQuotationId: (form.linkedQuotationId as string) || undefined,
       linkedPoId: (form.linkedPoId as string) || undefined,
     };
-    saveMutation.mutate(payload);
+    saveMutation.mutate({ id: editingId, payload, form });
   }
 
   const selectedTasks: WorkTask[] = selectedDate ? (tasksByDate[selectedDate] ?? []) : [];
@@ -294,6 +319,7 @@ export default function WorkCalendarPage() {
     return (
       <Box
         key={task.id}
+        {...pendingProps(task)}
         sx={{
           p: 1.25,
           border: '1px solid',

@@ -46,6 +46,7 @@ import {
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { extractErrorMessage } from '../config/api';
+import { patchRow, pendingProps, removeRow, useOptimistic } from '../utils/optimistic';
 import { fetchAllLedgers } from '../utils/ledgers';
 import ResponsiveDialog from '../components/ResponsiveDialog';
 import ResponsiveTable from '../components/ResponsiveTable';
@@ -195,6 +196,8 @@ export default function VouchersPage() {
   const [linkedPaymentRequest, setLinkedPaymentRequest] = useState<{ id: string; paymentCode: string; type: string; amount: number } | null>(null);
 
   const queryClient = useQueryClient();
+  // Status changes show on the list at once and are undone if the server refuses.
+  const { apply, undo } = useOptimistic();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -366,16 +369,24 @@ export default function VouchersPage() {
       return response.data;
     },
     onSuccess: () => {
+      setSuccessMsg(tr('okCancelled'));
+      setTimeout(() => setSuccessMsg(''), 4000);
+    },
+    onMutate: (id) => {
+      setDetailVoucher(null);
+      return apply(['/vouchers'], patchRow(id, { status: 'CANCELLED' }));
+    },
+    onError: (err: unknown, _vars, snapshot) => {
+      undo(snapshot, err);
+      setError(extractErrorMessage(err));
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['/vouchers'] });
       queryClient.invalidateQueries({ queryKey: ['/ledgers'] });
       queryClient.invalidateQueries({ queryKey: ['/bank-accounts'] });
       queryClient.invalidateQueries({ queryKey: ['/cash-accounts'] });
       queryClient.invalidateQueries({ queryKey: ['/audit-logs'] });
-      setDetailVoucher(null);
-      setSuccessMsg(tr('okCancelled'));
-      setTimeout(() => setSuccessMsg(''), 4000);
     },
-    onError: (err: unknown) => setError(extractErrorMessage(err)),
   });
 
   const deleteMutation = useMutation({
@@ -384,13 +395,21 @@ export default function VouchersPage() {
       return response.data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/vouchers'] });
-      queryClient.invalidateQueries({ queryKey: ['/audit-logs'] });
-      setDetailVoucher(null);
       setSuccessMsg(tr('okDeleted'));
       setTimeout(() => setSuccessMsg(''), 4000);
     },
-    onError: (err: unknown) => setError(extractErrorMessage(err)),
+    onMutate: (id) => {
+      setDetailVoucher(null);
+      return apply(['/vouchers'], removeRow(id));
+    },
+    onError: (err: unknown, _vars, snapshot) => {
+      undo(snapshot, err);
+      setError(extractErrorMessage(err));
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['/vouchers'] });
+      queryClient.invalidateQueries({ queryKey: ['/audit-logs'] });
+    },
   });
 
   const resetForm = () => {
@@ -899,6 +918,7 @@ export default function VouchersPage() {
                   <TableRow
                     key={v.id}
                     hover
+                    {...pendingProps(v)}
                     ref={rowRef(v.id)}
                     sx={highlightId === v.id ? { bgcolor: 'action.selected', transition: 'background-color 0.3s ease' } : undefined}
                   >

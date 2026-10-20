@@ -26,6 +26,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { UserRole, isAdminRole } from '@hospital-erp/shared';
 import { roleLabel } from '../utils/enumOptions';
 import api, { extractErrorMessage } from '../config/api';
+import { patchRow, useOptimistic } from '../utils/optimistic';
 import { formatDate } from '../utils/enumOptions';
 import ResponsiveTable from '../components/ResponsiveTable';
 
@@ -73,6 +74,7 @@ export default function UsersPage() {
   const [nextAdminLabel, setNextAdminLabel] = useState<string>('');
   const [loadingNextAdmin, setLoadingNextAdmin] = useState(false);
   const queryClient = useQueryClient();
+  const { apply, undo } = useOptimistic();
 
   const { data, isLoading } = useQuery({
     queryKey: ['/auth/users'],
@@ -87,11 +89,18 @@ export default function UsersPage() {
       const response = await api.patch(`/auth/users/${id}`, updates);
       return response.data;
     },
+    // Role / active switches flip at once and are undone if the server refuses.
+    onMutate: ({ id, updates }) => apply(['/auth/users'], patchRow(id, updates)),
     onSuccess: () => {
       setError('');
+    },
+    onError: (err: unknown, _vars, snapshot) => {
+      undo(snapshot, err);
+      setError(extractErrorMessage(err));
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['/auth/users'] });
     },
-    onError: (err: unknown) => setError(extractErrorMessage(err)),
   });
 
   const savePhoneMutation = useMutation({

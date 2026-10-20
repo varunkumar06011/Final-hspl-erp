@@ -67,6 +67,7 @@ import { formatCurrency, formatDate, formatDateTime, formatIndianNumber, STATUS_
 import { useTranslation, Trans } from 'react-i18next';
 import { num, toIncGst, round2 } from '../utils/taxCalc';
 import api, { extractErrorMessage, budgetOverrunOf, type BudgetOverrun } from '../config/api';
+import { patchRow, pendingProps, removeRow, useOptimistic } from '../utils/optimistic';
 import { fetchAllLedgers } from '../utils/ledgers';
 import { useAuthStore } from '../stores/authStore';
 import AcknowledgementCheckbox from '../components/AcknowledgementCheckbox';
@@ -247,6 +248,8 @@ export default function PurchaseOrdersPage() {
   const [detailRows, setDetailRows] = useState<Set<string>>(new Set());
   const toggleDetails = (id: string) => setDetailRows((prev) => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; });
   const queryClient = useQueryClient();
+  // Status changes show on the list at once and are undone if the server refuses.
+  const { apply, undo } = useOptimistic();
   const { user } = useAuthStore();
   const navigate = useNavigate();
   const createSubmissionLocked = useRef(false);
@@ -489,11 +492,17 @@ export default function PurchaseOrdersPage() {
       const response = await api.post(`/purchase-orders/${poId}/resubmit`);
       return response.data;
     },
-    onSuccess: () => {
+    onMutate: (poId) => {
+      return apply(['/pos'], patchRow(poId, {}));
+    },
+    onError: (err: unknown, _vars, snapshot) => {
+      undo(snapshot, err);
+      setError(extractErrorMessage(err));
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['/pos'] });
       queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
     },
-    onError: (err: unknown) => setError(extractErrorMessage(err)),
   });
 
   const [deleteRow, setDeleteRow] = useState<PORow | null>(null);
@@ -501,12 +510,18 @@ export default function PurchaseOrdersPage() {
     mutationFn: async (id: string) => {
       await api.delete(`/purchase-orders/${id}`);
     },
-    onSuccess: () => {
+    onMutate: (id) => {
+      setDeleteRow(null);
+      return apply(['/pos'], removeRow(id));
+    },
+    onError: (err: unknown, _vars, snapshot) => {
+      undo(snapshot, err);
+      setError(extractErrorMessage(err));
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['/pos'] });
       queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
-      setDeleteRow(null);
     },
-    onError: (err: unknown) => setError(extractErrorMessage(err)),
   });
 
   const [deactivateRow, setDeactivateRow] = useState<PORow | null>(null);
@@ -514,28 +529,42 @@ export default function PurchaseOrdersPage() {
     mutationFn: async (id: string) => {
       await api.delete(`/purchase-orders/${id}`);
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/pos'] });
-      queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
+    onMutate: (id) => {
       setDeactivateRow(null);
       setNotesEditRow(null);
       setNotesEditValue('');
+      return apply(['/pos'], removeRow(id));
     },
-    onError: (err: unknown) => setError(extractErrorMessage(err)),
+    onError: (err: unknown, _vars, snapshot) => {
+      undo(snapshot, err);
+      setError(extractErrorMessage(err));
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['/pos'] });
+      queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
+    },
   });
 
   const updateNotesMutation = useMutation({
-    mutationFn: async () => {
-      const response = await api.patch(`/purchase-orders/${notesEditRow!.id}`, { notes: notesEditValue.trim(), referredBy: referredByEditValue.trim() });
+    mutationFn: async ({ id, notes, referredBy }: { id: string; notes: string; referredBy: string }) => {
+      const response = await api.patch(`/purchase-orders/${id}`, { notes, referredBy });
       return response.data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/pos'] });
-      setNotesEditRow(null);
-      setNotesEditValue('');
       setError('');
     },
-    onError: (err: unknown) => setError(extractErrorMessage(err)),
+    onMutate: ({ id, notes, referredBy }) => {
+      setNotesEditRow(null);
+      setNotesEditValue('');
+      return apply(['/pos'], patchRow(id, { notes, referredBy }));
+    },
+    onError: (err: unknown, _vars, snapshot) => {
+      undo(snapshot, err);
+      setError(extractErrorMessage(err));
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['/pos'] });
+    },
   });
 
   const changeBudgetHeadMutation = useMutation({
@@ -806,6 +835,7 @@ export default function PurchaseOrdersPage() {
                         <TableRow
                           key={row.id}
                           hover
+                          {...pendingProps(row)}
                           ref={rowRef(row.id)}
                           sx={{ ...(highlightId === row.id && { bgcolor: 'warning.light', '&:hover': { bgcolor: 'warning.light' } }) }}
                         >
@@ -926,6 +956,7 @@ export default function PurchaseOrdersPage() {
                 return (
                   <Accordion
                     key={row.id}
+                    {...pendingProps(row)}
                     ref={rowRef(row.id)}
                     expanded={expandedPoId === row.id}
                     onChange={(_event, expanded) => setExpandedPoId(expanded ? row.id : null)}
@@ -1735,7 +1766,7 @@ export default function PurchaseOrdersPage() {
           <Button
             variant="contained"
             disabled={updateNotesMutation.isPending}
-            onClick={() => updateNotesMutation.mutate()}
+            onClick={() => notesEditRow && updateNotesMutation.mutate({ id: notesEditRow.id, notes: notesEditValue.trim(), referredBy: referredByEditValue.trim() })}
           >
             {updateNotesMutation.isPending ? <CircularProgress size={20} /> : t('save')}
           </Button>

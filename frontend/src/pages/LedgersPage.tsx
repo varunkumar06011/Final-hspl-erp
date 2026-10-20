@@ -49,6 +49,7 @@ import {
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { extractErrorMessage } from '../config/api';
+import { insertRow, patchRow, pendingProps, removeRow, useOptimistic } from '../utils/optimistic';
 import ResponsiveDialog from '../components/ResponsiveDialog';
 import ResponsiveTable from '../components/ResponsiveTable';
 import RefreshButton from '../components/RefreshButton';
@@ -230,35 +231,60 @@ export default function LedgersPage() {
     }
   };
 
+  const { apply, undo } = useOptimistic();
+
+  type SaveVars = { editing: Ledger | null; payload: Record<string, unknown>; form: Record<string, unknown> };
   const createMutation = useMutation({
-    mutationFn: async (payload: Record<string, unknown>) => {
-      if (editing) {
-        const response = await api.patch(`/ledgers/${editing.id}`, payload);
+    mutationFn: async ({ editing: target, payload }: SaveVars) => {
+      if (target) {
+        const response = await api.patch(`/ledgers/${target.id}`, payload);
         return response.data;
       }
       const response = await api.post('/ledgers', payload);
       return response.data;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/ledgers'] });
-      queryClient.invalidateQueries({ queryKey: ['/ledgers/sync/status'] });
+    // Instant: the dialog closes and the list shows the change while it saves.
+    onMutate: ({ editing: target, payload }) => {
       setDialogOpen(false);
-      setSuccessMsg(editing ? tr('okUpd') : tr('okCre'));
+      return apply(
+        ['/ledgers'],
+        target ? patchRow(target.id, payload) : insertRow({ ...payload, currentBalance: payload.openingBalance }),
+      );
+    },
+    onSuccess: (_data, { editing: target }) => {
+      setSuccessMsg(target ? tr('okUpd') : tr('okCre'));
       setTimeout(() => setSuccessMsg(''), 3000);
     },
-    onError: (err: unknown) => setError(extractErrorMessage(err)),
+    onError: (err: unknown, { editing: target, form: typed }, snapshot) => {
+      undo(snapshot, err);
+      // Reopen the form with what was typed.
+      setEditing(target);
+      setForm(typed);
+      setError(extractErrorMessage(err));
+      setDialogOpen(true);
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['/ledgers'] });
+      queryClient.invalidateQueries({ queryKey: ['/ledgers/sync/status'] });
+    },
   });
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
       await api.delete(`/ledgers/${id}`);
     },
+    onMutate: (id) => apply(['/ledgers'], removeRow(id)),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/ledgers'] });
       setSuccessMsg(tr('okDel'));
       setTimeout(() => setSuccessMsg(''), 3000);
     },
-    onError: (err: unknown) => setError(extractErrorMessage(err)),
+    onError: (err: unknown, _id, snapshot) => {
+      undo(snapshot, err);
+      setError(extractErrorMessage(err));
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['/ledgers'] });
+    },
   });
 
   const syncMutation = useMutation({
@@ -358,7 +384,7 @@ export default function LedgersPage() {
     const payload = editing
       ? { name: form.name, group: form.group, isActive: form.isActive }
       : { name: form.name, group: form.group, openingBalance: Number(form.openingBalance) || 0, isActive: form.isActive };
-    createMutation.mutate(payload);
+    createMutation.mutate({ editing, payload, form });
   };
 
   const rows: Ledger[] = data?.data ?? [];
@@ -398,7 +424,7 @@ export default function LedgersPage() {
   };
 
   const renderLedgerRow = (ledger: Ledger) => (
-    <TableRow key={ledger.id} hover ref={ledgerRowRef(ledger.id)} sx={{ ...(ledgerHighlightId === ledger.id && { bgcolor: 'warning.light', '&:hover': { bgcolor: 'warning.light' } }) }}>
+    <TableRow key={ledger.id} hover {...pendingProps(ledger)} ref={ledgerRowRef(ledger.id)} sx={{ ...(ledgerHighlightId === ledger.id && { bgcolor: 'warning.light', '&:hover': { bgcolor: 'warning.light' } }) }}>
       <TableCell sx={{ fontWeight: 500 }} data-label={tr('ledgerName')}>
         {ledger.name}
         {ledger.isSystem && <Chip label={tr('system')} size="small" variant="outlined" sx={{ ml: 1 }} />}

@@ -38,6 +38,7 @@ import {
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { extractErrorMessage } from '../config/api';
+import { insertRow, patchRow, pendingProps, removeRow, useOptimistic } from '../utils/optimistic';
 import CreatableSelect from './CreatableSelect';
 import SelectWithOther from './SelectWithOther';
 import AttachmentUpload from './AttachmentUpload';
@@ -158,6 +159,7 @@ export default function EntityPage({
   const [error, setError] = useState('');
   const [exporting, setExporting] = useState(false);
   const queryClient = useQueryClient();
+  const { apply, undo } = useOptimistic();
 
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: [endpoint, page, pageSize, search],
@@ -175,13 +177,22 @@ export default function EntityPage({
       const response = await api.post(endpoint, body);
       return response.data;
     },
-    onSuccess: () => {
+    // Instant: the dialog closes and the new row shows (dimmed) while it saves.
+    onMutate: (payload) => {
+      closeDialog();
+      return apply([endpoint], insertRow(payload));
+    },
+    onError: (err: unknown, payload, snapshot) => {
+      undo(snapshot, err);
+      // Bring the form back with what was typed, so nothing has to be re-entered.
+      setForm(payload);
+      setEditing(null);
+      setError(extractErrorMessage(err));
+      setDialogOpen(true);
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: [endpoint] });
       queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
-      closeDialog();
-    },
-    onError: (err: unknown) => {
-      setError(extractErrorMessage(err));
     },
   });
 
@@ -191,12 +202,20 @@ export default function EntityPage({
       const response = await api.patch(`${endpoint}/${id}`, body);
       return response.data;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [endpoint] });
+    onMutate: ({ id, payload }) => {
+      const row = editing;
       closeDialog();
+      return apply([endpoint], patchRow(id, payload)).then((snapshot) => ({ snapshot, row }));
     },
-    onError: (err: unknown) => {
+    onError: (err: unknown, { payload }, context) => {
+      undo(context?.snapshot, err);
+      setForm(payload);
+      setEditing(context?.row ?? null);
       setError(extractErrorMessage(err));
+      setDialogOpen(true);
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: [endpoint] });
     },
   });
 
@@ -204,13 +223,17 @@ export default function EntityPage({
     mutationFn: async (id: string) => {
       await api.delete(`${endpoint}/${id}`);
     },
-    onSuccess: () => {
+    onMutate: (id) => {
+      setDeleteConfirm(null);
+      return apply([endpoint], removeRow(id));
+    },
+    onError: (err: unknown, _id, snapshot) => {
+      undo(snapshot, err);
+      setError(extractErrorMessage(err));
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: [endpoint] });
       queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
-      setDeleteConfirm(null);
-    },
-    onError: (err: unknown) => {
-      setError(extractErrorMessage(err));
     },
   });
 
@@ -378,6 +401,7 @@ export default function EntityPage({
               {rows.map((row: Record<string, unknown>) => (
                 <Accordion
                   key={row.id as string}
+                  {...pendingProps(row)}
                   ref={rowRef(row.id as string)}
                   expanded={expandedId === row.id}
                   onChange={(_event, expanded) => setExpandedId(expanded ? (row.id as string) : null)}
@@ -492,6 +516,7 @@ export default function EntityPage({
                   <TableRow
                     key={row.id as string}
                     hover
+                    {...pendingProps(row)}
                     ref={rowRef(row.id as string)}
                     onClick={onRowClick ? () => onRowClick(row) : undefined}
                     sx={{

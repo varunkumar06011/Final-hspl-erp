@@ -49,6 +49,7 @@ import { formatCurrency, formatDate, formatIndianNumber, STATUS_COLORS, enumLabe
 import ItemsGist from '../components/ItemsGist';
 import { useTranslation, Trans } from 'react-i18next';
 import api, { extractErrorMessage } from '../config/api';
+import { patchRow, pendingProps, removeRow, useOptimistic } from '../utils/optimistic';
 import { useAuthStore } from '../stores/authStore';
 import { generateInvoicePDF } from '../utils/invoicePdf';
 import { shareOnWhatsApp, buildInvoiceShareMessage } from '../utils/whatsappShare';
@@ -281,6 +282,8 @@ export default function InvoicesPage() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
   const queryClient = useQueryClient();
+  // Status changes show on the list at once and are undone if the server refuses.
+  const { apply, undo, restore } = useOptimistic();
   const { user } = useAuthStore();
 
   const { data, isLoading, refetch } = useQuery({
@@ -462,12 +465,20 @@ export default function InvoicesPage() {
       const response = await api.post(`/invoices/${invId}/approve`, { comments, acknowledged });
       return response.data;
     },
-    onSuccess: () => {
+    onMutate: ({ invId }) => {
+      const saved = approvalAction;
+      setApprovalAction(null);
+      return apply(['/invoices'], patchRow(invId, {})).then((snapshot) => ({ snapshot, saved }));
+    },
+    onError: (err: unknown, _vars, context) => {
+      restore(context?.snapshot);
+      setError(extractErrorMessage(err));
+      setApprovalAction(context?.saved ?? null);
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['/invoices'] });
       queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
-      setApprovalAction(null);
     },
-    onError: (err: unknown) => setError(extractErrorMessage(err)),
   });
 
   const rejectMutation = useMutation({
@@ -475,12 +486,20 @@ export default function InvoicesPage() {
       const response = await api.post(`/invoices/${invId}/reject`, { reason, acknowledged });
       return response.data;
     },
-    onSuccess: () => {
+    onMutate: ({ invId }) => {
+      const saved = approvalAction;
+      setApprovalAction(null);
+      return apply(['/invoices'], patchRow(invId, {})).then((snapshot) => ({ snapshot, saved }));
+    },
+    onError: (err: unknown, _vars, context) => {
+      restore(context?.snapshot);
+      setError(extractErrorMessage(err));
+      setApprovalAction(context?.saved ?? null);
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['/invoices'] });
       queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
-      setApprovalAction(null);
     },
-    onError: (err: unknown) => setError(extractErrorMessage(err)),
   });
 
   const [deleteRow, setDeleteRow] = useState<InvoiceRow | null>(null);
@@ -489,12 +508,18 @@ export default function InvoicesPage() {
     mutationFn: async (id: string) => {
       await api.delete(`/invoices/${id}`);
     },
-    onSuccess: () => {
+    onMutate: (id) => {
+      setDeleteRow(null);
+      return apply(['/invoices'], removeRow(id));
+    },
+    onError: (err: unknown, _vars, snapshot) => {
+      undo(snapshot, err);
+      setError(extractErrorMessage(err));
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['/invoices'] });
       queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
-      setDeleteRow(null);
     },
-    onError: (err: unknown) => setError(extractErrorMessage(err)),
   });
 
   // Post a verified invoice to the accounting ledgers (creates a PURCHASE voucher)
@@ -504,12 +529,20 @@ export default function InvoicesPage() {
       return response.data;
     },
     onSuccess: (data) => {
+      setSuccessMsg(t('postedAs', { n: data.jvNumber }));
+    },
+    onMutate: (invId) => {
+      return apply(['/invoices'], patchRow(invId, {}));
+    },
+    onError: (err: unknown, _vars, snapshot) => {
+      undo(snapshot, err);
+      setError(extractErrorMessage(err));
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['/invoices'] });
       queryClient.invalidateQueries({ queryKey: ['/vouchers'] });
       queryClient.invalidateQueries({ queryKey: ['/ledgers'] });
-      setSuccessMsg(t('postedAs', { n: data.jvNumber }));
     },
-    onError: (err: unknown) => setError(extractErrorMessage(err)),
   });
 
   // Cross-module link data for an invoice (PO → quotation → payments → ledger → settlements)
@@ -661,7 +694,7 @@ export default function InvoicesPage() {
                 <TableRow><TableCell colSpan={18} align="center" sx={{ py: 4 }}><Typography color="text.secondary">{t('noInvoices')}</Typography></TableCell></TableRow>
               ) : (
                 rows.map((row) => (
-                  <TableRow key={row.id} hover ref={rowRef(row.id)} onClick={() => setActiveRecord({ type: 'INVOICE', id: row.id, label: row.invoiceCode })} sx={{ ...(highlightId === row.id && { bgcolor: 'warning.light', '&:hover': { bgcolor: 'warning.light' } }) }}>
+                  <TableRow key={row.id} hover {...pendingProps(row)} ref={rowRef(row.id)} onClick={() => setActiveRecord({ type: 'INVOICE', id: row.id, label: row.invoiceCode })} sx={{ ...(highlightId === row.id && { bgcolor: 'warning.light', '&:hover': { bgcolor: 'warning.light' } }) }}>
                     <TableCell data-label={t('colInvoiceCode')}>{row.invoiceCode}</TableCell>
                     <TableCell data-label={t('colInvoiceNo')}>{row.invoiceNumber}</TableCell>
                     <TableCell data-label={t('colVendor')}>{row.vendor?.vendorCode} - {row.vendor?.name ?? '—'}</TableCell>

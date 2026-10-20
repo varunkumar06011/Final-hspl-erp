@@ -44,6 +44,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { enumLabel } from '../utils/enumOptions';
 import api, { extractErrorMessage } from '../config/api';
+import { insertRow, patchRow, pendingProps, removeRow, useOptimistic } from '../utils/optimistic';
 import { fetchAllLedgers } from '../utils/ledgers';
 import ResponsiveDialog from '../components/ResponsiveDialog';
 import ResponsiveTable from '../components/ResponsiveTable';
@@ -192,16 +193,30 @@ export default function BankAccountsPage() {
     (stmtVouchersData?.data ?? []).map((v: any) => [v.id, v.jvNumber])
   );
 
+  const { apply, undo } = useOptimistic();
+
   const createMutation = useMutation({
     mutationFn: async (payload: Record<string, unknown>) => {
       const response = await api.post('/bank-accounts', payload);
       return response.data;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/bank-accounts'] });
+    // Instant: the dialog closes and the new row shows (dimmed) while it saves.
+    onMutate: (payload) => {
+      const typed = form;
       closeDialog();
+      return apply(['/bank-accounts'], insertRow({ ...payload, currentBalance: payload.openingBalance })).then((snapshot) => ({ snapshot, typed }));
     },
-    onError: (err: unknown) => setError(extractErrorMessage(err)),
+    onError: (err: unknown, _payload, context) => {
+      undo(context?.snapshot, err);
+      // Reopen the form with what was typed.
+      setForm(context?.typed ?? {});
+      setEditing(null);
+      setError(extractErrorMessage(err));
+      setDialogOpen(true);
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['/bank-accounts'] });
+    },
   });
 
   const updateMutation = useMutation({
@@ -209,22 +224,39 @@ export default function BankAccountsPage() {
       const response = await api.patch(`/bank-accounts/${id}`, payload);
       return response.data;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/bank-accounts'] });
+    onMutate: ({ id, payload }) => {
+      const typed = form;
+      const row = editing;
       closeDialog();
+      return apply(['/bank-accounts'], patchRow(id, payload)).then((snapshot) => ({ snapshot, typed, row }));
     },
-    onError: (err: unknown) => setError(extractErrorMessage(err)),
+    onError: (err: unknown, _vars, context) => {
+      undo(context?.snapshot, err);
+      setForm(context?.typed ?? {});
+      setEditing(context?.row ?? null);
+      setError(extractErrorMessage(err));
+      setDialogOpen(true);
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['/bank-accounts'] });
+    },
   });
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
       await api.delete(`/bank-accounts/${id}`);
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/bank-accounts'] });
+    onMutate: (id) => {
       setDeleteConfirm(null);
+      return apply(['/bank-accounts'], removeRow(id));
     },
-    onError: (err: unknown) => setError(extractErrorMessage(err)),
+    onError: (err: unknown, _id, snapshot) => {
+      undo(snapshot, err);
+      setError(extractErrorMessage(err));
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['/bank-accounts'] });
+    },
   });
 
   const txnMutation = useMutation({
@@ -619,7 +651,7 @@ export default function BankAccountsPage() {
                 </TableCell></TableRow>
               ) : (
                 rows.map((row) => (
-                  <TableRow key={row.id} hover ref={rowRef(row.id)} sx={{ ...(highlightId === row.id && { bgcolor: 'warning.light', '&:hover': { bgcolor: 'warning.light' } }) }}>
+                  <TableRow key={row.id} hover {...pendingProps(row)} ref={rowRef(row.id)} sx={{ ...(highlightId === row.id && { bgcolor: 'warning.light', '&:hover': { bgcolor: 'warning.light' } }) }}>
                     <TableCell data-label={tr('bankName')} sx={{ fontWeight: 600 }}>{row.bankName || row.accountName}</TableCell>
                     <TableCell data-label={tr('accountName')}>{row.accountName}</TableCell>
                     <TableCell data-label={tr('accountNo')}>{row.accountNumber || '—'}</TableCell>

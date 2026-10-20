@@ -40,6 +40,7 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { formatCurrency, formatDate, formatIndianNumber, todayLocalDate } from '../utils/enumOptions';
 import api, { extractErrorMessage } from '../config/api';
+import { insertRow, patchRow, pendingProps, removeRow, useOptimistic } from '../utils/optimistic';
 import ResponsiveTable from '../components/ResponsiveTable';
 import RefreshButton from '../components/RefreshButton';
 
@@ -149,34 +150,56 @@ export default function AttendancePage() {
     enabled: tab === 3,
   });
 
+  const { apply, undo } = useOptimistic();
+
+  type StaffVars = { editing: Staff | null; payload: Record<string, unknown>; form: Record<string, unknown> };
   const createStaffMutation = useMutation({
-    mutationFn: async (payload: Record<string, unknown>) => {
-      if (editingStaff) {
-        const response = await api.patch(`/labour/staff/${editingStaff.id}`, payload);
+    mutationFn: async ({ editing, payload }: StaffVars) => {
+      if (editing) {
+        const response = await api.patch(`/labour/staff/${editing.id}`, payload);
         return response.data;
       }
       const response = await api.post('/labour/staff', payload);
       return response.data;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/labour/staff'] });
+    // Instant: the dialog closes and the list shows the change while it saves.
+    onMutate: ({ editing, payload }) => {
       setStaffDialogOpen(false);
       setEditingStaff(null);
       setStaffForm({});
-      setSuccessMsg(editingStaff ? tr('okUpdated') : tr('okAdded'));
+      return apply(['/labour/staff'], editing ? patchRow(editing.id, payload) : insertRow({ active: true, ...payload }));
+    },
+    onSuccess: (_data, { editing }) => {
+      setSuccessMsg(editing ? tr('okUpdated') : tr('okAdded'));
       setTimeout(() => setSuccessMsg(''), 3000);
     },
-    onError: (err: unknown) => setError(extractErrorMessage(err)),
+    onError: (err: unknown, { editing, form }, snapshot) => {
+      undo(snapshot, err);
+      // Reopen the form with what was typed.
+      setEditingStaff(editing);
+      setStaffForm(form);
+      setError(extractErrorMessage(err));
+      setStaffDialogOpen(true);
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['/labour/staff'] });
+    },
   });
 
   const deleteStaffMutation = useMutation({
     mutationFn: async (id: string) => { await api.delete(`/labour/staff/${id}`); },
+    onMutate: (id) => apply(['/labour/staff'], removeRow(id)),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/labour/staff'] });
       setSuccessMsg(tr('okDeleted'));
       setTimeout(() => setSuccessMsg(''), 3000);
     },
-    onError: (err: unknown) => setError(extractErrorMessage(err)),
+    onError: (err: unknown, _id, snapshot) => {
+      undo(snapshot, err);
+      setError(extractErrorMessage(err));
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['/labour/staff'] });
+    },
   });
 
   const markAttendanceMutation = useMutation({
@@ -286,7 +309,7 @@ export default function AttendancePage() {
                   <TableRow><TableCell colSpan={7} align="center" sx={{ py: 4 }}><Typography color="text.secondary">No staff found. Click "Add Staff" to get started.</Typography></TableCell></TableRow>
                 ) : (
                   staffRows.map((s) => (
-                    <TableRow key={s.id} hover>
+                    <TableRow key={s.id} hover {...pendingProps(s)}>
                       <TableCell data-label={tr('name')}>{s.name}</TableCell>
                       <TableCell data-label={tr('type')}><Chip label={s.type} size="small" color={s.type === 'COMPANY' ? 'primary' : 'secondary'} variant="outlined" /></TableCell>
                       <TableCell data-label={tr('role')}>{s.role ?? '—'}</TableCell>
@@ -578,12 +601,16 @@ export default function AttendancePage() {
                 return;
               }
               createStaffMutation.mutate({
-                name: staffForm.name,
-                type: staffForm.type,
-                role: staffForm.role || undefined,
-                phone: staffForm.phone || undefined,
-                baseSalary: Number(staffForm.baseSalary ?? 0),
-                ...(editingStaff ? { active: staffForm.active } : {}),
+                editing: editingStaff,
+                form: staffForm,
+                payload: {
+                  name: staffForm.name,
+                  type: staffForm.type,
+                  role: staffForm.role || undefined,
+                  phone: staffForm.phone || undefined,
+                  baseSalary: Number(staffForm.baseSalary ?? 0),
+                  ...(editingStaff ? { active: staffForm.active } : {}),
+                },
               });
             }}
             disabled={!staffForm.name || createStaffMutation.isPending}
