@@ -222,15 +222,19 @@ async function findEntityCreator(entityType: string, entityId: string): Promise<
   }
 
   const model = (prisma as any)[modelName];
+  const numberField = ENTITY_NUMBER_FIELD[entityType];
   const entity = await model.findUnique({
     where: { id: entityId },
-    select: { createdBy: true, projectId: true },
+    select: { createdBy: true, projectId: true, ...(numberField ? { [numberField]: true } : {}) },
   });
 
+  // "Purchase Order VGH-PO012" rather than a bare "Purchase Order" in notification titles.
+  const typeLabel = ENTITY_LABEL_MAP[entityType] ?? entityType;
+  const number = numberField ? entity?.[numberField] : null;
   return {
     createdBy: entity?.createdBy ?? null,
     projectId: entity?.projectId ?? '',
-    label: ENTITY_LABEL_MAP[entityType] ?? entityType,
+    label: number ? `${typeLabel} ${number}` : typeLabel,
   };
 }
 
@@ -529,8 +533,8 @@ export async function approve(
       approvalId: workflow.id,
       entityType: workflow.entityType,
       entityId: workflow.entityId,
-      title: 'Approval Required',
-      body: `${entityInfo.label} approved by ${user.name} — awaiting your approval`,
+      title: `Approval Required — ${entityInfo.label}`,
+      body: `Approved by ${user.name} — awaiting your approval`,
       url: entityUrl,
     }, userId).catch((err) => console.error('[Push] Admin approval notification error:', err));
   }
