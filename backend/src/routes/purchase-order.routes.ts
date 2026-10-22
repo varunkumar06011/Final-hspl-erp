@@ -14,7 +14,7 @@ import { streamPurchaseOrderPdf } from '../services/purchase-order-pdf.service';
 import { ensureVendorLedger, findLedgerByName } from './ledger.routes';
 import { postVoucher, generateVoucherNumber } from './voucher.routes';
 import { getActiveAdminRoles, generatePONumber, createNonVendorPoFromMpr, findLivePoForMpr } from '../services/non-vendor-po.service';
-import { reconcilePoAccrualSafe, hasPoAccrual, payableAfterDeductions } from '../services/po-accrual.service';
+import { hasPoAccrual, payableAfterDeductions } from '../services/po-accrual.service';
 import { isPartPo, partPoBalance } from '../services/part-po.service';
 
 const router = Router();
@@ -1546,9 +1546,6 @@ router.delete(
         });
       }
 
-      // Reverse the vendor payable booked at approval (no-op if none was booked).
-      await reconcilePoAccrualSafe(existing.id, req.user!.id);
-
       await logAudit({
         userId: req.user!.id,
         action: AuditAction.DELETE,
@@ -1682,10 +1679,7 @@ router.post(
             data: { committedAmount: { increment: Number(po.grandTotal) } },
           });
         }
-
-        // ── Accounting: we now owe the vendor — Dr Purchase / Cr Vendor ledger ──
-        // For an edited PO this posts only the difference vs. what is already booked.
-        if (!isPartPo(po)) await reconcilePoAccrualSafe(po.id, req.user!.id);
+        // No ledger posting here: the books take the vendor's invoice amount, not the PO amount.
       }
 
       const updated = await prisma.purchaseOrder.findUnique({
@@ -1763,10 +1757,6 @@ router.post(
             });
           }
         }
-
-        // A previously approved PO that is rejected on re-approval no longer
-        // counts as owed — reverse its vendor payable (no-op if never booked).
-        await reconcilePoAccrualSafe(po.id, req.user!.id);
       }
 
       const updated = await prisma.purchaseOrder.findUnique({
