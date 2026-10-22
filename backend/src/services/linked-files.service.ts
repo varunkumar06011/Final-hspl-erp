@@ -25,7 +25,7 @@ const TYPE_ALIASES: Record<string, ChainType> = {
 };
 
 /** Attachment.entityType values stored for each chain type. */
-const ATTACHMENT_TYPES: Record<ChainType, string[]> = {
+export const ATTACHMENT_TYPES: Record<ChainType, string[]> = {
   MPR: ['MATERIAL_PURCHASE_REQUEST'],
   QUOTATION: ['QUOTATION'],
   PO: ['PURCHASE_ORDER'],
@@ -292,4 +292,54 @@ export async function listLinkedFiles(
       b.uploadedAt.getTime() - a.uploadedAt.getTime()
   );
   return out;
+}
+
+/**
+ * Prisma `where` fragment matching the comments of a record and of every record in its
+ * chain that the role may see. Null when the record is not a chain type or not found.
+ */
+export async function chainCommentFilter(
+  projectId: string,
+  role: string,
+  entityType: string,
+  entityId: string
+): Promise<Record<string, unknown>[] | null> {
+  const type = chainTypeOf(entityType);
+  if (!type) return null;
+  const ids = await resolveChain(projectId, type, entityId);
+  if (!ids) return null;
+  const or = (Object.keys(ids) as ChainType[])
+    .filter((t) => ids[t].size > 0 && (t === type || hasPermission(role, PERMISSION[t])))
+    .map((t) => ({ entityType: { in: ATTACHMENT_TYPES[t] }, entityId: { in: [...ids[t]] } }));
+  return or.length ? or : null;
+}
+
+/** Image/PDF files of the chain, oldest stage first, for the "PO with proof" download. */
+export async function listProofFiles(
+  projectId: string,
+  role: string,
+  poId: string
+): Promise<(LinkedFile & { filePath: string })[]> {
+  const files = (await listLinkedFiles(projectId, role, 'PO', poId)) ?? [];
+  const stage: ChainType[] = ['MPR', 'QUOTATION', 'PO', 'GOODS_RECEIPT', 'INVOICE', 'PAYMENT'];
+  const attIds = files.filter((f) => f.source === 'ATTACHMENT').map((f) => f.id);
+  const atts = attIds.length
+    ? await prisma.attachment.findMany({ where: { id: { in: attIds }, projectId }, select: { id: true, filePath: true } })
+    : [];
+  const attPath = new Map(atts.map((a) => [a.id, a.filePath]));
+  const recPath = new Map<string, string>();
+  const direct = files.filter((f) => f.source === 'RECORD');
+  const pick = async (t: ChainType, rows: { id: string; filePath: string | null }[]) =>
+    rows.forEach((r) => r.filePath && recPath.set(`${t}:${r.id}`, r.filePath));
+  const idsOf = (t: ChainType) => direct.filter((f) => f.recordType === t).map((f) => f.id);
+  await Promise.all([
+    idsOf('MPR').length && pick('MPR', (await prisma.materialPurchaseRequest.findMany({ where: { id: { in: idsOf('MPR') }, projectId }, select: { id: true, receiptFilePath: true } })).map((r) => ({ id: r.id, filePath: r.receiptFilePath }))),
+    idsOf('QUOTATION').length && pick('QUOTATION', await prisma.quotation.findMany({ where: { id: { in: idsOf('QUOTATION') }, projectId }, select: { id: true, filePath: true } })),
+    idsOf('INVOICE').length && pick('INVOICE', await prisma.vendorInvoice.findMany({ where: { id: { in: idsOf('INVOICE') }, projectId }, select: { id: true, filePath: true } })),
+    idsOf('PAYMENT').length && pick('PAYMENT', await prisma.paymentRequest.findMany({ where: { id: { in: idsOf('PAYMENT') }, projectId }, select: { id: true, filePath: true } })),
+  ]);
+  return files
+    .map((f) => ({ ...f, filePath: (f.source === 'ATTACHMENT' ? attPath.get(f.id) : recPath.get(`${f.recordType}:${f.id}`)) ?? '' }))
+    .filter((f) => f.filePath)
+    .sort((a, b) => stage.indexOf(a.recordType) - stage.indexOf(b.recordType) || a.uploadedAt.getTime() - b.uploadedAt.getTime());
 }

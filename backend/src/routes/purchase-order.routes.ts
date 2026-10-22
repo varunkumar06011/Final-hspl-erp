@@ -11,6 +11,9 @@ import * as approvalService from '../services/approval.service';
 import { HEAD_THEN_ADMIN_POLICY, headThenAdminSteps } from '../services/approval.service';
 import { notifyApprovers } from '../services/push.service';
 import { streamPurchaseOrderPdf } from '../services/purchase-order-pdf.service';
+import { listProofFiles } from '../services/linked-files.service';
+import { buildPoWithProof } from '../services/po-proof-pdf.service';
+import { PassThrough } from 'stream';
 import { ensureVendorLedger, findLedgerByName } from './ledger.routes';
 import { postVoucher, generateVoucherNumber } from './voucher.routes';
 import { getActiveAdminRoles, generatePONumber, createNonVendorPoFromMpr, findLivePoForMpr } from '../services/non-vendor-po.service';
@@ -1901,6 +1904,28 @@ router.get(
           error: 'PO PDF can be downloaded only after the PO is approved',
           code: 'PO_NOT_APPROVED',
         });
+        return;
+      }
+
+      // ?proof=1 — the PO followed by every bill / photo / receipt of its chain, as one PDF.
+      if (req.query.proof === '1' || req.query.proof === 'true') {
+        const sink = new PassThrough();
+        const chunks: Buffer[] = [];
+        sink.on('data', (c: Buffer) => chunks.push(c));
+        const done = new Promise<void>((resolve, reject) => {
+          sink.on('end', resolve);
+          sink.on('error', reject);
+        });
+        await streamPurchaseOrderPdf(sink, po);
+        await done;
+        const files = await listProofFiles(projectId, req.user!.role, po.id);
+        const { pdf, included, skipped } = await buildPoWithProof(Buffer.concat(chunks), files);
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="${po.poNumber}-with-proof.pdf"`);
+        res.setHeader('X-Proof-Included', String(included));
+        res.setHeader('X-Proof-Skipped', String(skipped.length));
+        res.setHeader('Access-Control-Expose-Headers', 'X-Proof-Included, X-Proof-Skipped, Content-Disposition');
+        res.send(pdf);
         return;
       }
 

@@ -22,6 +22,7 @@ import {
   Alert,
   CircularProgress,
   InputAdornment,
+  Menu,
   MenuItem,
   Accordion,
   AccordionSummary,
@@ -675,20 +676,31 @@ export default function PurchaseOrdersPage() {
     createMutation.mutate();
   }
 
-  function downloadPDF(poId: string, poNumber: string) {
+  // Download button opens a choice: the PO alone, or the PO with every proof file attached (one PDF).
+  const [pdfMenu, setPdfMenu] = useState<{ anchor: HTMLElement; id: string; number: string } | null>(null);
+  const [proofLoading, setProofLoading] = useState(false);
+
+  function downloadPDF(poId: string, poNumber: string, withProof = false) {
     const token = localStorage.getItem('firebaseToken');
-    const url = `${api.defaults.baseURL}/purchase-orders/${poId}/pdf`;
+    const url = `${api.defaults.baseURL}/purchase-orders/${poId}/pdf${withProof ? '?proof=1' : ''}`;
+    if (withProof) setProofLoading(true);
     fetch(url, { headers: { Authorization: `Bearer ${token}` } })
-      .then((res) => res.blob())
+      .then((res) => {
+        if (!res.ok) throw new Error(String(res.status));
+        const skipped = Number(res.headers.get('X-Proof-Skipped') ?? 0);
+        if (withProof && skipped > 0) setError(t('proofSkipped', { count: skipped }));
+        return res.blob();
+      })
       .then((blob) => {
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `${poNumber}.pdf`;
+        a.download = `${poNumber}${withProof ? '-with-proof' : ''}.pdf`;
         a.click();
         window.URL.revokeObjectURL(url);
       })
-      .catch(() => setError(t('errPdf')));
+      .catch(() => setError(t('errPdf')))
+      .finally(() => setProofLoading(false));
   }
 
   function previewPDF(poId: string) {
@@ -721,6 +733,10 @@ export default function PurchaseOrdersPage() {
 
   return (
     <Box>
+      <Menu anchorEl={pdfMenu?.anchor} open={!!pdfMenu} onClose={() => setPdfMenu(null)}>
+        <MenuItem onClick={() => { if (pdfMenu) downloadPDF(pdfMenu.id, pdfMenu.number); setPdfMenu(null); }}>{t('downloadPo')}</MenuItem>
+        <MenuItem onClick={() => { if (pdfMenu) downloadPDF(pdfMenu.id, pdfMenu.number, true); setPdfMenu(null); }}>{t('downloadPoWithProof')}</MenuItem>
+      </Menu>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap' }}>
         <Typography variant="h5" fontWeight={600} sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' } }}>{t('title')}</Typography>
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', justifyContent: { xs: 'flex-end', md: 'flex-end' }, width: { xs: '100%', md: 'auto' } }}>
@@ -880,7 +896,7 @@ export default function PurchaseOrdersPage() {
                               <CommentsButton labelled entityType="PURCHASE_ORDER" entityId={row.id} entityLabel={row.poNumber} url="/pos" />
                               <IconButton size="small" onClick={() => navigate(`/combined-records?type=po&id=${row.id}`)} title={t('openCombined')}><CombinedIcon fontSize="small" /></IconButton>
                               <IconButton size="small" onClick={() => previewPDF(row.id)} title={t('previewPdf')} disabled={pdfLoading || !poPdfReady(row.status)}>{pdfLoading ? <CircularProgress size={16} /> : <PdfIcon fontSize="small" />}</IconButton>
-                              <IconButton size="small" onClick={() => downloadPDF(row.id, row.poNumber)} title={t('downloadPdf')} disabled={!poPdfReady(row.status)}><DownloadIcon fontSize="small" /></IconButton>
+                              <IconButton size="small" onClick={(e) => setPdfMenu({ anchor: e.currentTarget, id: row.id, number: row.poNumber })} title={t('downloadPdf')} disabled={!poPdfReady(row.status) || proofLoading}>{proofLoading ? <CircularProgress size={16} /> : <DownloadIcon fontSize="small" />}</IconButton>
                               {canApprove(row) && (
                                 <>
                                   <IconButton size="small" color="success" onClick={() => setApprovalAction({ row, action: 'approve' })} title={t('approve')}><CheckIcon fontSize="small" /></IconButton>
@@ -1070,7 +1086,7 @@ export default function PurchaseOrdersPage() {
                         {/* Main actions — the rest live under More details */}
                         <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, mt: 1, pt: 1, borderTop: '1px solid', borderColor: 'divider' }}>
                           <Button size="small" variant="outlined" startIcon={pdfLoading ? <CircularProgress size={16} /> : <PdfIcon />} onClick={() => previewPDF(row.id)} disabled={pdfLoading || !poPdfReady(row.status)}>{t('open')}</Button>
-                          <Button size="small" variant="outlined" startIcon={<DownloadIcon />} onClick={() => downloadPDF(row.id, row.poNumber)} disabled={!poPdfReady(row.status)}>{t('pdf')}</Button>
+                          <Button size="small" variant="outlined" startIcon={proofLoading ? <CircularProgress size={16} /> : <DownloadIcon />} onClick={(e) => setPdfMenu({ anchor: e.currentTarget, id: row.id, number: row.poNumber })} disabled={!poPdfReady(row.status) || proofLoading}>{t('pdf')}</Button>
                           <CommentsButton labelled entityType="PURCHASE_ORDER" entityId={row.id} entityLabel={row.poNumber} url="/pos" />
                           <Button size="small" variant="outlined" startIcon={<WhatsAppIcon />} onClick={() => shareOnWhatsApp(buildPOShareMessage({ poNumber: row.poNumber, vendorName: row.vendor?.name, grandTotal: Number(row.grandTotal), status: row.status, date: row.date, totalDeductions: Number(row.totalDeductions ?? 0), netPayable: Number(row.netPayable ?? row.grandTotal), deductions: row.deductions ?? undefined, notes: row.notes ?? undefined }))}>{t('share')}</Button>
                           {row.status !== POStatus.DELETED && (
