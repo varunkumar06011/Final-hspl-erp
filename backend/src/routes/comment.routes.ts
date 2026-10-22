@@ -5,6 +5,7 @@ import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middl
 import { validateMiddleware } from '../middleware/validate';
 import { prisma } from '../config/prisma';
 import { notifyUsers } from '../services/push.service';
+import { chainCommentFilter } from '../services/linked-files.service';
 
 const router = Router();
 router.use(authMiddleware);
@@ -89,8 +90,12 @@ router.get('/', async (req: AuthenticatedRequest, res: Response, next: NextFunct
       res.status(400).json({ error: 'entityType and a valid entityId are required' });
       return;
     }
+    const projectId = requireProjectId(req);
+    // Procurement records (MPR -> quotation -> PO -> receipt / invoice -> payment) share one
+    // thread: a comment made at any stage shows on all the others.
+    const chain = await chainCommentFilter(projectId, req.user!.role, entityType, entityId);
     const data = await prisma.comment.findMany({
-      where: { entityType, entityId, projectId: requireProjectId(req) },
+      where: chain ? { projectId, OR: chain } : { entityType, entityId, projectId },
       orderBy: { createdAt: 'asc' },
       include: { author: { select: { id: true, name: true, role: true } } },
     });
@@ -175,7 +180,12 @@ router.post(
       let parent: { id: string; authorId: string } | null = null;
       if (parentId) {
         const found = await prisma.comment.findUnique({ where: { id: parentId } });
-        if (!found || found.entityType !== entityType || found.entityId !== entityId || found.projectId !== projectId) {
+        let onRecord = !!found && found.entityType === entityType && found.entityId === entityId;
+        if (found && !onRecord && projectId) {
+          const chain = await chainCommentFilter(projectId, user.role, entityType, entityId);
+          onRecord = !!chain && (await prisma.comment.count({ where: { id: found.id, OR: chain as Prisma.CommentWhereInput[] } })) > 0;
+        }
+        if (!found || !onRecord || found.projectId !== projectId) {
           res.status(400).json({ error: 'Comment to reply to was not found on this record' });
           return;
         }

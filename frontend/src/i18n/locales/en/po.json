@@ -311,5 +311,8 @@
   "partPoAmount": "Sub-PO amount",
   "partPoCreate": "Raise sub-PO",
   "partPoLine": "balance sub-POs → {{list}}",
-  "partPoOf": "Balance sub-PO of {{n}}"
+  "partPoOf": "Balance sub-PO of {{n}}",
+  "downloadPo": "Download PO",
+  "downloadPoWithProof": "Download PO with proof",
+  "proofSkipped": "PO downloaded. {{count}} attached file(s) (Word/Excel or unreadable) could not be added to the PDF."
 }

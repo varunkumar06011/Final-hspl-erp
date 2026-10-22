@@ -311,5 +311,8 @@
   "partPoAmount": "సబ్-PO మొత్తం",
   "partPoCreate": "సబ్-PO సృష్టించండి",
   "partPoLine": "బ్యాలెన్స్ సబ్-POలు → {{list}}",
-  "partPoOf": "{{n}} యొక్క బ్యాలెన్స్ సబ్-PO"
+  "partPoOf": "{{n}} యొక్క బ్యాలెన్స్ సబ్-PO",
+  "downloadPo": "PO డౌన్‌లోడ్",
+  "downloadPoWithProof": "రుజువులతో PO డౌన్‌లోడ్",
+  "proofSkipped": "PO డౌన్‌లోడ్ అయింది. {{count}} జతచేసిన ఫైల్(లు) (Word/Excel లేదా చదవలేనివి) PDFలో చేర్చలేకపోయాం."
 }

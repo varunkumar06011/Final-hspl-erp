@@ -320,11 +320,13 @@ function CommentsDialog({
         await api.patch(`/comments/${id}`, { body, mentionIds });
         return;
       }
+      // A reply stays on the record of the comment it answers (it may come from another stage).
+      const target = draft.replyTo ?? { entityType, entityId, entityLabel, url };
       await api.post('/comments', {
-        entityType,
-        entityId,
-        entityLabel,
-        url,
+        entityType: target.entityType,
+        entityId: target.entityId,
+        entityLabel: target.entityLabel ?? undefined,
+        url: target.url ?? undefined,
         body,
         mentionIds,
         parentId: draft.replyTo?.id,
@@ -413,6 +415,16 @@ function CommentsDialog({
           <Typography variant="caption" color="text.secondary">
             {timeAgo(c.createdAt)}
           </Typography>
+          {/* Procurement chain: a comment written on another stage (MPR, quotation, PO...) shows its source. */}
+          {c.entityId !== entityId && (
+            <Chip
+              size="small"
+              variant="outlined"
+              color="primary"
+              label={c.entityLabel || c.entityType.replace(/_/g, ' ').toLowerCase()}
+              sx={{ height: 18, fontSize: '0.65rem' }}
+            />
+          )}
           <Box sx={{ ml: 'auto', display: 'flex' }}>
             {!isReply && !c.deletedAt && (
               <Tooltip title={tr('reply')}>
