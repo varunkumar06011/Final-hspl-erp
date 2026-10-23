@@ -200,5 +200,6 @@
   "service": "Service",
   "decideRequest": "Request {{n}} is waiting for your approval",
   "decidePo": "PO {{n}} is waiting for your approval",
-  "contractChip": "Contract"
+  "contractChip": "Contract",
+  "specification": "Specification"
 }

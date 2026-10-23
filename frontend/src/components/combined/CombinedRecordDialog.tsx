@@ -74,6 +74,8 @@ interface Workflow {
 interface Item {
   id?: string;
   materialName: string;
+  itemId?: string | null;
+  specification?: string | null;
   quantity: number | string;
   unit: string | null;
   unitPrice?: number | string;
@@ -157,6 +159,8 @@ interface Detail {
   current: string;
   next: string;
   uncoveredMaterials: string[];
+  /** Same, by item + spec (lineKey); missing from older servers. */
+  uncoveredLineKeys?: string[];
   mpr: Mpr | null;
   quotations: Quotation[];
   purchaseOrders: PurchaseOrder[];
@@ -516,10 +520,11 @@ export default function CombinedRecordDialog({ type, id, onClose }: { type: stri
           open={addQuotationOpen || !!editQuotation}
           mprId={mpr.id}
           mprNumber={mpr.mprNumber}
-          lines={mpr.items.map((i) => ({ materialName: i.materialName, quantity: i.quantity, unit: i.unit, estimatedRate: i.estimatedRate ?? 0 }))}
+          lines={mpr.items.map((i) => ({ materialName: i.materialName, itemId: i.itemId, specification: i.specification, quantity: i.quantity, unit: i.unit, estimatedRate: i.estimatedRate ?? 0 }))}
           preferMaterials={data?.uncoveredMaterials}
+          preferLineKeys={data?.uncoveredLineKeys}
           gstRate={Number(mpr.estimatedGstRate) || 0}
-          editing={editQuotation ? { id: editQuotation.id, quotationNumber: editQuotation.quotationNumber, vendorId: editQuotation.vendorId, items: editQuotation.items.map((i) => ({ materialName: i.materialName, quantity: i.quantity, unit: i.unit, unitPrice: i.unitPrice ?? 0, gstRate: i.gstRate ?? 0 })) } : null}
+          editing={editQuotation ? { id: editQuotation.id, quotationNumber: editQuotation.quotationNumber, vendorId: editQuotation.vendorId, items: editQuotation.items.map((i) => ({ materialName: i.materialName, itemId: i.itemId, specification: i.specification, quantity: i.quantity, unit: i.unit, unitPrice: i.unitPrice ?? 0, gstRate: i.gstRate ?? 0 })) } : null}
           onClose={() => { setAddQuotationOpen(false); setEditQuotation(null); }}
           onSaved={() => {
             toast.success(editQuotation ? t('ratesSaved') : t('quotationAdded'));

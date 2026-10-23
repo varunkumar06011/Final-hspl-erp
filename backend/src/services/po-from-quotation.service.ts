@@ -62,6 +62,8 @@ export async function createPoFromApprovedQuotation(quotationId: string, userId:
         items: {
           create: quotation.items.map((item) => ({
             materialName: item.materialName,
+            itemId: item.itemId,
+            specification: item.specification,
             quantity: item.quantity,
             unit: item.unit,
             unitPrice: item.unitPrice,

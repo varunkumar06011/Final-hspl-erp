@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import {
   Alert,
-  Autocomplete,
   Box,
   Button,
   CircularProgress,
@@ -17,7 +16,9 @@ import {
 import { Add as AddIcon, Delete as DeleteIcon, PhotoCamera as PhotoCameraIcon } from '@mui/icons-material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { InventoryItemType, StockSourceType, isApproverRole } from '@hospital-erp/shared';
+import { CatalogItemKind, InventoryItemType, StockSourceType, isApproverRole } from '@hospital-erp/shared';
+import CatalogLineFields from '../CatalogLineFields';
+import { useMaterialCatalog } from '../MaterialAutocomplete';
 import ResponsiveDialog from '../ResponsiveDialog';
 import CreatableSelect from '../CreatableSelect';
 import FilePicker from '../FilePicker';
@@ -27,6 +28,8 @@ import { enumLabel, enumToOptions, formatIndianNumber } from '../../utils/enumOp
 
 interface Line {
   materialName: string;
+  itemId?: string | null;
+  specification?: string | null;
   unit: string;
   quantity: string;
   unitCost: string;
@@ -64,6 +67,7 @@ export default function ReceiveStockDialog({
   const [referenceNo, setReferenceNo] = useState('');
   const [notes, setNotes] = useState('');
   const [lines, setLines] = useState<Line[]>([emptyLine()]);
+  const catalog = useMaterialCatalog(open, CatalogItemKind.MATERIAL);
   const [photo, setPhoto] = useState<File | null>(null);
   const [error, setError] = useState('');
 
@@ -95,6 +99,8 @@ export default function ReceiveStockDialog({
         notes: notes.trim() || undefined,
         items: lines.map((l) => ({
           materialName: l.materialName.trim(),
+          itemId: l.itemId || undefined,
+          specification: l.specification?.trim() || undefined,
           unit: l.unit.trim(),
           quantity: num(l.quantity),
           unitCost: num(l.unitCost || '0'),
@@ -166,21 +172,19 @@ export default function ReceiveStockDialog({
                 key={i}
                 sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', md: '2.2fr 1fr 1fr 1fr 1.2fr auto' }, gap: 1, alignItems: 'start', p: 1, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}
               >
-                <Autocomplete
-                  freeSolo
-                  size="small"
-                  options={itemOptions}
-                  getOptionLabel={(o) => (typeof o === 'string' ? o : o.name)}
-                  inputValue={line.materialName}
-                  onInputChange={(_e, v, reason) => {
-                    if (reason === 'input' || reason === 'clear') setLine(i, { materialName: v });
-                  }}
-                  onChange={(_e, v) => {
-                    if (v && typeof v !== 'string') setLine(i, { materialName: v.name, unit: v.unit, itemType: v.itemType });
-                  }}
-                  sx={{ gridColumn: { xs: '1 / -1', md: 'auto' } }}
-                  renderInput={(params) => <TextField {...params} label={t('materialName')} required />}
-                />
+                {/* Same item list as every other screen: material from the catalog, spec from its own list. */}
+                <Box sx={{ gridColumn: { xs: '1 / -1', md: 'auto' } }}>
+                  <CatalogLineFields
+                    catalog={catalog}
+                    line={line}
+                    minWidth={0}
+                    onChange={(patch) => {
+                      // A material already in stock keeps its stock type.
+                      const stocked = patch.materialName ? itemOptions.find((o) => o.name.trim().toLowerCase() === patch.materialName!.trim().toLowerCase()) : undefined;
+                      setLine(i, { ...patch, unit: patch.unit ?? line.unit, ...(stocked ? { itemType: stocked.itemType } : {}) });
+                    }}
+                  />
+                </Box>
                 <CreatableSelect label={t('unit')} value={line.unit} onChange={(v) => setLine(i, { unit: v })} required dropdownType="UNIT" />
                 <TextField
                   size="small"

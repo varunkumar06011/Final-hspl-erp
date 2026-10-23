@@ -53,6 +53,7 @@ import stalledRoutes from './stalled.routes';
 import siteBillRoutes from './site-bills.routes';
 import combinedRecordRoutes from './combined-records.routes';
 import myWorkRoutes from './my-work.routes';
+import catalogRoutes from './catalog.routes';
 
 const router = Router();
 
@@ -81,6 +82,7 @@ router.use('/photos', photoRoutes);
 router.use('/issues', issueRoutes);
 router.use('/inspections', inspectionRoutes);
 router.use('/documents', documentRoutes);
+router.use('/catalog', catalogRoutes);
 router.use('/document-library', documentLibraryRoutes);
 router.use('/contracts', contractRoutes);
 router.use('/labour', labourRoutes);

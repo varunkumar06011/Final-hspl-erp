@@ -8,8 +8,10 @@ import {
   SITE_PURCHASES_VENDOR_NAME,
   UserRole,
   VendorType,
+  CatalogItemKind,
 } from '@hospital-erp/shared';
 import { prisma } from '../config/prisma';
+import { resolveCatalogLines } from './catalog.service';
 import { logAudit } from './audit.service';
 import { notifyApprovers } from './push.service';
 import { generateProjectSequenceNumber } from './sequence.service';
@@ -38,6 +40,8 @@ const round2 = (n: number) => Math.round(n * 100) / 100;
 
 export interface SiteBillItemInput {
   materialName: string;
+  itemId?: string | null;
+  specification?: string | null;
   quantity: number;
   unit?: string;
   rate: number;
@@ -107,7 +111,9 @@ async function assertBudgetHead(projectId: string, budgetHeadId: string) {
 }
 
 export async function createSiteBill(input: CreateSiteBillInput) {
-  const { lines, total } = priceSiteBill(input.items);
+  const { lines: priced, total } = priceSiteBill(input.items);
+  // Bill lines are catalog items like every other material line.
+  const lines = await resolveCatalogLines(priced, { kind: CatalogItemKind.MATERIAL, userId: input.userId });
   if (input.budgetHeadId) await assertBudgetHead(input.projectId, input.budgetHeadId);
   const vendorId = await ensureSitePurchasesVendor(input.projectId, input.userId);
 
@@ -136,6 +142,9 @@ export async function createSiteBill(input: CreateSiteBillInput) {
       items: {
         create: lines.map((l) => ({
           materialName: l.materialName,
+          materialCode: l.materialCode,
+          itemId: l.itemId,
+          specification: l.specification,
           quantity: l.quantity,
           unit: l.unit || null,
           estimatedRate: l.rate,
@@ -218,6 +227,8 @@ export async function listSiteBills(projectId: string, f: ListSiteBillsFilter) {
         total: Number(b.estimatedTotal),
         items: b.items.map((i) => ({
           materialName: i.materialName,
+          itemId: i.itemId,
+          specification: i.specification,
           quantity: Number(i.quantity),
           unit: i.unit,
           rate: Number(i.estimatedRate),
@@ -340,6 +351,8 @@ export async function generateSiteBillPo(input: GenerateSiteBillPoInput) {
   const lines = bills.flatMap((b) =>
     b.items.map((i) => ({
       materialName: i.materialName,
+      itemId: i.itemId,
+      specification: i.specification,
       quantity: i.quantity,
       unit: i.unit,
       unitPrice: i.estimatedRate,

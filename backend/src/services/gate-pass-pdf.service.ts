@@ -1,3 +1,4 @@
+import { lineLabel } from '@hospital-erp/shared';
 import PDFDocument from 'pdfkit';
 
 const text = (value: unknown) =>
@@ -222,7 +223,7 @@ export function streamGatePassPdf(res: NodeJS.WritableStream, gatePass: any) {
         .fillColor(textDark)
         .font('Helvetica')
         .fontSize(8)
-        .text(text(item.materialName), left + 7, y + 7, {
+        .text(text(lineLabel(item)), left + 7, y + 7, {
           width: qtyX - left - 17,
           ellipsis: true,
         });

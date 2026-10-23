@@ -1,3 +1,4 @@
+import { lineLabel } from '@hospital-erp/shared';
 import PDFDocument from 'pdfkit';
 import sharp from 'sharp';
 import { getStorageService } from './storage.service';
@@ -228,7 +229,7 @@ export async function streamQuotationPdf(res: NodeJS.WritableStream, quotation: 
 
     doc.fillColor(dark).font('Helvetica').fontSize(8.5);
     doc.text(String(i + 1), colSno, y + 6, { width: wSno, align: 'center' });
-    doc.text(item.materialName, colDesc + 4, y + 6, { width: wDesc - 8 });
+    doc.text(lineLabel(item), colDesc + 4, y + 6, { width: wDesc - 8 });
     doc.text(String(item.quantity), colQty, y + 6, { width: wQty, align: 'center' });
     doc.text(text(item.unit), colUnit, y + 6, { width: wUnit, align: 'center' });
     doc.fillColor(dark).font('Helvetica-Bold').fontSize(8.5);

@@ -3,6 +3,7 @@ import { env } from './config/env';
 import app from './app';
 import { initSocketServer } from './socket';
 import { startQuotationAgingScheduler, stopQuotationAgingScheduler } from './services/scheduler.service';
+import { startCatalogBackfill } from './services/catalog-backfill.service';
 import { startSearchIndex, stopSearchIndex, warmAllProjects } from './services/search/manager';
 
 const server = http.createServer(app);
@@ -21,6 +22,8 @@ server.listen(env.PORT, () => {
   // notifications to admins. Ensures notifications are delivered even
   // when nobody has the app open.
   startQuotationAgingScheduler();
+  // Link lines entered before the item catalog existed (idempotent; CATALOG_BACKFILL=false skips).
+  startCatalogBackfill();
 
   // Global search: an in-memory index per project, built read-only from the
   // database and kept fresh automatically. Warm it in the background so the

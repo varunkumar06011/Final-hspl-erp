@@ -158,5 +158,7 @@
   "fRequestedBy": "అభ్యర్థించిన వారు",
   "fDate": "తేదీ",
   "fItems": "వస్తువులు",
-  "fPeriod": "సేవా కాలం"
+  "fPeriod": "సేవా కాలం",
+  "newCode": "కొత్తది",
+  "formerNumber": "(ముందు {{n}})"
 }

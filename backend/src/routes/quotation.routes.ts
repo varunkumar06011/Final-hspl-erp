@@ -1,10 +1,11 @@
 import { Router, Response, NextFunction } from 'express';
-import { Permission, QuotationStatus, AuditAction, ApprovalStatus, UserRole, isAdminRole, FIRST_LEVEL_APPROVER_ROLES } from '@hospital-erp/shared';
+import { Permission, QuotationStatus, AuditAction, ApprovalStatus, UserRole, isAdminRole, FIRST_LEVEL_APPROVER_ROLES, lineKey, catalogNameKey } from '@hospital-erp/shared';
 import { createQuotationSchema, listQuotationsSchema, approvalActionSchema, finalizeQuotationSchema } from '@hospital-erp/shared';
 import { prisma } from '../config/prisma';
 import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middleware/auth';
 import { rbacMiddleware } from '../middleware/rbac';
 import { validateMiddleware } from '../middleware/validate';
+import { catalogLinesMiddleware } from '../middleware/catalogLines';
 import { logAudit } from '../services/audit.service';
 import { getStorageService, serveFile } from '../services/storage.service';
 import { notifyAdmins, notifyApprovers } from '../services/push.service';
@@ -26,6 +27,11 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 100
 const allowedQuotationFileTypes = ['application/pdf', 'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/bmp', 'image/tiff'];
 
 const router = Router();
+
+/** The incoming line that is this existing line: same item + spec, else (older clients) same name. */
+function matchLine<T extends { materialName: string; specification?: string | null }>(items: T[], line: { materialName: string; specification: string | null }): T | undefined {
+  return items.find((i) => lineKey(i) === lineKey(line)) ?? items.find((i) => catalogNameKey(i.materialName) === catalogNameKey(line.materialName));
+}
 router.use(authMiddleware);
 
 // ── Reconcile quotation status with approval workflow status ──────────
@@ -481,6 +487,7 @@ router.patch(
   '/:id',
   rbacMiddleware(Permission.CREATE_QUOTATION),
   upload.single('file'),
+  catalogLinesMiddleware(),
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const projectId = requireProjectId(req);
@@ -527,15 +534,14 @@ router.patch(
           ? JSON.parse(req.body.items) as QuotationLineItem[]
           : req.body.items as QuotationLineItem[];
         if (pricingOnly) {
-          // Lines follow the MPR — only prices / GST may change here.
-          const sameLines = items.length === existingItems.length && existingItems.every((e) => {
-            const m = items.find((i) => i.materialName.trim().toLowerCase() === e.materialName.trim().toLowerCase());
-            return m && Number(m.quantity) === Number(e.quantity);
-          });
+          // Lines follow the MPR — only prices / GST may change here (they keep their item + spec).
+          const matches = existingItems.map((e) => ({ e, m: matchLine(items, e) }));
+          const sameLines = items.length === existingItems.length && matches.every(({ e, m }) => m && Number(m.quantity) === Number(e.quantity));
           if (!sameLines) {
             res.status(400).json({ error: 'Item names and quantities follow the material request — edit them there. Only prices can be entered here.' });
             return;
           }
+          for (const { e, m } of matches) Object.assign(m!, { itemId: e.itemId, specification: e.specification, materialName: e.materialName });
         }
         const vendor = await prisma.vendor.findFirst({
           where: { id: existing.vendorId, projectId },
@@ -561,6 +567,8 @@ router.patch(
           const rate = Number(item.gstRate) || 0;
           return {
             materialName: item.materialName,
+            itemId: item.itemId ?? null,
+            specification: item.specification ?? null,
             quantity: item.quantity,
             unit: item.unit || null,
             unitPrice: item.unitPrice,
@@ -681,6 +689,7 @@ router.post(
   '/:id/revise',
   rbacMiddleware(Permission.CREATE_QUOTATION),
   upload.single('file'),
+  catalogLinesMiddleware(),
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const projectId = requireProjectId(req);
@@ -732,7 +741,7 @@ router.post(
       }
 
       // Items replacement — recalculate totals
-      let itemsWithAmounts: { materialName: string; quantity: number; unit: string | null; unitPrice: number; amount: number; gstRate: number }[] | null = null;
+      let itemsWithAmounts: { materialName: string; itemId: string | null; specification: string | null; quantity: number; unit: string | null; unitPrice: number; amount: number; gstRate: number }[] | null = null;
       if (req.body.items) {
         const items = typeof req.body.items === 'string'
           ? JSON.parse(req.body.items) as QuotationLineItem[]
@@ -767,6 +776,8 @@ router.post(
           const rate = Number(item.gstRate) || 0;
           return {
             materialName: item.materialName,
+            itemId: item.itemId ?? null,
+            specification: item.specification ?? null,
             quantity: item.quantity,
             unit: item.unit || null,
             unitPrice: item.unitPrice,

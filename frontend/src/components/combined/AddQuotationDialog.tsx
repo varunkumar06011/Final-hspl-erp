@@ -14,15 +14,18 @@ import {
 } from '@mui/material';
 import { useMutation } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { GST_RATES } from '@hospital-erp/shared';
+import { GST_RATES, lineKey } from '@hospital-erp/shared';
 import api, { extractErrorMessage } from '../../config/api';
 import ResponsiveDialog from '../ResponsiveDialog';
 import VendorAutocomplete from '../VendorAutocomplete';
 import FilePicker from '../FilePicker';
 import { formatCurrency } from '../../utils/enumOptions';
+import PriceFlag, { usePriceCheck } from '../PriceFlag';
 
 export interface RequestLine {
   materialName: string;
+  itemId?: string | null;
+  specification?: string | null;
   quantity: number | string;
   unit: string | null;
   estimatedRate: number | string;
@@ -31,6 +34,8 @@ export interface RequestLine {
 interface Line {
   include: boolean;
   materialName: string;
+  itemId?: string | null;
+  specification?: string | null;
   quantity: string;
   unit: string;
   unitPrice: string;
@@ -44,6 +49,7 @@ export default function AddQuotationDialog({
   mprNumber,
   lines,
   preferMaterials,
+  preferLineKeys,
   gstRate,
   editing,
   onClose,
@@ -56,9 +62,11 @@ export default function AddQuotationDialog({
   lines: RequestLine[];
   /** Materials not finalized yet; only these are ticked by default. */
   preferMaterials?: string[];
+  /** The same as item + spec keys (lineKey); used instead of names when given. */
+  preferLineKeys?: string[];
   gstRate?: number;
   /** When set, the dialog edits this waiting quotation's rates instead of creating one. */
-  editing?: { id: string; quotationNumber: string; vendorId: string; items: { materialName: string; quantity: number | string; unit: string | null; unitPrice: number | string; gstRate: number | string }[] } | null;
+  editing?: { id: string; quotationNumber: string; vendorId: string; items: { materialName: string; itemId?: string | null; specification?: string | null; quantity: number | string; unit: string | null; unitPrice: number | string; gstRate: number | string }[] } | null;
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -79,6 +87,8 @@ export default function AddQuotationDialog({
       setRows(editing.items.map((i) => ({
         include: true,
         materialName: i.materialName,
+        itemId: i.itemId ?? null,
+        specification: i.specification ?? null,
         quantity: String(i.quantity),
         unit: i.unit ?? 'nos',
         unitPrice: Number(i.unitPrice) > 0 ? String(i.unitPrice) : '',
@@ -88,9 +98,12 @@ export default function AddQuotationDialog({
     }
     setVendorId('');
     const prefer = new Set((preferMaterials ?? []).map((m) => m.trim().toLowerCase()));
+    const preferKeys = preferLineKeys ? new Set(preferLineKeys) : null;
     setRows(lines.map((l) => ({
-      include: prefer.size === 0 || prefer.has(l.materialName.trim().toLowerCase()),
+      include: preferKeys ? preferKeys.size === 0 || preferKeys.has(lineKey(l)) : prefer.size === 0 || prefer.has(l.materialName.trim().toLowerCase()),
       materialName: l.materialName,
+      itemId: l.itemId ?? null,
+      specification: l.specification ?? null,
       quantity: String(l.quantity),
       unit: l.unit ?? 'nos',
       unitPrice: '',
@@ -100,6 +113,11 @@ export default function AddQuotationDialog({
   }, [open]);
 
   const chosen = rows.filter((r) => r.include && r.materialName.trim() && Number(r.quantity) > 0);
+  const priceChecks = usePriceCheck(
+    rows.map((r) => ({ itemId: r.itemId, materialName: r.materialName, specification: r.specification, unit: r.unit })),
+    { quotationId: editing?.id, mprId },
+    open,
+  );
   const subtotal = chosen.reduce((s, r) => s + Number(r.quantity) * (Number(r.unitPrice) || 0), 0);
   const gst = chosen.reduce((s, r) => s + (Number(r.quantity) * (Number(r.unitPrice) || 0) * r.gstRate) / 100, 0);
 
@@ -107,6 +125,8 @@ export default function AddQuotationDialog({
     mutationFn: async () => {
       const items = chosen.map((r) => ({
         materialName: r.materialName.trim(),
+        itemId: r.itemId || undefined,
+        specification: r.specification || undefined,
         quantity: Number(r.quantity),
         unit: r.unit || undefined,
         unitPrice: Number(r.unitPrice) || 0,
@@ -148,9 +168,15 @@ export default function AddQuotationDialog({
             {rows.map((r, idx) => (
               <Box key={idx} sx={{ display: 'grid', gridTemplateColumns: { xs: '40px 1fr 1fr', sm: '40px 2fr 90px 120px 100px 120px' }, gap: 1, alignItems: 'center', opacity: r.include ? 1 : 0.55 }}>
                 <Checkbox checked={r.include} onChange={(e) => setRow(idx, { include: e.target.checked })} sx={{ p: 0.5 }} />
-                <Typography variant="body2" fontWeight={600} sx={{ gridColumn: { xs: '2 / -1', sm: 'auto' } }}>{r.materialName}</Typography>
+                <Box sx={{ gridColumn: { xs: '2 / -1', sm: 'auto' }, minWidth: 0 }}>
+                  <Typography variant="body2" fontWeight={600}>{r.materialName}</Typography>
+                  {r.specification && <Typography variant="caption" color="text.secondary">{r.specification}</Typography>}
+                </Box>
                 <TextField size="small" type="number" label={t('qty')} value={r.quantity} onChange={(e) => setRow(idx, { quantity: e.target.value })} disabled={!r.include} inputProps={{ min: 0, step: 'any' }} />
-                <TextField size="small" type="number" label={t('rate')} value={r.unitPrice} onChange={(e) => setRow(idx, { unitPrice: e.target.value })} disabled={!r.include} inputProps={{ min: 0, step: 'any' }} />
+                <Box>
+                  <TextField size="small" type="number" label={t('rate')} value={r.unitPrice} onChange={(e) => setRow(idx, { unitPrice: e.target.value })} disabled={!r.include} inputProps={{ min: 0, step: 'any' }} fullWidth />
+                  <PriceFlag result={priceChecks[idx] ?? null} rate={r.unitPrice} unit={r.unit} />
+                </Box>
                 <TextField select size="small" label={t('gst')} value={r.gstRate} onChange={(e) => setRow(idx, { gstRate: Number(e.target.value) })} disabled={!r.include}>
                   {GST_RATES.map((g) => <MenuItem key={g} value={g}>{g}%</MenuItem>)}
                 </TextField>

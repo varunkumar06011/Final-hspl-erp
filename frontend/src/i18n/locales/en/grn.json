@@ -74,5 +74,6 @@
   "sitePhotoName": "Site photo: {{name}}",
   "sitePhotoOptional": "Optional",
   "sitePhotoFailed": "The receipt was created but the site photo could not be attached.",
-  "ordered": "Ordered"
+  "ordered": "Ordered",
+  "postTitle": "Post {{n}} to inventory"
 }

@@ -1,11 +1,12 @@
 import { Router, Response, NextFunction } from 'express';
-import { Permission, POStatus, POPaymentType, AuditAction, UserRole, GoodsReceiptStatus, isAdminRole, isFirstLevelApproverRole, FIRST_LEVEL_APPROVER_ROLES, VoucherType, GST_LEDGER_NAMES, VendorType, MPRStatus } from '@hospital-erp/shared';
+import { Permission, POStatus, POPaymentType, AuditAction, UserRole, GoodsReceiptStatus, isAdminRole, isFirstLevelApproverRole, FIRST_LEVEL_APPROVER_ROLES, VoucherType, GST_LEDGER_NAMES, VendorType, MPRStatus, CatalogItemKind, catalogNameKey, lineKey } from '@hospital-erp/shared';
 import { createPOSchema, listPOsSchema, approvalActionSchema, editPOSchema, editUnapprovedPOSchema, regeneratePOSchema, changePOPaymentTypeSchema, createContractPOSchema, convertToContractSchema, isUmbrellaContract, createSubPOSchema, createPartPOSchema, updateContractTermsSchema } from '@hospital-erp/shared';
 import { prisma } from '../config/prisma';
 import { Prisma } from '@prisma/client';
 import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middleware/auth';
 import { rbacMiddleware } from '../middleware/rbac';
 import { validateMiddleware } from '../middleware/validate';
+import { catalogLinesMiddleware } from '../middleware/catalogLines';
 import { logAudit } from '../services/audit.service';
 import * as approvalService from '../services/approval.service';
 import { HEAD_THEN_ADMIN_POLICY, headThenAdminSteps } from '../services/approval.service';
@@ -624,6 +625,8 @@ router.post(
             items: {
               create: quotation.items.map((item) => ({
                 materialName: item.materialName,
+                itemId: item.itemId,
+                specification: item.specification,
                 quantity: item.quantity,
                 unit: item.unit,
                 unitPrice: item.unitPrice,
@@ -931,7 +934,7 @@ router.post(
       // spread over them in proportion to each line's value, so the lines add up to the amount exactly.
       const weights = main.items.map((i) => Number(i.amount) * (1 + Number(i.gstRate ?? 0) / 100));
       const weightSum = weights.reduce((s, w) => s + w, 0);
-      let subItems: { materialName: string; quantity: number; unit: string | null; unitPrice: number; amount: number; gstRate: number }[];
+      let subItems: { materialName: string; itemId?: string | null; specification?: string | null; quantity: number; unit: string | null; unitPrice: number; amount: number; gstRate: number }[];
       if (main.items.length === 0 || weightSum <= 0) {
         subItems = [{ materialName: `Balance payment of ${main.poNumber}`, quantity: 1, unit: 'lot', unitPrice: amount, amount, gstRate: 0 }];
       } else {
@@ -943,6 +946,8 @@ router.post(
           const qty = Number(i.quantity);
           return {
             materialName: i.materialName,
+            itemId: i.itemId,
+            specification: i.specification,
             quantity: qty,
             unit: i.unit,
             unitPrice: qty > 0 ? Math.round((lineAmount / qty) * 100) / 100 : lineAmount,
@@ -1041,6 +1046,8 @@ router.post(
   '/:id/sub-pos',
   rbacMiddleware(Permission.CREATE_PO),
   validateMiddleware(createSubPOSchema),
+  // Contract billing lines (labour, hire, civil work) are services in the catalog.
+  catalogLinesMiddleware({ kind: () => CatalogItemKind.SERVICE }),
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const projectId = requireProjectId(req);
@@ -1077,7 +1084,7 @@ router.post(
         return;
       }
 
-      const lines = items as { materialName: string; quantity: number; unit: string; unitPrice: number; gstRate: number }[];
+      const lines = items as { materialName: string; itemId?: string | null; specification?: string | null; quantity: number; unit: string; unitPrice: number; gstRate: number }[];
       const totalAmount = lines.reduce((s, i) => s + i.quantity * i.unitPrice, 0);
       const gstAmount = lines.reduce((s, i) => s + (i.quantity * i.unitPrice * i.gstRate) / 100, 0);
       const grandTotal = totalAmount + gstAmount;
@@ -1139,6 +1146,8 @@ router.post(
                 items: {
                   create: lines.map((i) => ({
                     materialName: i.materialName,
+                    itemId: i.itemId ?? null,
+                    specification: i.specification ?? null,
                     quantity: i.quantity,
                     unit: i.unit,
                     unitPrice: i.unitPrice,
@@ -1968,6 +1977,7 @@ router.post(
   '/:id/edit-unapproved',
   rbacMiddleware(Permission.CREATE_PO),
   validateMiddleware(editUnapprovedPOSchema),
+  catalogLinesMiddleware(),
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const projectId = requireProjectId(req);
@@ -2112,9 +2122,11 @@ router.post(
 
         // Create new items
         await tx.pOItem.createMany({
-          data: newItems.map((i: { materialName: string; quantity: number; unit: string; unitPrice: number; gstRate: number }) => ({
+          data: newItems.map((i: { materialName: string; itemId?: string | null; specification?: string | null; quantity: number; unit: string; unitPrice: number; gstRate: number }) => ({
             poId: po.id,
             materialName: i.materialName,
+            itemId: i.itemId ?? null,
+            specification: i.specification ?? null,
             quantity: i.quantity,
             unit: i.unit,
             unitPrice: i.unitPrice,
@@ -2271,6 +2283,7 @@ router.post(
   '/:id/edit',
   rbacMiddleware(Permission.CREATE_PO),
   validateMiddleware(editPOSchema),
+  catalogLinesMiddleware(),
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const projectId = requireProjectId(req);
@@ -2297,11 +2310,10 @@ router.post(
       // Validate: each submitted item's quantity must be >= accepted qty for that material.
       // Items are matched to the original PO line by poItemId when provided (allows
       // material-name edits), falling back to name matching for older payloads.
-      const newItems = req.body.items as { poItemId?: string; materialName: string; quantity: number; unit: string; unitPrice: number; gstRate: number }[];
-      const matchOrig = (i: { poItemId?: string; materialName: string }) =>
-        i.poItemId
-          ? po.items.find((o) => o.id === i.poItemId)
-          : po.items.find((o) => o.materialName === i.materialName);
+      const newItems = req.body.items as { poItemId?: string; materialName: string; itemId?: string | null; specification?: string | null; quantity: number; unit: string; unitPrice: number; gstRate: number }[];
+      const sameLine = (i: { poItemId?: string; materialName: string; specification?: string | null }, o: { id: string; materialName: string; specification: string | null }) =>
+        i.poItemId ? i.poItemId === o.id : lineKey(i) === lineKey(o) || (!o.specification && catalogNameKey(i.materialName) === catalogNameKey(o.materialName));
+      const matchOrig = (i: { poItemId?: string; materialName: string; specification?: string | null }) => po.items.find((o) => sameLine(i, o));
       for (const item of newItems) {
         const orig = matchOrig(item);
         const accepted = orig ? acceptedForPoItem(acceptedMap, orig) : 0;
@@ -2314,11 +2326,11 @@ router.post(
       }
 
       // Compute remaining items for regeneration (items from original PO not included in edit, or reduced quantity)
-      const remainingItems: { materialName: string; quantity: number; unit: string; unitPrice: number; gstRate: number }[] = [];
+      const remainingItems: { materialName: string; itemId?: string | null; specification?: string | null; quantity: number; unit: string; unitPrice: number; gstRate: number }[] = [];
 
       for (const origItem of po.items) {
         const accepted = acceptedForPoItem(acceptedMap, origItem);
-        const editedItem = newItems.find((i) => (i.poItemId ? i.poItemId === origItem.id : i.materialName === origItem.materialName));
+        const editedItem = newItems.find((i) => sameLine(i, origItem));
 
         if (!editedItem) {
           // Item was deselected — remaining = original ordered - accepted
@@ -2326,6 +2338,8 @@ router.post(
           if (remaining > 0) {
             remainingItems.push({
               materialName: origItem.materialName,
+              itemId: origItem.itemId,
+              specification: origItem.specification,
               quantity: remaining,
               unit: origItem.unit ?? 'nos',
               unitPrice: Number(origItem.unitPrice),
@@ -2338,6 +2352,8 @@ router.post(
           if (remaining > 0) {
             remainingItems.push({
               materialName: origItem.materialName,
+              itemId: origItem.itemId,
+              specification: origItem.specification,
               quantity: remaining,
               unit: editedItem.unit,
               unitPrice: editedItem.unitPrice,
@@ -2369,7 +2385,7 @@ router.post(
 
       // Items being removed must not carry goods-receipt history — those rows
       // hold GoodsReceiptItem.poItemId references that a delete would orphan.
-      const removedOrig = po.items.filter((o) => !newItems.some((i) => (i.poItemId ? i.poItemId === o.id : i.materialName === o.materialName)));
+      const removedOrig = po.items.filter((o) => !newItems.some((i) => sameLine(i, o)));
       if (removedOrig.length > 0) {
         const linkedCount = await prisma.goodsReceiptItem.count({ where: { poItemId: { in: removedOrig.map((r) => r.id) } } });
         if (linkedCount > 0) {
@@ -2393,6 +2409,8 @@ router.post(
               where: { id: orig.id },
               data: {
                 materialName: i.materialName,
+                itemId: i.itemId ?? null,
+                specification: i.specification ?? null,
                 quantity: i.quantity,
                 unit: i.unit,
                 unitPrice: i.unitPrice,
@@ -2405,6 +2423,8 @@ router.post(
               data: {
                 poId: po.id,
                 materialName: i.materialName,
+                itemId: i.itemId ?? null,
+                specification: i.specification ?? null,
                 quantity: i.quantity,
                 unit: i.unit,
                 unitPrice: i.unitPrice,
@@ -2531,7 +2551,7 @@ router.post(
         return;
       }
 
-      const remainingItems = po.regenerationData as { materialName: string; quantity: number; unit: string; unitPrice: number; gstRate: number }[];
+      const remainingItems = po.regenerationData as { materialName: string; itemId?: string | null; specification?: string | null; quantity: number; unit: string; unitPrice: number; gstRate: number }[];
       const regenNumber = await generateRegeneratedPONumber(po);
       const totalAmount = remainingItems.reduce((sum, i) => sum + i.quantity * i.unitPrice, 0);
       const gstAmount = remainingItems.reduce((sum, i) => sum + (i.quantity * i.unitPrice) * i.gstRate / 100, 0);
@@ -2570,6 +2590,8 @@ router.post(
           data: remainingItems.map((i) => ({
             poId: regenPo.id,
             materialName: i.materialName,
+            itemId: i.itemId ?? null,
+            specification: i.specification ?? null,
             quantity: i.quantity,
             unit: i.unit,
             unitPrice: i.unitPrice,

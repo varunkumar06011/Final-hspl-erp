@@ -44,7 +44,10 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import CopyText from '../components/CopyText';
 import ApprovalTiming from '../components/ApprovalTiming';
 import VendorAutocomplete from '../components/VendorAutocomplete';
-import { QuotationStatus, GST_RATES, ApprovalStatus, isAdminRole, canFinalizeQuotation } from '@hospital-erp/shared';
+import { QuotationStatus, GST_RATES, ApprovalStatus, isAdminRole, canFinalizeQuotation, lineKey } from '@hospital-erp/shared';
+import PriceFlag, { usePriceCheck } from '../components/PriceFlag';
+import CatalogLineFields from '../components/CatalogLineFields';
+import { useMaterialCatalog } from '../components/MaterialAutocomplete';
 import { formatCurrency, formatDate, STATUS_COLORS, QTY_UNIT_OPTIONS, enumLabel, unitLabel } from '../utils/enumOptions';
 import ItemsGist from '../components/ItemsGist';
 import { useTranslation, Trans } from 'react-i18next';
@@ -69,6 +72,9 @@ import { AccountTree as CombinedIcon } from '@mui/icons-material';
 interface QuotationItem {
   id?: string;
   materialName: string;
+  /** Item catalog link + spec (from the request line); same item + spec = same line. */
+  itemId?: string | null;
+  specification?: string | null;
   quantity: number | string;
   unit?: string | null;
   unitPrice: string | number;
@@ -150,11 +156,17 @@ export default function QuotationsPage() {
   const [statusFilter, setStatusFilter] = useState('');
   const [createOpen, setCreateOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
+  const materialCatalog = useMaterialCatalog(createOpen || editOpen);
   const [editing, setEditing] = useState<QuotationRow | null>(null);
   const [reviseMode, setReviseMode] = useState(false);
   const [error, setError] = useState('');
   const [selectedVendorId, setSelectedVendorId] = useState('');
   const [lineItems, setLineItems] = useState<QuotationItem[]>([]);
+  // Price check per line: last price paid for the same item + spec, and every vendor's price.
+  const priceChecks = usePriceCheck(
+    lineItems.map((i) => ({ itemId: i.itemId, materialName: i.materialName, specification: i.specification, unit: i.unit })),
+    { quotationId: editing?.id },
+  );
   const [selectedMaterialNames, setSelectedMaterialNames] = useState<Set<string>>(new Set());
   const [acknowledged, setAcknowledged] = useState(false);
   // Finalize ('approve') or close as not selected ('reject'); quotations have no approval steps.
@@ -231,8 +243,8 @@ export default function QuotationsPage() {
   const createMutation = useMutation({
     mutationFn: async () => {
       const filteredItems = lineItems
-        .filter((i) => selectedMaterialNames.has(i.materialName))
-        .map((i) => ({ materialName: i.materialName, quantity: i.quantity, unit: i.unit, unitPrice: i.unitPrice, amount: round2(toPreTax(i.amount, i.gstRate)), gstRate: i.gstRate }));
+        .filter((i) => selectedMaterialNames.has(lineKey(i)))
+        .map((i) => ({ materialName: i.materialName, itemId: i.itemId || undefined, specification: i.specification || undefined, quantity: i.quantity, unit: i.unit, unitPrice: i.unitPrice, amount: round2(toPreTax(i.amount, i.gstRate)), gstRate: i.gstRate }));
       const formData = new FormData();
       formData.append('vendorId', selectedVendorId);
       formData.append('items', JSON.stringify(filteredItems));
@@ -269,7 +281,7 @@ export default function QuotationsPage() {
   const updateMutation = useMutation({
     mutationFn: async () => {
       const formData = new FormData();
-      formData.append('items', JSON.stringify(lineItems.filter((i) => selectedMaterialNames.has(i.materialName)).map((i) => ({ materialName: i.materialName, quantity: i.quantity, unit: i.unit, unitPrice: i.unitPrice, amount: round2(toPreTax(i.amount, i.gstRate)), gstRate: i.gstRate }))));
+      formData.append('items', JSON.stringify(lineItems.filter((i) => selectedMaterialNames.has(lineKey(i))).map((i) => ({ materialName: i.materialName, itemId: i.itemId || undefined, specification: i.specification || undefined, quantity: i.quantity, unit: i.unit, unitPrice: i.unitPrice, amount: round2(toPreTax(i.amount, i.gstRate)), gstRate: i.gstRate }))));
       if (quotationNotes.trim()) formData.append('notes', quotationNotes.trim());
       if (selectedFile) formData.append('file', selectedFile);
       const response = await api.patch(`/quotations/${editing!.id}`, formData, {
@@ -295,7 +307,7 @@ export default function QuotationsPage() {
     mutationFn: async () => {
       const formData = new FormData();
       formData.append('vendorId', selectedVendorId);
-      formData.append('items', JSON.stringify(lineItems.filter((i) => selectedMaterialNames.has(i.materialName)).map((i) => ({ materialName: i.materialName, quantity: i.quantity, unit: i.unit, unitPrice: i.unitPrice, amount: round2(toPreTax(i.amount, i.gstRate)), gstRate: i.gstRate }))));
+      formData.append('items', JSON.stringify(lineItems.filter((i) => selectedMaterialNames.has(lineKey(i))).map((i) => ({ materialName: i.materialName, itemId: i.itemId || undefined, specification: i.specification || undefined, quantity: i.quantity, unit: i.unit, unitPrice: i.unitPrice, amount: round2(toPreTax(i.amount, i.gstRate)), gstRate: i.gstRate }))));
       if (quotationNotes.trim()) formData.append('notes', quotationNotes.trim());
       if (selectedFile) formData.append('file', selectedFile);
       const response = await api.post(`/quotations/${editing!.id}/revise`, formData, {
@@ -338,7 +350,7 @@ export default function QuotationsPage() {
   });
 
   const validateQuotationForm = (): boolean => {
-    const items = lineItems.filter((item) => selectedMaterialNames.has(item.materialName));
+    const items = lineItems.filter((item) => selectedMaterialNames.has(lineKey(item)));
     if (!selectedVendorId) {
       setError(t('errVendor'));
       return false;
@@ -503,6 +515,8 @@ export default function QuotationsPage() {
           const gstRate = rate > 0 ? Number(mpr.estimatedGstRate) || 0 : 0;
           return {
             materialName: item.materialName,
+            itemId: item.itemId ?? null,
+            specification: item.specification ?? null,
             quantity: item.quantity,
             unit: item.unit ?? 'nos',
             unitPrice: rate > 0 ? rate : '',
@@ -512,7 +526,7 @@ export default function QuotationsPage() {
         });
         setRequestedQtyMap(qtyMap);
         setLineItems(prefillItems);
-        setSelectedMaterialNames(new Set(prefillItems.map((i) => i.materialName)));
+        setSelectedMaterialNames(new Set(prefillItems.map((i) => lineKey(i))));
       }).catch(() => setError(t('errLoadMpr')));
     }
     setCreateOpen(true);
@@ -522,12 +536,12 @@ export default function QuotationsPage() {
   }, [searchParams]);
 
   const totalAmount = useMemo(
-    () => lineItems.filter((i) => selectedMaterialNames.has(i.materialName)).reduce((sum, i) => sum + toPreTax(i.amount, i.gstRate), 0),
+    () => lineItems.filter((i) => selectedMaterialNames.has(lineKey(i))).reduce((sum, i) => sum + toPreTax(i.amount, i.gstRate), 0),
     [lineItems, selectedMaterialNames]
   );
   const gstAmount = useMemo(
     () => lineItems
-      .filter((i) => selectedMaterialNames.has(i.materialName))
+      .filter((i) => selectedMaterialNames.has(lineKey(i)))
       .reduce((sum, i) => sum + (num(i.amount) - toPreTax(i.amount, i.gstRate)), 0),
     [lineItems, selectedMaterialNames]
   );
@@ -568,13 +582,15 @@ export default function QuotationsPage() {
     setLineItems(row.items.map((i) => ({
       id: i.id,
       materialName: i.materialName,
+      itemId: i.itemId ?? null,
+      specification: i.specification ?? null,
       quantity: Number(i.quantity),
       unit: i.unit ?? 'nos',
       unitPrice: Number(i.unitPrice),
       amount: round2(toIncGst(i.amount, i.gstRate)),
       gstRate: Number(i.gstRate) || 0,
     })));
-    setSelectedMaterialNames(new Set(row.items.map((item) => item.materialName)));
+    setSelectedMaterialNames(new Set(row.items.map((item) => lineKey(item))));
     setSelectedFile(null);
     setQuotationNotes(row.notes ?? '');
     setError('');
@@ -594,7 +610,7 @@ export default function QuotationsPage() {
     }));
     setLineItems(items);
     // All materials ticked by default
-    setSelectedMaterialNames(new Set(selectedVendor.materials.map((m) => m.name)));
+    setSelectedMaterialNames(new Set(selectedVendor.materials.map((m) => lineKey({ materialName: m.name }))));
   }, [selectedVendor, createOpen]);
 
   // In edit mode, merge in any vendor materials that were added after the quotation was created
@@ -791,10 +807,11 @@ export default function QuotationsPage() {
       // Select all matched + new items
       const allSelected = new Set<string>();
       matched.forEach((name) => allSelected.add(name));
-      newItems.forEach((item) => allSelected.add(item.materialName));
+      newItems.forEach((item) => allSelected.add(lineKey(item)));
+      updatedItems.forEach((item) => { if (matched.has(item.materialName.toLowerCase())) allSelected.add(lineKey(item)); });
       // Also keep previously selected items
       selectedMaterialNames.forEach((name) => {
-        if (allItems.some((i) => i.materialName === name)) {
+        if (allItems.some((i) => lineKey(i) === name)) {
           allSelected.add(name);
         }
       });
@@ -1133,14 +1150,14 @@ export default function QuotationsPage() {
                   <Button size="small" startIcon={<AddIcon />} onClick={() => {
                     const newItem: QuotationItem = { materialName: '', quantity: '', unit: 'nos', unitPrice: '', amount: 0, gstRate: 0 };
                     setLineItems([...lineItems, newItem]);
-                    setSelectedMaterialNames(new Set([...selectedMaterialNames, '']));
+                    setSelectedMaterialNames(new Set([...selectedMaterialNames, lineKey(newItem)]));
                   }}>{t('addRow')}</Button>
                 </Box>
                 {selectedVendor?.materials?.length === 0 && lineItems.length === 0 && (
                   <Alert severity="info">{t('noVendorMaterials')}</Alert>
                 )}
                 {lineItems.map((item, index) => {
-                  const checked = selectedMaterialNames.has(item.materialName);
+                  const checked = selectedMaterialNames.has(lineKey(item));
                   const isManualRow = !selectedVendor?.materials?.some((m) => m.name === item.materialName);
                   return (
                     <Box key={index} sx={{
@@ -1158,29 +1175,53 @@ export default function QuotationsPage() {
                           onChange={(e) => {
                             const newSet = new Set(selectedMaterialNames);
                             if (e.target.checked) {
-                              newSet.add(item.materialName);
+                              newSet.add(lineKey(item));
                             } else {
-                              newSet.delete(item.materialName);
+                              newSet.delete(lineKey(item));
                             }
                             setSelectedMaterialNames(newSet);
                           }}
                           size="small"
                           sx={{ flexShrink: 0 }}
                         />
-                        <TextField
-                          label={t('material')}
-                          value={item.materialName}
-                          onChange={isManualRow ? (e) => updateLineItem(index, 'materialName', e.target.value) : undefined}
-                          size="small"
-                          disabled={!isManualRow}
-                          sx={{ flex: 2, minWidth: 0 }}
-                        />
+                        {isManualRow ? (
+                          // A row typed here picks from the shared item list (material + its own specs).
+                          <Box sx={{ flex: 2, minWidth: 0 }}>
+                            <CatalogLineFields
+                              catalog={materialCatalog}
+                              line={item}
+                              label={t('material')}
+                              minWidth={0}
+                              onChange={(patch) => {
+                                const before = lineKey(item);
+                                const next = { ...item, ...patch, unit: patch.unit ?? item.unit };
+                                setLineItems((prev) => prev.map((it, i) => (i === index ? next : it)));
+                                // The tick follows the row when its item / spec changes.
+                                if (selectedMaterialNames.has(before)) {
+                                  const set = new Set(selectedMaterialNames);
+                                  set.delete(before);
+                                  set.add(lineKey(next));
+                                  setSelectedMaterialNames(set);
+                                }
+                              }}
+                            />
+                          </Box>
+                        ) : (
+                          <TextField
+                            label={t('material')}
+                            value={item.materialName}
+                            size="small"
+                            disabled
+                            helperText={item.specification || undefined}
+                            sx={{ flex: 2, minWidth: 0 }}
+                          />
+                        )}
                         {isManualRow && (
                           <IconButton size="small" color="error" onClick={() => {
                             const updated = lineItems.filter((_, i) => i !== index);
                             setLineItems(updated);
                             const newSet = new Set(selectedMaterialNames);
-                            newSet.delete(item.materialName);
+                            newSet.delete(lineKey(item));
                             setSelectedMaterialNames(newSet);
                           }} title={t('removeRow')}>
                             <DeleteIcon fontSize="small" />
@@ -1235,6 +1276,8 @@ export default function QuotationsPage() {
                           inputProps={{ min: 0, step: 0.01 }}
                           size="small"
                           sx={{ flex: 1, minWidth: 0 }}
+                          helperText={<PriceFlag result={priceChecks[index] ?? null} rate={item.unitPrice} unit={item.unit} />}
+                          FormHelperTextProps={{ component: 'div', sx: { mx: 0 } } as object}
                         />
                         <TextField
                           select

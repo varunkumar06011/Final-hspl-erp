@@ -63,7 +63,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import CopyText from '../components/CopyText';
 import ApprovalTiming from '../components/ApprovalTiming';
 import VendorAutocomplete from '../components/VendorAutocomplete';
-import { isUmbrellaContract, Permission, hasPermission, POStatus, UserRole, POPaymentType, GST_RATES, ApprovalStatus, isAdminRole, isWorkflowOpenToRole, canOverrideApprovals, findApprovableStep } from '@hospital-erp/shared';
+import { isUmbrellaContract, Permission, hasPermission, POStatus, UserRole, POPaymentType, GST_RATES, ApprovalStatus, isAdminRole, isWorkflowOpenToRole, canOverrideApprovals, findApprovableStep, findLine } from '@hospital-erp/shared';
 import { formatCurrency, formatDate, formatDateTime, formatIndianNumber, STATUS_COLORS, QTY_UNIT_OPTIONS, enumLabel, unitLabel } from '../utils/enumOptions';
 import { useTranslation, Trans } from 'react-i18next';
 import { num, toIncGst, round2 } from '../utils/taxCalc';
@@ -84,6 +84,9 @@ import { shareOnWhatsApp, buildPOShareMessage } from '../utils/whatsappShare';
 import CommentsButton from '../components/CommentsButton';
 import LinkedFiles from '../components/LinkedFiles';
 import ItemsGist from '../components/ItemsGist';
+import CatalogLineFields from '../components/CatalogLineFields';
+import { useMaterialCatalog } from '../components/MaterialAutocomplete';
+import PriceFlag, { LinePriceFlag, usePriceCheck } from '../components/PriceFlag';
 import { NewContractDialog, ContractPanel, ConvertToContractDialog } from '../components/ContractPO';
 import { PartPoDialog } from '../components/PartPoDialog';
 
@@ -99,6 +102,8 @@ interface POItemLedgerPost {
 interface POItem {
   id?: string;
   materialName: string;
+  itemId?: string | null;
+  specification?: string | null;
   quantity: number;
   unit?: string;
   unitPrice: number;
@@ -121,8 +126,8 @@ interface QuotationSummary {
   quotationNumber: string;
   date: string;
   createdAt: string;
-  items?: { materialName: string; quantity: number; unit?: string | null; unitPrice: number }[];
-  mpr?: { id: string; mprNumber: string; items: { materialName: string; quantity: number; unit?: string | null; estimatedRate: number }[] } | null;
+  items?: { materialName: string; specification?: string | null; quantity: number; unit?: string | null; unitPrice: number }[];
+  mpr?: { id: string; mprNumber: string; items: { materialName: string; specification?: string | null; quantity: number; unit?: string | null; estimatedRate: number }[] } | null;
 }
 
 interface ApprovalStep {
@@ -1220,14 +1225,17 @@ export default function PurchaseOrdersPage() {
                                   </Box>
                                   <Box component="tbody">
                                     {row.items.map((item, i) => {
-                                      const norm = (s: string) => s.trim().toLowerCase();
-                                      const requested = row.quotation?.mpr?.items.find((mi) => norm(mi.materialName) === norm(item.materialName));
-                                      const quoted = row.quotation?.items?.find((qi) => norm(qi.materialName) === norm(item.materialName));
+                                      // Same item + spec (Steel 8mm vs 12mm), else the only line of that name.
+                                      const requested = findLine(row.quotation?.mpr?.items ?? [], item);
+                                      const quoted = findLine(row.quotation?.items ?? [], item);
                                       const qtyVsQuoted = quoted ? Number(item.quantity) - Number(quoted.quantity) : 0;
                                       const priceVsQuoted = quoted ? Number(item.unitPrice) - Number(quoted.unitPrice) : 0;
                                       return (
                                       <Box key={i} component="tr" sx={{ borderBottom: '1px solid', borderColor: 'action.hover', '&:last-child': { borderBottom: 'none' } }}>
-                                        <Box component="td" sx={{ py: 0.25, px: 0.5, fontWeight: 600, fontSize: '0.8rem' }}>{item.materialName}</Box>
+                                        <Box component="td" sx={{ py: 0.25, px: 0.5, fontWeight: 600, fontSize: '0.8rem' }}>
+                                          {item.materialName}
+                                          {item.specification && <Box component="span" sx={{ display: 'block', fontWeight: 400, fontSize: '0.72rem', color: 'text.secondary' }}>{item.specification}</Box>}
+                                        </Box>
                                         {row.quotation?.mpr && (
                                           <Box component="td" sx={{ py: 0.25, px: 0.5, textAlign: 'right', fontSize: '0.8rem', whiteSpace: 'nowrap', color: 'text.secondary' }}>
                                             {requested ? `${requested.quantity}${requested.unit ? ` ${requested.unit}` : ''}` : '—'}
@@ -1248,6 +1256,9 @@ export default function PurchaseOrdersPage() {
                                         </Box>
                                         <Box component="td" sx={{ py: 0.25, px: 0.5, textAlign: 'right', fontSize: '0.8rem', whiteSpace: 'nowrap', fontWeight: priceVsQuoted !== 0 ? 700 : 400, color: priceVsQuoted !== 0 ? 'warning.main' : undefined }}>
                                           {formatCurrency(Number(item.unitPrice))}{priceVsQuoted !== 0 ? ` (${priceVsQuoted > 0 ? '+' : ''}${formatCurrency(priceVsQuoted)})` : ''}
+                                          <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+                                            <LinePriceFlag line={{ itemId: item.itemId, materialName: item.materialName, specification: item.specification, unit: item.unit }} rate={item.unitPrice} exclude={{ poId: row.id, quotationId: row.quotationId ?? null }} />
+                                          </Box>
                                         </Box>
                                         <Box component="td" sx={{ py: 0.25, px: 0.5, textAlign: 'right', fontSize: '0.8rem', whiteSpace: 'nowrap' }}>{num(item.gstRate)}% ({formatCurrency(Number(item.amount) * num(item.gstRate) / 100)})</Box>
                                         <Box component="td" sx={{ py: 0.25, px: 0.5, textAlign: 'right', fontWeight: 600, fontSize: '0.8rem', whiteSpace: 'nowrap' }}>{formatCurrency(toIncGst(item.amount, item.gstRate))}</Box>
@@ -2278,6 +2289,8 @@ function DeliveryTrailDialog({ poId, poNumber, onClose }: { poId: string | null;
 interface EditItem {
   id?: string;
   materialName: string;
+  itemId?: string | null;
+  specification?: string | null;
   quantity: string;
   unit: string;
   unitPrice: string;
@@ -2290,6 +2303,12 @@ function EditPODialog({ row, onClose, onSuccess }: { row: PORow | null; onClose:
   const { t } = useTranslation('po');
   const queryClient = useQueryClient();
   const [items, setItems] = useState<EditItem[]>([]);
+  const catalog = useMaterialCatalog(!!row);
+  const priceChecks = usePriceCheck(
+    items.map((i) => ({ itemId: i.itemId, materialName: i.materialName, specification: i.specification, unit: i.unit })),
+    { poId: row?.id, quotationId: row?.quotationId ?? null },
+    !!row,
+  );
   const [editReason, setEditReason] = useState('');
   const [error, setError] = useState('');
   const [deliveryData, setDeliveryData] = useState<{ itemSummary: { materialName: string; acceptedQuantity: number; orderedQuantity: number; remainingQuantity: number }[] } | null>(null);
@@ -2314,6 +2333,8 @@ function EditPODialog({ row, onClose, onSuccess }: { row: PORow | null; onClose:
     setItems(row.items.map((item) => ({
       id: item.id,
       materialName: item.materialName,
+      itemId: item.itemId ?? null,
+      specification: item.specification ?? null,
       quantity: String(item.quantity),
       unit: item.unit ?? 'nos',
       unitPrice: String(item.unitPrice),
@@ -2334,6 +2355,8 @@ function EditPODialog({ row, onClose, onSuccess }: { row: PORow | null; onClose:
         items: selectedItems.map((i) => ({
           poItemId: i.id,
           materialName: i.materialName,
+          itemId: i.itemId || undefined,
+          specification: i.specification || undefined,
           quantity: Number(i.quantity),
           unit: i.unit,
           unitPrice: Number(i.unitPrice),
@@ -2387,15 +2410,10 @@ function EditPODialog({ row, onClose, onSuccess }: { row: PORow | null; onClose:
                     }} />
                   </TableCell>
                   <TableCell>
-                    <TextField
-                      size="small"
-                      value={item.materialName}
-                      onChange={(e) => {
-                        const next = [...items];
-                        next[idx] = { ...item, materialName: e.target.value };
-                        setItems(next);
-                      }}
-                      sx={{ minWidth: 140 }}
+                    <CatalogLineFields
+                      catalog={catalog}
+                      line={item}
+                      onChange={(patch) => setItems((prev) => prev.map((it, i) => (i === idx ? { ...it, ...patch, unit: patch.unit ?? it.unit } : it)))}
                     />
                   </TableCell>
                   <TableCell>
@@ -2445,6 +2463,7 @@ function EditPODialog({ row, onClose, onSuccess }: { row: PORow | null; onClose:
                       }}
                       sx={{ width: 100 }}
                     />
+                    <PriceFlag result={priceChecks[idx] ?? null} rate={item.unitPrice} unit={item.unit} />
                   </TableCell>
                   <TableCell>
                     <TextField
@@ -2608,6 +2627,12 @@ function EditUnapprovedPODialog({ row, onClose, onSuccess }: { row: PORow | null
   const { t } = useTranslation('po');
   const queryClient = useQueryClient();
   const [items, setItems] = useState<EditItem[]>([]);
+  const catalog = useMaterialCatalog(!!row);
+  const priceChecks = usePriceCheck(
+    items.map((i) => ({ itemId: i.itemId, materialName: i.materialName, specification: i.specification, unit: i.unit })),
+    { poId: row?.id, quotationId: row?.quotationId ?? null },
+    !!row,
+  );
   const [paymentTerms, setPaymentTerms] = useState('');
   const [deliveryDate, setDeliveryDate] = useState('');
   const [budgetHeadId, setBudgetHeadId] = useState('');
@@ -2630,6 +2655,8 @@ function EditUnapprovedPODialog({ row, onClose, onSuccess }: { row: PORow | null
     if (!row) return;
     setItems(row.items.map((item) => ({
       materialName: item.materialName,
+      itemId: item.itemId ?? null,
+      specification: item.specification ?? null,
       quantity: String(item.quantity),
       unit: item.unit ?? 'nos',
       unitPrice: String(item.unitPrice),
@@ -2660,6 +2687,8 @@ function EditUnapprovedPODialog({ row, onClose, onSuccess }: { row: PORow | null
         referredBy: referredBy.trim() || undefined,
         items: items.map((i) => ({
           materialName: i.materialName,
+          itemId: i.itemId || undefined,
+          specification: i.specification || undefined,
           quantity: Number(i.quantity),
           unit: i.unit,
           unitPrice: Number(i.unitPrice),
@@ -2783,15 +2812,10 @@ function EditUnapprovedPODialog({ row, onClose, onSuccess }: { row: PORow | null
               {items.map((item, index) => (
                 <TableRow key={index}>
                   <TableCell>
-                    <TextField
-                      size="small"
-                      value={item.materialName}
-                      onChange={(e) => {
-                        const updated = [...items];
-                        updated[index] = { ...updated[index], materialName: e.target.value };
-                        setItems(updated);
-                      }}
-                      sx={{ minWidth: 150 }}
+                    <CatalogLineFields
+                      catalog={catalog}
+                      line={item}
+                      onChange={(patch) => setItems((prev) => prev.map((it, i) => (i === index ? { ...it, ...patch, unit: patch.unit ?? it.unit } : it)))}
                     />
                   </TableCell>
                   <TableCell align="right">
@@ -2837,6 +2861,7 @@ function EditUnapprovedPODialog({ row, onClose, onSuccess }: { row: PORow | null
                       InputProps={{ startAdornment: <InputAdornment position="start">₹</InputAdornment> }}
                       inputProps={{ style: { textAlign: 'right' }, inputMode: 'decimal' }}
                     />
+                    <PriceFlag result={priceChecks[index] ?? null} rate={item.unitPrice} unit={item.unit} />
                   </TableCell>
                   <TableCell align="right">
                     <TextField

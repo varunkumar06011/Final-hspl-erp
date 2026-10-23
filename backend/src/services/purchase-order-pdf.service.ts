@@ -1,3 +1,4 @@
+import { lineLabel } from '@hospital-erp/shared';
 import PDFDocument from 'pdfkit';
 import sharp from 'sharp';
 import { getStorageService } from './storage.service';
@@ -252,7 +253,7 @@ export async function streamPurchaseOrderPdf(res: NodeJS.WritableStream, po: any
 
     doc.fillColor(dark).font('Helvetica').fontSize(rowFontSize);
     doc.text(String(i + 1), colSno, y + rowTextOffset, { width: wSno, align: 'center', lineBreak: false });
-    let description = text(item.materialName);
+    let description = text(lineLabel(item)); // "Steel - 12mm TMT Bar"
     while (description.length > 3 && doc.widthOfString(description) > wDesc - 8) {
       description = `${description.slice(0, -4).trimEnd()}...`;
     }

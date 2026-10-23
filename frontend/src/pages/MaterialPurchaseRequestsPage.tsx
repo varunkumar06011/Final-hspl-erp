@@ -30,7 +30,7 @@ import { DetailSection, DetailField } from '../components/DetailSection';
 import WaitingOn from '../components/WaitingOn';
 import CopyText from '../components/CopyText';
 import ApprovalTiming from '../components/ApprovalTiming';
-import { MPRStatus, MPRRequestType, UserRole, isFirstLevelApproverRole, isWorkflowOpenToRole, canOverrideApprovals, findApprovableStep, isSuperAdmin } from '@hospital-erp/shared';
+import { MPRStatus, MPRRequestType, UserRole, isFirstLevelApproverRole, isWorkflowOpenToRole, canOverrideApprovals, findApprovableStep, isSuperAdmin, CatalogItemKind } from '@hospital-erp/shared';
 import { formatDate, STATUS_COLORS, QTY_UNIT_OPTIONS, SERVICE_UNIT_OPTIONS, SERVICE_CATEGORY_OPTIONS, enumLabel, unitLabel, serviceCategoryLabel } from '../utils/enumOptions';
 import { useTranslation } from 'react-i18next';
 import api, { extractErrorMessage } from '../config/api';
@@ -44,11 +44,15 @@ import { useActiveRecord } from '../hooks/useActiveRecord';
 import CommentsButton from '../components/CommentsButton';
 import LinkedFiles from '../components/LinkedFiles';
 import FilePicker from '../components/FilePicker';
-import MaterialAutocomplete, { useMaterialCatalog, type CatalogMaterial } from '../components/MaterialAutocomplete';
+import MaterialAutocomplete, { findCatalogMaterial, useMaterialCatalog, type CatalogMaterial } from '../components/MaterialAutocomplete';
+import SpecAutocomplete from '../components/SpecAutocomplete';
+import PriceFlag, { LinePriceFlag, usePriceCheck } from '../components/PriceFlag';
 
 interface MPRItem {
   materialName: string;
   materialCode?: string;
+  /** Item catalog link (set when an existing material is picked; the server links new ones). */
+  itemId?: string | null;
   specification?: string;
   quantity: string | number;
   unit?: string;
@@ -70,6 +74,8 @@ interface ApprovalStep {
 interface MPRRow {
   id: string;
   mprNumber: string;
+  /** The number before service requests got their own SR series (kept for old references). */
+  legacyNumber?: string | null;
   date: string;
   createdAt?: string;
   /** Repeat-request flags from the server: highest shipment number and which materials repeat. */
@@ -306,20 +312,6 @@ export default function MaterialPurchaseRequestsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams.get('id')]);
 
-  // Auto-continuing item codes (VGH-MAT-0021, 0022, …) — starts from the highest
-  // code already used in the project; still editable per row.
-  const [codeSeq, setCodeSeq] = useState<{ prefix: string; next: number; width: number } | null>(null);
-
-  function nextRowCode(rows: MPRItem[], seq = codeSeq): string {
-    if (!seq) return '';
-    let n = seq.next;
-    for (const r of rows) {
-      const m = /^(.*?)(\d+)$/.exec(r.materialCode ?? '');
-      if (m && m[1] === seq.prefix) n = Math.max(n, Number(m[2]) + 1);
-    }
-    return `${seq.prefix}${String(n).padStart(seq.width, '0')}`;
-  }
-
   function resetForm() {
     setRequiredBy('');
     setDepartment('');
@@ -347,12 +339,6 @@ export default function MaterialPurchaseRequestsPage() {
   function openCreate() {
     resetForm();
     setEditRow(null);
-    api.get('/material-purchase-requests/next-material-code')
-      .then((res) => {
-        setCodeSeq(res.data);
-        setItems((prev) => prev.map((it, i) => (i === 0 && !it.materialCode ? { ...it, materialCode: nextRowCode([], res.data) } : it)));
-      })
-      .catch(() => { /* codes stay manual if the lookup fails */ });
     // Default Delivery/Billing address from Settings (Hospital Address →
     // Delivery, Office Address → Bill To) instead of retyping every time.
     // Still editable per-request — this only sets the starting value.
@@ -380,6 +366,7 @@ export default function MaterialPurchaseRequestsPage() {
     setItems(row.items.map((i) => ({
       materialName: i.materialName,
       materialCode: i.materialCode ?? '',
+      itemId: i.itemId ?? null,
       specification: i.specification ?? '',
       quantity: String(i.quantity),
       unit: i.unit ?? 'nos',
@@ -401,10 +388,16 @@ export default function MaterialPurchaseRequestsPage() {
     setItems(updated);
   }
 
-  // Existing materials are suggested as the name is typed; choosing (or fully typing) one reuses
-  // its code and unit so the same material is never created twice.
-  const materialCatalog = useMaterialCatalog(!isServiceTab);
-  const knownCodes = new Set(materialCatalog.map((m) => m.materialCode).filter(Boolean));
+  // Existing materials (or services) are suggested as the name is typed; choosing (or fully
+  // typing) one reuses its code, unit and spec list so the same item is never created twice.
+  // A new name gets its code from the item catalog when the request is saved.
+  const materialCatalog = useMaterialCatalog(createOpen, isServiceTab ? CatalogItemKind.SERVICE : CatalogItemKind.MATERIAL);
+  const catalogItemOf = (it: MPRItem) => (it.itemId ? materialCatalog.find((m) => m.itemId === it.itemId) ?? null : findCatalogMaterial(materialCatalog, it.materialName));
+  const priceChecks = usePriceCheck(
+    items.map((it) => ({ itemId: catalogItemOf(it)?.itemId, materialName: it.materialName, specification: it.specification, unit: it.unit })),
+    { mprId: editRow?.id },
+    createOpen,
+  );
   const unitValues: string[] = (isServiceTab ? SERVICE_UNIT_OPTIONS : QTY_UNIT_OPTIONS).map((o) => (typeof o === 'string' ? o : o.value));
 
   function applyMaterial(index: number, m: CatalogMaterial) {
@@ -414,7 +407,8 @@ export default function MaterialPurchaseRequestsPage() {
           ? {
               ...it,
               materialName: m.materialName,
-              materialCode: m.materialCode ?? it.materialCode,
+              materialCode: m.materialCode ?? '',
+              itemId: m.itemId,
               unit: m.unit && unitValues.includes(m.unit) ? m.unit : it.unit,
             }
           : it,
@@ -431,19 +425,12 @@ export default function MaterialPurchaseRequestsPage() {
       applyMaterial(index, exact);
       return;
     }
-    setItems((prev) =>
-      prev.map((it, i) => {
-        if (i !== index) return it;
-        // The row was linked to an existing material but the name no longer matches it:
-        // it is a different material now, so it gets a fresh code.
-        const wasLinked = !!it.materialCode && knownCodes.has(it.materialCode);
-        return { ...it, materialName: name, materialCode: wasLinked ? nextRowCode(prev) : it.materialCode };
-      }),
-    );
+    // Not an existing item (yet): it becomes a new catalog item, with a new code, when saved.
+    setItems((prev) => prev.map((it, i) => (i === index ? { ...it, materialName: name, materialCode: '', itemId: null } : it)));
   }
 
   function addItem() {
-    setItems([...items, { materialName: '', materialCode: nextRowCode(items), quantity: '', unit: isServiceTab ? 'hrs' : 'nos', requiredDate: '', remarks: '' }]);
+    setItems([...items, { materialName: '', materialCode: '', quantity: '', unit: isServiceTab ? 'hrs' : 'nos', requiredDate: '', remarks: '' }]);
   }
 
   function removeItem(index: number) {
@@ -471,6 +458,7 @@ export default function MaterialPurchaseRequestsPage() {
         items: items.map((i) => ({
           materialName: i.materialName,
           materialCode: i.materialCode || undefined,
+          itemId: i.itemId || undefined,
           specification: i.specification || undefined,
           quantity: Number(i.quantity),
           unit: i.unit || undefined,
@@ -829,6 +817,9 @@ export default function MaterialPurchaseRequestsPage() {
                   <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, minWidth: 0, flex: 1 }}>
                     <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1, minWidth: 0, flexWrap: 'wrap' }}>
                       <CopyText text={row.mprNumber} sx={{ fontSize: { xs: '0.9rem', sm: '0.95rem' } }} />
+                      {row.legacyNumber && (
+                        <Typography component="span" variant="caption" color="text.secondary">{t('formerNumber', { n: row.legacyNumber })}</Typography>
+                      )}
                       <Typography component="span" noWrap sx={{ fontSize: { xs: '0.82rem', sm: '0.9rem' }, minWidth: 0, flexShrink: 1 }}>
                         {row.vendor?.name ?? row.createdByUser?.name ?? '—'}
                       </Typography>
@@ -986,6 +977,7 @@ export default function MaterialPurchaseRequestsPage() {
                                   <TableCell>{idx + 1}</TableCell>
                                   <TableCell>
                                     <Typography variant="body2">{item.materialName}</Typography>
+                                    {item.specification && <Typography variant="caption" sx={{ display: 'block' }}>{item.specification}</Typography>}
                                     {(item.materialCode || item.requiredDate) && (
                                       <Typography variant="caption" color="text.secondary">
                                         {item.materialCode ?? ''}{item.requiredDate ? t('requiredByShort', { d: formatDate(item.requiredDate) }) : ''}
@@ -993,7 +985,14 @@ export default function MaterialPurchaseRequestsPage() {
                                     )}
                                   </TableCell>
                                   <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>{item.quantity}{item.unit ? ` ${item.unit}` : ''}</TableCell>
-                                  {hasPrice && <TableCell align="right">{rate > 0 ? money(rate) : '—'}</TableCell>}
+                                  {hasPrice && (
+                                    <TableCell align="right">
+                                      {rate > 0 ? money(rate) : '—'}
+                                      {rate > 0 && (
+                                        <LinePriceFlag line={{ itemId: item.itemId, materialName: item.materialName, specification: item.specification, unit: item.unit }} rate={rate} exclude={{ mprId: row.id }} />
+                                      )}
+                                    </TableCell>
+                                  )}
                                   {hasPrice && (
                                     <TableCell align="right" sx={{ fontWeight: 600, whiteSpace: 'nowrap' }}>
                                       {rate > 0 ? money(rate * (Number(item.quantity) || 0)) : '—'}
@@ -1310,36 +1309,26 @@ export default function MaterialPurchaseRequestsPage() {
                 {items.map((item, index) => (
                   <TableRow key={index}>
                     <TableCell>
-                      {isServiceTab ? (
-                        <TextField
-                          size="small"
-                          value={item.materialName}
-                          onChange={(e) => updateItem(index, 'materialName', e.target.value)}
-                          sx={{ minWidth: 140 }}
-                        />
-                      ) : (
-                        <MaterialAutocomplete
-                          value={item.materialName}
-                          catalog={materialCatalog}
-                          onTyped={(name, exact) => typeMaterial(index, name, exact)}
-                          onPicked={(m) => pickMaterial(index, m)}
-                        />
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <TextField
-                        size="small"
-                        value={item.materialCode ?? ''}
-                        onChange={(e) => updateItem(index, 'materialCode', e.target.value)}
-                        sx={{ width: 90 }}
+                      <MaterialAutocomplete
+                        value={item.materialName}
+                        catalog={materialCatalog}
+                        onTyped={(name, exact) => typeMaterial(index, name, exact)}
+                        onPicked={(m) => pickMaterial(index, m)}
+                        sx={{ minWidth: 160 }}
                       />
                     </TableCell>
                     <TableCell>
-                      <TextField
-                        size="small"
+                      {/* The code comes from the item catalog (one material, one code). */}
+                      <Typography variant="body2" sx={{ whiteSpace: 'nowrap' }} color={catalogItemOf(item) ? 'text.primary' : 'text.secondary'}>
+                        {catalogItemOf(item)?.materialCode ?? (item.materialName.trim() ? t('newCode') : '')}
+                      </Typography>
+                    </TableCell>
+                    <TableCell>
+                      <SpecAutocomplete
+                        item={catalogItemOf(item)}
                         value={item.specification ?? ''}
-                        onChange={(e) => updateItem(index, 'specification', e.target.value)}
-                        sx={{ minWidth: 100 }}
+                        onChange={(spec) => updateItem(index, 'specification', spec)}
+                        sx={{ minWidth: 150 }}
                       />
                     </TableCell>
                     <TableCell>
@@ -1385,6 +1374,7 @@ export default function MaterialPurchaseRequestsPage() {
                         sx={{ width: 100 }}
                         inputProps={{ min: 0, style: { textAlign: 'right' }, inputMode: 'decimal' }}
                       />
+                      <PriceFlag result={priceChecks[index] ?? null} rate={item.estimatedRate} unit={item.unit} />
                     </TableCell>
                     <TableCell>
                       <TextField

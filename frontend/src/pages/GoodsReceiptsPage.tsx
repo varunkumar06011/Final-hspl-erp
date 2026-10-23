@@ -28,14 +28,16 @@ import StalledChip from '../components/StalledChip';
 import ResponsiveTable from '../components/ResponsiveTable';
 import LinkedFiles from '../components/LinkedFiles';
 import api, { extractErrorMessage } from '../config/api';
-import { GoodsReceiptStatus, InventoryItemType } from '@hospital-erp/shared';
+import { GoodsReceiptStatus, InventoryItemType, lineLabel } from '@hospital-erp/shared';
 import { formatDate, STATUS_COLORS, enumLabel } from '../utils/enumOptions';
 import { useTranslation } from 'react-i18next';
 import CommentsButton from '../components/CommentsButton';
+import ReceiptChecklist, { receiptChecklistKey, useReceiptChecklist } from '../components/ReceiptChecklist';
 
 interface ReceiptItem {
   id: string;
   materialName: string;
+  specification?: string | null;
   unit: string | null;
   deliveredQty: number;
   acceptedQty: number;
@@ -51,7 +53,7 @@ interface GRNDetail {
   inspectedAt: string | null;
   postedAt: string | null;
   items: {
-    id: string; materialName: string; unit: string | null; deliveredQty: number; acceptedQty: number;
+    id: string; materialName: string; specification?: string | null; unit: string | null; deliveredQty: number; acceptedQty: number;
     rejectedQty: number; rejectionReason: string | null; itemType: string;
     poItem: { unitPrice: string; gstRate: string; quantity: string } | null;
   }[];
@@ -92,7 +94,7 @@ interface AvailablePo {
   vendor: { name: string };
   gatePasses: { id: string; passNumber: string; hasPhoto: boolean }[];
   items: {
-    id: string; materialName: string; unit: string | null;
+    id: string; materialName: string; specification?: string | null; unit: string | null;
     orderedQuantity: number; receivedQuantity: number; pendingQuantity: number; remainingQuantity: number;
   }[];
 }
@@ -166,6 +168,13 @@ function GRNDetailDialog({ id, open, onClose }: { id: string | null; open: boole
               </Box>
             </Box>
 
+            {/* Final checklist (until the goods are in inventory) */}
+            {data.status !== GoodsReceiptStatus.POSTED && id && (
+              <Card variant="outlined" sx={{ p: 2 }}>
+                <ReceiptChecklist receiptId={id} />
+              </Card>
+            )}
+
             {/* Purchase Order */}
             <Card variant="outlined" sx={{ p: 2 }}>
               <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>{t('purchaseOrder')}</Typography>
@@ -211,7 +220,7 @@ function GRNDetailDialog({ id, open, onClose }: { id: string | null; open: boole
                   <TableBody>
                     {data.items.map((item) => (
                       <TableRow key={item.id}>
-                        <TableCell data-label={t('material')}>{item.materialName}</TableCell>
+                        <TableCell data-label={t('material')}>{lineLabel(item)}</TableCell>
                         <TableCell data-label={t('delivered')}>{item.deliveredQty}</TableCell>
                         <TableCell data-label={t('accepted')} sx={{ color: 'success.main' }}>{item.acceptedQty}</TableCell>
                         <TableCell data-label={t('rejected')} sx={{ color: item.rejectedQty > 0 ? 'error.main' : 'text.secondary' }}>{item.rejectedQty}</TableCell>
@@ -278,6 +287,9 @@ export default function GoodsReceiptsPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [inspectReceipt, setInspectReceipt] = useState<Receipt | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
+  // Posting to inventory goes through the final checklist first.
+  const [postReceipt, setPostReceipt] = useState<Receipt | null>(null);
+  const postChecklist = useReceiptChecklist(postReceipt?.id);
   const [selectedPoId, setSelectedPoId] = useState('');
   const [selectedGatepassId, setSelectedGatepassId] = useState('');
   const [sitePhoto, setSitePhoto] = useState<File | null>(null);
@@ -320,8 +332,11 @@ export default function GoodsReceiptsPage() {
       const poItems = selectedPo?.items ?? [];
       const items = poItems
         .map((item) => ({
+          // The exact PO line (two lines may share a name: Steel 8mm / Steel 12mm).
+          poItemId: item.id,
           materialName: item.materialName,
-          deliveredQty: Number(deliveredQty[item.materialName] ?? 0),
+          specification: item.specification ?? undefined,
+          deliveredQty: Number(deliveredQty[item.id] ?? 0),
           unit: item.unit,
         }))
         .filter((item) => item.deliveredQty > 0);
@@ -378,11 +393,15 @@ export default function GoodsReceiptsPage() {
   const postMutation = useMutation({
     mutationFn: async (id: string) => (await api.post(`/goods-receipts/${id}/post`)).data,
     onSuccess: () => {
+      setPostReceipt(null);
       queryClient.invalidateQueries({ queryKey: ['/goods-receipts'] });
       queryClient.invalidateQueries({ queryKey: ['/inventory/items'] });
       queryClient.invalidateQueries({ queryKey: ['/inventory/transactions'] });
     },
-    onError: (err: unknown) => setError(extractErrorMessage(err)),
+    onError: (err: unknown, id) => {
+      setError(extractErrorMessage(err));
+      queryClient.invalidateQueries({ queryKey: receiptChecklistKey(id) });
+    },
   });
 
   const receipts: Receipt[] = receiptsQuery.data?.data ?? [];
@@ -491,7 +510,7 @@ export default function GoodsReceiptsPage() {
                     {receipt.status === GoodsReceiptStatus.READY_TO_POST && (
                       <>
                         <Button size="small" startIcon={<InspectIcon />} onClick={() => openInspection(receipt)}>{t('editInspection')}</Button>
-                        <Button size="small" color="success" startIcon={<PostIcon />} onClick={() => postMutation.mutate(receipt.id)} disabled={postMutation.isPending}>
+                        <Button size="small" color="success" startIcon={<PostIcon />} onClick={() => { setError(''); setPostReceipt(receipt); }} disabled={postMutation.isPending}>
                           {t('postToInventory')}
                         </Button>
                       </>
@@ -563,15 +582,15 @@ export default function GoodsReceiptsPage() {
                 <TableBody>
                   {selectedPo.items.map((item) => (
                     <TableRow key={item.id}>
-                      <TableCell data-label={t('material')}>{item.materialName}</TableCell>
+                      <TableCell data-label={t('material')}>{lineLabel(item)}</TableCell>
                       <TableCell data-label={t('ordered')}>{item.orderedQuantity}</TableCell>
                       <TableCell data-label={t('expected')}>{item.remainingQuantity}</TableCell>
                       <TableCell data-label={t('delivered')}>
                         <TextField
                           type="number"
                           size="small"
-                          value={deliveredQty[item.materialName] ?? ''}
-                          onChange={(e) => setDeliveredQty((current) => ({ ...current, [item.materialName]: e.target.value }))}
+                          value={deliveredQty[item.id] ?? ''}
+                          onChange={(e) => setDeliveredQty((current) => ({ ...current, [item.id]: e.target.value }))}
                           inputProps={{ min: 0, max: item.remainingQuantity, step: 0.01 }}
                           sx={{ width: 100 }}
                           placeholder="0"
@@ -604,6 +623,26 @@ export default function GoodsReceiptsPage() {
         onClose={() => setDetailId(null)}
       />
 
+      <ResponsiveDialog open={!!postReceipt} onClose={() => setPostReceipt(null)} maxWidth="sm" fullWidth>
+        <DialogTitle>{t('postTitle', { n: postReceipt?.receiptNumber })}</DialogTitle>
+        <DialogContent>
+          {error && <Alert severity="error" sx={{ mb: 1 }}>{error}</Alert>}
+          {postReceipt && <ReceiptChecklist receiptId={postReceipt.id} data={postChecklist.data} />}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setPostReceipt(null)}>{t('cancel')}</Button>
+          <Button
+            variant="contained"
+            color="success"
+            startIcon={<PostIcon />}
+            onClick={() => postReceipt && postMutation.mutate(postReceipt.id)}
+            disabled={!postChecklist.data?.complete || postMutation.isPending}
+          >
+            {postMutation.isPending ? <CircularProgress size={20} /> : t('postToInventory')}
+          </Button>
+        </DialogActions>
+      </ResponsiveDialog>
+
       <ResponsiveDialog open={!!inspectReceipt} onClose={() => setInspectReceipt(null)} maxWidth="md" fullWidth>
         <DialogTitle>{t('inspectTitle', { n: inspectReceipt?.receiptNumber })}</DialogTitle>
         <DialogContent>
@@ -614,7 +653,7 @@ export default function GoodsReceiptsPage() {
           {inspectReceipt?.items.map((item) => {
             const disposition = dispositions[item.id] ?? { acceptedQty: 0, rejectedQty: 0, rejectionReason: '', itemType: InventoryItemType.CONSUMABLE };
             return <Box key={item.id} sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1.5fr 1fr 1fr 1.5fr 1.5fr' }, gap: 1, mb: 1, alignItems: 'center' }}>
-              <Typography variant="body2">{item.materialName} ({item.deliveredQty})</Typography>
+              <Typography variant="body2">{lineLabel(item)} ({item.deliveredQty})</Typography>
               <TextField size="small" label={t('accepted')} type="number" value={disposition.acceptedQty} onChange={(event) => updateDisposition(item.id, 'acceptedQty', event.target.value)} inputProps={{ min: 0, max: item.deliveredQty }} />
               <TextField size="small" label={t('rejected')} type="number" value={disposition.rejectedQty} onChange={(event) => updateDisposition(item.id, 'rejectedQty', event.target.value)} inputProps={{ min: 0, max: item.deliveredQty }} />
               <TextField size="small" label={t('rejectionReason')} value={disposition.rejectionReason} onChange={(event) => updateDisposition(item.id, 'rejectionReason', event.target.value)} />

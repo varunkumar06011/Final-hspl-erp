@@ -1,5 +1,5 @@
 import { Prisma } from '@prisma/client';
-import { fuzzyScore } from '@hospital-erp/shared';
+import { catalogSpecKey, fuzzyScore, lineLabel } from '@hospital-erp/shared';
 import { prisma } from '../config/prisma';
 
 type Db = Prisma.TransactionClient | typeof prisma;
@@ -20,15 +20,33 @@ export async function materialCodeForName(db: Db, projectId: string, name: strin
   return rows[0]?.materialCode?.trim() || null;
 }
 
+export interface CatalogLink {
+  itemId?: string | null;
+  specification?: string | null;
+}
+
 /**
- * The inventory item a received/entered material belongs to, matched by material code first,
- * then by the name or code of a merged duplicate, then by plain name. A match that lacked a
- * code gets it, so later receipts match by code. Returns null when the material is new.
+ * The inventory item a received/entered material belongs to. A line linked to the item
+ * catalog matches the stock item of the same catalog item + spec (Steel 8mm and Steel 12mm
+ * are separate stock). Otherwise: by material code, then by the name or code of a merged
+ * duplicate, then by plain name. A match that lacked a code gets it, so later receipts match
+ * by code. Returns null when the material is new.
  */
-export async function findInventoryItemForMaterial(db: Db, projectId: string, materialName: string) {
+export async function findInventoryItemForMaterial(db: Db, projectId: string, materialName: string, link: CatalogLink = {}) {
+  const live = { projectId, deletedAt: null };
+  if (link.itemId) {
+    const specKey = catalogSpecKey(link.specification);
+    const linked = await db.inventoryItem.findMany({ where: { ...live, catalogItemId: link.itemId } });
+    const exact = linked.find((i) => catalogSpecKey(i.specification) === specKey);
+    if (exact) return exact;
+    const label = lineLabel({ materialName, specification: link.specification });
+    const byLabel = await db.inventoryItem.findFirst({ where: { ...live, catalogItemId: null, name: { equals: label, mode: 'insensitive' } } });
+    if (byLabel) return db.inventoryItem.update({ where: { id: byLabel.id }, data: { catalogItemId: link.itemId, specification: link.specification ?? null } });
+    // A spec'd line never lands on the old mixed stock of the bare name: it gets its own item.
+    if (specKey) return null;
+  }
   const code = await materialCodeForName(db, projectId, materialName);
   const key = normalizeMaterialName(materialName);
-  const live = { projectId, deletedAt: null };
 
   let item =
     (code ? await db.inventoryItem.findFirst({ where: { ...live, materialCode: { equals: code, mode: 'insensitive' } } }) : null) ??
@@ -36,8 +54,14 @@ export async function findInventoryItemForMaterial(db: Db, projectId: string, ma
     (code ? await db.inventoryItem.findFirst({ where: { ...live, aliases: { has: code.toLowerCase() } } }) : null) ??
     (await db.inventoryItem.findFirst({ where: { ...live, name: { equals: materialName.trim(), mode: 'insensitive' } } }));
 
-  if (item && code && !item.materialCode) {
-    item = await db.inventoryItem.update({ where: { id: item.id }, data: { materialCode: code } });
+  // A bare-name match that belongs to another catalog item, or carries a spec, is not this one.
+  if (item && link.itemId && item.catalogItemId && item.catalogItemId !== link.itemId) return null;
+  if (item && link.itemId && item.specification) return null;
+  if (item && ((code && !item.materialCode) || (link.itemId && !item.catalogItemId))) {
+    item = await db.inventoryItem.update({
+      where: { id: item.id },
+      data: { ...(code && !item.materialCode ? { materialCode: code } : {}), ...(link.itemId && !item.catalogItemId ? { catalogItemId: link.itemId } : {}) },
+    });
   }
   return item;
 }
