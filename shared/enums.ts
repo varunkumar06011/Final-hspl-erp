@@ -903,6 +903,12 @@ export function canFinalizeQuotation(
   return QUOTATION_FINALIZER_ROLES.some((r) => r === role) || canOverrideApprovals(role, extraPermissions);
 }
 
+/**
+ * Who may connect Task Hub to see their ERP approvals there: the same people
+ * (Project Head, Head of Construction, Admin 1, Admin 2, super admins).
+ */
+export const canLinkTaskHub = canFinalizeQuotation;
+
 /** How the site person paid for a site bill. */
 export enum SiteBillPaymentMode {
   CASH = 'CASH',

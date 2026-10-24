@@ -50,5 +50,12 @@
   "n_approval_request_label": "Approval requests",
   "n_approval_request_desc": "A document is waiting for your approval",
   "n_approval_result_label": "Approval results",
-  "n_approval_result_desc": "Your document was approved or rejected"
+  "n_approval_result_desc": "Your document was approved or rejected",
+  "taskHubTitle": "Task Hub",
+  "taskHubBody": "See your ERP approvals in Task Hub. Get a code here, then in Task Hub open Approvals → Connect Hospital ERP and type it in. You only do this once.",
+  "taskHubGetCode": "Get Task Hub code",
+  "taskHubNewCode": "Get a new code",
+  "taskHubCodeLabel": "Task Hub link code",
+  "taskHubCodeHint": "Type this in Task Hub. It works once and expires in {{time}}.",
+  "taskHubCodeExpired": "That code has expired. Get a new one."
 }

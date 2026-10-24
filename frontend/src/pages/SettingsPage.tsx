@@ -25,7 +25,8 @@ import NotificationPermissionPrompt from '../components/NotificationPermissionPr
 import { useTranslation } from 'react-i18next';
 import CameraCapture from '../components/CameraCapture';
 import ItemCatalogDialog from '../components/ItemCatalogDialog';
-import { canManageCatalog } from '@hospital-erp/shared';
+import TaskHubLinkCard from '../components/TaskHubLinkCard';
+import { canLinkTaskHub, canManageCatalog } from '@hospital-erp/shared';
 const NOTIFICATION_EVENT_LABELS: { key: string; label: string; description: string }[] = [
   { key: 'entity_created', label: 'New entity created', description: 'PO, quotation, invoice, payment, etc. created by your team' },
   { key: 'approval_request', label: 'Approval requests', description: 'A document is waiting for your approval' },
@@ -468,6 +469,9 @@ export default function SettingsPage() {
         </Card>
       )}
       <ItemCatalogDialog open={catalogOpen} onClose={() => setCatalogOpen(false)} />
+
+      {/* Show my ERP approvals in Task Hub (approvers only) */}
+      {user && canLinkTaskHub(user.role, user.extraPermissions) && <TaskHubLinkCard />}
 
       {/* App Update */}
       <Card sx={{ mb: 3 }}>

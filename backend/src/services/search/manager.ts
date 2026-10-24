@@ -385,6 +385,15 @@ interface WriteParams {
 type WriteMiddleware = (params: WriteParams, next: (p: WriteParams) => Promise<unknown>) => Promise<unknown>;
 
 let hooked = false;
+/** prisma.$transaction before the wrapper below, for read-only work that must not trigger a refresh. */
+let unobservedTransaction: ((...args: unknown[]) => Promise<unknown>) | null = null;
+
+/** Runs a transaction the search index does not treat as a possible write (read-only callers only). */
+export function readOnlyTransaction<T>(fn: (tx: unknown) => Promise<T>, options?: Record<string, unknown>): Promise<T> {
+  const client = prisma as unknown as { $transaction: (...args: unknown[]) => Promise<unknown> };
+  const run = unobservedTransaction ?? client.$transaction;
+  return run.call(client, fn, options) as Promise<T>;
+}
 
 export function startSearchIndex(): void {
   if (!timer) {
@@ -399,6 +408,7 @@ export function startSearchIndex(): void {
     hooked = true;
     const transaction = client.$transaction;
     if (typeof transaction === 'function') {
+      unobservedTransaction = transaction;
       client.$transaction = async (...args: unknown[]) => {
         const result = await transaction.apply(client, args);
         noteTransaction();

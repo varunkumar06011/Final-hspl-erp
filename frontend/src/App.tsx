@@ -16,6 +16,7 @@ import ErrorBoundary from './components/ErrorBoundary';
 import LoginPage from './pages/LoginPage';
 import { isNative } from './config/appConfig';
 import OpeningVideo from './components/OpeningVideo';
+import ProjectLinkSwitcher from './components/ProjectLinkSwitcher';
 
 // A lazy chunk can fail to load because a new deploy replaced the hashed file
 // this open tab still references (or a flaky mobile fetch). Retrying the same
@@ -205,6 +206,8 @@ export default function App() {
                   {/* Opening video overlay — plays once per app session after
                       login while the app renders/queries underneath it. */}
                   <OpeningVideo />
+                  {/* ?project=<id> links (Task Hub) open the record in its own project. */}
+                  <ProjectLinkSwitcher />
                   <Routes>
                   <Route path="/login" element={<LoginPage />} />
                   {/* Public route — asset QR scan, no auth required */}

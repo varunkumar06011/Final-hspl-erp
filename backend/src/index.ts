@@ -5,6 +5,7 @@ import { initSocketServer } from './socket';
 import { startQuotationAgingScheduler, stopQuotationAgingScheduler } from './services/scheduler.service';
 import { startCatalogBackfill } from './services/catalog-backfill.service';
 import { startSearchIndex, stopSearchIndex, warmAllProjects } from './services/search/manager';
+import { startTaskHubNudges, stopTaskHubNudges } from './services/taskhub.service';
 
 const server = http.createServer(app);
 
@@ -32,6 +33,9 @@ server.listen(env.PORT, () => {
   if (process.env.SEARCH_WARMUP !== 'false') {
     setTimeout(() => void warmAllProjects(), 3000).unref();
   }
+
+  // Tell Task Hub when approvals change (only when TASKHUB_WEBHOOK_URL + TASKHUB_SYNC_SECRET are set).
+  startTaskHubNudges();
 });
 
 // Graceful shutdown
@@ -39,6 +43,7 @@ process.on('SIGTERM', () => {
   console.log('SIGTERM received, shutting down gracefully...');
   stopQuotationAgingScheduler();
   stopSearchIndex();
+  stopTaskHubNudges();
   server.close(() => {
     console.log('Server closed');
     process.exit(0);
@@ -49,6 +54,7 @@ process.on('SIGINT', () => {
   console.log('SIGINT received, shutting down gracefully...');
   stopQuotationAgingScheduler();
   stopSearchIndex();
+  stopTaskHubNudges();
   server.close(() => {
     console.log('Server closed');
     process.exit(0);

@@ -1,16 +1,24 @@
 /**
  * The assistant's tool registry — the ONLY things the AI can do.
  *
- * Read tools call existing GET endpoints. Write tools are CREATE-only: they
- * never execute on their own. A write tool validates the arguments against the
- * shared Zod schema, resolves human labels (vendor name, MPR number...) through
- * the API, and returns a *proposal* that the user must confirm in the UI.
+ * Read tools call existing GET endpoints, or the guarded data query
+ * (/data-query: read-only, project-pinned, secrets stripped, enforced again by
+ * the database role miko_reader).
  *
- * There is deliberately no tool for approve / reject / payment / delete /
- * cancel / update. Adding one is a code change here, not something the model
- * can talk its way into.
+ * Write tools never execute on their own. A write tool validates the arguments,
+ * resolves human labels (vendor name, PO number...) through the API, and returns
+ * a *proposal* that the user must confirm in the UI; the confirmed action is
+ * replayed through the app's own endpoint, so permissions, approval rules and
+ * audit apply exactly as in the app. Create tools add records; action tools
+ * (approve, reject, finalize, submit, pay, cancel, change payment type / budget
+ * head) act on an existing one. Actions that move money or cancel also need the
+ * user's login PIN on confirm (`needsPin`).
+ *
+ * There is deliberately no tool that deletes, edits line items or posts
+ * vouchers. Adding one is a code change here, not something the model can talk
+ * its way into.
  */
-import type { ZodTypeAny } from 'zod';
+import { z, type ZodTypeAny } from 'zod';
 import {
   createVendorSchema,
   createMPRSchema,
@@ -157,11 +165,17 @@ export interface ReadTool {
 
 export interface WriteTool {
   kind: 'write';
+  /** create = adds a record; action = acts on an existing one (approve, pay...). */
+  verb?: 'create' | 'action';
   declaration: FunctionDeclaration;
   /** Shared Zod request schema ({ body }). */
   schema: ZodTypeAny;
   /** App endpoint the confirmed action is POSTed to (under /api). */
-  path: string;
+  path: string | ((args: Record<string, any>) => string);
+  /** Request body built from the stored arguments (default: the arguments as they are). */
+  body?: (args: Record<string, any>) => Record<string, unknown>;
+  /** Confirming needs the user's 4-digit login PIN (money moves or a record is cancelled). */
+  needsPin?: boolean;
   /** Search-registry model of the created record, for the result link. */
   model: string;
   /** The endpoint requires an `acknowledged: true` flag — supplied on user confirm. */
@@ -306,7 +320,171 @@ const readTools: ReadTool[] = [
       return { result: capped(slim(res.body, 0, 3)) };
     },
   },
+  {
+    kind: 'read',
+    declaration: {
+      name: 'describe_data',
+      description:
+        'List the database tables this user may ask about (no arguments), or the columns and relations of one table (model). Call it before query_data when you are not sure of a table or column name.',
+      parameters: O({ model: S('Table (model) name, e.g. PurchaseOrder, POItem, VendorInvoice, BudgetHead, InventoryItem, BankAccount.') }),
+    },
+    async run(args, ctx) {
+      const res = await callApi(ctx.auth, 'GET', '/data-query/tables', { query: args.model ? { model: String(args.model) } : {} });
+      if (!res.ok) throw new ToolError(apiErrorMessage(res));
+      return { result: capped(res.body) };
+    },
+  },
+  {
+    kind: 'read',
+    declaration: {
+      name: 'query_data',
+      description:
+        'Answer data questions from ANY table the user may read (read-only; the current project only): lists with filters, totals (sum / average / min / max / count), and groups (e.g. spend per vendor). Use it for "how much", "how many", "which", "top", "compare", trends by period. Column names come from describe_data. Filters may go one hop through a related record ("vendor.name"). Prefer one well-aimed query over many.',
+      parameters: O(
+        {
+          model: S('Table (model) name, e.g. PurchaseOrder.'),
+          filters: A(
+            O(
+              {
+                field: S('Column, or relation.column one hop away (e.g. status, grandTotal, vendor.name, budgetHead.particulars).'),
+                op: E(['eq', 'ne', 'gt', 'gte', 'lt', 'lte', 'contains', 'startsWith', 'in', 'notIn', 'isNull', 'notNull'], 'Comparison. Text eq/contains ignore case.'),
+                value: S('Value (numbers as digits, dates YYYY-MM-DD, enums in CAPITALS as stored).'),
+                values: A(S('One value.'), 'Values for in / notIn.'),
+              },
+              ['field', 'op'],
+            ),
+            'Conditions, all must hold.',
+          ),
+          period: O(
+            {
+              field: S('Date column, e.g. createdAt, date, invoiceDate.'),
+              range: E(['today', 'yesterday', 'this_week', 'last_7_days', 'this_month', 'last_month', 'last_30_days', 'this_quarter', 'this_year', 'last_year'], 'Period by the Indian calendar.'),
+            },
+            ['field', 'range'],
+          ),
+          fields: A(S('Column or relation.column.'), 'Columns to return for lists (default: the main columns).'),
+          include: A(S('Line list name, e.g. items.'), 'Child lines to return with each row (max 20 each).'),
+          orderBy: O({ field: S('Column or relation.column.'), dir: E(['asc', 'desc'], 'Default desc.') }, ['field']),
+          limit: N('Rows or groups to return (default 20, max 50).'),
+          aggregate: O(
+            {
+              count: B('Count matching rows (default true when aggregating).'),
+              sum: A(S('Number column.'), 'Columns to add up.'),
+              avg: A(S('Number column.'), 'Columns to average.'),
+              min: A(S('Number or date column.'), 'Columns to take the minimum of.'),
+              max: A(S('Number or date column.'), 'Columns to take the maximum of.'),
+            },
+          ),
+          groupBy: A(S("This table's own column, e.g. vendorId, status, budgetHeadId."), 'Group the totals by these columns (max 2). Groups by an id are named automatically (vendorIdLabel).'),
+          includeDeleted: B('Include deleted records (default false).'),
+        },
+        ['model'],
+      ),
+    },
+    async run(args, ctx) {
+      const res = await callApi(ctx.auth, 'POST', '/data-query', { body: args });
+      if (!res.ok) throw new ToolError(apiErrorMessage(res));
+      const body = res.body ?? {};
+      return { result: capped(body), table: queryTable(body) };
+    },
+  },
+  {
+    kind: 'read',
+    declaration: {
+      name: 'my_tasks',
+      description:
+        "What is waiting on this user right now (My Work): approvals, quotations to finalize, drafts to submit, goods to receive or inspect, records sent back to fix, and what they started that is still waiting on others. Use it for \"what do I need to do\", \"pending approvals\", a daily brief.",
+      parameters: O({}),
+    },
+    async run(_args, ctx) {
+      const res = await callApi(ctx.auth, 'GET', '/my-work');
+      if (!res.ok) throw new ToolError(apiErrorMessage(res));
+      const work = res.body ?? {};
+      const items = (list: any[] = []) =>
+        list.slice(0, 25).map((w) => ({
+          kind: w.kind,
+          id: w.id,
+          number: w.number,
+          party: w.party,
+          amount: w.amount,
+          summary: w.summary,
+          why: w.why,
+          status: w.status,
+          action: w.action,
+          waitingOn: w.waitingOn,
+          waitingSince: w.waitingSince,
+          flags: (w.flags ?? []).map((f: any) => (f.value != null ? `${f.code}:${f.value}` : f.code)),
+        }));
+      const needs = (work.needsAction ?? []) as any[];
+      const table: ListTable = {
+        entity: 'my_tasks',
+        columns: ['number', 'kind', 'party', 'amount', 'action'],
+        total: needs.length,
+        rows: needs.slice(0, 25).map((w) => ({
+          id: String(w.id),
+          link: typeof w.path === 'string' ? w.path : null,
+          values: { number: w.number, kind: w.kind, party: w.party, amount: w.amount, action: w.action },
+        })),
+      };
+      return {
+        table,
+        result: capped({
+          needsAction: items(work.needsAction),
+          drafts: items(work.drafts),
+          sentBack: items(work.sentBack),
+          waitingOnOthers: items(work.waiting),
+        }),
+      };
+    },
+  },
 ];
+
+/** A table for the chat UI from a data-query answer (rows or groups). */
+function queryTable(body: any): ListTable | undefined {
+  const model = String(body?.model ?? '');
+  if (Array.isArray(body?.groups)) {
+    const rows = body.groups as Record<string, any>[];
+    const flat = rows.map((g) => {
+      const out: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(g)) {
+        if (v && typeof v === 'object') for (const [ik, iv] of Object.entries(v)) out[ik === '_all' ? k : `${k}.${ik}`] = iv;
+        else out[k] = v;
+      }
+      return out;
+    });
+    const columns = [...new Set(flat.flatMap((r) => Object.keys(r)))]
+      .filter((c) => !(c.endsWith('Id') && flat.some((r) => r[`${c}Label`] != null)))
+      .slice(0, 8);
+    return { entity: model, columns, total: rows.length, rows: flat.map((values, i) => ({ id: String(i), link: null, values })) };
+  }
+  if (!Array.isArray(body?.rows)) return undefined;
+  const rows = body.rows as Record<string, any>[];
+  const flat = rows.map((r) => {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(r)) {
+      if (Array.isArray(v)) out[k] = v.length;
+      else if (v && typeof v === 'object') for (const [ik, iv] of Object.entries(v)) { if (ik !== 'id') out[`${k}.${ik}`] = iv; }
+      else out[k] = v;
+    }
+    return out;
+  });
+  const columns = [...new Set(flat.flatMap((r) => Object.keys(r)))].filter((c) => c !== 'id' && !/Id$/.test(c)).slice(0, 7);
+  const reg = REGISTRY[model];
+  return {
+    entity: model,
+    columns,
+    total: Number(body.total ?? rows.length),
+    rows: flat.map((values, i) => {
+      let link: string | null = null;
+      try {
+        link = reg?.path && rows[i].id ? reg.path(String(rows[i].id), rows[i]) : null;
+      } catch {
+        link = null;
+      }
+      return { id: String(rows[i].id ?? i), link, values };
+    }),
+  };
+}
 
 // ─── write tools (create-only, proposal + confirm) ──────────────────────────
 // Unit codes the MPR / service-request form offers (QTY_UNIT_OPTIONS + SERVICE_UNIT_OPTIONS in the frontend).
@@ -726,6 +904,282 @@ const writeTools: WriteTool[] = [
   },
 ];
 
+// ─── action tools (act on an existing record; proposal + confirm) ───────────
+interface RecordKind {
+  path: string;
+  what: string;
+  model: string;
+  label: (r: any) => string;
+  amount?: (r: any) => unknown;
+}
+const RECORDS: Record<string, RecordKind> = {
+  mpr: { path: '/material-purchase-requests', what: 'Material request', model: 'MaterialPurchaseRequest', label: (r) => r.mprNumber, amount: (r) => r.estimatedTotal },
+  quotation: { path: '/quotations', what: 'Quotation', model: 'Quotation', label: (r) => r.quotationNumber, amount: (r) => r.grandTotal },
+  po: { path: '/purchase-orders', what: 'Purchase order', model: 'PurchaseOrder', label: (r) => r.poNumber, amount: (r) => r.grandTotal },
+  invoice: { path: '/invoices', what: 'Invoice', model: 'VendorInvoice', label: (r) => r.invoiceCode ?? r.invoiceNumber, amount: (r) => r.totalAmount },
+  payment: { path: '/payments', what: 'Payment request', model: 'PaymentRequest', label: (r) => r.paymentCode ?? r.requestNumber, amount: (r) => r.amount },
+  gatePass: { path: '/gate-passes', what: 'Gate pass', model: 'GatePass', label: (r) => r.passNumber },
+  stockEntry: { path: '/stock-entries', what: 'Stock entry', model: 'StockEntry', label: (r) => r.entryNumber },
+};
+
+const ack = { acknowledged: true };
+const reasonParam = S('Reason, in the user\'s words (translated to English when they spoke Telugu).');
+const commentsParam = S('Comments for the record (optional).');
+
+interface ActionSpec {
+  name: string;
+  description: string;
+  record: keyof typeof RECORDS;
+  endpoint: string;
+  /** Statuses the record must be in; anything else is refused before a card is shown. */
+  statuses?: string[];
+  /** Extra parameters besides `id`. */
+  params?: Record<string, unknown>;
+  required?: string[];
+  schema?: Record<string, ZodTypeAny>;
+  body: (a: Record<string, any>) => Record<string, unknown>;
+  needsPin?: boolean;
+  extraFields?: (a: Record<string, any>, record: any, ctx: ToolContext) => Promise<{ key: string; value: string }[]>;
+}
+
+function actionTool(spec: ActionSpec): WriteTool {
+  const kind = RECORDS[spec.record];
+  return {
+    kind: 'write',
+    verb: 'action',
+    schema: z.object({ body: z.object({ id: z.string().uuid(), ...(spec.schema ?? {}) }).passthrough() }),
+    path: (a) => `${kind.path}/${a.id}/${spec.endpoint}`,
+    body: spec.body,
+    needsPin: spec.needsPin,
+    model: kind.model,
+    needsAck: false,
+    labelFields: [],
+    declaration: {
+      name: spec.name,
+      description: `${spec.description} The user sees a card and must confirm${spec.needsPin ? ' with their login PIN' : ''}; nothing happens before that.`,
+      parameters: O({ id: S(`${kind.what} uuid (find it with list_records, query_data or my_tasks).`), ...(spec.params ?? {}) }, ['id', ...(spec.required ?? [])]),
+    },
+    async summarize(a, ctx) {
+      const r = await lookup(ctx, kind.path, a.id, kind.what);
+      if (spec.statuses && !spec.statuses.includes(r.status)) {
+        throw new ToolError(`${kind.what} ${kind.label(r)} is ${r.status}; this can only be done when it is ${spec.statuses.join(' or ')}. Tell the user.`);
+      }
+      const amount = kind.amount?.(r);
+      const fields = [
+        field('record', `${kind.what} ${kind.label(r) ?? ''}`.trim()),
+        ...maybe('vendor', r.vendor?.name),
+        ...maybe('status', r.status),
+        ...maybe('description', typeof r.description === 'string' ? r.description.slice(0, 200) : undefined),
+        ...(spec.extraFields ? await spec.extraFields(a, r, ctx) : []),
+        ...maybe('reason', a.reason),
+        ...maybe('comments', a.comments),
+      ];
+      return { fields, totals: amount != null && amount !== '' ? [field('total', money(num(amount)))] : [] };
+    },
+  };
+}
+
+const actionTools: WriteTool[] = [
+  actionTool({
+    name: 'submit_mpr',
+    description: 'Submit a DRAFT material / service request for approval.',
+    record: 'mpr',
+    endpoint: 'submit',
+    statuses: ['DRAFT', 'REJECTED'],
+    body: () => ({}),
+  }),
+  actionTool({
+    name: 'approve_mpr',
+    description: 'Approve a material / service request that is waiting on this user (status SUBMITTED).',
+    record: 'mpr',
+    endpoint: 'approve',
+    statuses: ['SUBMITTED'],
+    params: { comments: commentsParam },
+    body: (a) => ({ comments: a.comments, ...ack }),
+  }),
+  actionTool({
+    name: 'reject_mpr',
+    description: 'Reject a material / service request (status SUBMITTED). Needs a reason.',
+    record: 'mpr',
+    endpoint: 'reject',
+    statuses: ['SUBMITTED'],
+    params: { reason: reasonParam },
+    required: ['reason'],
+    schema: { reason: z.string().trim().min(1).max(500) },
+    body: (a) => ({ reason: a.reason, comments: a.reason, ...ack }),
+  }),
+  actionTool({
+    name: 'cancel_mpr',
+    description: 'Cancel a material / service request that is no longer needed.',
+    record: 'mpr',
+    endpoint: 'cancel',
+    params: { reason: reasonParam },
+    body: (a) => ({ reason: a.reason }),
+    needsPin: true,
+  }),
+  actionTool({
+    name: 'finalize_quotation',
+    description: 'Finalize (select) a quotation that is waiting to be finalized (status SUBMITTED): it becomes approved and its purchase order is raised automatically.',
+    record: 'quotation',
+    endpoint: 'finalize',
+    statuses: ['SUBMITTED', 'UNDER_REVIEW'],
+    params: { comments: commentsParam },
+    body: (a) => ({ comments: a.comments }),
+  }),
+  actionTool({
+    name: 'reject_quotation',
+    description: 'Close a waiting quotation as not selected. Needs a reason.',
+    record: 'quotation',
+    endpoint: 'reject',
+    statuses: ['SUBMITTED', 'UNDER_REVIEW', 'DRAFT'],
+    params: { reason: reasonParam },
+    required: ['reason'],
+    schema: { reason: z.string().trim().min(1).max(500) },
+    body: (a) => ({ reason: a.reason, ...ack }),
+  }),
+  actionTool({
+    name: 'approve_po',
+    description: 'Approve a purchase order waiting on this user (status PENDING_APPROVAL). If approving pushes its budget head over the allocation, a reason is required in comments.',
+    record: 'po',
+    endpoint: 'approve',
+    statuses: ['PENDING_APPROVAL'],
+    params: { comments: S('Comments; required as the override reason when the budget head would be exceeded.') },
+    body: (a) => ({ comments: a.comments, ...ack }),
+    extraFields: async (_a, r) => [...maybe('paymentType', r.paymentType), ...maybe('budgetHead', r.budgetHead?.particulars)],
+  }),
+  actionTool({
+    name: 'reject_po',
+    description: 'Reject a purchase order (status PENDING_APPROVAL). Needs a reason.',
+    record: 'po',
+    endpoint: 'reject',
+    statuses: ['PENDING_APPROVAL'],
+    params: { reason: reasonParam },
+    required: ['reason'],
+    schema: { reason: z.string().trim().min(1).max(500) },
+    body: (a) => ({ reason: a.reason, comments: a.reason, ...ack }),
+  }),
+  actionTool({
+    name: 'change_po_payment_type',
+    description: 'Change how a purchase order is paid (ADVANCE / AFTER_DELIVERY / FULL_PAYMENT). Allowed while pending and after approval; never sends it back for approval.',
+    record: 'po',
+    endpoint: 'change-payment-type',
+    params: {
+      paymentType: E(['ADVANCE', 'AFTER_DELIVERY', 'FULL_PAYMENT'], 'New payment type.'),
+      advanceAmount: N('Advance in rupees (ADVANCE / FULL_PAYMENT).'),
+      reason: reasonParam,
+    },
+    required: ['paymentType'],
+    schema: { paymentType: z.enum(['ADVANCE', 'AFTER_DELIVERY', 'FULL_PAYMENT']), advanceAmount: z.number().nonnegative().optional() },
+    body: (a) => ({ paymentType: a.paymentType, advanceAmount: a.advanceAmount, reason: a.reason }),
+    extraFields: async (a) => [field('paymentType', a.paymentType), ...maybe('advance', a.advanceAmount != null ? money(num(a.advanceAmount)) : undefined)],
+  }),
+  actionTool({
+    name: 'change_po_budget_head',
+    description: 'Set or change the budget head of a purchase order (find the head with list_records budget_heads). Never sends it back for approval.',
+    record: 'po',
+    endpoint: 'change-budget-head',
+    params: { budgetHeadId: S('Budget head uuid.'), reason: reasonParam },
+    required: ['budgetHeadId'],
+    schema: { budgetHeadId: z.string().uuid() },
+    body: (a) => ({ budgetHeadId: a.budgetHeadId, reason: a.reason }),
+    extraFields: async (a, _r, ctx) => [field('budgetHead', (await lookup(ctx, '/budget-heads', a.budgetHeadId, 'Budget head')).particulars)],
+  }),
+  actionTool({
+    name: 'approve_invoice',
+    description: 'Approve (verify) a vendor invoice waiting on this user.',
+    record: 'invoice',
+    endpoint: 'approve',
+    params: { comments: commentsParam },
+    body: (a) => ({ comments: a.comments, ...ack }),
+  }),
+  actionTool({
+    name: 'reject_invoice',
+    description: 'Reject a vendor invoice. Needs a reason.',
+    record: 'invoice',
+    endpoint: 'reject',
+    params: { reason: reasonParam },
+    required: ['reason'],
+    schema: { reason: z.string().trim().min(1).max(500) },
+    body: (a) => ({ reason: a.reason, comments: a.reason, ...ack }),
+  }),
+  actionTool({
+    name: 'approve_payment',
+    description: 'Approve a payment request waiting on this user (status PENDING).',
+    record: 'payment',
+    endpoint: 'approve',
+    statuses: ['PENDING', 'PENDING_APPROVAL'],
+    params: { comments: commentsParam },
+    body: (a) => ({ comments: a.comments, ...ack }),
+    needsPin: true,
+  }),
+  actionTool({
+    name: 'reject_payment',
+    description: 'Reject a payment request. Needs a reason.',
+    record: 'payment',
+    endpoint: 'reject',
+    params: { reason: reasonParam },
+    required: ['reason'],
+    schema: { reason: z.string().trim().min(1).max(500) },
+    body: (a) => ({ reason: a.reason, comments: a.reason, ...ack }),
+  }),
+  actionTool({
+    name: 'record_payment',
+    description:
+      'Record that an APPROVED payment request was paid, from a bank account or a cash account (find them with query_data on BankAccount / CashAccount). The amount must equal the request amount.',
+    record: 'payment',
+    endpoint: 'pay',
+    statuses: ['APPROVED'],
+    params: {
+      amount: N('Amount paid in rupees (the full request amount).'),
+      mode: E(['BANK_TRANSFER', 'UPI', 'CHEQUE', 'CASH', 'DD'], 'How it was paid (NEFT / RTGS / IMPS = BANK_TRANSFER).'),
+      reference: S('UTR / cheque / transaction reference.'),
+      bankAccountId: S('Bank account uuid it was paid from.'),
+      cashAccountId: S('Cash account uuid it was paid from (cash payments).'),
+    },
+    required: ['amount', 'mode'],
+    schema: {
+      amount: z.number().positive(),
+      mode: z.enum(['BANK_TRANSFER', 'UPI', 'CHEQUE', 'CASH', 'DD']),
+      reference: z.string().max(100).optional(),
+      bankAccountId: z.string().uuid().optional(),
+      cashAccountId: z.string().uuid().optional(),
+    },
+    body: (a) => ({ amount: a.amount, mode: a.mode, reference: a.reference, bankAccountId: a.bankAccountId, cashAccountId: a.cashAccountId }),
+    needsPin: true,
+    extraFields: async (a, r) => {
+      if (!a.bankAccountId && !a.cashAccountId) throw new ToolError('Ask which bank or cash account it was paid from (query_data on BankAccount / CashAccount).');
+      if (num(a.amount) !== num(r.amount)) throw new ToolError(`The payment request is for ${money(num(r.amount))}; the amount paid must be the same.`);
+      return [field('mode', a.mode), ...maybe('reference', a.reference), field('amountPaid', money(num(a.amount)))];
+    },
+  }),
+  actionTool({
+    name: 'approve_gate_pass',
+    description: 'Approve a gate pass (goods at the gate).',
+    record: 'gatePass',
+    endpoint: 'approve',
+    body: () => ({}),
+  }),
+  actionTool({
+    name: 'approve_stock_entry',
+    description: 'Approve a direct stock entry (status PENDING_APPROVAL); its stock is then posted.',
+    record: 'stockEntry',
+    endpoint: 'approve',
+    statuses: ['PENDING_APPROVAL'],
+    body: () => ({}),
+  }),
+  actionTool({
+    name: 'reject_stock_entry',
+    description: 'Reject a direct stock entry (status PENDING_APPROVAL). Needs a reason.',
+    record: 'stockEntry',
+    endpoint: 'reject',
+    statuses: ['PENDING_APPROVAL'],
+    params: { reason: reasonParam },
+    required: ['reason'],
+    schema: { reason: z.string().trim().min(1).max(500) },
+    body: (a) => ({ reason: a.reason }),
+  }),
+];
+
 // ─── ask tool (quick-reply question) ────────────────────────────────────────
 export const MAX_ASK_OPTIONS = 10;
 const askTool: AskTool = {
@@ -749,21 +1203,26 @@ const askTool: AskTool = {
   },
 };
 
-export const TOOLS: Tool[] = [...readTools, ...writeTools, askTool];
+export const TOOLS: Tool[] = [...readTools, ...writeTools, ...actionTools, askTool];
+/** Action tools (act on an existing record), by name. */
+export const ACTION_TOOL_NAMES: string[] = actionTools.map((t) => t.declaration.name);
 export const TOOLS_BY_NAME: Record<string, Tool> = Object.fromEntries(TOOLS.map((t) => [t.declaration.name, t]));
 export const DECLARATIONS: FunctionDeclaration[] = TOOLS.map((t) => t.declaration);
 
 /** Name shown for a created record, from the API response. */
-export function labelOfCreated(tool: WriteTool, body: any): string {
+export function labelOfCreated(tool: WriteTool, body: any, summary?: ActionSummary): string {
+  // An action acts on a record whose name is already on its card ("Purchase order VGH-PO012").
+  if (tool.verb === 'action') return summary?.fields.find((f) => f.key === 'record')?.value ?? tool.model;
   const rec = unwrap(body) ?? {};
   for (const f of tool.labelFields) if (rec[f]) return String(rec[f]);
   return tool.model;
 }
 
-export function createdRecordLink(tool: WriteTool, body: any): string | null {
+export function createdRecordLink(tool: WriteTool, body: any, args?: Record<string, any>): string | null {
   const rec = unwrap(body) ?? {};
   const reg = REGISTRY[tool.model];
   try {
+    if (tool.verb === 'action') return args?.id && reg?.path ? reg.path(String(args.id), rec) : null;
     if (tool.link) return tool.link(rec);
     return rec.id && reg?.path ? reg.path(String(rec.id), rec) : null;
   } catch {

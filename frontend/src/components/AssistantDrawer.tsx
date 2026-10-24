@@ -42,6 +42,10 @@ import {
   PictureAsPdf as PdfIcon,
   Mic as MicIcon,
   MicOff as MicOffIcon,
+  History as ActivityIcon,
+  RecordVoiceOver as VoiceModeIcon,
+  StopCircleOutlined as StopSpeakIcon,
+  VolumeUp as SpeakIcon,
   OpenInNew as OpenIcon,
   RestartAlt as NewChatIcon,
   Send as SendIcon,
@@ -49,6 +53,7 @@ import {
 import { useTranslation } from 'react-i18next';
 import api from '../config/api';
 import CameraCapture from './CameraCapture';
+import MikoActivityDialog from './MikoActivityDialog';
 import { enumLabel, formatCurrency, formatDate } from '../utils/enumOptions';
 
 interface GeminiContent {
@@ -81,6 +86,10 @@ interface EditState {
 interface PendingAction {
   id: string;
   tool: string;
+  /** create = adds a record; action = approve / reject / pay... an existing one. */
+  verb?: 'create' | 'action';
+  /** Confirm needs the user's login PIN. */
+  needsPin?: boolean;
   summary: ActionSummary;
   edit: EditState | null;
   /** site_bill_over_limit: a site bill above the limit, offered as a material request instead. */
@@ -156,13 +165,29 @@ type NewMsg = Msg extends infer M ? (M extends { id: number } ? Omit<M, 'id'> : 
 
 interface ActionState {
   status: 'idle' | 'saving' | 'saved' | 'failed' | 'discarded';
+  /** Shown under the PIN field when the PIN was missing / wrong (the card stays open). */
+  pinError?: string;
   label?: string;
   link?: string | null;
   error?: string;
   photos?: { attached: number; total: number };
 }
 
-const AMOUNT_COLS = /(total|amount|grandTotal)$/i;
+const AMOUNT_COLS = /(total|amount|grandTotal|balance|price)$/i;
+const AGG_COL = /^_(count|sum|avg|min|max)(?:\.(.+))?$/;
+const VOICE_MODE_KEY = 'mikoVoiceMode';
+// Voice mode: stop listening after this much quiet once the user has spoken, or give up if they never do.
+const SILENCE_STOP_MS = 1600;
+const NO_SPEECH_STOP_MS = 10_000;
+const SPEECH_LEVEL = 0.035;
+
+const readVoiceMode = () => {
+  try {
+    return localStorage.getItem(VOICE_MODE_KEY) === '1';
+  } catch {
+    return false;
+  }
+};
 const STATUS_COLS = /(status|type)$/i;
 const DATE_VALUE = /^\d{4}-\d{2}-\d{2}T/;
 
@@ -280,6 +305,21 @@ export default function AssistantDrawer({ open, onClose }: Props) {
   const baseRef = useRef('');
   const startedAtRef = useRef(0);
 
+  // PINs typed on cards that need one (approve / record a payment, cancel).
+  const [pins, setPins] = useState<Record<string, string>>({});
+  const [activityOpen, setActivityOpen] = useState(false);
+  // Voice mode: speak → sent on its own → the reply is read aloud → Miko listens again.
+  const [voiceMode, setVoiceMode] = useState(readVoiceMode);
+  const [speakingId, setSpeakingId] = useState<number | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioUrlRef = useRef<string | null>(null);
+  const voiceModeRef = useRef(voiceMode);
+  voiceModeRef.current = voiceMode;
+  const vadRef = useRef<{ ctx: AudioContext; timer: ReturnType<typeof setInterval> } | null>(null);
+  // Latest versions of callbacks used from recorder / audio events (which keep the closure of when they were set).
+  const sendRef = useRef<(raw: string) => Promise<void>>(async () => undefined);
+  const startRecordingRef = useRef<() => Promise<void>>(async () => undefined);
+
   const { data: flowData } = useQuery<{ simple: boolean; flows: FlowOption[] }>({
     queryKey: ['assistant-flows'],
     queryFn: async () => {
@@ -356,8 +396,55 @@ export default function AssistantDrawer({ open, onClose }: Props) {
     return String(data.text ?? '').trim();
   };
 
+  const stopVad = () => {
+    const vad = vadRef.current;
+    vadRef.current = null;
+    if (!vad) return;
+    clearInterval(vad.timer);
+    void vad.ctx.close().catch(() => undefined);
+  };
+
+  /** Voice mode: ends the recording on its own after a pause in speech (no button press needed). */
+  const startVad = (stream: MediaStream, onQuiet: () => void, onNoSpeech: () => void) => {
+    stopVad();
+    const Ctx = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!Ctx) return;
+    try {
+      const ctx = new Ctx();
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 1024;
+      ctx.createMediaStreamSource(stream).connect(analyser);
+      const buf = new Float32Array(analyser.fftSize);
+      const started = Date.now();
+      let heard = false;
+      let lastLoud = Date.now();
+      const timer = setInterval(() => {
+        analyser.getFloatTimeDomainData(buf);
+        let sum = 0;
+        for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
+        const level = Math.sqrt(sum / buf.length);
+        const now = Date.now();
+        if (level > SPEECH_LEVEL) {
+          heard = true;
+          lastLoud = now;
+        }
+        if (heard && now - lastLoud > SILENCE_STOP_MS) {
+          stopVad();
+          onQuiet();
+        } else if (!heard && now - started > NO_SPEECH_STOP_MS) {
+          stopVad();
+          onNoSpeech();
+        }
+      }, 120);
+      vadRef.current = { ctx, timer };
+    } catch {
+      /* no silence detection: the user taps stop */
+    }
+  };
+
   /** Drops the recording without transcribing it (new chat, closing Miko, leaving the page). */
   const cancelRecording = useCallback(() => {
+    stopVad();
     sessionRef.current += 1;
     const rec = recorderRef.current;
     recorderRef.current = null;
@@ -379,6 +466,7 @@ export default function AssistantDrawer({ open, onClose }: Props) {
   /** Full-clip transcription once the user stops; replaces the live preview. */
   const finishRecording = async (session: number, mime: string) => {
     if (session !== sessionRef.current) return;
+    stopVad();
     if (liveTimerRef.current) clearInterval(liveTimerRef.current);
     liveTimerRef.current = null;
     streamRef.current?.getTracks().forEach((tr) => tr.stop());
@@ -395,7 +483,15 @@ export default function AssistantDrawer({ open, onClose }: Props) {
     try {
       const text = await transcribe(blob, false);
       if (session !== sessionRef.current) return;
-      setInput(joinSpeech(baseRef.current, text));
+      const spoken = joinSpeech(baseRef.current, text);
+      if (voiceModeRef.current && text) {
+        // Voice mode sends what was said straight away.
+        setInput('');
+        setMic('idle');
+        void sendRef.current(spoken);
+        return;
+      }
+      setInput(spoken);
       if (!text) addMsg({ role: 'error', text: t('micEmpty') });
     } catch (err) {
       if (session !== sessionRef.current) return;
@@ -464,6 +560,71 @@ export default function AssistantDrawer({ open, onClose }: Props) {
     setMicSeconds(0);
     setMic('recording');
     liveTimerRef.current = setInterval(() => void livePass(session), MIC_LIVE_EVERY_MS);
+    if (voiceModeRef.current) {
+      startVad(
+        stream,
+        () => {
+          if (recorder.state !== 'inactive') recorder.stop();
+        },
+        () => cancelRecording(),
+      );
+    }
+  };
+  startRecordingRef.current = startRecording;
+
+  const stopSpeaking = useCallback(() => {
+    const audio = audioRef.current;
+    audioRef.current = null;
+    if (audio) {
+      audio.onended = null;
+      audio.pause();
+    }
+    if (audioUrlRef.current) URL.revokeObjectURL(audioUrlRef.current);
+    audioUrlRef.current = null;
+    setSpeakingId(null);
+  }, []);
+
+  /** Reads a reply aloud. In voice mode Miko listens again when it finishes (`thenListen`). */
+  const speak = useCallback(
+    async (id: number, text: string, thenListen = false) => {
+      stopSpeaking();
+      if (!text.trim()) return;
+      setSpeakingId(id);
+      try {
+        const { data } = await api.post(
+          '/assistant/speak',
+          { text, language: i18n.language?.startsWith('te') ? 'te' : 'en' },
+          { responseType: 'blob', timeout: 60_000 },
+        );
+        const url = URL.createObjectURL(data as Blob);
+        audioUrlRef.current = url;
+        const audio = new Audio(url);
+        audioRef.current = audio;
+        audio.onended = () => {
+          stopSpeaking();
+          if (thenListen && voiceModeRef.current) void startRecordingRef.current();
+        };
+        await audio.play();
+      } catch {
+        setSpeakingId(null);
+        addMsg({ role: 'error', text: t('speakError') });
+      }
+    },
+    [i18n.language, stopSpeaking, addMsg, t],
+  );
+
+  const toggleVoiceMode = () => {
+    const next = !voiceMode;
+    setVoiceMode(next);
+    try {
+      localStorage.setItem(VOICE_MODE_KEY, next ? '1' : '0');
+    } catch {
+      /* storage blocked (iOS private mode): the choice lasts for this session */
+    }
+    if (!next) {
+      stopSpeaking();
+      stopVad();
+    }
   };
 
   // Clock on screen, and the two-minute cap.
@@ -478,11 +639,20 @@ export default function AssistantDrawer({ open, onClose }: Props) {
     return () => clearInterval(id);
   }, [mic, stopRecording]);
 
-  // Leaving the page or closing Miko drops any recording in progress.
-  useEffect(() => () => cancelRecording(), [cancelRecording]);
+  // Leaving the page or closing Miko drops any recording in progress and stops reading aloud.
+  useEffect(
+    () => () => {
+      cancelRecording();
+      stopSpeaking();
+    },
+    [cancelRecording, stopSpeaking],
+  );
   useEffect(() => {
-    if (!open) cancelRecording();
-  }, [open, cancelRecording]);
+    if (!open) {
+      cancelRecording();
+      stopSpeaking();
+    }
+  }, [open, cancelRecording, stopSpeaking]);
 
   /**
    * Sends one message. `opts.flow` starts a guided flow (from the menu); `opts.files`
@@ -532,14 +702,19 @@ export default function AssistantDrawer({ open, onClose }: Props) {
           document: data.document ?? null,
           notice: data.notice ?? null,
         });
+        if (voiceModeRef.current && data.reply) {
+          // Cards wait for a tap, so Miko only listens again when there is none.
+          void speak(idRef.current, String(data.reply), !(data.pending ?? []).length);
+        }
       } catch (err) {
         addMsg({ role: 'error', text: errorText(err) });
       } finally {
         setBusy(false);
       }
     },
-    [busy, mic, photos, flow, docs, addMsg, errorText, t],
+    [busy, mic, photos, flow, docs, addMsg, errorText, t, speak],
   );
+  sendRef.current = send;
 
   /** Reads photos / PDFs picked from a quick-reply button and sends them right away. */
   const sendFiles = useCallback(
@@ -583,11 +758,28 @@ export default function AssistantDrawer({ open, onClose }: Props) {
   const setAction = (id: string, patch: ActionState) =>
     setActions((prev) => ({ ...prev, [id]: patch }));
 
+  const PIN_ERRORS: Record<string, string> = {
+    PIN_REQUIRED: 'pinHint',
+    PIN_WRONG: 'pinWrong',
+    PIN_LOCKED: 'pinLocked',
+    PIN_NOT_SET: 'pinNotSet',
+  };
+
   const confirm = async (a: PendingAction) => {
+    const pin = a.needsPin ? (pins[a.id] ?? '').trim() : undefined;
+    if (a.needsPin && !/^\d{4,6}$/.test(pin ?? '')) {
+      setAction(a.id, { status: 'idle', pinError: t('pinHint') });
+      return;
+    }
     setAction(a.id, { status: 'saving' });
     try {
-      const { data } = await api.post(`/assistant/actions/${a.id}/confirm`);
+      const { data } = await api.post(`/assistant/actions/${a.id}/confirm`, pin ? { pin } : {});
       historyRef.current = [...historyRef.current, ...(data.historyAppend ?? [])];
+      setPins((prev) => {
+        const rest = { ...prev };
+        delete rest[a.id];
+        return rest;
+      });
       setAction(a.id, {
         status: 'saved',
         label: data.result?.label,
@@ -595,6 +787,8 @@ export default function AssistantDrawer({ open, onClose }: Props) {
         photos: data.result?.photos,
       });
       void queryClient.invalidateQueries();
+      // Approvals, payments... keep the conversation where it is; only a create ends its flow.
+      if (a.verb === 'action') return;
       const flowTool = flowOptions.find((f) => f.id === flow)?.tool;
       if (flow && flowTool && flowTool !== a.tool) {
         // A step on the way (e.g. the vendor an invoice needs): carry on with the flow.
@@ -606,6 +800,12 @@ export default function AssistantDrawer({ open, onClose }: Props) {
       }
     } catch (err: any) {
       const body = err?.response?.data;
+      // A missing / wrong PIN keeps the card open for another try.
+      if (body?.code && PIN_ERRORS[body.code]) {
+        setPins((prev) => ({ ...prev, [a.id]: '' }));
+        setAction(a.id, { status: 'idle', pinError: t(PIN_ERRORS[body.code]) });
+        return;
+      }
       if (body?.historyAppend) historyRef.current = [...historyRef.current, ...body.historyAppend];
       setAction(a.id, { status: 'failed', error: body?.error ?? errorText(err) });
     }
@@ -700,6 +900,8 @@ export default function AssistantDrawer({ open, onClose }: Props) {
 
   const newChat = () => {
     cancelRecording();
+    stopSpeaking();
+    setPins({});
     historyRef.current = [];
     setMessages([]);
     setActions({});
@@ -725,9 +927,18 @@ export default function AssistantDrawer({ open, onClose }: Props) {
     return String(v);
   };
 
-  const colLabel = (col: string) => t(`col.${col.replace(/\./g, '_')}`, { defaultValue: col });
+  const colLabel = (col: string): string => {
+    // Totals from a data question: "_sum.grandTotal" -> "Total Grand total", "_count" -> "Count".
+    const agg = AGG_COL.exec(col);
+    if (agg) return agg[2] ? t(`agg.${agg[1]}`, { col: colLabel(agg[2]) }) : t('agg.count');
+    // A group named after its record: "vendorIdLabel" -> "Vendor".
+    if (/IdLabel$/.test(col)) return colLabel(col.replace(/Label$/, ''));
+    // "createdByUser.name" with no label of its own reads as its record ("Created by").
+    const fallback = col.includes('.') ? colLabel(col.split('.')[0]) : col;
+    return t(`col.${col.replace(/\./g, '_')}`, { defaultValue: fallback });
+  };
 
-  const examples = [t('ex1'), t('ex3')];
+  const examples = [t('exData1'), t('exData2'), t('ex1'), t('ex3')];
 
   /** Simple mode start screen and "what next": just two huge buttons. */
   const renderSimpleStart = () => (
@@ -857,6 +1068,23 @@ export default function AssistantDrawer({ open, onClose }: Props) {
         <Typography variant="h6" sx={{ flexGrow: 1 }}>
           {t('title')}
         </Typography>
+        {micSupported() && (
+          <Tooltip title={voiceMode ? t('voiceModeOn') : `${t('voiceMode')} · ${t('voiceModeOff')}`}>
+            <IconButton
+              onClick={toggleVoiceMode}
+              color={voiceMode ? 'primary' : 'default'}
+              aria-label={t('voiceMode')}
+              aria-pressed={voiceMode}
+            >
+              <VoiceModeIcon />
+            </IconButton>
+          </Tooltip>
+        )}
+        <Tooltip title={t('activity.open')}>
+          <IconButton onClick={() => setActivityOpen(true)} aria-label={t('activity.open')}>
+            <ActivityIcon />
+          </IconButton>
+        </Tooltip>
         <Tooltip title={t('newChat')}>
           <span>
             <IconButton
@@ -1031,19 +1259,30 @@ export default function AssistantDrawer({ open, onClose }: Props) {
                 </Alert>
               )}
               {m.text && !m.notice && (
-                <Paper
-                  variant="outlined"
-                  sx={{
-                    px: 1.5,
-                    py: 1,
-                    borderRadius: 2,
-                    alignSelf: 'flex-start',
-                    maxWidth: '92%',
-                    whiteSpace: 'pre-wrap',
-                  }}
-                >
-                  <Typography variant="body2">{m.text}</Typography>
-                </Paper>
+                <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 0.25, maxWidth: '100%' }}>
+                  <Paper
+                    variant="outlined"
+                    sx={{
+                      px: 1.5,
+                      py: 1,
+                      borderRadius: 2,
+                      maxWidth: '92%',
+                      whiteSpace: 'pre-wrap',
+                    }}
+                  >
+                    <Typography variant="body2">{m.text}</Typography>
+                  </Paper>
+                  <Tooltip title={speakingId === m.id ? t('stopSpeaking') : t('speak')}>
+                    <IconButton
+                      size="small"
+                      onClick={() => (speakingId === m.id ? stopSpeaking() : void speak(m.id, m.text))}
+                      aria-label={speakingId === m.id ? t('stopSpeaking') : t('speak')}
+                      sx={{ mt: 0.25 }}
+                    >
+                      {speakingId === m.id ? <StopSpeakIcon fontSize="small" /> : <SpeakIcon fontSize="small" />}
+                    </IconButton>
+                  </Tooltip>
+                </Box>
               )}
 
               {m.document && (
@@ -1348,8 +1587,27 @@ export default function AssistantDrawer({ open, onClose }: Props) {
                             color="text.secondary"
                             sx={{ display: 'block', mb: 1 }}
                           >
-                            {t('reviewNote')}
+                            {a.verb === 'action' ? t('actionNote') : t('reviewNote')}
                           </Typography>
+                          {a.needsPin && (
+                            <TextField
+                              size="small"
+                              type="password"
+                              label={t('pinLabel')}
+                              value={pins[a.id] ?? ''}
+                              onChange={(e) => {
+                                const v = e.target.value.replace(/\D/g, '').slice(0, 6);
+                                setPins((prev) => ({ ...prev, [a.id]: v }));
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') void confirm(a);
+                              }}
+                              error={!!st.pinError}
+                              helperText={st.pinError ?? t('pinHint')}
+                              inputProps={{ inputMode: 'numeric', autoComplete: 'off', maxLength: 6 }}
+                              sx={{ mb: 1, maxWidth: 220 }}
+                            />
+                          )}
                           <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
                             <Button
                               variant="contained"
@@ -1362,7 +1620,9 @@ export default function AssistantDrawer({ open, onClose }: Props) {
                                 ? t(simple ? 'simple.yesMpr' : 'saveAsMpr')
                                 : simple
                                   ? t('simple.yes')
-                                  : t('confirm')}
+                                  : a.verb === 'action'
+                                    ? t('confirmAction')
+                                    : t('confirm')}
                             </Button>
                             {cur.edit && !simple && (
                               <Button size="small" startIcon={<EditIcon />} onClick={() => openEditor(a)}>
@@ -1383,7 +1643,7 @@ export default function AssistantDrawer({ open, onClose }: Props) {
                       )}
                       {st.status === 'saved' && (
                         <Alert severity="success" sx={{ py: 0 }}>
-                          {t('saved')}: <strong>{st.label}</strong>{' '}
+                          {a.verb === 'action' ? t('done') : t('saved')}: <strong>{st.label}</strong>{' '}
                           {st.link && (
                             <Link
                               component="button"
@@ -1640,6 +1900,7 @@ export default function AssistantDrawer({ open, onClose }: Props) {
           </span>
         </Tooltip>
       </Box>
+      <MikoActivityDialog open={activityOpen} onClose={() => setActivityOpen(false)} />
     </Drawer>
   );
 }

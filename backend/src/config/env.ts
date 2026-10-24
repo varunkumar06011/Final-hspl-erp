@@ -43,6 +43,13 @@ const envSchema = z.object({
   // Base URL the server uses to call its own API. Default: http://127.0.0.1:$PORT
   ASSISTANT_INTERNAL_URL: z.string().optional(),
 
+  // Task Hub integration (services/taskhub.service.ts): shared secret both servers hold,
+  // Task Hub's "approvals changed" receiver, and the ERP web address used in record links
+  // (defaults to the first FRONTEND_URL entry).
+  TASKHUB_SYNC_SECRET: z.string().optional(),
+  TASKHUB_WEBHOOK_URL: z.string().optional(),
+  ERP_PUBLIC_URL: z.string().optional(),
+
   // Camera (RTSP for gate pass video clips)
   CAMERA_RTSP_URL: z.string().optional(),
   CAMERA_CLIP_DURATION: z.coerce.number().default(15),

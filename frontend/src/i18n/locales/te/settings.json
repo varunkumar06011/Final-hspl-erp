@@ -50,5 +50,12 @@
   "n_approval_request_label": "ఆమోద అభ్యర్థనలు",
   "n_approval_request_desc": "ఒక పత్రం మీ ఆమోదం కోసం వేచి ఉంది",
   "n_approval_result_label": "ఆమోద ఫలితాలు",
-  "n_approval_result_desc": "మీ పత్రం ఆమోదించబడింది లేదా తిరస్కరించబడింది"
+  "n_approval_result_desc": "మీ పత్రం ఆమోదించబడింది లేదా తిరస్కరించబడింది",
+  "taskHubTitle": "Task Hub",
+  "taskHubBody": "మీ ERP ఆమోదాలను Task Hub లో చూడండి. ఇక్కడ కోడ్ పొందండి, తర్వాత Task Hub లో Approvals → Connect Hospital ERP తెరిచి దాన్ని టైప్ చేయండి. ఇది ఒక్కసారి చేస్తే చాలు.",
+  "taskHubGetCode": "Task Hub కోడ్ పొందండి",
+  "taskHubNewCode": "కొత్త కోడ్ పొందండి",
+  "taskHubCodeLabel": "Task Hub లింక్ కోడ్",
+  "taskHubCodeHint": "దీన్ని Task Hub లో టైప్ చేయండి. ఇది ఒక్కసారే పనిచేస్తుంది, {{time}} లో గడువు ముగుస్తుంది.",
+  "taskHubCodeExpired": "ఆ కోడ్ గడువు ముగిసింది. కొత్తది పొందండి."
 }
