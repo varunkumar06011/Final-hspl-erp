@@ -404,7 +404,12 @@ export default function DenseAdminDashboard() {
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'minmax(0, 1fr)', sm: 'repeat(2, minmax(0, 1fr))', lg: 'minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr)' }, gap: { xs: 1, md: 1.2 }, mb: 1.4 }}>
         {/* Business/Budget overview donut */}
         <Section title={t('budgetOverview')} icon={<MoneyIcon sx={{ fontSize: 15, color: D.blue }} />}
-          action={<Chip size="small" label={t('live')} sx={{ height: 18, fontSize: '0.58rem', color: D.teal, bgcolor: 'rgba(47,217,164,.12)' }} />}>
+          action={
+            <Stack direction="row" alignItems="center" spacing={0.3}>
+              <Chip size="small" label={t('live')} sx={{ height: 18, fontSize: '0.58rem', color: D.teal, bgcolor: 'rgba(47,217,164,.12)' }} />
+              <EyeToggle revealed={revealed} onToggle={toggleReveal} />
+            </Stack>
+          }>
           {loading ? <Skeleton variant="circular" width={90} height={90} sx={{ mx: 'auto', bgcolor: 'rgba(255,255,255,.12)' }} /> : (
             <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 1.2, sm: 2 }, minWidth: 0 }}>
               <Box sx={{ position: 'relative', width: { xs: 96, sm: 112 }, height: { xs: 96, sm: 112 }, flexShrink: 0 }}>
@@ -429,7 +434,7 @@ export default function DenseAdminDashboard() {
                   <Stack key={r.label} direction="row" alignItems="center" spacing={0.7} sx={{ minWidth: 0 }}>
                     <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: r.color, flexShrink: 0 }} />
                     <Typography sx={{ fontSize: '0.68rem', color: D.textDim, flex: 1 }} noWrap>{r.label}</Typography>
-                    <Typography sx={{ fontSize: '0.72rem', fontWeight: 700, color: D.text, fontFamily: NUM_FONT }}>{formatCurrency(r.value)}</Typography>
+                    <Typography sx={{ fontSize: '0.72rem', fontWeight: 700, color: D.text, fontFamily: NUM_FONT }}>{revealed ? formatCurrency(r.value) : MASKED}</Typography>
                   </Stack>
                 ))}
                 <LinearProgress variant="determinate" value={Math.min(100, budgetPct)} sx={{ mt: 0.3, height: 5, borderRadius: 3, bgcolor: 'rgba(255,255,255,.15)', '& .MuiLinearProgress-bar': { bgcolor: D.red } }} />
