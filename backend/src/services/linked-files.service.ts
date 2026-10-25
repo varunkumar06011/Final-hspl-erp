@@ -304,13 +304,41 @@ export async function chainCommentFilter(
   entityType: string,
   entityId: string
 ): Promise<Record<string, unknown>[] | null> {
-  const type = chainTypeOf(entityType);
+  const VOUCHER_TYPES = ['VOUCHER', 'JOURNAL_VOUCHER'];
+  const canSee = (t: ChainType) => hasPermission(role, PERMISSION[t]);
+  let type = chainTypeOf(entityType);
+  let chainId = entityId;
+  const viaVoucher = VOUCHER_TYPES.includes(entityType.toUpperCase());
+
+  // A payment voucher joins the chain through the payment it settled.
+  if (viaVoucher) {
+    if (!hasPermission(role, PERMISSION.PAYMENT)) return null;
+    const pay = await prisma.payment.findFirst({
+      where: { journalVoucherId: entityId, paymentRequest: { projectId } },
+      select: { paymentRequestId: true },
+    });
+    if (!pay) return null;
+    type = 'PAYMENT';
+    chainId = pay.paymentRequestId;
+  }
   if (!type) return null;
-  const ids = await resolveChain(projectId, type, entityId);
+  const ids = await resolveChain(projectId, type, chainId);
   if (!ids) return null;
-  const or = (Object.keys(ids) as ChainType[])
-    .filter((t) => ids[t].size > 0 && (t === type || hasPermission(role, PERMISSION[t])))
+
+  const or: Record<string, unknown>[] = (Object.keys(ids) as ChainType[])
+    .filter((t) => ids[t].size > 0 && (viaVoucher || t === type || canSee(t)))
     .map((t) => ({ entityType: { in: ATTACHMENT_TYPES[t] }, entityId: { in: [...ids[t]] } }));
+
+  // Vouchers that paid any payment request of the chain.
+  if (ids.PAYMENT.size && canSee('PAYMENT')) {
+    const pays = await prisma.payment.findMany({
+      where: { paymentRequestId: { in: [...ids.PAYMENT] }, journalVoucherId: { not: null } },
+      select: { journalVoucherId: true },
+    });
+    const vIds = pays.map((p) => p.journalVoucherId as string);
+    if (vIds.length) or.push({ entityType: { in: VOUCHER_TYPES }, entityId: { in: vIds } });
+  }
+  if (viaVoucher) or.push({ entityType: { in: VOUCHER_TYPES }, entityId });
   return or.length ? or : null;
 }
 
