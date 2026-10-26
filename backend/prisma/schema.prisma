@@ -1950,6 +1950,8 @@ model Comment {
   createdAt      DateTime  @default(now())
   // Only the author edits. A deleted comment keeps its row: body is blanked and the deleter recorded.
   editedAt       DateTime?
+  // What the last edit changed, described by the author (required on every edit).
+  editNote       String?
   deletedAt      DateTime?
   deletedById    String?   @db.Uuid
   deletedByName  String?

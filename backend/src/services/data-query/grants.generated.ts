@@ -272,6 +272,7 @@ export const GUARDED_COLUMNS: Record<string, readonly string[]> = {
     "body",
     "createdAt",
     "editedAt",
+    "editNote",
     "deletedAt",
     "deletedById",
     "deletedByName",
