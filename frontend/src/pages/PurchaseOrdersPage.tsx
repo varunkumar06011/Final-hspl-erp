@@ -995,7 +995,7 @@ export default function PurchaseOrdersPage() {
                   >
                     <AccordionSummary
                       expandIcon={<ExpandMoreIcon />}
-                      sx={{ minHeight: 52, '&.Mui-expanded': { minHeight: 52 }, '& .MuiAccordionSummary-content': { my: 1, '&.Mui-expanded': { my: 1 } } }}
+                      sx={{ minHeight: 52, '&.Mui-expanded': { minHeight: 52 }, '& .MuiAccordionSummary-content': { my: 1, minWidth: 0, '&.Mui-expanded': { my: 1 } } }}
                     >
                       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, minWidth: 0, flex: 1 }}>
                         <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1, minWidth: 0, flexWrap: 'wrap' }}>
