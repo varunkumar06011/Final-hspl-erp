@@ -189,25 +189,18 @@ async function resequenceVoucherSeries(
     orderedVouchers.splice(requestedSequence! - 1, 0, vouchers[selectedIndex]);
   }
 
+  // One set-based statement per step, not one round trip per voucher: a series of ~150
+  // vouchers used to exceed the client's request timeout on the hosted database.
+  const ids = orderedVouchers.map((voucher) => voucher.id);
+  const finalNumbers = ids.map((_, index) => `${prefix}${String(index + 1).padStart(4, '0')}`);
   // Move every number out of the way first because jvNumber is globally unique.
-  for (const voucher of orderedVouchers) {
-    await tx.journalVoucher.update({
-      where: { id: voucher.id },
-      data: { jvNumber: `${prefix}TMP${voucher.id.replace(/-/g, '')}` },
-    });
-  }
+  const temporaryNumbers = ids.map((id) => `${prefix}TMP${id.replace(/-/g, '')}`);
+  await tx.$executeRaw`UPDATE journal_vouchers AS jv SET "jvNumber" = v.number FROM unnest(${ids}::uuid[], ${temporaryNumbers}::text[]) AS v(id, number) WHERE jv.id = v.id`;
+  await tx.$executeRaw`UPDATE journal_vouchers AS jv SET "jvNumber" = v.number FROM unnest(${ids}::uuid[], ${finalNumbers}::text[]) AS v(id, number) WHERE jv.id = v.id`;
+  await tx.$executeRaw`UPDATE ledger_entries AS le SET "voucherNumber" = v.number FROM unnest(${ids}::uuid[], ${finalNumbers}::text[]) AS v(id, number) WHERE le."journalVoucherId" = v.id`;
 
-  let selectedNumber = `${prefix}0001`;
-  for (const [index, voucher] of orderedVouchers.entries()) {
-    const jvNumber = `${prefix}${String(index + 1).padStart(4, '0')}`;
-    await tx.journalVoucher.update({ where: { id: voucher.id }, data: { jvNumber } });
-    await tx.ledgerEntry.updateMany({
-      where: { journalVoucherId: voucher.id },
-      data: { voucherNumber: jvNumber },
-    });
-    if (voucher.id === selectedVoucherId) selectedNumber = jvNumber;
-  }
-  return selectedNumber;
+  const selectedIndex = selectedVoucherId ? ids.indexOf(selectedVoucherId) : -1;
+  return selectedIndex >= 0 ? finalNumbers[selectedIndex] : `${prefix}0001`;
 }
 
 const IST_OFFSET_MS = 330 * 60 * 1000;
