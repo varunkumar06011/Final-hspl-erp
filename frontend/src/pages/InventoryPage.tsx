@@ -43,7 +43,8 @@ import {
   PlaylistAddCheck as EntriesIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { InventoryTxnType, InventoryItemType } from '@hospital-erp/shared';
+import { InventoryTxnType, InventoryItemType, CatalogItemKind } from '@hospital-erp/shared';
+import MaterialAutocomplete, { useMaterialCatalog } from '../components/MaterialAutocomplete';
 import { enumToOptions, enumLabel, formatIndianNumber, formatCurrency } from '../utils/enumOptions';
 import api, { extractErrorMessage } from '../config/api';
 import { insertRow, patchRow, pendingProps, removeRow, useOptimistic } from '../utils/optimistic';
@@ -70,6 +71,7 @@ export default function InventoryPage() {
   const [txnDialogOpen, setTxnDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Record<string, unknown> | null>(null);
   const [form, setForm] = useState<Record<string, unknown>>({});
+  const materialCatalog = useMaterialCatalog(dialogOpen, CatalogItemKind.MATERIAL);
   const [txnForm, setTxnForm] = useState<Record<string, unknown>>({});
   const [txnPhoto, setTxnPhoto] = useState<File | null>(null);
   const [attachmentTransactionId, setAttachmentTransactionId] = useState<string | null>(null);
@@ -511,7 +513,19 @@ export default function InventoryPage() {
         <DialogTitle>{editing ? tr('editItem') : tr('newItem')}</DialogTitle>
         <DialogContent>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
-            <TextField label={tr('name')} required value={form.name ?? ''} onChange={(e) => setForm({ ...form, name: e.target.value })} fullWidth size="small" />
+            {editing ? (
+              <TextField label={tr('name')} required value={form.name ?? ''} onChange={(e) => setForm({ ...form, name: e.target.value })} fullWidth size="small" />
+            ) : (
+              // A new stock item is picked from the shared item list, so it carries the same name and code.
+              <MaterialAutocomplete
+                label={tr('name')}
+                value={String(form.name ?? '')}
+                catalog={materialCatalog}
+                onTyped={(name) => setForm({ ...form, name })}
+                onPicked={(m) => setForm({ ...form, name: m.materialName, unit: form.unit || m.unit || form.unit })}
+                sx={{ minWidth: 0 }}
+              />
+            )}
             <TextField label={tr('sku')} value={form.sku ?? ''} onChange={(e) => setForm({ ...form, sku: e.target.value })} fullWidth size="small" />
             <CreatableSelect label={tr('category')} value={String(form.category ?? '')} onChange={(v) => setForm({ ...form, category: v })} dropdownType="INVENTORY_CATEGORY" />
             <TextField

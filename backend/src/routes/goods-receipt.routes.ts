@@ -1,5 +1,5 @@
 import { Router, Response, NextFunction } from 'express';
-import { isUmbrellaContract, GoodsReceiptStatus, Permission, AuditAction, InspectionStatus, InventoryItemType, AssetStatus, AssetMovementType, GatePassStatus, VoucherType, LedgerGroup, GST_LEDGER_NAMES } from '@hospital-erp/shared';
+import { isUmbrellaContract, GoodsReceiptStatus, Permission, AuditAction, InspectionStatus, InventoryItemType, AssetStatus, AssetMovementType, GatePassStatus, VoucherType, LedgerGroup, GST_LEDGER_NAMES, findLine, lineLabel, CatalogItemKind } from '@hospital-erp/shared';
 import {
   createGoodsReceiptSchema,
   inspectGoodsReceiptSchema,
@@ -20,6 +20,7 @@ import { ensureVendorLedger, findLedgerByName } from './ledger.routes';
 import { postVoucher, generateVoucherNumber } from './voucher.routes';
 import { hasPoAccrual } from '../services/po-accrual.service';
 import { applyInbound } from '../services/inventory-valuation.service';
+import { goodsReceiptChecklist } from '../services/inventory-checklist.service';
 
 const router = Router();
 router.use(authMiddleware);
@@ -88,7 +89,7 @@ router.get(
               id: true,
               poNumber: true,
               vendor: { select: { id: true, name: true, vendorCode: true } },
-              items: { select: { id: true, materialName: true, quantity: true, unit: true } },
+              items: { select: { id: true, materialName: true, itemId: true, specification: true, quantity: true, unit: true } },
             },
           },
           items: true,
@@ -158,7 +159,7 @@ router.get(
             select: {
               id: true, passNumber: true, date: true, status: true, gatePassType: true,
               vehicleNumber: true, driverName: true, driverMobile: true,
-              items: { select: { id: true, materialName: true, quantity: true, unit: true } },
+              items: { select: { id: true, materialName: true, itemId: true, specification: true, quantity: true, unit: true } },
               createdByUser: { select: { id: true, name: true } },
             },
           },
@@ -248,6 +249,8 @@ router.get(
               return {
                 id: item.id,
                 materialName: item.materialName,
+                itemId: item.itemId,
+                specification: item.specification,
                 unit: item.unit,
                 orderedQuantity: ordered,
                 receivedQuantity: receivedQty,
@@ -309,22 +312,30 @@ router.post(
         return;
       }
 
-      // Delivered quantities come from the request — the user enters what actually arrived
-      const deliveredItems = req.body.items as { materialName: string; deliveredQty: number; unit?: string | null }[];
-      const poItems = new Map(po.items.map((item) => [item.materialName.toLowerCase(), item]));
-      const gatePassItems = gatePass ? new Map(gatePass.items.map((item) => [item.materialName.toLowerCase(), item])) : null;
+      // Delivered quantities come from the request — the user enters what actually arrived.
+      // Each line is the PO line it names (by id, else same item + spec, else same name), so
+      // two PO lines of one material in different specs stay apart.
+      const deliveredItems = req.body.items as { materialName: string; specification?: string | null; poItemId?: string; deliveredQty: number; unit?: string | null }[];
+      const poLineFor = (item: (typeof deliveredItems)[number]) => findLine(po.items, item);
+      const gatePassLineFor = (item: (typeof deliveredItems)[number]) => (gatePass ? findLine(gatePass.items, item) : undefined);
 
       // Cumulative received (accepted + still in open receipts) must not pass the ordered quantity.
       const { accepted, pending } = await receivedByPo(po.id);
+      const seenPoLines = new Set<string>();
       for (const item of deliveredItems) {
         const name = item.materialName.toLowerCase();
-        const poItem = poItems.get(name);
+        const poItem = poLineFor(item);
         if (!poItem) {
-          res.status(400).json({ error: `Item ${item.materialName} is not part of the purchase order` });
+          res.status(400).json({ error: `Item ${lineLabel(item)} is not part of the purchase order` });
           return;
         }
-        if (gatePassItems) {
-          const gpItem = gatePassItems.get(name);
+        if (seenPoLines.has(poItem.id)) {
+          res.status(400).json({ error: `${lineLabel(poItem)} is listed twice on this receipt` });
+          return;
+        }
+        seenPoLines.add(poItem.id);
+        if (gatePass) {
+          const gpItem = gatePassLineFor(item);
           if (!gpItem) {
             res.status(400).json({ error: `Item ${item.materialName} was not on gate pass ${gatePass!.passNumber}` });
             return;
@@ -357,9 +368,12 @@ router.post(
           createdBy: req.user!.id,
           items: {
             create: deliveredItems.map((item) => ({
-              poItemId: poItems.get(item.materialName.toLowerCase())?.id ?? undefined,
-              materialName: item.materialName,
-              unit: item.unit || poItems.get(item.materialName.toLowerCase())?.unit || null,
+              poItemId: poLineFor(item)?.id ?? undefined,
+              // The receipt line takes the PO line's own name, item and spec.
+              materialName: poLineFor(item)?.materialName ?? item.materialName,
+              itemId: poLineFor(item)?.itemId ?? null,
+              specification: poLineFor(item)?.specification ?? null,
+              unit: item.unit || poLineFor(item)?.unit || null,
               deliveredQty: item.deliveredQty,
               itemType: InventoryItemType.CONSUMABLE,
             })),
@@ -494,6 +508,25 @@ router.post(
   },
 );
 
+// GET /:id/checklist — the final checklist (request, quotation, vendor path, PO, gate pass,
+// proof, inspection, items) that must be complete before the goods can go into inventory.
+router.get(
+  '/:id/checklist',
+  rbacMiddleware(Permission.MANAGE_INVENTORY),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const checklist = await goodsReceiptChecklist(req.params.id, requireProjectId(req));
+      if (!checklist) {
+        res.status(404).json({ error: 'Goods receipt not found' });
+        return;
+      }
+      res.json(checklist);
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
 router.post(
   '/:id/post',
   rbacMiddleware(Permission.MANAGE_INVENTORY),
@@ -526,6 +559,21 @@ router.post(
         res.status(400).json({ error: 'Only an inspected goods receipt can be posted to inventory' });
         return;
       }
+      // Final checklist: nothing goes into inventory until the whole chain checks out.
+      const checklist = await goodsReceiptChecklist(receipt.id, projectId);
+      if (!checklist?.complete) {
+        res.status(409).json({
+          error: 'The final checklist is not complete, so these goods cannot go into inventory yet',
+          code: 'CHECKLIST_INCOMPLETE',
+          checklist,
+        });
+        return;
+      }
+      // Services (labour, hire, transport...) are signed off here but never become stock.
+      const lineItemIds = receipt.items.map((l) => l.itemId ?? l.poItem?.itemId).filter((id): id is string => !!id);
+      const serviceItemIds = new Set(
+        (await prisma.catalogItem.findMany({ where: { id: { in: lineItemIds }, kind: CatalogItemKind.SERVICE }, select: { id: true } })).map((i) => i.id),
+      );
 
       const posted = await prisma.$transaction(async (tx) => {
         const claimed = await tx.goodsReceipt.updateMany({
@@ -536,10 +584,12 @@ router.post(
 
         for (const line of receipt.items) {
           if (Number(line.acceptedQty) <= 0) continue;
+          if (serviceItemIds.has(line.itemId ?? line.poItem?.itemId ?? '')) continue;
           const lineItemType = (line.itemType as InventoryItemType) || InventoryItemType.CONSUMABLE;
           // Matched by material code first (then merged-duplicate aliases, then name), so a
           // misspelt line still lands on the right stock item.
-          let inventoryItem = await findInventoryItemForMaterial(tx, projectId, line.materialName);
+          const link = { itemId: line.itemId ?? line.poItem?.itemId ?? null, specification: line.specification ?? line.poItem?.specification ?? null };
+          let inventoryItem = await findInventoryItemForMaterial(tx, projectId, line.materialName, link);
           if (inventoryItem && inventoryItem.itemType !== lineItemType) {
             throw new Error(`Item "${line.materialName}" already exists in inventory as ${inventoryItem.itemType.toLowerCase()}, but this receipt marks it as ${lineItemType.toLowerCase()}. Change the item type on this receipt to match, or rename the material.`);
           }
@@ -549,12 +599,16 @@ router.post(
             // CONSUMABLE (CNS-), etc. This prevents all auto-created items from
             // getting MAT- SKUs regardless of their actual type.
             const autoCategory = lineItemType === InventoryItemType.ASSET ? 'ASSET' : 'CONSUMABLE';
+            const catalogItem = link.itemId ? await tx.catalogItem.findUnique({ where: { id: link.itemId }, select: { code: true } }) : null;
             inventoryItem = await tx.inventoryItem.create({
               data: {
                 projectId,
-                name: line.materialName,
+                // One stock item per catalog item + spec: "Steel - 12mm TMT Bar".
+                name: lineLabel({ materialName: line.materialName, specification: link.specification }),
                 sku: await generateInventorySku(tx, projectId, autoCategory),
-                materialCode: await materialCodeForName(tx, projectId, line.materialName),
+                materialCode: catalogItem?.code ?? (await materialCodeForName(tx, projectId, line.materialName)),
+                catalogItemId: link.itemId,
+                specification: link.specification,
                 category: autoCategory,
                 unit: line.unit || 'nos',
                 itemType: lineItemType,

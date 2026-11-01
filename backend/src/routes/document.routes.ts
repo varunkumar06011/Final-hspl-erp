@@ -22,6 +22,8 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 100
 const UNLOCK_SECRET = `${process.env.JWT_SECRET || 'dev-secret-change-me'}:document-unlock`;
 const UNLOCK_TTL_SECONDS = 15 * 60;
 const PIN_PATTERN = /^\d{6}$/;
+/** The 4-digit login PIN (shared/schemas/auth.ts): unlocks a locked document when its PIN is forgotten. */
+const LOGIN_PIN_PATTERN = /^\d{4}$/;
 const MAX_PIN_ATTEMPTS = 5;
 const LOCK_DURATION_MS = 15 * 60 * 1000;
 const pinAttempts = new Map<string, { count: number; lockedUntil: number }>();
@@ -263,18 +265,21 @@ router.post(
   }
 );
 
-// POST /:id/unlock — enter the uploader's document PIN to open a locked document
+// POST /:id/unlock — enter the uploader's document PIN to open a locked document. If the
+// document PIN is forgotten, the uploader's 4-digit login PIN opens it too (the two have
+// different lengths, so one box takes either).
 router.post('/:id/unlock', async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
     const projectId = requireProjectId(req);
     const { pin } = req.body as { pin?: string };
-    if (typeof pin !== 'string' || !PIN_PATTERN.test(pin)) {
-      res.status(400).json({ error: 'Enter the 6-digit PIN' });
+    const isLoginPin = typeof pin === 'string' && LOGIN_PIN_PATTERN.test(pin);
+    if (typeof pin !== 'string' || (!PIN_PATTERN.test(pin) && !isLoginPin)) {
+      res.status(400).json({ error: 'Enter the 6-digit document PIN, or the 4-digit login PIN of the person who locked it' });
       return;
     }
     const doc = await prisma.document.findFirst({
       where: { id: req.params.id, projectId, deletedAt: null },
-      include: { uploadedByUser: { select: { id: true, name: true, documentPinHash: true } } },
+      include: { uploadedByUser: { select: { id: true, name: true, documentPinHash: true, pinHash: true } } },
     });
     if (!doc) {
       res.status(404).json({ error: 'Document not found' });
@@ -290,7 +295,7 @@ router.post('/:id/unlock', async (req: AuthenticatedRequest, res: Response, next
       res.status(429).json({ error: blocked });
       return;
     }
-    const hash = doc.uploadedByUser.documentPinHash;
+    const hash = isLoginPin ? doc.uploadedByUser.pinHash : doc.uploadedByUser.documentPinHash;
     if (!hash || !(await bcrypt.compare(pin, hash))) {
       recordFailure(key);
       res.status(403).json({ error: 'Wrong PIN', code: 'WRONG_PIN' });
@@ -304,7 +309,7 @@ router.post('/:id/unlock', async (req: AuthenticatedRequest, res: Response, next
       entityType: 'DOCUMENT',
       entityId: doc.id,
       projectId,
-      newValue: { action: 'UNLOCK' },
+      newValue: { action: 'UNLOCK', with: isLoginPin ? 'LOGIN_PIN' : 'DOCUMENT_PIN' },
     }).catch(() => {});
     res.json({
       token: signUnlock(doc.id, req.user!.id),

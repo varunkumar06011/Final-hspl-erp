@@ -51,6 +51,7 @@ import { useDeepLinkRow } from '../hooks/useDeepLinkRow';
 import { useTranslation } from 'react-i18next';
 import { enumLabel } from '../utils/enumOptions';
 import CommentsButton from './CommentsButton';
+import MaterialAutocomplete, { useMaterialCatalog } from './MaterialAutocomplete';
 
 export interface MaterialEntry {
   id?: string;
@@ -153,6 +154,8 @@ export default function EntityPage({
     if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
   }, []);
   const [dialogOpen, setDialogOpen] = useState(false);
+  // Materials a vendor supplies are picked from the same shared item list as everywhere else.
+  const materialCatalog = useMaterialCatalog(dialogOpen && fields.some((f) => f.type === 'materials-list'));
   const [editing, setEditing] = useState<Record<string, unknown> | null>(null);
   const [form, setForm] = useState<Record<string, unknown>>({});
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
@@ -626,14 +629,20 @@ export default function EntityPage({
                     )}
                     {materials.map((mat, index) => (
                       <Box key={index} sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 1, alignItems: { xs: 'stretch', sm: 'center' } }}>
-                        <TextField
-                          label={t('entity.materialName')}
-                          value={mat.name ?? ''}
-                          onChange={(e) => updateMaterial(index, 'name', e.target.value)}
-                          size="small"
-                          InputLabelProps={{ shrink: true }}
-                          sx={{ flex: 2, minWidth: 0 }}
-                        />
+                        <Box sx={{ flex: 2, minWidth: 0 }}>
+                          <MaterialAutocomplete
+                            label={t('entity.materialName')}
+                            value={mat.name ?? ''}
+                            catalog={materialCatalog}
+                            onTyped={(name) => updateMaterial(index, 'name', name)}
+                            onPicked={(m) => {
+                              const updated = [...materials];
+                              updated[index] = { ...updated[index], name: m.materialName, unit: updated[index].unit || m.unit || '' };
+                              setForm({ ...form, [field.name]: updated });
+                            }}
+                            sx={{ minWidth: 0 }}
+                          />
+                        </Box>
                         <IconButton size="small" color="error" onClick={() => removeMaterial(index)} sx={{ flexShrink: 0 }}>
                           <RemoveIcon fontSize="small" />
                         </IconButton>

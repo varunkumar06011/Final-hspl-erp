@@ -1,5 +1,6 @@
 import { Router, Response, NextFunction } from 'express';
 import { findDuplicateGroups, mergeInventoryItems } from '../services/inventory-match.service';
+import { resolveCatalogLines } from '../services/catalog.service';
 import { canOverrideApprovals, Permission, AuditAction, InventoryTxnType, InventoryItemType, AssetStatus, AssetMovementType, isAdminRole } from '@hospital-erp/shared';
 import {
   createInventoryItemSchema,
@@ -165,9 +166,11 @@ router.post(
       }
 
       const sku = req.body.sku || await generateInventorySku(projectId, req.body.category ?? null);
+      // A stock item is a catalog item too (same name, same code as on requests and POs).
+      const [link] = await resolveCatalogLines([{ materialName: String(req.body.name), unit: req.body.unit }], { userId: req.user!.id });
 
       const record = await prisma.inventoryItem.create({
-        data: { ...req.body, sku, currentStock: 0, projectId },
+        data: { ...req.body, name: link.materialName, sku, currentStock: 0, projectId, catalogItemId: link.itemId, materialCode: link.materialCode },
       });
 
       if (record.itemType === InventoryItemType.ASSET) {

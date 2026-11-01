@@ -18,6 +18,9 @@ import {
   consumeTranscribeBudget,
   transcribeAudio,
 } from '../services/assistant/transcribe';
+import { MAX_SPEECH_CHARS, consumeSpeechBudget, synthesizeSpeech } from '../services/assistant/speech';
+import { isAdminRole } from '@hospital-erp/shared';
+import { prisma } from '../config/prisma';
 
 const router = Router();
 router.use(authMiddleware);
@@ -216,7 +219,8 @@ router.post(
         res.status(400).json({ error: 'Invalid action id' });
         return;
       }
-      const out = await confirmAction(req.params.id, assistantUser(req));
+      const pin = typeof req.body?.pin === 'string' ? req.body.pin.slice(0, 6) : undefined;
+      const out = await confirmAction(req.params.id, assistantUser(req), { pin });
       logger.info({
         event: 'assistant_confirm',
         userId: req.user!.id,
@@ -254,6 +258,96 @@ router.patch('/actions/:id', async (req: AuthenticatedRequest, res: Response, ne
     const out = await editAction(req.params.id, assistantUser(req), parsed.data);
     logger.info({ event: 'assistant_edit', userId: req.user!.id, actionId: req.params.id, ok: out.ok });
     res.status(out.status).json(out);
+  } catch (error) {
+    next(error);
+  }
+});
+
+const speakSchema = z.object({
+  text: z.string().trim().min(1).max(MAX_SPEECH_CHARS * 3),
+  language: z.enum(['en', 'te']).optional(),
+});
+
+// POST /assistant/speak — a reply read aloud (MP3). Used by the speaker button and voice mode.
+router.post('/speak', async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  try {
+    if (!isConfigured()) {
+      res.status(503).json({ error: 'The AI assistant is not enabled', code: 'ASSISTANT_DISABLED' });
+      return;
+    }
+    const parsed = speakSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: 'Text is required' });
+      return;
+    }
+    if (!consumeSpeechBudget(req.user!.id)) {
+      res.status(429).json({ error: 'Too many voice replies; try again later', code: 'ASSISTANT_LIMIT' });
+      return;
+    }
+    const audio = await synthesizeSpeech(parsed.data);
+    res.setHeader('Content-Type', 'audio/mpeg');
+    res.setHeader('Cache-Control', 'no-store');
+    res.send(audio);
+  } catch (error) {
+    if (error instanceof AssistantProviderError) {
+      res.status(error.status === 429 ? 429 : error.status === 400 ? 400 : 502).json({ error: error.message, code: 'ASSISTANT_PROVIDER' });
+      return;
+    }
+    next(error);
+  }
+});
+
+const activitySchema = z.object({
+  userId: z.string().uuid().optional(),
+  kind: z.enum(['read', 'write', 'all']).optional(),
+  page: z.coerce.number().int().min(1).max(500).optional(),
+  pageSize: z.coerce.number().int().min(1).max(100).optional(),
+});
+
+// GET /assistant/activity — the AI audit trail for this project: every question Miko
+// answered from the data, every card it prepared and what became of it. Admin roles
+// see everyone's; others see only their own.
+router.get('/activity', async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  try {
+    const parsed = activitySchema.safeParse(req.query);
+    if (!parsed.success) {
+      res.status(400).json({ error: 'Invalid filters' });
+      return;
+    }
+    const { kind = 'all', page = 1, pageSize = 50 } = parsed.data;
+    const admin = isAdminRole(req.user!.role);
+    const userId = admin ? parsed.data.userId : req.user!.id;
+    const where = {
+      projectId: requireProjectId(req),
+      tool: { not: '_document' },
+      ...(userId ? { userId } : {}),
+      ...(kind === 'read' ? { status: 'READ' } : kind === 'write' ? { status: { not: 'READ' } } : {}),
+    };
+    const [rows, total] = await Promise.all([
+      prisma.assistantAction.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+        select: { id: true, userId: true, tool: true, args: true, summary: true, status: true, resultLabel: true, error: true, createdAt: true, executedAt: true },
+      }),
+      prisma.assistantAction.count({ where }),
+    ]);
+    const users = await prisma.user.findMany({
+      where: { id: { in: [...new Set(rows.map((r) => r.userId))] } },
+      select: { id: true, name: true, role: true },
+    });
+    const byId = new Map(users.map((u) => [u.id, u]));
+    res.json({
+      data: rows.map((r) => {
+        // Stored photos never leave the server through this list.
+        const args = { ...((r.args ?? {}) as Record<string, unknown>) };
+        delete args._images;
+        delete args._documents;
+        return { ...r, args, user: byId.get(r.userId) ?? null };
+      }),
+      pagination: { page, pageSize, total },
+    });
   } catch (error) {
     next(error);
   }

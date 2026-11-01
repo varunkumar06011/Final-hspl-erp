@@ -55,5 +55,6 @@
   "poHeadShared": "Budget head of the PO: {{name}} (same on all bills).",
   "poHeadMixed": "These bills have different or no budget heads, so the PO is created without one. Set it later on the PO.",
   "generatePoConfirm": "Generate PO · {{total}}",
-  "item": "Item"
+  "item": "Item",
+  "specification": "Specification"
 }

@@ -47,12 +47,15 @@ import activityLogRoutes from './activity-log.routes';
 import projectRoutes from './project.routes';
 import searchRoutes from './search.routes';
 import assistantRoutes from './assistant.routes';
+import dataQueryRoutes from './data-query.routes';
 import chatRoutes from './chat.routes';
 import moduleAccessRoutes from './module-access.routes';
 import stalledRoutes from './stalled.routes';
 import siteBillRoutes from './site-bills.routes';
 import combinedRecordRoutes from './combined-records.routes';
 import myWorkRoutes from './my-work.routes';
+import taskHubRoutes from './taskhub.routes';
+import catalogRoutes from './catalog.routes';
 
 const router = Router();
 
@@ -81,6 +84,7 @@ router.use('/photos', photoRoutes);
 router.use('/issues', issueRoutes);
 router.use('/inspections', inspectionRoutes);
 router.use('/documents', documentRoutes);
+router.use('/catalog', catalogRoutes);
 router.use('/document-library', documentLibraryRoutes);
 router.use('/contracts', contractRoutes);
 router.use('/labour', labourRoutes);
@@ -108,7 +112,9 @@ router.use('/comments', commentRoutes);
 router.use('/activity-log', activityLogRoutes);
 router.use('/search', searchRoutes);
 router.use('/assistant', assistantRoutes);
+router.use('/data-query', dataQueryRoutes);
 router.use('/chat', chatRoutes);
 router.use('/module-access', moduleAccessRoutes);
+router.use('/integrations/taskhub', taskHubRoutes);
 
 export default router;

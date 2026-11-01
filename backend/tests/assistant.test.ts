@@ -90,14 +90,23 @@ describe('simple mode', () => {
 });
 
 describe('assistant tool registry (hard limits)', () => {
-  it('has no tool that approves, rejects, pays, deletes, cancels or updates', () => {
-    const forbidden = /approve|reject|pay|delete|remove|cancel|update|edit|void|reverse|post_|voucher/i;
+  it('has no tool that deletes, edits saved lines, reverses or posts vouchers', () => {
+    const forbidden = /delete|remove|update|edit|void|reverse|post_|voucher/i;
     for (const t of TOOLS) expect(t.declaration.name).not.toMatch(forbidden);
   });
 
-  it('write tools are creation-only and limited to the allowed modules', () => {
+  it('write tools are exactly the reviewed creates and actions', () => {
     const writes = TOOLS.filter((t) => t.kind === 'write').map((t) => t.declaration.name).sort();
     expect(writes).toEqual([
+      'approve_gate_pass',
+      'approve_invoice',
+      'approve_mpr',
+      'approve_payment',
+      'approve_po',
+      'approve_stock_entry',
+      'cancel_mpr',
+      'change_po_budget_head',
+      'change_po_payment_type',
       'create_goods_receipt',
       'create_invoice',
       'create_mpr',
@@ -106,13 +115,84 @@ describe('assistant tool registry (hard limits)', () => {
       'create_site_bill',
       'create_stock_entry',
       'create_vendor',
+      'finalize_quotation',
+      'record_payment',
+      'reject_invoice',
+      'reject_mpr',
+      'reject_payment',
+      'reject_po',
+      'reject_quotation',
+      'reject_stock_entry',
+      'submit_mpr',
     ]);
   });
 
-  it('every write tool posts to a collection root, never to an action sub-route', () => {
+  it('creates post to a collection root; actions post to one record\'s action route', () => {
+    const id = VENDOR_ID;
     for (const t of TOOLS) {
-      if (t.kind === 'write') expect(t.path).toMatch(/^\/[a-z-]+$/);
+      if (t.kind !== 'write') continue;
+      if (t.verb === 'action') expect(typeof t.path === 'function' ? t.path({ id }) : t.path).toMatch(new RegExp(`^/[a-z-]+/${id}/[a-z-]+$`));
+      else expect(t.path).toMatch(/^\/[a-z-]+$/);
     }
+  });
+
+  it('every action that moves money or cancels needs the login PIN', () => {
+    for (const name of ['record_payment', 'approve_payment', 'cancel_mpr']) {
+      expect((TOOLS_BY_NAME[name] as { needsPin?: boolean }).needsPin).toBe(true);
+    }
+  });
+});
+
+describe('action proposals', () => {
+  const PO_ID = '22222222-2222-4222-8222-222222222222';
+
+  it('approve_po only prepares a card; the PO endpoint is not called', async () => {
+    db.assistantAction.create.mockResolvedValue({ id: 'act1' });
+    mCallApi.mockResolvedValueOnce({ ok: true, status: 200, body: { id: PO_ID, poNumber: 'VGH-PO012', status: 'PENDING_APPROVAL', grandTotal: 50000, vendor: { name: 'ABC Traders' } } });
+    mGenerate
+      .mockResolvedValueOnce({ role: 'model', parts: [{ functionCall: { name: 'approve_po', args: { id: PO_ID } } }] })
+      .mockResolvedValueOnce({ role: 'model', parts: [{ text: 'Prepared; press Confirm.' }] });
+    const out = await runChat(user, 'approve PO12', []);
+    expect(out.pending).toHaveLength(1);
+    expect(out.pending[0]).toMatchObject({ tool: 'approve_po', verb: 'action', needsPin: false, edit: null });
+    expect(mCallApi.mock.calls.every((c) => c[1] === 'GET')).toBe(true);
+  });
+
+  it('refuses a card when the record is not in an approvable state', async () => {
+    mCallApi.mockResolvedValueOnce({ ok: true, status: 200, body: { id: PO_ID, poNumber: 'VGH-PO012', status: 'APPROVED' } });
+    mGenerate
+      .mockResolvedValueOnce({ role: 'model', parts: [{ functionCall: { name: 'approve_po', args: { id: PO_ID } } }] })
+      .mockResolvedValueOnce({ role: 'model', parts: [{ text: 'It is already approved.' }] });
+    const out = await runChat(user, 'approve PO12', []);
+    expect(out.pending).toHaveLength(0);
+    const fr = JSON.stringify(mGenerate.mock.calls[1][0].contents);
+    expect(fr).toMatch(/is APPROVED/);
+  });
+
+  it('confirming an approval posts to the approve route with the acknowledgement', async () => {
+    db.assistantAction.findFirst.mockResolvedValue({
+      id: 'act1', tool: 'approve_po', status: 'PENDING', createdAt: new Date(),
+      args: { id: PO_ID, comments: 'ok' },
+      summary: { fields: [{ key: 'record', value: 'Purchase order VGH-PO012' }] },
+    });
+    db.assistantAction.updateMany.mockResolvedValue({ count: 1 });
+    db.assistantAction.update.mockResolvedValue({});
+    mCallApi.mockResolvedValueOnce({ ok: true, status: 200, body: { id: PO_ID } });
+    const out = await confirmAction('act1', user);
+    expect(out.ok).toBe(true);
+    expect(mCallApi).toHaveBeenCalledWith('Bearer tok', 'POST', `/purchase-orders/${PO_ID}/approve`, { body: { comments: 'ok', acknowledged: true } });
+    expect(out.result?.label).toBe('Purchase order VGH-PO012');
+  });
+
+  it('a PIN action is refused without the PIN and nothing is sent', async () => {
+    db.assistantAction.findFirst.mockResolvedValue({
+      id: 'act2', tool: 'record_payment', status: 'PENDING', createdAt: new Date(),
+      args: { id: PO_ID, amount: 100, mode: 'CASH' }, summary: { fields: [] },
+    });
+    const out = await confirmAction('act2', user);
+    expect(out).toMatchObject({ ok: false, code: 'PIN_REQUIRED' });
+    expect(mCallApi).not.toHaveBeenCalled();
+    expect(db.assistantAction.updateMany).not.toHaveBeenCalled();
   });
 });
 
@@ -304,7 +384,8 @@ describe('history + quota', () => {
   });
 
   it('tool lookup never exposes anything outside the registry', () => {
-    expect(TOOLS_BY_NAME['approve_po']).toBeUndefined();
+    expect(TOOLS_BY_NAME['delete_po']).toBeUndefined();
+    expect(TOOLS_BY_NAME['approve_everything']).toBeUndefined();
   });
 });
 

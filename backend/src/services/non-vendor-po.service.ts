@@ -83,6 +83,8 @@ export async function createNonVendorPoFromMpr(mprId: string, projectId: string,
         items: {
           create: lines.map(({ item, unitPrice, amount }) => ({
             materialName: item.materialName,
+            itemId: item.itemId,
+            specification: item.specification,
             quantity: item.quantity,
             unit: item.unit,
             unitPrice,

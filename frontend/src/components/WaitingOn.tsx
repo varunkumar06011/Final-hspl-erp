@@ -38,6 +38,7 @@ export default function WaitingOn({
       variant="outlined"
       color={days >= 3 ? 'warning' : 'default'}
       label={t('waitingOnShort', { who, when: days > 0 ? t('daysShort', { n: days }) : t('today') })}
+      sx={{ maxWidth: '100%', height: 'auto', '& .MuiChip-label': { whiteSpace: 'normal', py: 0.25 } }}
     />
   );
 }

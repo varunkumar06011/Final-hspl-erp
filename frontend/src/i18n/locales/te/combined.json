@@ -200,5 +200,6 @@
   "service": "సేవ",
   "decideRequest": "అభ్యర్థన {{n}} మీ ఆమోదం కోసం వేచి ఉంది",
   "decidePo": "PO {{n}} మీ ఆమోదం కోసం వేచి ఉంది",
-  "contractChip": "కాంట్రాక్ట్"
+  "contractChip": "కాంట్రాక్ట్",
+  "specification": "స్పెసిఫికేషన్"
 }

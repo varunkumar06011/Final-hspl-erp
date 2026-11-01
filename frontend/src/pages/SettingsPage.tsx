@@ -26,6 +26,9 @@ import NotificationPermissionPrompt from '../components/NotificationPermissionPr
 import { useTranslation } from 'react-i18next';
 import CameraCapture from '../components/CameraCapture';
 import SignaturePad from '../components/SignaturePad';
+import ItemCatalogDialog from '../components/ItemCatalogDialog';
+import TaskHubLinkCard from '../components/TaskHubLinkCard';
+import { canLinkTaskHub, canManageCatalog } from '@hospital-erp/shared';
 const NOTIFICATION_EVENT_LABELS: { key: string; label: string; description: string }[] = [
   { key: 'entity_created', label: 'New entity created', description: 'PO, quotation, invoice, payment, etc. created by your team' },
   { key: 'approval_request', label: 'Approval requests', description: 'A document is waiting for your approval' },
@@ -46,6 +49,8 @@ export default function SettingsPage() {
   const [panNumber, setPanNumber] = useState('');
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [updating, setUpdating] = useState(false);
+  const [catalogOpen, setCatalogOpen] = useState(false);
+  const { t: tc } = useTranslation('catalog');
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [profileName, setProfileName] = useState('');
   const [profilePhone, setProfilePhone] = useState('');
@@ -520,6 +525,21 @@ export default function SettingsPage() {
           </Box>
         </CardContent>
       </Card>
+
+      {/* Item list (materials, services and their specifications), shared by every project */}
+      {user && canManageCatalog(user.role, user.extraPermissions) && (
+        <Card sx={{ mb: 3 }}>
+          <CardContent>
+            <Typography variant="h6" gutterBottom>{tc('settingsCardTitle')}</Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>{tc('settingsCardBody')}</Typography>
+            <Button variant="outlined" onClick={() => setCatalogOpen(true)}>{tc('settingsCardButton')}</Button>
+          </CardContent>
+        </Card>
+      )}
+      <ItemCatalogDialog open={catalogOpen} onClose={() => setCatalogOpen(false)} />
+
+      {/* Show my ERP approvals in Task Hub (approvers only) */}
+      {user && canLinkTaskHub(user.role, user.extraPermissions) && <TaskHubLinkCard />}
 
       {/* App Update */}
       <Card sx={{ mb: 3 }}>

@@ -1,5 +1,5 @@
 import { Prisma } from '@prisma/client';
-import { POStatus, QuotationStatus, AuditAction, UserRole, FIRST_LEVEL_APPROVER_ROLES } from '@hospital-erp/shared';
+import { POStatus, QuotationStatus, AuditAction, UserRole, FIRST_LEVEL_APPROVER_ROLES, catalogNameKey, lineKey } from '@hospital-erp/shared';
 import { prisma } from '../config/prisma';
 import { logAudit } from './audit.service';
 import { notifyApprovers } from './push.service';
@@ -13,7 +13,6 @@ import { HEAD_THEN_ADMIN_POLICY, headThenAdminSteps } from './approval.service';
  * every line is priced the live PO is re-synced and sent back for approval.
  */
 
-const norm = (s: string) => s.trim().toLowerCase();
 const isUnpriced = (i: { unitPrice: Prisma.Decimal | number }) => Number(i.unitPrice) <= 0;
 
 /** PO states in which items can still be revised (nothing delivered yet). */
@@ -23,18 +22,32 @@ export const hasUnpricedItems = (items: Array<{ unitPrice: Prisma.Decimal | numb
 
 interface MprLine {
   materialName: string;
+  itemId?: string | null;
+  specification?: string | null;
   quantity: number;
   unit?: string | null;
 }
 
-/** Pairs each wanted line with a distinct existing line of the same name. */
-function pairByName<W extends { materialName: string }, T extends { materialName: string }>(wanted: W[], existing: T[]) {
+type Line = { materialName: string; specification?: string | null };
+
+/**
+ * Pairs each wanted line with a distinct existing line of the same item + spec (Steel 8mm
+ * and Steel 12mm are different lines). Lines saved before specs travelled have none; those
+ * still pair by name.
+ */
+function pairByName<W extends Line, T extends Line>(wanted: W[], existing: T[]) {
   const used = new Set<T>();
-  return wanted.map((w) => {
-    const match = existing.find((e) => !used.has(e) && norm(e.materialName) === norm(w.materialName)) ?? null;
+  const pairs = wanted.map((w) => {
+    const match = existing.find((e) => !used.has(e) && lineKey(e) === lineKey(w)) ?? null;
     if (match) used.add(match);
     return { wanted: w, match };
   });
+  for (const p of pairs) {
+    if (p.match) continue;
+    p.match = existing.find((e) => !used.has(e) && !e.specification && catalogNameKey(e.materialName) === catalogNameKey(p.wanted.materialName)) ?? null;
+    if (p.match) used.add(p.match);
+  }
+  return pairs;
 }
 
 /**
@@ -64,6 +77,7 @@ export async function syncQuotationsFromMpr(mprId: string, lines: MprLine[], gst
               quantity: wanted.quantity,
               unit: wanted.unit ?? match.unit,
               amount: wanted.quantity * Number(match.unitPrice),
+              ...(wanted.itemId ? { itemId: wanted.itemId, specification: wanted.specification ?? null } : {}),
             },
           });
         } else {
@@ -71,6 +85,8 @@ export async function syncQuotationsFromMpr(mprId: string, lines: MprLine[], gst
             data: {
               quotationId: q.id,
               materialName: wanted.materialName,
+              itemId: wanted.itemId ?? null,
+              specification: wanted.specification ?? null,
               quantity: wanted.quantity,
               unit: wanted.unit ?? null,
               unitPrice: 0,
@@ -136,6 +152,8 @@ export async function syncPoFromQuotation(
     for (const { wanted: q, match } of pairs) {
       const data = {
         materialName: q.materialName,
+        itemId: q.itemId,
+        specification: q.specification,
         quantity: q.quantity,
         unit: q.unit,
         unitPrice: q.unitPrice,

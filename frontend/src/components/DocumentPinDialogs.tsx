@@ -23,7 +23,11 @@ function PinField({ label, value, onChange, autoFocus }: { label: string; value:
   );
 }
 
-/** Asks for a 6-digit PIN; `onSubmit` throws (or rejects) to show an error and keep the dialog open. */
+/**
+ * Asks for a 6-digit PIN; `onSubmit` throws (or rejects) to show an error and keep the dialog
+ * open. With `loginPinFallback` (unlocking a document), the 4-digit login PIN of the person who
+ * locked it is accepted too, for when the document PIN is forgotten.
+ */
 export function PinPromptDialog({
   open,
   title,
@@ -31,6 +35,7 @@ export function PinPromptDialog({
   submitLabel,
   onSubmit,
   onClose,
+  loginPinFallback,
 }: {
   open: boolean;
   title: string;
@@ -38,6 +43,7 @@ export function PinPromptDialog({
   submitLabel: string;
   onSubmit: (pin: string) => Promise<void>;
   onClose: () => void;
+  loginPinFallback?: { ownerName: string };
 }) {
   const { t } = useTranslation('documents');
   const [pin, setPin] = useState('');
@@ -52,8 +58,9 @@ export function PinPromptDialog({
     }
   }, [open]);
 
+  const ready = pin.length === 6 || (!!loginPinFallback && pin.length === 4);
   const submit = async () => {
-    if (pin.length !== 6) return;
+    if (!ready) return;
     setBusy(true);
     setError('');
     try {
@@ -76,11 +83,14 @@ export function PinPromptDialog({
           <Box component="form" onSubmit={(e) => { e.preventDefault(); void submit(); }}>
             <PinField label={t('pinLabel')} value={pin} onChange={setPin} autoFocus />
           </Box>
+          {loginPinFallback && (
+            <Typography variant="caption" color="text.secondary">{t('forgotPinUseLogin', { name: loginPinFallback.ownerName })}</Typography>
+          )}
         </Box>
       </DialogContent>
       <DialogActions>
         <Button onClick={onClose}>{t('cancel')}</Button>
-        <Button variant="contained" disabled={pin.length !== 6 || busy} onClick={() => void submit()}>
+        <Button variant="contained" disabled={!ready || busy} onClick={() => void submit()}>
           {busy ? <CircularProgress size={20} /> : submitLabel}
         </Button>
       </DialogActions>

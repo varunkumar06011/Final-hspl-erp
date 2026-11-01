@@ -43,6 +43,7 @@ import {
   Description as DebitNoteIcon,
   ContentCopy as DuplicateIcon,
   Print as PrintIcon,
+  Sort as ArrangeIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { extractErrorMessage } from '../config/api';
@@ -408,6 +409,26 @@ export default function VouchersPage() {
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['/vouchers'] });
+      queryClient.invalidateQueries({ queryKey: ['/audit-logs'] });
+    },
+  });
+
+  // Re-hands the existing voucher numbers out in date order; nothing else on a voucher changes.
+  const arrangeMutation = useMutation({
+    mutationFn: async (voucherType: string) => {
+      const response = await api.post('/vouchers/arrange-by-date', voucherType ? { voucherType } : {});
+      return response.data as { renumbered: number };
+    },
+    onSuccess: (data) => {
+      setSuccessMsg(data.renumbered ? tr('okArranged', { n: data.renumbered }) : tr('okAlreadyArranged'));
+      setTimeout(() => setSuccessMsg(''), 5000);
+    },
+    onError: (err: unknown) => setError(extractErrorMessage(err)),
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['/vouchers'] });
+      queryClient.invalidateQueries({ queryKey: ['/ledgers'] });
+      queryClient.invalidateQueries({ queryKey: ['/bank-accounts'] });
+      queryClient.invalidateQueries({ queryKey: ['/cash-accounts'] });
       queryClient.invalidateQueries({ queryKey: ['/audit-logs'] });
     },
   });
@@ -881,6 +902,23 @@ export default function VouchersPage() {
             InputProps={{ startAdornment: (<InputAdornment position="start">₹</InputAdornment>) }}
             sx={{ width: 130 }}
           />
+          {canReverseVoucher && (
+            <Tooltip title={tr('arrangeHint')}>
+              <span>
+                <Button
+                  variant="outlined"
+                  startIcon={arrangeMutation.isPending ? <CircularProgress size={16} /> : <ArrangeIcon />}
+                  disabled={arrangeMutation.isPending}
+                  onClick={() => {
+                    const scope = typeFilter ? enumLabel(typeFilter) : tr('allTypes');
+                    if (confirm(tr('confirmArrange', { t: scope }))) arrangeMutation.mutate(typeFilter);
+                  }}
+                >
+                  {tr('arrangeByDate')}
+                </Button>
+              </span>
+            </Tooltip>
+          )}
         </Box>
       </Card>
 

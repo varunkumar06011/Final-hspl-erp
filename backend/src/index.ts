@@ -3,7 +3,9 @@ import { env } from './config/env';
 import app from './app';
 import { initSocketServer } from './socket';
 import { startQuotationAgingScheduler, stopQuotationAgingScheduler } from './services/scheduler.service';
+import { startCatalogBackfill } from './services/catalog-backfill.service';
 import { startSearchIndex, stopSearchIndex, warmAllProjects } from './services/search/manager';
+import { startTaskHubNudges, stopTaskHubNudges } from './services/taskhub.service';
 
 const server = http.createServer(app);
 
@@ -21,6 +23,8 @@ server.listen(env.PORT, () => {
   // notifications to admins. Ensures notifications are delivered even
   // when nobody has the app open.
   startQuotationAgingScheduler();
+  // Link lines entered before the item catalog existed (idempotent; CATALOG_BACKFILL=false skips).
+  startCatalogBackfill();
 
   // Global search: an in-memory index per project, built read-only from the
   // database and kept fresh automatically. Warm it in the background so the
@@ -29,6 +33,9 @@ server.listen(env.PORT, () => {
   if (process.env.SEARCH_WARMUP !== 'false') {
     setTimeout(() => void warmAllProjects(), 3000).unref();
   }
+
+  // Tell Task Hub when approvals change (only when TASKHUB_WEBHOOK_URL + TASKHUB_SYNC_SECRET are set).
+  startTaskHubNudges();
 });
 
 // Graceful shutdown
@@ -36,6 +43,7 @@ process.on('SIGTERM', () => {
   console.log('SIGTERM received, shutting down gracefully...');
   stopQuotationAgingScheduler();
   stopSearchIndex();
+  stopTaskHubNudges();
   server.close(() => {
     console.log('Server closed');
     process.exit(0);
@@ -46,6 +54,7 @@ process.on('SIGINT', () => {
   console.log('SIGINT received, shutting down gracefully...');
   stopQuotationAgingScheduler();
   stopSearchIndex();
+  stopTaskHubNudges();
   server.close(() => {
     console.log('Server closed');
     process.exit(0);

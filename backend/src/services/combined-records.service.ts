@@ -5,6 +5,7 @@ import {
   hasPermission,
   isApproverRole,
   isWorkflowOpenToRole,
+  lineKey,
 } from '@hospital-erp/shared';
 import { prisma } from '../config/prisma';
 
@@ -613,12 +614,16 @@ export async function getCombinedRecord(projectId: string, viewer: Viewer, type:
   const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, ' ');
   const covered = new Set(quotations.filter((q) => FINALIZED_Q.includes(q.status)).flatMap((q) => q.items.map((i) => norm(i.materialName))));
   const uncoveredMaterials = mpr ? mpr.items.filter((i) => !covered.has(norm(i.materialName))).map((i) => i.materialName) : [];
+  // The same by item + spec (Steel 8mm may be finalized while Steel 12mm still needs a quote).
+  const coveredLines = new Set(quotations.filter((q) => FINALIZED_Q.includes(q.status)).flatMap((q) => q.items.map((i) => lineKey(i))));
+  const uncoveredLineKeys = mpr ? mpr.items.filter((i) => !coveredLines.has(lineKey(i))).map((i) => lineKey(i)) : [];
 
   return {
     root,
     canSeeFinancials: fin,
     ...stages,
     uncoveredMaterials,
+    uncoveredLineKeys,
     mpr,
     quotations: quotations.map((q) => ({
       ...q,

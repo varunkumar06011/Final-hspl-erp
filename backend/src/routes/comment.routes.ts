@@ -270,6 +270,8 @@ router.post(
 const editCommentSchema = z.object({
   body: z.object({
     body: z.string().trim().min(1).max(4000),
+    // Required: the author says what was changed, or the edit is not saved.
+    editNote: z.string().trim().min(1, 'Describe what you changed').max(500),
     mentionIds: z.array(z.string().uuid()).max(50).optional(),
   }),
 });
@@ -294,7 +296,11 @@ router.patch(
         res.status(400).json({ error: 'This comment was deleted' });
         return;
       }
-      const { body, mentionIds } = req.body as { body: string; mentionIds?: string[] };
+      const { body, editNote, mentionIds } = req.body as {
+        body: string;
+        editNote: string;
+        mentionIds?: string[];
+      };
       const scope = projectUserScope(user.projectId ?? null);
 
       const wanted = Array.from(new Set(mentionIds ?? [])).filter((id) => id !== user.id);
@@ -317,6 +323,7 @@ router.patch(
           body,
           mentions: mentions as unknown as Prisma.InputJsonValue,
           editedAt: new Date(),
+          editNote,
         },
         include: { author: { select: { id: true, name: true, role: true } } },
       });

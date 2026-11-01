@@ -158,5 +158,7 @@
   "fRequestedBy": "Requested by",
   "fDate": "Date",
   "fItems": "Items",
-  "fPeriod": "Service period"
+  "fPeriod": "Service period",
+  "newCode": "New",
+  "formerNumber": "(was {{n}})"
 }

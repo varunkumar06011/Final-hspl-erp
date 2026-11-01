@@ -1,5 +1,5 @@
 import { Router, Response, NextFunction } from 'express';
-import { Permission, AuditAction, UserRole } from '@hospital-erp/shared';
+import { Permission, AuditAction, UserRole, lineKey } from '@hospital-erp/shared';
 import {
   createGatePassSchema,
   listGatePassesSchema,
@@ -85,7 +85,7 @@ async function syncPoDeliveryStatus(poId: string): Promise<void> {
       items: true,
       goodsReceipts: {
         where: { deletedAt: null, status: 'POSTED' },
-        select: { items: { select: { poItemId: true, materialName: true, acceptedQty: true } } },
+        select: { items: { select: { poItemId: true, materialName: true, specification: true, acceptedQty: true } } },
       },
     },
   });
@@ -96,7 +96,7 @@ async function syncPoDeliveryStatus(poId: string): Promise<void> {
     for (const item of receipt.items) {
       const qty = Number(item.acceptedQty);
       if (item.poItemId) acceptedByPoItemId.set(item.poItemId, (acceptedByPoItemId.get(item.poItemId) ?? 0) + qty);
-      const name = item.materialName.toLowerCase();
+      const name = lineKey(item);
       acceptedByName.set(name, (acceptedByName.get(name) ?? 0) + qty);
     }
   }
@@ -104,7 +104,7 @@ async function syncPoDeliveryStatus(poId: string): Promise<void> {
     (item) =>
       (item.id && acceptedByPoItemId.has(item.id)
         ? acceptedByPoItemId.get(item.id)!
-        : acceptedByName.get(item.materialName.toLowerCase()) ?? 0) >= Number(item.quantity),
+        : acceptedByName.get(lineKey(item)) ?? 0) >= Number(item.quantity),
   );
   await prisma.purchaseOrder.update({
     where: { id: poId },
@@ -130,7 +130,7 @@ router.get(
           },
           goodsReceipts: {
             where: { deletedAt: null, status: 'POSTED' },
-            select: { items: { select: { poItemId: true, materialName: true, acceptedQty: true } } },
+            select: { items: { select: { poItemId: true, materialName: true, specification: true, acceptedQty: true } } },
           },
           invoices: {
             where: { deletedAt: null, verificationStatus: 'VERIFIED' },
@@ -155,7 +155,7 @@ router.get(
           for (const item of receipt.items) {
             const qty = Number(item.acceptedQty);
             if (item.poItemId) acceptedByPoItemId.set(item.poItemId, (acceptedByPoItemId.get(item.poItemId) ?? 0) + qty);
-            const name = item.materialName.toLowerCase();
+            const name = lineKey(item);
             acceptedByName.set(name, (acceptedByName.get(name) ?? 0) + qty);
           }
         }
@@ -164,7 +164,7 @@ router.get(
         const inTransitByName = new Map<string, number>();
         for (const gatePass of po.gatePasses) {
           for (const item of gatePass.items) {
-            const name = item.materialName.toLowerCase();
+            const name = lineKey(item);
             inTransitByName.set(name, (inTransitByName.get(name) ?? 0) + Number(item.quantity));
           }
         }
@@ -178,10 +178,12 @@ router.get(
             const acceptedQuantity =
               item.id && acceptedByPoItemId.has(item.id)
                 ? acceptedByPoItemId.get(item.id)!
-                : acceptedByName.get(item.materialName.toLowerCase()) ?? 0;
-            const inTransitQuantity = Math.max(0, (inTransitByName.get(item.materialName.toLowerCase()) ?? 0) - acceptedQuantity);
+                : acceptedByName.get(lineKey(item)) ?? 0;
+            const inTransitQuantity = Math.max(0, (inTransitByName.get(lineKey(item)) ?? 0) - acceptedQuantity);
             return {
               materialName: item.materialName,
+              itemId: item.itemId,
+              specification: item.specification,
               quantity: orderedQuantity,
               orderedQuantity,
               receivedQuantity: acceptedQuantity,
@@ -362,7 +364,7 @@ router.post(
       } = req.body;
 
       const isVisitorGatePass = gatePassCategory === 'VISITOR';
-      let items: { materialName: string; quantity: number; unit?: string | null }[] = [];
+      let items: { materialName: string; itemId?: string | null; specification?: string | null; quantity: number; unit?: string | null }[] = [];
       let poItemsByName = new Map<string, { id: string; unit: string | null }>();
 
       if (isVisitorGatePass) {
@@ -385,7 +387,7 @@ router.post(
             },
             goodsReceipts: {
               where: { deletedAt: null, status: 'POSTED' },
-              select: { items: { select: { poItemId: true, materialName: true, acceptedQty: true } } },
+              select: { items: { select: { poItemId: true, materialName: true, specification: true, acceptedQty: true } } },
             },
           },
         });
@@ -407,7 +409,7 @@ router.post(
           for (const item of receipt.items) {
             const qty = Number(item.acceptedQty);
             if (item.poItemId) acceptedByPoItemId.set(item.poItemId, (acceptedByPoItemId.get(item.poItemId) ?? 0) + qty);
-            const name = item.materialName.toLowerCase();
+            const name = lineKey(item);
             acceptedByName.set(name, (acceptedByName.get(name) ?? 0) + qty);
           }
         }
@@ -415,37 +417,39 @@ router.post(
         const inTransitByName = new Map<string, number>();
         for (const existingGatePass of po.gatePasses) {
           for (const item of existingGatePass.items) {
-            const name = item.materialName.toLowerCase();
+            const name = lineKey(item);
             inTransitByName.set(name, (inTransitByName.get(name) ?? 0) + Number(item.quantity));
           }
         }
         // Remaining = ordered - accepted - in-transit (not yet inspected)
         const remainingByName = new Map(po.items.map((item) => [
-          item.materialName.toLowerCase(),
+          lineKey(item),
           Math.max(
             0,
             Number(item.quantity) -
               (item.id && acceptedByPoItemId.has(item.id)
                 ? acceptedByPoItemId.get(item.id)!
-                : acceptedByName.get(item.materialName.toLowerCase()) ?? 0) -
-              (inTransitByName.get(item.materialName.toLowerCase()) ?? 0),
+                : acceptedByName.get(lineKey(item)) ?? 0) -
+              (inTransitByName.get(lineKey(item)) ?? 0),
           ),
         ]));
 
         // Gate pass is an authorization document — auto-fill all remaining PO items.
         // Actual delivered quantities are entered at goods receipt creation.
         items = po.items
-          .filter((item) => (remainingByName.get(item.materialName.toLowerCase()) ?? 0) > 0)
+          .filter((item) => (remainingByName.get(lineKey(item)) ?? 0) > 0)
           .map((item) => ({
             materialName: item.materialName,
-            quantity: remainingByName.get(item.materialName.toLowerCase())!,
+            itemId: item.itemId,
+            specification: item.specification,
+            quantity: remainingByName.get(lineKey(item))!,
             unit: item.unit ?? undefined,
           }));
         if (items.length === 0) {
           res.status(400).json({ error: 'All items from this purchase order have already been delivered or are in transit' });
           return;
         }
-        poItemsByName = new Map(po.items.map((item) => [item.materialName.toLowerCase(), { id: item.id, unit: item.unit }]));
+        poItemsByName = new Map(po.items.map((item) => [lineKey(item), { id: item.id, unit: item.unit }]));
       }
 
       // Validate invoice only if provided (invoice is optional for all payment types)
@@ -536,8 +540,10 @@ router.post(
           items: {
             create: items.map((item) => ({
               materialName: item.materialName,
+              itemId: item.itemId ?? null,
+              specification: item.specification ?? null,
               quantity: item.quantity,
-              unit: item.unit || poItemsByName.get(item.materialName.toLowerCase())?.unit || null,
+              unit: item.unit || poItemsByName.get(lineKey(item))?.unit || null,
             })),
           },
         },

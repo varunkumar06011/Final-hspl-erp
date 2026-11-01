@@ -119,5 +119,10 @@
   "errEntryLedger": "Entry {{i}}: Select a ledger",
   "confirmDelete": "Delete voucher {{n}}? The remaining {{t}} vouchers will be renumbered.",
   "confirmCancel": "Cancel voucher {{n}}? This will reverse all ledger entries.",
+  "arrangeByDate": "Arrange by date",
+  "arrangeHint": "Renumber vouchers so the numbers run in date order. Dates and amounts are not changed.",
+  "confirmArrange": "Arrange {{t}} vouchers in date order? Voucher numbers will be swapped so the oldest date gets the lowest number. Dates, amounts and entries stay the same.",
+  "okArranged": "Done. {{n}} vouchers got a new number in date order.",
+  "okAlreadyArranged": "Vouchers are already in date order.",
   "editTitle": "Edit {{t}}"
 }

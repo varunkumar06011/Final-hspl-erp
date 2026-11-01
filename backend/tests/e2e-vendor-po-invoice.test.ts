@@ -498,6 +498,14 @@ vi.mock('../src/services/audit.service', () => ({
   logAudit: vi.fn(async () => {}),
 }));
 
+// The item catalog is covered by tests/catalog.test.ts; here every line simply resolves to itself.
+vi.mock('../src/services/catalog.service', () => ({
+  resolveCatalogLines: vi.fn(async (lines: Array<{ materialName: string; specification?: string | null }>) =>
+    lines.map((l) => ({ ...l, itemId: null, materialCode: null, specification: l.specification ?? null }))),
+  priceCheck: vi.fn(async () => []),
+  nextCode: vi.fn(async () => 'MAT-0001'),
+}));
+
 vi.mock('../src/services/push.service', () => ({
   notifyAllHeads: vi.fn(async () => {}),
   notifyUser: vi.fn(async () => {}),

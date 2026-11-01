@@ -10,6 +10,7 @@ import { requestLogger } from './middleware/requestLogger';
 import { prisma } from './config/prisma';
 import { logger } from './utils/logger';
 import { INTERNAL_HEADER, INTERNAL_SECRET } from './services/assistant/internalApi';
+import { SECRET_HEADER as TASKHUB_HEADER, isValidTaskHubSecret } from './services/taskhub.service';
 
 const app = express();
 
@@ -31,7 +32,11 @@ const apiLimiter = rateLimit({
   // The AI assistant calls this server's own API on the user's behalf; those
   // loopback calls carry a per-process secret and must not eat the user's quota.
   // Voice transcription sends live previews while the user speaks; it has its own per-user budget.
-  skip: (req) => req.headers[INTERNAL_HEADER] === INTERNAL_SECRET || req.path === '/assistant/transcribe',
+  // Task Hub's server reads approvals for several people from one address.
+  skip: (req) =>
+    req.headers[INTERNAL_HEADER] === INTERNAL_SECRET ||
+    req.path === '/assistant/transcribe' ||
+    isValidTaskHubSecret(req.headers[TASKHUB_HEADER]),
 });
 app.use('/api', apiLimiter);
 

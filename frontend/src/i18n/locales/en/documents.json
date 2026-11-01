@@ -110,5 +110,6 @@
   "pinNew": "New 6-digit PIN",
   "pinConfirm": "Confirm new PIN",
   "pinMismatch": "The two PINs do not match",
-  "pinSave": "Save PIN"
+  "pinSave": "Save PIN",
+  "forgotPinUseLogin": "Forgot the document PIN? Enter {{name}}'s 4-digit login PIN instead."
 }

@@ -11,13 +11,14 @@ import {
   isApproverRole,
   canOverrideApprovals,
 } from '@hospital-erp/shared';
-import { createStockEntrySchema, rejectStockEntrySchema } from '@hospital-erp/shared';
+import { createStockEntrySchema, rejectStockEntrySchema, lineLabel } from '@hospital-erp/shared';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../config/prisma';
 import { findInventoryItemForMaterial, materialCodeForName } from '../services/inventory-match.service';
 import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middleware/auth';
 import { rbacMiddleware } from '../middleware/rbac';
 import { validateMiddleware } from '../middleware/validate';
+import { catalogLinesMiddleware } from '../middleware/catalogLines';
 import { logAudit } from '../services/audit.service';
 import { generateProjectSequenceNumber } from '../services/sequence.service';
 import { notifyAllHeads } from '../services/push.service';
@@ -71,7 +72,8 @@ async function postEntry(
       throw new Error(`Asset items need a whole-number quantity (${line.materialName}: ${qty})`);
     }
 
-    let item = await findInventoryItemForMaterial(tx, entry.projectId, line.materialName);
+    const link = { itemId: line.itemId, specification: line.specification };
+    let item = await findInventoryItemForMaterial(tx, entry.projectId, line.materialName, link);
     if (item && item.itemType !== lineType) {
       throw new Error(
         `"${line.materialName}" already exists in inventory as ${item.itemType.toLowerCase()}, but this entry marks it as ${lineType.toLowerCase()}.`,
@@ -82,9 +84,13 @@ async function postEntry(
       item = await tx.inventoryItem.create({
         data: {
           projectId: entry.projectId,
-          name: line.materialName,
+          // One stock item per catalog item + spec: "Steel - 12mm TMT Bar".
+          name: lineLabel(line),
           sku: await generateSku(tx, entry.projectId, category),
-          materialCode: await materialCodeForName(tx, entry.projectId, line.materialName),
+          materialCode: (link.itemId ? (await tx.catalogItem.findUnique({ where: { id: link.itemId }, select: { code: true } }))?.code : null)
+            ?? (await materialCodeForName(tx, entry.projectId, line.materialName)),
+          catalogItemId: link.itemId,
+          specification: link.specification,
           category,
           unit: line.unit || 'nos',
           itemType: lineType,
@@ -179,6 +185,7 @@ router.post(
   '/',
   rbacMiddleware(Permission.MANAGE_INVENTORY),
   validateMiddleware(createStockEntrySchema),
+  catalogLinesMiddleware(),
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const projectId = requireProjectId(req);
@@ -188,7 +195,7 @@ router.post(
         supplierName?: string;
         referenceNo?: string;
         notes?: string;
-        items: { materialName: string; unit: string; quantity: number; unitCost: number; itemType: InventoryItemType; category?: string }[];
+        items: { materialName: string; itemId?: string; specification?: string | null; unit: string; quantity: number; unitCost: number; itemType: InventoryItemType; category?: string }[];
       };
 
       for (const line of items) {
@@ -217,6 +224,8 @@ router.post(
             items: {
               create: items.map((line) => ({
                 materialName: line.materialName.trim(),
+                itemId: line.itemId ?? null,
+                specification: line.specification ?? null,
                 unit: line.unit,
                 quantity: line.quantity,
                 unitCost: line.unitCost ?? 0,

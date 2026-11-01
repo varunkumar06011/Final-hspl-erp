@@ -189,26 +189,104 @@ async function resequenceVoucherSeries(
     orderedVouchers.splice(requestedSequence! - 1, 0, vouchers[selectedIndex]);
   }
 
+  // One set-based statement per step, not one round trip per voucher: a series of ~150
+  // vouchers used to exceed the client's request timeout on the hosted database.
+  const ids = orderedVouchers.map((voucher) => voucher.id);
+  const finalNumbers = ids.map((_, index) => `${prefix}${String(index + 1).padStart(4, '0')}`);
   // Move every number out of the way first because jvNumber is globally unique.
-  for (const voucher of orderedVouchers) {
-    await tx.journalVoucher.update({
-      where: { id: voucher.id },
-      data: { jvNumber: `${prefix}TMP${voucher.id.replace(/-/g, '')}` },
-    });
-  }
+  const temporaryNumbers = ids.map((id) => `${prefix}TMP${id.replace(/-/g, '')}`);
+  await tx.$executeRaw`UPDATE journal_vouchers AS jv SET "jvNumber" = v.number FROM unnest(${ids}::uuid[], ${temporaryNumbers}::text[]) AS v(id, number) WHERE jv.id = v.id`;
+  await tx.$executeRaw`UPDATE journal_vouchers AS jv SET "jvNumber" = v.number FROM unnest(${ids}::uuid[], ${finalNumbers}::text[]) AS v(id, number) WHERE jv.id = v.id`;
+  await tx.$executeRaw`UPDATE ledger_entries AS le SET "voucherNumber" = v.number FROM unnest(${ids}::uuid[], ${finalNumbers}::text[]) AS v(id, number) WHERE le."journalVoucherId" = v.id`;
 
-  let selectedNumber = `${prefix}0001`;
-  for (const [index, voucher] of orderedVouchers.entries()) {
-    const jvNumber = `${prefix}${String(index + 1).padStart(4, '0')}`;
-    await tx.journalVoucher.update({ where: { id: voucher.id }, data: { jvNumber } });
-    await tx.ledgerEntry.updateMany({
-      where: { journalVoucherId: voucher.id },
-      data: { voucherNumber: jvNumber },
-    });
-    if (voucher.id === selectedVoucherId) selectedNumber = jvNumber;
-  }
-  return selectedNumber;
+  const selectedIndex = selectedVoucherId ? ids.indexOf(selectedVoucherId) : -1;
+  return selectedIndex >= 0 ? finalNumbers[selectedIndex] : `${prefix}0001`;
 }
+
+const IST_OFFSET_MS = 330 * 60 * 1000;
+const istDay = (d: Date) => new Date(d.getTime() + IST_OFFSET_MS).toISOString().slice(0, 10);
+
+/**
+ * Hands the numbers a voucher type already uses back out in date order: the oldest voucher
+ * gets the lowest number. Nothing but `jvNumber` (and its ledger snapshot) changes; the set of
+ * numbers stays exactly the same, so no gap is closed and no new number appears. Same-day
+ * vouchers keep their current relative order. Returns how many vouchers got a new number.
+ */
+async function arrangeSeriesByDate(
+  tx: Prisma.TransactionClient,
+  projectId: string,
+  voucherType: string,
+): Promise<number> {
+  const prefix = await voucherPrefix(voucherType, projectId);
+  const numberRe = new RegExp(`^${prefix}(\\d+)$`);
+  const found = await tx.journalVoucher.findMany({
+    where: { projectId, voucherType, deletedAt: null, ledgerEntries: { some: {} } },
+    select: { id: true, jvNumber: true, date: true, createdAt: true },
+  });
+  const vouchers = found
+    .map((v) => ({ ...v, seq: Number(v.jvNumber.match(numberRe)?.[1] ?? NaN) }))
+    .filter((v) => Number.isFinite(v.seq));
+  if (vouchers.length < 2) return 0;
+
+  const slots = vouchers.map((v) => v.jvNumber).sort((a, b) => Number(a.match(numberRe)![1]) - Number(b.match(numberRe)![1]));
+  const byDate = [...vouchers].sort((a, b) => {
+    const dayA = istDay(a.date);
+    const dayB = istDay(b.date);
+    if (dayA !== dayB) return dayA < dayB ? -1 : 1;
+    return a.seq - b.seq || a.createdAt.getTime() - b.createdAt.getTime() || a.id.localeCompare(b.id);
+  });
+  const moves = byDate
+    .map((v, i) => ({ id: v.id, from: v.jvNumber, to: slots[i] }))
+    .filter((m) => m.from !== m.to);
+
+  // jvNumber is globally unique: park the movers on temporary numbers first.
+  for (const m of moves) {
+    await tx.journalVoucher.update({ where: { id: m.id }, data: { jvNumber: `${prefix}TMP${m.id.replace(/-/g, '')}` } });
+  }
+  for (const m of moves) {
+    await tx.journalVoucher.update({ where: { id: m.id }, data: { jvNumber: m.to } });
+    await tx.ledgerEntry.updateMany({ where: { journalVoucherId: m.id }, data: { voucherNumber: m.to } });
+  }
+  return moves.length;
+}
+
+// ── Arrange voucher numbers in date order (one type, or every type) ──
+router.post(
+  '/arrange-by-date',
+  rbacMiddleware(Permission.REVERSE_VOUCHER),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      const requestedType = req.body?.voucherType ? String(req.body.voucherType) : null;
+      if (requestedType && !(requestedType in VOUCHER_PREFIX_SUFFIXES)) {
+        res.status(400).json({ error: 'Unknown voucher type' });
+        return;
+      }
+      const types = requestedType ? [requestedType] : Object.keys(VOUCHER_PREFIX_SUFFIXES);
+
+      const renumbered = await prisma.$transaction(async (tx) => {
+        const result: Record<string, number> = {};
+        for (const type of types) result[type] = await arrangeSeriesByDate(tx, projectId, type);
+        return result;
+      }, { timeout: 60000 });
+
+      const total = Object.values(renumbered).reduce((sum, n) => sum + n, 0);
+      if (total > 0) {
+        await logAudit({
+          userId: req.user!.id,
+          action: AuditAction.UPDATE,
+          entityType: 'VOUCHER',
+          entityId: projectId,
+          projectId,
+          newValue: { arrangedByDate: true, renumbered },
+        });
+      }
+      res.json({ renumbered: total, byType: renumbered });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
 
 // ── List vouchers (with type filter, date range) ──
 router.get(

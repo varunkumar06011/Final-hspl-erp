@@ -390,6 +390,7 @@ function GeneralDocumentsTab() {
         title={tr('unlockTitle')}
         helper={tr('unlockHelp', { name: unlockRow?.uploadedByUser?.name ?? '' })}
         submitLabel={tr('unlock')}
+        loginPinFallback={{ ownerName: unlockRow?.uploadedByUser?.name ?? '' }}
         onSubmit={submitUnlock}
         onClose={() => setUnlockRow(null)}
       />

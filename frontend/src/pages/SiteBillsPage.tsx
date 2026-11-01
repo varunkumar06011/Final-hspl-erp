@@ -33,14 +33,16 @@ import {
 } from '@mui/icons-material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { POPaymentType, SITE_BILL_LIMIT, SiteBillPaymentMode } from '@hospital-erp/shared';
+import { POPaymentType, SITE_BILL_LIMIT, SiteBillPaymentMode, CatalogItemKind } from '@hospital-erp/shared';
 import api, { extractErrorMessage } from '../config/api';
 import { useUrlFilters } from '../hooks/useUrlFilters';
 import ResponsiveDialog from '../components/ResponsiveDialog';
 import FilePicker from '../components/FilePicker';
 import ItemsGist from '../components/ItemsGist';
 import RefreshButton from '../components/RefreshButton';
-import MaterialAutocomplete, { useMaterialCatalog } from '../components/MaterialAutocomplete';
+import MaterialAutocomplete, { findCatalogMaterial, useMaterialCatalog } from '../components/MaterialAutocomplete';
+import SpecAutocomplete from '../components/SpecAutocomplete';
+import PriceFlag, { usePriceCheck } from '../components/PriceFlag';
 import { useFileViewer } from '../components/FileViewerDialog';
 import { useToast } from '../components/ToastProvider';
 import { QTY_UNIT_OPTIONS, enumLabel, formatCurrency, formatDate, unitLabel } from '../utils/enumOptions';
@@ -302,6 +304,8 @@ export default function SiteBillsPage() {
 
 interface ItemDraft {
   materialName: string;
+  itemId?: string | null;
+  specification?: string;
   quantity: string;
   unit: string;
   rate: string;
@@ -312,7 +316,8 @@ function AddBillDialog({ open, onClose }: { open: boolean; onClose: () => void }
   const { t } = useTranslation('sitebills');
   const queryClient = useQueryClient();
   const toast = useToast();
-  const catalog = useMaterialCatalog(open);
+  const catalog = useMaterialCatalog(open, CatalogItemKind.MATERIAL);
+  const catalogItemOf = (it: ItemDraft) => (it.itemId ? catalog.find((m) => m.itemId === it.itemId) ?? null : findCatalogMaterial(catalog, it.materialName));
   const [billDate, setBillDate] = useState(todayIso());
   const [shopName, setShopName] = useState('');
   const [mode, setMode] = useState<string>(SiteBillPaymentMode.CASH);
@@ -326,6 +331,7 @@ function AddBillDialog({ open, onClose }: { open: boolean; onClose: () => void }
   const total = items.reduce((s, i) => s + (Number(i.quantity) || 0) * (Number(i.rate) || 0), 0);
   const overLimit = total > SITE_BILL_LIMIT;
   const validItems = items.filter((i) => i.materialName.trim() && Number(i.quantity) > 0);
+  const priceChecks = usePriceCheck(items.map((it) => ({ itemId: catalogItemOf(it)?.itemId, materialName: it.materialName, specification: it.specification, unit: it.unit })), {}, open);
   const canSave = !!shopName.trim() && validItems.length > 0 && total > 0 && !overLimit;
 
   const reset = () => {
@@ -349,6 +355,8 @@ function AddBillDialog({ open, onClose }: { open: boolean; onClose: () => void }
       if (description.trim()) form.append('description', description.trim());
       form.append('items', JSON.stringify(validItems.map((i) => ({
         materialName: i.materialName.trim(),
+        itemId: i.itemId || undefined,
+        specification: i.specification?.trim() || undefined,
         quantity: Number(i.quantity),
         unit: i.unit || undefined,
         rate: Number(i.rate) || 0,
@@ -396,22 +404,28 @@ function AddBillDialog({ open, onClose }: { open: boolean; onClose: () => void }
           <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>{t('items')}</Typography>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
             {items.map((item, idx) => (
-              <Box key={idx} sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', sm: '2fr 80px 110px 110px 110px 40px' }, gap: 1, alignItems: 'center' }}>
+              <Box key={idx} sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', sm: '2fr 1.4fr 70px 100px 110px 100px 40px' }, gap: 1, alignItems: 'center' }}>
                 <Box sx={{ gridColumn: { xs: '1 / -1', sm: 'auto' } }}>
                   <MaterialAutocomplete
                     value={item.materialName}
                     label={t('item')}
                     catalog={catalog}
-                    onTyped={(name) => setItem(idx, { materialName: name })}
-                    onPicked={(m) => setItem(idx, { materialName: m.materialName, unit: m.unit ?? item.unit })}
+                    onTyped={(name, exact) => setItem(idx, { materialName: name, itemId: exact?.itemId ?? null })}
+                    onPicked={(m) => setItem(idx, { materialName: m.materialName, itemId: m.itemId, unit: m.unit ?? item.unit })}
                     sx={{ minWidth: 0 }}
                   />
+                </Box>
+                <Box sx={{ gridColumn: { xs: '1 / -1', sm: 'auto' } }}>
+                  <SpecAutocomplete item={catalogItemOf(item)} value={item.specification ?? ''} label={t('specification')} onChange={(spec) => setItem(idx, { specification: spec })} sx={{ minWidth: 0 }} />
                 </Box>
                 <TextField size="small" type="number" label={t('qty')} value={item.quantity} onChange={(e) => setItem(idx, { quantity: e.target.value })} inputProps={{ min: 0, step: 'any' }} />
                 <TextField select size="small" label={t('unit')} value={item.unit} onChange={(e) => setItem(idx, { unit: e.target.value })}>
                   {QTY_UNIT_OPTIONS.map((o) => <MenuItem key={o.value} value={o.value}>{unitLabel(o.value)}</MenuItem>)}
                 </TextField>
-                <TextField size="small" type="number" label={t('rate')} value={item.rate} onChange={(e) => setItem(idx, { rate: e.target.value })} inputProps={{ min: 0, step: 'any' }} />
+                <Box>
+                  <TextField size="small" type="number" label={t('rate')} value={item.rate} onChange={(e) => setItem(idx, { rate: e.target.value })} inputProps={{ min: 0, step: 'any' }} fullWidth />
+                  <PriceFlag result={priceChecks[idx] ?? null} rate={item.rate} unit={item.unit} />
+                </Box>
                 <Typography variant="body2" fontWeight={600} sx={{ textAlign: 'right' }}>{formatCurrency((Number(item.quantity) || 0) * (Number(item.rate) || 0))}</Typography>
                 <IconButton size="small" disabled={items.length === 1} onClick={() => setItems((prev) => prev.filter((_x, i) => i !== idx))} aria-label={t('removeItem')}><DeleteIcon fontSize="small" /></IconButton>
               </Box>

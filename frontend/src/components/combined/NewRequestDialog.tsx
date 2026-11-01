@@ -25,12 +25,17 @@ import api, { extractErrorMessage } from '../../config/api';
 import { useAuthStore } from '../../stores/authStore';
 import ResponsiveDialog from '../ResponsiveDialog';
 import VendorAutocomplete, { type VendorOption } from '../VendorAutocomplete';
-import MaterialAutocomplete, { useMaterialCatalog } from '../MaterialAutocomplete';
+import MaterialAutocomplete, { findCatalogMaterial, useMaterialCatalog } from '../MaterialAutocomplete';
+import SpecAutocomplete from '../SpecAutocomplete';
+import PriceFlag, { usePriceCheck } from '../PriceFlag';
+import { CatalogItemKind, lineLabel } from '@hospital-erp/shared';
 import { QTY_UNIT_OPTIONS, SERVICE_UNIT_OPTIONS, enumLabel, formatCurrency, unitLabel } from '../../utils/enumOptions';
 
 interface ItemDraft {
   materialName: string;
   materialCode?: string | null;
+  itemId?: string | null;
+  specification?: string;
   quantity: string;
   unit: string;
   estimatedRate: string;
@@ -61,7 +66,6 @@ export default function NewRequestDialog({ open, onClose, onCreated }: { open: b
   const { t } = useTranslation('combined');
   const { user } = useAuthStore();
   const queryClient = useQueryClient();
-  const catalog = useMaterialCatalog(open);
   const canCreateVendor = !!user && hasPermission(user.role, Permission.CREATE_VENDOR, user.extraPermissions);
 
   const [step, setStep] = useState(0);
@@ -79,6 +83,10 @@ export default function NewRequestDialog({ open, onClose, onCreated }: { open: b
 
   const unitOptions = requestType === 'SERVICE' ? SERVICE_UNIT_OPTIONS : QTY_UNIT_OPTIONS;
   const validItems = items.filter((i) => i.materialName.trim() && Number(i.quantity) > 0);
+  // One shared item list: services pick from services, materials from materials.
+  const catalog = useMaterialCatalog(open, requestType === 'SERVICE' ? CatalogItemKind.SERVICE : CatalogItemKind.MATERIAL);
+  const catalogItemOf = (it: ItemDraft) => (it.itemId ? catalog.find((m) => m.itemId === it.itemId) ?? null : findCatalogMaterial(catalog, it.materialName));
+  const priceChecks = usePriceCheck(items.map((it) => ({ itemId: catalogItemOf(it)?.itemId, materialName: it.materialName, specification: it.specification, unit: it.unit })), {}, open);
   const estimate = validItems.reduce((s, i) => s + Number(i.quantity) * (Number(i.estimatedRate) || 0), 0);
   const vendorName = vendorMode === 'existing' ? vendorPicked?.name ?? '' : vendor.name.trim();
   const vendorReady = vendorMode === 'existing' ? !!vendorId : !!vendor.name.trim();
@@ -122,6 +130,8 @@ export default function NewRequestDialog({ open, onClose, onCreated }: { open: b
         items: validItems.map((i) => ({
           materialName: i.materialName.trim(),
           materialCode: i.materialCode || undefined,
+          itemId: i.itemId || undefined,
+          specification: i.specification?.trim() || undefined,
           quantity: Number(i.quantity),
           unit: i.unit || undefined,
           estimatedRate: Number(i.estimatedRate) || 0,
@@ -203,14 +213,23 @@ export default function NewRequestDialog({ open, onClose, onCreated }: { open: b
             </ToggleButtonGroup>
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
               {items.map((item, idx) => (
-                <Box key={idx} sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', sm: '2fr 90px 130px 130px 40px' }, gap: 1, alignItems: 'center' }}>
+                <Box key={idx} sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', sm: '2fr 1.5fr 80px 110px 130px 40px' }, gap: 1, alignItems: 'center' }}>
                   <Box sx={{ gridColumn: { xs: '1 / -1', sm: 'auto' } }}>
                     <MaterialAutocomplete
                       value={item.materialName}
                       label={requestType === 'SERVICE' ? t('service') : t('material')}
                       catalog={catalog}
-                      onTyped={(name, exact) => setItem(idx, { materialName: name, materialCode: exact?.materialCode ?? null })}
-                      onPicked={(m) => setItem(idx, { materialName: m.materialName, materialCode: m.materialCode, unit: m.unit ?? item.unit })}
+                      onTyped={(name, exact) => setItem(idx, { materialName: name, materialCode: exact?.materialCode ?? null, itemId: exact?.itemId ?? null })}
+                      onPicked={(m) => setItem(idx, { materialName: m.materialName, materialCode: m.materialCode, itemId: m.itemId, unit: m.unit ?? item.unit })}
+                      sx={{ minWidth: 0 }}
+                    />
+                  </Box>
+                  <Box sx={{ gridColumn: { xs: '1 / -1', sm: 'auto' } }}>
+                    <SpecAutocomplete
+                      item={catalogItemOf(item)}
+                      value={item.specification ?? ''}
+                      label={t('specification')}
+                      onChange={(spec) => setItem(idx, { specification: spec })}
                       sx={{ minWidth: 0 }}
                     />
                   </Box>
@@ -218,7 +237,10 @@ export default function NewRequestDialog({ open, onClose, onCreated }: { open: b
                   <TextField select size="small" label={t('unit')} value={item.unit} onChange={(e) => setItem(idx, { unit: e.target.value })}>
                     {unitOptions.map((o) => <MenuItem key={o.value} value={o.value}>{unitLabel(o.value)}</MenuItem>)}
                   </TextField>
-                  <TextField size="small" type="number" label={t('estRate')} value={item.estimatedRate} onChange={(e) => setItem(idx, { estimatedRate: e.target.value })} inputProps={{ min: 0, step: 'any' }} />
+                  <Box>
+                    <TextField size="small" type="number" label={t('estRate')} value={item.estimatedRate} onChange={(e) => setItem(idx, { estimatedRate: e.target.value })} inputProps={{ min: 0, step: 'any' }} fullWidth />
+                    <PriceFlag result={priceChecks[idx] ?? null} rate={item.estimatedRate} unit={item.unit} />
+                  </Box>
                   <IconButton size="small" disabled={items.length === 1} onClick={() => setItems((prev) => prev.filter((_x, i) => i !== idx))} aria-label={t('removeItem')}><DeleteIcon fontSize="small" /></IconButton>
                 </Box>
               ))}
@@ -243,7 +265,7 @@ export default function NewRequestDialog({ open, onClose, onCreated }: { open: b
             <Typography><b>{t('vendor')}:</b> {vendorName || '—'}</Typography>
             <Typography><b>{t('requestType')}:</b> {requestType === 'SERVICE' ? t('typeService') : t('typeMaterial')}</Typography>
             {validItems.map((i, idx) => (
-              <Typography key={idx} variant="body2">• {i.materialName} — {i.quantity} {unitLabel(i.unit)}{Number(i.estimatedRate) > 0 ? ` × ${formatCurrency(Number(i.estimatedRate))}` : ''}</Typography>
+              <Typography key={idx} variant="body2">• {lineLabel(i)} — {i.quantity} {unitLabel(i.unit)}{Number(i.estimatedRate) > 0 ? ` × ${formatCurrency(Number(i.estimatedRate))}` : ''}</Typography>
             ))}
             {estimate > 0 && <Typography fontWeight={700}>{t('estimate')}: {formatCurrency(estimate * (1 + gstRate / 100))}</Typography>}
             <Alert severity="info">{t('reviewHint')}</Alert>

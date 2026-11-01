@@ -41,9 +41,11 @@ import ResponsiveTable from '../components/ResponsiveTable';
 import RefreshButton from '../components/RefreshButton';
 import CommentsButton from '../components/CommentsButton';
 import FilePicker from '../components/FilePicker';
+import { lineLabel } from '@hospital-erp/shared';
 
 interface GatePassItem {
   materialName: string;
+  specification?: string | null;
   quantity: number;
   unit?: string | null;
 }
@@ -78,6 +80,7 @@ interface ApprovedPO {
   grandTotal: number;
   items: {
     materialName: string;
+    specification?: string | null;
     quantity: number;
     orderedQuantity: number;
     receivedQuantity: number;
@@ -578,7 +581,7 @@ export default function GatePassesPage() {
                     <TableBody>
                       {selectedPO.items?.map((item, idx) => (
                         <TableRow key={idx}>
-                          <TableCell>{item.materialName}</TableCell>
+                          <TableCell>{lineLabel(item)}</TableCell>
                           <TableCell>{item.orderedQuantity}</TableCell>
                           <TableCell>{item.receivedQuantity}</TableCell>
                           <TableCell>{item.inTransitQuantity ?? 0}</TableCell>

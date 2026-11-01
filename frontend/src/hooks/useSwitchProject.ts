@@ -8,6 +8,7 @@ import { isNative } from '../config/appConfig';
  * Moves the signed-in user to another project. The backend re-issues the session
  * token with the new project; we then wipe everything cached for the old project
  * and do a full reload so no screen, query or socket can still hold old-project data.
+ * `landing` is the page to open after the reload (default: home).
  */
 export function useSwitchProject() {
   const { setToken, setUser } = useAuthStore();
@@ -15,7 +16,7 @@ export function useSwitchProject() {
   const [error, setError] = useState('');
 
   const switchTo = useCallback(
-    async (projectId: string) => {
+    async (projectId: string, landing = '/'): Promise<boolean> => {
       setSwitching(true);
       setError('');
       try {
@@ -24,15 +25,17 @@ export function useSwitchProject() {
         setUser(res.data.user);
         resetClientState();
         if (isNative) {
-          // HashRouter app: stay on the same document, go home, reload.
-          window.location.hash = '#/';
+          // HashRouter app: stay on the same document, go to the landing page, reload.
+          window.location.hash = `#${landing}`;
           window.location.reload();
         } else {
-          window.location.assign('/');
+          window.location.assign(landing);
         }
+        return true;
       } catch (err: unknown) {
         setError(extractErrorMessage(err));
         setSwitching(false);
+        return false;
       }
     },
     [setToken, setUser],

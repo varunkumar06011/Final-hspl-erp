@@ -15,6 +15,11 @@ vi.mock('../src/services/po-from-quotation.service', () => ({
   createPoFromApprovedQuotation: vi.fn(async () => ({ id: 'po1', poNumber: 'PO001' })),
 }));
 vi.mock('../src/services/audit.service', () => ({ logAudit: vi.fn(async () => undefined) }));
+// The item catalog is covered by tests/catalog.test.ts; here every line simply resolves to itself.
+vi.mock('../src/services/catalog.service', () => ({
+  resolveCatalogLines: vi.fn(async (lines: Array<{ materialName: string; specification?: string | null }>) =>
+    lines.map((l) => ({ ...l, itemId: `item-${l.materialName}`, materialCode: 'MAT-0001', specification: l.specification ?? null }))),
+}));
 
 import { createQuotation, createQuotationFromMpr, finalizeQuotation, QuotationActionError } from '../src/services/quotation.service';
 import { createPoFromApprovedQuotation } from '../src/services/po-from-quotation.service';

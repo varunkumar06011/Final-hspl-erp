@@ -60,5 +60,12 @@
   "signatureDialogTitle": "Draw your signature",
   "signatureSaved": "Signature saved",
   "signatureRemoved": "Signature removed",
-  "signatureUpdated": "Last updated {{date}}"
+  "signatureUpdated": "Last updated {{date}}",
+  "taskHubTitle": "Task Hub",
+  "taskHubBody": "See your ERP approvals in Task Hub. Get a code here, then in Task Hub open Approvals → Connect Hospital ERP and type it in. You only do this once.",
+  "taskHubGetCode": "Get Task Hub code",
+  "taskHubNewCode": "Get a new code",
+  "taskHubCodeLabel": "Task Hub link code",
+  "taskHubCodeHint": "Type this in Task Hub. It works once and expires in {{time}}.",
+  "taskHubCodeExpired": "That code has expired. Get a new one."
 }

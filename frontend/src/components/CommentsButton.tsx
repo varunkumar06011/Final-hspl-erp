@@ -50,6 +50,7 @@ export interface CommentRow {
   mentions: CommentMention[];
   createdAt: string;
   editedAt?: string | null;
+  editNote?: string | null;
   deletedAt?: string | null;
   deletedByName?: string | null;
   author: { id: string; name: string; role: string };
@@ -131,8 +132,13 @@ export function CommentContent({ comment }: { comment: CommentRow }) {
       )}
       <CommentBody body={comment.body} mentions={comment.mentions ?? []} />
       {comment.editedAt && (
-        <Typography variant="caption" color="text.secondary">
+        <Typography variant="caption" color="text.secondary" component="div">
           {tr('editedBy', { name: comment.author.name, time: timeAgo(comment.editedAt) })}
+        </Typography>
+      )}
+      {comment.editedAt && comment.editNote && (
+        <Typography variant="caption" color="text.secondary" component="div" sx={{ fontStyle: 'italic', overflowWrap: 'anywhere' }}>
+          {tr('editNoteShown', { note: comment.editNote })}
         </Typography>
       )}
     </>
@@ -220,6 +226,8 @@ function CommentsDialog({
   const me = useAuthStore((s) => s.user);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [text, setText] = useState('');
+  // Edits only: what the author changed. Required before an edit can be saved.
+  const [editNote, setEditNote] = useState('');
   const [caret, setCaret] = useState(0);
   const [tagged, setTagged] = useState<Record<string, MentionUser>>({});
   const [pickerIndex, setPickerIndex] = useState(0);
@@ -277,6 +285,7 @@ function CommentsDialog({
 
   const resetComposer = () => {
     setText('');
+    setEditNote('');
     setTagged({});
     setEditingId(null);
     setReplyTo(null);
@@ -296,6 +305,7 @@ function CommentsDialog({
     setReplyTo(null);
     setEditingId(c.id);
     setText(c.body);
+    setEditNote('');
     setCaret(c.body.length);
     setTagged(
       Object.fromEntries((c.mentions ?? []).map((m) => [m.id, { id: m.id, name: m.name, role: '' }])),
@@ -311,13 +321,19 @@ function CommentsDialog({
   interface PostVars {
     editingId: string | null;
     body: string;
+    editNote: string;
     mentionIds: string[];
-    draft: { text: string; tagged: Record<string, MentionUser>; replyTo: CommentRow | null };
+    draft: {
+      text: string;
+      editNote: string;
+      tagged: Record<string, MentionUser>;
+      replyTo: CommentRow | null;
+    };
   }
   const postMutation = useMutation({
-    mutationFn: async ({ editingId: id, body, mentionIds, draft }: PostVars) => {
+    mutationFn: async ({ editingId: id, body, editNote: note, mentionIds, draft }: PostVars) => {
       if (id) {
-        await api.patch(`/comments/${id}`, { body, mentionIds });
+        await api.patch(`/comments/${id}`, { body, editNote: note, mentionIds });
         return;
       }
       // A reply stays on the record of the comment it answers (it may come from another stage).
@@ -332,12 +348,12 @@ function CommentsDialog({
         parentId: draft.replyTo?.id,
       });
     },
-    onMutate: ({ editingId: id, body, draft }) => {
+    onMutate: ({ editingId: id, body, editNote: note, draft }) => {
       resetComposer();
       return apply(
         commentsKey,
         id
-          ? patchRow(id, { body, editedAt: new Date().toISOString() })
+          ? patchRow(id, { body, editNote: note, editedAt: new Date().toISOString() })
           : insertRow(
               {
                 entityType,
@@ -354,6 +370,7 @@ function CommentsDialog({
     onError: (err, { editingId: id, draft }, snapshot) => {
       restore(snapshot);
       setText(draft.text);
+      setEditNote(draft.editNote);
       setTagged(draft.tagged);
       setEditingId(id);
       setReplyTo(draft.replyTo);
@@ -363,12 +380,21 @@ function CommentsDialog({
       queryClient.invalidateQueries({ queryKey: ['comments'] });
     },
   });
+  // An edit needs a description of what changed; without it nothing is saved.
+  const editReady = !editingId || editNote.trim().length > 0;
   const submitComment = () => {
+    if (!editReady) return;
     // Only tags whose @Name is still in the text count.
     const mentionIds = Object.values(tagged)
       .filter((u) => text.includes(`@${u.name}`))
       .map((u) => u.id);
-    postMutation.mutate({ editingId, body: text.trim(), mentionIds, draft: { text, tagged, replyTo } });
+    postMutation.mutate({
+      editingId,
+      body: text.trim(),
+      editNote: editNote.trim(),
+      mentionIds,
+      draft: { text, editNote, tagged, replyTo },
+    });
   };
 
   const deleteMutation = useMutation({
@@ -525,6 +551,20 @@ function CommentsDialog({
               </Button>
             </Box>
           )}
+          {editingId && (
+            <TextField
+              fullWidth
+              required
+              size="small"
+              sx={{ mb: 1, "& .MuiInputBase-input": { fontSize: { xs: 16, sm: "0.875rem" } } }}
+              value={editNote}
+              label={tr('editNoteLabel')}
+              placeholder={tr('editNotePlaceholder')}
+              helperText={tr('editNoteHelp')}
+              inputProps={{ maxLength: 500 }}
+              onChange={(e) => setEditNote(e.target.value)}
+            />
+          )}
           <TextField
             fullWidth
             multiline
@@ -563,7 +603,7 @@ function CommentsDialog({
                   e.stopPropagation();
                 }
               }
-              if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && text.trim()) {
+              if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && text.trim() && editReady) {
                 e.preventDefault();
                 submitComment();
               }
@@ -598,7 +638,7 @@ function CommentsDialog({
           variant="contained"
           endIcon={<SendIcon />}
           size="large"
-          disabled={!text.trim() || postMutation.isPending}
+          disabled={!text.trim() || !editReady || postMutation.isPending}
           onClick={submitComment}
         >
           {editingId ? tr('save') : replyTo ? tr('reply') : tr('post')}

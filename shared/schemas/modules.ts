@@ -36,6 +36,12 @@ const qty = z.coerce.number().finite().min(0);
 const positiveQty = z.coerce.number().finite().gt(0);
 const dateStr = z.coerce.date();
 const nonEmptyText = (max: number) => z.string().trim().min(1).max(max);
+// Item catalog link on any material line: the picked item (optional; the server finds or
+// creates the item from the name when it is missing) and its chosen specification.
+const catalogLink = {
+  itemId: z.preprocess((v) => (v === '' || v === null ? undefined : v), uuid.optional()),
+  specification: z.preprocess((v) => (v === null ? undefined : v), z.string().trim().max(500).optional()),
+};
 const acknowledgement = z.preprocess(
   (value) => value === true || value === 'true',
   z.literal(true, { errorMap: () => ({ message: 'Acknowledgement is required' }) }),
@@ -130,6 +136,7 @@ export const quickCreateVendorSchema = z.object({
 // ═══ Quotations ═══
 const quotationLineItem = z.object({
   materialName: nonEmptyText(200),
+  ...catalogLink,
   quantity: positiveQty,
   unit: z.string().trim().max(20).optional(),
   unitPrice: money,
@@ -216,6 +223,7 @@ export const editPOSchema = z.object({
     items: z.array(z.object({
       poItemId: uuid.optional(),
       materialName: z.string().min(1).max(200),
+      ...catalogLink,
       quantity: qty,
       unit: z.string().min(1).max(20),
       unitPrice: money,
@@ -240,6 +248,7 @@ export const editUnapprovedPOSchema = z.object({
     referredBy: z.string().trim().max(200).optional(),
     items: z.array(z.object({
       materialName: z.string().min(1).max(200),
+      ...catalogLink,
       quantity: qty,
       unit: z.string().min(1).max(20),
       unitPrice: money,
@@ -353,6 +362,7 @@ export const createSubPOSchema = z.object({
       .array(
         z.object({
           materialName: z.string().trim().min(1).max(200),
+          ...catalogLink,
           quantity: positiveQty,
           unit: z.string().trim().min(1).max(20),
           unitPrice: money,
@@ -626,6 +636,7 @@ export const upsertPaymentSheetNarrationSchema = z.object({
 // ═══ Gate Passes ═══
 const gatePassItem = z.object({
   materialName: nonEmptyText(200),
+  ...catalogLink,
   quantity: positiveQty,
   unit: z.string().trim().max(20).nullable().optional(),
 });
@@ -681,6 +692,9 @@ export const approveGatePassSchema = z.object({
 // ═══ Goods Receipts ═══
 const goodsReceiptDeliveredItem = z.object({
   materialName: nonEmptyText(200),
+  ...catalogLink,
+  // The PO line received (two lines may share a name: Steel 8mm / Steel 12mm).
+  poItemId: uuid.optional(),
   deliveredQty: qty,
   unit: z.string().trim().max(20).nullable().optional(),
 });
@@ -753,6 +767,7 @@ export const createInventoryTxnSchema = z.object({
 });
 const stockEntryItem = z.object({
   materialName: nonEmptyText(200),
+  ...catalogLink,
   unit: z.string().trim().min(1).max(20),
   quantity: positiveQty,
   unitCost: money.default(0),
@@ -1802,8 +1817,8 @@ const mprDateStr = z.preprocess(
 
 const mprItemInput = z.object({
   materialName: nonEmptyText(200),
+  ...catalogLink,
   materialCode: z.string().trim().max(50).optional(),
-  specification: z.string().trim().max(500).optional(),
   quantity: positiveQty,
   unit: z.string().trim().max(20).optional(),
   requiredDate: mprDateStr.optional(),
@@ -1875,6 +1890,7 @@ export const listMPRSchema = z.object({
 // ═══ Site bills (≤ SITE_BILL_LIMIT, paid at site, reimbursed through one combined PO) ═══
 const siteBillItem = z.object({
   materialName: nonEmptyText(200),
+  ...catalogLink,
   quantity: positiveQty,
   unit: z.string().trim().max(20).optional(),
   rate: money,

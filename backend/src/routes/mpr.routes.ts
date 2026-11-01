@@ -23,6 +23,8 @@ import { findLivePoForMpr } from '../services/non-vendor-po.service';
 import { REVISABLE_PO_STATUSES, syncQuotationsFromMpr, syncPoFromQuotation, hasUnpricedItems } from '../services/mpr-revision.service';
 import { ensureVendorLedger } from './ledger.routes';
 import { afterMprApproved } from '../services/mpr-approval.service';
+import { nextCode, resolveCatalogLines } from '../services/catalog.service';
+import { CatalogItemKind, catalogNameKey } from '@hospital-erp/shared';
 import multer from 'multer';
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
@@ -156,100 +158,57 @@ async function withShipmentFlags<T extends { id: string; vendorId: string | null
 }
 
 /**
- * One material, one code. When a requested item has the same name as a material the project
- * already has, it takes that material's existing code, so the same material can never end up
- * under two codes (and duplicated in inventory). New names keep whatever code was entered.
+ * One material, one code. Every requested line is linked to the item catalog (an existing
+ * item when the name or picked item matches, else a new one) and takes the item's code and
+ * the item's own spec, so the same material can never end up under two codes.
  */
-async function canonicalizeMaterialCodes<T extends { materialName: string; materialCode?: string | null }>(
-  projectId: string,
+function catalogLines<T extends { materialName: string; materialCode?: string | null; itemId?: string | null; specification?: string | null; unit?: string | null }>(
   items: T[],
-): Promise<T[]> {
-  const known = await prisma.materialPurchaseRequestItem.findMany({
-    where: { materialCode: { not: null }, mpr: { projectId, deletedAt: null } },
-    select: { materialName: true, materialCode: true },
-    orderBy: { createdAt: 'asc' },
-  });
-  const codeByName = new Map<string, string>();
-  for (const row of known) {
-    const key = normalizeMaterialName(row.materialName);
-    if (row.materialCode && !codeByName.has(key)) codeByName.set(key, row.materialCode);
-  }
-  return items.map((item) => {
-    const existing = codeByName.get(normalizeMaterialName(item.materialName));
-    return existing && existing !== item.materialCode ? { ...item, materialCode: existing } : item;
+  requestType: string | null | undefined,
+  userId: string,
+) {
+  return resolveCatalogLines(items, {
+    kind: requestType === 'SERVICE' ? CatalogItemKind.SERVICE : CatalogItemKind.MATERIAL,
+    userId,
   });
 }
 
-// GET /material-catalog — every distinct material the project has used (from requests and
-// inventory), with its code and unit, for type-ahead pickers that stop duplicates.
+/** Material requests are numbered <code>-MPR001, service requests <code>-SR001. */
+function nextRequestNumber(projectId: string, requestType: string | null | undefined) {
+  return generateProjectSequenceNumber('materialPurchaseRequest', 'mprNumber', requestType === 'SERVICE' ? 'SR' : 'MPR', 3, projectId);
+}
+
+// GET /material-catalog — older clients' type-ahead: the item catalog in the old shape.
 router.get(
   '/material-catalog',
   rbacMiddleware(Permission.VIEW_MPR),
-  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  async (_req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
-      const projectId = requireProjectId(req);
-      const [requested, stocked] = await Promise.all([
-        prisma.materialPurchaseRequestItem.findMany({
-          where: { mpr: { projectId, deletedAt: null } },
-          select: { materialName: true, materialCode: true, unit: true },
-          orderBy: { createdAt: 'asc' },
-          take: 20000,
-        }),
-        prisma.inventoryItem.findMany({
-          where: { projectId, deletedAt: null },
-          select: { name: true, unit: true },
-          take: 5000,
-        }),
-      ]);
-      const catalog = new Map<string, { materialName: string; materialCode: string | null; unit: string | null; uses: number }>();
-      for (const row of requested) {
-        const key = normalizeMaterialName(row.materialName);
-        const entry = catalog.get(key);
-        if (entry) {
-          entry.uses += 1;
-          if (!entry.materialCode && row.materialCode) entry.materialCode = row.materialCode;
-          if (!entry.unit && row.unit) entry.unit = row.unit;
-        } else {
-          catalog.set(key, { materialName: row.materialName.trim(), materialCode: row.materialCode, unit: row.unit, uses: 1 });
-        }
-      }
-      for (const row of stocked) {
-        const key = normalizeMaterialName(row.name);
-        if (!catalog.has(key)) catalog.set(key, { materialName: row.name.trim(), materialCode: null, unit: row.unit, uses: 0 });
-      }
-      res.json({ data: Array.from(catalog.values()).sort((a, b) => b.uses - a.uses || a.materialName.localeCompare(b.materialName)) });
+      const items = await prisma.catalogItem.findMany({
+        where: { isActive: true },
+        select: { id: true, name: true, code: true, unit: true, kind: true, _count: { select: { mprItems: true, poItems: true } } },
+        take: 10000,
+      });
+      res.json({
+        data: items
+          .map((i) => ({ itemId: i.id, materialName: i.name, materialCode: i.code, unit: i.unit, kind: i.kind, uses: i._count.mprItems + i._count.poItems }))
+          .sort((a, b) => b.uses - a.uses || a.materialName.localeCompare(b.materialName)),
+      });
     } catch (error) {
       next(error);
     }
   },
 );
 
-// GET /next-material-code — next auto-increment item code (e.g. VGH-MAT-0021),
-// continuing from the highest code already used in this project's MPR items.
+// GET /next-material-code — kept for older clients; codes are now given by the item catalog
+// when a new item is saved, so this only reports the next free catalog code.
 router.get(
   '/next-material-code',
   rbacMiddleware(Permission.VIEW_MPR),
-  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  async (_req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
-      const projectId = requireProjectId(req);
-      const rows = await prisma.materialPurchaseRequestItem.findMany({
-        where: { materialCode: { contains: '-MAT-' }, mpr: { projectId } },
-        select: { materialCode: true },
-      });
-      let prefix = 'MAT-';
-      let max = 0;
-      let width = 4;
-      for (const r of rows) {
-        const m = /^(.*-MAT-)(\d+)$/.exec(r.materialCode ?? '');
-        if (!m) continue;
-        const n = Number(m[2]);
-        if (n >= max) {
-          max = n;
-          prefix = m[1];
-          width = m[2].length;
-        }
-      }
-      res.json({ prefix, next: max + 1, width });
+      const code = await nextCode(prisma, CatalogItemKind.MATERIAL);
+      res.json({ prefix: 'MAT-', next: Number(code.slice(4)), width: 4 });
     } catch (error) {
       next(error);
     }
@@ -277,7 +236,7 @@ router.get(
       if (status) where.status = status;
       if (requestType) where.requestType = requestType;
       if (vendorId) where.vendorId = vendorId;
-      if (search) where.mprNumber = { contains: search, mode: 'insensitive' };
+      if (search) where.OR = [{ mprNumber: { contains: search, mode: 'insensitive' } }, { legacyNumber: { contains: search, mode: 'insensitive' } }];
 
       const [items, total] = await Promise.all([
         prisma.materialPurchaseRequest.findMany({
@@ -423,11 +382,11 @@ router.post(
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const projectId = requireProjectId(req);
-      const mprNumber = await generateProjectSequenceNumber('materialPurchaseRequest', 'mprNumber', 'MPR', 3, projectId);
+      const mprNumber = await nextRequestNumber(projectId, req.body.requestType);
 
       const vendorId = await resolveVendor(req.body, projectId, req.user!.id);
 
-      const items = await canonicalizeMaterialCodes(projectId, req.body.items);
+      const items = await catalogLines(req.body.items, req.body.requestType, req.user!.id);
       const estimatedGstRate = Number(req.body.estimatedGstRate) || 0;
 
       // Compute estimated amounts
@@ -470,6 +429,7 @@ router.post(
             create: computedItems.map((item: any) => ({
               materialName: item.materialName,
               materialCode: item.materialCode || null,
+              itemId: item.itemId,
               specification: item.specification || null,
               quantity: item.quantity,
               unit: item.unit || null,
@@ -552,9 +512,11 @@ router.put(
             return;
           }
           if (req.body.items) {
-            const newNames = new Set((req.body.items as { materialName: string }[]).map((i) => i.materialName.trim().toLowerCase()));
-            const current = await prisma.materialPurchaseRequestItem.findMany({ where: { mprId: existing.id }, select: { materialName: true } });
-            const removed = current.find((i) => !newNames.has(i.materialName.trim().toLowerCase()));
+            const incoming = req.body.items as { materialName: string; itemId?: string | null }[];
+            const newNames = new Set(incoming.map((i) => catalogNameKey(i.materialName)));
+            const newIds = new Set(incoming.map((i) => i.itemId).filter(Boolean));
+            const current = await prisma.materialPurchaseRequestItem.findMany({ where: { mprId: existing.id }, select: { materialName: true, itemId: true } });
+            const removed = current.find((i) => !newNames.has(catalogNameKey(i.materialName)) && !(i.itemId && newIds.has(i.itemId)));
             if (removed) {
               res.status(400).json({ error: `"${removed.materialName}" cannot be removed — a quotation/PO exists for this request. You can add items or change quantities.` });
               return;
@@ -591,7 +553,7 @@ router.put(
 
       // If items are provided, recompute totals and replace items
       if (req.body.items) {
-        const items = await canonicalizeMaterialCodes(projectId, req.body.items);
+        const items = await catalogLines(req.body.items, req.body.requestType ?? existing.requestType, req.user!.id);
         const estimatedGstRate = Number(updateData.estimatedGstRate ?? existing.estimatedGstRate);
         const computedItems = items.map((item: any) => {
           const qty = Number(item.quantity);
@@ -612,6 +574,7 @@ router.put(
           create: computedItems.map((item: any) => ({
             materialName: item.materialName,
             materialCode: item.materialCode || null,
+            itemId: item.itemId,
             specification: item.specification || null,
             quantity: item.quantity,
             unit: item.unit || null,
@@ -683,7 +646,7 @@ router.put(
       if (linkedQuotations.length > 0 && req.body.items) {
         const quotationIds = await syncQuotationsFromMpr(
           record.id,
-          record.items.map((i) => ({ materialName: i.materialName, quantity: Number(i.quantity), unit: i.unit })),
+          record.items.map((i) => ({ materialName: i.materialName, itemId: i.itemId, specification: i.specification, quantity: Number(i.quantity), unit: i.unit })),
           Number(record.estimatedGstRate),
         );
         const poResubmitted: string[] = [];
@@ -1005,11 +968,16 @@ router.post(
         return;
       }
       const newType = existing.requestType === 'SERVICE' ? 'MATERIAL' : 'SERVICE';
+      // The number follows the type (MPR / SR series); the first number is kept for old references.
+      const renumber = {
+        mprNumber: await nextRequestNumber(projectId, newType),
+        legacyNumber: existing.legacyNumber ?? existing.mprNumber,
+      };
       const record = await prisma.materialPurchaseRequest.update({
         where: { id: existing.id },
         data: newType === 'MATERIAL'
-          ? { requestType: newType, serviceCategory: null, servicePeriodStart: null, servicePeriodEnd: null }
-          : { requestType: newType },
+          ? { ...renumber, requestType: newType, serviceCategory: null, servicePeriodStart: null, servicePeriodEnd: null }
+          : { ...renumber, requestType: newType },
         include: mprInclude,
       });
       await logAudit({
@@ -1018,8 +986,8 @@ router.post(
         entityType: 'MATERIAL_PURCHASE_REQUEST',
         entityId: existing.id,
         projectId,
-        oldValue: { requestType: existing.requestType },
-        newValue: { requestType: newType },
+        oldValue: { requestType: existing.requestType, mprNumber: existing.mprNumber },
+        newValue: { requestType: newType, mprNumber: record.mprNumber },
       });
       res.json(record);
     } catch (error) {

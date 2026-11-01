@@ -23,7 +23,9 @@ import {
 } from '@mui/icons-material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { CONTRACT_PO_TYPES, POPaymentType } from '@hospital-erp/shared';
+import { CONTRACT_PO_TYPES, POPaymentType, CatalogItemKind } from '@hospital-erp/shared';
+import CatalogLineFields from './CatalogLineFields';
+import { useMaterialCatalog } from './MaterialAutocomplete';
 import api, { extractErrorMessage } from '../config/api';
 import { enumLabel, formatCurrency, formatDate, STATUS_COLORS, unitLabel } from '../utils/enumOptions';
 import AcknowledgementCheckbox from './AcknowledgementCheckbox';
@@ -207,7 +209,7 @@ export function ConvertToContractDialog({ po, onClose }: { po: { id: string; poN
 // Sub-PO
 // ─────────────────────────────────────────────────────────────────────────────
 
-interface Line { materialName: string; quantity: string; unit: string; unitPrice: string; gstRate: string }
+interface Line { materialName: string; itemId?: string | null; specification?: string | null; quantity: string; unit: string; unitPrice: string; gstRate: string }
 const emptyLine = (): Line => ({ materialName: '', quantity: '', unit: 'day', unitPrice: '', gstRate: '0' });
 
 interface ContractRef {
@@ -268,6 +270,8 @@ function CreateSubPoDialog({ contract, onClose }: { contract: ContractRef | null
         notes: notes.trim() || undefined,
         items: lines.map((l) => ({
           materialName: l.materialName.trim(),
+          itemId: l.itemId || undefined,
+          specification: l.specification?.trim() || undefined,
           quantity: Number(l.quantity),
           unit: l.unit,
           unitPrice: Number(l.unitPrice),
@@ -283,6 +287,7 @@ function CreateSubPoDialog({ contract, onClose }: { contract: ContractRef | null
   });
 
   const setLine = (i: number, patch: Partial<Line>) => setLines((ls) => ls.map((l, idx) => (idx === i ? { ...l, ...patch } : l)));
+  const serviceCatalog = useMaterialCatalog(!!contract, CatalogItemKind.SERVICE);
 
   return (
     <ResponsiveDialog open={!!contract} onClose={onClose} maxWidth="md" fullWidth>
@@ -301,13 +306,16 @@ function CreateSubPoDialog({ contract, onClose }: { contract: ContractRef | null
           <Typography variant="subtitle2" fontWeight={700}>{t('subPoLines')}</Typography>
           {lines.map((l, i) => (
             <Box key={i} sx={{ display: 'grid', gridTemplateColumns: { xs: 'repeat(2, 1fr)', sm: '2fr 0.8fr 1fr 1fr 0.7fr auto' }, gap: 1, alignItems: 'center' }}>
-              <TextField
-                label={t('lineDescription')}
-                value={l.materialName}
-                onChange={(e) => setLine(i, { materialName: e.target.value })}
-                size="small"
-                sx={{ gridColumn: { xs: '1 / -1', sm: 'auto' } }}
-              />
+              {/* Contract billing lines (labour, hire, civil work) are services of the shared item list. */}
+              <Box sx={{ gridColumn: { xs: '1 / -1', sm: 'auto' } }}>
+                <CatalogLineFields
+                  catalog={serviceCatalog}
+                  line={l}
+                  label={t('lineDescription')}
+                  minWidth={0}
+                  onChange={(patch) => setLine(i, { ...patch, unit: l.unit })}
+                />
+              </Box>
               <TextField label={t('quantity')} value={l.quantity} onChange={(e) => setLine(i, { quantity: decimalOnly(e.target.value) })} size="small" inputProps={{ inputMode: 'decimal' }} />
               <TextField select label={t('unit')} value={l.unit} onChange={(e) => setLine(i, { unit: e.target.value })} size="small">
                 {UNIT_VALUES.map((u) => <MenuItem key={u} value={u}>{unitLabel(u)}</MenuItem>)}

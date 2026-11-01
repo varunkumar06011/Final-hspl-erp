@@ -7,7 +7,10 @@ import {
   VendorType,
   FIRST_LEVEL_APPROVER_ROLES,
   canFinalizeQuotation,
+  lineKey,
+  lineLabel,
 } from '@hospital-erp/shared';
+import { resolveCatalogLines } from './catalog.service';
 import { generateProjectSequenceNumber } from './sequence.service';
 import { notifyApprovers } from './push.service';
 import { logAudit } from './audit.service';
@@ -15,6 +18,9 @@ import { createPoFromApprovedQuotation } from './po-from-quotation.service';
 
 export interface QuotationLineItem {
   materialName: string;
+  /** Item catalog link + spec; filled by resolveCatalogLines when missing. */
+  itemId?: string | null;
+  specification?: string | null;
   quantity: number;
   unit?: string;
   unitPrice: number;
@@ -66,8 +72,6 @@ export const OPEN_QUOTATION_STATUSES: string[] = [QuotationStatus.SUBMITTED, Quo
 /** Statuses of a finalized quotation (the one bought from). */
 export const FINALIZED_QUOTATION_STATUSES: string[] = [QuotationStatus.APPROVED, QuotationStatus.CONVERTED_TO_PO];
 
-const normName = (name: string) => name.trim().toLowerCase().replace(/\s+/g, ' ');
-
 /** A refused quotation action; `status` is the HTTP status to answer with. */
 export class QuotationActionError extends Error {
   constructor(message: string, public status = 400) {
@@ -93,7 +97,6 @@ export async function createQuotation(input: CreateQuotationInput) {
   const {
     projectId,
     vendorId,
-    items,
     createdBy,
     quotationNumber: providedNumber,
     workTaskId,
@@ -104,6 +107,9 @@ export async function createQuotation(input: CreateQuotationInput) {
     notes = null,
     source,
   } = input;
+
+  // Every line belongs to a catalog item (+ spec), so the same material is the same line everywhere.
+  const items = await resolveCatalogLines(input.items, { userId: createdBy });
 
   // Validate vendor exists and belongs to project
   const vendor = await prisma.vendor.findFirst({
@@ -142,6 +148,8 @@ export async function createQuotation(input: CreateQuotationInput) {
     const rate = Number(item.gstRate) || 0;
     return {
       materialName: item.materialName,
+      itemId: item.itemId,
+      specification: item.specification ?? null,
       quantity: item.quantity,
       unit: item.unit || null,
       unitPrice: item.unitPrice,
@@ -267,6 +275,8 @@ export async function createQuotationFromMpr(mprId: string, projectId: string, u
     source: 'AUTO_FROM_MPR',
     items: mpr.items.map((item) => ({
       materialName: item.materialName,
+      itemId: item.itemId,
+      specification: item.specification,
       quantity: Number(item.quantity),
       unit: item.unit ?? undefined,
       unitPrice: Number(item.estimatedRate ?? 0),
@@ -287,18 +297,18 @@ interface ActingUser {
  */
 export async function closeUnselectedQuotations(mprId: string, projectId: string, userId: string): Promise<string[]> {
   const [mprItems, quotations] = await Promise.all([
-    prisma.materialPurchaseRequestItem.findMany({ where: { mprId }, select: { materialName: true } }),
+    prisma.materialPurchaseRequestItem.findMany({ where: { mprId }, select: { materialName: true, specification: true } }),
     prisma.quotation.findMany({
       where: { mprId, projectId, deletedAt: null },
-      include: { items: { select: { materialName: true } }, approvalWorkflow: { select: { id: true, status: true } } },
+      include: { items: { select: { materialName: true, specification: true } }, approvalWorkflow: { select: { id: true, status: true } } },
     }),
   ]);
   const covered = new Set(
     quotations
       .filter((q) => FINALIZED_QUOTATION_STATUSES.includes(q.status))
-      .flatMap((q) => q.items.map((i) => normName(i.materialName))),
+      .flatMap((q) => q.items.map((i) => lineKey(i))),
   );
-  if (mprItems.length === 0 || !mprItems.every((i) => covered.has(normName(i.materialName)))) return [];
+  if (mprItems.length === 0 || !mprItems.every((i) => covered.has(lineKey(i)))) return [];
 
   const open = quotations.filter((q) => OPEN_QUOTATION_STATUSES.includes(q.status));
   for (const q of open) {
@@ -353,14 +363,15 @@ export async function finalizeQuotation(quotationId: string, projectId: string, 
   if (quotation.mprId) {
     const finalizedSiblings = await prisma.quotation.findMany({
       where: { mprId: quotation.mprId, deletedAt: null, id: { not: quotation.id }, status: { in: FINALIZED_QUOTATION_STATUSES } },
-      select: { quotationNumber: true, items: { select: { materialName: true } } },
+      select: { quotationNumber: true, items: { select: { materialName: true, specification: true } } },
     });
+    // Same item + spec = same material (Steel 8mm and Steel 12mm may come from different vendors).
     const takenBy = new Map<string, string>();
-    for (const q of finalizedSiblings) for (const i of q.items) takenBy.set(normName(i.materialName), q.quotationNumber);
-    const clash = quotation.items.find((i) => takenBy.has(normName(i.materialName)));
+    for (const q of finalizedSiblings) for (const i of q.items) takenBy.set(lineKey(i), q.quotationNumber);
+    const clash = quotation.items.find((i) => takenBy.has(lineKey(i)));
     if (clash) {
       throw new QuotationActionError(
-        `"${clash.materialName}" is already finalized in ${takenBy.get(normName(clash.materialName))}. A material can be finalized only once per request.`,
+        `"${lineLabel(clash)}" is already finalized in ${takenBy.get(lineKey(clash))}. A material can be finalized only once per request.`,
       );
     }
   }
