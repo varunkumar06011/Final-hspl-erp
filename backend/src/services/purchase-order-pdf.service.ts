@@ -2,6 +2,8 @@ import PDFDocument from 'pdfkit';
 import sharp from 'sharp';
 import { getStorageService } from './storage.service';
 import { prisma } from '../config/prisma';
+import { getRoleLabel } from '@hospital-erp/shared';
+import { PO_SIGNING_ROLES, signatureBuffer } from './signature.service';
 
 export async function streamPurchaseOrderPdf(res: NodeJS.WritableStream, po: any) {
   const doc = new PDFDocument({ margin: 0, size: 'A4', bufferPages: true });
@@ -269,21 +271,62 @@ export async function streamPurchaseOrderPdf(res: NodeJS.WritableStream, po: any
   };
 
   // ── Approval & Authorization boxes (drawn on every page) ──
-  // Fixed signatories only: Vinod Sir and Kaushal Sir — names only, no
-  // role/designation labels.
-  const signatories = ['Vinod Sir', 'Kaushal Sir'];
-  const sigW = (width - 12) / signatories.length;
-  const sigH = 48;
+  // One box per signing role. A box is filled from the approval step the role actually
+  // decided: the approver's name, the full date, and — when they had a saved digital
+  // signature at that moment — the signature picture (a snapshot, so a later change to
+  // their signature never alters this document).
+  const signRoles = [...PO_SIGNING_ROLES];
+  type SignStep = {
+    approverRole: string;
+    status: string;
+    approverUser?: { name: string } | null;
+    decidedAt?: Date | string | null;
+    digitallySigned?: boolean;
+    signature?: { imageData: string } | null;
+  };
+  const steps: SignStep[] = po.approvalWorkflow?.steps ?? [];
+  const boxes = signRoles.map((role) => {
+    const step = steps.find((st) => st.approverRole === role && st.status === 'APPROVED' && st.approverUser);
+    return {
+      roleName: getRoleLabel(role),
+      name: step?.approverUser ? String(step.approverUser.name) : null,
+      decidedAt: step?.decidedAt ? new Date(step.decidedAt) : null,
+      image: step?.digitallySigned ? signatureBuffer(step.signature?.imageData) : null,
+    };
+  });
+  const fmtSignedAt = (d: Date) =>
+    d.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true });
+  const sigGap = 8;
+  const sigW = (width - sigGap * (boxes.length - 1)) / boxes.length;
+  const sigH = 84;
   const approvalHeadingH = 20;
   const approvalBlockH = approvalHeadingH + sigH + 6;
 
   const drawApproval = (yy: number) => {
     doc.fillColor(primary).font('Helvetica-Bold').fontSize(10.5).text('APPROVAL & AUTHORIZATION:', left, yy, { lineBreak: false });
     yy += approvalHeadingH;
-    for (let i = 0; i < signatories.length; i++) {
-      const sx = left + i * (sigW + 12);
+    for (let i = 0; i < boxes.length; i++) {
+      const b = boxes[i];
+      const sx = left + i * (sigW + sigGap);
       doc.roundedRect(sx, yy, sigW, sigH, 4).stroke(border);
-      doc.fillColor(dark).font('Helvetica-Bold').fontSize(8.5).text(signatories[i], sx + 6, yy + (sigH - 10) / 2, { width: sigW - 12, align: 'center', lineBreak: false });
+      doc.fillColor(muted).font('Helvetica').fontSize(6.5).text(b.roleName, sx + 4, yy + 4, { width: sigW - 8, align: 'center', lineBreak: false });
+      if (!b.name) continue;
+      if (b.image) {
+        try {
+          doc.image(b.image, sx + 6, yy + 13, { fit: [sigW - 12, 32], align: 'center', valign: 'center' });
+        } catch (err) {
+          console.error('[PO PDF] Could not draw signature:', err instanceof Error ? err.message : err);
+        }
+      }
+      doc.moveTo(sx + 8, yy + 47).lineTo(sx + sigW - 8, yy + 47).lineWidth(0.4).stroke(border);
+      doc.lineWidth(1);
+      doc.fillColor(dark).font('Helvetica-Bold').fontSize(8).text(text(b.name), sx + 4, yy + 51, { width: sigW - 8, align: 'center', lineBreak: false });
+      if (b.decidedAt) {
+        doc.fillColor(dark).font('Helvetica').fontSize(6.5).text(fmtSignedAt(b.decidedAt), sx + 2, yy + 63, { width: sigW - 4, align: 'center', lineBreak: false });
+      }
+      if (b.image) {
+        doc.fillColor(muted).font('Helvetica-Oblique').fontSize(5.5).text('This document was digitally signed', sx + 2, yy + 74, { width: sigW - 4, align: 'center', lineBreak: false });
+      }
     }
     return yy + sigH + 6;
   };

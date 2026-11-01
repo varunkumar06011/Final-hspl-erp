@@ -20,10 +20,12 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { extractErrorMessage } from '../config/api';
 import { useAuthStore } from '../stores/authStore';
 import { formatCurrency, formatIndianNumber, roleLabel } from '../utils/enumOptions';
+import { dateLocale } from '../i18n';
 import NotificationPermissionPrompt from '../components/NotificationPermissionPrompt';
 
 import { useTranslation } from 'react-i18next';
 import CameraCapture from '../components/CameraCapture';
+import SignaturePad from '../components/SignaturePad';
 const NOTIFICATION_EVENT_LABELS: { key: string; label: string; description: string }[] = [
   { key: 'entity_created', label: 'New entity created', description: 'PO, quotation, invoice, payment, etc. created by your team' },
   { key: 'approval_request', label: 'Approval requests', description: 'A document is waiting for your approval' },
@@ -51,6 +53,7 @@ export default function SettingsPage() {
   const [newPin, setNewPin] = useState('');
   const [confirmPin, setConfirmPin] = useState('');
   const [showPins, setShowPins] = useState(false);
+  const [signatureOpen, setSignatureOpen] = useState(false);
   const [success, setSuccess] = useState('');
   const [error, setError] = useState('');
 
@@ -88,6 +91,34 @@ export default function SettingsPage() {
       const response = await api.get('/settings/profile');
       return response.data;
     },
+  });
+
+  const { data: mySig } = useQuery({
+    queryKey: ['/settings/signature'],
+    queryFn: async () => (await api.get('/settings/signature')).data as { hasSignature: boolean; imageData: string | null; updatedAt: string | null },
+  });
+
+  const saveSignatureMutation = useMutation({
+    mutationFn: async (imageData: string) => (await api.put('/settings/signature', { imageData })).data,
+    onSuccess: (res) => {
+      queryClient.setQueryData(['/settings/signature'], res);
+      setSignatureOpen(false);
+      setSuccess(tr('signatureSaved'));
+      setError('');
+      setTimeout(() => setSuccess(''), 3000);
+    },
+    onError: (err: unknown) => setError(extractErrorMessage(err)),
+  });
+
+  const removeSignatureMutation = useMutation({
+    mutationFn: async () => (await api.delete('/settings/signature')).data,
+    onSuccess: (res) => {
+      queryClient.setQueryData(['/settings/signature'], res);
+      setSuccess(tr('signatureRemoved'));
+      setError('');
+      setTimeout(() => setSuccess(''), 3000);
+    },
+    onError: (err: unknown) => setError(extractErrorMessage(err)),
   });
 
   useEffect(() => {
@@ -254,6 +285,43 @@ export default function SettingsPage() {
       </Card>
 
       {/* Notifications */}
+      {/* Digital signature */}
+      <Card sx={{ mb: 3 }}>
+        <CardContent>
+          <Typography variant="h6" fontWeight={600} gutterBottom>{tr('mySignature')}</Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>{tr('signatureNote')}</Typography>
+          <Box sx={{ border: '1.5px dashed', borderColor: 'divider', borderRadius: 2, bgcolor: '#fff', width: { xs: '100%', sm: 320 }, height: 110, display: 'flex', alignItems: 'center', justifyContent: 'center', mb: 1, p: 1 }}>
+            {mySig?.imageData ? (
+              <Box component="img" src={mySig.imageData} alt="" sx={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
+            ) : (
+              <Typography variant="caption" color="text.secondary">{tr('signatureNone')}</Typography>
+            )}
+          </Box>
+          {mySig?.updatedAt && (
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+              {tr('signatureUpdated', { date: new Date(mySig.updatedAt).toLocaleString(dateLocale()) })}
+            </Typography>
+          )}
+          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+            <Button variant="contained" onClick={() => setSignatureOpen(true)}>
+              {mySig?.hasSignature ? tr('signatureRedraw') : tr('signatureDraw')}
+            </Button>
+            {mySig?.hasSignature && (
+              <Button color="error" onClick={() => removeSignatureMutation.mutate()} disabled={removeSignatureMutation.isPending}>
+                {tr('signatureRemove')}
+              </Button>
+            )}
+          </Box>
+        </CardContent>
+      </Card>
+      <SignaturePad
+        open={signatureOpen}
+        title={tr('signatureDialogTitle')}
+        saving={saveSignatureMutation.isPending}
+        onClose={() => setSignatureOpen(false)}
+        onSave={(img) => saveSignatureMutation.mutate(img)}
+      />
+
       <Card sx={{ mb: 3 }}>
         <CardContent>
           <Typography variant="h6" gutterBottom>{tr('pushNotifications')}</Typography>

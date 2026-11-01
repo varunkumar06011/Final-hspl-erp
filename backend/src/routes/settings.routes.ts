@@ -7,6 +7,7 @@ import { validateMiddleware } from '../middleware/validate';
 import { logAudit } from '../services/audit.service';
 import { AuditAction } from '@hospital-erp/shared';
 import { getStorageService, serveFile } from '../services/storage.service';
+import { normaliseSignature, SignatureError } from '../services/signature.service';
 
 const router = Router();
 const logoUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
@@ -179,6 +180,65 @@ router.post(
       });
 
       res.json(updated);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// ── Digital signature (own only; the image is never returned to anyone else) ──
+router.get(
+  '/signature',
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const sig = await prisma.userSignature.findUnique({ where: { userId: req.user!.id } });
+      res.json({ hasSignature: !!sig, imageData: sig?.imageData ?? null, updatedAt: sig?.updatedAt ?? null });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+router.put(
+  '/signature',
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      let imageData: string;
+      try {
+        imageData = await normaliseSignature(req.body?.imageData);
+      } catch (err) {
+        if (err instanceof SignatureError) {
+          res.status(400).json({ error: err.message });
+          return;
+        }
+        throw err;
+      }
+      const sig = await prisma.userSignature.upsert({
+        where: { userId: req.user!.id },
+        create: { userId: req.user!.id, imageData },
+        update: { imageData },
+      });
+      await logAudit({
+        userId: req.user!.id,
+        action: AuditAction.UPDATE,
+        entityType: 'USER_SIGNATURE',
+        entityId: req.user!.id,
+        projectId: req.user!.projectId ?? null,
+        newValue: { signatureSaved: true },
+      }).catch(() => undefined);
+      res.json({ hasSignature: true, imageData, updatedAt: sig.updatedAt });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+router.delete(
+  '/signature',
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      await prisma.userSignature.deleteMany({ where: { userId: req.user!.id } });
+      res.json({ hasSignature: false, imageData: null, updatedAt: null });
     } catch (error) {
       next(error);
     }

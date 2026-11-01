@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Alert, Button, Checkbox, DialogActions, DialogContent, DialogTitle, FormControlLabel, TextField } from '@mui/material';
 import { useTranslation } from 'react-i18next';
+import DrawIcon from '@mui/icons-material/Draw';
 import ResponsiveDialog from './ResponsiveDialog';
 import AcknowledgementCheckbox from './AcknowledgementCheckbox';
 import type { BudgetOverrun } from '../config/api';
@@ -20,6 +21,8 @@ interface ApprovalActionDialogProps {
   /** Wording for the approve / reject title and button (default Approve / Reject), e.g. Finalize / Not selected. */
   approveLabel?: string;
   rejectLabel?: string;
+  /** Approve only: 'will_sign' = the approver's saved signature is applied (consent shown); 'none' = approving without one. */
+  signature?: 'will_sign' | 'none';
 }
 
 export default function ApprovalActionDialog({
@@ -34,6 +37,7 @@ export default function ApprovalActionDialog({
   overBudget,
   approveLabel,
   rejectLabel,
+  signature,
 }: ApprovalActionDialogProps) {
   const { t } = useTranslation();
   const [notes, setNotes] = useState('');
@@ -81,10 +85,19 @@ export default function ApprovalActionDialog({
             label={t('approval.overBudgetYes')}
           />
         )}
+        {!isReject && signature === 'will_sign' && (
+          <Alert severity="info" icon={<DrawIcon fontSize="small" />} sx={{ width: '100%' }}>
+            {t('approval.signatureWillApply', { entity: entityLabel.toLowerCase() })}
+          </Alert>
+        )}
+        {!isReject && signature === 'none' && (
+          <Alert severity="warning" sx={{ width: '100%' }}>{t('approval.signatureNone')}</Alert>
+        )}
         <AcknowledgementCheckbox
           checked={acknowledged}
           onChange={setAcknowledged}
           entityLabel={entityLabel.toLowerCase()}
+          withSignature={!isReject && signature === 'will_sign'}
         />
       </DialogContent>
       <DialogActions sx={{ flexWrap: 'wrap', gap: 1 }}>

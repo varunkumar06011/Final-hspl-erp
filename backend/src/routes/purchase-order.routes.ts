@@ -11,6 +11,7 @@ import * as approvalService from '../services/approval.service';
 import { HEAD_THEN_ADMIN_POLICY, headThenAdminSteps } from '../services/approval.service';
 import { notifyApprovers } from '../services/push.service';
 import { streamPurchaseOrderPdf } from '../services/purchase-order-pdf.service';
+import { applySignatureToStep, PO_SIGNING_ROLES } from '../services/signature.service';
 import { listProofFiles } from '../services/linked-files.service';
 import { buildPoWithProof } from '../services/po-proof-pdf.service';
 import { PassThrough } from 'stream';
@@ -1652,6 +1653,13 @@ router.post(
       // Approve the step
       const result = await approvalService.approve(step.id, req.user!.id, req.body.comments);
 
+      // Digital signature: only the four signing roles approving their own step. A super-admin
+      // override is a normal approval with no signature. Never blocks the approval.
+      if (!approvalService.canOverride(req.user!) && req.user!.role === step.approverRole && PO_SIGNING_ROLES.includes(req.user!.role)) {
+        await applySignatureToStep(step.id, req.user!.id).catch((err) =>
+          console.error('[PO] Failed to apply digital signature:', err?.message ?? err));
+      }
+
       // Only update PO status to APPROVED when fully approved (2 approvals)
       if (result.isFullyApproved) {
         // If this PO was edited (has editedAt), recalculate status based on accepted quantities
@@ -1886,7 +1894,7 @@ router.get(
             include: {
               steps: {
                 orderBy: { stepNumber: 'asc' as const },
-                include: { approverUser: { select: { name: true, role: true } } },
+                include: { approverUser: { select: { name: true, role: true } }, signature: { select: { imageData: true } } },
               },
             },
           },

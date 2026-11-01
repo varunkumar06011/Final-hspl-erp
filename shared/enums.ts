@@ -77,6 +77,14 @@ export const APPROVER_ROLES = [
   UserRole.ADMIN_2,
 ] as const;
 
+/** The four people whose digital signature is printed on a PO (everyone may save one; only these are applied). */
+export const PO_SIGNING_ROLES: string[] = [
+  UserRole.PROJECT_HEAD,
+  UserRole.HEAD_OF_CONSTRUCTION,
+  UserRole.ADMIN,
+  UserRole.ADMIN_2,
+];
+
 /**
  * First-level approvers for POs, quotations and MPRs. One of them must approve
  * before the request reaches the admins (HEAD_THEN_ADMIN approval policy).

@@ -221,7 +221,11 @@
     "role": "Role",
     "overBudgetText": "Approving this PO goes over the budget head \"{{head}}\": allocated {{allocated}}, after approval {{after}}.",
     "overBudgetReason": "Reason for approving over budget",
-    "overBudgetYes": "Yes, I am approving this over budget"
+    "overBudgetYes": "Yes, I am approving this over budget",
+    "signatureConsentExtra": "I also consent to my saved digital signature being applied to this {{entity}} with my approval.",
+    "signatureWillApply": "Your saved digital signature will be applied to this {{entity}}, with today's date.",
+    "signatureNone": "You have no saved digital signature, so this will be approved without one. You can add it in Settings.",
+    "digitallySigned": "Digitally signed"
   },
   "common": {
     "logout": "Logout",

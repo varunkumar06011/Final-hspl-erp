@@ -95,6 +95,8 @@ export const EXCLUDED_MODELS: Record<string, string> = {
   AssetMovement: 'high-volume movement log',
   ApprovalWorkflow: 'plumbing; approvals surface on the record they belong to',
   ApprovalStep: 'plumbing; approvals surface on the record they belong to',
+  UserSignature: 'private; only its owner may read it',
+  ApprovalSignature: 'signature image; never searchable',
   LedgerEntry: 'derived copy of voucher lines',
   POItemLedgerPost: 'link table',
   StaffAttendance: 'daily log',

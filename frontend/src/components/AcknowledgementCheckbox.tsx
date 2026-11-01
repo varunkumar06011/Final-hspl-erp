@@ -5,9 +5,11 @@ interface AcknowledgementCheckboxProps {
   checked: boolean;
   onChange: (checked: boolean) => void;
   entityLabel: string;
+  /** Also consent to the user's saved digital signature being applied with the approval. */
+  withSignature?: boolean;
 }
 
-export default function AcknowledgementCheckbox({ checked, onChange, entityLabel }: AcknowledgementCheckboxProps) {
+export default function AcknowledgementCheckbox({ checked, onChange, entityLabel, withSignature }: AcknowledgementCheckboxProps) {
   const { t } = useTranslation();
   return (
     <FormControlLabel
@@ -15,6 +17,7 @@ export default function AcknowledgementCheckbox({ checked, onChange, entityLabel
       label={
         <Typography variant="body2">
           {t('approval.confirmReviewed', { entity: entityLabel })}
+          {withSignature && ` ${t('approval.signatureConsentExtra', { entity: entityLabel })}`}
         </Typography>
       }
     />

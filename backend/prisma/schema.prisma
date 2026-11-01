@@ -44,6 +44,7 @@ model User {
   auditLogs               AuditLog[]
   comments                Comment[]
   approvalSteps           ApprovalStep[]
+  signature               UserSignature?
   createdVendors          Vendor[]               @relation("VendorCreatedBy")
   createdQuotations       Quotation[]            @relation("QuotationCreatedBy")
   createdPOs              PurchaseOrder[]        @relation("POCreatedBy")
@@ -628,12 +629,41 @@ model ApprovalStep {
   status         String    @default("PENDING") // ApprovalStepStatus enum
   decidedAt      DateTime?
   comments       String?
+  // True when the approver's saved digital signature was applied with this approval
+  // (the picture itself is kept in ApprovalSignature so step lists stay small).
+  digitallySigned Boolean  @default(false)
   createdAt      DateTime  @default(now())
 
   workflow     ApprovalWorkflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
   approverUser User?            @relation(fields: [approverUserId], references: [id])
+  signature    ApprovalSignature?
 
   @@map("approval_steps")
+}
+
+// A user's own saved digital signature (normalised PNG). Read only by its owner.
+model UserSignature {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @unique @db.Uuid
+  imageData String   @db.Text // PNG data URL
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_signatures")
+}
+
+// Snapshot of the signature used when a step was approved. Later changes to the
+// user's signature never alter documents that were already approved.
+model ApprovalSignature {
+  id        String   @id @default(uuid()) @db.Uuid
+  stepId    String   @unique @db.Uuid
+  imageData String   @db.Text // PNG data URL
+  createdAt DateTime @default(now())
+
+  step ApprovalStep @relation(fields: [stepId], references: [id], onDelete: Cascade)
+
+  @@map("approval_signatures")
 }
 
 // ═══════════════════════════════════════════════════════════

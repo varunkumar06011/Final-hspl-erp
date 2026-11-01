@@ -36,7 +36,7 @@ import ResponsiveDialog from '../components/ResponsiveDialog';
 import { DetailSection, DetailField } from '../components/DetailSection';
 import WaitingOn from '../components/WaitingOn';
 import StalledChip from '../components/StalledChip';
-import ApprovalStepsDisplay from '../components/ApprovalStepsDisplay';
+import ApprovalStepsDisplay, { DigitallySignedChip } from '../components/ApprovalStepsDisplay';
 import RefreshButton from '../components/RefreshButton';
 import {
   Add as AddIcon,
@@ -63,7 +63,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import CopyText from '../components/CopyText';
 import ApprovalTiming from '../components/ApprovalTiming';
 import VendorAutocomplete from '../components/VendorAutocomplete';
-import { isUmbrellaContract, Permission, hasPermission, POStatus, UserRole, POPaymentType, GST_RATES, ApprovalStatus, isAdminRole, isWorkflowOpenToRole, canOverrideApprovals, findApprovableStep } from '@hospital-erp/shared';
+import { isUmbrellaContract, Permission, hasPermission, POStatus, UserRole, POPaymentType, GST_RATES, ApprovalStatus, isAdminRole, isWorkflowOpenToRole, canOverrideApprovals, findApprovableStep, PO_SIGNING_ROLES } from '@hospital-erp/shared';
 import { formatCurrency, formatDate, formatDateTime, formatIndianNumber, STATUS_COLORS, QTY_UNIT_OPTIONS, enumLabel, unitLabel } from '../utils/enumOptions';
 import { useTranslation, Trans } from 'react-i18next';
 import { num, toIncGst, round2 } from '../utils/taxCalc';
@@ -134,6 +134,7 @@ interface ApprovalStep {
   approverUser?: { id: string; name: string; role: string } | null;
   comments?: string | null;
   decidedAt?: string | null;
+  digitallySigned?: boolean;
 }
 
 interface PORow {
@@ -400,6 +401,14 @@ export default function PurchaseOrdersPage() {
       createSubmissionLocked.current = false;
       setError(extractErrorMessage(err));
     },
+  });
+
+  // Does this approver's saved digital signature get applied? Only the four signing roles, never a super-admin override.
+  const canSign = !!user && PO_SIGNING_ROLES.includes(user.role) && !canOverrideApprovals(user.role, user.extraPermissions);
+  const { data: mySignature } = useQuery({
+    queryKey: ['/settings/signature'],
+    queryFn: async () => (await api.get('/settings/signature')).data as { hasSignature: boolean },
+    enabled: canSign && approvalAction?.action === 'approve',
   });
 
   const approveMutation = useMutation({
@@ -1015,6 +1024,7 @@ export default function PurchaseOrdersPage() {
                             </Typography>
                           )}
                           <StalledChip type="PO" id={row.id} />
+                          {row.approvalWorkflow?.steps?.some((st) => st.digitallySigned) && <DigitallySignedChip />}
                           {effectiveStatus === POStatus.PENDING_APPROVAL && <WaitingOn workflow={row.approvalWorkflow} since={row.createdAt} />}
                           {row.isContract && <Chip label={t('contractBadge')} size="small" color="secondary" variant="outlined" />}
                           {row.contractPo && <Chip label={t('subPoOf', { n: row.contractPo.poNumber })} size="small" variant="outlined" />}
@@ -1685,6 +1695,7 @@ export default function PurchaseOrdersPage() {
         onClearError={() => setError('')}
         onClose={() => { setApprovalAction(null); setOverBudget(null); }}
         overBudget={overBudget}
+        signature={canSign && mySignature ? (mySignature.hasSignature ? 'will_sign' : 'none') : undefined}
         onConfirm={(payload) => {
           if (!approvalAction) return;
           if (approvalAction.action === 'approve') {

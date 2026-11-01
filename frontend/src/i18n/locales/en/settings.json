@@ -50,5 +50,15 @@
   "n_approval_request_label": "Approval requests",
   "n_approval_request_desc": "A document is waiting for your approval",
   "n_approval_result_label": "Approval results",
-  "n_approval_result_desc": "Your document was approved or rejected"
+  "n_approval_result_desc": "Your document was approved or rejected",
+  "mySignature": "My Digital Signature",
+  "signatureNote": "Draw your signature once. When you approve a purchase order (Project Head, Head of Construction, Admin 1, Admin 2), it is printed on the PO and its PDF with the date, marked as digitally signed. Already-approved POs keep the signature they were approved with.",
+  "signatureNone": "No signature saved yet.",
+  "signatureDraw": "Draw signature",
+  "signatureRedraw": "Draw again",
+  "signatureRemove": "Remove",
+  "signatureDialogTitle": "Draw your signature",
+  "signatureSaved": "Signature saved",
+  "signatureRemoved": "Signature removed",
+  "signatureUpdated": "Last updated {{date}}"
 }

@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import { enumLabel, roleLabel } from '../utils/enumOptions';
+import DrawIcon from '@mui/icons-material/Draw';
 import { Box, Chip, Divider, Table, TableBody, TableCell, TableHead, TableRow, Typography } from '@mui/material';
 
 interface ApprovalStep {
@@ -9,6 +10,13 @@ interface ApprovalStep {
   status: string;
   approverUser?: { name: string } | null;
   comments?: string | null;
+  digitallySigned?: boolean;
+}
+
+/** Purple chip shown beside an approver whose saved signature was applied to their approval. */
+export function DigitallySignedChip() {
+  const { t } = useTranslation();
+  return <Chip icon={<DrawIcon />} label={t('approval.digitallySigned')} size="small" sx={{ bgcolor: '#EDE7F6', color: '#4527A0', fontWeight: 600, '& .MuiChip-icon': { color: '#4527A0' } }} />;
 }
 
 function statusColor(status: string): 'success' | 'error' | 'default' {
@@ -37,7 +45,7 @@ export default function ApprovalStepsDisplay({ steps }: { steps: ApprovalStep[] 
               <TableCell>{step.stepNumber}</TableCell>
               <TableCell>{roleLabel(step.approverRole)}</TableCell>
               <TableCell><Chip label={enumLabel(step.status)} size="small" color={statusColor(step.status)} /></TableCell>
-              <TableCell>{step.approverUser?.name ?? '—'}</TableCell>
+              <TableCell>{step.approverUser?.name ?? '—'}{step.digitallySigned && <Box component="span" sx={{ ml: 1 }}><DigitallySignedChip /></Box>}</TableCell>
               <TableCell>{step.comments ?? '—'}</TableCell>
             </TableRow>
           ))}
@@ -56,7 +64,10 @@ export default function ApprovalStepsDisplay({ steps }: { steps: ApprovalStep[] 
               <Typography variant="caption" color="text.secondary" fontWeight={600}>{t('approval.role')}</Typography>
               <Typography variant="body2" sx={{ minWidth: 0, overflowWrap: 'anywhere' }}>{roleLabel(step.approverRole)}</Typography>
               <Typography variant="caption" color="text.secondary" fontWeight={600}>{t('approval.approver')}</Typography>
-              <Typography variant="body2" sx={{ minWidth: 0, overflowWrap: 'anywhere' }}>{step.approverUser?.name ?? '—'}</Typography>
+              <Box sx={{ minWidth: 0, display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 0.5 }}>
+                <Typography variant="body2" sx={{ minWidth: 0, overflowWrap: 'anywhere' }}>{step.approverUser?.name ?? '—'}</Typography>
+                {step.digitallySigned && <DigitallySignedChip />}
+              </Box>
               <Typography variant="caption" color="text.secondary" fontWeight={600}>{t('approval.comments')}</Typography>
               <Typography variant="body2" sx={{ minWidth: 0, overflowWrap: 'anywhere' }}>{step.comments ?? '—'}</Typography>
             </Box>
