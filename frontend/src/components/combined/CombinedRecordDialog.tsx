@@ -52,6 +52,7 @@ import { useToast } from '../ToastProvider';
 import { enumLabel, formatCurrency, formatDate, formatDateTime } from '../../utils/enumOptions';
 import StageStepper, { type Step, type StepKey } from './StageStepper';
 import AddQuotationDialog from './AddQuotationDialog';
+import ProofsPanel from './ProofsPanel';
 
 // ── response shape of GET /combined-records/:type/:id (only what the view uses) ──
 interface WfStep {
@@ -310,6 +311,8 @@ export default function CombinedRecordDialog({ type, id, onClose }: { type: stri
           <Alert severity="error">{extractErrorMessage(error) || t('notFound')}</Alert>
         ) : (
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            {/* Proofs first: whoever pays sees the bills and PDFs before anything else. */}
+            <ProofsPanel type={type} id={id} />
             <Card sx={{ p: { xs: 1.5, sm: 2 } }}>
               <StageStepper steps={data.steps} onSelect={scrollTo} />
               <Alert severity={data.next === 'completed' ? 'success' : data.next === 'rejected' || data.next === 'cancelled' ? 'error' : 'info'} sx={{ mt: 2 }}>

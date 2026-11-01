@@ -41,7 +41,7 @@ async function generateVendorCode(projectId: string): Promise<string> {
 const router = Router();
 router.use(authMiddleware);
 
-const mprInclude = {
+export const mprInclude = {
   createdByUser: { select: { id: true, name: true } },
   requestRaisedBy: { select: { id: true, name: true } },
   items: true,
