@@ -408,8 +408,8 @@ export default function PurchaseOrdersPage() {
     },
   });
 
-  // Does this approver's saved digital signature get applied? Only the four signing roles, never a super-admin override.
-  const canSign = !!user && PO_SIGNING_ROLES.includes(user.role) && !canOverrideApprovals(user.role, user.extraPermissions);
+  // Does this approver's saved digital signature get applied? Only the four signing roles (on their own step).
+  const canSign = !!user && PO_SIGNING_ROLES.includes(user.role);
   const { data: mySignature } = useQuery({
     queryKey: ['/settings/signature'],
     queryFn: async () => (await api.get('/settings/signature')).data as { hasSignature: boolean },

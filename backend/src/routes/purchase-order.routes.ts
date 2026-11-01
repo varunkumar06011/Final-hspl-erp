@@ -1662,11 +1662,25 @@ router.post(
       // Approve the step
       const result = await approvalService.approve(step.id, req.user!.id, req.body.comments);
 
-      // Digital signature: only the four signing roles approving their own step. A super-admin
-      // override is a normal approval with no signature. Never blocks the approval.
-      if (!approvalService.canOverride(req.user!) && req.user!.role === step.approverRole && PO_SIGNING_ROLES.includes(req.user!.role)) {
-        await applySignatureToStep(step.id, req.user!.id).catch((err) =>
-          console.error('[PO] Failed to apply digital signature:', err?.message ?? err));
+      // Digital signature: a step is signed when the person who decided it holds that step's own
+      // role (Project Head, Head of Construction, Admin 1, Admin 2) — also when they are a super
+      // admin. A super admin deciding someone else's step leaves it unsigned. Never blocks the approval.
+      if (PO_SIGNING_ROLES.includes(req.user!.role)) {
+        try {
+          const mine = await prisma.approvalStep.findMany({
+            where: {
+              workflowId: po.approvalWorkflow.id,
+              approverUserId: req.user!.id,
+              approverRole: req.user!.role,
+              status: 'APPROVED',
+              digitallySigned: false,
+            },
+            select: { id: true },
+          });
+          for (const m of mine) await applySignatureToStep(m.id, req.user!.id);
+        } catch (err) {
+          console.error('[PO] Failed to apply digital signature:', err instanceof Error ? err.message : err);
+        }
       }
 
       // Only update PO status to APPROVED when fully approved (2 approvals)
