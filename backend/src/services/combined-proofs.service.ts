@@ -168,7 +168,8 @@ async function renderGenerated(projectId: string, stage: 'MPR' | 'QUOTATION' | '
     include: {
       steps: {
         orderBy: { stepNumber: 'asc' as const },
-        include: { approverUser: { select: { name: true, role: true } } },
+        // the saved signature picture is what the PO's approval boxes are drawn from
+        include: { approverUser: { select: { name: true, role: true } }, signature: { select: { imageData: true } } },
       },
     },
   };

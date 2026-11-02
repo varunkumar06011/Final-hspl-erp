@@ -21,7 +21,7 @@ export default defineConfig({
           // These are only reached via dynamic import / lazy pages — letting
           // them fall through keeps them in their own on-demand chunks
           // instead of the eager vendor bundle.
-          if (id.includes('jspdf') || id.includes('lottie-web') || id.includes('html2canvas')) return;
+          if (id.includes('jspdf') || id.includes('pdfjs-dist') ||id.includes('lottie-web') || id.includes('html2canvas')) return;
           // NOTE: react/react-dom/scheduler/socket.io deliberately stay in
           // 'vendor'. Splitting them into their own chunk creates a circular
           // chunk (vendor ↔ react-vendor) — Rollup then picks an evaluation

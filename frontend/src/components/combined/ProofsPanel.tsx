@@ -29,6 +29,7 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import api, { extractErrorMessage } from '../../config/api';
 import { downloadPath, printPdfBlob } from '../../utils/file';
+import PdfPages from '../PdfPages';
 import ResponsiveDialog from '../ResponsiveDialog';
 
 // ── response of GET /combined-records/:type/:id/proofs ──
@@ -52,7 +53,7 @@ interface ProofsData {
 const STAGES: Proof['stage'][] = ['MPR', 'QUOTATION', 'PO', 'GOODS_RECEIPT', 'INVOICE', 'PAYMENT'];
 
 /** The file as a blob (cached for the session), turned into an object URL for <img> / <iframe>. */
-function useProofUrl(proof: Proof | undefined, enabled = true): { url: string | null; failed: boolean } {
+function useProofUrl(proof: Proof | undefined, enabled = true): { url: string | null; blob: Blob | undefined; failed: boolean } {
   const wants = !!proof && enabled && proof.format !== 'other';
   const { data: blob, isError } = useQuery({
     queryKey: ['combined-proof-blob', proof?.viewRoute],
@@ -73,7 +74,7 @@ function useProofUrl(proof: Proof | undefined, enabled = true): { url: string | 
     setUrl(created);
     return () => window.URL.revokeObjectURL(created);
   }, [blob, proof]);
-  return { url, failed: isError };
+  return { url, blob, failed: isError };
 }
 
 /** One tile: the picture itself for images, a document tile for PDFs / other files. */
@@ -117,7 +118,7 @@ function Thumb({ proof, size, onClick, children }: { proof: Proof; size: number 
 function Lightbox({ items, index, onIndex, onClose }: { items: Proof[]; index: number; onIndex: (i: number) => void; onClose: () => void }) {
   const { t } = useTranslation('combined');
   const proof = items[index];
-  const { url, failed } = useProofUrl(proof);
+  const { url, blob, failed } = useProofUrl(proof);
   const go = useCallback((d: number) => onIndex(Math.min(items.length - 1, Math.max(0, index + d))), [index, items.length, onIndex]);
 
   useEffect(() => {
@@ -172,9 +173,10 @@ function Lightbox({ items, index, onIndex, onClose }: { items: Proof[]; index: n
           <CircularProgress sx={{ color: '#fff' }} />
         ) : proof.format === 'image' ? (
           <Box component="img" src={url} alt={proof.fileName} sx={{ maxWidth: '100%', maxHeight: '78vh', objectFit: 'contain', display: 'block' }} />
-        ) : (
-          <Box component="iframe" src={url} title={proof.fileName} sx={{ width: '100%', height: '78vh', border: 0, bgcolor: '#fff' }} />
-        )}
+        ) : blob ? (
+          // drawn page by page: an iframe on a blob link shows nothing in the iOS app
+          <PdfPages key={proof.key} blob={blob} maxHeight="78vh" />
+        ) : null}
       </DialogContent>
     </ResponsiveDialog>
   );
