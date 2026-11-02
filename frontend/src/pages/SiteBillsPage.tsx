@@ -30,6 +30,9 @@ import {
   Visibility as ViewIcon,
   AccountTree as CombinedIcon,
   PlaylistAddCheck as SelectTodayIcon,
+  Close as CloseIcon,
+  Image as ImageFileIcon,
+  PictureAsPdf as PdfFileIcon,
 } from '@mui/icons-material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
@@ -37,7 +40,8 @@ import { POPaymentType, SITE_BILL_LIMIT, SiteBillPaymentMode, CatalogItemKind } 
 import api, { extractErrorMessage } from '../config/api';
 import { useUrlFilters } from '../hooks/useUrlFilters';
 import ResponsiveDialog from '../components/ResponsiveDialog';
-import FilePicker from '../components/FilePicker';
+import CameraCapture from '../components/CameraCapture';
+import UploadSourceButton from '../components/UploadSourceButton';
 import ItemsGist from '../components/ItemsGist';
 import RefreshButton from '../components/RefreshButton';
 import MaterialAutocomplete, { findCatalogMaterial, useMaterialCatalog } from '../components/MaterialAutocomplete';
@@ -57,8 +61,11 @@ interface SiteBillRow {
   total: number;
   items: { materialName: string; quantity: number; unit: string | null; rate: number; amount: number }[];
   paidBy: { id: string; name: string } | null;
+  voucherNumber: string | null;
   fileName: string | null;
   hasFile: boolean;
+  /** Bill files after the first one. */
+  extraFiles: { id: string; fileName: string }[];
   budgetHead: { id: string; particulars: string } | null;
   po: { id: string; poNumber: string; status: string } | null;
   previousPo: { id: string; poNumber: string; status: string } | null;
@@ -86,6 +93,9 @@ function useBudgetHeads(enabled: boolean): BudgetHeadOption[] {
   });
   return data?.data ?? [];
 }
+
+/** Most files that can be attached to one bill (the server enforces the same). */
+const MAX_BILL_FILES = 10;
 
 const todayIso = () => new Date().toISOString().slice(0, 10);
 const sameDay = (a: string, b: string) => a.slice(0, 10) === b.slice(0, 10);
@@ -214,6 +224,7 @@ export default function SiteBillsPage() {
                       <Typography fontWeight={700}>{row.shopName || '—'}</Typography>
                       <Typography variant="body2" color="text.secondary">{row.mprNumber} · {formatDate(row.billDate)}</Typography>
                       {row.paymentMode && <Chip size="small" label={enumLabel(row.paymentMode)} variant="outlined" />}
+                      {row.voucherNumber && <Chip size="small" label={t('voucherChip', { n: row.voucherNumber })} variant="outlined" sx={{ maxWidth: 220 }} />}
                       {row.po ? (
                         <Chip size="small" color="success" icon={<CombinedIcon />} label={t('inPo', { po: row.po.poNumber, status: enumLabel(row.po.status) })} onClick={() => navigate(`/combined-records?type=po&id=${row.po!.id}`)} />
                       ) : (
@@ -246,8 +257,13 @@ export default function SiteBillsPage() {
                         <Typography variant="caption" color={row.budgetHead ? 'text.secondary' : 'warning.main'}>{row.budgetHead?.particulars ?? t('budgetHeadNotAssigned')}</Typography>
                       )}
                       {row.hasFile && (
-                        <Button size="small" startIcon={<ViewIcon />} onClick={() => openPath(`/material-purchase-requests/${row.id}/receipt`, row.fileName ?? 'bill')}>{t('viewBill')}</Button>
+                        <Button size="small" startIcon={<ViewIcon />} onClick={() => openPath(`/material-purchase-requests/${row.id}/receipt`, row.fileName ?? 'bill')}>
+                          {row.extraFiles.length ? t('billFileN', { n: 1 }) : t('viewBill')}
+                        </Button>
                       )}
+                      {row.extraFiles.map((f, i) => (
+                        <Button key={f.id} size="small" startIcon={<ViewIcon />} onClick={() => openPath(`/attachments/${f.id}/file`, f.fileName)}>{t('billFileN', { n: i + 2 })}</Button>
+                      ))}
                       {!row.po && (
                         <IconButton size="small" color="error" onClick={() => setDeleteRow(row)} aria-label={t('delete')}><DeleteIcon fontSize="small" /></IconButton>
                       )}
@@ -323,7 +339,8 @@ function AddBillDialog({ open, onClose }: { open: boolean; onClose: () => void }
   const [mode, setMode] = useState<string>(SiteBillPaymentMode.CASH);
   const [description, setDescription] = useState('');
   const [items, setItems] = useState<ItemDraft[]>([emptyItem()]);
-  const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
+  const [voucherNumber, setVoucherNumber] = useState('');
   const [budgetHeadId, setBudgetHeadId] = useState('');
   const budgetHeads = useBudgetHeads(open);
   const [error, setError] = useState('');
@@ -340,11 +357,20 @@ function AddBillDialog({ open, onClose }: { open: boolean; onClose: () => void }
     setMode(SiteBillPaymentMode.CASH);
     setDescription('');
     setItems([emptyItem()]);
-    setFile(null);
+    setFiles([]);
+    setVoucherNumber('');
     setBudgetHeadId('');
     setError('');
   };
   const close = () => { reset(); onClose(); };
+  const addFile = (f: File) =>
+    setFiles((prev) => {
+      if (prev.length >= MAX_BILL_FILES) {
+        setError(t('tooManyFiles', { max: MAX_BILL_FILES }));
+        return prev;
+      }
+      return [...prev, f];
+    });
 
   const save = useMutation({
     mutationFn: async (addAnother: boolean) => {
@@ -362,7 +388,8 @@ function AddBillDialog({ open, onClose }: { open: boolean; onClose: () => void }
         rate: Number(i.rate) || 0,
       }))));
       if (budgetHeadId) form.append('budgetHeadId', budgetHeadId);
-      if (file) form.append('file', file);
+      files.forEach((f) => form.append('files', f));
+      if (voucherNumber.trim()) form.append('voucherNumber', voucherNumber.trim());
       await api.post('/site-bills', form, { headers: { 'Content-Type': 'multipart/form-data' } });
       return addAnother;
     },
@@ -374,7 +401,8 @@ function AddBillDialog({ open, onClose }: { open: boolean; onClose: () => void }
         setShopName('');
         setDescription('');
         setItems([emptyItem()]);
-        setFile(null);
+        setFiles([]);
+        setVoucherNumber('');
         setBudgetHeadId('');
         setError('');
       } else close();
@@ -446,8 +474,30 @@ function AddBillDialog({ open, onClose }: { open: boolean; onClose: () => void }
           </TextField>
         )}
         <TextField size="small" label={t('descriptionOptional')} value={description} onChange={(e) => setDescription(e.target.value)} multiline minRows={2} />
+        <TextField size="small" label={t('voucherNumber')} value={voucherNumber} onChange={(e) => setVoucherNumber(e.target.value)} inputProps={{ maxLength: 100 }} />
         <Box>
-          <FilePicker file={file} onChange={setFile} label={t('attachBill')} accept="image/*,application/pdf" />
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+            <UploadSourceButton multiple onFile={addFile} accept="image/*,application/pdf" size="small" disabled={files.length >= MAX_BILL_FILES}>
+              {files.length ? t('addMoreFiles') : t('attachBill')}
+            </UploadSourceButton>
+            <CameraCapture size="small" onCapture={addFile} disabled={files.length >= MAX_BILL_FILES} />
+          </Box>
+          {files.length > 0 && (
+            <Box sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap', mt: 1 }}>
+              {files.map((f, idx) => (
+                <Chip
+                  key={`${f.name}-${f.size}-${idx}`}
+                  size="small"
+                  variant="outlined"
+                  icon={f.type.startsWith('image/') ? <ImageFileIcon /> : <PdfFileIcon />}
+                  label={f.name}
+                  onDelete={() => setFiles((prev) => prev.filter((_x, i) => i !== idx))}
+                  deleteIcon={<CloseIcon aria-label={t('removeFile')} />}
+                  sx={{ maxWidth: 240 }}
+                />
+              ))}
+            </Box>
+          )}
         </Box>
       </DialogContent>
       <DialogActions sx={{ flexWrap: 'wrap', gap: 1 }}>

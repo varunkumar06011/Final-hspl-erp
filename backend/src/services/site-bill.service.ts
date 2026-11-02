@@ -100,10 +100,17 @@ export interface CreateSiteBillInput {
   description?: string | null;
   paidById?: string | null;
   items: SiteBillItemInput[];
+  /** The first bill file; it sits on the request itself (receiptFile*). */
   file: { filePath: string; fileName: string; mimeType: string } | null;
+  /** Any further bill photos / PDFs; stored as attachments of the request. */
+  extraFiles?: { filePath: string; fileName: string; mimeType: string }[];
+  voucherNumber?: string | null;
   budgetHeadId?: string | null;
   mprNumber: string;
 }
+
+/** Entity type the request's attachments are stored under (same as the request's other files). */
+const BILL_ATTACHMENT_TYPE = 'MATERIAL_PURCHASE_REQUEST';
 
 async function assertBudgetHead(projectId: string, budgetHeadId: string) {
   const head = await prisma.budgetHead.findFirst({ where: { id: budgetHeadId, projectId, deletedAt: null }, select: { id: true } });
@@ -129,6 +136,7 @@ export async function createSiteBill(input: CreateSiteBillInput) {
       billShopName: input.shopName,
       billPaymentMode: input.paymentMode,
       description: input.description || null,
+      voucherNumber: input.voucherNumber?.trim() || null,
       requestRaisedById: input.paidById || input.userId,
       estimatedSubtotal: total,
       estimatedGstRate: 0,
@@ -154,13 +162,36 @@ export async function createSiteBill(input: CreateSiteBillInput) {
     },
   });
 
+  if (input.extraFiles?.length) {
+    await prisma.attachment.createMany({
+      data: input.extraFiles.map((f) => ({
+        projectId: input.projectId,
+        entityType: BILL_ATTACHMENT_TYPE,
+        entityId: bill.id,
+        fileName: f.fileName,
+        filePath: f.filePath,
+        mimeType: f.mimeType,
+        fileType: f.mimeType.startsWith('image/') ? 'IMAGE' : 'DOCUMENT',
+        uploadedBy: input.userId,
+      })),
+    });
+  }
+
   await logAudit({
     userId: input.userId,
     action: AuditAction.CREATE_MPR,
     entityType: 'material_purchase_requests',
     entityId: bill.id,
     projectId: input.projectId,
-    newValue: { mprNumber: bill.mprNumber, siteBill: true, shopName: input.shopName, total, paymentMode: input.paymentMode },
+    newValue: {
+      mprNumber: bill.mprNumber,
+      siteBill: true,
+      shopName: input.shopName,
+      total,
+      paymentMode: input.paymentMode,
+      voucherNumber: bill.voucherNumber,
+      files: (input.file ? 1 : 0) + (input.extraFiles?.length ?? 0),
+    },
   });
   return bill;
 }
@@ -212,6 +243,17 @@ export async function listSiteBills(projectId: string, f: ListSiteBillsFilter) {
     : [];
   const poById = new Map(pos.map((p) => [p.id, p]));
 
+  // Bill files after the first one are attachments of the request.
+  const extras = bills.length
+    ? await prisma.attachment.findMany({
+        where: { projectId, entityType: BILL_ATTACHMENT_TYPE, entityId: { in: bills.map((b) => b.id) } },
+        select: { id: true, entityId: true, fileName: true },
+        orderBy: { createdAt: 'asc' },
+      })
+    : [];
+  const extrasByBill = new Map<string, { id: string; fileName: string }[]>();
+  for (const e of extras) extrasByBill.set(e.entityId, [...(extrasByBill.get(e.entityId) ?? []), { id: e.id, fileName: e.fileName }]);
+
   const words = (f.search ?? '').trim().toLowerCase().split(/\s+/).filter(Boolean);
   const rows = bills
     .map((b) => {
@@ -237,8 +279,10 @@ export async function listSiteBills(projectId: string, f: ListSiteBillsFilter) {
         paidBy: b.requestRaisedBy,
         createdBy: b.createdByUser,
         createdAt: b.createdAt,
+        voucherNumber: b.voucherNumber,
         fileName: b.receiptFileName,
         hasFile: !!b.receiptFilePath,
+        extraFiles: extrasByBill.get(b.id) ?? [],
         budgetHead: b.billBudgetHead,
         po: livePo ? { id: livePo.id, poNumber: livePo.poNumber, status: livePo.status } : null,
         // The PO this bill was in before it was rejected/cancelled (bill is free again).
@@ -248,7 +292,7 @@ export async function listSiteBills(projectId: string, f: ListSiteBillsFilter) {
     .filter((r) => (f.filter === 'open' ? !r.po : f.filter === 'in_po' ? !!r.po : true))
     .filter((r) => {
       if (words.length === 0) return true;
-      const text = [r.mprNumber, r.shopName, r.description, r.paidBy?.name, r.po?.poNumber, String(r.total), ...r.items.map((i) => i.materialName)]
+      const text = [r.mprNumber, r.voucherNumber, r.shopName, r.description, r.paidBy?.name, r.po?.poNumber, String(r.total), ...r.items.map((i) => i.materialName)]
         .filter(Boolean)
         .join(' ')
         .toLowerCase();

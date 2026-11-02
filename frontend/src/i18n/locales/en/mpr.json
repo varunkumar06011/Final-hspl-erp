@@ -84,6 +84,8 @@
   "deliveryPlaceholder": "Where material is physically delivered",
   "contactPerson": "Contact Person",
   "contactNumber": "Contact Number",
+  "voucherNumber": "Voucher number",
+  "voucherChip": "Voucher: {{n}}",
   "billTo": "BILL TO",
   "billingAddress": "Billing Address",
   "billingPlaceholder": "V Grand Health Care Pvt. Ltd. billing address",

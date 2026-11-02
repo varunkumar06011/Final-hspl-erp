@@ -93,6 +93,8 @@ interface MPRRow {
   deliveryAddress?: string | null;
   contactPerson?: string | null;
   contactNumber?: string | null;
+  /** Free-text voucher number (letters and digits). */
+  voucherNumber?: string | null;
   billingAddress?: string | null;
   stateCode?: string | null;
   requestRaisedById?: string | null;
@@ -189,6 +191,9 @@ export default function MaterialPurchaseRequestsPage() {
   const [contactNumber, setContactNumber] = useState(() => {
     try { return JSON.parse(localStorage.getItem(MPR_DRAFT_KEY) || '{}').contactNumber ?? ''; } catch { return ''; }
   });
+  const [voucherNumber, setVoucherNumber] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(MPR_DRAFT_KEY) || '{}').voucherNumber ?? ''; } catch { return ''; }
+  });
   const [billingAddress, setBillingAddress] = useState(() => {
     try { return JSON.parse(localStorage.getItem(MPR_DRAFT_KEY) || '{}').billingAddress ?? ''; } catch { return ''; }
   });
@@ -239,11 +244,11 @@ export default function MaterialPurchaseRequestsPage() {
     const draft = {
       requestType: requestTypeTab, serviceCategory, servicePeriodStart, servicePeriodEnd,
       requiredBy, department, priority, description, deliveryAddress,
-      contactPerson, contactNumber, billingAddress, stateCode,
+      contactPerson, contactNumber, voucherNumber, billingAddress, stateCode,
       requestRaisedById, technicalRequirements, items, selectedVendorId,
     };
     try { localStorage.setItem(MPR_DRAFT_KEY, JSON.stringify(draft)); } catch { /* ignore quota errors */ }
-  }, [requestTypeTab, serviceCategory, servicePeriodStart, servicePeriodEnd, requiredBy, department, priority, description, deliveryAddress, contactPerson, contactNumber, billingAddress, stateCode, requestRaisedById, technicalRequirements, items, selectedVendorId, editRow]);
+  }, [requestTypeTab, serviceCategory, servicePeriodStart, servicePeriodEnd, requiredBy, department, priority, description, deliveryAddress, contactPerson, contactNumber, voucherNumber, billingAddress, stateCode, requestRaisedById, technicalRequirements, items, selectedVendorId, editRow]);
 
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 20;
@@ -320,6 +325,7 @@ export default function MaterialPurchaseRequestsPage() {
     setDeliveryAddress('');
     setContactPerson('');
     setContactNumber('');
+    setVoucherNumber('');
     setBillingAddress('');
     setStateCode('');
     setRequestRaisedById('');
@@ -356,6 +362,7 @@ export default function MaterialPurchaseRequestsPage() {
     setDeliveryAddress(row.deliveryAddress ?? '');
     setContactPerson(row.contactPerson ?? '');
     setContactNumber(row.contactNumber ?? '');
+    setVoucherNumber(row.voucherNumber ?? '');
     setBillingAddress(row.billingAddress ?? '');
     setStateCode(row.stateCode ?? '');
     setRequestRaisedById(row.requestRaisedById ?? '');
@@ -451,6 +458,8 @@ export default function MaterialPurchaseRequestsPage() {
         deliveryAddress: deliveryAddress || undefined,
         contactPerson: contactPerson || undefined,
         contactNumber: contactNumber || undefined,
+        // sent as '' when editing so an emptied voucher number is cleared on the server
+        voucherNumber: editRow ? voucherNumber.trim() : voucherNumber.trim() || undefined,
         billingAddress: billingAddress || undefined,
         stateCode: stateCode || undefined,
         requestRaisedById: requestRaisedById || undefined,
@@ -824,6 +833,9 @@ export default function MaterialPurchaseRequestsPage() {
                         {row.vendor?.name ?? row.createdByUser?.name ?? '—'}
                       </Typography>
                       <Typography component="span" variant="caption" color="text.secondary">{formatDate(row.date)}</Typography>
+                      {row.voucherNumber && (
+                        <Chip size="small" variant="outlined" label={t('voucherChip', { n: row.voucherNumber })} sx={{ maxWidth: 220 }} />
+                      )}
                     </Box>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, flexWrap: 'wrap' }}>
                       <Chip
@@ -922,6 +934,7 @@ export default function MaterialPurchaseRequestsPage() {
                     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, mt: 1 }}>
                       <DetailSection title={t('sectionRequest')}>
                         <DetailField label={t('fDate')}>{formatDate(row.date)}</DetailField>
+                        <DetailField label={t('voucherNumber')}>{row.voucherNumber || '—'}</DetailField>
                         <DetailField label={t('requiredBy')}>{row.requiredBy ? formatDate(row.requiredBy) : '—'}</DetailField>
                         <DetailField label={t('department')}>{row.department ?? '—'}</DetailField>
                         <DetailField label={t('fRequestedBy')}>{row.createdByUser?.name ?? '—'}</DetailField>
@@ -1214,6 +1227,16 @@ export default function MaterialPurchaseRequestsPage() {
                   <MenuItem key={u.id} value={u.id}>{u.name}</MenuItem>
                 ))}
               </TextField>
+            </Grid>
+            <Grid item xs={12} sm={6} md={3}>
+              <TextField
+                fullWidth
+                size="small"
+                label={t('voucherNumber')}
+                value={voucherNumber}
+                onChange={(e) => setVoucherNumber(e.target.value)}
+                inputProps={{ maxLength: 100 }}
+              />
             </Grid>
           </Grid>
 
