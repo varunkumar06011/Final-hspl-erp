@@ -47,6 +47,7 @@ import { formatCurrency, formatIndianNumber, formatDate, todayLocalDate, enumLab
 import CommentsButton from '../components/CommentsButton';
 
 import { useTranslation } from 'react-i18next';
+import { useCreateReview } from '../components/CreateReview';
 interface JournalEntry {
   id: string;
   accountType: string;
@@ -182,6 +183,7 @@ export default function JournalVouchersPage() {
     },
   });
 
+  const review = useCreateReview();
   const createMutation = useMutation({
     mutationFn: async (payload: Record<string, unknown>) => {
       const response = await api.post('/journal-vouchers', payload);
@@ -371,7 +373,7 @@ export default function JournalVouchersPage() {
         description: e.description || undefined,
       })),
     };
-    createMutation.mutate(payload);
+    review(() => createMutation.mutate(payload));
   };
 
   const rows: JournalVoucher[] = data?.data ?? [];

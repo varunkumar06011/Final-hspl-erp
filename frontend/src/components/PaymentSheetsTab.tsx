@@ -48,6 +48,7 @@ import { useFileViewer } from './FileViewerDialog';
 
 import { useTranslation } from 'react-i18next';
 import FilePicker from './FilePicker';
+import { useCreateReview } from './CreateReview';
 const PAYMENT_MODES = Object.values(PaymentMode);
 
 interface POOption {
@@ -206,6 +207,7 @@ export default function PaymentSheetsTab() {
     },
   });
 
+  const review = useCreateReview();
   const createMutation = useMutation({
     mutationFn: async () => {
       const fd = new FormData();
@@ -671,7 +673,7 @@ export default function PaymentSheetsTab() {
         <DialogActions>
           <Button onClick={() => setAddOpen(false)}>{t('cancel')}</Button>
           <Button variant="contained" startIcon={<ReceiptIcon />} disabled={!(sourceType === 'PO' ? selectedPO : selectedVoucher) || !form.amount || createMutation.isPending}
-            onClick={() => createMutation.mutate()}>
+            onClick={() => review(() => createMutation.mutate())}>
             {createMutation.isPending ? <CircularProgress size={20} /> : t('saveEntry')}
           </Button>
         </DialogActions>

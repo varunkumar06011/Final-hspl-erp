@@ -45,6 +45,7 @@ import { useAuthStore } from '../stores/authStore';
 import { enumLabel, formatCurrency, formatDate, formatIndianNumber } from '../utils/enumOptions';
 
 import { useTranslation } from 'react-i18next';
+import { useCreateReview } from '../components/CreateReview';
 type TabValue = 'budget' | 'cashflow' | 'accounts' | 'owner' | 'reconciliation' | 'aging';
 
 export default function FinanceReportsPage() {
@@ -70,6 +71,7 @@ export default function FinanceReportsPage() {
   const [createForm, setCreateForm] = useState({ slNo: '', particulars: '', allocatedAmount: '' });
   const [createError, setCreateError] = useState('');
 
+  const review = useCreateReview();
   const createBudgetHeadMutation = useMutation({
     mutationFn: async (payload: { slNo: number; particulars: string; allocatedAmount: number }) => {
       const response = await api.post('/budget-heads', payload);
@@ -113,11 +115,11 @@ export default function FinanceReportsPage() {
       return;
     }
     setCreateError('');
-    createBudgetHeadMutation.mutate({
+    review(() => createBudgetHeadMutation.mutate({
       slNo: Number(createForm.slNo),
       particulars: String(createForm.particulars).trim(),
       allocatedAmount: Number(createForm.allocatedAmount),
-    });
+    }));
   };
 
   const { data: budgetReport, isLoading: budgetLoading } = useQuery({

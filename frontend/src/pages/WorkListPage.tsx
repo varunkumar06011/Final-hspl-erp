@@ -54,6 +54,7 @@ import { useUrlFilters } from '../hooks/useUrlFilters';
 import KanbanBoard from '../components/KanbanBoard';
 
 import { useTranslation } from 'react-i18next';
+import { useCreateReview } from '../components/CreateReview';
 interface WorkTaskQuotationLink {
   id: string;
   quotation: {
@@ -176,6 +177,7 @@ export default function WorkListPage() {
   const { apply, undo } = useOptimistic();
 
   type SaveVars = { id: string | null; payload: Record<string, unknown>; form: Record<string, unknown> };
+  const review = useCreateReview();
   const saveMutation = useMutation({
     mutationFn: async ({ id, payload }: SaveVars) => {
       if (id) {
@@ -274,7 +276,8 @@ export default function WorkListPage() {
       assignedTo: form.assignedTo || undefined,
       followUpBy: String(form.followUpBy ?? '').trim() || undefined,
     };
-    saveMutation.mutate({ id: editingId, payload, form });
+    if (editingId) saveMutation.mutate({ id: editingId, payload, form });
+    else review(() => saveMutation.mutate({ id: editingId, payload, form }));
   }
 
   // ── Raise to Quotation — navigates to the Quotations page with the create

@@ -49,6 +49,7 @@ import RefreshButton from '../components/RefreshButton';
 import TraceabilityChain, { TraceData } from '../components/TraceabilityChain';
 
 import { useTranslation } from 'react-i18next';
+import { useCreateReview } from '../components/CreateReview';
 const STATUS_COLORS: Record<string, 'success' | 'warning' | 'info' | 'error' | 'default'> = {
   ACTIVE: 'success',
   ISSUED: 'warning',
@@ -215,6 +216,7 @@ export default function AssetDetailPage() {
     onError: (err: unknown) => setError(extractErrorMessage(err)),
   });
 
+  const review = useCreateReview();
   const createMutation = useMutation({
     mutationFn: async () => {
       if (!itemId) return;
@@ -911,7 +913,7 @@ export default function AssetDetailPage() {
         </DialogContent>
         <DialogActions sx={{ flexWrap: 'wrap', gap: 1 }}>
           <Button onClick={() => { setCreateOpen(false); setCreateForm({ location: itemData?.location ?? 'Main Store' }); }}>{tr('cancel')}</Button>
-          <Button variant="contained" onClick={() => createMutation.mutate()} disabled={createMutation.isPending}>
+          <Button variant="contained" onClick={() => review(() => createMutation.mutate())} disabled={createMutation.isPending}>
             {createMutation.isPending ? <CircularProgress size={20} /> : tr('setupAsset')}
           </Button>
         </DialogActions>

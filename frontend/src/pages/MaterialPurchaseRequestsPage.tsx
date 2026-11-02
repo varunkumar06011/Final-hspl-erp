@@ -47,6 +47,7 @@ import FilePicker from '../components/FilePicker';
 import MaterialAutocomplete, { findCatalogMaterial, useMaterialCatalog, type CatalogMaterial } from '../components/MaterialAutocomplete';
 import SpecAutocomplete from '../components/SpecAutocomplete';
 import PriceFlag, { LinePriceFlag, usePriceCheck } from '../components/PriceFlag';
+import { useCreateReview } from '../components/CreateReview';
 
 interface MPRItem {
   materialName: string;
@@ -444,6 +445,7 @@ export default function MaterialPurchaseRequestsPage() {
     setItems(items.filter((_, i) => i !== index));
   }
 
+  const review = useCreateReview();
   const createMutation = useMutation({
     mutationFn: async () => {
       const payload: Record<string, unknown> = {
@@ -740,7 +742,8 @@ export default function MaterialPurchaseRequestsPage() {
       return;
     }
     setError('');
-    createMutation.mutate();
+    if (editRow) createMutation.mutate();
+    else review(() => createMutation.mutate());
   }
 
   return (

@@ -32,6 +32,7 @@ import { patchRow, useOptimistic } from '../utils/optimistic';
 import { useAuthStore } from '../stores/authStore';
 import { useSwitchProject } from '../hooks/useSwitchProject';
 import { enumLabel, formatCurrency, formatDate } from '../utils/enumOptions';
+import { useCreateReview } from '../components/CreateReview';
 
 interface ProjectRow {
   id: string;
@@ -129,6 +130,7 @@ export default function ProjectsPage() {
     setTimeout(() => setSuccessMsg(''), 5000);
   };
 
+  const review = useCreateReview();
   const saveMutation = useMutation({
     mutationFn: async () => {
       const body = {
@@ -322,7 +324,7 @@ export default function ProjectsPage() {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setDialogOpen(false)}>{tr('cancel')}</Button>
-          <Button variant="contained" disabled={!canSave} onClick={() => saveMutation.mutate()}>
+          <Button variant="contained" disabled={!canSave} onClick={() => (editing ? saveMutation.mutate() : review(() => saveMutation.mutate()))}>
             {saveMutation.isPending ? <CircularProgress size={18} /> : editing ? tr('save') : tr('create')}
           </Button>
         </DialogActions>

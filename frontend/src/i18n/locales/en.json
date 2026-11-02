@@ -414,6 +414,13 @@
     "deleteTitle": "Delete {{name}}?",
     "deleteMessage": "This action cannot be undone. The record will be soft-deleted. Enter your PIN to confirm."
   },
+  "review": {
+    "title": "Check before you create",
+    "intro": "Please check everything you entered. Nothing is saved until you press Create.",
+    "back": "Go back and edit",
+    "create": "Create",
+    "line": "Line {{n}}"
+  },
   "shared": {
     "loading": "Loading...",
     "createOption": "Create \"{{v}}\"",

@@ -40,6 +40,7 @@ import {
 } from '@hospital-erp/shared';
 import api, { budgetOverrunOf, extractErrorMessage, type BudgetOverrun } from '../../config/api';
 import { useAuthStore } from '../../stores/authStore';
+import { useEditLock } from '../../hooks/useEditLock';
 import ResponsiveDialog from '../ResponsiveDialog';
 import ApprovalActionDialog from '../ApprovalActionDialog';
 import ApprovalStepsDisplay from '../ApprovalStepsDisplay';
@@ -202,6 +203,7 @@ export default function CombinedRecordDialog({ type, id, onClose }: { type: stri
   const queryClient = useQueryClient();
   const toast = useToast();
   const { user } = useAuthStore();
+  const editLocked = useEditLock();
   const { openPath, openFile, viewer } = useFileViewer();
   const [action, setAction] = useState<Action | null>(null);
   const [actionError, setActionError] = useState('');
@@ -448,7 +450,7 @@ export default function CombinedRecordDialog({ type, id, onClose }: { type: stri
                           key={po.id}
                           po={po}
                           user={user}
-                          canEdit={can(Permission.CREATE_PO) && LIVE_PO.includes(po.status)}
+                          canEdit={!editLocked && can(Permission.CREATE_PO) && LIVE_PO.includes(po.status)}
                           budgetHeads={budgetHeads}
                           busy={setBudgetHead.isPending || setPaymentType.isPending}
                           onBudgetHead={(budgetHeadId) => setBudgetHead.mutate({ poId: po.id, budgetHeadId })}

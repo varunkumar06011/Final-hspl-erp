@@ -95,3 +95,12 @@ html, body {
   pointer-events: none;
   transition: opacity 0.2s;
 }
+
+/* ── Supervisors cannot edit existing records ─────────────────────────────
+ * AppShell sets data-no-edit on <html> for them (hooks/useEditLock.ts). Any button that
+ * carries the Edit icon is hidden. Chat, comments and Miko's drafts are marked
+ * data-edit-keep and stay as they are. Menu items (chat "Edit message") are not buttons,
+ * so they are not touched. */
+html[data-no-edit] button:has([data-testid='EditIcon']):not(:where([data-edit-keep] *)) {
+  display: none !important;
+}

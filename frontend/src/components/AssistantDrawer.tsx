@@ -994,6 +994,7 @@ export default function AssistantDrawer({ open, onClose }: Props) {
 
   return (
     <Drawer
+      data-edit-keep
       anchor="right"
       open={open}
       onClose={onClose}

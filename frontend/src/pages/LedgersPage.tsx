@@ -67,6 +67,7 @@ import { useDeepLinkRow } from '../hooks/useDeepLinkRow';
 import { useUrlFilters } from '../hooks/useUrlFilters';
 
 import { useTranslation } from 'react-i18next';
+import { useCreateReview } from '../components/CreateReview';
 interface Ledger {
   id: string;
   name: string;
@@ -234,6 +235,7 @@ export default function LedgersPage() {
   const { apply, undo } = useOptimistic();
 
   type SaveVars = { editing: Ledger | null; payload: Record<string, unknown>; form: Record<string, unknown> };
+  const review = useCreateReview();
   const createMutation = useMutation({
     mutationFn: async ({ editing: target, payload }: SaveVars) => {
       if (target) {
@@ -384,7 +386,8 @@ export default function LedgersPage() {
     const payload = editing
       ? { name: form.name, group: form.group, isActive: form.isActive }
       : { name: form.name, group: form.group, openingBalance: Number(form.openingBalance) || 0, isActive: form.isActive };
-    createMutation.mutate({ editing, payload, form });
+    if (editing) createMutation.mutate({ editing, payload, form });
+    else review(() => createMutation.mutate({ editing, payload, form }));
   };
 
   const rows: Ledger[] = data?.data ?? [];
@@ -665,7 +668,7 @@ export default function LedgersPage() {
               if (editingGroup) {
                 updateGroupMutation.mutate({ id: editingGroup.id, ...groupForm });
               } else {
-                createGroupMutation.mutate(groupForm);
+                review(() => createGroupMutation.mutate(groupForm));
               }
             }}
             disabled={createGroupMutation.isPending || updateGroupMutation.isPending}

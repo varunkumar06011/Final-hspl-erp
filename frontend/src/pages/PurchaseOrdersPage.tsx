@@ -71,6 +71,7 @@ import api, { extractErrorMessage, budgetOverrunOf, type BudgetOverrun } from '.
 import { patchRow, pendingProps, removeRow, useOptimistic } from '../utils/optimistic';
 import { fetchAllLedgers } from '../utils/ledgers';
 import { useAuthStore } from '../stores/authStore';
+import { useEditLock } from '../hooks/useEditLock';
 import AcknowledgementCheckbox from '../components/AcknowledgementCheckbox';
 import ApprovalActionDialog from '../components/ApprovalActionDialog';
 import CreatableSelect from '../components/CreatableSelect';
@@ -89,6 +90,7 @@ import { useMaterialCatalog } from '../components/MaterialAutocomplete';
 import PriceFlag, { LinePriceFlag, usePriceCheck } from '../components/PriceFlag';
 import { NewContractDialog, ContractPanel, ConvertToContractDialog } from '../components/ContractPO';
 import { PartPoDialog } from '../components/PartPoDialog';
+import { useCreateReview } from '../components/CreateReview';
 
 interface POItemLedgerPost {
   id: string;
@@ -258,6 +260,7 @@ export default function PurchaseOrdersPage() {
   // Status changes show on the list at once and are undone if the server refuses.
   const { apply, undo } = useOptimistic();
   const { user } = useAuthStore();
+  const editLocked = useEditLock();
   const navigate = useNavigate();
   const createSubmissionLocked = useRef(false);
 
@@ -366,6 +369,7 @@ export default function PurchaseOrdersPage() {
     enabled: !!selectedQuotationId,
   });
 
+  const review = useCreateReview();
   const createMutation = useMutation({
     mutationFn: async () => {
       if (isNonVendor) {
@@ -653,11 +657,11 @@ export default function PurchaseOrdersPage() {
   const LIVE_FOR_CLASSIFY = [POStatus.PENDING_APPROVAL, POStatus.APPROVED, POStatus.PARTIALLY_DELIVERED, POStatus.DELIVERED] as string[];
   // Budget head and payment type can be set/changed any time the PO is live, without re-approval.
   function canClassify(row: PORow): boolean {
-    return !!user && !isUmbrellaContract(row) && LIVE_FOR_CLASSIFY.includes(row.status) && hasPermission(user.role, Permission.CREATE_PO, user.extraPermissions);
+    return !editLocked && !!user && !isUmbrellaContract(row) && LIVE_FOR_CLASSIFY.includes(row.status) && hasPermission(user.role, Permission.CREATE_PO, user.extraPermissions);
   }
   // Any live PO that is not already a contract / sub-PO / site-bill batch can become a contract.
   function canConvertToContract(row: PORow): boolean {
-    return !!user && !row.isContract && !row.contractPoId && !row.isSiteBillBatch && LIVE_FOR_CLASSIFY.includes(row.status) && hasPermission(user.role, Permission.CREATE_PO, user.extraPermissions);
+    return !editLocked && !!user && !row.isContract && !row.contractPoId && !row.isSiteBillBatch && LIVE_FOR_CLASSIFY.includes(row.status) && hasPermission(user.role, Permission.CREATE_PO, user.extraPermissions);
   }
   // An approved normal PO that is not itself a contract / sub-PO can take balance sub-POs (part payments).
   function canAddPartPo(row: PORow): boolean {
@@ -685,9 +689,13 @@ export default function PurchaseOrdersPage() {
 
   function handleCreatePO() {
     if (createSubmissionLocked.current || createMutation.isPending) return;
-    createSubmissionLocked.current = true;
-    setError('');
-    createMutation.mutate();
+    // checked with the person first; the double-click lock only starts once they confirm
+    review(() => {
+      if (createSubmissionLocked.current) return;
+      createSubmissionLocked.current = true;
+      setError('');
+      createMutation.mutate();
+    });
   }
 
   // Download button opens a choice: the PO alone, or the PO with every proof file attached (one PDF).

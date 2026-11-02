@@ -54,6 +54,7 @@ import { useDeepLinkRow } from '../hooks/useDeepLinkRow';
 import { useMobileLandscape, useMobilePortrait } from '../hooks/useMobileLandscape';
 
 import { useTranslation } from 'react-i18next';
+import { useCreateReview } from '../components/CreateReview';
 export default function BudgetHeadsPage() {
   const { t: tr } = useTranslation('budget');
   const [page, setPage] = useState(0);
@@ -112,6 +113,7 @@ export default function BudgetHeadsPage() {
 
   const { apply, undo } = useOptimistic();
 
+  const review = useCreateReview();
   const createMutation = useMutation({
     mutationFn: async (payload: Record<string, unknown>) => {
       const response = await api.post('/budget-heads', payload);
@@ -312,7 +314,7 @@ export default function BudgetHeadsPage() {
       updateMutation.mutate({ id: editing.id as string, payload });
     } else {
       // New budget head: slNo is auto-assigned by the backend
-      createMutation.mutate(payload);
+      review(() => createMutation.mutate(payload));
     }
   };
 

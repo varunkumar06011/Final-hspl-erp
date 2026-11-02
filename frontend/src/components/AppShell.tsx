@@ -54,6 +54,7 @@ import { useAuthStore } from '../stores/authStore';
 import { APP_MODULES, UserRole, isAdminRole, moduleForPath, type UserResponse } from '@hospital-erp/shared';
 import { canManageModuleAccess, canUseModule } from '../utils/moduleAccess';
 import { useSessionProfile } from '../hooks/useSessionProfile';
+import { useEditLock } from '../hooks/useEditLock';
 import { onForegroundMessage, enableNotifications, isPushSupported, getPermissionState, PUSH_DEEP_LINK_KEY } from '../config/notifications';
 import NotificationBell from './NotificationBell';
 import api from '../config/api';
@@ -320,6 +321,12 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const { user, logout } = useAuthStore();
   // Role / module access changes made by an admin apply without signing in again.
   useSessionProfile();
+  // Supervisors cannot edit existing records: hide every Edit control (see hooks/useEditLock.ts).
+  const editLocked = useEditLock();
+  useEffect(() => {
+    document.documentElement.toggleAttribute('data-no-edit', editLocked);
+    return () => document.documentElement.removeAttribute('data-no-edit');
+  }, [editLocked]);
   const chatOn = canUseModule(user, 'chat');
   const assistantOn = !!assistantStatus?.enabled && canUseModule(user, 'assistant');
 

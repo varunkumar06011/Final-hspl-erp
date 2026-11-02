@@ -42,6 +42,7 @@ import RefreshButton from '../components/RefreshButton';
 import CommentsButton from '../components/CommentsButton';
 import FilePicker from '../components/FilePicker';
 import { lineLabel } from '@hospital-erp/shared';
+import { useCreateReview } from '../components/CreateReview';
 
 interface GatePassItem {
   materialName: string;
@@ -149,6 +150,7 @@ export default function GatePassesPage() {
     },
   });
 
+  const review = useCreateReview();
   const createMutation = useMutation({
     mutationFn: async () => {
       const payload = new FormData();
@@ -721,7 +723,7 @@ export default function GatePassesPage() {
             variant="contained"
             onClick={() => {
               setError('');
-              createMutation.mutate();
+              review(() => createMutation.mutate());
             }}
             disabled={
               (gatePassCategory === 'MATERIAL' && (!selectedPoId || !photoProof)) ||

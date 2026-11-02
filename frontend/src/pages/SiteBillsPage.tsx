@@ -49,7 +49,9 @@ import SpecAutocomplete from '../components/SpecAutocomplete';
 import PriceFlag, { usePriceCheck } from '../components/PriceFlag';
 import { useFileViewer } from '../components/FileViewerDialog';
 import { useToast } from '../components/ToastProvider';
+import { useEditLock } from '../hooks/useEditLock';
 import { QTY_UNIT_OPTIONS, enumLabel, formatCurrency, formatDate, unitLabel } from '../utils/enumOptions';
+import { useCreateReview } from '../components/CreateReview';
 
 interface SiteBillRow {
   id: string;
@@ -112,6 +114,7 @@ export default function SiteBillsPage() {
   const toast = useToast();
   const { openPath, viewer } = useFileViewer();
   const budgetHeads = useBudgetHeads(true);
+  const editLocked = useEditLock();
   const [filter, setFilter] = useState<Filter>('open');
   const [search, setSearch] = useState('');
   useUrlFilters({ search: setSearch });
@@ -240,7 +243,7 @@ export default function SiteBillsPage() {
                       {row.paidBy && <Typography variant="caption" color="text.secondary">{t('paidBy', { name: row.paidBy.name })}</Typography>}
                       {row.description && <Typography variant="caption" color="text.secondary">· {row.description}</Typography>}
                       <Box sx={{ flex: 1 }} />
-                      {!row.po && budgetHeads.length > 0 ? (
+                      {!row.po && !editLocked && budgetHeads.length > 0 ? (
                         <TextField
                           select
                           size="small"
@@ -372,6 +375,7 @@ function AddBillDialog({ open, onClose }: { open: boolean; onClose: () => void }
       return [...prev, f];
     });
 
+  const review = useCreateReview();
   const save = useMutation({
     mutationFn: async (addAnother: boolean) => {
       const form = new FormData();
@@ -462,7 +466,7 @@ function AddBillDialog({ open, onClose }: { open: boolean; onClose: () => void }
           <Button size="small" startIcon={<AddIcon />} onClick={() => setItems((prev) => [...prev, emptyItem()])} sx={{ mt: 1 }}>{t('addItem')}</Button>
         </Box>
 
-        <Alert severity={overLimit ? 'error' : 'success'} icon={false}>
+        <Alert severity={overLimit ? 'error' : 'success'} icon={false} data-review-label="" data-review-value={t('billTotal', { total: formatCurrency(total) })}>
           <Typography fontWeight={700}>{t('billTotal', { total: formatCurrency(total) })}</Typography>
           <Typography variant="caption">{overLimit ? t('overLimit', { limit: formatCurrency(SITE_BILL_LIMIT) }) : t('withinLimit', { limit: formatCurrency(SITE_BILL_LIMIT) })}</Typography>
         </Alert>
@@ -483,7 +487,7 @@ function AddBillDialog({ open, onClose }: { open: boolean; onClose: () => void }
             <CameraCapture size="small" onCapture={addFile} disabled={files.length >= MAX_BILL_FILES} />
           </Box>
           {files.length > 0 && (
-            <Box sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap', mt: 1 }}>
+            <Box data-review-label={t('attachBill')} data-review-value={files.map((f) => f.name).join(', ')} sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap', mt: 1 }}>
               {files.map((f, idx) => (
                 <Chip
                   key={`${f.name}-${f.size}-${idx}`}
@@ -502,8 +506,8 @@ function AddBillDialog({ open, onClose }: { open: boolean; onClose: () => void }
       </DialogContent>
       <DialogActions sx={{ flexWrap: 'wrap', gap: 1 }}>
         <Button onClick={close}>{t('cancel')}</Button>
-        <Button disabled={!canSave || save.isPending} onClick={() => save.mutate(true)}>{t('saveAddAnother')}</Button>
-        <Button variant="contained" disabled={!canSave || save.isPending} onClick={() => save.mutate(false)}>
+        <Button disabled={!canSave || save.isPending} onClick={() => review(() => save.mutate(true))}>{t('saveAddAnother')}</Button>
+        <Button variant="contained" disabled={!canSave || save.isPending} onClick={() => review(() => save.mutate(false))}>
           {save.isPending ? <CircularProgress size={20} /> : t('saveBill')}
         </Button>
       </DialogActions>

@@ -39,6 +39,7 @@ import ResponsiveTable from '../components/ResponsiveTable';
 import RefreshButton from '../components/RefreshButton';
 
 import { useTranslation } from 'react-i18next';
+import { useCreateReview } from '../components/CreateReview';
 interface InspectionRow {
   id: string;
   name: string;
@@ -78,6 +79,7 @@ export default function InspectionsPage() {
   const { apply, undo } = useOptimistic();
 
   type SaveVars = { id: string | null; payload: Record<string, unknown>; form: Record<string, unknown> };
+  const review = useCreateReview();
   const createMutation = useMutation({
     mutationFn: async ({ id, payload }: SaveVars) => {
       if (id) {
@@ -280,7 +282,7 @@ export default function InspectionsPage() {
             onClick={() => {
               setError('');
               if (!form.name) { setError(t('errName')); return; }
-              createMutation.mutate({
+              const send = () => createMutation.mutate({
                 id: editingId,
                 form,
                 payload: {
@@ -290,6 +292,8 @@ export default function InspectionsPage() {
                   ...(editingId ? { status: form.status, correctiveAction: form.correctiveAction || undefined } : {}),
                 },
               });
+              if (editingId) send();
+              else review(send);
             }}
             disabled={!form.name || createMutation.isPending}
           >

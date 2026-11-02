@@ -41,6 +41,7 @@ import RefreshButton from '../components/RefreshButton';
 
 import { useTranslation } from 'react-i18next';
 import FilePicker from '../components/FilePicker';
+import { useCreateReview } from '../components/CreateReview';
 export default function PhotosPage() {
   const { t } = useTranslation('photos');
   const [page, setPage] = useState(0);
@@ -63,6 +64,7 @@ export default function PhotosPage() {
     },
   });
 
+  const review = useCreateReview();
   const createMutation = useMutation({
     mutationFn: async (payload: Record<string, unknown>) => {
       const formData = new FormData();
@@ -200,12 +202,12 @@ export default function PhotosPage() {
         </DialogContent>
         <DialogActions sx={{ flexWrap: "wrap", gap: 1 }}>
           <Button onClick={() => setDialogOpen(false)}>{t('cancel')}</Button>
-          <Button variant="contained" onClick={() => createMutation.mutate({
+          <Button variant="contained" onClick={() => review(() => createMutation.mutate({
             file: selectedFile,
             caption: form.caption || undefined,
             tag: form.tag,
             zone: form.zone || undefined,
-          })} disabled={!selectedFile || createMutation.isPending}>
+          }))} disabled={!selectedFile || createMutation.isPending}>
             {createMutation.isPending ? <CircularProgress size={20} /> : t('upload')}
           </Button>
         </DialogActions>

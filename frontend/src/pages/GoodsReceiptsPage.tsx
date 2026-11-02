@@ -33,6 +33,7 @@ import { formatDate, STATUS_COLORS, enumLabel } from '../utils/enumOptions';
 import { useTranslation } from 'react-i18next';
 import CommentsButton from '../components/CommentsButton';
 import ReceiptChecklist, { receiptChecklistKey, useReceiptChecklist } from '../components/ReceiptChecklist';
+import { useCreateReview } from '../components/CreateReview';
 
 interface ReceiptItem {
   id: string;
@@ -327,6 +328,7 @@ export default function GoodsReceiptsPage() {
     setSearchParams({}, { replace: true });
   }, [receiptFromUrl, setSearchParams]);
 
+  const review = useCreateReview();
   const createMutation = useMutation({
     mutationFn: async () => {
       const poItems = selectedPo?.items ?? [];
@@ -611,7 +613,7 @@ export default function GoodsReceiptsPage() {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setCreateOpen(false)}>{t('cancel')}</Button>
-          <Button variant="contained" onClick={() => createMutation.mutate()} disabled={!selectedPoId || !selectedGatepass?.hasPhoto || createMutation.isPending}>
+          <Button variant="contained" onClick={() => review(() => createMutation.mutate())} disabled={!selectedPoId || !selectedGatepass?.hasPhoto || createMutation.isPending}>
             {createMutation.isPending ? <CircularProgress size={20} /> : t('createReceipt')}
           </Button>
         </DialogActions>

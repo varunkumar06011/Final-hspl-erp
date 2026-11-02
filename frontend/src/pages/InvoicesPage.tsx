@@ -65,6 +65,7 @@ import { useUrlFilters } from '../hooks/useUrlFilters';
 import CommentsButton from '../components/CommentsButton';
 import { LinkedFilesButton } from '../components/LinkedFiles';
 import FilePicker from '../components/FilePicker';
+import { useCreateReview } from '../components/CreateReview';
 
 interface POItem {
   id?: string;
@@ -392,6 +393,7 @@ export default function InvoicesPage() {
     }
   }, [amount, taxAmount, selectedPoId]);
 
+  const review = useCreateReview();
   const createMutation = useMutation({
     mutationFn: async () => {
       const formData = new FormData();
@@ -1062,7 +1064,7 @@ export default function InvoicesPage() {
           <Button onClick={() => { setCreateOpen(false); resetForm(); }}>{t('cancel')}</Button>
           <Button
             variant="contained"
-            onClick={() => { setError(''); if (validateInvoiceForm()) createMutation.mutate(); }}
+            onClick={() => { setError(''); if (validateInvoiceForm()) review(() => createMutation.mutate()); }}
             disabled={createMutation.isPending}
           >
             {createMutation.isPending ? <CircularProgress size={20} /> : t('createInvoice')}

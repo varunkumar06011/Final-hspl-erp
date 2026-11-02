@@ -74,6 +74,7 @@ import { LinkedFilesButton } from '../components/LinkedFiles';
 import ItemsGist, { type GistItem } from '../components/ItemsGist';
 import { useTranslation, Trans } from 'react-i18next';
 import FilePicker from '../components/FilePicker';
+import { useCreateReview } from '../components/CreateReview';
 interface ApprovalStep {
   id: string;
   stepNumber: number;
@@ -271,6 +272,7 @@ export default function PaymentsPage() {
   });
   const budgetHeads: { id: string; particulars: string }[] = budgetHeadsData?.data ?? [];
 
+  const review = useCreateReview();
   const createInvoicePaymentMutation = useMutation({
     mutationFn: async (payload: Record<string, unknown>) => {
       const response = await api.post('/payments/invoice-payment', payload);
@@ -1175,16 +1177,17 @@ export default function PaymentsPage() {
             onClick={() => {
               if (!invoicePayOpen) return;
               setError('');
-              createInvoicePaymentMutation.mutate({
-                invoiceId: invoicePayOpen.id,
-                vendorId: invoicePayOpen.vendorId,
+              const payFor = invoicePayOpen;
+              review(() => createInvoicePaymentMutation.mutate({
+                invoiceId: payFor.id,
+                vendorId: payFor.vendorId,
                 requestNumber: invoicePayForm.requestNumber,
                 amount: Number(invoicePayForm.amount),
                 paymentMode: invoicePayForm.paymentMode || undefined,
                 chequeNumber: invoicePayForm.chequeNumber || undefined,
                 notes: invoicePayForm.notes || undefined,
                 budgetHeadId: invoicePayForm.budgetHeadId || undefined,
-              });
+              }));
             }}
             disabled={createInvoicePaymentMutation.isPending || !invoicePayForm.amount || Number(invoicePayForm.amount) <= 0 || (invoicePayForm.paymentMode === PaymentMode.CHEQUE && !String(invoicePayForm.chequeNumber ?? '').trim())}
           >
@@ -1334,7 +1337,7 @@ export default function PaymentsPage() {
             variant="contained"
             onClick={() => {
               setError('');
-              createAdvancePaymentMutation.mutate();
+              review(() => createAdvancePaymentMutation.mutate());
             }}
             disabled={createAdvancePaymentMutation.isPending || !advancePayForm.amount || Number(advancePayForm.amount) <= 0 || !advanceAcknowledged || (advancePayForm.paymentMode === PaymentMode.CHEQUE && !String(advancePayForm.chequeNumber ?? '').trim())}
           >
@@ -1465,7 +1468,7 @@ export default function PaymentsPage() {
           <Button onClick={() => setExpenseOpen(false)}>{tr('cancel')}</Button>
           <Button
             variant="contained"
-            onClick={() => { setError(''); if (validateExpenseForm()) createExpenseMutation.mutate(); }}
+            onClick={() => { setError(''); if (validateExpenseForm()) review(() => createExpenseMutation.mutate()); }}
             disabled={createExpenseMutation.isPending}
           >
             {createExpenseMutation.isPending ? <CircularProgress size={20} /> : tr('createExpense')}

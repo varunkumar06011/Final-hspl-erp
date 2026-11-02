@@ -69,6 +69,7 @@ import journalVoucherTemplate from '../Journal voucher.png';
 import CommentsButton from '../components/CommentsButton';
 
 import { useTranslation } from 'react-i18next';
+import { useCreateReview } from '../components/CreateReview';
 interface Ledger {
   id: string;
   name: string;
@@ -292,6 +293,7 @@ export default function VouchersPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const review = useCreateReview();
   const createMutation = useMutation({
     mutationFn: async (payload: Record<string, unknown>) => {
       const response = await api.post('/vouchers', payload);
@@ -681,7 +683,7 @@ export default function VouchersPage() {
     if (editingVoucherId) {
       updateMutation.mutate({ id: editingVoucherId, data: { ...payload, jvNumber: voucherNumberSuffix } });
     } else {
-      createMutation.mutate(payload);
+      review(() => createMutation.mutate(payload));
     }
   };
 
