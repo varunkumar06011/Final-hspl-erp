@@ -22,7 +22,7 @@ import api from '../config/api';
 import { useUrlState } from '../hooks/useUrlState';
 import { formatCurrency, roleLabel } from '../utils/enumOptions';
 
-type Kind = 'MPR' | 'QUOTATION' | 'PO' | 'INVOICE' | 'PAYMENT' | 'GRN';
+type Kind = 'MPR' | 'QUOTATION' | 'PO' | 'INVOICE' | 'GRN';
 type Action = 'APPROVE' | 'FINALIZE' | 'REVIEW' | 'SUBMIT' | 'FIX' | 'RECEIVE' | 'INSPECT' | 'POST_STOCK';
 type TabKey = 'needsAction' | 'waiting' | 'sentBack' | 'drafts';
 
@@ -57,7 +57,7 @@ interface MyWork {
 }
 
 const TABS: TabKey[] = ['needsAction', 'waiting', 'sentBack', 'drafts'];
-const KINDS: Kind[] = ['MPR', 'QUOTATION', 'PO', 'GRN', 'INVOICE', 'PAYMENT'];
+const KINDS: Kind[] = ['MPR', 'QUOTATION', 'PO', 'GRN', 'INVOICE'];
 const DAY_MS = 86_400_000;
 
 const daysSince = (iso: string) => Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / DAY_MS));

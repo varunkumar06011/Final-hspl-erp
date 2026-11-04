@@ -401,10 +401,9 @@ describe('Full Regenerate PO Lifecycle with Payment', () => {
     record('paymentrequest.create', true, `pr=${paymentRequestId}`);
   });
 
-  it('approves the payment request (PH + ADMIN)', async () => {
-    await request.post(`/api/payments/${paymentRequestId}/approve`).set(authAs(ctx.userPhId)).send({ acknowledged: true, comments: 'ok' });
-    const res = await request.post(`/api/payments/${paymentRequestId}/approve`).set(authAs(ctx.userAdminId)).send({ acknowledged: true, comments: 'ok' });
-    expect(res.body.status).toBe('APPROVED');
+  it('payment request is ready to record without approval', async () => {
+    const check = await prisma.paymentRequest.findUnique({ where: { id: paymentRequestId } });
+    expect(check!.status).toBe('APPROVED'); // no approval step: ready to record when raised
     record('paymentrequest.approve', true, `status=APPROVED`);
   });
 

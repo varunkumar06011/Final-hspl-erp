@@ -214,10 +214,9 @@ describe('Procurement-to-Payment', () => {
     record('paymentrequest.create', true, `pr=${paymentRequestId}`);
   });
 
-  it('approves the payment request (HEAD_GROUPS: PH + ADMIN)', async () => {
-    await request.post(`/api/payments/${paymentRequestId}/approve`).set(authAs(ctx.userPhId)).send({ acknowledged: true, comments: 'ok' });
-    const res2 = await request.post(`/api/payments/${paymentRequestId}/approve`).set(authAs(ctx.userAdminId)).send({ acknowledged: true, comments: 'ok' });
-    expect(res2.body.status).toBe('APPROVED');
+  it('payment request is ready to record without approval', async () => {
+    const check = await prisma.paymentRequest.findUnique({ where: { id: paymentRequestId } });
+    expect(check!.status).toBe('APPROVED'); // no approval step: ready to record when raised
     record('paymentrequest.approve', true, `status=APPROVED`);
   });
 

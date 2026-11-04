@@ -2,7 +2,6 @@ import {
   MPRStatus,
   POStatus,
   QuotationStatus,
-  PaymentStatus,
   InvoiceVerificationStatus,
   canFinalizeQuotation,
   findApprovableStep,
@@ -24,7 +23,7 @@ import { EXCLUDE_PART_POS } from './part-po.service';
 // decide quickly. Records are always filtered by the caller's project.
 // ═══════════════════════════════════════════════════════════
 
-export type WorkKind = 'MPR' | 'QUOTATION' | 'PO' | 'INVOICE' | 'PAYMENT' | 'GRN';
+export type WorkKind = 'MPR' | 'QUOTATION' | 'PO' | 'INVOICE' | 'GRN';
 /** RECEIVE: goods of an approved PO still to arrive at site; INSPECT / POST_STOCK: a goods receipt still to be checked / put into stock. */
 export type WorkAction = 'APPROVE' | 'FINALIZE' | 'REVIEW' | 'SUBMIT' | 'FIX' | 'RECEIVE' | 'INSPECT' | 'POST_STOCK';
 
@@ -181,7 +180,7 @@ const LINE_SELECT = { materialName: true, quantity: true, unit: true } as const;
 
 export async function getMyWork(projectId: string, viewer: Viewer): Promise<MyWork> {
   const receiver = isGoodsReceiver(viewer);
-  const [mprs, quotations, pos, invoices, payments, toReceive, openReceipts] = await Promise.all([
+  const [mprs, quotations, pos, invoices, toReceive, openReceipts] = await Promise.all([
     prisma.materialPurchaseRequest.findMany({
       where: {
         projectId,
@@ -246,23 +245,6 @@ export async function getMyWork(projectId: string, viewer: Viewer): Promise<MyWo
         vendor: { select: { name: true } },
         createdByUser: { select: { name: true } },
         purchaseOrder: { select: { poNumber: true, notes: true, mpr: { select: { description: true } } } },
-        approvalWorkflow: { select: WORKFLOW_SELECT },
-      },
-    }),
-    prisma.paymentRequest.findMany({
-      where: {
-        projectId,
-        deletedAt: null,
-        OR: [
-          { status: PaymentStatus.PENDING },
-          { createdBy: viewer.id, status: PaymentStatus.REJECTED },
-        ],
-      },
-      orderBy: { updatedAt: 'desc' },
-      take: PER_TYPE_LIMIT,
-      include: {
-        vendor: { select: { name: true } },
-        createdByUser: { select: { name: true } },
         approvalWorkflow: { select: WORKFLOW_SELECT },
       },
     }),
@@ -463,37 +445,6 @@ export async function getMyWork(projectId: string, viewer: Viewer): Promise<MyWo
     if (inv.verificationStatus === InvoiceVerificationStatus.PENDING && canDecide(wf, viewer, false)) {
       place({ ...base, action: 'APPROVE', flags: buildFlags({ waitingSince: since }) }, mine, 'decide');
     } else if (inv.verificationStatus === InvoiceVerificationStatus.REJECTED) {
-      place({ ...base, action: 'FIX' }, mine, 'rejected');
-    } else {
-      place(base, mine, 'pending');
-    }
-  }
-
-  // ── Payments ──
-  for (const pay of payments) {
-    const wf = (pay.approvalWorkflow as Workflow | null) ?? null;
-    const { waitingOn, since } = describeWaiting(wf, pay.updatedAt);
-    const amount = Number(pay.amount) || null;
-    const base: WorkItem = {
-      kind: 'PAYMENT',
-      id: pay.id,
-      number: pay.paymentCode,
-      party: pay.vendor?.name ?? null,
-      amount,
-      summary: clean(pay.category),
-      why: clean(pay.description) ?? clean(pay.notes),
-      status: pay.status,
-      action: 'REVIEW',
-      requestedBy: pay.createdByUser?.name ?? null,
-      waitingOn,
-      waitingSince: since.toISOString(),
-      path: `/payments?id=${pay.id}`,
-      flags: [],
-    };
-    const mine = pay.createdBy === viewer.id;
-    if (pay.status === PaymentStatus.PENDING && canDecide(wf, viewer, false)) {
-      place({ ...base, action: 'APPROVE', flags: buildFlags({ waitingSince: since }) }, mine, 'decide');
-    } else if (pay.status === PaymentStatus.REJECTED) {
       place({ ...base, action: 'FIX' }, mine, 'rejected');
     } else {
       place(base, mine, 'pending');

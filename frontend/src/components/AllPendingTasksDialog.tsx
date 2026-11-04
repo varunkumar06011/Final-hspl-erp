@@ -14,7 +14,7 @@ interface AllPendingTasksDialogProps {
   initialTab?: PendingEntityType;
 }
 
-const TAB_ORDER: PendingEntityType[] = ['mprs', 'quotations', 'pos', 'invoices', 'payments'];
+const TAB_ORDER: PendingEntityType[] = ['mprs', 'quotations', 'pos', 'invoices']; // payments need no approval
 
 // All pending approval tasks (quotations, POs, invoices, payments) in one
 // place, tabbed by type. Each tab reuses the same list + approve/reject +

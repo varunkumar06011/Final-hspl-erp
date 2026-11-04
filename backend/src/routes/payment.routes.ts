@@ -1,5 +1,5 @@
 import { Router, Response, NextFunction } from 'express';
-import { Permission, AuditAction, PaymentStatus, UserRole, InvoiceVerificationStatus, getRequiredApproverCount, VoucherType, isAdminRole } from '@hospital-erp/shared';
+import { Permission, AuditAction, PaymentStatus, UserRole, InvoiceVerificationStatus, VoucherType } from '@hospital-erp/shared';
 import {
   createPaymentRequestSchema,
   listPaymentRequestsSchema,
@@ -8,7 +8,6 @@ import {
   linkPaymentVoucherMultiSchema,
   createExpenseSchema,
   createAdvancePaymentSchema,
-  approvalActionSchema,
   updatePaymentRequestSchema,
   POPaymentType,
 } from '@hospital-erp/shared';
@@ -18,8 +17,6 @@ import { rbacMiddleware } from '../middleware/rbac';
 import { validateMiddleware } from '../middleware/validate';
 import { logAudit } from '../services/audit.service';
 import { generateProjectSequenceNumber } from '../services/sequence.service';
-import * as approvalService from '../services/approval.service';
-import { notifyApprovers } from '../services/push.service';
 import { notifyPaymentsMade } from '../services/payment-notify.service';
 import { streamPaymentConfirmationPdf } from '../services/payment-confirmation-pdf.service';
 import { getStorageService, serveFile } from '../services/storage.service';
@@ -32,25 +29,6 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 
 
 const router = Router();
 router.use(authMiddleware);
-
-// Admin roles are checked dynamically via isAdminRole() to support ADMIN_3, ADMIN_4, etc.
-
-/**
- * Fetch the payment approver roles (admin roles only) for a project.
- * Used to create approval workflow steps and send notifications.
- */
-async function getAllApproverRoles(_projectId: string): Promise<string[]> {
-  const users = await prisma.user.findMany({
-    where: { isActive: true },
-    select: { role: true },
-  });
-  // Payments are authorised by admins only (Admin 1, Admin 2, ...).
-  const roles = new Set<string>();
-  for (const u of users) {
-    if (isAdminRole(u.role)) roles.add(u.role);
-  }
-  return Array.from(roles);
-}
 
 async function generatePaymentCode(projectId: string): Promise<string> {
   return generateProjectSequenceNumber('paymentRequest', 'paymentCode', 'PAY', 3, projectId);
@@ -90,14 +68,6 @@ const prInclude = {
     },
   },
   budgetHead: { select: { id: true, particulars: true } },
-  approvalWorkflow: {
-    include: {
-      steps: {
-        orderBy: { stepNumber: 'asc' as const },
-        include: { approverUser: { select: { id: true, name: true, role: true } } },
-      },
-    },
-  },
 };
 
 // GET / — list all payment requests (invoices + expenses)
@@ -405,11 +375,12 @@ router.post(
       const paymentCode = await generatePaymentCode(projectId);
       const finalRequestNumber = await resolveUniqueRequestNumber(projectId, String(requestNumber));
 
-      const approverRoles = await getAllApproverRoles(projectId);
       const result = await prisma.$transaction(async (tx) => {
         const created = await tx.paymentRequest.create({
           data: {
             projectId,
+            // No approval step: a request is ready to record the moment it is raised.
+            status: PaymentStatus.APPROVED,
             poId,
             vendorId,
             paymentCode,
@@ -428,30 +399,6 @@ router.post(
           },
         });
 
-        const workflow = await tx.approvalWorkflow.create({
-          data: {
-            entityType: 'PAYMENT_REQUEST',
-            entityId: created.id,
-            projectId,
-            status: 'VERIFICATION',
-            currentStep: 0,
-            minApprovers: getRequiredApproverCount(Number(amount)),
-            approvalPolicy: 'ADMIN_SINGLE_APPROVER',
-            steps: {
-              create: approverRoles.map((role, idx) => ({
-                stepNumber: idx + 1,
-                approverRole: role,
-                status: 'PENDING',
-              })),
-            },
-          },
-          include: { steps: true },
-        });
-
-        await tx.paymentRequest.update({
-          where: { id: created.id },
-          data: { approvalWorkflowId: workflow.id },
-        });
 
         return created;
       });
@@ -469,18 +416,6 @@ router.post(
         where: { id: result.id },
         include: prInclude,
       });
-
-      // Notify all approvers via push notification
-      if (record?.approvalWorkflow) {
-        notifyApprovers(projectId, approverRoles as UserRole[], {
-          approvalId: record.approvalWorkflow.id,
-          entityType: 'PAYMENT_REQUEST',
-          entityId: result.id,
-          title: 'New Approval Required',
-          body: `Advance payment ${paymentCode} — ₹${amount}`,
-          url: `/payments?id=${result.id}`,
-        }).catch((err) => console.error('[Push] Advance payment notification error:', err));
-      }
 
       res.status(201).json(record);
     } catch (error) {
@@ -542,11 +477,12 @@ router.post(
       const paymentCode = await generatePaymentCode(projectId);
       const finalRequestNumber = await resolveUniqueRequestNumber(projectId, String(requestNumber));
 
-      const approverRoles = await getAllApproverRoles(projectId);
       const result = await prisma.$transaction(async (tx) => {
         const created = await tx.paymentRequest.create({
           data: {
             projectId,
+            // No approval step: a request is ready to record the moment it is raised.
+            status: PaymentStatus.APPROVED,
             invoiceId,
             vendorId,
             paymentCode,
@@ -562,30 +498,6 @@ router.post(
           },
         });
 
-        const workflow = await tx.approvalWorkflow.create({
-          data: {
-            entityType: 'PAYMENT_REQUEST',
-            entityId: created.id,
-            projectId,
-            status: 'VERIFICATION',
-            currentStep: 0,
-            minApprovers: getRequiredApproverCount(Number(amount)),
-            approvalPolicy: 'ADMIN_SINGLE_APPROVER',
-            steps: {
-              create: approverRoles.map((role, idx) => ({
-                stepNumber: idx + 1,
-                approverRole: role,
-                status: 'PENDING',
-              })),
-            },
-          },
-          include: { steps: true },
-        });
-
-        await tx.paymentRequest.update({
-          where: { id: created.id },
-          data: { approvalWorkflowId: workflow.id },
-        });
 
         return created;
       });
@@ -603,18 +515,6 @@ router.post(
         where: { id: result.id },
         include: prInclude,
       });
-
-      // Notify all approvers via push notification
-      if (record?.approvalWorkflow) {
-        notifyApprovers(projectId, approverRoles as UserRole[], {
-          approvalId: record.approvalWorkflow.id,
-          entityType: 'PAYMENT_REQUEST',
-          entityId: result.id,
-          title: 'New Approval Required',
-          body: `Payment request ${paymentCode} — ₹${amount}`,
-          url: `/payments?id=${result.id}`,
-        }).catch((err) => console.error('[Push] Payment notification error:', err));
-      }
 
       res.status(201).json(record);
     } catch (error) {
@@ -656,11 +556,12 @@ router.post(
         fileMimeType = req.file.mimetype;
       }
 
-      const approverRoles = await getAllApproverRoles(projectId);
       const result = await prisma.$transaction(async (tx) => {
         const created = await tx.paymentRequest.create({
           data: {
             projectId,
+            // No approval step: a request is ready to record the moment it is raised.
+            status: PaymentStatus.APPROVED,
             paymentCode,
             requestNumber: paymentCode,
             type: 'EXPENSE',
@@ -677,30 +578,6 @@ router.post(
           },
         });
 
-        const workflow = await tx.approvalWorkflow.create({
-          data: {
-            entityType: 'PAYMENT_REQUEST',
-            entityId: created.id,
-            projectId,
-            status: 'VERIFICATION',
-            currentStep: 0,
-            minApprovers: getRequiredApproverCount(Number(amount)),
-            approvalPolicy: 'ADMIN_SINGLE_APPROVER',
-            steps: {
-              create: approverRoles.map((role, idx) => ({
-                stepNumber: idx + 1,
-                approverRole: role,
-                status: 'PENDING',
-              })),
-            },
-          },
-          include: { steps: true },
-        });
-
-        await tx.paymentRequest.update({
-          where: { id: created.id },
-          data: { approvalWorkflowId: workflow.id },
-        });
 
         return created;
       });
@@ -718,18 +595,6 @@ router.post(
         where: { id: result.id },
         include: prInclude,
       });
-
-      // Notify all approvers via push notification
-      if (record?.approvalWorkflow) {
-        notifyApprovers(projectId, approverRoles as UserRole[], {
-          approvalId: record.approvalWorkflow.id,
-          entityType: 'PAYMENT_REQUEST',
-          entityId: result.id,
-          title: 'New Approval Required',
-          body: `Expense: ${description} — ₹${amount}`,
-          url: `/payments?id=${result.id}`,
-        }).catch((err) => console.error('[Push] Expense notification error:', err));
-      }
 
       res.status(201).json(record);
     } catch (error) {
@@ -1092,112 +957,6 @@ router.get(
         return;
       }
       await serveFile(res, existing.filePath, existing.fileMimeType);
-    } catch (error) {
-      next(error);
-    }
-  }
-);
-
-// POST /:id/approve — approve payment request (a single ADMIN/ADMIN_2 approval is final)
-router.post(
-  '/:id/approve',
-  rbacMiddleware(Permission.VIEW_FINANCIALS),
-  validateMiddleware(approvalActionSchema),
-  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
-    try {
-      const projectId = requireProjectId(req);
-      const pr = await prisma.paymentRequest.findFirst({
-        where: { id: req.params.id, projectId, deletedAt: null },
-        include: { approvalWorkflow: { include: { steps: true } } },
-      });
-      if (!pr || !pr.approvalWorkflow) {
-        res.status(404).json({ error: 'Payment request or approval workflow not found' });
-        return;
-      }
-
-      if (!isAdminRole(req.user!.role) && !approvalService.canOverride(req.user!)) {
-        res.status(403).json({ error: 'Only Admin can approve payment requests' });
-        return;
-      }
-
-      const step = approvalService.findApprovableStep(pr.approvalWorkflow.steps, req.user!);
-      if (!step) {
-        res.status(400).json({ error: 'No pending step for your role, or you may have already approved' });
-        return;
-      }
-
-      const alreadyApproved = pr.approvalWorkflow.steps.find(
-        (s) => s.approverUserId === req.user!.id && s.status === 'APPROVED'
-      );
-      if (alreadyApproved && !approvalService.canOverride(req.user!)) {
-        res.status(400).json({ error: 'You have already approved this payment request' });
-        return;
-      }
-
-      const result = await approvalService.approve(step.id, req.user!.id, req.body.comments);
-
-      // Only update status to APPROVED when fully approved (2 approvals)
-      if (result.isFullyApproved) {
-        await prisma.paymentRequest.update({
-          where: { id: pr.id },
-          data: { status: PaymentStatus.APPROVED },
-        });
-      }
-
-      const updated = await prisma.paymentRequest.findUnique({
-        where: { id: pr.id },
-        include: prInclude,
-      });
-      res.json(updated);
-    } catch (error) {
-      next(error);
-    }
-  }
-);
-
-// POST /:id/reject — reject payment request
-router.post(
-  '/:id/reject',
-  rbacMiddleware(Permission.VIEW_FINANCIALS),
-  validateMiddleware(approvalActionSchema),
-  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
-    try {
-      const projectId = requireProjectId(req);
-      const pr = await prisma.paymentRequest.findFirst({
-        where: { id: req.params.id, projectId, deletedAt: null },
-        include: { approvalWorkflow: { include: { steps: true } } },
-      });
-      if (!pr || !pr.approvalWorkflow) {
-        res.status(404).json({ error: 'Payment request or approval workflow not found' });
-        return;
-      }
-
-      if (!isAdminRole(req.user!.role) && !approvalService.canOverride(req.user!)) {
-        res.status(403).json({ error: 'Only Admin can reject payment requests' });
-        return;
-      }
-
-      const step = approvalService.findApprovableStep(pr.approvalWorkflow.steps, req.user!);
-      if (!step) {
-        res.status(400).json({ error: 'No pending step for your role' });
-        return;
-      }
-
-      const reason = req.body.reason || req.body.comments || 'Rejected';
-      const result = await approvalService.reject(step.id, req.user!.id, reason);
-
-      if (result.isFullyRejected) {
-        await prisma.paymentRequest.update({
-          where: { id: pr.id },
-          data: { status: PaymentStatus.REJECTED },
-        });
-      }
-
-      const updated = await prisma.paymentRequest.findUnique({
-        where: { id: pr.id },
-        include: prInclude,
-      });
-      res.json(updated);
     } catch (error) {
       next(error);
     }
@@ -1830,7 +1589,7 @@ router.post(
   }
 );
 
-// DELETE /:id — soft delete (only by creator, only if not approved/paid)
+// DELETE /:id — soft delete (only by creator, only while nothing is recorded/paid)
 router.delete(
   '/:id',
   rbacMiddleware(Permission.VIEW_FINANCIALS),
@@ -1848,8 +1607,13 @@ router.delete(
         res.status(403).json({ error: 'Only the creator can delete this payment request' });
         return;
       }
-      if (existing.status === PaymentStatus.APPROVED || existing.status === PaymentStatus.PAID) {
-        res.status(400).json({ error: 'Cannot delete an approved or paid payment request' });
+      if (existing.status === PaymentStatus.PAID) {
+        res.status(400).json({ error: 'Cannot delete a paid payment request' });
+        return;
+      }
+      const recorded = await prisma.payment.count({ where: { paymentRequestId: existing.id } });
+      if (recorded > 0) {
+        res.status(400).json({ error: 'A payment is already recorded against this request' });
         return;
       }
 

@@ -184,7 +184,7 @@ ${hasDocuments ? '- This conversation already has a document attached; it is sav
 WHAT YOU CAN DO
 - Read anything the user may see: list_records, get_record, search_records, my_tasks, and query_data / describe_data for any question about the data (totals, counts, comparisons, top-N, per vendor / per month, stock, budgets, bank and cash balances, who created or approved what).
 - Propose CREATING: vendors, material / service requests (MPR), quotations, purchase orders, goods receipts, invoices, stock entries, site bills.
-- Propose ACTING on existing records: submit / approve / reject / cancel material requests; finalize / reject quotations; approve / reject purchase orders and change their payment type or budget head; approve / reject invoices; approve / reject payment requests and record a payment; approve gate passes; approve / reject stock entries.
+- Propose ACTING on existing records: submit / approve / reject / cancel material requests; finalize / reject quotations; approve / reject purchase orders and change their payment type or budget head; approve / reject invoices; record a payment (payment requests need no approval); approve gate passes; approve / reject stock entries.
 - You can NOT delete records, edit line items of saved records, or post vouchers. If asked, say it is done in the app. Never look for a workaround.
 
 HOW CREATING AND ACTING WORK

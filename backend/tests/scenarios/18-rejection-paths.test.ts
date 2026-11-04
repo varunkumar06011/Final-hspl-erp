@@ -209,33 +209,4 @@ describe('Rejection Paths', () => {
     record('invoice.reject', true, `status=REJECTED (2 rejections)`);
   });
 
-  // ── Payment request rejection ──
-  it('rejects a payment request (2 rejections: PH + HOC)', async () => {
-    const expRes = await request
-      .post('/api/payments/expense')
-      .set(authAs(ctx.userPhId))
-      .send({
-        description: `Rejection Expense ${RUN_ID}`,
-        amount: 5000,
-        category: 'MISC',
-        paymentMode: 'CASH',
-      });
-    expect(expRes.status).toBe(201);
-    const prId = expRes.body.id;
-
-    // minApprovers=2 for amount <= 100000, need 2 rejections
-    await request
-      .post(`/api/payments/${prId}/reject`)
-      .set(authAs(ctx.userPhId))
-      .send({ reason: 'Not approved', acknowledged: true });
-    const rejRes = await request
-      .post(`/api/payments/${prId}/reject`)
-      .set(authAs(ctx.userHocId))
-      .send({ reason: 'Not approved', acknowledged: true });
-    expect(rejRes.status).toBe(200);
-    expect(rejRes.body.status).toBe('REJECTED');
-    const db = await prisma.paymentRequest.findUnique({ where: { id: prId } });
-    expect(db!.status).toBe('REJECTED');
-    record('payment.reject', true, `status=REJECTED (2 rejections)`);
-  });
 });

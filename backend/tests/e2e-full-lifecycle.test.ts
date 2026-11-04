@@ -327,14 +327,13 @@ describe('1. Procurement lifecycle', () => {
     expect(res.status).toBe(201);
     paymentRequestId = res.body.id;
     const db = await prisma.paymentRequest.findUnique({ where: { id: paymentRequestId } });
-    expect(db!.status).toBe('PENDING');
+    expect(db!.status).toBe('APPROVED');
     record('paymentrequest.create', res.status === 201, `pr=${paymentRequestId} status=${db!.status}`);
   });
 
-  it('1.14 Approve payment request (HEAD_GROUPS: 1 from {PH,HoC} + 1 from {ADMIN,ADMIN_2})', async () => {
-    await request.post(`/api/payments/${paymentRequestId}/approve`).set(authAs(userPhId)).send({ acknowledged: true, comments: 'ok' });
-    const res2 = await request.post(`/api/payments/${paymentRequestId}/approve`).set(authAs(userAdminId)).send({ acknowledged: true, comments: 'ok' });
-    expect(res2.body.status).toBe('APPROVED');
+  it('1.14 Payment request needs no approval', async () => {
+    const check = await prisma.paymentRequest.findUnique({ where: { id: paymentRequestId } });
+    expect(check!.status).toBe('APPROVED'); // no approval step: ready to record when raised
     const db = await prisma.paymentRequest.findUnique({ where: { id: paymentRequestId } });
     expect(db!.status).toBe('APPROVED');
     record('paymentrequest.approve', db!.status === 'APPROVED', `status=${db!.status}`);

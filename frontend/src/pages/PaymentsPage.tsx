@@ -23,9 +23,6 @@ import {
   CircularProgress,
   InputAdornment,
   MenuItem,
-  Accordion,
-  AccordionSummary,
-  AccordionDetails,
   Tabs,
   Tab,
   FormHelperText,
@@ -34,17 +31,12 @@ import {
 } from '@mui/material';
 import ResponsiveDialog from '../components/ResponsiveDialog';
 import StalledChip from '../components/StalledChip';
-import ApprovalStepsDisplay from '../components/ApprovalStepsDisplay';
-import ApprovalCommentsInline from '../components/ApprovalCommentsInline';
 import AcknowledgementCheckbox from '../components/AcknowledgementCheckbox';
 import RefreshButton from '../components/RefreshButton';
 import {
   Add as AddIcon,
   Search as SearchIcon,
-  Check as CheckIcon,
-  Close as CloseIcon,
   Payments as PaymentsIcon,
-  ExpandMore as ExpandMoreIcon,
   Receipt as ReceiptIcon,
   Delete as DeleteIcon,
   Edit as EditIcon,
@@ -53,16 +45,13 @@ import {
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { PaymentStatus, PaymentMode, POPaymentType, isAdminRole, canOverrideApprovals, findApprovableStep } from '@hospital-erp/shared';
+import { PaymentStatus, PaymentMode, POPaymentType } from '@hospital-erp/shared';
 import { enumLabel, formatCurrency, formatIndianNumber, STATUS_COLORS, todayLocalDate } from '../utils/enumOptions';
 import { dateLocale } from '../i18n';
 import api, { extractErrorMessage } from '../config/api';
 import { patchRow, pendingProps, removeRow, useOptimistic } from '../utils/optimistic';
-import { useAuthStore } from '../stores/authStore';
-import ApprovalActionDialog from '../components/ApprovalActionDialog';
 import ResponsiveTable from '../components/ResponsiveTable';
 import PaymentSheetsTab from '../components/PaymentSheetsTab';
-import { useApprovalDeepLink } from '../utils/useApprovalDeepLink';
 import { useDeepLinkRow } from '../hooks/useDeepLinkRow';
 import { useActiveRecordSetter } from '../hooks/useActiveRecord';
 import { useUrlFilters } from '../hooks/useUrlFilters';
@@ -71,19 +60,9 @@ import PaymentConfirmShare from '../components/PaymentConfirmShare';
 import CommentsButton from '../components/CommentsButton';
 import { LinkedFilesButton } from '../components/LinkedFiles';
 
-import ItemsGist, { type GistItem } from '../components/ItemsGist';
+import { type GistItem } from '../components/ItemsGist';
 import { useTranslation, Trans } from 'react-i18next';
 import FilePicker from '../components/FilePicker';
-interface ApprovalStep {
-  id: string;
-  stepNumber: number;
-  approverRole: string;
-  status: string;
-  approverUserId?: string | null;
-  approverUser?: { id: string; name: string; role: string } | null;
-  comments?: string | null;
-}
-
 interface PaymentRequestRow {
   id: string;
   paymentCode: string;
@@ -110,11 +89,6 @@ interface PaymentRequestRow {
   payments: { id: string; amount: number; mode: string; reference: string | null; date: string; bankAccountId: string | null; cashAccountId: string | null; bankAccount: { id: string; accountName: string } | null; cashAccount: { id: string; name: string } | null; journalVoucherId: string | null; journalVoucher: { jvNumber: string } | null }[];
   budgetHeadId: string | null;
   budgetHead: { id: string; particulars: string } | null;
-  approvalWorkflow: {
-    id: string;
-    status: string;
-    steps: ApprovalStep[];
-  } | null;
 }
 
 interface PendingInvoice {
@@ -209,7 +183,6 @@ export default function PaymentsPage() {
   const [advanceFile, setAdvanceFile] = useState<File | null>(null);
   const advanceFileRef = useRef<HTMLInputElement>(null);
   const [advanceAcknowledged, setAdvanceAcknowledged] = useState(false);
-  const [approvalAction, setApprovalAction] = useState<{ row: PaymentRequestRow; action: 'approve' | 'reject' } | null>(null);
   const [editRow, setEditRow] = useState<PaymentRequestRow | null>(null);
   const [editForm, setEditForm] = useState<Record<string, unknown>>({});
   const [voucherPromptRow, setVoucherPromptRow] = useState<PaymentRequestRow | null>(null);
@@ -222,7 +195,6 @@ export default function PaymentsPage() {
   const queryClient = useQueryClient();
   // Status changes show on the list at once and are undone if the server refuses.
   const { apply, undo, restore } = useOptimistic();
-  const { user } = useAuthStore();
   const navigate = useNavigate();
 
   // Expense form state
@@ -350,91 +322,6 @@ export default function PaymentsPage() {
       setTimeout(() => setSuccessMsg(''), 3000);
     },
     onError: (err: unknown) => setError(extractErrorMessage(err)),
-  });
-
-  const approveMutation = useMutation({
-    mutationFn: async ({ prId, comments, acknowledged }: { prId: string; comments?: string; acknowledged: true }) => {
-      const response = await api.post(`/payments/${prId}/approve`, { comments, acknowledged });
-      return response.data;
-    },
-    onMutate: async ({ prId }) => {
-      // Optimistic update — advance the approval workflow status instantly.
-      await queryClient.cancelQueries({ queryKey: ['/payments'] });
-      const prevQueries = queryClient.getQueriesData<{ data: PaymentRequestRow[] }>({ queryKey: ['/payments'] });
-      queryClient.setQueriesData<{ data: PaymentRequestRow[] }>({ queryKey: ['/payments'] }, (old) => {
-        if (!old?.data) return old;
-        return {
-          ...old,
-          data: old.data.map((pr) =>
-            pr.id === prId
-              ? {
-                  ...pr,
-                  approvalWorkflow: pr.approvalWorkflow
-                    ? { ...pr.approvalWorkflow, status: 'APPROVAL_1' }
-                    : pr.approvalWorkflow,
-                }
-              : pr,
-          ),
-        };
-      });
-      return { prevQueries };
-    },
-    onError: (err: unknown, _vars, context) => {
-      context?.prevQueries.forEach(([key, data]) => {
-        queryClient.setQueryData(key, data);
-      });
-      setError(extractErrorMessage(err));
-    },
-    onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ['/payments'] });
-      queryClient.invalidateQueries({ queryKey: ['/invoices'] });
-      queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
-    },
-    onSuccess: () => {
-      setApprovalAction(null);
-    },
-  });
-
-  const rejectMutation = useMutation({
-    mutationFn: async ({ prId, reason, acknowledged }: { prId: string; reason: string; acknowledged: true }) => {
-      const response = await api.post(`/payments/${prId}/reject`, { reason, acknowledged });
-      return response.data;
-    },
-    onMutate: async ({ prId }) => {
-      await queryClient.cancelQueries({ queryKey: ['/payments'] });
-      const prevQueries = queryClient.getQueriesData<{ data: PaymentRequestRow[] }>({ queryKey: ['/payments'] });
-      queryClient.setQueriesData<{ data: PaymentRequestRow[] }>({ queryKey: ['/payments'] }, (old) => {
-        if (!old?.data) return old;
-        return {
-          ...old,
-          data: old.data.map((pr) =>
-            pr.id === prId
-              ? {
-                  ...pr,
-                  approvalWorkflow: pr.approvalWorkflow
-                    ? { ...pr.approvalWorkflow, status: 'REJECTED' }
-                    : pr.approvalWorkflow,
-                }
-              : pr,
-          ),
-        };
-      });
-      return { prevQueries };
-    },
-    onError: (err: unknown, _vars, context) => {
-      context?.prevQueries.forEach(([key, data]) => {
-        queryClient.setQueryData(key, data);
-      });
-      setError(extractErrorMessage(err));
-    },
-    onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ['/payments'] });
-      queryClient.invalidateQueries({ queryKey: ['/invoices'] });
-      queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
-    },
-    onSuccess: () => {
-      setApprovalAction(null);
-    },
   });
 
   const [deleteRow, setDeleteRow] = useState<PaymentRequestRow | null>(null);
@@ -596,8 +483,6 @@ export default function PaymentsPage() {
   const pendingInvoicesData: PendingInvoice[] = pendingInvoices?.data ?? [];
   const pendingPOsData: PendingPO[] = pendingPOs?.data ?? [];
 
-  // Auto-open approval dialog when navigated from a push notification
-  useApprovalDeepLink(rows, (row) => setApprovalAction({ row, action: 'approve' }));
   // Deep-link from global search: ?id=<prId> — filter to that payment and highlight it
   const { highlightId, rowRef } = useDeepLinkRow<PaymentRequestRow>('/payments', rows, 'paymentCode', (v) => { setSearch(v); setPage(0); });
   const setActiveRecord = useActiveRecordSetter();
@@ -606,24 +491,6 @@ export default function PaymentsPage() {
     if (hit) setActiveRecord({ type: 'PAYMENT', id: hit.id, label: hit.paymentCode });
   }, [highlightId]);
   useUrlFilters({ search: (v) => { setSearch(v); setPage(0); }, status: (v) => { setStatusFilter(v); setPage(0); }, type: (v) => { setTypeFilter(v); setPage(0); }, minAmount: setMinAmount, maxAmount: setMaxAmount, dateFilter: setDateFilter });
-
-  function canApprove(row: PaymentRequestRow): boolean {
-    if (!row.approvalWorkflow) return false;
-    if (!user || (!isAdminRole(user.role) && !canOverrideApprovals(user.role, user.extraPermissions))) return false;
-    if (row.status !== PaymentStatus.PENDING) return false;
-    const step = findApprovableStep(row.approvalWorkflow.steps, user);
-    if (!step) return false;
-    const alreadyApproved = row.approvalWorkflow.steps.some(
-      (s) => s.approverUserId === user.id && s.status === 'APPROVED'
-    );
-    return !alreadyApproved;
-  }
-
-  function getApprovalCount(row: PaymentRequestRow): number {
-    if (!row.approvalWorkflow) return 0;
-    return row.approvalWorkflow.steps.filter((s) => s.status === 'APPROVED').length;
-  }
-
 
   function validateExpenseForm(): boolean {
     const payee = String(expenseForm.payee ?? '').trim();
@@ -863,7 +730,7 @@ export default function PaymentsPage() {
             </TextField>
             <TextField select size="small" label={tr('status')} value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(0); }} sx={{ width: 150 }}>
               <MenuItem value="">{tr('all')}</MenuItem>
-              {Object.values(PaymentStatus).map((s) => <MenuItem key={s} value={s}>{s}</MenuItem>)}
+              {Object.values(PaymentStatus).filter((s) => s !== PaymentStatus.PENDING && s !== PaymentStatus.REJECTED).map((s) => <MenuItem key={s} value={s}>{s}</MenuItem>)}
             </TextField>
             <TextField
               size="small"
@@ -888,8 +755,6 @@ export default function PaymentsPage() {
                   <TableCell sx={{ fontWeight: 600 }}>{tr('vendor')}</TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>{tr('amount')}</TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>{tr('budgetHead')}</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>{tr('approvals')}</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>{tr('approvalComments')}</TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>{tr('status')}</TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>{tr('file')}</TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>{tr('actions')}</TableCell>
@@ -919,16 +784,6 @@ export default function PaymentsPage() {
                           ? <Chip label={row.budgetHead.particulars} size="small" variant="outlined" color="primary" />
                           : <Typography variant="caption" color="text.secondary">—</Typography>}
                       </TableCell>
-                      <TableCell data-label={tr('approvals')}>
-                        {row.approvalWorkflow
-                          ? `${getApprovalCount(row)}/2`
-                          : '—'}
-                      </TableCell>
-                      <TableCell data-label={tr('approvalComments')} sx={{ maxWidth: 260 }}>
-                        {row.approvalWorkflow?.steps
-                          ? <ApprovalCommentsInline steps={row.approvalWorkflow.steps} />
-                          : <Typography variant="caption" color="text.secondary">—</Typography>}
-                      </TableCell>
                       <TableCell data-label={tr('status')}>
                         <Stack spacing={0.5} alignItems="flex-start">
                           <Chip label={enumLabel(row.status)} size="small" color={STATUS_COLORS[row.status] ?? 'default'} />
@@ -956,12 +811,6 @@ export default function PaymentsPage() {
                             <IconButton size="small" sx={{ color: '#25D366' }} onClick={() => shareOnWhatsApp(buildPaymentShareMessage({ paymentCode: row.paymentCode, requestNumber: row.requestNumber, vendorName: row.vendor?.name, amount: Number(row.amount), status: row.status, type: row.type, description: row.description ?? undefined }))} title={tr('shareOnWhatsapp')}><WhatsAppIcon fontSize="small" /></IconButton>
                           )}
                           <IconButton size="small" color="primary" onClick={() => openEdit(row)} title={tr('editPaymentDetails')}><EditIcon fontSize="small" /></IconButton>
-                          {canApprove(row) && (
-                            <>
-                              <IconButton size="small" color="success" onClick={() => setApprovalAction({ row, action: 'approve' })} title={tr('approve')}><CheckIcon fontSize="small" /></IconButton>
-                              <IconButton size="small" color="error" onClick={() => setApprovalAction({ row, action: 'reject' })} title={tr('reject')}><CloseIcon fontSize="small" /></IconButton>
-                            </>
-                          )}
                           {row.status === PaymentStatus.APPROVED && row.payments.length === 0 && (
                             <>
                               <Button size="small" variant="outlined" startIcon={<PaymentsIcon />}
@@ -992,7 +841,7 @@ export default function PaymentsPage() {
                               )}
                             </Box>
                           )}
-                          {row.status !== PaymentStatus.APPROVED && row.status !== PaymentStatus.PAID && (
+                          {row.status !== PaymentStatus.PAID && row.payments.length === 0 && (
                             <IconButton size="small" color="error" onClick={() => setDeleteRow(row)} title={tr('delete')}><DeleteIcon fontSize="small" /></IconButton>
                           )}
                         </Box>
@@ -1016,26 +865,6 @@ export default function PaymentsPage() {
             sx={{ '& .MuiTablePagination-toolbar': { flexWrap: 'wrap' } }}
           />
         </Card>
-      )}
-
-      {/* Approval details accordion */}
-      {tab === 2 && rows.length > 0 && rows.some((r) => r.approvalWorkflow) && (
-        <Box sx={{ mt: 2 }}>
-          <Typography variant="h6" fontWeight={600} sx={{ mb: 1 }}>{tr('approvalStatus')}</Typography>
-          {rows.filter((r) => r.approvalWorkflow).map((row) => (
-            <Accordion key={row.id}>
-              <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                <Box sx={{ minWidth: 0, width: '100%' }}>
-                  <Typography><strong>{row.paymentCode}</strong> — {row.type === 'EXPENSE' ? row.description : row.type === 'ADVANCE' ? tr('poN', { n: row.purchaseOrder?.poNumber }) : row.invoice?.invoiceCode} — {tr('approvedN', { n: getApprovalCount(row) })} — <Chip label={enumLabel(row.status)} size="small" color={STATUS_COLORS[row.status] ?? 'default'} /></Typography>
-                  <ItemsGist items={row.purchaseOrder?.items ?? row.invoice?.purchaseOrder?.items} />
-                </Box>
-              </AccordionSummary>
-              <AccordionDetails>
-                <ApprovalStepsDisplay steps={row.approvalWorkflow!.steps} />
-              </AccordionDetails>
-            </Accordion>
-          ))}
-        </Box>
       )}
 
       {/* Tab 3: Payment Sheets — daily printable register of payments made against a PO */}
@@ -1472,24 +1301,6 @@ export default function PaymentsPage() {
           </Button>
         </DialogActions>
       </ResponsiveDialog>
-
-      <ApprovalActionDialog
-        open={approvalAction !== null}
-        action={approvalAction?.action ?? 'approve'}
-        entityLabel="Payment Request"
-        pending={approveMutation.isPending || rejectMutation.isPending}
-        error={error}
-        onClearError={() => setError('')}
-        onClose={() => setApprovalAction(null)}
-        onConfirm={(payload) => {
-          if (!approvalAction) return;
-          if (approvalAction.action === 'approve') {
-            approveMutation.mutate({ prId: approvalAction.row.id, comments: payload.comments, acknowledged: true });
-          } else {
-            rejectMutation.mutate({ prId: approvalAction.row.id, reason: payload.reason!, acknowledged: true });
-          }
-        }}
-      />
 
       {/* After the "payment done" message went out: record the payment right away */}
       <ResponsiveDialog open={!!voucherPromptRow} onClose={() => setVoucherPromptRow(null)} maxWidth="xs" fullWidth>

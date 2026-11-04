@@ -123,10 +123,9 @@ describe('Advance Payment Flow', () => {
     record('advance.duplicate', true, `409 as expected`);
   });
 
-  it('approves the advance payment request (HEAD_GROUPS: PH + ADMIN)', async () => {
-    await request.post(`/api/payments/${advanceRequestId}/approve`).set(authAs(ctx.userPhId)).send({ acknowledged: true, comments: 'ok' });
-    const res2 = await request.post(`/api/payments/${advanceRequestId}/approve`).set(authAs(ctx.userAdminId)).send({ acknowledged: true, comments: 'ok' });
-    expect(res2.body.status).toBe('APPROVED');
+  it('advance payment request is ready to record without approval', async () => {
+    const check = await prisma.paymentRequest.findUnique({ where: { id: advanceRequestId } });
+    expect(check!.status).toBe('APPROVED'); // no approval step: ready to record when raised
     record('advance.approve', true, `status=APPROVED`);
   });
 

@@ -1103,26 +1103,6 @@ const actionTools: WriteTool[] = [
     body: (a) => ({ reason: a.reason, comments: a.reason, ...ack }),
   }),
   actionTool({
-    name: 'approve_payment',
-    description: 'Approve a payment request waiting on this user (status PENDING).',
-    record: 'payment',
-    endpoint: 'approve',
-    statuses: ['PENDING', 'PENDING_APPROVAL'],
-    params: { comments: commentsParam },
-    body: (a) => ({ comments: a.comments, ...ack }),
-    needsPin: true,
-  }),
-  actionTool({
-    name: 'reject_payment',
-    description: 'Reject a payment request. Needs a reason.',
-    record: 'payment',
-    endpoint: 'reject',
-    params: { reason: reasonParam },
-    required: ['reason'],
-    schema: { reason: z.string().trim().min(1).max(500) },
-    body: (a) => ({ reason: a.reason, comments: a.reason, ...ack }),
-  }),
-  actionTool({
     name: 'record_payment',
     description:
       'Record that an APPROVED payment request was paid, from a bank account or a cash account (find them with query_data on BankAccount / CashAccount). The amount must equal the request amount.',

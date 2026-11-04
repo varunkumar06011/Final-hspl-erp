@@ -101,7 +101,6 @@ describe('assistant tool registry (hard limits)', () => {
       'approve_gate_pass',
       'approve_invoice',
       'approve_mpr',
-      'approve_payment',
       'approve_po',
       'approve_stock_entry',
       'cancel_mpr',
@@ -119,7 +118,6 @@ describe('assistant tool registry (hard limits)', () => {
       'record_payment',
       'reject_invoice',
       'reject_mpr',
-      'reject_payment',
       'reject_po',
       'reject_quotation',
       'reject_stock_entry',
@@ -137,7 +135,7 @@ describe('assistant tool registry (hard limits)', () => {
   });
 
   it('every action that moves money or cancels needs the login PIN', () => {
-    for (const name of ['record_payment', 'approve_payment', 'cancel_mpr']) {
+    for (const name of ['record_payment', 'cancel_mpr']) {
       expect((TOOLS_BY_NAME[name] as { needsPin?: boolean }).needsPin).toBe(true);
     }
   });

@@ -47,14 +47,13 @@ describe('Daily Expense', () => {
     expenseId = res.body.id;
     const db = await prisma.paymentRequest.findUnique({ where: { id: expenseId } });
     expect(db!.type).toBe('EXPENSE');
-    expect(db!.status).toBe('PENDING');
+    expect(db!.status).toBe('APPROVED');
     record('expense.create', true, `expense=${expenseId} amount=15000`);
   });
 
-  it('approves the expense (HEAD_GROUPS: PH + ADMIN)', async () => {
-    await request.post(`/api/payments/${expenseId}/approve`).set(authAs(ctx.userPhId)).send({ acknowledged: true, comments: 'ok' });
-    const res2 = await request.post(`/api/payments/${expenseId}/approve`).set(authAs(ctx.userAdminId)).send({ acknowledged: true, comments: 'ok' });
-    expect(res2.body.status).toBe('APPROVED');
+  it('expense is ready to record without approval', async () => {
+    const check = await prisma.paymentRequest.findUnique({ where: { id: expenseId } });
+    expect(check!.status).toBe('APPROVED'); // no approval step: ready to record when raised
     record('expense.approve', true, `status=APPROVED`);
   });
 
