@@ -239,5 +239,11 @@
       "PAYMENT": "Payment"
     },
     "close": "Close"
+  },
+  "vendorAccount": {
+    "title": "Vendor account details",
+    "accountNo": "A/c No",
+    "ifsc": "IFSC",
+    "none": "No account details"
   }
 }

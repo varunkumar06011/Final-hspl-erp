@@ -618,9 +618,24 @@ export async function getCombinedRecord(projectId: string, viewer: Viewer, type:
   const coveredLines = new Set(quotations.filter((q) => FINALIZED_Q.includes(q.status)).flatMap((q) => q.items.map((i) => lineKey(i))));
   const uncoveredLineKeys = mpr ? mpr.items.filter((i) => !coveredLines.has(lineKey(i))).map((i) => lineKey(i)) : [];
 
+  // Bank details of every vendor in the chain (finance viewers only), entered on the vendor page.
+  const vendorIds = [...new Set([
+    mpr?.vendor?.id, ...quotations.map((q) => q.vendor.id), ...pos.map((p) => p.vendor.id),
+  ].filter((v): v is string => !!v))];
+  const vendorAccounts = fin && vendorIds.length
+    ? (await prisma.vendor.findMany({
+        where: { projectId, id: { in: vendorIds } },
+        select: { id: true, name: true, vendorCode: true, bankName: true, bankAccountNumber: true, ifscCode: true },
+      })).map((v) => ({
+        ...v,
+        hasAccountDetails: !!(v.bankName?.trim() || v.bankAccountNumber?.trim() || v.ifscCode?.trim()),
+      }))
+    : [];
+
   return {
     root,
     canSeeFinancials: fin,
+    vendorAccounts,
     ...stages,
     uncoveredMaterials,
     uncoveredLineKeys,

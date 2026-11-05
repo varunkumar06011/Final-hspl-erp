@@ -154,9 +154,20 @@ interface PurchaseOrder {
   reimburseTo: string | null;
   siteBills: SiteBill[];
 }
+interface VendorAccount {
+  id: string;
+  name: string;
+  vendorCode: string;
+  bankName: string | null;
+  bankAccountNumber: string | null;
+  ifscCode: string | null;
+  hasAccountDetails: boolean;
+}
 interface Detail {
   root: { type: string; id: string };
   canSeeFinancials: boolean;
+  /** Bank details of each vendor in the chain (finance viewers only). */
+  vendorAccounts?: VendorAccount[];
   steps: Step[];
   current: string;
   next: string;
@@ -315,6 +326,29 @@ export default function CombinedRecordDialog({ type, id, onClose }: { type: stri
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
             {/* Proofs first: whoever pays sees the bills and PDFs before anything else. */}
             <ProofsPanel type={type} id={id} />
+            {data.canSeeFinancials && (data.vendorAccounts?.length ?? 0) > 0 && (
+              <Card sx={{ p: { xs: 1.5, sm: 2 } }}>
+                <Typography variant="subtitle2" sx={{ mb: 1 }}>{t('vendorAccount.title')}</Typography>
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                  {data.vendorAccounts!.map((v) => (
+                    <Box key={v.id}>
+                      <Typography variant="body2" sx={{ fontWeight: 600 }}>{v.name} · {v.vendorCode}</Typography>
+                      {v.hasAccountDetails ? (
+                        <Typography variant="body2" color="text.secondary">
+                          {[
+                            v.bankName,
+                            v.bankAccountNumber && `${t('vendorAccount.accountNo')}: ${v.bankAccountNumber}`,
+                            v.ifscCode && `${t('vendorAccount.ifsc')}: ${v.ifscCode}`,
+                          ].filter(Boolean).join(' · ')}
+                        </Typography>
+                      ) : (
+                        <Typography variant="body2" color="warning.main">{t('vendorAccount.none')}</Typography>
+                      )}
+                    </Box>
+                  ))}
+                </Box>
+              </Card>
+            )}
             <Card sx={{ p: { xs: 1.5, sm: 2 } }}>
               <StageStepper steps={data.steps} onSelect={scrollTo} />
               <Alert severity={data.next === 'completed' ? 'success' : data.next === 'rejected' || data.next === 'cancelled' ? 'error' : 'info'} sx={{ mt: 2 }}>
