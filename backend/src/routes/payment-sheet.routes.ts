@@ -250,6 +250,112 @@ router.get(
   }
 );
 
+// GET /money-summary — every rupee that actually went out or came in, from the
+// posted bank and cash account transactions (the books, not the sheet entries).
+//   direction: PAID | RECEIVED | BOTH (default BOTH)
+//   startDate / endDate: YYYY-MM-DD (default today)
+// Transfers between our own accounts (contra) are left out: they are not money
+// paid or received. A reversal counts against the side it reverses (a cancelled
+// payment is negative under Paid), so the totals are net.
+const MONEY_OUT_TYPES = ['WITHDRAWAL', 'OUT'];
+const MONEY_IN_TYPES = ['DEPOSIT', 'IN'];
+const MONEY_ROW_LIMIT = 5000;
+
+router.get(
+  '/money-summary',
+  rbacMiddleware(Permission.VIEW_FINANCIALS),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      const q = req.query as Record<string, string | undefined>;
+      const direction = q.direction === 'PAID' || q.direction === 'RECEIVED' ? q.direction : 'BOTH';
+
+      const dayStart = (v: string | undefined) => {
+        const d = v && !isNaN(Date.parse(v)) ? new Date(v) : new Date();
+        d.setHours(0, 0, 0, 0);
+        return d;
+      };
+      const start = dayStart(q.startDate);
+      const end = q.endDate && !isNaN(Date.parse(q.endDate)) ? new Date(q.endDate) : new Date(start);
+      end.setHours(23, 59, 59, 999);
+
+      // Per side: the types that count, and the reversal that undoes them.
+      const sideTypes = {
+        PAID: { out: MONEY_OUT_TYPES, reversal: ['REVERSAL_IN'] },
+        RECEIVED: { out: MONEY_IN_TYPES, reversal: ['REVERSAL_OUT'] },
+      };
+      const wantedTypes = (['PAID', 'RECEIVED'] as const)
+        .filter((side) => direction === 'BOTH' || direction === side)
+        .flatMap((side) => [...sideTypes[side].out, ...sideTypes[side].reversal]);
+
+      const where = { status: 'POSTED', type: { in: wantedTypes }, date: { gte: start, lte: end } };
+      const [bank, cash] = await Promise.all([
+        prisma.bankTransaction.findMany({
+          where: { ...where, bankAccount: { projectId, deletedAt: null } },
+          include: { bankAccount: { select: { accountName: true } } },
+          orderBy: { date: 'asc' },
+          take: MONEY_ROW_LIMIT,
+        }),
+        prisma.cashTransaction.findMany({
+          where: { ...where, cashAccount: { projectId, deletedAt: null } },
+          include: { cashAccount: { select: { name: true } } },
+          orderBy: { date: 'asc' },
+          take: MONEY_ROW_LIMIT,
+        }),
+      ]);
+
+      const voucherIds = Array.from(
+        new Set([...bank, ...cash].map((t) => t.referenceId).filter((id): id is string => !!id)),
+      );
+      const vouchers = voucherIds.length
+        ? await prisma.journalVoucher.findMany({
+            where: { id: { in: voucherIds }, projectId },
+            select: { id: true, jvNumber: true, description: true },
+          })
+        : [];
+      const voucherById = new Map(vouchers.map((v) => [v.id, v]));
+
+      type Row = {
+        id: string; date: Date; direction: 'PAID' | 'RECEIVED'; amount: number; account: string;
+        accountKind: 'BANK' | 'CASH'; voucherNumber: string | null; description: string | null; isReversal: boolean;
+      };
+      const toRow = (t: { id: string; type: string; amount: unknown; date: Date; description: string | null; referenceId: string | null }, account: string, accountKind: 'BANK' | 'CASH'): Row => {
+        const isReversal = t.type.startsWith('REVERSAL');
+        // REVERSAL_IN undoes money that went out; REVERSAL_OUT undoes money that came in.
+        const rowDirection: 'PAID' | 'RECEIVED' = MONEY_OUT_TYPES.includes(t.type) || t.type === 'REVERSAL_IN' ? 'PAID' : 'RECEIVED';
+        const v = t.referenceId ? voucherById.get(t.referenceId) : undefined;
+        return {
+          id: t.id,
+          date: t.date,
+          direction: rowDirection,
+          amount: (isReversal ? -1 : 1) * Number(t.amount),
+          account,
+          accountKind,
+          voucherNumber: v?.jvNumber ?? null,
+          description: t.description ?? v?.description ?? null,
+          isReversal,
+        };
+      };
+      const rows: Row[] = [
+        ...bank.map((t) => toRow(t, t.bankAccount.accountName, 'BANK')),
+        ...cash.map((t) => toRow(t, t.cashAccount.name, 'CASH')),
+      ].sort((a, b) => a.date.getTime() - b.date.getTime());
+
+      const sum = (side: 'PAID' | 'RECEIVED') => rows.filter((r) => r.direction === side).reduce((n, r) => n + r.amount, 0);
+      const paid = direction === 'RECEIVED' ? 0 : sum('PAID');
+      const received = direction === 'PAID' ? 0 : sum('RECEIVED');
+
+      res.json({
+        data: rows,
+        totals: { paid, received, net: received - paid },
+        truncated: bank.length >= MONEY_ROW_LIMIT || cash.length >= MONEY_ROW_LIMIT,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
 // GET /pdf — download the day's payment sheet as a branded PDF (must precede /:id)
 router.get(
   '/pdf',

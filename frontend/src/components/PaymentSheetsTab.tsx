@@ -24,6 +24,8 @@ import {
   MenuItem,
   Autocomplete,
   Divider,
+  ToggleButton,
+  ToggleButtonGroup,
 } from '@mui/material';
 import ResponsiveDialog from './ResponsiveDialog';
 import RefreshButton from './RefreshButton';
@@ -39,6 +41,7 @@ import {
   Receipt as ReceiptIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import MoneySummaryPanel from './MoneySummaryPanel';
 import { PaymentMode, PaymentStatus, isAdminRole } from '@hospital-erp/shared';
 import { formatCurrency, formatDate, STATUS_COLORS, enumLabel } from '../utils/enumOptions';
 import api, { extractErrorMessage } from '../config/api';
@@ -158,6 +161,7 @@ export default function PaymentSheetsTab() {
   });
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+  const [view, setView] = useState<'sheet' | 'money'>('sheet');
 
   // Add-entry dialog state
   const [addOpen, setAddOpen] = useState(false);
@@ -401,6 +405,12 @@ export default function PaymentSheetsTab() {
       {viewer}
       {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
       {successMsg && <Alert severity="success" sx={{ mb: 2 }} onClose={() => setSuccessMsg('')}>{successMsg}</Alert>}
+      <ToggleButtonGroup size="small" exclusive value={view} onChange={(_e, v) => v && setView(v)} sx={{ mb: 2 }} className="no-print">
+        <ToggleButton value="sheet">{t('viewSheet')}</ToggleButton>
+        <ToggleButton value="money">{t('viewMoney')}</ToggleButton>
+      </ToggleButtonGroup>
+      {view === 'money' && <MoneySummaryPanel />}
+      {view === 'sheet' && (<>
 
       {/* Toolbar */}
       <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center', mb: 2 }} className="no-print">
@@ -756,6 +766,7 @@ export default function PaymentSheetsTab() {
           </Button>
         </DialogActions>
       </ResponsiveDialog>
+      </>)}
     </Box>
   );
 }
