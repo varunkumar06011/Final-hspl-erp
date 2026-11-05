@@ -17,6 +17,7 @@ import {
   DialogContent,
   DialogActions,
   IconButton,
+  Tooltip,
   Chip,
   Alert,
   CircularProgress,
@@ -438,6 +439,18 @@ export default function EntityPage({
                           size="small"
                           color={statusColors?.[String(row[statusKey])] ?? 'default'}
                         />
+                      )}
+                      {canCreate && (
+                        <Tooltip title={t('entity.edit')}>
+                          <IconButton
+                            size="small"
+                            aria-label={t('entity.edit')}
+                            onClick={(e) => { e.stopPropagation(); openEdit(row); }}
+                            onFocus={(e) => e.stopPropagation()}
+                          >
+                            <EditIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
                       )}
                     </Box>
                   </AccordionSummary>
