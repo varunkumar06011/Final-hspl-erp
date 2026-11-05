@@ -10,6 +10,21 @@ import { ToastProvider } from './components/ToastProvider';
 import { CreateReviewProvider } from './components/CreateReview';
 import AppShell from './components/AppShell';
 import ProtectedRoute, { NO_ACCESS_PATH } from './components/ProtectedRoute';
+import { useAuthStore } from './stores/authStore';
+import { canUseModule } from './utils/moduleAccess';
+
+/** Accountant and Accounts Head open on Accounting Vouchers, not the dashboard. */
+function AccountsHomeRedirect({ children }: { children: React.ReactNode }) {
+  const user = useAuthStore((s) => s.user);
+  if (
+    user &&
+    (user.role === UserRole.ACCOUNTANT || user.role === UserRole.ACCOUNTS_HEAD) &&
+    canUseModule(user, 'vouchers')
+  ) {
+    return <Navigate to="/vouchers" replace />;
+  }
+  return <>{children}</>;
+}
 import ErrorScreen, { preloadErrorAnimation } from './components/ErrorScreen';
 import OfflineBanner from './components/OfflineBanner';
 import { useOnlineStatus } from './hooks/useOnlineStatus';
@@ -221,11 +236,13 @@ export default function App() {
                     path="/"
                     element={
                       <ProtectedRoute permission={Permission.VIEW_DASHBOARD}>
-                        <AppShell>
-                          <Suspense fallback={<PageLoader />}>
-                            <DashboardPage />
-                          </Suspense>
-                        </AppShell>
+                        <AccountsHomeRedirect>
+                          <AppShell>
+                            <Suspense fallback={<PageLoader />}>
+                              <DashboardPage />
+                            </Suspense>
+                          </AppShell>
+                        </AccountsHomeRedirect>
                       </ProtectedRoute>
                     }
                   />
