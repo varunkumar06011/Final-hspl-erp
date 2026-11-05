@@ -1,4 +1,5 @@
 import api from '../config/api';
+import { isNative } from '../config/appConfig';
 
 /**
  * Download a file from an authenticated GET /:id/file endpoint.
@@ -26,4 +27,31 @@ export async function downloadPath(path: string, fileName: string, headers?: Rec
 export async function fetchFileUrl(route: string, id: string): Promise<string> {
   const res = await api.get(`/${route}/${id}/file`, { responseType: 'blob' });
   return window.URL.createObjectURL(res.data);
+}
+
+/** Open the browser's print dialog for a PDF blob, without leaving the page. */
+export function printPdfBlob(blob: Blob): void {
+  const url = window.URL.createObjectURL(new Blob([blob], { type: 'application/pdf' }));
+  if (isNative) {
+    // a hidden iframe cannot print in the iOS app: hand the PDF to the share sheet (Print is in it)
+    window.open(url, '_blank');
+    return;
+  }
+  const frame = document.createElement('iframe');
+  frame.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden';
+  frame.src = url;
+  frame.onload = () => {
+    try {
+      frame.contentWindow?.focus();
+      frame.contentWindow?.print();
+    } catch {
+      window.open(url, '_blank');
+    }
+    // keep the frame until the print dialog has had time to read it
+    setTimeout(() => {
+      frame.remove();
+      window.URL.revokeObjectURL(url);
+    }, 60_000);
+  };
+  document.body.appendChild(frame);
 }

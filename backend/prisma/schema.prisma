@@ -1873,6 +1873,8 @@ model MaterialPurchaseRequest {
   // Number the request had before service requests got their own SR series (or before
   // it was switched between material and service), kept so old references still find it.
   legacyNumber          String?
+  // Free-text voucher number (letters and digits) typed by the user, e.g. "V-2026/114".
+  voucherNumber         String?
   date                  DateTime  @default(now())
   requiredBy            DateTime?
   department            String?
@@ -1936,6 +1938,7 @@ model MaterialPurchaseRequest {
   @@index([sitePoId])
   @@index([billBudgetHeadId])
   @@index([legacyNumber])
+  @@index([voucherNumber])
   @@map("material_purchase_requests")
 }
 

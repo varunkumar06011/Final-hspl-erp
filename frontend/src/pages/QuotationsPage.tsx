@@ -68,6 +68,7 @@ import LinkedFiles from '../components/LinkedFiles';
 import FilePicker from '../components/FilePicker';
 import { useToast } from '../components/ToastProvider';
 import { AccountTree as CombinedIcon } from '@mui/icons-material';
+import { useCreateReview } from '../components/CreateReview';
 
 interface QuotationItem {
   id?: string;
@@ -240,6 +241,7 @@ export default function QuotationsPage() {
     enabled: !!selectedVendorId,
   });
 
+  const review = useCreateReview();
   const createMutation = useMutation({
     mutationFn: async () => {
       const filteredItems = lineItems
@@ -570,9 +572,13 @@ export default function QuotationsPage() {
   function handleCreateQuotation() {
     if (createSubmissionLocked.current || createMutation.isPending) return;
     if (!validateQuotationForm()) return;
-    createSubmissionLocked.current = true;
-    setError('');
-    createMutation.mutate();
+    // checked with the person first; the double-click lock only starts once they confirm
+    review(() => {
+      if (createSubmissionLocked.current) return;
+      createSubmissionLocked.current = true;
+      setError('');
+      createMutation.mutate();
+    });
   }
 
   function openEdit(row: QuotationRow, forRevise = false) {

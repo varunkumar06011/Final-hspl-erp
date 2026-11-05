@@ -21,6 +21,7 @@ import VendorAutocomplete from '../VendorAutocomplete';
 import FilePicker from '../FilePicker';
 import { formatCurrency } from '../../utils/enumOptions';
 import PriceFlag, { usePriceCheck } from '../PriceFlag';
+import { useCreateReview } from '../CreateReview';
 
 export interface RequestLine {
   materialName: string;
@@ -121,6 +122,7 @@ export default function AddQuotationDialog({
   const subtotal = chosen.reduce((s, r) => s + Number(r.quantity) * (Number(r.unitPrice) || 0), 0);
   const gst = chosen.reduce((s, r) => s + (Number(r.quantity) * (Number(r.unitPrice) || 0) * r.gstRate) / 100, 0);
 
+  const review = useCreateReview();
   const save = useMutation({
     mutationFn: async () => {
       const items = chosen.map((r) => ({
@@ -198,7 +200,7 @@ export default function AddQuotationDialog({
       </DialogContent>
       <DialogActions>
         <Button onClick={onClose}>{t('cancel')}</Button>
-        <Button variant="contained" disabled={!canSave} onClick={() => save.mutate()}>
+        <Button variant="contained" disabled={!canSave} onClick={() => (editing ? save.mutate() : review(() => save.mutate()))}>
           {save.isPending ? <CircularProgress size={20} /> : editing ? t('saveRates') : t('saveQuotation')}
         </Button>
       </DialogActions>

@@ -33,6 +33,7 @@ import api, { extractErrorMessage } from '../config/api';
 import { insertRow, patchRow, pendingProps, removeRow, useOptimistic } from '../utils/optimistic';
 
 import { useTranslation } from 'react-i18next';
+import { useCreateReview } from '../components/CreateReview';
 interface WorkTask {
   id: string;
   title: string;
@@ -193,6 +194,7 @@ export default function WorkCalendarPage() {
   const TASK_KEYS = [['/work-tasks/calendar'], ['/work-tasks']];
 
   type SaveVars = { id: string | null; payload: Record<string, unknown>; form: Record<string, unknown> };
+  const review = useCreateReview();
   const saveMutation = useMutation({
     mutationFn: async ({ id, payload }: SaveVars) => {
       if (id) {
@@ -304,7 +306,8 @@ export default function WorkCalendarPage() {
       linkedQuotationId: (form.linkedQuotationId as string) || undefined,
       linkedPoId: (form.linkedPoId as string) || undefined,
     };
-    saveMutation.mutate({ id: editingId, payload, form });
+    if (editingId) saveMutation.mutate({ id: editingId, payload, form });
+    else review(() => saveMutation.mutate({ id: editingId, payload, form }));
   }
 
   const selectedTasks: WorkTask[] = selectedDate ? (tasksByDate[selectedDate] ?? []) : [];

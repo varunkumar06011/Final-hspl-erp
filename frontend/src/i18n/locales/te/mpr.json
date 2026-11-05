@@ -84,6 +84,8 @@
   "deliveryPlaceholder": "సామగ్రి భౌతికంగా ఎక్కడ డెలివరీ చేయాలి",
   "contactPerson": "సంప్రదించవలసిన వ్యక్తి",
   "contactNumber": "సంప్రదింపు నంబర్",
+  "voucherNumber": "వోచర్ నంబర్",
+  "voucherChip": "వోచర్: {{n}}",
   "billTo": "బిల్లు చిరునామా",
   "billingAddress": "బిల్లింగ్ చిరునామా",
   "billingPlaceholder": "V Grand Health Care Pvt. Ltd. బిల్లింగ్ చిరునామా",

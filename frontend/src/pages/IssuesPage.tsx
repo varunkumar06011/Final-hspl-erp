@@ -50,6 +50,7 @@ import CommentsButton from '../components/CommentsButton';
 
 import { useTranslation } from 'react-i18next';
 import FilePicker from '../components/FilePicker';
+import { useCreateReview } from '../components/CreateReview';
 interface IssueRow {
   id: string;
   title: string;
@@ -110,6 +111,7 @@ export default function IssuesPage() {
 
   const { apply, undo } = useOptimistic();
 
+  const review = useCreateReview();
   const createMutation = useMutation({
     mutationFn: async ({ id, payload }: { id: string | null; payload: Record<string, unknown> }) => {
       if (id) {
@@ -433,7 +435,7 @@ export default function IssuesPage() {
                 setError(tr('errRequired'));
                 return;
               }
-              createMutation.mutate({
+              const send = () => createMutation.mutate({
                 id: editingId,
                 payload: {
                   title: form.title,
@@ -443,6 +445,8 @@ export default function IssuesPage() {
                   addressTo: form.addressTo,
                 },
               });
+              if (editingId) send();
+              else review(send);
             }}
             disabled={!form.title || createMutation.isPending}
           >

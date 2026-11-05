@@ -40,6 +40,7 @@ import {
 } from '@hospital-erp/shared';
 import api, { budgetOverrunOf, extractErrorMessage, type BudgetOverrun } from '../../config/api';
 import { useAuthStore } from '../../stores/authStore';
+import { useEditLock } from '../../hooks/useEditLock';
 import ResponsiveDialog from '../ResponsiveDialog';
 import ApprovalActionDialog from '../ApprovalActionDialog';
 import ApprovalStepsDisplay from '../ApprovalStepsDisplay';
@@ -52,6 +53,7 @@ import { useToast } from '../ToastProvider';
 import { enumLabel, formatCurrency, formatDate, formatDateTime } from '../../utils/enumOptions';
 import StageStepper, { type Step, type StepKey } from './StageStepper';
 import AddQuotationDialog from './AddQuotationDialog';
+import ProofsPanel from './ProofsPanel';
 
 // ── response shape of GET /combined-records/:type/:id (only what the view uses) ──
 interface WfStep {
@@ -201,6 +203,7 @@ export default function CombinedRecordDialog({ type, id, onClose }: { type: stri
   const queryClient = useQueryClient();
   const toast = useToast();
   const { user } = useAuthStore();
+  const editLocked = useEditLock();
   const { openPath, openFile, viewer } = useFileViewer();
   const [action, setAction] = useState<Action | null>(null);
   const [actionError, setActionError] = useState('');
@@ -310,6 +313,8 @@ export default function CombinedRecordDialog({ type, id, onClose }: { type: stri
           <Alert severity="error">{extractErrorMessage(error) || t('notFound')}</Alert>
         ) : (
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            {/* Proofs first: whoever pays sees the bills and PDFs before anything else. */}
+            <ProofsPanel type={type} id={id} />
             <Card sx={{ p: { xs: 1.5, sm: 2 } }}>
               <StageStepper steps={data.steps} onSelect={scrollTo} />
               <Alert severity={data.next === 'completed' ? 'success' : data.next === 'rejected' || data.next === 'cancelled' ? 'error' : 'info'} sx={{ mt: 2 }}>
@@ -445,7 +450,7 @@ export default function CombinedRecordDialog({ type, id, onClose }: { type: stri
                           key={po.id}
                           po={po}
                           user={user}
-                          canEdit={can(Permission.CREATE_PO) && LIVE_PO.includes(po.status)}
+                          canEdit={!editLocked && can(Permission.CREATE_PO) && LIVE_PO.includes(po.status)}
                           budgetHeads={budgetHeads}
                           busy={setBudgetHead.isPending || setPaymentType.isPending}
                           onBudgetHead={(budgetHeadId) => setBudgetHead.mutate({ poId: po.id, budgetHeadId })}

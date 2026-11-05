@@ -349,6 +349,14 @@ export async function listProofFiles(
   poId: string
 ): Promise<(LinkedFile & { filePath: string })[]> {
   const files = (await listLinkedFiles(projectId, role, 'PO', poId)) ?? [];
+  return withStoragePaths(projectId, files);
+}
+
+/** Adds the storage path to each linked file (dropping any without one), oldest stage first. */
+export async function withStoragePaths(
+  projectId: string,
+  files: LinkedFile[]
+): Promise<(LinkedFile & { filePath: string })[]> {
   const stage: ChainType[] = ['MPR', 'QUOTATION', 'PO', 'GOODS_RECEIPT', 'INVOICE', 'PAYMENT'];
   const attIds = files.filter((f) => f.source === 'ATTACHMENT').map((f) => f.id);
   const atts = attIds.length

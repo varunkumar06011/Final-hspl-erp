@@ -43,6 +43,7 @@ import { formatCurrency, formatIndianNumber, formatDate, todayLocalDate } from '
 import { useDeepLinkRow } from '../hooks/useDeepLinkRow';
 
 import { useTranslation } from 'react-i18next';
+import { useCreateReview } from '../components/CreateReview';
 interface OwnerAccount {
   id: string;
   ownerName: string;
@@ -120,6 +121,7 @@ export default function OwnerAccountPage() {
 
   const { apply, undo } = useOptimistic();
 
+  const review = useCreateReview();
   const createMutation = useMutation({
     mutationFn: async (payload: Record<string, unknown>) => {
       const response = await api.post('/owner-accounts', payload);
@@ -232,7 +234,7 @@ export default function OwnerAccountPage() {
     if (editing) {
       updateMutation.mutate({ id: editing.id, payload });
     } else {
-      createMutation.mutate(payload);
+      review(() => createMutation.mutate(payload));
     }
   };
 

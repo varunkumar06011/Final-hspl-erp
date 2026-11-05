@@ -1839,6 +1839,7 @@ export const createMPRSchema = z.object({
     deliveryAddress: z.string().trim().max(1000).optional(),
     contactPerson: z.string().trim().max(100).optional(),
     contactNumber: z.string().trim().max(20).optional(),
+    voucherNumber: z.string().trim().max(100).optional(),
     billingAddress: z.string().trim().max(1000).optional(),
     stateCode: z.string().trim().max(100).optional(),
     requestRaisedById: z.string().uuid().optional(),
@@ -1867,6 +1868,7 @@ export const updateMPRSchema = z.object({
     deliveryAddress: z.string().trim().max(1000).optional(),
     contactPerson: z.string().trim().max(100).optional(),
     contactNumber: z.string().trim().max(20).optional(),
+    voucherNumber: z.string().trim().max(100).optional(),
     billingAddress: z.string().trim().max(1000).optional(),
     stateCode: z.string().trim().max(100).optional(),
     requestRaisedById: z.string().uuid().optional(),
@@ -1903,6 +1905,7 @@ export const createSiteBillSchema = z.object({
     shopName: z.string().trim().min(1).max(200),
     paymentMode: z.nativeEnum(SiteBillPaymentMode),
     description: z.string().trim().max(1000).optional(),
+    voucherNumber: z.string().trim().max(100).optional(),
     paidById: uuid.optional(),
     budgetHeadId: uuid.optional(),
     items: z.preprocess(

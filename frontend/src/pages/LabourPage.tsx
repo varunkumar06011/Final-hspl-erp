@@ -45,6 +45,7 @@ import ResponsiveTable from '../components/ResponsiveTable';
 import RefreshButton from '../components/RefreshButton';
 
 import { useTranslation } from 'react-i18next';
+import { useCreateReview } from '../components/CreateReview';
 interface Staff {
   id: string;
   name: string;
@@ -153,6 +154,7 @@ export default function AttendancePage() {
   const { apply, undo } = useOptimistic();
 
   type StaffVars = { editing: Staff | null; payload: Record<string, unknown>; form: Record<string, unknown> };
+  const review = useCreateReview();
   const createStaffMutation = useMutation({
     mutationFn: async ({ editing, payload }: StaffVars) => {
       if (editing) {
@@ -600,7 +602,7 @@ export default function AttendancePage() {
                 setError(tr('errPhone'));
                 return;
               }
-              createStaffMutation.mutate({
+              const send = () => createStaffMutation.mutate({
                 editing: editingStaff,
                 form: staffForm,
                 payload: {
@@ -612,6 +614,8 @@ export default function AttendancePage() {
                   ...(editingStaff ? { active: staffForm.active } : {}),
                 },
               });
+              if (editingStaff) send();
+              else review(send);
             }}
             disabled={!staffForm.name || createStaffMutation.isPending}
           >

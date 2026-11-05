@@ -54,6 +54,7 @@ import { useTranslation } from 'react-i18next';
 import FilePicker from '../components/FilePicker';
 import DocumentLibraryTab from '../components/DocumentLibraryTab';
 import { PinPromptDialog, DocumentPinSettingsDialog } from '../components/DocumentPinDialogs';
+import { useCreateReview } from '../components/CreateReview';
 interface DocumentRow {
   id: string;
   /** null while a locked document is still locked (unless you uploaded it) */
@@ -120,6 +121,7 @@ function GeneralDocumentsTab() {
     },
   });
 
+  const review = useCreateReview();
   const createMutation = useMutation({
     mutationFn: async () => {
       const formData = new FormData();
@@ -376,7 +378,7 @@ function GeneralDocumentsTab() {
               if (!form.name) { setError(tr('errName')); return; }
               if (!(form.resolveTo as string[])?.length) { setError(tr('errResolve')); return; }
               if (!selectedFile) { setError(tr('errChoose')); return; }
-              createMutation.mutate();
+              review(() => createMutation.mutate());
             }}
             disabled={!form.name || !selectedFile || createMutation.isPending}
           >

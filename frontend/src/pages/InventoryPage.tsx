@@ -59,6 +59,7 @@ import StockEntriesTab from '../components/inventory/StockEntriesTab';
 
 import { useTranslation } from 'react-i18next';
 import FilePicker from '../components/FilePicker';
+import { useCreateReview } from '../components/CreateReview';
 export default function InventoryPage() {
   const { t: tr } = useTranslation('inventory');
   const [mergeOpen, setMergeOpen] = useState(false);
@@ -110,6 +111,7 @@ export default function InventoryPage() {
 
   const { apply, undo } = useOptimistic();
 
+  const review = useCreateReview();
   const createMutation = useMutation({
     mutationFn: async (payload: Record<string, unknown>) => {
       const response = await api.post('/inventory/items', payload);
@@ -240,7 +242,7 @@ export default function InventoryPage() {
       const { currentStock, ...updatePayload } = form;
       updateMutation.mutate({ id: editing.id as string, payload: updatePayload });
     } else {
-      createMutation.mutate(form);
+      review(() => createMutation.mutate(form));
     }
   };
 

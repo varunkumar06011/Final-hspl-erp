@@ -52,6 +52,7 @@ import { useTranslation } from 'react-i18next';
 import { enumLabel } from '../utils/enumOptions';
 import CommentsButton from './CommentsButton';
 import MaterialAutocomplete, { useMaterialCatalog } from './MaterialAutocomplete';
+import { useCreateReview } from './CreateReview';
 
 export interface MaterialEntry {
   id?: string;
@@ -174,6 +175,7 @@ export default function EntityPage({
     },
   });
 
+  const review = useCreateReview();
   const createMutation = useMutation({
     mutationFn: async (payload: Record<string, unknown>) => {
       const body = buildPayload ? buildPayload(payload) : payload;
@@ -296,9 +298,9 @@ export default function EntityPage({
     if (editing) {
       updateMutation.mutate({ id: editing.id as string, payload: form });
     } else {
-      createMutation.mutate(form);
+      review(() => createMutation.mutate(form));
     }
-  }, [editing, form, fields, updateMutation, createMutation, t]);
+  }, [editing, form, fields, updateMutation, createMutation, review, t]);
 
   const rows = data?.data ?? [];
   const pagination = data?.pagination ?? { page: 1, pageSize: 20, total: 0, totalPages: 0 };

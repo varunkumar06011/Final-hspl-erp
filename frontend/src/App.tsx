@@ -7,6 +7,7 @@ import { Box, CircularProgress } from '@mui/material';
 import { Permission, UserRole } from '@hospital-erp/shared';
 import { ColorModeProvider } from './config/ColorModeContext';
 import { ToastProvider } from './components/ToastProvider';
+import { CreateReviewProvider } from './components/CreateReview';
 import AppShell from './components/AppShell';
 import ProtectedRoute, { NO_ACCESS_PATH } from './components/ProtectedRoute';
 import ErrorScreen, { preloadErrorAnimation } from './components/ErrorScreen';
@@ -195,6 +196,7 @@ export default function App() {
   return (
     <ColorModeProvider>
       <ToastProvider>
+        <CreateReviewProvider>
         <QueryClientProvider client={queryClient}>
           <Router>
             <ErrorBoundary>
@@ -264,6 +266,7 @@ export default function App() {
             </ErrorBoundary>
           </Router>
         </QueryClientProvider>
+        </CreateReviewProvider>
       </ToastProvider>
     </ColorModeProvider>
   );

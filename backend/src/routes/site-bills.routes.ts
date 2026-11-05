@@ -59,16 +59,25 @@ router.get(
   },
 );
 
-// POST / — record one bill (multipart: fields + `file`, the bill photo/PDF, optional)
+const MAX_BILL_FILES = 10;
+
+// POST / — record one bill (multipart: fields + bill photos/PDFs, optional: `files` for
+// several, or a single `file`)
 router.post(
   '/',
   rbacMiddleware(Permission.CREATE_MPR),
-  upload.single('file'),
+  upload.fields([{ name: 'file', maxCount: 1 }, { name: 'files', maxCount: MAX_BILL_FILES }]),
   validateMiddleware(createSiteBillSchema),
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const projectId = requireProjectId(req);
-      if (req.file && !allowedBillFileTypes.includes(req.file.mimetype)) {
+      const sent = req.files as Record<string, Express.Multer.File[]> | undefined;
+      const uploads = [...(sent?.file ?? []), ...(sent?.files ?? [])];
+      if (uploads.length > MAX_BILL_FILES) {
+        res.status(400).json({ error: `At most ${MAX_BILL_FILES} files can be attached to a bill` });
+        return;
+      }
+      if (uploads.some((f) => !allowedBillFileTypes.includes(f.mimetype))) {
         res.status(400).json({ error: 'The bill must be a PDF or an image' });
         return;
       }
@@ -85,17 +94,19 @@ router.post(
       }
 
       const mprNumber = await generateProjectSequenceNumber('materialPurchaseRequest', 'mprNumber', 'MPR', 3, projectId);
-      let file: { filePath: string; fileName: string; mimeType: string } | null = null;
-      if (req.file) {
-        const subPath = req.file.mimetype.startsWith('image/') ? 'images' : 'documents';
+      // The first file is the bill's main file (receiptFile*), the rest are attachments.
+      const stored: { filePath: string; fileName: string; mimeType: string }[] = [];
+      for (const [idx, f] of uploads.entries()) {
+        const subPath = f.mimetype.startsWith('image/') ? 'images' : 'documents';
         const uploaded = await getStorageService().upload(
-          req.file.buffer,
-          `site-bills/${subPath}/${mprNumber}-${req.file.originalname}`,
-          req.file.mimetype,
+          f.buffer,
+          `site-bills/${subPath}/${mprNumber}-${idx + 1}-${f.originalname}`,
+          f.mimetype,
           'documents',
         );
-        file = { filePath: uploaded.filePath, fileName: req.file.originalname, mimeType: req.file.mimetype };
+        stored.push({ filePath: uploaded.filePath, fileName: f.originalname, mimeType: f.mimetype });
       }
+      const [file = null, ...extraFiles] = stored;
 
       const bill = await createSiteBill({
         projectId,
@@ -104,9 +115,11 @@ router.post(
         shopName: req.body.shopName,
         paymentMode: req.body.paymentMode,
         description: req.body.description,
+        voucherNumber: req.body.voucherNumber,
         paidById,
         items: req.body.items,
         file,
+        extraFiles,
         budgetHeadId: req.body.budgetHeadId ?? null,
         mprNumber,
       });

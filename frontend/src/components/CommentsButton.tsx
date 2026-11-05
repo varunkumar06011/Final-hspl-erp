@@ -487,7 +487,7 @@ function CommentsDialog({
   );
 
   return (
-    <ResponsiveDialog open onClose={onClose} maxWidth="sm" fullWidth>
+    <ResponsiveDialog open onClose={onClose} maxWidth="sm" fullWidth data-edit-keep>
       <DialogTitle>{tr('comments')}{entityLabel ? ` — ${entityLabel}` : ''}</DialogTitle>
       <DialogContent dividers sx={{ minHeight: 200 }}>
         {isLoading ? (

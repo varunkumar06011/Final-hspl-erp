@@ -3,6 +3,7 @@ import { Alert, Box, Button, CircularProgress, DialogActions, DialogContent, Dia
 import { useTranslation } from 'react-i18next';
 import api from '../config/api';
 import { downloadPath } from '../utils/file';
+import PdfPages from './PdfPages';
 import ResponsiveDialog from './ResponsiveDialog';
 
 interface OpenTarget {
@@ -35,6 +36,7 @@ export function useFileViewer() {
   const { t } = useTranslation();
   const [target, setTarget] = useState<OpenTarget | null>(null);
   const [url, setUrl] = useState<string | null>(null);
+  const [pdfBlob, setPdfBlob] = useState<Blob | null>(null);
   const [kind, setKind] = useState<Kind>('other');
   const [status, setStatus] = useState<Status>('loading');
 
@@ -45,6 +47,7 @@ export function useFileViewer() {
     let cancelled = false;
     let created: string | null = null;
     setUrl(null);
+    setPdfBlob(null);
     setStatus('loading');
     api
       .get(target.path, { responseType: 'blob', headers: target.headers })
@@ -58,8 +61,12 @@ export function useFileViewer() {
           return;
         }
         const type = k === 'pdf' ? 'application/pdf' : blob.type || 'image/jpeg';
-        created = window.URL.createObjectURL(new Blob([blob], { type }));
-        setUrl(created);
+        if (k === 'pdf') {
+          setPdfBlob(blob);
+        } else {
+          created = window.URL.createObjectURL(new Blob([blob], { type }));
+          setUrl(created);
+        }
         setStatus('ready');
       })
       .catch(() => {
@@ -92,9 +99,7 @@ export function useFileViewer() {
         {status === 'ready' && url && kind === 'image' && (
           <Box component="img" src={url} alt={target?.fileName} sx={{ maxWidth: '100%', maxHeight: '75vh', display: 'block', mx: 'auto' }} />
         )}
-        {status === 'ready' && url && kind === 'pdf' && (
-          <Box component="iframe" src={url} title={target?.fileName} sx={{ width: '100%', height: '75vh', border: 0 }} />
-        )}
+        {status === 'ready' && pdfBlob && kind === 'pdf' && <PdfPages blob={pdfBlob} maxHeight="75vh" />}
       </DialogContent>
       <DialogActions>
         {target && status !== 'loading' && (

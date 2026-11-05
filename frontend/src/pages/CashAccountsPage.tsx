@@ -52,6 +52,7 @@ import { LedgerGroup } from '@hospital-erp/shared';
 import { useDeepLinkRow } from '../hooks/useDeepLinkRow';
 
 import { useTranslation, Trans } from 'react-i18next';
+import { useCreateReview } from '../components/CreateReview';
 interface CashAccount {
   id: string;
   name: string;
@@ -175,6 +176,7 @@ export default function CashAccountsPage() {
 
   const { apply, undo } = useOptimistic();
 
+  const review = useCreateReview();
   const createMutation = useMutation({
     mutationFn: async (payload: Record<string, unknown>) => {
       const response = await api.post('/cash-accounts', payload);
@@ -319,7 +321,7 @@ export default function CashAccountsPage() {
     if (editing) {
       updateMutation.mutate({ id: editing.id, payload });
     } else {
-      createMutation.mutate(payload);
+      review(() => createMutation.mutate(payload));
     }
   };
 

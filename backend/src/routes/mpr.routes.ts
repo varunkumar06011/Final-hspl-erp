@@ -41,7 +41,7 @@ async function generateVendorCode(projectId: string): Promise<string> {
 const router = Router();
 router.use(authMiddleware);
 
-const mprInclude = {
+export const mprInclude = {
   createdByUser: { select: { id: true, name: true } },
   requestRaisedBy: { select: { id: true, name: true } },
   items: true,
@@ -236,7 +236,7 @@ router.get(
       if (status) where.status = status;
       if (requestType) where.requestType = requestType;
       if (vendorId) where.vendorId = vendorId;
-      if (search) where.OR = [{ mprNumber: { contains: search, mode: 'insensitive' } }, { legacyNumber: { contains: search, mode: 'insensitive' } }];
+      if (search) where.OR = [{ mprNumber: { contains: search, mode: 'insensitive' } }, { legacyNumber: { contains: search, mode: 'insensitive' } }, { voucherNumber: { contains: search, mode: 'insensitive' } }];
 
       const [items, total] = await Promise.all([
         prisma.materialPurchaseRequest.findMany({
@@ -416,6 +416,7 @@ router.post(
           deliveryAddress: req.body.deliveryAddress || null,
           contactPerson: req.body.contactPerson || null,
           contactNumber: req.body.contactNumber || null,
+          voucherNumber: req.body.voucherNumber || null,
           billingAddress: req.body.billingAddress || null,
           stateCode: req.body.stateCode || null,
           requestRaisedById: req.body.requestRaisedById || null,
@@ -541,6 +542,7 @@ router.put(
       if (req.body.deliveryAddress !== undefined) updateData.deliveryAddress = req.body.deliveryAddress || null;
       if (req.body.contactPerson !== undefined) updateData.contactPerson = req.body.contactPerson || null;
       if (req.body.contactNumber !== undefined) updateData.contactNumber = req.body.contactNumber || null;
+      if (req.body.voucherNumber !== undefined) updateData.voucherNumber = req.body.voucherNumber || null;
       if (req.body.billingAddress !== undefined) updateData.billingAddress = req.body.billingAddress || null;
       if (req.body.stateCode !== undefined) updateData.stateCode = req.body.stateCode || null;
       if (req.body.requestRaisedById !== undefined) updateData.requestRaisedById = req.body.requestRaisedById || null;
