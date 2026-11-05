@@ -1,5 +1,5 @@
 {
-  "title": "కార్యకలాపాల లాగ్",
+  "title": "కార్యకలాపాలు & ఆడిట్ లాగ్",
   "person": "వ్యక్తి",
   "everyone": "అందరూ",
   "activity": "కార్యకలాపం",
@@ -60,5 +60,14 @@
   "entity_ACTIVITY": "కార్యకలాపం",
   "entity_PROJECT": "ప్రాజెక్ట్",
   "entity_STAFF": "సిబ్బంది",
-  "entity_APPROVAL_WORKFLOW": "ఆమోద ప్రక్రియ"
+  "entity_APPROVAL_WORKFLOW": "ఆమోద ప్రక్రియ",
+  "recordType": "రికార్డు రకం",
+  "allRecordTypes": "అన్ని రికార్డు రకాలు",
+  "viewDetails": "వివరాలు చూడండి",
+  "field": "ఫీల్డ్",
+  "oldValue": "పాత విలువ",
+  "newValue": "కొత్త విలువ",
+  "noData": "ఈ చర్యకు డేటా నమోదు కాలేదు.",
+  "close": "మూసివేయి",
+  "entity_USER": "వినియోగదారు"
 }

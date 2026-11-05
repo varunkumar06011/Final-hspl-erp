@@ -18,7 +18,6 @@ import {
   BugReport as IssueIcon,
   Verified as InspectionIcon,
   Description as DocumentIcon,
-  History as AuditIcon,
   Settings as SettingsIcon,
   People as PeopleIcon,
   Logout as LogoutIcon,
@@ -115,8 +114,7 @@ const NAV_ITEMS = [
   { label: 'Documents', icon: <DocumentIcon />, path: '/documents', section: 'Site Operations' },
   // ── Admin ──
   { label: 'Comments', icon: <CommentsNavIcon />, path: '/comments', section: 'Admin' },
-  { label: 'Activity Log', icon: <ActivityNavIcon />, path: '/activity-log', section: 'Admin' },
-  { label: 'Audit Log', icon: <AuditIcon />, path: '/audit', section: 'Admin' },
+  { label: 'Activity & Audit Log', icon: <ActivityNavIcon />, path: '/activity-log', section: 'Admin' },
   { label: 'Users', icon: <PeopleIcon />, path: '/users', section: 'Admin' },
   { label: 'Projects', icon: <ProjectsIcon />, path: '/projects', section: 'Admin' },
   { label: 'Settings', icon: <SettingsIcon />, path: '/settings', section: 'Admin' },
@@ -166,8 +164,7 @@ const ADMIN_NAV_ITEMS = [
   { label: 'Payment Report', icon: <PaymentReportIcon />, path: '/payment-reports', section: 'Reports' },
   // ── Admin ──
   { label: 'Comments', icon: <CommentsNavIcon />, path: '/comments', section: 'Admin' },
-  { label: 'Activity Log', icon: <ActivityNavIcon />, path: '/activity-log', section: 'Admin' },
-  { label: 'Audit Log', icon: <AuditIcon />, path: '/audit', section: 'Admin' },
+  { label: 'Activity & Audit Log', icon: <ActivityNavIcon />, path: '/activity-log', section: 'Admin' },
   { label: 'Users', icon: <PeopleIcon />, path: '/users', section: 'Admin' },
   { label: 'Projects', icon: <ProjectsIcon />, path: '/projects', section: 'Admin' },
   { label: 'Settings', icon: <SettingsIcon />, path: '/settings', section: 'Admin' },

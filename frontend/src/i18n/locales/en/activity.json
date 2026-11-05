@@ -1,5 +1,5 @@
 {
-  "title": "Activity Log",
+  "title": "Activity & Audit Log",
   "person": "Person",
   "everyone": "Everyone",
   "activity": "Activity",
@@ -60,5 +60,14 @@
   "entity_ACTIVITY": "Activity",
   "entity_PROJECT": "Project",
   "entity_STAFF": "Staff",
-  "entity_APPROVAL_WORKFLOW": "Approval Workflow"
+  "entity_APPROVAL_WORKFLOW": "Approval Workflow",
+  "recordType": "Record type",
+  "allRecordTypes": "All record types",
+  "viewDetails": "View details",
+  "field": "Field",
+  "oldValue": "Old value",
+  "newValue": "New value",
+  "noData": "No data recorded for this action.",
+  "close": "Close",
+  "entity_USER": "User"
 }

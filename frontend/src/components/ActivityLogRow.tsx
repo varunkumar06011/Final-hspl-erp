@@ -1,4 +1,4 @@
-import { Box, Chip, Typography } from '@mui/material';
+import { Box, Button, Chip, Typography } from '@mui/material';
 import { useTranslation } from 'react-i18next';
 import { dateLocale } from '../i18n';
 import { CommentBody, roleLabel } from './CommentsButton';
@@ -15,6 +15,8 @@ export interface ActivityItem {
   at: string;
   note: string | null;
   mentions: Array<{ id: string; name: string }>;
+  /** Before/after values; present only for people who may view the audit log. */
+  details?: { oldValue: unknown; newValue: unknown } | null;
 }
 
 // Page that holds each record type, for click-through from a feed row.
@@ -107,15 +109,18 @@ export function useActivitySentence() {
 export default function ActivityLogRow({
   item,
   onOpen,
+  onDetails,
   compact = false,
   dark = false,
 }: {
   item: ActivityItem;
   onOpen?: (path: string) => void;
+  onDetails?: (item: ActivityItem) => void;
   compact?: boolean;
   dark?: boolean;
 }) {
   const sentence = useActivitySentence();
+  const { t } = useTranslation('activity');
   const key = activityActionKey(item.action);
   const color = ACTIVITY_COLORS[key] ?? '#94a3b8';
   const path = activityPath(item);
@@ -153,6 +158,18 @@ export default function ActivityLogRow({
         <Typography sx={{ fontSize: compact ? '0.6rem' : '0.72rem', color: dim }}>
           {formatActivityTime(item.at)}
         </Typography>
+        {onDetails && item.details && (
+          <Button
+            size="small"
+            sx={{ mt: 0.25, ml: -0.75, minWidth: 0, fontSize: '0.72rem' }}
+            onClick={(e) => {
+              e.stopPropagation();
+              onDetails(item);
+            }}
+          >
+            {t('viewDetails')}
+          </Button>
+        )}
         {item.note && (
           <Box
             sx={{

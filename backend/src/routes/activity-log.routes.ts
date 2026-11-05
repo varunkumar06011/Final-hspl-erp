@@ -1,5 +1,6 @@
 import { Router, Response, NextFunction } from 'express';
 import { Prisma } from '@prisma/client';
+import { Permission, hasPermission } from '@hospital-erp/shared';
 import { authMiddleware, AuthenticatedRequest } from '../middleware/auth';
 import { prisma } from '../config/prisma';
 
@@ -10,7 +11,9 @@ router.use(authMiddleware);
 // every signed-in user. It merges the audit trail (approvals, rejections,
 // creates, edits, deletes) with record comments. It stores nothing itself.
 
-// Audit rows about these are account-management noise, not project activity.
+// Audit rows about these are account-management noise for ordinary users.
+// People who may view the audit log (VIEW_AUDIT_LOG) see everything, with the
+// before/after values: this one page is both the activity feed and the audit log.
 const HIDDEN_AUDIT_ENTITIES = ['USER'];
 
 interface ActivityItem {
@@ -25,6 +28,8 @@ interface ActivityItem {
   at: Date;
   note: string | null; // approval/rejection remark or comment text
   mentions: Array<{ id: string; name: string }>;
+  /** Before/after values of an audit row; only sent to VIEW_AUDIT_LOG viewers. */
+  details: { oldValue: unknown; newValue: unknown } | null;
 }
 
 // Human reference (PO number, invoice code, ...) for the audited record types
@@ -64,10 +69,12 @@ function auditNote(newValue: unknown): string | null {
 
 // GET /activity-log?userId=&action=&from=&to=&page=&pageSize=
 //   action: APPROVE | REJECT | CREATE | UPDATE | DELETE | COMMENT (omit = all)
+//   entityType: limit to one record type (audit rows)
 router.get('/', async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
     const q = req.query as Record<string, string | undefined>;
     const projectId = req.user!.projectId ?? null;
+    const canAudit = hasPermission(req.user!.role, Permission.VIEW_AUDIT_LOG, req.user!.extraPermissions);
     const page = Math.max(1, parseInt(q.page ?? '1', 10) || 1);
     const pageSize = Math.min(50, Math.max(1, parseInt(q.pageSize ?? '20', 10) || 20));
     const window = page * pageSize; // each source is read to this depth, then merged
@@ -83,10 +90,11 @@ router.get('/', async (req: AuthenticatedRequest, res: Response, next: NextFunct
 
     const wantAudit = q.action !== 'COMMENT';
     const wantComments = !q.action || q.action === 'COMMENT';
+    const entityTypeFilter = q.entityType?.trim() || undefined;
 
     const auditWhere: Prisma.AuditLogWhereInput = {
       ...(projectId && { projectId }),
-      entityType: { notIn: HIDDEN_AUDIT_ENTITIES },
+      ...(entityTypeFilter ? { entityType: entityTypeFilter } : canAudit ? {} : { entityType: { notIn: HIDDEN_AUDIT_ENTITIES } }),
       ...(q.userId && { userId: q.userId }),
       ...(q.action && q.action !== 'COMMENT' && { action: q.action }),
       ...(hasRange && { timestamp: range }),
@@ -94,6 +102,7 @@ router.get('/', async (req: AuthenticatedRequest, res: Response, next: NextFunct
     const commentWhere: Prisma.CommentWhereInput = {
       ...(projectId && { projectId }),
       ...(q.userId && { authorId: q.userId }),
+      ...(entityTypeFilter && { entityType: entityTypeFilter }),
       ...(hasRange && { createdAt: range }),
     };
 
@@ -133,6 +142,7 @@ router.get('/', async (req: AuthenticatedRequest, res: Response, next: NextFunct
         at: a.timestamp,
         note: auditNote(a.newValue),
         mentions: [],
+        details: canAudit ? { oldValue: a.oldValue, newValue: a.newValue } : null,
       })),
       ...comments.map((c): ActivityItem => ({
         id: `c:${c.id}`,
@@ -146,12 +156,14 @@ router.get('/', async (req: AuthenticatedRequest, res: Response, next: NextFunct
         at: c.createdAt,
         note: c.body,
         mentions: Array.isArray(c.mentions) ? (c.mentions as unknown as ActivityItem['mentions']) : [],
+        details: null,
       })),
     ];
 
     items.sort((x, y) => y.at.getTime() - x.at.getTime());
     const total = auditTotal + commentTotal;
     res.json({
+      canViewDetails: canAudit,
       data: items.slice((page - 1) * pageSize, page * pageSize),
       pagination: { page, pageSize, total, totalPages: Math.ceil(total / pageSize) },
     });

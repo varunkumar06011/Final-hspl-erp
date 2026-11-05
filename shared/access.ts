@@ -95,8 +95,8 @@ export const APP_MODULES: readonly AppModule[] = [
   { key: 'contracts', label: 'Contracts', section: 'Site Operations', permission: Permission.MANAGE_CONTRACTS, grants: [Permission.MANAGE_CONTRACTS], apiPrefixes: ['/contracts'] },
   // ── Admin ──
   { key: 'comments', label: 'Comments', section: 'Admin', path: '/comments', grants: [], apiPrefixes: [] },
-  { key: 'activityLog', label: 'Activity Log', section: 'Admin', path: '/activity-log', grants: [], apiPrefixes: [] },
-  { key: 'audit', label: 'Audit Log', section: 'Admin', path: '/audit', permission: Permission.VIEW_AUDIT_LOG, grants: [Permission.VIEW_AUDIT_LOG], apiPrefixes: [] },
+  { key: 'activityLog', label: 'Activity & Audit Log', section: 'Admin', path: '/activity-log', grants: [], apiPrefixes: [] },
+  { key: 'audit', label: 'Audit details (in Activity & Audit Log)', section: 'Admin', permission: Permission.VIEW_AUDIT_LOG, grants: [Permission.VIEW_AUDIT_LOG], apiPrefixes: [] },
   { key: 'users', label: 'Users', section: 'Admin', path: '/users', permission: Permission.MANAGE_USERS, grants: [Permission.MANAGE_USERS], apiPrefixes: ['/auth/users'] },
   { key: 'projects', label: 'Projects', section: 'Admin', path: '/projects', permission: Permission.MANAGE_PROJECTS, grants: [Permission.MANAGE_PROJECTS], apiPrefixes: ['/projects'] },
   { key: 'settings', label: 'Settings', section: 'Admin', path: '/settings', grants: [], apiPrefixes: ['/settings'] },

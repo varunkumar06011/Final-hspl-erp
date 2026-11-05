@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Box, Button, Card, CircularProgress, Divider, MenuItem, Stack, TablePagination, TextField, Typography } from '@mui/material';
+import { Box, Button, Card, CircularProgress, DialogActions, DialogContent, DialogTitle, Divider, MenuItem, Stack, Table, TableBody, TableCell, TableHead, TableRow, TablePagination, TextField, Typography } from '@mui/material';
+import ResponsiveDialog from '../components/ResponsiveDialog';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import api from '../config/api';
 import RefreshButton from '../components/RefreshButton';
-import ActivityLogRow, { type ActivityItem } from '../components/ActivityLogRow';
+import ActivityLogRow, { formatActivityTime, useActivitySentence, type ActivityItem } from '../components/ActivityLogRow';
 
 interface UserOption {
   id: string;
@@ -13,12 +14,26 @@ interface UserOption {
 }
 
 const ACTION_FILTERS = ['APPROVE', 'REJECT', 'COMMENT', 'CREATE', 'UPDATE', 'DELETE'];
+const ENTITY_FILTERS = [
+  'MATERIAL_PURCHASE_REQUEST', 'QUOTATION', 'PURCHASE_ORDER', 'GOODS_RECEIPT', 'GATE_PASS', 'VENDOR_INVOICE', 'PAYMENT_REQUEST',
+  'JOURNAL_VOUCHER', 'VENDOR', 'BUDGET_HEAD', 'BANK_ACCOUNT', 'CASH_ACCOUNT', 'LEDGER', 'INVENTORY_ITEM', 'ASSET', 'DOCUMENT', 'USER', 'PROJECT',
+];
+const HIDDEN_FIELDS = ['id', 'createdAt', 'updatedAt', 'projectId', 'password'];
+
+function formatValue(v: unknown): string {
+  if (v === null || v === undefined) return '—';
+  if (typeof v === 'object') return JSON.stringify(v, null, 1);
+  return String(v);
+}
 
 export default function ActivityLogPage() {
   const { t: tr } = useTranslation('activity');
   const navigate = useNavigate();
   const [userId, setUserId] = useState('');
   const [action, setAction] = useState('');
+  const [entityType, setEntityType] = useState('');
+  const [detailItem, setDetailItem] = useState<ActivityItem | null>(null);
+  const sentence = useActivitySentence();
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [page, setPage] = useState(0);
@@ -30,14 +45,15 @@ export default function ActivityLogPage() {
     staleTime: 5 * 60_000,
   });
 
-  const { data, isLoading, refetch } = useQuery<{ data: ActivityItem[]; pagination: { total: number } }>({
-    queryKey: ['activity-log', { userId, action, from, to, page, pageSize }],
+  const { data, isLoading, refetch } = useQuery<{ data: ActivityItem[]; canViewDetails?: boolean; pagination: { total: number } }>({
+    queryKey: ['activity-log', { userId, action, entityType, from, to, page, pageSize }],
     queryFn: async () =>
       (
         await api.get('/activity-log', {
           params: {
             userId: userId || undefined,
             action: action || undefined,
+            entityType: entityType || undefined,
             from: from || undefined,
             to: to || undefined,
             page: page + 1,
@@ -52,7 +68,8 @@ export default function ActivityLogPage() {
     setter(v);
     setPage(0);
   };
-  const hasFilters = !!(userId || action || from || to);
+  const hasFilters = !!(userId || action || entityType || from || to);
+  const canViewDetails = !!data?.canViewDetails;
 
   return (
     <Box>
@@ -81,6 +98,14 @@ export default function ActivityLogPage() {
               </MenuItem>
             ))}
           </TextField>
+          <TextField select size="small" label={tr('recordType')} value={entityType} onChange={(e) => reset(setEntityType)(e.target.value)} sx={{ minWidth: { xs: '100%', md: 200 } }}>
+            <MenuItem value="">{tr('allRecordTypes')}</MenuItem>
+            {ENTITY_FILTERS.map((e) => (
+              <MenuItem key={e} value={e}>
+                {tr(`entity_${e}`)}
+              </MenuItem>
+            ))}
+          </TextField>
           <TextField size="small" type="date" label={tr('from')} value={from} onChange={(e) => reset(setFrom)(e.target.value)} InputLabelProps={{ shrink: true }} />
           <TextField size="small" type="date" label={tr('to')} value={to} onChange={(e) => reset(setTo)(e.target.value)} InputLabelProps={{ shrink: true }} />
           {hasFilters && (
@@ -88,6 +113,7 @@ export default function ActivityLogPage() {
               onClick={() => {
                 setUserId('');
                 setAction('');
+                setEntityType('');
                 setFrom('');
                 setTo('');
                 setPage(0);
@@ -112,7 +138,7 @@ export default function ActivityLogPage() {
           rows.map((item, i) => (
             <Box key={item.id}>
               {i > 0 && <Divider />}
-              <ActivityLogRow item={item} onOpen={(p) => navigate(p)} />
+              <ActivityLogRow item={item} onOpen={(p) => navigate(p)} onDetails={canViewDetails ? setDetailItem : undefined} />
             </Box>
           ))
         )}
@@ -130,6 +156,66 @@ export default function ActivityLogPage() {
           setPage(0);
         }}
       />
+      <ResponsiveDialog open={!!detailItem} onClose={() => setDetailItem(null)} maxWidth="md" fullWidth>
+        <DialogTitle>
+          {detailItem && sentence(detailItem)}
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+            {detailItem && `${detailItem.actor?.name ?? '—'} · ${formatActivityTime(detailItem.at)}`}
+          </Typography>
+        </DialogTitle>
+        <DialogContent>
+          {detailItem?.details && (() => {
+            const oldV = detailItem.details!.oldValue as Record<string, unknown> | null;
+            const newV = detailItem.details!.newValue as Record<string, unknown> | null;
+            if (detailItem.action === 'UPDATE' && oldV && newV && typeof oldV === 'object' && typeof newV === 'object') {
+              return (
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell sx={{ fontWeight: 600 }}>{tr('field')}</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>{tr('oldValue')}</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>{tr('newValue')}</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {Object.entries(newV)
+                      .filter(([k]) => !HIDDEN_FIELDS.includes(k))
+                      .map(([key, newVal]) => {
+                        const oldVal = oldV[key];
+                        const changed = JSON.stringify(oldVal) !== JSON.stringify(newVal);
+                        return (
+                          <TableRow key={key} sx={changed ? { bgcolor: 'warning.light' } : {}}>
+                            <TableCell sx={{ fontWeight: 500 }}>{key}</TableCell>
+                            <TableCell sx={{ color: changed ? 'error.main' : 'text.secondary', fontFamily: 'monospace', fontSize: 13 }}>{formatValue(oldVal)}</TableCell>
+                            <TableCell sx={{ color: changed ? 'success.main' : 'text.primary', fontFamily: 'monospace', fontSize: 13 }}>{formatValue(newVal)}</TableCell>
+                          </TableRow>
+                        );
+                      })}
+                  </TableBody>
+                </Table>
+              );
+            }
+            if (!oldV && !newV) return <Typography color="text.secondary">{tr('noData')}</Typography>;
+            return (
+              <Stack spacing={2}>
+                {([['newValue', newV], ['oldValue', oldV]] as const).map(([label, value]) =>
+                  value ? (
+                    <Box key={label}>
+                      <Typography variant="overline" color="text.secondary">{tr(label)}</Typography>
+                      <Box component="pre" sx={{ bgcolor: 'background.default', p: 1.5, borderRadius: 1, fontSize: 12, fontFamily: 'monospace', overflow: 'auto', maxHeight: 300, m: 0 }}>
+                        {JSON.stringify(value, null, 2)}
+                      </Box>
+                    </Box>
+                  ) : null,
+                )}
+              </Stack>
+            );
+          })()}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDetailItem(null)}>{tr('close')}</Button>
+        </DialogActions>
+      </ResponsiveDialog>
     </Box>
   );
 }

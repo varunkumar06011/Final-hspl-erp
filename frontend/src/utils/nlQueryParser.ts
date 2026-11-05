@@ -71,7 +71,7 @@ const ENTITY_KEYWORDS: Record<string, { path: string; keywords: string[] }> = {
     keywords: ['user', 'users', 'member', 'members', 'staff', 'employee', 'employees', 'team'],
   },
   audit: {
-    path: '/audit',
+    path: '/activity-log',
     keywords: ['audit', 'audits', 'log', 'logs', 'history', 'changes', 'activity log'],
   },
 };
