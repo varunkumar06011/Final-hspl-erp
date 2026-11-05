@@ -60,7 +60,7 @@ export const APP_MODULES: readonly AppModule[] = [
   // Bills of up to ₹5,000 paid at site; several are combined into one PO.
   { key: 'siteBills', label: 'Site Bills', section: 'Procurement', path: '/site-bills', permission: Permission.CREATE_MPR, grants: [Permission.VIEW_MPR, Permission.CREATE_MPR], apiPrefixes: ['/site-bills'] },
   { key: 'mpr', label: 'Material Requests', section: 'Procurement', path: '/material-purchase-requests', permission: Permission.VIEW_MPR, grants: [Permission.VIEW_MPR, Permission.CREATE_MPR], apiPrefixes: ['/material-purchase-requests'] },
-  { key: 'vendors', label: 'Vendors', section: 'Procurement', path: '/vendors', permission: Permission.VIEW_FINANCIALS, grants: [Permission.VIEW_FINANCIALS, Permission.CREATE_VENDOR], apiPrefixes: ['/vendors'] },
+  { key: 'vendors', label: 'Vendors', section: 'Procurement', path: '/vendors', permission: Permission.VIEW_VENDORS, grants: [Permission.VIEW_VENDORS, Permission.CREATE_VENDOR], apiPrefixes: ['/vendors'] },
   { key: 'quotations', label: 'Quotations', section: 'Procurement', path: '/quotations', permission: Permission.VIEW_FINANCIALS, grants: [Permission.VIEW_FINANCIALS, Permission.CREATE_QUOTATION], apiPrefixes: ['/quotations'] },
   { key: 'purchaseOrders', label: 'Purchase Orders', section: 'Procurement', path: '/pos', permission: Permission.VIEW_FINANCIALS, grants: [Permission.VIEW_FINANCIALS, Permission.CREATE_PO], apiPrefixes: ['/purchase-orders'] },
   { key: 'gatePasses', label: 'Gate Passes', section: 'Procurement', path: '/gate-passes', permission: Permission.VIEW_GATE_PASSES, grants: [Permission.VIEW_GATE_PASSES, Permission.CREATE_GATE_PASS], apiPrefixes: ['/gate-passes'] },

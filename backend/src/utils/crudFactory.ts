@@ -30,7 +30,7 @@ interface CrudConfig {
   dateField?: string;
   transformCreate?: (body: Record<string, unknown>, userId: string, projectId: string) => Record<string, unknown> | Promise<Record<string, unknown>>;
   transformUpdate?: (body: Record<string, unknown>, userId: string, projectId: string, existingId: string) => Record<string, unknown> | Promise<Record<string, unknown>>;
-  transformList?: (records: Record<string, unknown>[], projectId: string) => Record<string, unknown>[] | Promise<Record<string, unknown>[]>;
+  transformList?: (records: Record<string, unknown>[], projectId: string, viewer: { role: string; extraPermissions?: readonly string[] | null }) => Record<string, unknown>[] | Promise<Record<string, unknown>[]>;
   beforeDelete?: (id: string) => Promise<void>;
   afterCreate?: (record: Record<string, unknown>, userId: string, projectId: string) => void | Promise<void>;
   afterUpdate?: (record: Record<string, unknown>, userId: string, projectId: string) => void | Promise<void>;
@@ -139,7 +139,7 @@ export function createCrudRouter(config: CrudConfig): Router {
         ]);
 
         const transformedData = config.transformList
-          ? await config.transformList(data as Record<string, unknown>[], projectId)
+          ? await config.transformList(data as Record<string, unknown>[], projectId, { role: req.user!.role, extraPermissions: req.user!.extraPermissions })
           : data;
 
         res.json({

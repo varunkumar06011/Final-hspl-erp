@@ -46,7 +46,7 @@ const router = createCrudRouter({
   entityType: 'VENDOR',
   model: 'vendor',
   createPermission: Permission.CREATE_VENDOR,
-  viewPermission: Permission.VIEW_FINANCIALS,
+  viewPermission: Permission.VIEW_VENDORS,
   createSchema: createVendorSchema,
   updateSchema: updateVendorSchema,
   listSchema: listVendorsSchema,
@@ -57,7 +57,9 @@ const router = createCrudRouter({
     materials: { orderBy: { name: 'asc' } },
   },
   defaultSort: { createdAt: 'desc' },
-  transformList: async (records, projectId) => {
+  transformList: async (records, projectId, viewer) => {
+    // Vendor-only viewers (Site Supervisor) get the vendor details without any money figures.
+    if (!hasPermission(viewer.role, Permission.VIEW_FINANCIALS, viewer.extraPermissions)) return records;
     const vendorIds = records.map((vendor) => String(vendor.id));
     if (vendorIds.length === 0) return records;
 

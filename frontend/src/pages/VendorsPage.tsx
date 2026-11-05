@@ -7,6 +7,8 @@ import {
 } from '@mui/material';
 import { Link as LinkIcon, ReceiptLong as StatementIcon } from '@mui/icons-material';
 import { useQuery } from '@tanstack/react-query';
+import { hasPermission, Permission, UserRole } from '@hospital-erp/shared';
+import { useAuthStore } from '../stores/authStore';
 import EntityPage from '../components/EntityPage';
 import ResponsiveDialog from '../components/ResponsiveDialog';
 import ResponsiveTable from '../components/ResponsiveTable';
@@ -318,6 +320,10 @@ export default function VendorsPage() {
   const [linkedId, setLinkedId] = useState<string | null>(null);
   const [statementId, setStatementId] = useState<string | null>(null);
   const [historyId, setHistoryId] = useState<string | null>(null);
+  const user = useAuthStore((st) => st.user);
+  // Vendor-only users (Site Supervisor) edit vendor details but see no money figures.
+  const fin = !!user && hasPermission(user.role as UserRole, Permission.VIEW_FINANCIALS, user.extraPermissions);
+  const FIN_KEYS = ['totalBilled', 'totalPaid', 'outstanding', 'weOwe', 'theyOwe'];
 
   return (
     <>
@@ -329,24 +335,24 @@ export default function VendorsPage() {
         deepLinkField="name"
         cardLayout
         rowClickLabel={t('history')}
-        onRowClick={(row) => setHistoryId(String(row.id))}
+        onRowClick={fin ? (row) => setHistoryId(String(row.id)) : undefined}
         columns={[
           { key: 'vendorCode', label: t('vendorId') },
           { key: 'name', label: t('vendorName') },
-          { key: 'vendorType', label: t('type'), render: (r) => r.vendorType === 'NON_VENDOR' ? t('nonVendor') : t('vendor') },
-          { key: 'category', label: t('category'), render: (r) => r.category ? enumLabel(r.category) : '—' },
+          { key: 'vendorType', label: t('type'), render: (r: Record<string, unknown>) => r.vendorType === 'NON_VENDOR' ? t('nonVendor') : t('vendor') },
+          { key: 'category', label: t('category'), render: (r: Record<string, unknown>) => r.category ? enumLabel(r.category) : '—' },
           { key: 'gstNumber', label: t('gstNo') },
-          { key: 'createdAt', label: t('date'), render: (r) => formatDate(r.createdAt) },
+          { key: 'createdAt', label: t('date'), render: (r: Record<string, unknown>) => formatDate(r.createdAt) },
           { key: 'phone', label: t('phone') },
           { key: 'referenceBy', label: t('referredBy') },
           { key: 'description', label: t('description') },
-          { key: 'totalBilled', label: t('totalBill'), render: (r) => `₹${Number(r.totalBilled ?? 0).toLocaleString('en-IN')}` },
-          { key: 'totalPaid', label: t('paid'), render: (r) => `₹${Number(r.totalPaid ?? 0).toLocaleString('en-IN')}` },
-          { key: 'outstanding', label: t('outstanding'), render: (r) => `₹${Number(r.outstanding ?? 0).toLocaleString('en-IN')}` },
-          { key: 'weOwe', label: t('weOwe'), render: (r) => r.ledgerId ? `₹${Number(r.weOwe ?? 0).toLocaleString('en-IN')}` : '—' },
-          { key: 'theyOwe', label: t('theyOwe'), render: (r) => r.ledgerId ? `₹${Number(r.theyOwe ?? 0).toLocaleString('en-IN')}` : '—' },
+          { key: 'totalBilled', label: t('totalBill'), render: (r: Record<string, unknown>) => `₹${Number(r.totalBilled ?? 0).toLocaleString('en-IN')}` },
+          { key: 'totalPaid', label: t('paid'), render: (r: Record<string, unknown>) => `₹${Number(r.totalPaid ?? 0).toLocaleString('en-IN')}` },
+          { key: 'outstanding', label: t('outstanding'), render: (r: Record<string, unknown>) => `₹${Number(r.outstanding ?? 0).toLocaleString('en-IN')}` },
+          { key: 'weOwe', label: t('weOwe'), render: (r: Record<string, unknown>) => r.ledgerId ? `₹${Number(r.weOwe ?? 0).toLocaleString('en-IN')}` : '—' },
+          { key: 'theyOwe', label: t('theyOwe'), render: (r: Record<string, unknown>) => r.ledgerId ? `₹${Number(r.theyOwe ?? 0).toLocaleString('en-IN')}` : '—' },
           { key: 'status', label: t('status') },
-        ]}
+        ].filter((c) => fin || !FIN_KEYS.includes(c.key))}
         statusKey="status"
         statusColors={STATUS_COLORS}
         csvFilename="vendors"
@@ -358,11 +364,11 @@ export default function VendorsPage() {
           { key: 'phone', label: 'Phone' },
           { key: 'referenceBy', label: 'Referred By' },
           { key: 'description', label: 'Description' },
-          { key: 'totalBilled', label: 'Total Billed', format: (r) => String(Number(r.totalBilled ?? 0)) },
-          { key: 'totalPaid', label: 'Total Paid', format: (r) => String(Number(r.totalPaid ?? 0)) },
-          { key: 'outstanding', label: 'Outstanding', format: (r) => String(Number(r.outstanding ?? 0)) },
+          { key: 'totalBilled', label: 'Total Billed', format: (r: Record<string, unknown>) => String(Number(r.totalBilled ?? 0)) },
+          { key: 'totalPaid', label: 'Total Paid', format: (r: Record<string, unknown>) => String(Number(r.totalPaid ?? 0)) },
+          { key: 'outstanding', label: 'Outstanding', format: (r: Record<string, unknown>) => String(Number(r.outstanding ?? 0)) },
           { key: 'status', label: 'Status' },
-        ]}
+        ].filter((c) => fin || !FIN_KEYS.includes(c.key))}
         fields={[
           { name: 'name', label: t('vendorName'), type: 'text', required: true },
           { name: 'vendorType', label: t('vendorType'), type: 'select', required: true, options: [
@@ -389,7 +395,7 @@ export default function VendorsPage() {
           { name: 'email', label: t('email'), type: 'text' },
           { name: 'description', label: t('description'), type: 'textarea' },
         ]}
-        rowActions={(row) => (
+        rowActions={(row) => !fin ? null : (
           <Stack direction="row" spacing={0.5}>
             <Button
               size="small"

@@ -646,6 +646,8 @@ export const DEFAULT_CASH_LEDGER_NAME = 'Cash in Hand';
 export enum Permission {
   // Financial
   CREATE_VENDOR = 'CREATE_VENDOR',
+  /** Open the vendor list (no finance figures). Anyone with VIEW_FINANCIALS has it too. */
+  VIEW_VENDORS = 'VIEW_VENDORS',
   CREATE_QUOTATION = 'CREATE_QUOTATION',
   CREATE_PO = 'CREATE_PO',
   VERIFY_INVOICE = 'VERIFY_INVOICE',
@@ -744,6 +746,8 @@ export const PERMISSION_MATRIX: Record<UserRole, Permission[]> = {
     Permission.VIEW_MPR,
   ],
   [UserRole.SITE_SUPERVISOR]: [
+    Permission.CREATE_VENDOR,
+    Permission.VIEW_VENDORS,
     Permission.CREATE_GATE_PASS,
     Permission.VIEW_GATE_PASSES,
   ],
@@ -870,6 +874,10 @@ export function hasPermission(
 ): boolean {
   // '*' in a user's extraPermissions marks a super admin: every permission.
   if (extraPermissions?.includes(SUPER_ADMIN_GRANT) || extraPermissions?.includes(permission)) {
+    return true;
+  }
+  // Finance viewers can always open the vendor list.
+  if (permission === Permission.VIEW_VENDORS && hasPermission(role, Permission.VIEW_FINANCIALS, extraPermissions)) {
     return true;
   }
   // Dynamic admin roles (ADMIN_3, ADMIN_4, ...) get the same permissions as ADMIN
