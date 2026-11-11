@@ -327,6 +327,8 @@ export default function VendorsPage() {
 
   return (
     <>
+      {/* Vendors stay editable for Supervisors: data-edit-keep exempts them from the global edit lock. */}
+      <div data-edit-keep style={{ display: 'contents' }}>
       <EntityPage
         title={t('title')}
         endpoint="/vendors"
@@ -414,6 +416,7 @@ export default function VendorsPage() {
           </Stack>
         )}
       />
+      </div>
       <VendorHistoryDialog vendorId={historyId} open={!!historyId} onClose={() => setHistoryId(null)} />
       <VendorLinkedDialog vendorId={linkedId} open={!!linkedId} onClose={() => setLinkedId(null)} />
       <VendorStatementDialog vendorId={statementId} open={!!statementId} onClose={() => setStatementId(null)} />
