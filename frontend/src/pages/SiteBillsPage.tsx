@@ -274,7 +274,9 @@ export default function SiteBillsPage() {
                         <Button key={f.id} size="small" startIcon={<ViewIcon />} onClick={() => openPath(`/attachments/${f.id}/file`, f.fileName)}>{t('billFileN', { n: i + 2 })}</Button>
                       ))}
                       {!row.po && (
-                        <IconButton size="small" onClick={() => setEditRow(row)} aria-label={t('edit')}><EditIcon fontSize="small" /></IconButton>
+                        <span data-edit-keep="" style={{ display: 'contents' }}>
+                          <IconButton size="small" onClick={() => setEditRow(row)} aria-label={t('edit')}><EditIcon fontSize="small" /></IconButton>
+                        </span>
                       )}
                       {!row.po && (
                         <IconButton size="small" color="error" onClick={() => setDeleteRow(row)} aria-label={t('delete')}><DeleteIcon fontSize="small" /></IconButton>

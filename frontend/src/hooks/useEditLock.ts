@@ -2,7 +2,7 @@ import { UserRole, type UserResponse } from '@hospital-erp/shared';
 import { useAuthStore } from '../stores/authStore';
 
 /**
- * Supervisors add records but do not change existing ones, so every "edit" control is hidden
+ * Supervisors add records but do not change existing ones, so every "edit" control is hidden (except material/service requests and site bills, marked data-edit-keep: their edits go back to the heads)
  * for them. This is an interface rule only; the server's permissions are unchanged.
  *
  * Most edit buttons need no code: AppShell sets `data-no-edit` on <html> for a locked user

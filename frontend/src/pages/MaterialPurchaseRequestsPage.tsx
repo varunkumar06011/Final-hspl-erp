@@ -1086,9 +1086,12 @@ export default function MaterialPurchaseRequestsPage() {
                             <Button size="small" startIcon={<CombinedIcon />} onClick={() => navigate(`/combined-records?type=mpr&id=${row.id}`)}>{t('openCombined')}</Button>
                           )}
                           {(row.status === MPRStatus.DRAFT || row.status === MPRStatus.SUBMITTED || row.status === MPRStatus.APPROVED || row.status === MPRStatus.QUOTATIONS_RECEIVED) && (
-                            <Button size="small" startIcon={<EditIcon />} onClick={() => openEdit(row)}>
-                              {row.status === MPRStatus.DRAFT ? t('edit') : row.status === MPRStatus.QUOTATIONS_RECEIVED ? t('editReviseQuotation') : t('editReRaise')}
-                            </Button>
+                            // data-edit-keep: Supervisors may edit requests (the edit goes back to the heads)
+                            <span data-edit-keep="" style={{ display: 'contents' }}>
+                              <Button size="small" startIcon={<EditIcon />} onClick={() => openEdit(row)}>
+                                {row.status === MPRStatus.DRAFT ? t('edit') : row.status === MPRStatus.QUOTATIONS_RECEIVED ? t('editReviseQuotation') : t('editReRaise')}
+                              </Button>
+                            </span>
                           )}
                           {row.status === MPRStatus.QUOTATIONS_RECEIVED && !isNonVendor && (
                             <Button size="small" startIcon={<QuotationIcon />} onClick={() => raiseQuotation(row, false)}>{t('raiseAnother')}</Button>
