@@ -24,7 +24,7 @@ import { REVISABLE_PO_STATUSES, syncQuotationsFromMpr, syncPoFromQuotation, hasU
 import { ensureVendorLedger } from './ledger.routes';
 import { afterMprApproved } from '../services/mpr-approval.service';
 import { nextCode, resolveCatalogLines } from '../services/catalog.service';
-import { CatalogItemKind, catalogNameKey } from '@hospital-erp/shared';
+import { CatalogItemKind, catalogNameKey, isAdminRole } from '@hospital-erp/shared';
 import multer from 'multer';
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
@@ -594,6 +594,10 @@ router.put(
         updateData.estimatedGstAmount = estimatedGstAmount;
         updateData.estimatedTotal = estimatedSubtotal + estimatedGstAmount;
       }
+
+      // An admin's edit stands as it is: no new approval round, status and workflow stay.
+      const adminEdit = isAdminRole(req.user!.role) || approvalService.canOverride(req.user!);
+      if (adminEdit) wasSubmitted = false;
 
       let record;
       if (wasSubmitted) {

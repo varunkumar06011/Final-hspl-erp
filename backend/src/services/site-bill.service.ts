@@ -343,6 +343,8 @@ export interface UpdateSiteBillInput {
   items: SiteBillItemInput[];
   /** Extra photos / PDFs added while editing (the existing files stay). */
   newFiles?: { filePath: string; fileName: string; mimeType: string }[];
+  /** Edited by an admin: saved as is, no new approval round. */
+  byAdmin?: boolean;
 }
 
 /**
@@ -368,26 +370,31 @@ export async function updateSiteBill(input: UpdateSiteBillInput) {
     if (!payer) throw new SiteBillError('The person who paid was not found');
   }
 
+  const reapprove = !input.byAdmin;
   const updated = await prisma.$transaction(async (tx) => {
-    await tx.approvalWorkflow.deleteMany({ where: { entityType: 'MATERIAL_PURCHASE_REQUEST', entityId: bill.id } });
-    const workflow = await tx.approvalWorkflow.create({
-      data: {
-        entityType: 'MATERIAL_PURCHASE_REQUEST',
-        entityId: bill.id,
-        projectId,
-        status: 'VERIFICATION',
-        currentStep: 0,
-        minApprovers: 1,
-        approvalPolicy: MPR_APPROVAL_POLICY,
-        steps: { create: mprApprovalSteps() },
-      },
-    });
+    let workflowId: string | null = bill.approvalWorkflowId;
+    if (reapprove) {
+      await tx.approvalWorkflow.deleteMany({ where: { entityType: 'MATERIAL_PURCHASE_REQUEST', entityId: bill.id } });
+      const workflow = await tx.approvalWorkflow.create({
+        data: {
+          entityType: 'MATERIAL_PURCHASE_REQUEST',
+          entityId: bill.id,
+          projectId,
+          status: 'VERIFICATION',
+          currentStep: 0,
+          minApprovers: 1,
+          approvalPolicy: MPR_APPROVAL_POLICY,
+          steps: { create: mprApprovalSteps() },
+        },
+      });
+      workflowId = workflow.id;
+    }
     await tx.materialPurchaseRequestItem.deleteMany({ where: { mprId: bill.id } });
     return tx.materialPurchaseRequest.update({
       where: { id: bill.id },
       data: {
-        status: MPRStatus.SUBMITTED,
-        approvalWorkflowId: workflow.id,
+        ...(reapprove ? { status: MPRStatus.SUBMITTED, approvalWorkflowId: workflowId } : {}),
+        // Only an unchanged-status bill may keep its PO link, and it never has a live one here.
         sitePoId: null,
         billDate: input.billDate,
         billShopName: input.shopName,
@@ -437,9 +444,10 @@ export async function updateSiteBill(input: UpdateSiteBillInput) {
     entityId: bill.id,
     projectId,
     oldValue: { total: Number(bill.estimatedTotal), status: bill.status, items: bill.items.length },
-    newValue: { mprNumber: bill.mprNumber, siteBill: true, total, shopName: input.shopName, resubmittedForApproval: true },
+    newValue: { mprNumber: bill.mprNumber, siteBill: true, total, shopName: input.shopName, resubmittedForApproval: reapprove, byAdmin: !!input.byAdmin },
   });
 
+  if (!reapprove) return updated;
   notifyApprovers(projectId, [UserRole.PROJECT_HEAD, UserRole.HEAD_OF_CONSTRUCTION], {
     approvalId: updated.approvalWorkflowId!,
     entityType: 'MATERIAL_PURCHASE_REQUEST',

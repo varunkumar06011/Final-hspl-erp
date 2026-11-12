@@ -1,11 +1,12 @@
 import { Router, Response, NextFunction } from 'express';
 import multer from 'multer';
-import { Permission, createSiteBillSchema, updateSiteBillSchema, listSiteBillsSchema, generateSiteBillPoSchema, setSiteBillBudgetHeadSchema } from '@hospital-erp/shared';
+import { Permission, isAdminRole, createSiteBillSchema, updateSiteBillSchema, listSiteBillsSchema, generateSiteBillPoSchema, setSiteBillBudgetHeadSchema } from '@hospital-erp/shared';
 import { prisma } from '../config/prisma';
 import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middleware/auth';
 import { rbacMiddleware } from '../middleware/rbac';
 import { validateMiddleware } from '../middleware/validate';
 import { generateProjectSequenceNumber } from '../services/sequence.service';
+import * as approvalService from '../services/approval.service';
 import { getStorageService } from '../services/storage.service';
 import {
   SiteBillError,
@@ -171,6 +172,7 @@ router.put(
         budgetHeadId: req.body.budgetHeadId ?? null,
         items: req.body.items,
         newFiles,
+        byAdmin: isAdminRole(req.user!.role) || approvalService.canOverride(req.user!),
       });
       res.json(bill);
     } catch (error) {

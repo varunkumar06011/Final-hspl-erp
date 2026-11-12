@@ -37,7 +37,7 @@ import {
 } from '@mui/icons-material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { POPaymentType, SITE_BILL_LIMIT, SiteBillPaymentMode, CatalogItemKind } from '@hospital-erp/shared';
+import { POPaymentType, SITE_BILL_LIMIT, isAdminRole, canOverrideApprovals, SiteBillPaymentMode, CatalogItemKind } from '@hospital-erp/shared';
 import api, { extractErrorMessage } from '../config/api';
 import { useUrlFilters } from '../hooks/useUrlFilters';
 import ResponsiveDialog from '../components/ResponsiveDialog';
@@ -50,6 +50,7 @@ import SpecAutocomplete from '../components/SpecAutocomplete';
 import PriceFlag, { usePriceCheck } from '../components/PriceFlag';
 import { useFileViewer } from '../components/FileViewerDialog';
 import { useToast } from '../components/ToastProvider';
+import { useAuthStore } from '../stores/authStore';
 import { useEditLock } from '../hooks/useEditLock';
 import { QTY_UNIT_OPTIONS, enumLabel, formatCurrency, formatDate, unitLabel } from '../utils/enumOptions';
 import { useCreateReview } from '../components/CreateReview';
@@ -343,6 +344,8 @@ function AddBillDialog({ open, onClose, bill }: { open: boolean; onClose: () => 
   const { t } = useTranslation('sitebills');
   const queryClient = useQueryClient();
   const toast = useToast();
+  const { user } = useAuthStore();
+  const adminEdit = !!user && (isAdminRole(user.role) || canOverrideApprovals(user.role, user.extraPermissions));
   const catalog = useMaterialCatalog(open, CatalogItemKind.MATERIAL);
   const catalogItemOf = (it: ItemDraft) => (it.itemId ? catalog.find((m) => m.itemId === it.itemId) ?? null : findCatalogMaterial(catalog, it.materialName));
   const [billDate, setBillDate] = useState(bill ? bill.billDate.slice(0, 10) : todayIso());
@@ -412,7 +415,7 @@ function AddBillDialog({ open, onClose, bill }: { open: boolean; onClose: () => 
     },
     onSuccess: (addAnother) => {
       queryClient.invalidateQueries({ queryKey: ['/site-bills'] });
-      toast.success(bill ? t('billUpdated') : t('billSaved'));
+      toast.success(bill ? t(adminEdit ? 'billUpdatedAdmin' : 'billUpdated') : t('billSaved'));
       if (addAnother) {
         // Same day and shop are common for the next bill: keep the date, clear the rest.
         setShopName('');
@@ -434,7 +437,7 @@ function AddBillDialog({ open, onClose, bill }: { open: boolean; onClose: () => 
       <DialogTitle>{bill ? t('editBill', { number: bill.mprNumber }) : t('addBill')}</DialogTitle>
       <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '12px !important' }}>
         {error && <Alert severity="error" onClose={() => setError('')}>{error}</Alert>}
-        {bill && <Alert severity="warning">{t('editReapproval')}</Alert>}
+        {bill && !adminEdit && <Alert severity="warning">{t('editReapproval')}</Alert>}
         <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '180px 1fr' }, gap: 2 }}>
           <TextField type="date" size="small" label={t('billDate')} value={billDate} onChange={(e) => setBillDate(e.target.value)} InputLabelProps={{ shrink: true }} required />
           <TextField size="small" label={t('shopName')} value={shopName} onChange={(e) => setShopName(e.target.value)} required />

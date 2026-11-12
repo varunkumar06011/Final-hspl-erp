@@ -69,5 +69,6 @@
   "editReapproval": "Saving sends this bill back to the Project Head / Head of Construction for approval. It cannot go into a PO until they approve it.",
   "saveChanges": "Save changes",
   "waitingApproval": "Waiting for approval",
-  "rejectedBill": "Rejected"
+  "rejectedBill": "Rejected",
+  "billUpdatedAdmin": "Bill updated"
 }
