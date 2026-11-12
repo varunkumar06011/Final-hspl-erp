@@ -30,7 +30,7 @@ import { DetailSection, DetailField } from '../components/DetailSection';
 import WaitingOn from '../components/WaitingOn';
 import CopyText from '../components/CopyText';
 import ApprovalTiming from '../components/ApprovalTiming';
-import { MPRStatus, MPRRequestType, UserRole, isFirstLevelApproverRole, isWorkflowOpenToRole, canOverrideApprovals, findApprovableStep, isSuperAdmin, CatalogItemKind } from '@hospital-erp/shared';
+import { MPRStatus, MPRRequestType, MPRPaymentMethod, UserRole, isAdminRole, isFirstLevelApproverRole, isWorkflowOpenToRole, canOverrideApprovals, findApprovableStep, isSuperAdmin, CatalogItemKind } from '@hospital-erp/shared';
 import { formatDate, STATUS_COLORS, QTY_UNIT_OPTIONS, SERVICE_UNIT_OPTIONS, SERVICE_CATEGORY_OPTIONS, enumLabel, unitLabel, serviceCategoryLabel } from '../utils/enumOptions';
 import { useTranslation } from 'react-i18next';
 import api, { extractErrorMessage } from '../config/api';
@@ -48,6 +48,8 @@ import MaterialAutocomplete, { findCatalogMaterial, useMaterialCatalog, type Cat
 import SpecAutocomplete from '../components/SpecAutocomplete';
 import PriceFlag, { LinePriceFlag, usePriceCheck } from '../components/PriceFlag';
 import { useCreateReview } from '../components/CreateReview';
+import { ProofNumberButton } from '../components/ProofNumber';
+import PaymentMethodFields, { EMPTY_PAYMENT, paymentErrorKey, paymentFromVendor, paymentMethodLabel, paymentPayload, type PaymentFieldsValue } from '../components/PaymentMethodFields';
 
 interface MPRItem {
   materialName: string;
@@ -105,7 +107,9 @@ interface MPRRow {
   createdByUser: { id: string; name: string };
   items: MPRItem[];
   vendorId?: string | null;
-  vendor?: { id: string; name: string; vendorCode: string; vendorType: string; phone?: string | null; contactPersonPhone?: string | null } | null;
+  vendor?: { id: string; name: string; vendorCode: string; vendorType: string; phone?: string | null; contactPersonPhone?: string | null; bankName?: string | null; bankAccountNumber?: string | null; ifscCode?: string | null } | null;
+  /** BANK_TRANSFER | CASH | CHEQUE (null on requests raised before this field existed). */
+  paymentMethod?: string | null;
   quotations?: { id: string; quotationNumber: string; status: string; grandTotal: number }[];
   approvalWorkflowId?: string | null;
   approvalWorkflow?: { id: string; status: string; approvalPolicy?: string | null; currentStep: number; steps: ApprovalStep[] } | null;
@@ -239,6 +243,16 @@ export default function MaterialPurchaseRequestsPage() {
   const [newVendorPhone, setNewVendorPhone] = useState('');
   const [newVendorType, setNewVendorType] = useState<'VENDOR' | 'NON_VENDOR'>('VENDOR');
 
+  // Payment type (mandatory) + bank details for a bank transfer. The bank details belong to
+  // the vendor: picking a vendor loads what is on file, and saving writes edits back to it.
+  const [payment, setPayment] = useState<PaymentFieldsValue>(EMPTY_PAYMENT);
+  const [showPayErrors, setShowPayErrors] = useState(false);
+  // "Change payment type" on an existing request (no re-approval).
+  const [payRow, setPayRow] = useState<MPRRow | null>(null);
+  const [payEdit, setPayEdit] = useState<PaymentFieldsValue>(EMPTY_PAYMENT);
+  const [payEditError, setPayEditError] = useState('');
+  const [payEditShowErrors, setPayEditShowErrors] = useState(false);
+
   // Persist form state to localStorage whenever it changes (only for new MPR, not editing)
   useEffect(() => {
     if (editRow) return; // Don't save when editing an existing MPR
@@ -340,6 +354,8 @@ export default function MaterialPurchaseRequestsPage() {
     setNewVendorName('');
     setNewVendorPhone('');
     setNewVendorType('VENDOR');
+    setPayment(EMPTY_PAYMENT);
+    setShowPayErrors(false);
     try { localStorage.removeItem(MPR_DRAFT_KEY); } catch { /* ignore */ }
   }
 
@@ -387,6 +403,8 @@ export default function MaterialPurchaseRequestsPage() {
     setNewVendorName('');
     setNewVendorPhone('');
     setNewVendorType('VENDOR');
+    setPayment(paymentFromVendor(row.paymentMethod, row.vendor));
+    setShowPayErrors(false);
     setCreateOpen(true);
   }
 
@@ -483,6 +501,7 @@ export default function MaterialPurchaseRequestsPage() {
       } else if (vendorMode === 'new' && newVendorName.trim()) {
         payload.newVendor = { name: newVendorName.trim(), phone: newVendorPhone.trim() || undefined, vendorType: newVendorType };
       }
+      Object.assign(payload, paymentPayload(payment));
       if (editRow) {
         const res = await api.put(`/material-purchase-requests/${editRow.id}`, payload);
         return res.data;
@@ -741,9 +760,50 @@ export default function MaterialPurchaseRequestsPage() {
       setError(t('errNewVendor'));
       return;
     }
+    const hasVendor = (vendorMode === 'existing' && !!selectedVendorId) || (vendorMode === 'new' && !!newVendorName.trim());
+    const payKey = paymentErrorKey(payment, hasVendor);
+    if (payKey) {
+      setShowPayErrors(true);
+      setError(t(payKey));
+      return;
+    }
     setError('');
     if (editRow) createMutation.mutate();
     else review(() => createMutation.mutate());
+  }
+
+  // Payment type of an existing request: anyone until a PO is approved, admins after.
+  const isAdminUser = !!user && (isAdminRole(user.role) || isSuperAdmin(user.extraPermissions));
+  function paymentLocked(row: MPRRow) {
+    return !isAdminUser && !!row.purchaseOrders?.some((po) => ['APPROVED', 'PARTIALLY_DELIVERED', 'DELIVERED'].includes(po.status));
+  }
+  function openPaymentEdit(row: MPRRow) {
+    setPayRow(row);
+    setPayEdit(paymentFromVendor(row.paymentMethod, row.vendor));
+    setPayEditError('');
+    setPayEditShowErrors(false);
+  }
+  const paymentMutation = useMutation({
+    mutationFn: async () => {
+      if (!payRow) return;
+      await api.post(`/material-purchase-requests/${payRow.id}/payment-method`, paymentPayload(payEdit));
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['mprs'] });
+      queryClient.invalidateQueries({ queryKey: ['/vendors'] });
+      setPayRow(null);
+    },
+    onError: (err: unknown) => setPayEditError(extractErrorMessage(err)),
+  });
+  function savePaymentEdit() {
+    const key = paymentErrorKey(payEdit, !!payRow?.vendorId);
+    if (key) {
+      setPayEditShowErrors(true);
+      setPayEditError(t(key));
+      return;
+    }
+    setPayEditError('');
+    paymentMutation.mutate();
   }
 
   return (
@@ -847,6 +907,14 @@ export default function MaterialPurchaseRequestsPage() {
                         color={(STATUS_COLORS[row.status] as any) ?? 'default'}
                       />
                       <StalledChip type="MPR" id={row.id} />
+                      {row.paymentMethod && (
+                        <Chip
+                          size="small"
+                          variant="outlined"
+                          color={row.paymentMethod === MPRPaymentMethod.BANK_TRANSFER ? 'info' : row.paymentMethod === MPRPaymentMethod.CHEQUE ? 'secondary' : 'success'}
+                          label={t('paymentChip', { m: paymentMethodLabel(t, row.paymentMethod) })}
+                        />
+                      )}
                       {(row.status === MPRStatus.SUBMITTED || row.status === MPRStatus.APPROVED) && <WaitingOn workflow={row.approvalWorkflow} since={row.createdAt} />}
                       {(row.shipmentNo ?? 1) >= 2 && (
                         <Chip
@@ -908,6 +976,18 @@ export default function MaterialPurchaseRequestsPage() {
                       {pdfLoading ? <CircularProgress size={16} /> : <PdfIcon fontSize="small" />}
                     </IconButton>
                     <CommentsButton entityType="MATERIAL_PURCHASE_REQUEST" entityId={row.id} entityLabel={row.mprNumber} url="/material-purchase-requests" />
+                    {row.status !== MPRStatus.CANCELLED && <ProofNumberButton entity={{ entityType: 'MATERIAL_PURCHASE_REQUEST', entityId: row.id }} />}
+                    {row.status !== MPRStatus.CANCELLED && (
+                      <Button
+                        size="small"
+                        startIcon={<EditIcon />}
+                        onClick={() => openPaymentEdit(row)}
+                        disabled={paymentLocked(row)}
+                        title={paymentLocked(row) ? t('changePaymentLocked') : t('changePayment')}
+                      >
+                        {t('changePayment')}
+                      </Button>
+                    )}
                     {row.status === MPRStatus.DRAFT && (
                       <Button size="small" startIcon={<SendIcon />} onClick={() => submitMutation.mutate(row.id)} disabled={submitMutation.isPending}>{t('submitForApproval')}</Button>
                     )}
@@ -1130,6 +1210,23 @@ export default function MaterialPurchaseRequestsPage() {
         </Box>
       )}
 
+      {/* Change payment type (no re-approval) */}
+      <ResponsiveDialog open={payRow !== null} onClose={() => setPayRow(null)} maxWidth="sm" fullWidth>
+        <DialogTitle>{t('changePaymentTitle', { n: payRow?.mprNumber })}</DialogTitle>
+        <DialogContent dividers>
+          {payEditError && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setPayEditError('')}>{payEditError}</Alert>}
+          {payRow && !payRow.vendorId && <Alert severity="warning" sx={{ mb: 2 }}>{t('errBankVendor')}</Alert>}
+          <PaymentMethodFields value={payEdit} onChange={setPayEdit} showError={payEditShowErrors} hasVendor={!!payRow?.vendorId} />
+          <Typography variant="caption" color="text.secondary">{t('changePaymentNote')}</Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setPayRow(null)}>{t('cancel')}</Button>
+          <Button variant="contained" onClick={savePaymentEdit} disabled={paymentMutation.isPending}>
+            {paymentMutation.isPending ? <CircularProgress size={18} /> : t('savePayment')}
+          </Button>
+        </DialogActions>
+      </ResponsiveDialog>
+
       {/* Create / Edit Dialog */}
       <ResponsiveDialog open={createOpen} onClose={() => setCreateOpen(false)} maxWidth="lg" fullWidth>
         <DialogTitle>{editRow ? t('editTitle', { n: editRow.mprNumber }) : (isServiceTab ? t('newService') : t('newMaterialFull'))}</DialogTitle>
@@ -1142,7 +1239,12 @@ export default function MaterialPurchaseRequestsPage() {
             value={vendorMode}
             exclusive
             size="small"
-            onChange={(_e, v) => { if (v) setVendorMode(v); }}
+            onChange={(_e, v) => {
+              if (!v) return;
+              setVendorMode(v);
+              // A brand-new vendor has no bank details yet; going back to an existing one reloads its own.
+              if (v === 'new') setPayment((p) => ({ ...p, accountNumber: '', ifscCode: '', bankName: '' }));
+            }}
             sx={{ mb: 1 }}
           >
             <ToggleButton value="existing">{t('existingVendor')}</ToggleButton>
@@ -1152,7 +1254,16 @@ export default function MaterialPurchaseRequestsPage() {
             <VendorAutocomplete
               label={t('vendorSection')}
               value={selectedVendorId}
-              onChange={(id) => setSelectedVendorId(id)}
+              onChange={(id, vendor) => {
+                setSelectedVendorId(id);
+                // Show the account already on file for this vendor so it can be corrected if wrong.
+                setPayment((p) => ({
+                  ...p,
+                  accountNumber: vendor?.bankAccountNumber ?? '',
+                  ifscCode: vendor?.ifscCode ?? '',
+                  bankName: vendor?.bankName ?? '',
+                }));
+              }}
               sx={{ mb: 2 }}
             />
           ) : (
@@ -1176,6 +1287,13 @@ export default function MaterialPurchaseRequestsPage() {
               </Grid>
             </Grid>
           )}
+
+          <PaymentMethodFields
+            value={payment}
+            onChange={setPayment}
+            showError={showPayErrors}
+            hasVendor={(vendorMode === 'existing' && !!selectedVendorId) || (vendorMode === 'new' && !!newVendorName.trim())}
+          />
 
           <Divider sx={{ mb: 2 }} />
 

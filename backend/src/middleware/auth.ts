@@ -1,3 +1,4 @@
+import { startUploadContext } from '../services/duplicate.service';
 import { Request, Response, NextFunction } from 'express';
 import { verifyFirebaseToken } from '../config/firebase';
 import { prisma } from '../config/prisma';
@@ -139,7 +140,7 @@ function passModuleGuard(req: AuthenticatedRequest, res: Response, next: NextFun
       return;
     }
   }
-  next();
+  startUploadContext(req, res, next);
 }
 
 export function requireProjectId(req: AuthenticatedRequest): string {

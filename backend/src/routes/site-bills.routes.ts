@@ -8,6 +8,8 @@ import { validateMiddleware } from '../middleware/validate';
 import { generateProjectSequenceNumber } from '../services/sequence.service';
 import * as approvalService from '../services/approval.service';
 import { getStorageService } from '../services/storage.service';
+import { attachSiteBillProof, reservedNumberForProof, skipReservedRequestNumber } from '../services/proof.service';
+import { checkSiteBillDuplicate } from '../services/duplicate.service';
 import {
   SiteBillError,
   cancelSiteBill,
@@ -95,7 +97,10 @@ router.post(
         }
       }
 
-      const mprNumber = await generateProjectSequenceNumber('materialPurchaseRequest', 'mprNumber', 'MPR', 3, projectId);
+      // A proof number issued from the form already holds the bill's request number.
+      let mprNumber = (await reservedNumberForProof(projectId, req.header('x-proof-number'))) ?? '';
+      if (mprNumber && (await prisma.materialPurchaseRequest.count({ where: { projectId, mprNumber } })) > 0) mprNumber = '';
+      if (!mprNumber) mprNumber = await skipReservedRequestNumber(projectId, await generateProjectSequenceNumber('materialPurchaseRequest', 'mprNumber', 'MPR', 3, projectId));
       // The first file is the bill's main file (receiptFile*), the rest are attachments.
       const stored: { filePath: string; fileName: string; mimeType: string }[] = [];
       for (const [idx, f] of uploads.entries()) {
@@ -125,7 +130,10 @@ router.post(
         budgetHeadId: req.body.budgetHeadId ?? null,
         mprNumber,
       });
-      res.status(201).json(bill);
+      // Proof number: the one the supervisor wrote on the bill (or a fresh one), and the same-shop check.
+      const proofNumber = await attachSiteBillProof(projectId, req.user!.id, bill, req.header('x-proof-number'));
+      await checkSiteBillDuplicate(bill, req.user!.id);
+      res.status(201).json({ ...bill, proofNumber });
     } catch (error) {
       sendError(res, next, error);
     }

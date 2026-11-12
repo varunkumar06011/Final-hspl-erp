@@ -43,6 +43,7 @@ import { useUrlFilters } from '../hooks/useUrlFilters';
 import ResponsiveDialog from '../components/ResponsiveDialog';
 import CameraCapture from '../components/CameraCapture';
 import UploadSourceButton from '../components/UploadSourceButton';
+import { ProofNumberField, proofHeaders } from '../components/ProofNumber';
 import ItemsGist from '../components/ItemsGist';
 import RefreshButton from '../components/RefreshButton';
 import MaterialAutocomplete, { findCatalogMaterial, useMaterialCatalog } from '../components/MaterialAutocomplete';
@@ -361,6 +362,8 @@ function AddBillDialog({ open, onClose, bill }: { open: boolean; onClose: () => 
   );
   const [files, setFiles] = useState<File[]>([]);
   const [voucherNumber, setVoucherNumber] = useState(bill?.voucherNumber ?? '');
+  // Number written on the bill before it is photographed (mandatory for a new bill).
+  const [proofNumber, setProofNumber] = useState('');
   const [budgetHeadId, setBudgetHeadId] = useState(bill?.budgetHead?.id ?? '');
   const budgetHeads = useBudgetHeads(open);
   const [error, setError] = useState('');
@@ -369,7 +372,7 @@ function AddBillDialog({ open, onClose, bill }: { open: boolean; onClose: () => 
   const overLimit = total > SITE_BILL_LIMIT;
   const validItems = items.filter((i) => i.materialName.trim() && Number(i.quantity) > 0);
   const priceChecks = usePriceCheck(items.map((it) => ({ itemId: catalogItemOf(it)?.itemId, materialName: it.materialName, specification: it.specification, unit: it.unit })), {}, open);
-  const canSave = !!shopName.trim() && validItems.length > 0 && total > 0 && !overLimit;
+  const canSave = !!shopName.trim() && validItems.length > 0 && total > 0 && !overLimit && (!!bill || !!proofNumber.trim());
 
   const reset = () => {
     setBillDate(todayIso());
@@ -379,6 +382,7 @@ function AddBillDialog({ open, onClose, bill }: { open: boolean; onClose: () => 
     setItems([emptyItem()]);
     setFiles([]);
     setVoucherNumber('');
+    setProofNumber('');
     setBudgetHeadId('');
     setError('');
   };
@@ -412,7 +416,7 @@ function AddBillDialog({ open, onClose, bill }: { open: boolean; onClose: () => 
       files.forEach((f) => form.append('files', f));
       if (voucherNumber.trim()) form.append('voucherNumber', voucherNumber.trim());
       if (bill) await api.put(`/site-bills/${bill.id}`, form, { headers: { 'Content-Type': 'multipart/form-data' } });
-      else await api.post('/site-bills', form, { headers: { 'Content-Type': 'multipart/form-data' } });
+      else await api.post('/site-bills', form, { headers: { 'Content-Type': 'multipart/form-data', ...proofHeaders(proofNumber) } });
       return addAnother;
     },
     onSuccess: (addAnother) => {
@@ -425,6 +429,7 @@ function AddBillDialog({ open, onClose, bill }: { open: boolean; onClose: () => 
         setItems([emptyItem()]);
         setFiles([]);
         setVoucherNumber('');
+    setProofNumber('');
         setBudgetHeadId('');
         setError('');
       } else close();
@@ -439,6 +444,7 @@ function AddBillDialog({ open, onClose, bill }: { open: boolean; onClose: () => 
       <DialogTitle>{bill ? t('editBill', { number: bill.mprNumber }) : t('addBill')}</DialogTitle>
       <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '12px !important' }}>
         {error && <Alert severity="error" onClose={() => setError('')}>{error}</Alert>}
+        {!bill && <ProofNumberField value={proofNumber} onChange={setProofNumber} required />}
         {bill && !adminEdit && <Alert severity="warning">{t('editReapproval')}</Alert>}
         <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '180px 1fr' }, gap: 2 }}>
           <TextField type="date" size="small" label={t('billDate')} value={billDate} onChange={(e) => setBillDate(e.target.value)} InputLabelProps={{ shrink: true }} required />

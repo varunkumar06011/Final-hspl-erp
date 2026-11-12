@@ -936,6 +936,19 @@ export enum SiteBillPaymentMode {
   CHEQUE = 'CHEQUE',
 }
 
+/**
+ * How a material / service request will be paid. Chosen when the request is raised
+ * (mandatory); BANK_TRANSFER also needs the vendor's account number + IFSC.
+ */
+export enum MPRPaymentMethod {
+  BANK_TRANSFER = 'BANK_TRANSFER',
+  CASH = 'CASH',
+  CHEQUE = 'CHEQUE',
+}
+
+/** Indian IFSC: 4 letters, a zero, then 6 letters/digits. */
+export const IFSC_PATTERN = /^[A-Z]{4}0[A-Z0-9]{6}$/;
+
 /** A site bill (paid by the site person, reimbursed later) may be at most this much. */
 export const SITE_BILL_LIMIT = 5000;
 

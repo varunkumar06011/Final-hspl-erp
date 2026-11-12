@@ -112,6 +112,8 @@ export async function siteBillAsMprArgs(
   return {
     requestType: 'MATERIAL',
     ...vendor,
+    // Paid at site already: cheque stays cheque, everything else counts as cash (no bank details needed).
+    paymentMethod: bill.paymentMode === 'CHEQUE' ? 'CHEQUE' : 'CASH',
     items,
     description: [bill.description, why].filter(Boolean).join(' ').slice(0, 2000),
   };

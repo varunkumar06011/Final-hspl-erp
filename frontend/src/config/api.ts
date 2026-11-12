@@ -29,7 +29,14 @@ api.interceptors.request.use(
 );
 
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    // The server saved the upload but found a possible duplicate: tell the user (never blocks).
+    const warnings = (response.data as { duplicateWarning?: { message: string }[] } | undefined)?.duplicateWarning;
+    if (Array.isArray(warnings) && warnings.length > 0) {
+      window.dispatchEvent(new CustomEvent('duplicate-warning', { detail: warnings.map((w) => w.message) }));
+    }
+    return response;
+  },
   (error) => {
     // A 401 with a stored token means the token is expired/invalid — every
     // request will keep failing, so staying "logged in" just hangs the app on

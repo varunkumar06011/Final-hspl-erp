@@ -5,9 +5,10 @@ import {
   AuditAction,
   UserRole,
   VendorType,
+  MPRPaymentMethod,
   isSuperAdmin,
 } from '@hospital-erp/shared';
-import { createMPRSchema, updateMPRSchema, listMPRSchema, approvalActionSchema } from '@hospital-erp/shared';
+import { createMPRSchema, updateMPRSchema, listMPRSchema, approvalActionSchema, changeMPRPaymentMethodSchema } from '@hospital-erp/shared';
 import { prisma } from '../config/prisma';
 import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middleware/auth';
 import { rbacMiddleware } from '../middleware/rbac';
@@ -20,6 +21,7 @@ import { MPR_APPROVAL_POLICY, mprApprovalSteps } from '../services/approval.serv
 import { getStorageService, serveFile } from '../services/storage.service';
 import { notifyApprovers } from '../services/push.service';
 import { findLivePoForMpr } from '../services/non-vendor-po.service';
+import { skipReservedRequestNumber } from '../services/proof.service';
 import { REVISABLE_PO_STATUSES, syncQuotationsFromMpr, syncPoFromQuotation, hasUnpricedItems } from '../services/mpr-revision.service';
 import { ensureVendorLedger } from './ledger.routes';
 import { afterMprApproved } from '../services/mpr-approval.service';
@@ -49,7 +51,7 @@ export const mprInclude = {
     where: { deletedAt: null, status: { notIn: ['DELETED', 'CANCELLED', 'REJECTED'] } },
     select: { id: true, poNumber: true, status: true },
   },
-  vendor: { select: { id: true, name: true, vendorCode: true, vendorType: true, phone: true, contactPersonPhone: true } },
+  vendor: { select: { id: true, name: true, vendorCode: true, vendorType: true, phone: true, contactPersonPhone: true, bankName: true, bankAccountNumber: true, ifscCode: true } },
   quotations: {
     where: { deletedAt: null },
     select: { id: true, quotationNumber: true, status: true, totalAmount: true, grandTotal: true },
@@ -109,6 +111,89 @@ async function resolveVendor(
   }
 
   return null;
+}
+
+// ── Payment type (bank transfer / cash / cheque) ──────────────────────────────
+
+/** Bad payment input (missing bank details, non-admin editing after PO approval). */
+class PaymentInputError extends Error {
+  constructor(message: string, readonly status = 400) {
+    super(message);
+  }
+}
+
+interface AccountDetails { bankName?: string; accountNumber: string; ifscCode: string }
+
+/** PO statuses from which the payment type is frozen for everyone except admins. */
+const PO_APPROVED_STATUSES = ['APPROVED', 'PARTIALLY_DELIVERED', 'DELIVERED'];
+
+/** True once a purchase order raised from this request has been approved. */
+async function hasApprovedPo(mpr: { id: string; sitePoId?: string | null }): Promise<boolean> {
+  const or: Record<string, unknown>[] = [{ mprId: mpr.id }, { quotation: { mprId: mpr.id } }];
+  if (mpr.sitePoId) or.push({ id: mpr.sitePoId });
+  const n = await prisma.purchaseOrder.count({
+    where: { deletedAt: null, status: { in: PO_APPROVED_STATUSES }, OR: or as never },
+  });
+  return n > 0;
+}
+
+/** Before PO approval anyone who can edit the request may change the payment type; afterwards only admins. */
+async function assertCanChangePayment(
+  user: { role: string; extraPermissions?: readonly string[] | null },
+  mpr: { id: string; sitePoId?: string | null },
+): Promise<void> {
+  if (isAdminRole(user.role) || isSuperAdmin(user.extraPermissions)) return;
+  if (await hasApprovedPo(mpr)) {
+    throw new PaymentInputError('The purchase order is already approved - only an admin can change the payment type now', 403);
+  }
+}
+
+/**
+ * Checks the payment type before anything is written: bank transfer needs a vendor and an
+ * account number + IFSC, either typed now or already on the vendor.
+ */
+async function validatePayment(
+  method: string,
+  details: AccountDetails | undefined,
+  vendor: { vendorId?: string | null; hasNewVendor?: boolean },
+  projectId: string,
+): Promise<void> {
+  if (method !== MPRPaymentMethod.BANK_TRANSFER) return;
+  if (!vendor.vendorId && !vendor.hasNewVendor) {
+    throw new PaymentInputError('Choose a vendor before selecting bank transfer');
+  }
+  if (details) return;
+  if (vendor.vendorId) {
+    const v = await prisma.vendor.findFirst({
+      where: { id: vendor.vendorId, projectId, deletedAt: null },
+      select: { bankAccountNumber: true, ifscCode: true },
+    });
+    if (v?.bankAccountNumber && v?.ifscCode) return;
+  }
+  throw new PaymentInputError('Account number and IFSC code are required for a bank transfer');
+}
+
+/** Writes typed bank details to the vendor (new or existing) and audits the change. */
+async function saveVendorBank(
+  vendorId: string | null,
+  details: AccountDetails | undefined,
+  projectId: string,
+  userId: string,
+): Promise<void> {
+  if (!vendorId || !details) return;
+  const before = await prisma.vendor.findFirst({
+    where: { id: vendorId, projectId, deletedAt: null },
+    select: { bankName: true, bankAccountNumber: true, ifscCode: true },
+  });
+  if (!before) return;
+  const next = {
+    bankAccountNumber: details.accountNumber,
+    ifscCode: details.ifscCode,
+    ...(details.bankName ? { bankName: details.bankName } : {}),
+  };
+  if (before.bankAccountNumber === next.bankAccountNumber && before.ifscCode === next.ifscCode && (!details.bankName || before.bankName === details.bankName)) return;
+  await prisma.vendor.update({ where: { id: vendorId }, data: next });
+  await logAudit({ userId, action: AuditAction.UPDATE, entityType: 'vendors', entityId: vendorId, projectId, oldValue: before, newValue: next });
 }
 
 /** Statuses that do not count as a real earlier request when flagging repeat shipments. */
@@ -175,7 +260,7 @@ function catalogLines<T extends { materialName: string; materialCode?: string | 
 
 /** Material requests are numbered <code>-MPR001, service requests <code>-SR001. */
 function nextRequestNumber(projectId: string, requestType: string | null | undefined) {
-  return generateProjectSequenceNumber('materialPurchaseRequest', 'mprNumber', requestType === 'SERVICE' ? 'SR' : 'MPR', 3, projectId);
+  return generateProjectSequenceNumber('materialPurchaseRequest', 'mprNumber', requestType === 'SERVICE' ? 'SR' : 'MPR', 3, projectId).then((n) => skipReservedRequestNumber(projectId, n));
 }
 
 // GET /material-catalog — older clients' type-ahead: the item catalog in the old shape.
@@ -384,7 +469,11 @@ router.post(
       const projectId = requireProjectId(req);
       const mprNumber = await nextRequestNumber(projectId, req.body.requestType);
 
+      await validatePayment(req.body.paymentMethod, req.body.accountDetails, { vendorId: req.body.vendorId, hasNewVendor: !!req.body.newVendor?.name }, projectId);
       const vendorId = await resolveVendor(req.body, projectId, req.user!.id);
+      if (req.body.paymentMethod === MPRPaymentMethod.BANK_TRANSFER) {
+        await saveVendorBank(vendorId, req.body.accountDetails, projectId, req.user!.id);
+      }
 
       const items = await catalogLines(req.body.items, req.body.requestType, req.user!.id);
       const estimatedGstRate = Number(req.body.estimatedGstRate) || 0;
@@ -404,6 +493,7 @@ router.post(
           projectId,
           mprNumber,
           vendorId,
+          paymentMethod: req.body.paymentMethod,
           requestType: req.body.requestType || 'MATERIAL',
           serviceCategory: req.body.serviceCategory || null,
           servicePeriodStart: req.body.servicePeriodStart ? new Date(req.body.servicePeriodStart) : null,
@@ -447,6 +537,10 @@ router.post(
       await logAudit({ userId: req.user!.id, action: AuditAction.CREATE_MPR, entityType: 'material_purchase_requests', entityId: record.id, projectId, newValue: { mprNumber: record.mprNumber } });
       res.status(201).json(record);
     } catch (error) {
+      if (error instanceof PaymentInputError) {
+        res.status(error.status).json({ error: error.message });
+        return;
+      }
       if (error instanceof Error && error.message === 'Vendor not found') {
         res.status(400).json({ error: error.message });
         return;
@@ -549,8 +643,32 @@ router.put(
       if (req.body.technicalRequirements !== undefined) updateData.technicalRequirements = req.body.technicalRequirements || null;
       if (req.body.estimatedGstRate !== undefined) updateData.estimatedGstRate = Number(req.body.estimatedGstRate);
 
-      if (req.body.vendorId !== undefined || req.body.newVendor !== undefined) {
+      // Payment type: validated before any vendor is created; bank details go to the vendor.
+      const vendorChanged = req.body.vendorId !== undefined || req.body.newVendor !== undefined;
+      const effectiveMethod: string | null = req.body.paymentMethod ?? existing.paymentMethod ?? null;
+      const paymentTouched = req.body.paymentMethod !== undefined || req.body.accountDetails !== undefined;
+      // The lock only bites when something actually changes (the edit form re-sends the current values).
+      let paymentChanged = req.body.paymentMethod !== undefined && req.body.paymentMethod !== existing.paymentMethod;
+      if (!paymentChanged && req.body.accountDetails && existing.vendorId && !vendorChanged) {
+        const cur = await prisma.vendor.findFirst({ where: { id: existing.vendorId }, select: { bankAccountNumber: true, ifscCode: true } });
+        paymentChanged = cur?.bankAccountNumber !== req.body.accountDetails.accountNumber || cur?.ifscCode !== req.body.accountDetails.ifscCode;
+      }
+      if (paymentChanged) await assertCanChangePayment(req.user!, existing);
+      if (effectiveMethod === MPRPaymentMethod.BANK_TRANSFER && (paymentTouched || vendorChanged)) {
+        await validatePayment(
+          effectiveMethod,
+          req.body.accountDetails,
+          { vendorId: vendorChanged ? req.body.vendorId : existing.vendorId, hasNewVendor: !!req.body.newVendor?.name },
+          projectId,
+        );
+      }
+      if (req.body.paymentMethod !== undefined) updateData.paymentMethod = req.body.paymentMethod;
+
+      if (vendorChanged) {
         updateData.vendorId = await resolveVendor(req.body, projectId, req.user!.id);
+      }
+      if (effectiveMethod === MPRPaymentMethod.BANK_TRANSFER) {
+        await saveVendorBank((updateData.vendorId as string | null | undefined) ?? existing.vendorId, req.body.accountDetails, projectId, req.user!.id);
       }
 
       // If items are provided, recompute totals and replace items
@@ -666,8 +784,64 @@ router.put(
 
       res.json(revision ? { ...record, revision } : record);
     } catch (error) {
+      if (error instanceof PaymentInputError) {
+        res.status(error.status).json({ error: error.message });
+        return;
+      }
       if (error instanceof Error && error.message === 'Vendor not found') {
         res.status(400).json({ error: error.message });
+        return;
+      }
+      next(error);
+    }
+  }
+);
+
+// POST /:id/payment-method — change only the payment type (bank transfer / cash / cheque)
+// and, for a bank transfer, the vendor's account details. No re-approval. Anyone who can
+// edit requests may do it until a PO from this request is approved; after that, admins only.
+router.post(
+  '/:id/payment-method',
+  rbacMiddleware(Permission.CREATE_MPR),
+  validateMiddleware(changeMPRPaymentMethodSchema),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      const existing = await prisma.materialPurchaseRequest.findFirst({
+        where: { id: req.params.id, projectId, deletedAt: null },
+      });
+      if (!existing) {
+        res.status(404).json({ error: 'Material Purchase Request not found' });
+        return;
+      }
+      if (existing.status === MPRStatus.CANCELLED) {
+        res.status(400).json({ error: 'A cancelled request cannot be changed' });
+        return;
+      }
+      await assertCanChangePayment(req.user!, existing);
+      const { paymentMethod, accountDetails } = req.body;
+      await validatePayment(paymentMethod, accountDetails, { vendorId: existing.vendorId }, projectId);
+      if (paymentMethod === MPRPaymentMethod.BANK_TRANSFER) {
+        await saveVendorBank(existing.vendorId, accountDetails, projectId, req.user!.id);
+      }
+      const record = await prisma.materialPurchaseRequest.update({
+        where: { id: existing.id },
+        data: { paymentMethod },
+        include: mprInclude,
+      });
+      await logAudit({
+        userId: req.user!.id,
+        action: AuditAction.UPDATE_MPR,
+        entityType: 'material_purchase_requests',
+        entityId: existing.id,
+        projectId,
+        oldValue: { paymentMethod: existing.paymentMethod },
+        newValue: { paymentMethod, noReapproval: true },
+      });
+      res.json(record);
+    } catch (error) {
+      if (error instanceof PaymentInputError) {
+        res.status(error.status).json({ error: error.message });
         return;
       }
       next(error);

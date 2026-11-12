@@ -25,6 +25,7 @@ import api, { extractErrorMessage } from '../../config/api';
 import { useAuthStore } from '../../stores/authStore';
 import ResponsiveDialog from '../ResponsiveDialog';
 import VendorAutocomplete, { type VendorOption } from '../VendorAutocomplete';
+import PaymentMethodFields, { EMPTY_PAYMENT, paymentErrorKey, paymentPayload, type PaymentFieldsValue } from '../PaymentMethodFields';
 import MaterialAutocomplete, { findCatalogMaterial, useMaterialCatalog } from '../MaterialAutocomplete';
 import SpecAutocomplete from '../SpecAutocomplete';
 import PriceFlag, { usePriceCheck } from '../PriceFlag';
@@ -80,6 +81,9 @@ export default function NewRequestDialog({ open, onClose, onCreated }: { open: b
   const [gstRate, setGstRate] = useState(0);
   const [description, setDescription] = useState('');
   const [error, setError] = useState('');
+  // Payment type (mandatory) and, for a bank transfer, the vendor's account details.
+  const [payment, setPayment] = useState<PaymentFieldsValue>(EMPTY_PAYMENT);
+  const [showPayErrors, setShowPayErrors] = useState(false);
 
   const unitOptions = requestType === 'SERVICE' ? SERVICE_UNIT_OPTIONS : QTY_UNIT_OPTIONS;
   const validItems = items.filter((i) => i.materialName.trim() && Number(i.quantity) > 0);
@@ -90,6 +94,7 @@ export default function NewRequestDialog({ open, onClose, onCreated }: { open: b
   const estimate = validItems.reduce((s, i) => s + Number(i.quantity) * (Number(i.estimatedRate) || 0), 0);
   const vendorName = vendorMode === 'existing' ? vendorPicked?.name ?? '' : vendor.name.trim();
   const vendorReady = vendorMode === 'existing' ? !!vendorId : !!vendor.name.trim();
+  const paymentKey = paymentErrorKey(payment, vendorReady);
 
   const reset = () => {
     setStep(0);
@@ -104,6 +109,8 @@ export default function NewRequestDialog({ open, onClose, onCreated }: { open: b
     setGstRate(0);
     setDescription('');
     setError('');
+    setPayment(EMPTY_PAYMENT);
+    setShowPayErrors(false);
   };
   const close = () => { reset(); onClose(); };
 
@@ -114,7 +121,11 @@ export default function NewRequestDialog({ open, onClose, onCreated }: { open: b
       let newVendor: { name: string; phone?: string; vendorType: string } | undefined;
       if (vendorMode === 'new') {
         if (canCreateVendor) {
-          const strip = Object.fromEntries(Object.entries(vendor).map(([k, v]) => [k, typeof v === 'string' ? v.trim() : v]).filter(([, v]) => v !== ''));
+          // Bank details typed under "Payment type" go onto the new vendor.
+          const withBank = payment.method === 'BANK_TRANSFER'
+            ? { ...vendor, bankAccountNumber: payment.accountNumber.trim(), ifscCode: payment.ifscCode.trim().toUpperCase(), bankName: payment.bankName.trim() }
+            : vendor;
+          const strip = Object.fromEntries(Object.entries(withBank).map(([k, v]) => [k, typeof v === 'string' ? v.trim() : v]).filter(([, v]) => v !== ''));
           const created = (await api.post('/vendors', strip)).data;
           useVendorId = created.id;
           setVendorMode('existing');
@@ -141,6 +152,7 @@ export default function NewRequestDialog({ open, onClose, onCreated }: { open: b
         priority,
         description: description.trim() || undefined,
         ...(useVendorId ? { vendorId: useVendorId } : { newVendor }),
+        ...paymentPayload(payment),
       })).data;
       if (submit) await api.post(`/material-purchase-requests/${mpr.id}/submit`);
       return mpr.id as string;
@@ -169,12 +181,21 @@ export default function NewRequestDialog({ open, onClose, onCreated }: { open: b
 
         {step === 0 && (
           <>
-            <ToggleButtonGroup exclusive size="small" value={vendorMode} onChange={(_e, v) => v && setVendorMode(v)}>
+            <ToggleButtonGroup exclusive size="small" value={vendorMode} onChange={(_e, v) => {
+              if (!v) return;
+              setVendorMode(v);
+              if (v === 'new') setPayment((p) => ({ ...p, accountNumber: '', ifscCode: '', bankName: '' }));
+            }}>
               <ToggleButton value="existing">{t('existingVendor')}</ToggleButton>
               <ToggleButton value="new">{t('newVendor')}</ToggleButton>
             </ToggleButtonGroup>
             {vendorMode === 'existing' ? (
-              <VendorAutocomplete label={t('vendor')} value={vendorId} onChange={(id, v) => { setVendorId(id); setVendorPicked(v); }} required />
+              <VendorAutocomplete label={t('vendor')} value={vendorId} onChange={(id, v) => {
+                setVendorId(id);
+                setVendorPicked(v);
+                // Show the account already on file so it can be corrected if it is wrong.
+                setPayment((p) => ({ ...p, accountNumber: v?.bankAccountNumber ?? '', ifscCode: v?.ifscCode ?? '', bankName: v?.bankName ?? '' }));
+              }} required />
             ) : (
               <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1.5 }}>
                 <TextField size="small" label={t('vendorName')} value={vendor.name} onChange={(e) => setV('name', e.target.value)} required />
@@ -193,14 +214,12 @@ export default function NewRequestDialog({ open, onClose, onCreated }: { open: b
                     <TextField size="small" label={t('gstNumber')} value={vendor.gstNumber} onChange={(e) => setV('gstNumber', e.target.value)} />
                     <TextField size="small" label={t('panNumber')} value={vendor.panNumber} onChange={(e) => setV('panNumber', e.target.value)} />
                     <TextField size="small" label={t('address')} value={vendor.address} onChange={(e) => setV('address', e.target.value)} sx={{ gridColumn: { sm: '1 / -1' } }} multiline />
-                    <TextField size="small" label={t('bankName')} value={vendor.bankName} onChange={(e) => setV('bankName', e.target.value)} />
-                    <TextField size="small" label={t('accountNumber')} value={vendor.bankAccountNumber} onChange={(e) => setV('bankAccountNumber', e.target.value)} />
-                    <TextField size="small" label={t('ifsc')} value={vendor.ifscCode} onChange={(e) => setV('ifscCode', e.target.value)} />
                   </>
                 )}
                 {!canCreateVendor && <Alert severity="info" sx={{ gridColumn: '1 / -1' }}>{t('vendorDetailsLater')}</Alert>}
               </Box>
             )}
+            <PaymentMethodFields value={payment} onChange={setPayment} showError={showPayErrors} hasVendor={vendorReady} />
             <Alert severity="info">{vendorMode === 'new' && vendor.vendorType === VendorType.NON_VENDOR ? t('nonVendorFlow') : t('vendorFlow')}</Alert>
           </>
         )}
@@ -275,7 +294,11 @@ export default function NewRequestDialog({ open, onClose, onCreated }: { open: b
       <DialogActions sx={{ flexWrap: 'wrap', gap: 1 }}>
         <Button onClick={step === 0 ? close : () => setStep(step - 1)} disabled={create.isPending}>{step === 0 ? t('cancel') : t('back')}</Button>
         {step < 2 ? (
-          <Button variant="contained" disabled={step === 0 ? !vendorReady : validItems.length === 0} onClick={() => setStep(step + 1)}>{t('nextStep')}</Button>
+          <Button variant="contained" disabled={step === 0 ? !vendorReady : validItems.length === 0} onClick={() => {
+            if (step === 0 && paymentKey) { setShowPayErrors(true); setError(t(paymentKey, { ns: 'mpr' })); return; }
+            setError('');
+            setStep(step + 1);
+          }}>{t('nextStep')}</Button>
         ) : (
           <>
             <Button disabled={create.isPending} onClick={() => create.mutate(false)}>{t('saveDraft')}</Button>

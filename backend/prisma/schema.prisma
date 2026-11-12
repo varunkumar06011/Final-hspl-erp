@@ -1875,6 +1875,9 @@ model MaterialPurchaseRequest {
   legacyNumber          String?
   // Free-text voucher number (letters and digits) typed by the user, e.g. "V-2026/114".
   voucherNumber         String?
+  // How this request will be paid: MPRPaymentMethod enum (BANK_TRANSFER | CASH | CHEQUE). Mandatory on new
+  // requests; null on old ones. Bank details live on the vendor.
+  paymentMethod         String?
   date                  DateTime  @default(now())
   requiredBy            DateTime?
   department            String?
@@ -2167,4 +2170,82 @@ model CatalogItemSpec {
 
   @@unique([itemId, valueKey])
   @@map("catalog_item_specs")
+}
+
+// ═══════════════════════════════════════════════════════════
+// Proof numbers, file fingerprints and duplicate flags
+// ═══════════════════════════════════════════════════════════
+
+// A number the system issues when someone clicks "Get proof number". The supervisor writes it
+// on the paper (bill, challan, quotation copy, gate pass slip) before photographing it, so a
+// paper cannot be reused for another record. Numbers of one purchase chain share the chain's
+// request number: VGH-MPR014-P1, VGH-MPR014-P2... Site bills are requests too (VGH-MPR021-P1).
+model ProofNumber {
+  id                String    @id @default(uuid()) @db.Uuid
+  projectId         String    @db.Uuid
+  number            String // VGH-MPR014-P1
+  baseType          String // MPR | QUOTATION | PURCHASE_ORDER | SITE_BILL
+  baseId            String?   @db.Uuid // the request / quotation / PO the chain hangs on (null for a site-bill number not yet used)
+  baseNumber        String
+  seq               Int
+  issuedBy          String    @db.Uuid
+  issuedAt          DateTime  @default(now())
+  // Set when an upload carried this number.
+  usedAt            DateTime?
+  usedFingerprintId String?   @db.Uuid
+  usedOnType        String? // record the upload belongs to, when known (site bill: MATERIAL_PURCHASE_REQUEST)
+  usedOnId          String?   @db.Uuid
+  // Uploads that carried the number after it was already used (flagged, never blocked).
+  reuseCount        Int       @default(0)
+
+  @@unique([projectId, number])
+  @@index([projectId, baseType, baseId])
+  @@index([projectId, usedAt])
+  @@map("proof_numbers")
+}
+
+// SHA-256 of every file uploaded through the storage service.
+model FileFingerprint {
+  id          String   @id @default(uuid()) @db.Uuid
+  projectId   String   @db.Uuid
+  sha256      String
+  size        Int
+  fileName    String
+  filePath    String
+  mimeType    String?
+  bucket      String?
+  uploadedBy  String?  @db.Uuid
+  proofNumber String?
+  createdAt   DateTime @default(now())
+
+  @@index([projectId, sha256])
+  @@index([filePath])
+  @@map("file_fingerprints")
+}
+
+// A possible duplicate for an admin to reconcile. Never blocks the upload / record.
+model DuplicateFlag {
+  id                  String    @id @default(uuid()) @db.Uuid
+  projectId           String    @db.Uuid
+  kind                String // FILE | AMOUNT | PROOF_REUSE
+  status              String    @default("OPEN") // OPEN | GENUINE | DUPLICATE
+  reason              String
+  uploadedBy          String?   @db.Uuid
+  fingerprintId       String?   @db.Uuid
+  matchedFingerprintId String?  @db.Uuid
+  entityType          String?
+  entityId            String?   @db.Uuid
+  matchedEntityType   String?
+  matchedEntityId     String?   @db.Uuid
+  vendorName          String?
+  amount              Decimal?  @db.Decimal(15, 2)
+  proofNumber         String?
+  reviewedBy          String?   @db.Uuid
+  reviewedAt          DateTime?
+  reviewNote          String?
+  createdAt           DateTime  @default(now())
+
+  @@index([projectId, status, createdAt])
+  @@index([entityType, entityId])
+  @@map("duplicate_flags")
 }
