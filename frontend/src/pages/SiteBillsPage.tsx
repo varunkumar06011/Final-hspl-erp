@@ -25,6 +25,7 @@ import {
 import {
   Add as AddIcon,
   Delete as DeleteIcon,
+  Edit as EditIcon,
   Search as SearchIcon,
   ReceiptLong as BillIcon,
   Visibility as ViewIcon,
@@ -56,12 +57,13 @@ import { useCreateReview } from '../components/CreateReview';
 interface SiteBillRow {
   id: string;
   mprNumber: string;
+  status?: string;
   billDate: string;
   shopName: string | null;
   paymentMode: string | null;
   description: string | null;
   total: number;
-  items: { materialName: string; quantity: number; unit: string | null; rate: number; amount: number }[];
+  items: { materialName: string; itemId?: string | null; specification?: string | null; quantity: number; unit: string | null; rate: number; amount: number }[];
   paidBy: { id: string; name: string } | null;
   voucherNumber: string | null;
   fileName: string | null;
@@ -123,6 +125,7 @@ export default function SiteBillsPage() {
   const [addOpen, setAddOpen] = useState(false);
   const [poOpen, setPoOpen] = useState(false);
   const [deleteRow, setDeleteRow] = useState<SiteBillRow | null>(null);
+  const [editRow, setEditRow] = useState<SiteBillRow | null>(null);
 
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['/site-bills', filter, search, paymentMode],
@@ -213,7 +216,8 @@ export default function SiteBillsPage() {
       ) : (
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
           {rows.map((row) => {
-            const selectable = !row.po;
+            const awaitingApproval = row.status === 'SUBMITTED' || row.status === 'REJECTED';
+            const selectable = !row.po && !awaitingApproval;
             return (
               <Card
                 key={row.id}
@@ -226,6 +230,7 @@ export default function SiteBillsPage() {
                     <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
                       <Typography fontWeight={700}>{row.shopName || '—'}</Typography>
                       <Typography variant="body2" color="text.secondary">{row.mprNumber} · {formatDate(row.billDate)}</Typography>
+                      {awaitingApproval && <Chip size="small" color={row.status === 'REJECTED' ? 'error' : 'warning'} label={row.status === 'REJECTED' ? t('rejectedBill') : t('waitingApproval')} />}
                       {row.paymentMode && <Chip size="small" label={enumLabel(row.paymentMode)} variant="outlined" />}
                       {row.voucherNumber && <Chip size="small" label={t('voucherChip', { n: row.voucherNumber })} variant="outlined" sx={{ maxWidth: 220 }} />}
                       {row.po ? (
@@ -268,6 +273,9 @@ export default function SiteBillsPage() {
                         <Button key={f.id} size="small" startIcon={<ViewIcon />} onClick={() => openPath(`/attachments/${f.id}/file`, f.fileName)}>{t('billFileN', { n: i + 2 })}</Button>
                       ))}
                       {!row.po && (
+                        <IconButton size="small" onClick={() => setEditRow(row)} aria-label={t('edit')}><EditIcon fontSize="small" /></IconButton>
+                      )}
+                      {!row.po && (
                         <IconButton size="small" color="error" onClick={() => setDeleteRow(row)} aria-label={t('delete')}><DeleteIcon fontSize="small" /></IconButton>
                       )}
                     </Box>
@@ -293,7 +301,7 @@ export default function SiteBillsPage() {
         </Paper>
       )}
 
-      <AddBillDialog open={addOpen} onClose={() => setAddOpen(false)} />
+      <AddBillDialog open={addOpen || !!editRow} key={editRow?.id ?? 'new'} bill={editRow} onClose={() => { setAddOpen(false); setEditRow(null); }} />
       <GeneratePoDialog
         open={poOpen}
         bills={selectedRows}
@@ -331,20 +339,24 @@ interface ItemDraft {
 }
 const emptyItem = (): ItemDraft => ({ materialName: '', quantity: '1', unit: 'nos', rate: '' });
 
-function AddBillDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+function AddBillDialog({ open, onClose, bill }: { open: boolean; onClose: () => void; bill?: SiteBillRow | null }) {
   const { t } = useTranslation('sitebills');
   const queryClient = useQueryClient();
   const toast = useToast();
   const catalog = useMaterialCatalog(open, CatalogItemKind.MATERIAL);
   const catalogItemOf = (it: ItemDraft) => (it.itemId ? catalog.find((m) => m.itemId === it.itemId) ?? null : findCatalogMaterial(catalog, it.materialName));
-  const [billDate, setBillDate] = useState(todayIso());
-  const [shopName, setShopName] = useState('');
-  const [mode, setMode] = useState<string>(SiteBillPaymentMode.CASH);
-  const [description, setDescription] = useState('');
-  const [items, setItems] = useState<ItemDraft[]>([emptyItem()]);
+  const [billDate, setBillDate] = useState(bill ? bill.billDate.slice(0, 10) : todayIso());
+  const [shopName, setShopName] = useState(bill?.shopName ?? '');
+  const [mode, setMode] = useState<string>(bill?.paymentMode ?? SiteBillPaymentMode.CASH);
+  const [description, setDescription] = useState(bill?.description ?? '');
+  const [items, setItems] = useState<ItemDraft[]>(
+    bill
+      ? bill.items.map((i) => ({ materialName: i.materialName, itemId: i.itemId ?? null, specification: i.specification ?? '', quantity: String(i.quantity), unit: i.unit ?? 'nos', rate: String(i.rate) }))
+      : [emptyItem()],
+  );
   const [files, setFiles] = useState<File[]>([]);
-  const [voucherNumber, setVoucherNumber] = useState('');
-  const [budgetHeadId, setBudgetHeadId] = useState('');
+  const [voucherNumber, setVoucherNumber] = useState(bill?.voucherNumber ?? '');
+  const [budgetHeadId, setBudgetHeadId] = useState(bill?.budgetHead?.id ?? '');
   const budgetHeads = useBudgetHeads(open);
   const [error, setError] = useState('');
 
@@ -394,12 +406,13 @@ function AddBillDialog({ open, onClose }: { open: boolean; onClose: () => void }
       if (budgetHeadId) form.append('budgetHeadId', budgetHeadId);
       files.forEach((f) => form.append('files', f));
       if (voucherNumber.trim()) form.append('voucherNumber', voucherNumber.trim());
-      await api.post('/site-bills', form, { headers: { 'Content-Type': 'multipart/form-data' } });
+      if (bill) await api.put(`/site-bills/${bill.id}`, form, { headers: { 'Content-Type': 'multipart/form-data' } });
+      else await api.post('/site-bills', form, { headers: { 'Content-Type': 'multipart/form-data' } });
       return addAnother;
     },
     onSuccess: (addAnother) => {
       queryClient.invalidateQueries({ queryKey: ['/site-bills'] });
-      toast.success(t('billSaved'));
+      toast.success(bill ? t('billUpdated') : t('billSaved'));
       if (addAnother) {
         // Same day and shop are common for the next bill: keep the date, clear the rest.
         setShopName('');
@@ -418,9 +431,10 @@ function AddBillDialog({ open, onClose }: { open: boolean; onClose: () => void }
 
   return (
     <ResponsiveDialog open={open} onClose={close} maxWidth="md" fullWidth>
-      <DialogTitle>{t('addBill')}</DialogTitle>
+      <DialogTitle>{bill ? t('editBill', { number: bill.mprNumber }) : t('addBill')}</DialogTitle>
       <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '12px !important' }}>
         {error && <Alert severity="error" onClose={() => setError('')}>{error}</Alert>}
+        {bill && <Alert severity="warning">{t('editReapproval')}</Alert>}
         <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '180px 1fr' }, gap: 2 }}>
           <TextField type="date" size="small" label={t('billDate')} value={billDate} onChange={(e) => setBillDate(e.target.value)} InputLabelProps={{ shrink: true }} required />
           <TextField size="small" label={t('shopName')} value={shopName} onChange={(e) => setShopName(e.target.value)} required />
@@ -506,9 +520,9 @@ function AddBillDialog({ open, onClose }: { open: boolean; onClose: () => void }
       </DialogContent>
       <DialogActions sx={{ flexWrap: 'wrap', gap: 1 }}>
         <Button onClick={close}>{t('cancel')}</Button>
-        <Button disabled={!canSave || save.isPending} onClick={() => review(() => save.mutate(true))}>{t('saveAddAnother')}</Button>
+        {!bill && <Button disabled={!canSave || save.isPending} onClick={() => review(() => save.mutate(true))}>{t('saveAddAnother')}</Button>}
         <Button variant="contained" disabled={!canSave || save.isPending} onClick={() => review(() => save.mutate(false))}>
-          {save.isPending ? <CircularProgress size={20} /> : t('saveBill')}
+          {save.isPending ? <CircularProgress size={20} /> : bill ? t('saveChanges') : t('saveBill')}
         </Button>
       </DialogActions>
     </ResponsiveDialog>

@@ -750,6 +750,9 @@ export const PERMISSION_MATRIX: Record<UserRole, Permission[]> = {
     Permission.VIEW_VENDORS,
     Permission.CREATE_GATE_PASS,
     Permission.VIEW_GATE_PASSES,
+    // Material/service requests and site bills: raise and edit (an edit goes back to the heads)
+    Permission.CREATE_MPR,
+    Permission.VIEW_MPR,
   ],
   [UserRole.PROJECT_HEAD]: [
     Permission.CREATE_VENDOR,

@@ -1915,6 +1915,12 @@ export const createSiteBillSchema = z.object({
   }),
 });
 
+// Edit a site bill (same fields as a new one; extra files go in `files`). Sends it back for approval.
+export const updateSiteBillSchema = z.object({
+  params: z.object({ id: uuid }),
+  body: createSiteBillSchema.shape.body,
+});
+
 // Set (or clear, with null) the budget head of one site bill that is not in a PO yet.
 export const setSiteBillBudgetHeadSchema = z.object({
   params: z.object({ id: uuid }),

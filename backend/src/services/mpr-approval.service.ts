@@ -13,6 +13,9 @@ const OPEN_WORKFLOW_STATUSES = [ApprovalStatus.CREATED, ApprovalStatus.VERIFICAT
  * vendor + rates), ready to be finalized. Both skip work that already exists.
  */
 export async function afterMprApproved(mprId: string, projectId: string, userId: string): Promise<void> {
+  // A site bill is not a purchase chain of its own: it is bundled into a PO later.
+  const bill = await prisma.materialPurchaseRequest.findUnique({ where: { id: mprId }, select: { isSiteBill: true } });
+  if (bill?.isSiteBill) return;
   await createNonVendorPoFromMpr(mprId, projectId, userId)
     .catch((err) => console.error('[MPR] Non-vendor PO auto-create failed (non-fatal):', err));
   await createQuotationFromMpr(mprId, projectId, userId)

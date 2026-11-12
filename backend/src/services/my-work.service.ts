@@ -185,7 +185,8 @@ export async function getMyWork(projectId: string, viewer: Viewer): Promise<MyWo
       where: {
         projectId,
         deletedAt: null,
-        isSiteBill: false,
+        // Site bills only show up here when an edit sent them back for approval.
+        AND: [{ OR: [{ isSiteBill: false }, { isSiteBill: true, status: MPRStatus.SUBMITTED }] }],
         OR: [
           { status: { in: [MPRStatus.SUBMITTED, MPRStatus.APPROVED] } },
           { createdBy: viewer.id, status: { in: [MPRStatus.DRAFT, MPRStatus.REJECTED] } },

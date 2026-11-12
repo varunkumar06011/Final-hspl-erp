@@ -62,5 +62,12 @@
   "poHeadMixed": "These bills have different or no budget heads, so the PO is created without one. Set it later on the PO.",
   "generatePoConfirm": "Generate PO · {{total}}",
   "item": "Item",
-  "specification": "Specification"
+  "specification": "Specification",
+  "edit": "Edit",
+  "editBill": "Edit bill {{number}}",
+  "billUpdated": "Bill updated and sent for approval",
+  "editReapproval": "Saving sends this bill back to the Project Head / Head of Construction for approval. It cannot go into a PO until they approve it.",
+  "saveChanges": "Save changes",
+  "waitingApproval": "Waiting for approval",
+  "rejectedBill": "Rejected"
 }

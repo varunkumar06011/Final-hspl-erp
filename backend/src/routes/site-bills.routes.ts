@@ -1,6 +1,6 @@
 import { Router, Response, NextFunction } from 'express';
 import multer from 'multer';
-import { Permission, createSiteBillSchema, listSiteBillsSchema, generateSiteBillPoSchema, setSiteBillBudgetHeadSchema } from '@hospital-erp/shared';
+import { Permission, createSiteBillSchema, updateSiteBillSchema, listSiteBillsSchema, generateSiteBillPoSchema, setSiteBillBudgetHeadSchema } from '@hospital-erp/shared';
 import { prisma } from '../config/prisma';
 import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middleware/auth';
 import { rbacMiddleware } from '../middleware/rbac';
@@ -11,6 +11,7 @@ import {
   SiteBillError,
   cancelSiteBill,
   createSiteBill,
+  updateSiteBill,
   generateSiteBillPo,
   listSiteBills,
   priceSiteBill,
@@ -124,6 +125,54 @@ router.post(
         mprNumber,
       });
       res.status(201).json(bill);
+    } catch (error) {
+      sendError(res, next, error);
+    }
+  },
+);
+
+// PUT /:id — edit a bill that is not in a PO; it goes back to the heads for approval
+router.put(
+  '/:id',
+  rbacMiddleware(Permission.CREATE_MPR),
+  upload.fields([{ name: 'files', maxCount: MAX_BILL_FILES }]),
+  validateMiddleware(updateSiteBillSchema),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      const sent = req.files as Record<string, Express.Multer.File[]> | undefined;
+      const uploads = sent?.files ?? [];
+      if (uploads.some((f) => !allowedBillFileTypes.includes(f.mimetype))) {
+        res.status(400).json({ error: 'The bill must be a PDF or an image' });
+        return;
+      }
+      priceSiteBill(req.body.items);
+      const newFiles: { filePath: string; fileName: string; mimeType: string }[] = [];
+      for (const [idx, f] of uploads.entries()) {
+        const subPath = f.mimetype.startsWith('image/') ? 'images' : 'documents';
+        const uploaded = await getStorageService().upload(
+          f.buffer,
+          `site-bills/${subPath}/${req.params.id}-edit${Date.now()}-${idx + 1}-${f.originalname}`,
+          f.mimetype,
+          'documents',
+        );
+        newFiles.push({ filePath: uploaded.filePath, fileName: f.originalname, mimeType: f.mimetype });
+      }
+      const bill = await updateSiteBill({
+        projectId,
+        userId: req.user!.id,
+        billId: req.params.id,
+        billDate: req.body.billDate,
+        shopName: req.body.shopName,
+        paymentMode: req.body.paymentMode,
+        description: req.body.description,
+        voucherNumber: req.body.voucherNumber,
+        paidById: req.body.paidById ?? null,
+        budgetHeadId: req.body.budgetHeadId ?? null,
+        items: req.body.items,
+        newFiles,
+      });
+      res.json(bill);
     } catch (error) {
       sendError(res, next, error);
     }

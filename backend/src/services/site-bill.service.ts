@@ -15,7 +15,7 @@ import { resolveCatalogLines } from './catalog.service';
 import { logAudit } from './audit.service';
 import { notifyApprovers } from './push.service';
 import { generateProjectSequenceNumber } from './sequence.service';
-import { HEAD_THEN_ADMIN_POLICY, headThenAdminSteps } from './approval.service';
+import { HEAD_THEN_ADMIN_POLICY, headThenAdminSteps, MPR_APPROVAL_POLICY, mprApprovalSteps } from './approval.service';
 import { generatePONumber, getActiveAdminRoles } from './non-vendor-po.service';
 import { ensureVendorLedger } from '../routes/ledger.routes';
 
@@ -262,6 +262,7 @@ export async function listSiteBills(projectId: string, f: ListSiteBillsFilter) {
       return {
         id: b.id,
         mprNumber: b.mprNumber,
+        status: b.status,
         billDate: b.billDate ?? b.date,
         shopName: b.billShopName,
         paymentMode: b.billPaymentMode,
@@ -328,6 +329,129 @@ export async function setSiteBillBudgetHead(projectId: string, billId: string, u
   });
 }
 
+export interface UpdateSiteBillInput {
+  projectId: string;
+  userId: string;
+  billId: string;
+  billDate: Date;
+  shopName: string;
+  paymentMode: string;
+  description?: string | null;
+  voucherNumber?: string | null;
+  paidById?: string | null;
+  budgetHeadId?: string | null;
+  items: SiteBillItemInput[];
+  /** Extra photos / PDFs added while editing (the existing files stay). */
+  newFiles?: { filePath: string; fileName: string; mimeType: string }[];
+}
+
+/**
+ * Edit a bill that is not in a live PO. Whatever changed, the bill goes back to
+ * the Project Head / Head of Construction for approval (a fresh workflow, like an
+ * edited material request) and cannot be put into a PO until they approve it.
+ */
+export async function updateSiteBill(input: UpdateSiteBillInput) {
+  const { projectId, userId } = input;
+  const bill = await prisma.materialPurchaseRequest.findFirst({
+    where: { id: input.billId, projectId, deletedAt: null, isSiteBill: true, status: { not: MPRStatus.CANCELLED } },
+    include: { items: true },
+  });
+  if (!bill) throw new SiteBillError('Site bill not found', 404);
+  if (bill.sitePoId && (await livePoIds([bill.sitePoId])).size > 0) {
+    throw new SiteBillError('This bill is part of a purchase order. Reject or delete that PO first.');
+  }
+  const { lines: priced, total } = priceSiteBill(input.items);
+  const lines = await resolveCatalogLines(priced, { kind: CatalogItemKind.MATERIAL, userId });
+  if (input.budgetHeadId) await assertBudgetHead(projectId, input.budgetHeadId);
+  if (input.paidById) {
+    const payer = await prisma.user.findFirst({ where: { id: input.paidById, isActive: true }, select: { id: true } });
+    if (!payer) throw new SiteBillError('The person who paid was not found');
+  }
+
+  const updated = await prisma.$transaction(async (tx) => {
+    await tx.approvalWorkflow.deleteMany({ where: { entityType: 'MATERIAL_PURCHASE_REQUEST', entityId: bill.id } });
+    const workflow = await tx.approvalWorkflow.create({
+      data: {
+        entityType: 'MATERIAL_PURCHASE_REQUEST',
+        entityId: bill.id,
+        projectId,
+        status: 'VERIFICATION',
+        currentStep: 0,
+        minApprovers: 1,
+        approvalPolicy: MPR_APPROVAL_POLICY,
+        steps: { create: mprApprovalSteps() },
+      },
+    });
+    await tx.materialPurchaseRequestItem.deleteMany({ where: { mprId: bill.id } });
+    return tx.materialPurchaseRequest.update({
+      where: { id: bill.id },
+      data: {
+        status: MPRStatus.SUBMITTED,
+        approvalWorkflowId: workflow.id,
+        sitePoId: null,
+        billDate: input.billDate,
+        billShopName: input.shopName,
+        billPaymentMode: input.paymentMode,
+        description: input.description || null,
+        voucherNumber: input.voucherNumber?.trim() || null,
+        ...(input.paidById ? { requestRaisedById: input.paidById } : {}),
+        billBudgetHeadId: input.budgetHeadId || null,
+        estimatedSubtotal: total,
+        estimatedGstAmount: 0,
+        estimatedTotal: total,
+        items: {
+          create: lines.map((l) => ({
+            materialName: l.materialName,
+            materialCode: l.materialCode,
+            itemId: l.itemId,
+            specification: l.specification,
+            quantity: l.quantity,
+            unit: l.unit || null,
+            estimatedRate: l.rate,
+            estimatedAmount: l.amount,
+          })),
+        },
+      },
+    });
+  });
+
+  if (input.newFiles?.length) {
+    await prisma.attachment.createMany({
+      data: input.newFiles.map((f) => ({
+        projectId,
+        entityType: BILL_ATTACHMENT_TYPE,
+        entityId: bill.id,
+        fileName: f.fileName,
+        filePath: f.filePath,
+        mimeType: f.mimeType,
+        fileType: f.mimeType.startsWith('image/') ? 'IMAGE' : 'DOCUMENT',
+        uploadedBy: userId,
+      })),
+    });
+  }
+
+  await logAudit({
+    userId,
+    action: AuditAction.UPDATE_MPR,
+    entityType: 'material_purchase_requests',
+    entityId: bill.id,
+    projectId,
+    oldValue: { total: Number(bill.estimatedTotal), status: bill.status, items: bill.items.length },
+    newValue: { mprNumber: bill.mprNumber, siteBill: true, total, shopName: input.shopName, resubmittedForApproval: true },
+  });
+
+  notifyApprovers(projectId, [UserRole.PROJECT_HEAD, UserRole.HEAD_OF_CONSTRUCTION], {
+    approvalId: updated.approvalWorkflowId!,
+    entityType: 'MATERIAL_PURCHASE_REQUEST',
+    entityId: bill.id,
+    title: 'Site Bill Edited — Approval Required',
+    body: `Site bill ${bill.mprNumber} — ₹${total.toLocaleString('en-IN')}`,
+    url: `/site-bills?search=${encodeURIComponent(bill.mprNumber)}`,
+  }).catch((err) => console.error('[Push] Site bill notification error:', err));
+
+  return updated;
+}
+
 /** Cancel a bill that is not (or no longer) in a live PO. */
 export async function cancelSiteBill(projectId: string, billId: string, userId: string) {
   const bill = await prisma.materialPurchaseRequest.findFirst({
@@ -376,6 +500,10 @@ export async function generateSiteBillPo(input: GenerateSiteBillPoInput) {
     orderBy: [{ billDate: 'asc' }, { createdAt: 'asc' }],
   });
   if (bills.length !== billIds.length) throw new SiteBillError('Some of the selected bills were not found. Refresh and try again.');
+  const unapproved = bills.filter((b) => b.status === MPRStatus.SUBMITTED || b.status === MPRStatus.REJECTED || b.status === MPRStatus.DRAFT);
+  if (unapproved.length > 0) {
+    throw new SiteBillError(`Waiting for approval (an edit sends a bill back to the heads): ${unapproved.map((b) => b.mprNumber).join(', ')}`);
+  }
 
   const linkedPoIds = Array.from(new Set(bills.map((b) => b.sitePoId).filter((id): id is string => !!id)));
   const alive = await livePoIds(linkedPoIds);
