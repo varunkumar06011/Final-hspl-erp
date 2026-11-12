@@ -85,6 +85,7 @@
     "category": "వర్గం",
     "address": "చిరునామా",
     "requestType": "అభ్యర్థన రకం",
+    "paymentMethod": "చెల్లింపు రకం",
     "vendor": "వెండర్",
     "requiredBy": "అవసరమైన తేదీ",
     "priority": "ప్రాధాన్యత",

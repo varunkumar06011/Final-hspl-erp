@@ -52,6 +52,7 @@ import api, { extractErrorMessage } from '../config/api';
 import { patchRow, pendingProps, removeRow, useOptimistic } from '../utils/optimistic';
 import ResponsiveTable from '../components/ResponsiveTable';
 import PaymentSheetsTab from '../components/PaymentSheetsTab';
+import AdvancePaymentsPanel from '../components/AdvancePaymentsPanel';
 import { useDeepLinkRow } from '../hooks/useDeepLinkRow';
 import { useActiveRecordSetter } from '../hooks/useActiveRecord';
 import { useUrlFilters } from '../hooks/useUrlFilters';
@@ -133,8 +134,11 @@ interface PendingPO {
   totalDeductions: number;
   netPayable: number;
   advanceAmount: number | null;
-  vendor: { id: string; name: string; vendorCode: string };
+  vendor: { id: string; name: string; vendorCode: string; bankName?: string | null; bankAccountNumber?: string | null; ifscCode?: string | null };
   budgetHead: { id: string; particulars: string } | null;
+  date?: string;
+  /** Payment type chosen on the request: BANK_TRANSFER | CASH | CHEQUE. */
+  requestedPaymentMethod?: string | null;
   advancePaidToDate: number;
   outstanding: number;
   activePaymentRequest: {
@@ -633,81 +637,24 @@ export default function PaymentsPage() {
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
               {tr('thesePurchaseOrdersWere')}
             </Typography>
-            {pendingPOsData.length === 0 ? (
-              <Typography color="text.secondary" sx={{ py: 3, textAlign: 'center' }}>{tr('noPOs')}</Typography>
-            ) : (
-              <ResponsiveTable>
-              <TableContainer sx={{ overflowX: 'auto' }}>
-                <Table size="small">
-                  <TableHead>
-                    <TableRow>
-                      <TableCell sx={{ fontWeight: 600 }}>{tr('poNo')}</TableCell>
-                      <TableCell sx={{ fontWeight: 600 }}>{tr('vendor')}</TableCell>
-                      <TableCell sx={{ fontWeight: 600 }}>{tr('paymentType')}</TableCell>
-                      <TableCell sx={{ fontWeight: 600 }}>{tr('grandTotal')}</TableCell>
-                      <TableCell sx={{ fontWeight: 600 }}>{tr('advancePaid')}</TableCell>
-                      <TableCell sx={{ fontWeight: 600 }}>{tr('outstanding')}</TableCell>
-                      <TableCell sx={{ fontWeight: 600 }}>{tr('actions')}</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {pendingPOsData.map((po) => (
-                      <TableRow key={po.id} hover>
-                        <TableCell data-label={tr('poNo')}>{po.poNumber}</TableCell>
-                        <TableCell data-label={tr('vendor')}>{po.vendor?.vendorCode} - {po.vendor?.name}</TableCell>
-                        <TableCell data-label={tr('paymentType')}>
-                          <Chip
-                            size="small"
-                            label={po.paymentType === POPaymentType.ADVANCE ? tr('advance') : tr('fullPayment')}
-                            color={po.paymentType === POPaymentType.ADVANCE ? 'warning' : 'success'}
-                            variant="outlined"
-                          />
-                        </TableCell>
-                        <TableCell data-label={tr('grandTotal')}>{formatCurrency(po.grandTotal)}</TableCell>
-                        <TableCell data-label={tr('advancePaid')}>{po.advancePaidToDate > 0 ? formatCurrency(po.advancePaidToDate) : '—'}</TableCell>
-                        <TableCell data-label={tr('outstanding')}><strong>{formatCurrency(po.outstanding)}</strong></TableCell>
-                        <TableCell data-label={tr('actions')}>
-                          {po.activePaymentRequest ? (
-                            <Chip
-                              size="small"
-                              color="warning"
-                              label={tr('reqStatus', { status: enumLabel(po.activePaymentRequest.status) })}
-                            />
-                          ) : po.outstanding <= 0 ? (
-                            <Chip
-                              size="small"
-                              color="success"
-                              label={tr('paid')}
-                            />
-                          ) : (
-                            <Button
-                              size="small"
-                              variant="outlined"
-                              startIcon={<PaymentsIcon />}
-                              onClick={() => {
-                                setAdvancePayOpen(po);
-                                setAdvancePayForm({
-                                  // Prefill with the agreed advance amount captured at PO creation (if any),
-                                  // otherwise fall back to the full outstanding balance. Still editable up to outstanding.
-                                  amount: po.advanceAmount !== null && po.advanceAmount > 0 ? Math.min(po.advanceAmount, po.outstanding) : po.outstanding,
-                                  requestNumber: `ADV-${po.poNumber}`,
-                                  paymentMode: PaymentMode.BANK_TRANSFER,
-                                  budgetHeadId: po.budgetHead?.id ?? '',
-                                });
-                                setAdvanceFile(null);
-                              }}
-                            >
-                              {tr('recordPayment')}
-                            </Button>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-              </ResponsiveTable>
-            )}
+            <AdvancePaymentsPanel
+              pos={pendingPOsData}
+              onRecord={(po) => {
+                setAdvancePayOpen(po);
+                setAdvancePayForm({
+                  // Prefill with the agreed advance amount captured at PO creation (if any),
+                  // otherwise fall back to the full outstanding balance. Still editable up to outstanding.
+                  amount: po.advanceAmount !== null && po.advanceAmount > 0 ? Math.min(po.advanceAmount, po.outstanding) : po.outstanding,
+                  requestNumber: `ADV-${po.poNumber}`,
+                  // The payment type chosen on the request (bank / cash / cheque) is the starting point.
+                  paymentMode: po.requestedPaymentMethod && Object.values(PaymentMode).includes(po.requestedPaymentMethod as PaymentMode)
+                    ? po.requestedPaymentMethod
+                    : PaymentMode.BANK_TRANSFER,
+                  budgetHeadId: po.budgetHead?.id ?? '',
+                });
+                setAdvanceFile(null);
+              }}
+            />
           </CardContent>
         </Card>
       )}

@@ -249,8 +249,11 @@ router.get(
           paymentType: { in: [POPaymentType.ADVANCE, POPaymentType.FULL_PAYMENT] },
         },
         include: {
-          vendor: { select: { id: true, name: true, vendorCode: true } },
+          vendor: { select: { id: true, name: true, vendorCode: true, bankName: true, bankAccountNumber: true, ifscCode: true } },
           budgetHead: { select: { id: true, particulars: true } },
+          // How the request said this will be paid (bank transfer / cash / cheque).
+          mpr: { select: { paymentMethod: true } },
+          quotation: { select: { mpr: { select: { paymentMethod: true } } } },
           advancePaymentRequests: {
             where: { deletedAt: null, status: { in: [PaymentStatus.PENDING, PaymentStatus.APPROVED, PaymentStatus.PAID] } },
             select: { id: true, status: true, amount: true, requestNumber: true },
@@ -277,6 +280,8 @@ router.get(
           advanceAmount: po.advanceAmount !== null ? Number(po.advanceAmount) : null,
           vendor: po.vendor,
           budgetHead: po.budgetHead,
+          date: po.date,
+          requestedPaymentMethod: po.mpr?.paymentMethod ?? po.quotation?.mpr?.paymentMethod ?? null,
           advancePaidToDate: paidAdvances,
           outstanding: Math.max(0, payable - paidAdvances),
           activePaymentRequest: activeRequest

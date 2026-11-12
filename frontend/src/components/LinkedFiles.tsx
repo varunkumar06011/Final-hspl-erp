@@ -31,6 +31,7 @@ import { useFileViewer } from './FileViewerDialog';
 import CameraCapture from './CameraCapture';
 import ResponsiveDialog from './ResponsiveDialog';
 import UploadSourceButton from './UploadSourceButton';
+import { ProofNumberField, proofHeaders, type ProofEntityType } from './ProofNumber';
 
 export type ChainType = 'MPR' | 'QUOTATION' | 'PO' | 'GOODS_RECEIPT' | 'INVOICE' | 'PAYMENT';
 
@@ -43,6 +44,9 @@ const ENTITY_TYPE: Record<ChainType, string> = {
   INVOICE: 'VENDOR_INVOICE',
   PAYMENT: 'PAYMENT_REQUEST',
 };
+
+/** Record types a proof number can be issued for. */
+const PROOF_TYPES = new Set(['MATERIAL_PURCHASE_REQUEST', 'QUOTATION', 'PURCHASE_ORDER', 'GOODS_RECEIPT', 'VENDOR_INVOICE']);
 
 interface LinkedFile {
   key: string;
@@ -82,6 +86,7 @@ export default function LinkedFiles({ recordType, recordId, readOnly, size = 'sm
   const queryClient = useQueryClient();
   const { openPath, viewer } = useFileViewer();
   const [error, setError] = useState('');
+  const [proofNumber, setProofNumber] = useState('');
   const queryKey = ['attachments', 'related', recordType, recordId];
 
   const { data, isLoading } = useQuery({
@@ -106,10 +111,11 @@ export default function LinkedFiles({ recordType, recordId, readOnly, size = 'sm
       formData.append('file', file);
       formData.append('entityType', ENTITY_TYPE[recordType]);
       formData.append('entityId', recordId!);
-      return (await api.post('/attachments/upload', formData, { headers: { 'Content-Type': 'multipart/form-data' } })).data;
+      return (await api.post('/attachments/upload', formData, { headers: { 'Content-Type': 'multipart/form-data', ...proofHeaders(proofNumber) } })).data;
     },
     onSuccess: () => {
       setError('');
+      setProofNumber('');
       refresh();
     },
     onError: (err: unknown) => setError(extractErrorMessage(err)),
@@ -138,6 +144,11 @@ export default function LinkedFiles({ recordType, recordId, readOnly, size = 'sm
         </Alert>
       )}
 
+      {!readOnly && recordId && PROOF_TYPES.has(ENTITY_TYPE[recordType]) && (
+        <Box sx={{ mb: 1 }}>
+          <ProofNumberField entity={{ entityType: ENTITY_TYPE[recordType] as ProofEntityType, entityId: recordId }} value={proofNumber} onChange={setProofNumber} />
+        </Box>
+      )}
       {!readOnly && (
         <Box sx={{ display: 'flex', gap: 1, mb: 1, flexWrap: 'wrap' }}>
           <UploadSourceButton

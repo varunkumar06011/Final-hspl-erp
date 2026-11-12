@@ -85,6 +85,7 @@
     "category": "Category",
     "address": "Address",
     "requestType": "Request type",
+    "paymentMethod": "Payment type",
     "vendor": "Vendor",
     "requiredBy": "Required by",
     "priority": "Priority",

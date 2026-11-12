@@ -7,6 +7,7 @@ import { Box, CircularProgress } from '@mui/material';
 import { Permission, UserRole } from '@hospital-erp/shared';
 import { ColorModeProvider } from './config/ColorModeContext';
 import { ToastProvider } from './components/ToastProvider';
+import DuplicateWarningListener from './components/DuplicateWarningListener';
 import { CreateReviewProvider } from './components/CreateReview';
 import AppShell from './components/AppShell';
 import ProtectedRoute, { NO_ACCESS_PATH } from './components/ProtectedRoute';
@@ -108,6 +109,7 @@ const DocumentsPage = lazyWithRetry(() => import('./pages/DocumentsPage'));
 const LabourPage = lazyWithRetry(() => import('./pages/LabourPage'));
 const SettingsPage = lazyWithRetry(() => import('./pages/SettingsPage'));
 const UsersPage = lazyWithRetry(() => import('./pages/UsersPage'));
+const DuplicatesPage = lazyWithRetry(() => import('./pages/DuplicatesPage'));
 const ProjectsPage = lazyWithRetry(() => import('./pages/ProjectsPage'));
 const InwardFundsPage = lazyWithRetry(() => import('./pages/InwardFundsPage'));
 const ExpenditurePage = lazyWithRetry(() => import('./pages/ExpenditurePage'));
@@ -179,6 +181,7 @@ const ROUTES = [
   { path: '/chat', element: <ChatPage /> },
   { path: '/activity-log', element: <ActivityLogPage /> },
   { path: '/users', element: <UsersPage /> },
+  { path: '/duplicates', element: <DuplicatesPage /> },
   { path: '/projects', element: <ProjectsPage /> },
   // Admin 1 / Admin 2 only (the page and its API check it)
   { path: '/module-access', element: <ModuleAccessPage /> },
@@ -210,6 +213,7 @@ export default function App() {
   return (
     <ColorModeProvider>
       <ToastProvider>
+        <DuplicateWarningListener />
         <CreateReviewProvider>
         <QueryClientProvider client={queryClient}>
           <Router>

@@ -30,10 +30,11 @@ export const FLOWS: FlowDef[] = [
     module: 'mpr',
     documentHint: 'a handwritten or printed list of materials, an estimate or a quotation for goods',
     guide: `Material Request (create_mpr, requestType MATERIAL).
-Must have: vendor, and items with quantity.
+Must have: vendor, items with quantity, and the payment type.
 1. Vendor: ask "Which vendor?" unless known. Look it up with list_records vendors; one match -> use it; several -> ask_user with the matches as options; none -> say it will be added as a new vendor and use newVendor.
 2. Items: ask "Which materials and how many?" (e.g. "Cement 50 bags, Sand 2 ton"). Rates are optional; never ask for them separately.
-3. Propose. Do NOT ask for required-by date, priority, department, GST or addresses; fill them only if the user or the photo already gave them.`,
+3. Payment type: ask_user "How will the vendor be paid?" with options Bank transfer / Cash / Cheque (paymentMethod BANK_TRANSFER / CASH / CHEQUE). For a bank transfer, get_record the vendor: when it has no bank account on file, ask for the account number and IFSC code (accountDetails) before proposing.
+4. Propose. Do NOT ask for required-by date, priority, department, GST or addresses; fill them only if the user or the photo already gave them.`,
   },
   {
     id: 'service_request',
@@ -42,10 +43,11 @@ Must have: vendor, and items with quantity.
     module: 'mpr',
     documentHint: 'a service / work estimate, AMC quote, labour or repair list',
     guide: `Service Request (create_mpr, requestType SERVICE).
-Must have: vendor, and work lines with quantity (unit hrs / day / visit / job / lumpsum).
+Must have: vendor, work lines with quantity (unit hrs / day / visit / job / lumpsum), and the payment type.
 1. Vendor: same as material requests.
 2. Work: ask "What work and how much?" (e.g. "AC servicing 4 visits at 1500"). Pick serviceCategory yourself from the words; never ask for it.
-3. Propose. Ask nothing else.`,
+3. Payment type: same as material requests (Bank transfer / Cash / Cheque; bank details only for a bank transfer when the vendor has none on file).
+4. Propose. Ask nothing else.`,
   },
   {
     id: 'quotation',

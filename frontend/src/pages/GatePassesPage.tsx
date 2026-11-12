@@ -41,6 +41,7 @@ import ResponsiveTable from '../components/ResponsiveTable';
 import RefreshButton from '../components/RefreshButton';
 import CommentsButton from '../components/CommentsButton';
 import FilePicker from '../components/FilePicker';
+import { ProofNumberField, proofHeaders } from '../components/ProofNumber';
 import { lineLabel } from '@hospital-erp/shared';
 import { useCreateReview } from '../components/CreateReview';
 
@@ -123,6 +124,7 @@ export default function GatePassesPage() {
   const [gatePassType, setGatePassType] = useState('NON_RETURNABLE');
   const [remarks, setRemarks] = useState('');
   const [photoProof, setPhotoProof] = useState<File | null>(null);
+  const [proofNumber, setProofNumber] = useState('');
   const [createdGatePass, setCreatedGatePass] = useState<{ id: string; passNumber: string } | null>(
     null,
   );
@@ -175,7 +177,7 @@ export default function GatePassesPage() {
       if (remarks) payload.append('remarks', remarks);
       if (photoProof) payload.append('photoProof', photoProof);
       const response = await api.post('/gate-passes', payload, {
-        headers: { 'Content-Type': 'multipart/form-data' },
+        headers: { 'Content-Type': 'multipart/form-data', ...proofHeaders(photoProof ? proofNumber : '') },
       });
       return response.data;
     },
@@ -697,6 +699,9 @@ export default function GatePassesPage() {
                 minRows={1}
               />
             </Box>
+            {gatePassCategory === 'MATERIAL' && selectedPoId && (
+              <ProofNumberField entity={{ entityType: 'PURCHASE_ORDER', entityId: selectedPoId }} value={proofNumber} onChange={setProofNumber} />
+            )}
             <FilePicker
               file={photoProof}
               onChange={setPhotoProof}

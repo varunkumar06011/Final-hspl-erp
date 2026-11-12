@@ -30,6 +30,9 @@ export const DATA_EXCLUDED: Record<string, string> = {
   ChatMember: 'private conversations',
   ChatMessage: 'private conversations',
   ChatAttachment: 'private conversations',
+  ProofNumber: 'bookkeeping for papers',
+  FileFingerprint: 'file hashes, technical',
+  DuplicateFlag: 'admin-only review list with its own page',
 };
 
 /** Shared (not per-project) tables everyone may read. */

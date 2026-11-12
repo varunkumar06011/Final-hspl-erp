@@ -1,3 +1,4 @@
+import { checkInvoiceDuplicate } from '../services/duplicate.service';
 import { Router, Response, NextFunction } from 'express';
 import { isUmbrellaContract, Permission, AuditAction, InvoiceVerificationStatus, PaymentStatus, StockStatus, UserRole, GoodsReceiptStatus, getRequiredApproverCount, isAdminRole } from '@hospital-erp/shared';
 import { createInvoiceSchema, listInvoicesSchema, approvalActionSchema, updateInvoiceSchema } from '@hospital-erp/shared';
@@ -438,6 +439,12 @@ router.post(
         include: invoiceInclude,
       });
 
+      if (result) {
+        await checkInvoiceDuplicate(
+          { id: result.id, projectId, vendorId: result.vendorId, invoiceCode: result.invoiceCode, date: result.date, totalAmount: result.totalAmount },
+          req.user!.id,
+        );
+      }
       res.status(201).json(result);
     } catch (error) {
       next(error);

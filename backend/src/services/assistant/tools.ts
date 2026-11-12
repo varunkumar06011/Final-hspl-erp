@@ -573,6 +573,8 @@ const writeTools: WriteTool[] = [
             }),
             'Materials requested.',
           ),
+          paymentMethod: E(['BANK_TRANSFER', 'CASH', 'CHEQUE'], 'REQUIRED. How the vendor will be paid. BANK_TRANSFER also needs accountDetails unless the vendor already has an account on file.'),
+          accountDetails: O({ accountNumber: S('Vendor bank account number, 6-20 digits.'), ifscCode: S('IFSC code, e.g. SBIN0001234.'), bankName: S('Bank name (optional).') }, ['accountNumber', 'ifscCode']),
           estimatedGstRate: N('GST % applied on the estimate (e.g. 18).'),
           requiredBy: S('Required-by date, YYYY-MM-DD.'),
           priority: E(['Normal', 'Urgent', 'Critical'], 'Priority.'),
@@ -586,7 +588,7 @@ const writeTools: WriteTool[] = [
           servicePeriodEnd: S('SERVICE requests only: service end date, YYYY-MM-DD.'),
           technicalRequirements: S('Technical requirements.'),
         },
-        ['items'],
+        ['items', 'paymentMethod'],
       ),
     },
     async summarize(a, ctx) {
@@ -606,6 +608,7 @@ const writeTools: WriteTool[] = [
         fields: [
           field('requestType', a.requestType ?? 'MATERIAL'),
           ...maybe('vendor', vendor),
+          ...maybe('paymentMethod', a.paymentMethod),
           ...maybe('serviceCategory', a.serviceCategory),
           ...maybe('servicePeriod', a.servicePeriodStart || a.servicePeriodEnd ? `${a.servicePeriodStart ?? '…'} → ${a.servicePeriodEnd ?? '…'}` : null),
           ...maybe('requiredBy', a.requiredBy),

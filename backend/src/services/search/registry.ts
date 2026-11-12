@@ -115,6 +115,9 @@ export const EXCLUDED_MODELS: Record<string, string> = {
   ChatMember: 'private conversations; only members may read them',
   ChatMessage: 'private conversations; only members may read them',
   ChatAttachment: 'private conversations; only members may read them',
+  ProofNumber: 'bookkeeping for papers; shown on the record it belongs to',
+  FileFingerprint: 'file hashes, technical',
+  DuplicateFlag: 'admin-only review list with its own page (Possible duplicates)',
 };
 
 /**

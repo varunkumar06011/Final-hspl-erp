@@ -1,6 +1,7 @@
 import { env } from '../config/env';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import type { Response } from 'express';
+import { withUploadGuard } from './duplicate.service';
 
 export interface UploadResult {
   filePath: string;
@@ -182,9 +183,9 @@ let storageService: StorageService | null = null;
 export function getStorageService(): StorageService {
   if (!storageService) {
     if (env.STORAGE_MODE === 'supabase' && env.SUPABASE_URL && env.SUPABASE_SERVICE_KEY) {
-      storageService = new SupabaseStorageService();
+      storageService = withUploadGuard(new SupabaseStorageService());
     } else {
-      storageService = new LocalStorageService();
+      storageService = withUploadGuard(new LocalStorageService());
     }
   }
   return storageService;

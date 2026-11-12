@@ -10,6 +10,9 @@ export interface VendorOption {
   name: string;
   vendorCode: string;
   vendorType?: string;
+  bankName?: string | null;
+  bankAccountNumber?: string | null;
+  ifscCode?: string | null;
 }
 
 /** Vendors for pickers: one cached request shared by every picker on screen. */

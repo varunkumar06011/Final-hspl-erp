@@ -203,7 +203,7 @@ describe('create proposals', () => {
           {
             functionCall: {
               name: 'create_mpr',
-              args: { vendorId: VENDOR_ID, items: [{ materialName: 'Cement', quantity: 50, unit: 'Bags', estimatedRate: 380 }] },
+              args: { vendorId: VENDOR_ID, paymentMethod: 'CASH', items: [{ materialName: 'Cement', quantity: 50, unit: 'Bags', estimatedRate: 380 }] },
             },
           },
         ],
@@ -426,7 +426,7 @@ describe('guided flows', () => {
 
   it('a proposal without a chosen flow reports the flow it belongs to', async () => {
     mGenerate
-      .mockResolvedValueOnce({ role: 'model', parts: [{ functionCall: { name: 'create_mpr', args: { requestType: 'SERVICE', vendorId: VENDOR_ID, items: [{ materialName: 'AC servicing', quantity: 2, unit: 'visit' }] } } }] })
+      .mockResolvedValueOnce({ role: 'model', parts: [{ functionCall: { name: 'create_mpr', args: { requestType: 'SERVICE', vendorId: VENDOR_ID, paymentMethod: 'CASH', items: [{ materialName: 'AC servicing', quantity: 2, unit: 'visit' }] } } }] })
       .mockResolvedValueOnce({ role: 'model', parts: [{ text: 'Please confirm.' }] });
     mCallApi.mockResolvedValue({ ok: true, status: 200, body: { id: VENDOR_ID, name: 'ABC', vendorCode: 'V1' } });
     db.assistantAction.create.mockResolvedValue({ id: 'a1' });

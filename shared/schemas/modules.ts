@@ -27,6 +27,8 @@ import {
   JournalAccountType,
   VoucherType,
   SiteBillPaymentMode,
+  MPRPaymentMethod,
+  IFSC_PATTERN,
 } from '../enums.js';
 
 const uuid = z.string().uuid();
@@ -1826,6 +1828,18 @@ const mprItemInput = z.object({
   remarks: z.string().trim().max(500).optional(),
 });
 
+// Vendor bank details captured on a request paid by bank transfer. They are saved on the
+// vendor too (new vendor: created with them; existing vendor: updated).
+export const mprAccountDetailsSchema = z.object({
+  bankName: z.string().trim().max(100).optional(),
+  accountNumber: z.string().trim().regex(/^[0-9]{6,20}$/, 'Account number must be 6 to 20 digits'),
+  ifscCode: z
+    .string()
+    .trim()
+    .transform((v) => v.toUpperCase())
+    .refine((v) => IFSC_PATTERN.test(v), 'IFSC must be 11 characters, e.g. SBIN0001234'),
+});
+
 export const createMPRSchema = z.object({
   body: z.object({
     requestType: z.enum(['MATERIAL', 'SERVICE']).default('MATERIAL'),
@@ -1851,6 +1865,13 @@ export const createMPRSchema = z.object({
     // Vendors module). Exactly one of these should be provided.
     vendorId: uuid.optional(),
     newVendor: quickCreateVendorSchema.optional(),
+    // Mandatory: bank transfer, cash or cheque. Bank transfer needs accountDetails
+    // (or a vendor that already has them on file).
+    paymentMethod: z.nativeEnum(MPRPaymentMethod, {
+      required_error: 'Payment type is required',
+      invalid_type_error: 'Payment type is required',
+    }),
+    accountDetails: mprAccountDetailsSchema.optional(),
   }),
 });
 
@@ -1877,6 +1898,17 @@ export const updateMPRSchema = z.object({
     items: z.array(mprItemInput).min(1, 'At least one item is required').optional(),
     vendorId: uuid.optional(),
     newVendor: quickCreateVendorSchema.optional(),
+    paymentMethod: z.nativeEnum(MPRPaymentMethod).optional(),
+    accountDetails: mprAccountDetailsSchema.optional(),
+  }),
+});
+
+// Change only the payment type (and bank details) of a request, without re-approval.
+export const changeMPRPaymentMethodSchema = z.object({
+  params: z.object({ id: uuid }),
+  body: z.object({
+    paymentMethod: z.nativeEnum(MPRPaymentMethod, { required_error: 'Payment type is required' }),
+    accountDetails: mprAccountDetailsSchema.optional(),
   }),
 });
 
