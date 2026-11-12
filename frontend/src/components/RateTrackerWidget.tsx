@@ -10,6 +10,7 @@ import {
   Link,
 } from '@mui/material';
 import { TrendingUp, TrendingDown, TrendingFlat } from '@mui/icons-material';
+import { AP } from '../config/adminPalette';
 import { useQuery } from '@tanstack/react-query';
 import api from '../config/api';
 import { formatCurrency } from '../utils/enumOptions';
@@ -57,15 +58,8 @@ function docRoute(docType: string): string | null {
   return null;
 }
 
-// Dark palette — this widget renders only inside the dark dashboard theme.
-const D = {
-  card: '#0c0c0c',
-  border: 'rgba(255,255,255,0.12)',
-  text: '#f0f0f0',
-  dim: '#9a9a9a',
-  teal: '#2fd9a4',
-  red: '#ff5c7a',
-};
+// Palette variables are defined by AdminPaletteVars (mounted by the dashboard).
+const D = { card: AP.card, border: AP.border, text: AP.text, dim: AP.dim, teal: AP.teal, red: AP.red };
 // SF Pro on Apple devices for numeric cells.
 const NUM_FONT = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", Roboto, "Helvetica Neue", Arial, sans-serif';
 
@@ -126,7 +120,7 @@ export default function RateTrackerWidget() {
         {isLoading ? (
           <Box>
             {[0, 1, 2].map((i) => (
-              <Skeleton key={i} variant="rectangular" height={28} sx={{ mb: 0.5, bgcolor: 'rgba(255,255,255,.12)' }} />
+              <Skeleton key={i} variant="rectangular" height={28} sx={{ mb: 0.5, bgcolor: 'var(--d-ov-12)' }} />
             ))}
           </Box>
         ) : materials.length === 0 ? (
@@ -136,7 +130,7 @@ export default function RateTrackerWidget() {
         ) : (
           // Stacked material rows — the whole record fits the card width; the
           // list scrolls vertically instead of sliding the table sideways.
-          <Box sx={{ flex: 1, maxHeight: 200, overflowY: 'auto', pr: 0.3, '&::-webkit-scrollbar': { width: 5 }, '&::-webkit-scrollbar-thumb': { bgcolor: 'rgba(255,255,255,.3)', borderRadius: 3 } }}>
+          <Box sx={{ flex: 1, maxHeight: 200, overflowY: 'auto', pr: 0.3, '&::-webkit-scrollbar': { width: 5 }, '&::-webkit-scrollbar-thumb': { bgcolor: 'var(--d-ov-30)', borderRadius: 3 } }}>
             <Stack spacing={0.7}>
               {materials.map((m, idx) => {
                 const increased = m.difference > 0;
@@ -145,7 +139,7 @@ export default function RateTrackerWidget() {
                 const TrendIcon = increased ? TrendingUp : decreased ? TrendingDown : TrendingFlat;
                 const latestDocRoute = docRoute(m.latestDocType);
                 return (
-                  <Box key={`${m.materialName}-${idx}`} sx={{ px: 1, py: 0.8, borderRadius: 1.6, bgcolor: 'rgba(255,255,255,.05)', border: `1px solid ${D.border}` }}>
+                  <Box key={`${m.materialName}-${idx}`} sx={{ px: 1, py: 0.8, borderRadius: 1.6, bgcolor: 'var(--d-ov-05)', border: `1px solid ${D.border}` }}>
                     <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1} sx={{ minWidth: 0 }}>
                       <Box sx={{ minWidth: 0, flex: 1 }}>
                         <Typography sx={{ fontSize: '0.72rem', fontWeight: 700, color: D.text }} noWrap title={m.materialName}>
@@ -157,7 +151,7 @@ export default function RateTrackerWidget() {
                         size="small"
                         icon={<TrendIcon sx={{ fontSize: 12, color: pctColor }} />}
                         label={`${m.percentChange > 0 ? '+' : ''}${m.percentChange.toFixed(1)}%`}
-                        sx={{ height: 18, fontSize: '0.6rem', fontWeight: 700, color: pctColor, fontFamily: NUM_FONT, bgcolor: increased ? 'rgba(255,92,122,.12)' : decreased ? 'rgba(47,217,164,.12)' : 'rgba(255,255,255,.12)', flexShrink: 0 }}
+                        sx={{ height: 18, fontSize: '0.6rem', fontWeight: 700, color: pctColor, fontFamily: NUM_FONT, bgcolor: increased ? 'rgba(255,92,122,.12)' : decreased ? 'rgba(47,217,164,.12)' : 'var(--d-ov-12)', flexShrink: 0 }}
                       />
                     </Stack>
                     <Stack direction="row" alignItems="center" spacing={0.7} sx={{ mt: 0.5, minWidth: 0 }}>
@@ -170,7 +164,7 @@ export default function RateTrackerWidget() {
                     </Stack>
                     <Typography sx={{ fontSize: '0.6rem', color: D.dim, mt: 0.4 }} noWrap title={`${m.latestVendor} · ${m.latestDocType} ${m.latestDocNumber} · ${formatDate(m.latestDate)}`}>
                       {m.latestVendor} · {latestDocRoute ? (
-                        <Link href={latestDocRoute} underline="hover" sx={{ color: '#4f9cf9', fontSize: '0.6rem' }}>{m.latestDocType} {m.latestDocNumber}</Link>
+                        <Link href={latestDocRoute} underline="hover" sx={{ color: AP.blue, fontSize: '0.6rem' }}>{m.latestDocType} {m.latestDocNumber}</Link>
                       ) : `${m.latestDocType} ${m.latestDocNumber}`} · {formatDate(m.latestDate)}
                     </Typography>
                   </Box>
