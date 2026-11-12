@@ -642,11 +642,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               </Badge>
             </IconButton>
           )}
-          {!isAdminRole(user?.role ?? '') && (
-            <IconButton color="inherit" onClick={toggleColorMode} title={mode === 'dark' ? t('shell.switchToLight') : t('shell.switchToDark')}>
-              {mode === 'dark' ? <LightModeIcon /> : <DarkModeIcon />}
-            </IconButton>
-          )}
+          <IconButton color="inherit" onClick={toggleColorMode} title={mode === 'dark' ? t('shell.switchToLight') : t('shell.switchToDark')}>
+            {mode === 'dark' ? <LightModeIcon /> : <DarkModeIcon />}
+          </IconButton>
           <IconButton color="inherit" onClick={handleManualRefresh} title={t('common.refresh')} disabled={manualRefreshing}>
             {manualRefreshing ? <CircularProgress size={20} color="inherit" /> : <RefreshIcon />}
           </IconButton>
