@@ -6,7 +6,7 @@
  *    material request proposal instead (one tap to save it as an MPR).
  * How it was paid is never asked: the bill's own mode if it shows one, otherwise cash.
  */
-import { SITE_BILL_LIMIT, SiteBillPaymentMode } from '@hospital-erp/shared';
+import { SITE_BILL_LIMIT, SiteBillPaymentMode, billableQuantity } from '@hospital-erp/shared';
 import { callApi } from './internalApi';
 import type { DocumentReading } from './reader';
 
@@ -23,8 +23,8 @@ export interface SiteBillArgs {
 }
 
 export function siteBillTotal(args: { items?: unknown }): number {
-  const items = Array.isArray(args.items) ? (args.items as Array<{ quantity?: unknown; rate?: unknown }>) : [];
-  return round2(items.reduce((s, i) => s + num(i.quantity) * num(i.rate), 0));
+  const items = Array.isArray(args.items) ? (args.items as Array<{ quantity?: unknown; unit?: string; rate?: unknown }>) : [];
+  return round2(items.reduce((s, i) => s + billableQuantity(num(i.quantity), i.unit) * num(i.rate), 0));
 }
 
 export const isOverSiteBillLimit = (args: { items?: unknown }) => siteBillTotal(args) > SITE_BILL_LIMIT;

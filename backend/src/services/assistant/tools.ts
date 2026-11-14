@@ -29,6 +29,7 @@ import {
   createStockEntrySchema,
   createSiteBillSchema,
   SITE_BILL_LIMIT,
+  billableQuantity,
 } from '@hospital-erp/shared';
 import { callApi, apiErrorMessage } from './internalApi';
 import { REGISTRY } from '../search/registry';
@@ -668,7 +669,7 @@ const writeTools: WriteTool[] = [
       let subtotal = 0;
       let gst = 0;
       const items = (a.items as any[]).map((i) => {
-        const base = num(i.quantity) * num(i.unitPrice);
+        const base = billableQuantity(num(i.quantity), i.unit) * num(i.unitPrice);
         subtotal += base;
         gst += (base * num(i.gstRate)) / 100;
         return { name: i.materialName, qty: String(i.quantity), unit: i.unit, rate: money(num(i.unitPrice)), amount: money(base) };
@@ -890,7 +891,7 @@ const writeTools: WriteTool[] = [
     async summarize(a, ctx) {
       let total = 0;
       const items = (a.items as any[]).map((i) => {
-        const amount = num(i.quantity) * num(i.rate);
+        const amount = billableQuantity(num(i.quantity), i.unit) * num(i.rate);
         total += amount;
         return { name: i.materialName, qty: String(i.quantity), unit: i.unit, rate: money(num(i.rate)), amount: money(amount) };
       });
