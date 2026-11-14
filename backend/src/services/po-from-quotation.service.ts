@@ -52,7 +52,7 @@ export async function createPoFromApprovedQuotation(quotationId: string, userId:
         status: POStatus.PENDING_APPROVAL,
         paymentType: grandTotal > 0 ? POPaymentType.FULL_PAYMENT : POPaymentType.AFTER_DELIVERY,
         advanceAmount: grandTotal > 0 ? grandTotal : null,
-        notes: quotation.notes ?? quotation.mpr?.description ?? null,
+        notes: quotation.mpr?.description ?? quotation.notes ?? null,
         totalAmount,
         gstAmount,
         grandTotal,

@@ -24,6 +24,7 @@ import { postVoucher, generateVoucherNumber } from './voucher.routes';
 import { ensureVendorLedger, ensureBankLedger, ensureCashLedger, findLedgerByName } from './ledger.routes';
 import { getInvoicePaymentSummary, recalcInvoicePaymentStatus } from '../services/invoice-payment.service';
 import multer from 'multer';
+import { chainDescription } from '../services/description-sync.service';
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
 
@@ -391,6 +392,8 @@ router.post(
             paymentCode,
             requestNumber: finalRequestNumber,
             type: 'ADVANCE',
+            // Same description as the request / quotation / PO this payment is for.
+            description: (await chainDescription({ poId })) ?? undefined,
             amount: Number(amount),
             paymentMode: paymentMode ?? null,
             chequeNumber: chequeNumber ?? null,
@@ -493,6 +496,8 @@ router.post(
             paymentCode,
             requestNumber: finalRequestNumber,
             type: 'INVOICE',
+            // Same description as the request / quotation / PO this payment is for.
+            description: (await chainDescription({ poId: invoice.poId })) ?? undefined,
             amount: Number(amount),
             paymentMode: paymentMode ?? null,
             chequeNumber: chequeNumber ?? null,

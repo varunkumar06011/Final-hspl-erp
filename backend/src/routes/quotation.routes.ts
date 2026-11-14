@@ -22,6 +22,7 @@ import {
 import { streamQuotationPdf } from '../services/quotation-pdf.service';
 import { syncPoFromQuotation } from '../services/mpr-revision.service';
 import multer from 'multer';
+import { syncChainDescription, chainDescription } from '../services/description-sync.service';
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 100 * 1024 * 1024 } });
 const allowedQuotationFileTypes = ['application/pdf', 'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/bmp', 'image/tiff'];
@@ -442,8 +443,10 @@ router.post(
         filePath,
         fileName,
         fileMimeType,
-        notes: req.body.notes || null,
+        notes: req.body.notes || (await chainDescription({ mprId })) || null,
       });
+      // One description per purchase: a typed one becomes the request's and PO's too.
+      if (req.body.notes && mprId) await syncChainDescription({ mprId }, req.body.notes);
 
       res.status(201).json(result);
     } catch (error) {
@@ -610,6 +613,7 @@ router.patch(
         data: updateData,
         include: quotationInclude,
       });
+      if (req.body.notes !== undefined) await syncChainDescription({ mprId: existing.mprId, quotationId: existing.id }, req.body.notes);
 
       await logAudit({
         userId: req.user!.id,
@@ -833,6 +837,7 @@ router.post(
         }
         return q;
       });
+      if (req.body.notes !== undefined) await syncChainDescription({ mprId: existing.mprId, quotationId: existing.id }, req.body.notes);
 
       await logAudit({
         userId: req.user!.id,

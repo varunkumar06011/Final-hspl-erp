@@ -356,7 +356,7 @@ export async function streamPurchaseOrderPdf(res: NodeJS.WritableStream, po: any
       y += 5;
       const notesW = width;
       doc.rect(left, y, notesW, notesBoxH).fill('#FFF8E1').stroke('#FFB300');
-      doc.fillColor('#E65100').font('Helvetica-Bold').fontSize(8.5).text('PO Description / Notes', left + 8, y + 6, { width: notesW - 16 });
+      doc.fillColor('#E65100').font('Helvetica-Bold').fontSize(8.5).text('Description', left + 8, y + 6, { width: notesW - 16 });
       doc.fillColor(dark).font('Helvetica').fontSize(9).text(poNotes!.trim(), left + 8, y + 18, { width: notesW - 24, align: 'left' });
       y += notesBoxH + 6;
     }

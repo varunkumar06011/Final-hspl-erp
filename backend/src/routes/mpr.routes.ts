@@ -28,6 +28,7 @@ import { afterMprApproved } from '../services/mpr-approval.service';
 import { nextCode, resolveCatalogLines } from '../services/catalog.service';
 import { CatalogItemKind, catalogNameKey, isAdminRole, billableQuantity } from '@hospital-erp/shared';
 import multer from 'multer';
+import { syncChainDescription } from '../services/description-sync.service';
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
 const allowedReceiptFileTypes = ['application/pdf', 'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/bmp', 'image/tiff'];
@@ -752,6 +753,8 @@ router.put(
       }
 
       await logAudit({ userId: req.user!.id, action: AuditAction.UPDATE_MPR, entityType: 'material_purchase_requests', entityId: record.id, projectId, newValue: { mprNumber: record.mprNumber } });
+      // The request's description is the master copy: quotations, POs and payments follow it.
+      if (req.body.description !== undefined) await syncChainDescription({ mprId: record.id }, req.body.description);
 
       if (wasSubmitted) {
         notifyApprovers(projectId, HEAD_ROLES as UserRole[], {

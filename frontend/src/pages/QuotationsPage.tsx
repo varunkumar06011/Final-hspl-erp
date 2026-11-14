@@ -980,6 +980,9 @@ export default function QuotationsPage() {
 
                   {/* Materials — simple list: material, qty, rate, amount */}
                   {row.items && row.items.length > 0 && <ItemsGist items={row.items} max={50} />}
+                  {row.notes && (
+                    <Typography variant="body2" sx={{ mt: 1, fontSize: '0.85rem', whiteSpace: 'pre-wrap', overflowWrap: 'break-word' }}>{row.notes}</Typography>
+                  )}
 
                   {/* Main actions — the rest live under More details */}
                   <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, mt: 1, pt: 1, borderTop: '1px solid', borderColor: 'divider' }}>

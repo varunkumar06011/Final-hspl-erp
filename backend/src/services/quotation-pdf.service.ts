@@ -247,7 +247,7 @@ export async function streamQuotationPdf(res: NodeJS.WritableStream, quotation: 
     if (y > pageH - 80) { doc.addPage(); y = 40; }
     y += 8;
     const notesW = width;
-    const notesLabel = 'Quotation Notes';
+    const notesLabel = 'Description';
     doc.font('Helvetica-Bold').fontSize(8.5);
     const notesTextH = doc.heightOfString(qNotes.trim(), { width: notesW - 24, align: 'left' });
     const notesBoxH = Math.max(30, 18 + notesTextH + 10);

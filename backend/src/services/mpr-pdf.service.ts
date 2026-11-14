@@ -142,6 +142,17 @@ export async function streamMprPdf(res: NodeJS.WritableStream, mpr: any) {
   }
   y += 14;
 
+  // ── Description (same text and style as on the quotation and PO) ──
+  const descText = String(mpr.description ?? '').trim();
+  if (descText) {
+    const descTextH = doc.heightOfString(descText, { width: width - 24, align: 'left' });
+    const descBoxH = Math.max(30, 18 + descTextH + 10);
+    doc.rect(left, y, width, descBoxH).fill('#FFF8E1').stroke('#FFB300');
+    doc.fillColor('#E65100').font('Helvetica-Bold').fontSize(8.5).text('Description', left + 8, y + 6, { width: width - 16 });
+    doc.fillColor(dark).font('Helvetica').fontSize(9).text(descText, left + 8, y + 18, { width: width - 24, align: 'left' });
+    y += descBoxH + 14;
+  }
+
   // ═══════════════════════════════════════════════════════════
   // 4. DELIVERY & BILLING INFORMATION
   // ═══════════════════════════════════════════════════════════
@@ -297,11 +308,12 @@ export async function streamMprPdf(res: NodeJS.WritableStream, mpr: any) {
   // ═══════════════════════════════════════════════════════════
   // 6. PURPOSE / JUSTIFICATION
   // ═══════════════════════════════════════════════════════════
+  if (!descText) {
   if (y > pageH - 100) { doc.addPage(); y = 40; }
   doc.fillColor(primary).font('Helvetica-Bold').fontSize(10).text('PURPOSE / JUSTIFICATION', left, y);
   y += 16;
 
-  const purposeText = mpr.description || '';
+  const purposeText = ''; // the description is printed above, in the Description box
   // Draw a bordered box with adequate blank space
   const purposeBoxH = purposeText.trim().length > 0
     ? Math.max(60, doc.heightOfString(purposeText.trim(), { width: width - 16, align: 'left' }) + 20)
@@ -311,6 +323,7 @@ export async function streamMprPdf(res: NodeJS.WritableStream, mpr: any) {
     doc.fillColor(dark).font('Helvetica').fontSize(9).text(purposeText.trim(), left + 8, y + 8, { width: width - 16, align: 'left' });
   }
   y += purposeBoxH + 16;
+  }
 
   // ═══════════════════════════════════════════════════════════
   // 7. FOOTER — removed per user request

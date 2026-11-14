@@ -21,6 +21,7 @@ import { postVoucher, generateVoucherNumber } from './voucher.routes';
 import { getActiveAdminRoles, generatePONumber, createNonVendorPoFromMpr, findLivePoForMpr } from '../services/non-vendor-po.service';
 import { hasPoAccrual, payableAfterDeductions } from '../services/po-accrual.service';
 import { isPartPo, partPoBalance } from '../services/part-po.service';
+import { syncChainDescription, chainDescription } from '../services/description-sync.service';
 
 const router = Router();
 router.use(authMiddleware);
@@ -613,7 +614,7 @@ router.post(
             advanceAmount: resolvedAdvanceAmount,
             paymentTerms: paymentTerms ?? null,
             deliveryDate: deliveryDate ? new Date(deliveryDate) : null,
-            notes: notes ?? null,
+            notes: (typeof notes === 'string' && notes.trim() ? notes : null) ?? (await chainDescription({ mprId, quotationId })),
             referredBy: typeof referredBy === 'string' && referredBy.trim() ? referredBy.trim() : null,
             totalAmount,
             gstAmount: gst,
@@ -1451,6 +1452,7 @@ router.patch(
         data,
         include: poInclude,
       });
+      if (req.body.notes !== undefined) await syncChainDescription({ poId: existing.id }, req.body.notes);
 
       res.json(updated);
     } catch (error) {
@@ -2180,6 +2182,7 @@ router.post(
           },
           include: poInclude,
         });
+        if (notes !== undefined) await syncChainDescription({ poId: po.id }, notes, tx as any);
 
         // Reset approval workflow if it exists
         if (po.approvalWorkflowId) {

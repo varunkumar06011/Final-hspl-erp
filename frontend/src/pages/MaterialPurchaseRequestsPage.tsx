@@ -927,6 +927,9 @@ export default function MaterialPurchaseRequestsPage() {
                       )}
                     </Box>
                     <ApprovalTiming startedAt={row.createdAt} workflow={row.approvalWorkflow} compact />
+                    {row.description && (
+                      <Typography variant="caption" color="text.primary" sx={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', overflowWrap: 'anywhere' }}>{row.description}</Typography>
+                    )}
                     {row.items.length > 0 && (
                       <Typography variant="caption" color="text.secondary" noWrap>
                         {row.items.slice(0, 2).map((i) => `${i.materialName} × ${i.quantity}${i.unit ? ' ' + i.unit : ''}`).join(', ')}
