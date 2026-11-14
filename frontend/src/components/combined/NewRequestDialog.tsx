@@ -1,3 +1,4 @@
+import { billableQuantity } from '@hospital-erp/shared';
 import { useState } from 'react';
 import {
   Alert,
@@ -91,7 +92,7 @@ export default function NewRequestDialog({ open, onClose, onCreated }: { open: b
   const catalog = useMaterialCatalog(open, requestType === 'SERVICE' ? CatalogItemKind.SERVICE : CatalogItemKind.MATERIAL);
   const catalogItemOf = (it: ItemDraft) => (it.itemId ? catalog.find((m) => m.itemId === it.itemId) ?? null : findCatalogMaterial(catalog, it.materialName));
   const priceChecks = usePriceCheck(items.map((it) => ({ itemId: catalogItemOf(it)?.itemId, materialName: it.materialName, specification: it.specification, unit: it.unit })), {}, open);
-  const estimate = validItems.reduce((s, i) => s + Number(i.quantity) * (Number(i.estimatedRate) || 0), 0);
+  const estimate = validItems.reduce((s, i) => s + billableQuantity(i.quantity, i.unit) * (Number(i.estimatedRate) || 0), 0);
   const vendorName = vendorMode === 'existing' ? vendorPicked?.name ?? '' : vendor.name.trim();
   const vendorReady = vendorMode === 'existing' ? !!vendorId : !!vendor.name.trim();
   const paymentKey = paymentErrorKey(payment, vendorReady);

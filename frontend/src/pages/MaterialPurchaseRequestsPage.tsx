@@ -939,7 +939,7 @@ export default function MaterialPurchaseRequestsPage() {
                   <Box sx={{ minWidth: 0 }}>
                   {/* Key facts — only what people look for first (vendor, status and items are in the header) */}
                   {(() => {
-                    const est = row.items.reduce((s, i) => s + (Number(i.estimatedRate) || 0) * (Number(i.quantity) || 0), 0);
+                    const est = row.items.reduce((s, i) => s + (Number(i.estimatedRate) || 0) * billableQuantity(i.quantity, i.unit), 0);
                     const estTotal = est + (est * (Number(row.estimatedGstRate) || 0)) / 100;
                     return (
                       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', sm: 'repeat(4, 1fr)' }, gap: 1, mb: 1 }}>
@@ -1050,7 +1050,7 @@ export default function MaterialPurchaseRequestsPage() {
                   {(() => {
                     const rateOf = (i: MPRItem) => Number(i.estimatedRate) || 0;
                     const hasPrice = row.items.some((i) => rateOf(i) > 0);
-                    const subtotal = row.items.reduce((s, i) => s + rateOf(i) * (Number(i.quantity) || 0), 0);
+                    const subtotal = row.items.reduce((s, i) => s + rateOf(i) * billableQuantity(i.quantity, i.unit), 0);
                     const gstRate = Number(row.estimatedGstRate) || 0;
                     const gst = (subtotal * gstRate) / 100;
                     const money = (n: number) => `₹${n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -1092,7 +1092,7 @@ export default function MaterialPurchaseRequestsPage() {
                                   )}
                                   {hasPrice && (
                                     <TableCell align="right" sx={{ fontWeight: 600, whiteSpace: 'nowrap' }}>
-                                      {rate > 0 ? money(rate * (Number(item.quantity) || 0)) : '—'}
+                                      {rate > 0 ? money(rate * billableQuantity(item.quantity, item.unit)) : '—'}
                                     </TableCell>
                                   )}
                                 </TableRow>
