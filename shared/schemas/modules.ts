@@ -203,6 +203,8 @@ export const createPOSchema = z.object({
     paymentTerms: z.string().max(500).optional(),
     deliveryDate: z.coerce.date().optional().or(z.literal('').transform(() => undefined)),
     acknowledged: acknowledgement,
+    // The person saw the "similar PO already exists" warning and still wants this PO.
+    confirmDuplicate: z.boolean().optional(),
     budgetHeadId: uuid.optional(),
     // Optional PO-level description / notes
     notes: z.string().trim().max(1000).optional(),

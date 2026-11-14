@@ -1,10 +1,13 @@
 import { useState } from 'react';
-import { IconButton, Menu, MenuItem, ListItemIcon, ListItemText, CircularProgress } from '@mui/material';
+import { IconButton, Button, Dialog, DialogTitle, DialogContent, DialogActions, List, ListItem, ListItemText, Typography, CircularProgress } from '@mui/material';
+import CheckIcon from '@mui/icons-material/Check';
 import WhatsAppIcon from '@mui/icons-material/WhatsApp';
 import SmsIcon from '@mui/icons-material/Sms';
 import { useTranslation } from 'react-i18next';
 import api, { extractErrorMessage } from '../config/api';
 import { shareOnWhatsApp } from '../utils/whatsappShare';
+
+interface Recipient { key: string; role: string; name: string; phone: string | null }
 
 interface Confirmation {
   paymentCode: string;
@@ -12,13 +15,17 @@ interface Confirmation {
   amount: number;
   poNumber: string | null;
   invoiceCode: string | null;
+  materials?: string[];
+  suppliedOn?: string | null;
+  paidOn: string;
+  vendorBank?: string | null;
+  vendorAccountLast4?: string | null;
   mode: string | null;
   reference: string | null;
   voucherNumber: string | null;
   status: string;
   vendorPhone: string | null;
-  headName: string | null;
-  headPhone: string | null;
+  recipients: Recipient[];
   projectName: string;
 }
 
@@ -29,17 +36,27 @@ function dialNumber(raw: string | null | undefined): string | undefined {
   return digits.length === 10 ? `91${digits}` : digits;
 }
 
+function fmtDay(v: string | null | undefined): string | null {
+  return v ? new Date(v).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric' }) : null;
+}
+
+/** The ready-made "payment done" message (WhatsApp text is outside the translated screens by design). */
 function confirmationText(c: Confirmation): string {
+  const account = c.vendorAccountLast4 ? `${c.vendorBank ? `${c.vendorBank} ` : ''}a/c ending ${c.vendorAccountLast4}` : null;
   const lines = [
     `✅ *Payment done — ${c.projectName}*`,
     ``,
-    `Paid to: ${c.vendorName}`,
-    `Amount: ₹${Number(c.amount).toLocaleString('en-IN')}`,
+    `${c.projectName} has paid ₹${Number(c.amount).toLocaleString('en-IN')} to ${c.vendorName}${account ? ` (${account})` : ''}`,
+    c.materials?.length ? `For: ${c.materials.join(', ')}` : null,
     c.poNumber ? `PO: ${c.poNumber}` : null,
     c.invoiceCode ? `Invoice: ${c.invoiceCode}` : null,
+    fmtDay(c.suppliedOn) ? `Supplied on: ${fmtDay(c.suppliedOn)}` : null,
+    `Payment done on: ${fmtDay(c.paidOn)}`,
     c.mode ? `Mode: ${c.mode.replace(/_/g, ' ')}` : null,
     c.reference ? `Ref / UTR: ${c.reference}` : null,
     `Payment ref: ${c.paymentCode}`,
+    ``,
+    `This payment is complete. Please do not raise another PO for it.`,
   ];
   return lines.filter((l) => l !== null).join('\n');
 }
@@ -60,48 +77,55 @@ export default function PaymentConfirmShare({
   onError: (message: string) => void;
 }) {
   const { t } = useTranslation('payments');
-  const [anchor, setAnchor] = useState<HTMLElement | null>(null);
+  const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [info, setInfo] = useState<Confirmation | null>(null);
+  const [sent, setSent] = useState<Set<string>>(new Set());
 
-  async function openMenu(el: HTMLElement) {
-    setAnchor(el);
+  async function openDialog() {
+    setOpen(true);
     if (info) return;
     try {
       const res = await api.get<Confirmation>(`/payments/${paymentId}/confirmation`);
       setInfo(res.data);
     } catch (err) {
-      setAnchor(null);
+      setOpen(false);
       onError(extractErrorMessage(err));
     }
   }
 
-  async function fetchPdf(c: Confirmation): Promise<File> {
-    const res = await api.get(`/payments/${paymentId}/confirmation.pdf`, { responseType: 'blob' });
-    return new File([res.data as Blob], `${c.paymentCode}-payment-confirmation.pdf`, { type: 'application/pdf' });
+  /** The payment photo; the PDF slip is the fallback if the image cannot be made. */
+  async function fetchSlip(c: Confirmation): Promise<File> {
+    try {
+      const res = await api.get(`/payments/${paymentId}/confirmation.png`, { responseType: 'blob' });
+      return new File([res.data as Blob], `${c.paymentCode}-payment-done.png`, { type: 'image/png' });
+    } catch {
+      const res = await api.get(`/payments/${paymentId}/confirmation.pdf`, { responseType: 'blob' });
+      return new File([res.data as Blob], `${c.paymentCode}-payment-confirmation.pdf`, { type: 'application/pdf' });
+    }
   }
 
-  async function sendWhatsApp(phone: string | null | undefined) {
+  async function sendWhatsApp(r: Recipient) {
     if (!info) return;
-    setAnchor(null);
     setBusy(true);
     try {
-      const file = await fetchPdf(info);
+      const file = await fetchSlip(info);
       const text = confirmationText(info);
       const nav = navigator as Navigator & { canShare?: (d: ShareData) => boolean };
       if (nav.canShare?.({ files: [file] })) {
-        // Phone share sheet: the PDF goes along with the text.
+        // Phone share sheet: pick this person's chat; the photo goes along with the text.
         await navigator.share({ files: [file], text, title: info.paymentCode });
       } else {
-        // No file sharing here (desktop): save the PDF to attach, and open the chat with the text.
+        // No file sharing here (desktop): save the photo to attach, and open this person's chat with the text.
         const url = URL.createObjectURL(file);
         const a = document.createElement('a');
         a.href = url;
         a.download = file.name;
         a.click();
         URL.revokeObjectURL(url);
-        shareOnWhatsApp(`${text}\n\n(Payment confirmation PDF attached)`, dialNumber(phone));
+        shareOnWhatsApp(text, dialNumber(r.phone));
       }
+      setSent((prev) => new Set(prev).add(r.key));
       onShared?.({ status: info.status });
     } catch (err) {
       if ((err as { name?: string })?.name !== 'AbortError') onError(extractErrorMessage(err));
@@ -112,7 +136,6 @@ export default function PaymentConfirmShare({
 
   function sendSms() {
     if (!info) return;
-    setAnchor(null);
     const number = dialNumber(info.vendorPhone);
     if (!number) return;
     const body = `${info.projectName}: payment of Rs ${Number(info.amount).toLocaleString('en-IN')} has been made to ${info.vendorName}${info.poNumber ? ` for ${info.poNumber}` : ''}${info.reference ? `. Ref ${info.reference}` : ''}. Ref no ${info.paymentCode}.`;
@@ -122,23 +145,50 @@ export default function PaymentConfirmShare({
 
   return (
     <>
-      <IconButton size="small" sx={{ color: '#25D366' }} disabled={busy} onClick={(e) => { void openMenu(e.currentTarget); }} title={t('shareOnWhatsapp')}>
-        {busy ? <CircularProgress size={18} color="inherit" /> : <WhatsAppIcon fontSize="small" />}
+      <IconButton size="small" sx={{ color: '#25D366' }} onClick={() => { void openDialog(); }} title={t('shareOnWhatsapp')}>
+        <WhatsAppIcon fontSize="small" />
       </IconButton>
-      <Menu anchorEl={anchor} open={!!anchor} onClose={() => setAnchor(null)}>
-        <MenuItem disabled={!info} onClick={() => { void sendWhatsApp(info?.vendorPhone); }}>
-          <ListItemIcon><WhatsAppIcon fontSize="small" sx={{ color: '#25D366' }} /></ListItemIcon>
-          <ListItemText>{t('confirmToVendor')}</ListItemText>
-        </MenuItem>
-        <MenuItem disabled={!info} onClick={() => { void sendWhatsApp(info?.headPhone); }}>
-          <ListItemIcon><WhatsAppIcon fontSize="small" sx={{ color: '#25D366' }} /></ListItemIcon>
-          <ListItemText>{t('confirmToHead', { name: info?.headName ?? '' })}</ListItemText>
-        </MenuItem>
-        <MenuItem disabled={!info?.vendorPhone} onClick={sendSms}>
-          <ListItemIcon><SmsIcon fontSize="small" /></ListItemIcon>
-          <ListItemText>{info && !info.vendorPhone ? t('confirmNoVendorPhone') : t('confirmSmsVendor')}</ListItemText>
-        </MenuItem>
-      </Menu>
+      <Dialog open={open} onClose={() => setOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>{t('confirmDialogTitle')}</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>{t('confirmDialogHint')}</Typography>
+          {!info ? (
+            <CircularProgress size={22} />
+          ) : (
+            <List dense disablePadding>
+              {info.recipients.map((r) => (
+                <ListItem
+                  key={r.key}
+                  disableGutters
+                  secondaryAction={
+                    <Button
+                      size="small"
+                      variant={sent.has(r.key) ? 'outlined' : 'contained'}
+                      color="success"
+                      startIcon={sent.has(r.key) ? <CheckIcon /> : <WhatsAppIcon />}
+                      disabled={busy || !r.phone}
+                      onClick={() => { void sendWhatsApp(r); }}
+                    >
+                      {sent.has(r.key) ? t('confirmSent') : t('confirmSend')}
+                    </Button>
+                  }
+                >
+                  <ListItemText
+                    primary={r.name}
+                    secondary={r.phone ? `${t(`confirmRole${r.role}`, r.role)} · ${r.phone}` : `${t(`confirmRole${r.role}`, r.role)} · ${t('confirmNoPhone')}`}
+                  />
+                </ListItem>
+              ))}
+            </List>
+          )}
+          {info?.vendorPhone && (
+            <Button size="small" startIcon={<SmsIcon />} sx={{ mt: 1 }} onClick={sendSms}>{t('confirmSmsVendor')}</Button>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpen(false)}>{t('confirmClose')}</Button>
+        </DialogActions>
+      </Dialog>
     </>
   );
 }

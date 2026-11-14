@@ -1,5 +1,5 @@
 import { Router, Response, NextFunction } from 'express';
-import { Permission, POStatus, POPaymentType, AuditAction, UserRole, GoodsReceiptStatus, isAdminRole, isFirstLevelApproverRole, FIRST_LEVEL_APPROVER_ROLES, VoucherType, GST_LEDGER_NAMES, VendorType, MPRStatus, CatalogItemKind, catalogNameKey, lineKey, billableQuantity } from '@hospital-erp/shared';
+import { Permission, PaymentStatus, POStatus, POPaymentType, AuditAction, UserRole, GoodsReceiptStatus, isAdminRole, isFirstLevelApproverRole, FIRST_LEVEL_APPROVER_ROLES, VoucherType, GST_LEDGER_NAMES, VendorType, MPRStatus, CatalogItemKind, catalogNameKey, lineKey, billableQuantity } from '@hospital-erp/shared';
 import { createPOSchema, listPOsSchema, approvalActionSchema, editPOSchema, editUnapprovedPOSchema, regeneratePOSchema, changePOPaymentTypeSchema, createContractPOSchema, convertToContractSchema, isUmbrellaContract, createSubPOSchema, createPartPOSchema, updateContractTermsSchema } from '@hospital-erp/shared';
 import { prisma } from '../config/prisma';
 import { Prisma } from '@prisma/client';
@@ -549,6 +549,53 @@ router.post(
       if (quotation.vendorId !== vendorId) {
         res.status(400).json({ error: 'Vendor does not match the quotation vendor' });
         return;
+      }
+
+      // Warn before a second PO is raised for work that already has one (same vendor, same
+      // material, recent). The person must confirm; the answer shows what was already paid.
+      if (!req.body.confirmDuplicate) {
+        const since = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000);
+        const itemIds = quotation.items.map((i) => i.itemId).filter((v): v is string => !!v);
+        const names = quotation.items.map((i) => i.materialName);
+        const similar = await prisma.purchaseOrder.findMany({
+          where: {
+            projectId,
+            vendorId,
+            deletedAt: null,
+            quotationId: { not: quotation.id },
+            status: { notIn: [POStatus.DELETED, POStatus.CANCELLED, POStatus.REJECTED] },
+            createdAt: { gte: since },
+            items: { some: { OR: [...(itemIds.length ? [{ itemId: { in: itemIds } }] : []), ...names.map((n) => ({ materialName: { equals: n, mode: 'insensitive' as const } }))] } },
+          },
+          select: {
+            id: true, poNumber: true, date: true, status: true, grandTotal: true,
+            items: { select: { materialName: true } },
+          },
+          orderBy: { createdAt: 'desc' },
+          take: 5,
+        });
+        const paidRows = similar.length
+          ? await prisma.paymentRequest.findMany({
+              where: { deletedAt: null, status: PaymentStatus.PAID, OR: [{ poId: { in: similar.map((p) => p.id) } }, { invoice: { poId: { in: similar.map((p) => p.id) } } }] },
+              select: { amount: true, poId: true, invoice: { select: { poId: true } } },
+            })
+          : [];
+        if (similar.length > 0) {
+          res.status(409).json({
+            code: 'POSSIBLE_DUPLICATE',
+            error: 'A similar PO for this vendor already exists. Check it before raising another.',
+            matches: similar.map((p) => ({
+              id: p.id,
+              poNumber: p.poNumber,
+              date: p.date,
+              status: p.status,
+              grandTotal: Number(p.grandTotal),
+              paid: paidRows.filter((r) => (r.poId ?? r.invoice?.poId) === p.id).reduce((sum, r) => sum + Number(r.amount), 0),
+              materials: p.items.map((i) => i.materialName),
+            })),
+          });
+          return;
+        }
       }
 
       // One live PO per quotation — after a re-edit/resend the quotation may

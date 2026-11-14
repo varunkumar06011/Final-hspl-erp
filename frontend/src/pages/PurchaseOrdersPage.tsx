@@ -264,6 +264,9 @@ export default function PurchaseOrdersPage() {
   const editLocked = useEditLock();
   const navigate = useNavigate();
   const createSubmissionLocked = useRef(false);
+  // "A similar PO already exists" warning (409 POSSIBLE_DUPLICATE) and the person's answer.
+  const confirmDuplicateRef = useRef(false);
+  const [duplicateMatches, setDuplicateMatches] = useState<Array<{ id: string; poNumber: string; date: string; status: string; grandTotal: number; paid: number; materials: string[] }> | null>(null);
 
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['/pos', page, pageSize, search, statusFilter, minAmount, maxAmount, dateFilter, tab],
@@ -391,6 +394,7 @@ export default function PurchaseOrdersPage() {
         paymentTerms,
         deliveryDate,
         acknowledged,
+        confirmDuplicate: confirmDuplicateRef.current || undefined,
         budgetHeadId: selectedBudgetHeadId || undefined,
         notes: poNotes.trim() || undefined,
         referredBy: referredBy.trim() || undefined,
@@ -409,6 +413,12 @@ export default function PurchaseOrdersPage() {
     },
     onError: (err: unknown) => {
       createSubmissionLocked.current = false;
+      confirmDuplicateRef.current = false;
+      const data = (err as { response?: { data?: { code?: string; matches?: typeof duplicateMatches } } })?.response?.data;
+      if (data?.code === 'POSSIBLE_DUPLICATE' && data.matches) {
+        setDuplicateMatches(data.matches);
+        return;
+      }
       setError(extractErrorMessage(err));
     },
   });
@@ -1682,6 +1692,39 @@ export default function PurchaseOrdersPage() {
             disabled={(!selectedVendorId || (isNonVendor ? !selectedMprId : !selectedQuotationId) || !acknowledged || (!isNonVendor && (paymentType === POPaymentType.ADVANCE || paymentType === POPaymentType.FULL_PAYMENT) && (!advanceAmount || Number(advanceAmount) <= 0))) || createMutation.isPending || createSubmissionLocked.current}
           >
             {createMutation.isPending ? <CircularProgress size={20} /> : t('createPoBtn')}
+          </Button>
+        </DialogActions>
+      </ResponsiveDialog>
+
+      {/* A similar PO already exists for this vendor: show it (and what was paid) before a second one is raised */}
+      <ResponsiveDialog open={duplicateMatches !== null} onClose={() => setDuplicateMatches(null)} maxWidth="sm" fullWidth>
+        <DialogTitle>{t('dupTitle')}</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" sx={{ mb: 1.5 }}>{t('dupBody')}</Typography>
+          {(duplicateMatches ?? []).map((m) => (
+            <Box key={m.id} sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1, p: 1, mb: 1 }}>
+              <Typography sx={{ fontWeight: 700 }}>{m.poNumber} · {formatDate(m.date)} · {enumLabel(m.status)}</Typography>
+              <Typography variant="body2">{m.materials.join(', ')}</Typography>
+              <Typography variant="body2" color={m.paid > 0 ? 'success.main' : 'text.secondary'}>
+                {t('dupAmounts', { total: formatCurrency(m.grandTotal), paid: formatCurrency(m.paid) })}
+              </Typography>
+            </Box>
+          ))}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDuplicateMatches(null)}>{t('dupCancel')}</Button>
+          <Button
+            color="warning"
+            variant="contained"
+            onClick={() => {
+              setDuplicateMatches(null);
+              confirmDuplicateRef.current = true;
+              createSubmissionLocked.current = true;
+              setError('');
+              createMutation.mutate();
+            }}
+          >
+            {t('dupCreateAnyway')}
           </Button>
         </DialogActions>
       </ResponsiveDialog>

@@ -19,6 +19,7 @@ import { logAudit } from '../services/audit.service';
 import { generateProjectSequenceNumber } from '../services/sequence.service';
 import { notifyPaymentsMade } from '../services/payment-notify.service';
 import { streamPaymentConfirmationPdf } from '../services/payment-confirmation-pdf.service';
+import { paymentConfirmationPng } from '../services/payment-confirmation-image.service';
 import { getStorageService, serveFile } from '../services/storage.service';
 import { postVoucher, generateVoucherNumber } from './voucher.routes';
 import { ensureVendorLedger, ensureBankLedger, ensureCashLedger, findLedgerByName } from './ledger.routes';
@@ -982,9 +983,9 @@ async function loadConfirmation(projectId: string, id: string) {
     where: { id, projectId, deletedAt: null },
     include: {
       project: { select: { name: true } },
-      vendor: { select: { name: true, vendorCode: true, phone: true, contactPersonPhone: true } },
-      invoice: { select: { invoiceCode: true } },
-      purchaseOrder: { select: { poNumber: true } },
+      vendor: { select: { name: true, vendorCode: true, phone: true, contactPersonPhone: true, bankName: true, bankAccountNumber: true } },
+      invoice: { select: { invoiceCode: true, date: true, purchaseOrder: { select: { poNumber: true, date: true, items: { select: { materialName: true, specification: true } } } } } },
+      purchaseOrder: { select: { poNumber: true, date: true, items: { select: { materialName: true, specification: true } } } },
       payments: {
         orderBy: { createdAt: 'desc' },
         take: 1,
@@ -999,6 +1000,9 @@ async function loadConfirmation(projectId: string, id: string) {
   if (!pr) return null;
   if (pr.status !== PaymentStatus.APPROVED && pr.status !== PaymentStatus.PAID) return { pr, error: 'A payment confirmation is available once the request is approved' };
   const p = pr.payments[0];
+  const po = pr.purchaseOrder ?? pr.invoice?.purchaseOrder ?? null;
+  const materials = [...new Set((po?.items ?? []).map((i) => (i.specification ? `${i.materialName} - ${i.specification}` : i.materialName)))];
+  const account = pr.vendor?.bankAccountNumber ? String(pr.vendor.bankAccountNumber).replace(/\s/g, '') : null;
   return {
     pr,
     data: {
@@ -1011,6 +1015,10 @@ async function loadConfirmation(projectId: string, id: string) {
       poNumber: pr.purchaseOrder?.poNumber ?? null,
       invoiceCode: pr.invoice?.invoiceCode ?? null,
       description: pr.description ?? null,
+      materials,
+      suppliedOn: pr.invoice?.date ?? po?.date ?? null,
+      vendorBank: pr.vendor?.bankName ?? null,
+      vendorAccountLast4: account && account.length >= 4 ? account.slice(-4) : null,
       mode: p?.mode ?? pr.paymentMode ?? null,
       reference: p?.reference ?? pr.chequeNumber ?? null,
       account: p?.bankAccount?.accountName ?? p?.cashAccount?.name ?? null,
@@ -1029,17 +1037,31 @@ router.get(
       const loaded = await loadConfirmation(requireProjectId(req), req.params.id);
       if (!loaded) { res.status(404).json({ error: 'Payment request not found' }); return; }
       if ('error' in loaded) { res.status(400).json({ error: loaded.error }); return; }
-      const head = await prisma.user.findFirst({
-        where: { isActive: true, role: UserRole.HEAD_OF_CONSTRUCTION },
-        select: { name: true, phone: true },
+      const staff = await prisma.user.findMany({
+        where: {
+          isActive: true,
+          OR: [
+            { role: { in: [UserRole.PROJECT_HEAD, UserRole.HEAD_OF_CONSTRUCTION] } },
+            { role: UserRole.SUPERVISOR, name: { contains: 'avinash', mode: 'insensitive' } },
+          ],
+        },
+        select: { name: true, phone: true, role: true },
         orderBy: { createdAt: 'asc' },
       });
+      const head = staff.find((u) => u.role === UserRole.HEAD_OF_CONSTRUCTION);
+      // Who hears "payment done": the vendor, the Project Head, the Head of Construction and
+      // Avinash (supervisor), so nobody raises another PO for what is already paid.
+      const recipients = [
+        { key: 'vendor', role: 'VENDOR', name: loaded.data.vendorName, phone: loaded.pr.vendor?.phone ?? loaded.pr.vendor?.contactPersonPhone ?? null },
+        ...staff.map((u) => ({ key: `${u.role}:${u.name}`, role: u.role as string, name: u.name, phone: u.phone as string | null })),
+      ];
       res.json({
         ...loaded.data,
         status: loaded.pr.status,
         vendorPhone: loaded.pr.vendor?.phone ?? loaded.pr.vendor?.contactPersonPhone ?? null,
         headName: head?.name ?? null,
         headPhone: head?.phone ?? null,
+        recipients,
       });
     } catch (error) {
       next(error);
@@ -1059,6 +1081,25 @@ router.get(
       res.setHeader('Content-Type', 'application/pdf');
       res.setHeader('Content-Disposition', `attachment; filename="${loaded.pr.paymentCode}-payment-confirmation.pdf"`);
       streamPaymentConfirmationPdf(res as unknown as NodeJS.WritableStream, loaded.data);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// GET /:id/confirmation.png — the same slip as a photo (WhatsApp shows it inline)
+router.get(
+  '/:id/confirmation.png',
+  rbacMiddleware(Permission.VIEW_FINANCIALS),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const loaded = await loadConfirmation(requireProjectId(req), req.params.id);
+      if (!loaded) { res.status(404).json({ error: 'Payment request not found' }); return; }
+      if ('error' in loaded) { res.status(400).json({ error: loaded.error }); return; }
+      const png = await paymentConfirmationPng(loaded.data);
+      res.setHeader('Content-Type', 'image/png');
+      res.setHeader('Content-Disposition', `inline; filename="${loaded.pr.paymentCode}-payment-confirmation.png"`);
+      res.send(png);
     } catch (error) {
       next(error);
     }

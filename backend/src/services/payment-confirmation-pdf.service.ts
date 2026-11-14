@@ -10,6 +10,10 @@ export interface PaymentConfirmationData {
   poNumber?: string | null;
   invoiceCode?: string | null;
   description?: string | null;
+  materials?: string[];
+  suppliedOn?: Date | null;
+  vendorBank?: string | null;
+  vendorAccountLast4?: string | null;
   mode?: string | null;
   reference?: string | null;
   account?: string | null;
