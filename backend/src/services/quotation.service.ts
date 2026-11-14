@@ -1,3 +1,4 @@
+import { billableQuantity } from '@hospital-erp/shared';
 import { prisma } from '../config/prisma';
 import {
   AuditAction,
@@ -140,7 +141,7 @@ export async function createQuotation(input: CreateQuotationInput) {
 
   // Calculate totals — GST is auto-derived from per-item gstRate
   const itemsWithAmounts = items.map((item) => {
-    const calculatedAmount = item.quantity * item.unitPrice;
+    const calculatedAmount = billableQuantity(item.quantity, item.unit) * item.unitPrice;
     // Use client-provided amount if present (allows manual override), else calculate
     const amount = item.amount !== undefined && Number(item.amount) > 0
       ? Number(item.amount)

@@ -1,3 +1,4 @@
+import { billableQuantity } from '@hospital-erp/shared';
 import { useEffect, useState } from 'react';
 import {
   Alert,
@@ -119,8 +120,8 @@ export default function AddQuotationDialog({
     { quotationId: editing?.id, mprId },
     open,
   );
-  const subtotal = chosen.reduce((s, r) => s + Number(r.quantity) * (Number(r.unitPrice) || 0), 0);
-  const gst = chosen.reduce((s, r) => s + (Number(r.quantity) * (Number(r.unitPrice) || 0) * r.gstRate) / 100, 0);
+  const subtotal = chosen.reduce((s, r) => s + billableQuantity(r.quantity, r.unit) * (Number(r.unitPrice) || 0), 0);
+  const gst = chosen.reduce((s, r) => s + (billableQuantity(r.quantity, r.unit) * (Number(r.unitPrice) || 0) * r.gstRate) / 100, 0);
 
   const review = useCreateReview();
   const save = useMutation({
@@ -182,7 +183,7 @@ export default function AddQuotationDialog({
                 <TextField select size="small" label={t('gst')} value={r.gstRate} onChange={(e) => setRow(idx, { gstRate: Number(e.target.value) })} disabled={!r.include}>
                   {GST_RATES.map((g) => <MenuItem key={g} value={g}>{g}%</MenuItem>)}
                 </TextField>
-                <Typography variant="body2" sx={{ textAlign: 'right' }}>{formatCurrency(Number(r.quantity) * (Number(r.unitPrice) || 0) * (1 + r.gstRate / 100))}</Typography>
+                <Typography variant="body2" sx={{ textAlign: 'right' }}>{formatCurrency(billableQuantity(r.quantity, r.unit) * (Number(r.unitPrice) || 0) * (1 + r.gstRate / 100))}</Typography>
               </Box>
             ))}
           </Box>

@@ -1,3 +1,4 @@
+import { billableQuantity } from '@hospital-erp/shared';
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -368,7 +369,7 @@ function AddBillDialog({ open, onClose, bill }: { open: boolean; onClose: () => 
   const budgetHeads = useBudgetHeads(open);
   const [error, setError] = useState('');
 
-  const total = items.reduce((s, i) => s + (Number(i.quantity) || 0) * (Number(i.rate) || 0), 0);
+  const total = items.reduce((s, i) => s + billableQuantity(i.quantity, i.unit) * (Number(i.rate) || 0), 0);
   const overLimit = total > SITE_BILL_LIMIT;
   const validItems = items.filter((i) => i.materialName.trim() && Number(i.quantity) > 0);
   const priceChecks = usePriceCheck(items.map((it) => ({ itemId: catalogItemOf(it)?.itemId, materialName: it.materialName, specification: it.specification, unit: it.unit })), {}, open);
@@ -483,7 +484,7 @@ function AddBillDialog({ open, onClose, bill }: { open: boolean; onClose: () => 
                   <TextField size="small" type="number" label={t('rate')} value={item.rate} onChange={(e) => setItem(idx, { rate: e.target.value })} inputProps={{ min: 0, step: 'any' }} fullWidth />
                   <PriceFlag result={priceChecks[idx] ?? null} rate={item.rate} unit={item.unit} />
                 </Box>
-                <Typography variant="body2" fontWeight={600} sx={{ textAlign: 'right' }}>{formatCurrency((Number(item.quantity) || 0) * (Number(item.rate) || 0))}</Typography>
+                <Typography variant="body2" fontWeight={600} sx={{ textAlign: 'right' }}>{formatCurrency(billableQuantity(item.quantity, item.unit) * (Number(item.rate) || 0))}</Typography>
                 <IconButton size="small" disabled={items.length === 1} onClick={() => setItems((prev) => prev.filter((_x, i) => i !== idx))} aria-label={t('removeItem')}><DeleteIcon fontSize="small" /></IconButton>
               </Box>
             ))}

@@ -1,3 +1,4 @@
+import { billableQuantity } from '@hospital-erp/shared';
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useTheme } from '@mui/material/styles';
@@ -522,7 +523,7 @@ export default function QuotationsPage() {
             quantity: item.quantity,
             unit: item.unit ?? 'nos',
             unitPrice: rate > 0 ? rate : '',
-            amount: rate > 0 ? round2(num(item.quantity) * rate * gstMult(gstRate)) : 0,
+            amount: rate > 0 ? round2(billableQuantity(num(item.quantity), item.unit) * rate * gstMult(gstRate)) : 0,
             gstRate,
           };
         });
@@ -648,7 +649,7 @@ export default function QuotationsPage() {
     // qty/price change → recompute inc-GST amount; gstRate change → keep the
     // pre-tax base fixed and re-derive the inc-GST amount at the new rate.
     if (field === 'quantity' || field === 'unitPrice') {
-      updated[index].amount = round2(num(updated[index].quantity) * num(updated[index].unitPrice) * gstMult(updated[index].gstRate));
+      updated[index].amount = round2(billableQuantity(num(updated[index].quantity), updated[index].unit) * num(updated[index].unitPrice) * gstMult(updated[index].gstRate));
     } else if (field === 'gstRate') {
       updated[index].amount = round2(toPreTax(prev.amount, prev.gstRate) * gstMult(value));
     }
@@ -772,7 +773,7 @@ export default function QuotationsPage() {
           matched.add(item.materialName.toLowerCase());
           const qty = Number(ocrMatch.quantity) || item.quantity;
           const price = Number(ocrMatch.unitPrice) || item.unitPrice;
-          return { ...item, quantity: qty, unitPrice: price, amount: Number(qty) * Number(price) };
+          return { ...item, quantity: qty, unitPrice: price, amount: billableQuantity(qty, item.unit) * Number(price) };
         }
         // Also try partial match (OCR may have slightly different name)
         const partialMatch = data.lineItems.find((o) => {
@@ -784,7 +785,7 @@ export default function QuotationsPage() {
           matched.add(item.materialName.toLowerCase());
           const qty = Number(partialMatch.quantity) || item.quantity;
           const price = Number(partialMatch.unitPrice) || item.unitPrice;
-          return { ...item, quantity: qty, unitPrice: price, amount: Number(qty) * Number(price) };
+          return { ...item, quantity: qty, unitPrice: price, amount: billableQuantity(qty, item.unit) * Number(price) };
         }
         return item;
       });

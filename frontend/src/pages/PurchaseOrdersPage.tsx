@@ -1,3 +1,4 @@
+import { billableQuantity } from '@hospital-erp/shared';
 ﻿import { useState, useMemo, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTheme } from '@mui/material/styles';
@@ -2392,8 +2393,8 @@ function EditPODialog({ row, onClose, onSuccess }: { row: PORow | null; onClose:
   });
 
   const selectedItems = items.filter((i) => i.selected);
-  const totalAmount = selectedItems.reduce((sum, i) => sum + (Number(i.quantity) || 0) * (Number(i.unitPrice) || 0), 0);
-  const gstAmount = selectedItems.reduce((sum, i) => sum + (Number(i.quantity) || 0) * (Number(i.unitPrice) || 0) * (Number(i.gstRate) || 0) / 100, 0);
+  const totalAmount = selectedItems.reduce((sum, i) => sum + billableQuantity(i.quantity, i.unit) * (Number(i.unitPrice) || 0), 0);
+  const gstAmount = selectedItems.reduce((sum, i) => sum + billableQuantity(i.quantity, i.unit) * (Number(i.unitPrice) || 0) * (Number(i.gstRate) || 0) / 100, 0);
   const grandTotal = totalAmount + gstAmount;
   const remainingItems = items.filter((i) => (Number(i.quantity) || 0) - i.accepted > 0);
 
@@ -2722,8 +2723,8 @@ function EditUnapprovedPODialog({ row, onClose, onSuccess }: { row: PORow | null
     onError: (err: unknown) => setError(extractErrorMessage(err)),
   });
 
-  const totalAmount = items.reduce((sum, i) => sum + (Number(i.quantity) || 0) * (Number(i.unitPrice) || 0), 0);
-  const gstAmount = items.reduce((sum, i) => sum + (Number(i.quantity) || 0) * (Number(i.unitPrice) || 0) * (Number(i.gstRate) || 0) / 100, 0);
+  const totalAmount = items.reduce((sum, i) => sum + billableQuantity(i.quantity, i.unit) * (Number(i.unitPrice) || 0), 0);
+  const gstAmount = items.reduce((sum, i) => sum + billableQuantity(i.quantity, i.unit) * (Number(i.unitPrice) || 0) * (Number(i.gstRate) || 0) / 100, 0);
   const grandTotal = totalAmount + gstAmount;
 
   return (
@@ -2898,7 +2899,7 @@ function EditUnapprovedPODialog({ row, onClose, onSuccess }: { row: PORow | null
                     </TextField>
                   </TableCell>
                   <TableCell align="right">
-                    {formatCurrency((Number(item.quantity) || 0) * (Number(item.unitPrice) || 0))}
+                    {formatCurrency(billableQuantity(item.quantity, item.unit) * (Number(item.unitPrice) || 0))}
                   </TableCell>
                 </TableRow>
               ))}
@@ -2944,8 +2945,8 @@ function RegeneratePODialog({ row, onClose, onSuccess }: { row: PORow | null; on
     onError: (err: unknown) => setError(extractErrorMessage(err)),
   });
 
-  const totalAmount = remainingItems.reduce((sum, i) => sum + i.quantity * i.unitPrice, 0);
-  const gstAmount = remainingItems.reduce((sum, i) => sum + (i.quantity * i.unitPrice) * i.gstRate / 100, 0);
+  const totalAmount = remainingItems.reduce((sum, i) => sum + billableQuantity(i.quantity, i.unit) * i.unitPrice, 0);
+  const gstAmount = remainingItems.reduce((sum, i) => sum + (billableQuantity(i.quantity, i.unit) * i.unitPrice) * i.gstRate / 100, 0);
   const grandTotal = totalAmount + gstAmount;
 
   return (

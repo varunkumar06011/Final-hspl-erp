@@ -1,3 +1,4 @@
+import { billableQuantity } from '@hospital-erp/shared';
 import { Box, Table, TableBody, TableCell, TableHead, TableRow } from '@mui/material';
 import { useTranslation } from 'react-i18next';
 import { formatCurrency, formatIndianNumber } from '../utils/enumOptions';
@@ -39,7 +40,7 @@ export default function ItemsGist({ items, max = 4 }: { items?: GistItem[] | nul
         <TableBody>
           {shown.map((it, i) => {
             const rate = Number(it.unitPrice ?? it.estimatedRate ?? 0);
-            const base = it.amount != null ? Number(it.amount) : Number(it.quantity) * rate;
+            const base = it.amount != null ? Number(it.amount) : billableQuantity(it.quantity, it.unit) * rate;
             return (
               <TableRow key={it.id ?? i}>
                 <TableCell sx={{ ...cell, whiteSpace: 'normal', minWidth: 120 }}>{it.materialName}</TableCell>

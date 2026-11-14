@@ -1,4 +1,4 @@
-import { POStatus, POPaymentType, AuditAction, UserRole, VendorType, isAdminRole, FIRST_LEVEL_APPROVER_ROLES } from '@hospital-erp/shared';
+import { POStatus, POPaymentType, AuditAction, UserRole, VendorType, lineBaseAmount, isAdminRole, FIRST_LEVEL_APPROVER_ROLES } from '@hospital-erp/shared';
 import { prisma } from '../config/prisma';
 import { generateProjectSequenceNumber } from './sequence.service';
 import { logAudit } from './audit.service';
@@ -55,7 +55,7 @@ export async function createNonVendorPoFromMpr(mprId: string, projectId: string,
 
   const lines = mpr.items.map((item) => {
     const unitPrice = Number(item.estimatedRate ?? 0);
-    return { item, unitPrice, amount: Math.round(Number(item.quantity) * unitPrice * 100) / 100 };
+    return { item, unitPrice, amount: lineBaseAmount(Number(item.quantity), unitPrice, item.unit) };
   });
   const totalAmount = Math.round(lines.reduce((sum, l) => sum + l.amount, 0) * 100) / 100;
 

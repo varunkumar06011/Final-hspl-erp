@@ -26,7 +26,7 @@ import { REVISABLE_PO_STATUSES, syncQuotationsFromMpr, syncPoFromQuotation, hasU
 import { ensureVendorLedger } from './ledger.routes';
 import { afterMprApproved } from '../services/mpr-approval.service';
 import { nextCode, resolveCatalogLines } from '../services/catalog.service';
-import { CatalogItemKind, catalogNameKey, isAdminRole } from '@hospital-erp/shared';
+import { CatalogItemKind, catalogNameKey, isAdminRole, billableQuantity } from '@hospital-erp/shared';
 import multer from 'multer';
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
@@ -482,7 +482,7 @@ router.post(
       const computedItems = items.map((item: any) => {
         const qty = Number(item.quantity);
         const rate = Number(item.estimatedRate) || 0;
-        return { ...item, estimatedAmount: qty * rate };
+        return { ...item, estimatedAmount: billableQuantity(qty, item.unit) * rate };
       });
       const estimatedSubtotal = computedItems.reduce((sum: number, item: any) => sum + Number(item.estimatedAmount), 0);
       const estimatedGstAmount = (estimatedSubtotal * estimatedGstRate) / 100;
@@ -678,7 +678,7 @@ router.put(
         const computedItems = items.map((item: any) => {
           const qty = Number(item.quantity);
           const rate = Number(item.estimatedRate) || 0;
-          return { ...item, estimatedAmount: qty * rate };
+          return { ...item, estimatedAmount: billableQuantity(qty, item.unit) * rate };
         });
         const estimatedSubtotal = computedItems.reduce((sum: number, item: any) => sum + Number(item.estimatedAmount), 0);
         const estimatedGstAmount = (estimatedSubtotal * estimatedGstRate) / 100;

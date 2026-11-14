@@ -1,5 +1,5 @@
 import { Router, Response, NextFunction } from 'express';
-import { Permission, POStatus, POPaymentType, AuditAction, UserRole, GoodsReceiptStatus, isAdminRole, isFirstLevelApproverRole, FIRST_LEVEL_APPROVER_ROLES, VoucherType, GST_LEDGER_NAMES, VendorType, MPRStatus, CatalogItemKind, catalogNameKey, lineKey } from '@hospital-erp/shared';
+import { Permission, POStatus, POPaymentType, AuditAction, UserRole, GoodsReceiptStatus, isAdminRole, isFirstLevelApproverRole, FIRST_LEVEL_APPROVER_ROLES, VoucherType, GST_LEDGER_NAMES, VendorType, MPRStatus, CatalogItemKind, catalogNameKey, lineKey, billableQuantity } from '@hospital-erp/shared';
 import { createPOSchema, listPOsSchema, approvalActionSchema, editPOSchema, editUnapprovedPOSchema, regeneratePOSchema, changePOPaymentTypeSchema, createContractPOSchema, convertToContractSchema, isUmbrellaContract, createSubPOSchema, createPartPOSchema, updateContractTermsSchema } from '@hospital-erp/shared';
 import { prisma } from '../config/prisma';
 import { Prisma } from '@prisma/client';
@@ -1086,8 +1086,8 @@ router.post(
       }
 
       const lines = items as { materialName: string; itemId?: string | null; specification?: string | null; quantity: number; unit: string; unitPrice: number; gstRate: number }[];
-      const totalAmount = lines.reduce((s, i) => s + i.quantity * i.unitPrice, 0);
-      const gstAmount = lines.reduce((s, i) => s + (i.quantity * i.unitPrice * i.gstRate) / 100, 0);
+      const totalAmount = lines.reduce((s, i) => s + billableQuantity(i.quantity, i.unit) * i.unitPrice, 0);
+      const gstAmount = lines.reduce((s, i) => s + (billableQuantity(i.quantity, i.unit) * i.unitPrice * i.gstRate) / 100, 0);
       const grandTotal = totalAmount + gstAmount;
 
       const deductionRows: { amount: number; reason: string }[] = Array.isArray(deductions) ? deductions : [];
@@ -1152,7 +1152,7 @@ router.post(
                     quantity: i.quantity,
                     unit: i.unit,
                     unitPrice: i.unitPrice,
-                    amount: i.quantity * i.unitPrice,
+                    amount: billableQuantity(i.quantity, i.unit) * i.unitPrice,
                     gstRate: i.gstRate,
                   })),
                 },
@@ -2046,8 +2046,8 @@ router.post(
       }
 
       // Recalculate amounts from new items
-      const totalAmount = newItems.reduce((sum: number, i: { quantity: number; unitPrice: number }) => sum + i.quantity * i.unitPrice, 0);
-      const gstAmount = newItems.reduce((sum: number, i: { quantity: number; unitPrice: number; gstRate: number }) => sum + (i.quantity * i.unitPrice) * i.gstRate / 100, 0);
+      const totalAmount = newItems.reduce((sum: number, i: { quantity: number; unit?: string; unitPrice: number }) => sum + billableQuantity(i.quantity, i.unit) * i.unitPrice, 0);
+      const gstAmount = newItems.reduce((sum: number, i: { quantity: number; unit?: string; unitPrice: number; gstRate: number }) => sum + (billableQuantity(i.quantity, i.unit) * i.unitPrice) * i.gstRate / 100, 0);
       const grandTotal = totalAmount + gstAmount;
 
       // ── Compute deductions ──
@@ -2152,7 +2152,7 @@ router.post(
             quantity: i.quantity,
             unit: i.unit,
             unitPrice: i.unitPrice,
-            amount: i.quantity * i.unitPrice,
+            amount: billableQuantity(i.quantity, i.unit) * i.unitPrice,
             gstRate: i.gstRate,
           })),
         });
@@ -2386,8 +2386,8 @@ router.post(
       }
 
       // Recalculate amounts from new items
-      const totalAmount = newItems.reduce((sum, i) => sum + i.quantity * i.unitPrice, 0);
-      const gstAmount = newItems.reduce((sum, i) => sum + (i.quantity * i.unitPrice) * i.gstRate / 100, 0);
+      const totalAmount = newItems.reduce((sum, i) => sum + billableQuantity(i.quantity, i.unit) * i.unitPrice, 0);
+      const gstAmount = newItems.reduce((sum, i) => sum + (billableQuantity(i.quantity, i.unit) * i.unitPrice) * i.gstRate / 100, 0);
       const grandTotal = totalAmount + gstAmount;
 
       // Snapshot old values for audit
@@ -2436,7 +2436,7 @@ router.post(
                 quantity: i.quantity,
                 unit: i.unit,
                 unitPrice: i.unitPrice,
-                amount: i.quantity * i.unitPrice,
+                amount: billableQuantity(i.quantity, i.unit) * i.unitPrice,
                 gstRate: i.gstRate,
               },
             });
@@ -2450,7 +2450,7 @@ router.post(
                 quantity: i.quantity,
                 unit: i.unit,
                 unitPrice: i.unitPrice,
-                amount: i.quantity * i.unitPrice,
+                amount: billableQuantity(i.quantity, i.unit) * i.unitPrice,
                 gstRate: i.gstRate,
               },
             });
@@ -2575,8 +2575,8 @@ router.post(
 
       const remainingItems = po.regenerationData as { materialName: string; itemId?: string | null; specification?: string | null; quantity: number; unit: string; unitPrice: number; gstRate: number }[];
       const regenNumber = await generateRegeneratedPONumber(po);
-      const totalAmount = remainingItems.reduce((sum, i) => sum + i.quantity * i.unitPrice, 0);
-      const gstAmount = remainingItems.reduce((sum, i) => sum + (i.quantity * i.unitPrice) * i.gstRate / 100, 0);
+      const totalAmount = remainingItems.reduce((sum, i) => sum + billableQuantity(i.quantity, i.unit) * i.unitPrice, 0);
+      const gstAmount = remainingItems.reduce((sum, i) => sum + (billableQuantity(i.quantity, i.unit) * i.unitPrice) * i.gstRate / 100, 0);
       const grandTotal = totalAmount + gstAmount;
 
       const adminRoles = await getActiveAdminRoles(projectId);
@@ -2617,7 +2617,7 @@ router.post(
             quantity: i.quantity,
             unit: i.unit,
             unitPrice: i.unitPrice,
-            amount: i.quantity * i.unitPrice,
+            amount: billableQuantity(i.quantity, i.unit) * i.unitPrice,
             gstRate: i.gstRate,
           })),
         });

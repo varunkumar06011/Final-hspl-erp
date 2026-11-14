@@ -1,3 +1,4 @@
+import { billableQuantity } from '@hospital-erp/shared';
 import {
   AuditAction,
   FIRST_LEVEL_APPROVER_ROLES,
@@ -49,7 +50,7 @@ export interface SiteBillItemInput {
 
 /** Line amounts and bill total; refuses an empty bill or one above the limit. */
 export function priceSiteBill(items: SiteBillItemInput[]) {
-  const lines = items.map((i) => ({ ...i, amount: round2(Number(i.quantity) * Number(i.rate)) }));
+  const lines = items.map((i) => ({ ...i, amount: round2(billableQuantity(i.quantity, i.unit) * Number(i.rate)) }));
   const total = round2(lines.reduce((sum, l) => sum + l.amount, 0));
   if (total <= 0) throw new SiteBillError('Enter the amount of the bill');
   if (total > SITE_BILL_LIMIT) {

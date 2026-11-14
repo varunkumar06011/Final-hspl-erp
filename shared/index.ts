@@ -7,3 +7,4 @@ export * from './types.js';
 export * from './schemas/index.js';
 export * from './fuzzy.js';
 export * from './catalog.js';
+export * from './hours.js';

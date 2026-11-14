@@ -1,3 +1,4 @@
+import { billableQuantity } from '@hospital-erp/shared';
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
@@ -229,7 +230,7 @@ export default function MaterialPurchaseRequestsPage() {
   });
   // Optional prices: sum quantity x rate over the items that have a rate.
   const estimatedTotal = items.reduce(
-    (sum, i) => sum + (Number(i.quantity) || 0) * (Number(i.estimatedRate) || 0),
+    (sum, i) => sum + billableQuantity(i.quantity, i.unit) * (Number(i.estimatedRate) || 0),
     0,
   );
 

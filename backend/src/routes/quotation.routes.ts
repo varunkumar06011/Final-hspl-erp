@@ -1,5 +1,5 @@
 import { Router, Response, NextFunction } from 'express';
-import { Permission, QuotationStatus, AuditAction, ApprovalStatus, UserRole, isAdminRole, FIRST_LEVEL_APPROVER_ROLES, lineKey, catalogNameKey } from '@hospital-erp/shared';
+import { Permission, QuotationStatus, AuditAction, ApprovalStatus, UserRole, isAdminRole, FIRST_LEVEL_APPROVER_ROLES, lineKey, catalogNameKey, billableQuantity } from '@hospital-erp/shared';
 import { createQuotationSchema, listQuotationsSchema, approvalActionSchema, finalizeQuotationSchema } from '@hospital-erp/shared';
 import { prisma } from '../config/prisma';
 import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middleware/auth';
@@ -563,7 +563,7 @@ router.patch(
           console.log(`[Quotation] Auto-registered ${newMaterials.length} new material(s) for vendor "${vendor.name}"`);
         }
         const itemsWithAmounts = items.map((item) => {
-          const amount = item.quantity * item.unitPrice;
+          const amount = billableQuantity(item.quantity, item.unit) * item.unitPrice;
           const rate = Number(item.gstRate) || 0;
           return {
             materialName: item.materialName,
@@ -772,7 +772,7 @@ router.post(
         itemsWithAmounts = items.map((item) => {
           const amount = item.amount !== undefined && Number(item.amount) > 0
             ? Number(item.amount)
-            : item.quantity * item.unitPrice;
+            : billableQuantity(item.quantity, item.unit) * item.unitPrice;
           const rate = Number(item.gstRate) || 0;
           return {
             materialName: item.materialName,

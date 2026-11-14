@@ -1,3 +1,4 @@
+import { billableQuantity } from '@hospital-erp/shared';
 import { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
@@ -245,8 +246,8 @@ function CreateSubPoDialog({ contract, onClose }: { contract: ContractRef | null
   }, [contract]);
 
   const totals = useMemo(() => {
-    const sub = lines.reduce((s, l) => s + Number(l.quantity || 0) * Number(l.unitPrice || 0), 0);
-    const gst = lines.reduce((s, l) => s + (Number(l.quantity || 0) * Number(l.unitPrice || 0) * Number(l.gstRate || 0)) / 100, 0);
+    const sub = lines.reduce((s, l) => s + billableQuantity(l.quantity, l.unit) * Number(l.unitPrice || 0), 0);
+    const gst = lines.reduce((s, l) => s + (billableQuantity(l.quantity, l.unit) * Number(l.unitPrice || 0) * Number(l.gstRate || 0)) / 100, 0);
     const ded = deductions.reduce((s, d) => s + Number(d.amount || 0), 0);
     return { sub, gst, grand: sub + gst, ded, net: sub + gst - ded };
   }, [lines, deductions]);
