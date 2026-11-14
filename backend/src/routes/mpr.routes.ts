@@ -22,11 +22,11 @@ import { getStorageService, serveFile } from '../services/storage.service';
 import { notifyApprovers } from '../services/push.service';
 import { findLivePoForMpr } from '../services/non-vendor-po.service';
 import { skipReservedRequestNumber } from '../services/proof.service';
-import { REVISABLE_PO_STATUSES, syncQuotationsFromMpr, syncPoFromQuotation, hasUnpricedItems } from '../services/mpr-revision.service';
+import { REVISABLE_PO_STATUSES, syncQuotationsFromMpr, syncPoFromQuotation, hasUnpricedItems, editsStandWithoutReapproval } from '../services/mpr-revision.service';
 import { ensureVendorLedger } from './ledger.routes';
 import { afterMprApproved } from '../services/mpr-approval.service';
 import { nextCode, resolveCatalogLines } from '../services/catalog.service';
-import { CatalogItemKind, catalogNameKey, isAdminRole, billableQuantity } from '@hospital-erp/shared';
+import { CatalogItemKind, catalogNameKey, lineKey, isAdminRole, billableQuantity } from '@hospital-erp/shared';
 import multer from 'multer';
 import { syncChainDescription } from '../services/description-sync.service';
 
@@ -672,6 +672,11 @@ router.put(
         await saveVendorBank((updateData.vendorId as string | null | undefined) ?? existing.vendorId, req.body.accountDetails, projectId, req.user!.id);
       }
 
+      // Rates as they were, so a changed rate can be pushed into the quotations.
+      const previousItems = linkedQuotations.length > 0 && req.body.items
+        ? await prisma.materialPurchaseRequestItem.findMany({ where: { mprId: existing.id } })
+        : [];
+
       // If items are provided, recompute totals and replace items
       if (req.body.items) {
         const items = await catalogLines(req.body.items, req.body.requestType ?? existing.requestType, req.user!.id);
@@ -714,8 +719,9 @@ router.put(
         updateData.estimatedTotal = estimatedSubtotal + estimatedGstAmount;
       }
 
-      // An admin's edit stands as it is: no new approval round, status and workflow stay.
-      const adminEdit = isAdminRole(req.user!.role) || approvalService.canOverride(req.user!);
+      // An edit by an admin, Project Head or Head of Construction stands as it is: no new
+      // approval round, status and workflow stay (and the linked PO keeps its approvals).
+      const adminEdit = editsStandWithoutReapproval(req.user!) || isAdminRole(req.user!.role) || approvalService.canOverride(req.user!);
       if (adminEdit) wasSubmitted = false;
 
       let record;
@@ -771,14 +777,20 @@ router.put(
       // for approval right away only when every quotation line is priced.
       let revision: { quotationsUpdated: number; pricingPending: boolean; poResubmitted: string[] } | undefined;
       if (linkedQuotations.length > 0 && req.body.items) {
+        const rateChanges = new Map<string, number>();
+        for (const i of record.items) {
+          const old = previousItems.find((p) => lineKey(p) === lineKey(i));
+          if (Number(i.estimatedRate) > 0 && (!old || Number(old.estimatedRate) !== Number(i.estimatedRate))) rateChanges.set(lineKey(i), Number(i.estimatedRate));
+        }
         const quotationIds = await syncQuotationsFromMpr(
           record.id,
           record.items.map((i) => ({ materialName: i.materialName, itemId: i.itemId, specification: i.specification, quantity: Number(i.quantity), unit: i.unit })),
           Number(record.estimatedGstRate),
+          rateChanges,
         );
         const poResubmitted: string[] = [];
         for (const qid of quotationIds) {
-          const poNumber = await syncPoFromQuotation(qid, projectId, req.user!.id, `Items revised on ${record.mprNumber}`);
+          const poNumber = await syncPoFromQuotation(qid, projectId, req.user!.id, `Items revised on ${record.mprNumber}`, !adminEdit);
           if (poNumber) poResubmitted.push(poNumber);
         }
         const pending = await prisma.quotationItem.findMany({ where: { quotationId: { in: quotationIds } }, select: { unitPrice: true } });

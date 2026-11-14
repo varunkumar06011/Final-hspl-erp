@@ -296,6 +296,7 @@ export default function QuotationsPage() {
       queryClient.invalidateQueries({ queryKey: ['/quotations'] });
       queryClient.invalidateQueries({ queryKey: ['/dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['/pos'] });
+      queryClient.invalidateQueries({ queryKey: ['/material-purchase-requests'] });
       setEditOpen(false);
       setEditing(null);
       resetForm();
@@ -1083,12 +1084,12 @@ export default function QuotationsPage() {
                           <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
                             <Button size="small" startIcon={<DownloadIcon />} onClick={() => downloadQuotationPDF(row.id, row.quotationNumber)}>{t('downloadPdf')}</Button>
                             {!(row.mpr && (effectiveStatus === QuotationStatus.APPROVED || effectiveStatus === QuotationStatus.CONVERTED_TO_PO) && row.items.some((i) => Number(i.unitPrice) <= 0)) && (
-                              isAdmin && effectiveStatus !== QuotationStatus.CONVERTED_TO_PO ? (
+                              isAdmin && effectiveStatus !== QuotationStatus.CONVERTED_TO_PO && effectiveStatus !== QuotationStatus.APPROVED ? (
                                 <Button size="small" startIcon={<EditIcon />} onClick={() => openEdit(row, true)}>{t('reEditResend')}</Button>
                               ) : effectiveStatus === QuotationStatus.SUBMITTED || effectiveStatus === QuotationStatus.UNDER_REVIEW ? (
                                 <Button size="small" startIcon={<EditIcon />} onClick={() => openEdit(row)}>{t('edit')}</Button>
                               ) : (
-                                <Button size="small" startIcon={<EditIcon />} onClick={() => { setNotesEditRow(row); setNotesEditValue(row.notes ?? ''); }}>{t('editDescription')}</Button>
+                                <Button size="small" startIcon={<EditIcon />} onClick={() => openEdit(row)}>{t('edit')}</Button>
                               )
                             )}
                             <Button size="small" startIcon={<CombinedIcon />} onClick={() => navigate(`/combined-records?type=quotation&id=${row.id}`)}>{t('openCombined')}</Button>

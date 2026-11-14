@@ -938,7 +938,7 @@ export default function PurchaseOrdersPage() {
                               {row.status === POStatus.REJECTED && (
                                 <IconButton size="small" color="warning" disabled={resubmitMutation.isPending} onClick={() => resubmitMutation.mutate(row.id)} title={t('resubmitForApproval')}><ResubmitIcon fontSize="small" /></IconButton>
                               )}
-                              {!isUmbrellaContract(row) && (row.status === POStatus.PENDING_APPROVAL || row.status === POStatus.REJECTED || (row.status === POStatus.APPROVED && !!user && isAdminRole(user.role))) && (
+                              {!isUmbrellaContract(row) && (row.status === POStatus.PENDING_APPROVAL || row.status === POStatus.REJECTED || row.status === POStatus.APPROVED) && (
                                 <IconButton size="small" color="primary" onClick={() => setEditUnapprovedRow(row)} title={t('editPo')}><EditIcon fontSize="small" /></IconButton>
                               )}
                             </Box>
@@ -1317,7 +1317,7 @@ export default function PurchaseOrdersPage() {
                                   {!isUmbrellaContract(row) && (row.status === POStatus.APPROVED || row.status === POStatus.PARTIALLY_DELIVERED || row.status === POStatus.DELIVERED) && (
                                     <Button size="small" startIcon={<TimelineIcon />} onClick={() => setTrailRow(row)}>{t('trail')}</Button>
                                   )}
-                                  {!isUmbrellaContract(row) && (row.status === POStatus.PENDING_APPROVAL || row.status === POStatus.REJECTED || (row.status === POStatus.APPROVED && !!user && isAdminRole(user.role))) && (
+                                  {!isUmbrellaContract(row) && (row.status === POStatus.PENDING_APPROVAL || row.status === POStatus.REJECTED || row.status === POStatus.APPROVED) && (
                                     <Button size="small" color="primary" startIcon={<EditIcon />} onClick={() => setEditUnapprovedRow(row)}>{t('editPo')}</Button>
                                   )}
                                   {(row.status === POStatus.APPROVED || row.status === POStatus.DELIVERED || row.status === POStatus.PARTIALLY_DELIVERED) && (
@@ -2718,6 +2718,8 @@ function EditUnapprovedPODialog({ row, onClose, onSuccess }: { row: PORow | null
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/pos'] });
+      queryClient.invalidateQueries({ queryKey: ['/quotations'] });
+      queryClient.invalidateQueries({ queryKey: ['/material-purchase-requests'] });
       onSuccess();
     },
     onError: (err: unknown) => setError(extractErrorMessage(err)),

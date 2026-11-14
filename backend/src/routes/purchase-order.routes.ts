@@ -22,6 +22,7 @@ import { getActiveAdminRoles, generatePONumber, createNonVendorPoFromMpr, findLi
 import { hasPoAccrual, payableAfterDeductions } from '../services/po-accrual.service';
 import { isPartPo, partPoBalance } from '../services/part-po.service';
 import { syncChainDescription, chainDescription } from '../services/description-sync.service';
+import { propagateFromPo, editsStandWithoutReapproval } from '../services/mpr-revision.service';
 
 const router = Router();
 router.use(authMiddleware);
@@ -2028,10 +2029,10 @@ router.post(
       }
       // Editing an already-approved PO is an admin-only action; the PO returns
       // to PENDING_APPROVAL and must pass the approval workflow again.
-      if (isApprovedPo && !isAdminRole(req.user!.role)) {
-        res.status(403).json({ error: 'Only an admin can edit an approved purchase order' });
-        return;
-      }
+      // Admins, Project Head and Head of Construction edit it in place: no new approval round.
+      // Anyone else (e.g. a Supervisor) can edit too, but the PO then goes for approval again
+      // at whatever stage it is in. A rejected PO is always re-submitted.
+      const keepStanding = editsStandWithoutReapproval(req.user!) && po.status !== POStatus.REJECTED;
       const { paymentTerms, deliveryDate, items: newItems, deductions, notes, referredBy } = req.body;
       // The budget head is optional: omitted keeps the PO's current one (which may be none).
       const budgetHeadId: string | null = req.body.budgetHeadId ?? po.budgetHeadId ?? null;
@@ -2178,14 +2179,14 @@ router.post(
             netPayable,
             editedAt: new Date(),
             editedBy: req.user!.id,
-            status: POStatus.PENDING_APPROVAL,
+            ...(keepStanding ? {} : { status: POStatus.PENDING_APPROVAL }),
           },
           include: poInclude,
         });
         if (notes !== undefined) await syncChainDescription({ poId: po.id }, notes, tx as any);
 
         // Reset approval workflow if it exists
-        if (po.approvalWorkflowId) {
+        if (!keepStanding && po.approvalWorkflowId) {
           await tx.approvalStep.deleteMany({ where: { workflowId: po.approvalWorkflowId } });
           await tx.approvalWorkflow.update({
             where: { id: po.approvalWorkflowId },
@@ -2213,15 +2214,21 @@ router.post(
         newValue: { paymentTerms, deliveryDate, budgetHeadId, items: newItems, notes, totalAmount, gstAmount, grandTotal },
       });
 
+      // The edit flows into its quotation, the request and the other quotations / POs of that
+      // request (quantities, prices, items); those POs follow the same approval rule.
+      await propagateFromPo(po.id, projectId, req.user!.id, !keepStanding, `Items revised on ${po.poNumber}`);
+
       // Notify approvers
-      notifyApprovers(projectId, [...FIRST_LEVEL_APPROVER_ROLES] as UserRole[], {
-        approvalId: po.approvalWorkflowId ?? '',
-        entityType: 'PURCHASE_ORDER',
-        entityId: po.id,
-        title: 'PO Edited — Re-approval Required',
-        body: `${po.poNumber} was edited and needs re-approval`,
-        url: `/pos?id=${po.id}`,
-      }).catch((err) => console.error('[Push] PO edit notification error:', err));
+      if (!keepStanding) {
+        notifyApprovers(projectId, [...FIRST_LEVEL_APPROVER_ROLES] as UserRole[], {
+          approvalId: po.approvalWorkflowId ?? '',
+          entityType: 'PURCHASE_ORDER',
+          entityId: po.id,
+          title: 'PO Edited — Re-approval Required',
+          body: `${po.poNumber} was edited and needs re-approval`,
+          url: `/pos?id=${po.id}`,
+        }).catch((err) => console.error('[Push] PO edit notification error:', err));
+      }
 
       res.json(result);
     } catch (error) {

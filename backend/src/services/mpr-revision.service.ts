@@ -1,5 +1,5 @@
 import { Prisma } from '@prisma/client';
-import { POStatus, QuotationStatus, AuditAction, UserRole, FIRST_LEVEL_APPROVER_ROLES, catalogNameKey, lineKey } from '@hospital-erp/shared';
+import { POStatus, QuotationStatus, AuditAction, UserRole, FIRST_LEVEL_APPROVER_ROLES, catalogNameKey, lineKey, billableQuantity, canFinalizeQuotation, isAdminRole } from '@hospital-erp/shared';
 import { prisma } from '../config/prisma';
 import { logAudit } from './audit.service';
 import { notifyApprovers } from './push.service';
@@ -58,9 +58,22 @@ function pairByName<W extends Line, T extends Line>(wanted: W[], existing: T[]) 
  * or to the finalized one when it is the only finalized quotation. Returns the
  * ids of the quotations that were touched.
  */
-export async function syncQuotationsFromMpr(mprId: string, lines: MprLine[], gstRate: number): Promise<string[]> {
+export async function syncQuotationsFromMpr(
+  mprId: string,
+  lines: MprLine[],
+  gstRate: number,
+  /** Lines (by item + spec) whose rate was changed on the request: their new rate goes into the quotations too. */
+  rateChanges?: Map<string, number>,
+  /** A quotation that is itself the source of the edit. */
+  skipQuotationId?: string,
+): Promise<string[]> {
   const quotations = await prisma.quotation.findMany({
-    where: { mprId, deletedAt: null, status: { notIn: [QuotationStatus.DELETED, QuotationStatus.REJECTED] } },
+    where: {
+      mprId,
+      deletedAt: null,
+      status: { notIn: [QuotationStatus.DELETED, QuotationStatus.REJECTED] },
+      ...(skipQuotationId ? { id: { not: skipQuotationId } } : {}),
+    },
     include: { items: true },
   });
   const isFinalized = (status: string) => status === QuotationStatus.APPROVED || status === QuotationStatus.CONVERTED_TO_PO;
@@ -71,12 +84,15 @@ export async function syncQuotationsFromMpr(mprId: string, lines: MprLine[], gst
       for (const { wanted, match } of pairByName(lines, q.items)) {
         if (!match && !mayAddLines) continue;
         if (match) {
+          const newRate = rateChanges?.get(lineKey(wanted));
+          const rate = newRate !== undefined && newRate > 0 ? newRate : Number(match.unitPrice);
           await tx.quotationItem.update({
             where: { id: match.id },
             data: {
               quantity: wanted.quantity,
               unit: wanted.unit ?? match.unit,
-              amount: wanted.quantity * Number(match.unitPrice),
+              unitPrice: rate,
+              amount: wanted.quantity * rate,
               ...(wanted.itemId ? { itemId: wanted.itemId, specification: wanted.specification ?? null } : {}),
             },
           });
@@ -119,6 +135,11 @@ export async function syncPoFromQuotation(
   projectId: string,
   userId: string,
   reason: string,
+  /**
+   * true (default): the PO goes back for approval at whatever stage it is in.
+   * false: an admin / head edited it, so it keeps its status and approvals.
+   */
+  reapprove = true,
 ): Promise<string | null> {
   const quotation = await prisma.quotation.findFirst({
     where: { id: quotationId, projectId, deletedAt: null },
@@ -175,7 +196,7 @@ export async function syncPoFromQuotation(
         totalDeductions,
         netPayable: grandTotal - totalDeductions,
         advanceAmount,
-        status: POStatus.PENDING_APPROVAL,
+        ...(reapprove ? { status: POStatus.PENDING_APPROVAL } : {}),
         editReason: reason,
         editedAt: committed ? new Date() : po.editedAt,
         editedBy: userId,
@@ -189,6 +210,7 @@ export async function syncPoFromQuotation(
       });
     }
 
+    if (!reapprove) return;
     const stepRows = headThenAdminSteps(adminRoles);
     if (po.approvalWorkflowId) {
       await tx.approvalStep.deleteMany({ where: { workflowId: po.approvalWorkflowId } });
@@ -223,6 +245,8 @@ export async function syncPoFromQuotation(
     newValue: { grandTotal, itemCount: quotation.items.length, reason },
   });
 
+  if (!reapprove) return po.poNumber;
+
   const workflowId =
     po.approvalWorkflowId ?? (await prisma.purchaseOrder.findUnique({ where: { id: po.id }, select: { approvalWorkflowId: true } }))?.approvalWorkflowId ?? '';
   notifyApprovers(projectId, [...FIRST_LEVEL_APPROVER_ROLES] as UserRole[], {
@@ -235,4 +259,136 @@ export async function syncPoFromQuotation(
   }).catch((err) => console.error('[Push] PO revision notification error:', err));
 
   return po.poNumber;
+}
+
+/** Roles whose edits stand without a new approval round: Admin 1/2/…, Project Head, Head of Construction, super admins. */
+export function editsStandWithoutReapproval(user: { role: string; extraPermissions?: readonly string[] | null }): boolean {
+  return canFinalizeQuotation(user.role, user.extraPermissions) || isAdminRole(user.role);
+}
+
+interface ChainLine {
+  materialName: string;
+  itemId?: string | null;
+  specification?: string | null;
+  quantity: number | Prisma.Decimal;
+  unit?: string | null;
+  unitPrice: number | Prisma.Decimal;
+}
+
+/**
+ * Push edited quotation / PO lines into the request: quantity, unit and rate of
+ * the matching lines are updated, lines the request does not have yet are added.
+ * Request lines are never removed from here (a vendor may cover only some of them).
+ */
+async function pushLinesToMpr(mprId: string, lines: ChainLine[]): Promise<void> {
+  const mpr = await prisma.materialPurchaseRequest.findUnique({ where: { id: mprId }, include: { items: true } });
+  if (!mpr) return;
+  await prisma.$transaction(async (tx) => {
+    for (const { wanted, match } of pairByName(lines, mpr.items)) {
+      const qty = Number(wanted.quantity);
+      const rate = Number(wanted.unitPrice) > 0 ? Number(wanted.unitPrice) : null;
+      if (match) {
+        const useRate = rate ?? Number(match.estimatedRate);
+        await tx.materialPurchaseRequestItem.update({
+          where: { id: match.id },
+          data: { quantity: qty, unit: wanted.unit ?? match.unit, estimatedRate: useRate, estimatedAmount: billableQuantity(qty, wanted.unit ?? match.unit) * useRate },
+        });
+      } else {
+        await tx.materialPurchaseRequestItem.create({
+          data: {
+            mprId,
+            materialName: wanted.materialName,
+            itemId: wanted.itemId ?? null,
+            specification: wanted.specification ?? null,
+            quantity: qty,
+            unit: wanted.unit ?? null,
+            estimatedRate: rate ?? 0,
+            estimatedAmount: billableQuantity(qty, wanted.unit) * (rate ?? 0),
+          },
+        });
+      }
+    }
+    const fresh = await tx.materialPurchaseRequestItem.findMany({ where: { mprId } });
+    const subtotal = fresh.reduce((sum, i) => sum + Number(i.estimatedAmount), 0);
+    const gst = (subtotal * Number(mpr.estimatedGstRate)) / 100;
+    await tx.materialPurchaseRequest.update({
+      where: { id: mprId },
+      data: { estimatedSubtotal: subtotal, estimatedGstAmount: gst, estimatedTotal: subtotal + gst },
+    });
+  });
+}
+
+/** After a quotation's lines changed: request, the other quotations and every PO follow. Returns the PO numbers sent for approval. */
+export async function propagateFromQuotation(
+  quotationId: string,
+  projectId: string,
+  userId: string,
+  reapprove: boolean,
+  reason: string,
+  /** The PO already holds the new lines (the edit came from it): do not sync it again. */
+  skipSourcePo = false,
+): Promise<string[]> {
+  const q = await prisma.quotation.findFirst({ where: { id: quotationId, projectId, deletedAt: null }, include: { items: true } });
+  if (!q) return [];
+  const touchedQuotations = new Set<string>(skipSourcePo ? [] : [q.id]);
+  if (q.mprId) {
+    await pushLinesToMpr(q.mprId, q.items);
+    const mpr = await prisma.materialPurchaseRequest.findUnique({ where: { id: q.mprId }, include: { items: true } });
+    if (mpr) {
+      const others = await syncQuotationsFromMpr(
+        mpr.id,
+        mpr.items.map((i) => ({ materialName: i.materialName, itemId: i.itemId, specification: i.specification, quantity: Number(i.quantity), unit: i.unit })),
+        Number(mpr.estimatedGstRate),
+        undefined,
+        q.id,
+      );
+      others.forEach((id) => touchedQuotations.add(id));
+    }
+  }
+  const poNumbers: string[] = [];
+  for (const id of touchedQuotations) {
+    const n = await syncPoFromQuotation(id, projectId, userId, reason, reapprove);
+    if (n) poNumbers.push(n);
+  }
+  return poNumbers;
+}
+
+/** After a PO's lines changed: its quotation mirrors it, then the request and the others follow. */
+export async function propagateFromPo(
+  poId: string,
+  projectId: string,
+  userId: string,
+  reapprove: boolean,
+  reason: string,
+): Promise<string[]> {
+  const po = await prisma.purchaseOrder.findFirst({ where: { id: poId, projectId, deletedAt: null }, include: { items: true, quotation: { include: { items: true } } } });
+  if (!po) return [];
+  const quotation = po.quotation;
+  if (quotation) {
+    await prisma.$transaction(async (tx) => {
+      const pairs = pairByName(po.items, quotation.items);
+      const keep = new Set(pairs.filter((p) => p.match).map((p) => p.match!.id));
+      for (const { wanted: i, match } of pairs) {
+        const data = {
+          materialName: i.materialName, itemId: i.itemId, specification: i.specification, quantity: i.quantity,
+          unit: i.unit, unitPrice: i.unitPrice, amount: i.amount, gstRate: i.gstRate,
+        };
+        if (match) await tx.quotationItem.update({ where: { id: match.id }, data });
+        else await tx.quotationItem.create({ data: { ...data, quotationId: quotation.id } });
+      }
+      const drop = quotation.items.filter((i) => !keep.has(i.id)).map((i) => i.id);
+      if (drop.length) await tx.quotationItem.deleteMany({ where: { id: { in: drop } } });
+      const total = po.items.reduce((sum, i) => sum + Number(i.amount), 0);
+      const gst = po.items.reduce((sum, i) => sum + (Number(i.amount) * Number(i.gstRate)) / 100, 0);
+      await tx.quotation.update({ where: { id: quotation.id }, data: { totalAmount: total, gstAmount: gst, grandTotal: total + gst } });
+    });
+  }
+  const mprId = po.mprId ?? quotation?.mprId ?? null;
+  const numbers: string[] = [];
+  if (quotation) {
+    numbers.push(...(await propagateFromQuotation(quotation.id, projectId, userId, reapprove, reason, true)));
+  } else if (mprId) {
+    await pushLinesToMpr(mprId, po.items);
+  }
+  return numbers;
 }

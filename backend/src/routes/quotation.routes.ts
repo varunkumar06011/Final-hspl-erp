@@ -1,5 +1,5 @@
 import { Router, Response, NextFunction } from 'express';
-import { Permission, QuotationStatus, AuditAction, ApprovalStatus, UserRole, isAdminRole, FIRST_LEVEL_APPROVER_ROLES, lineKey, catalogNameKey, billableQuantity } from '@hospital-erp/shared';
+import { Permission, QuotationStatus, AuditAction, ApprovalStatus, UserRole, isAdminRole, FIRST_LEVEL_APPROVER_ROLES, billableQuantity } from '@hospital-erp/shared';
 import { createQuotationSchema, listQuotationsSchema, approvalActionSchema, finalizeQuotationSchema } from '@hospital-erp/shared';
 import { prisma } from '../config/prisma';
 import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middleware/auth';
@@ -20,7 +20,7 @@ import {
   type QuotationLineItem,
 } from '../services/quotation.service';
 import { streamQuotationPdf } from '../services/quotation-pdf.service';
-import { syncPoFromQuotation } from '../services/mpr-revision.service';
+import { propagateFromQuotation, editsStandWithoutReapproval } from '../services/mpr-revision.service';
 import multer from 'multer';
 import { syncChainDescription, chainDescription } from '../services/description-sync.service';
 
@@ -29,10 +29,6 @@ const allowedQuotationFileTypes = ['application/pdf', 'image/jpeg', 'image/png',
 
 const router = Router();
 
-/** The incoming line that is this existing line: same item + spec, else (older clients) same name. */
-function matchLine<T extends { materialName: string; specification?: string | null }>(items: T[], line: { materialName: string; specification: string | null }): T | undefined {
-  return items.find((i) => lineKey(i) === lineKey(line)) ?? items.find((i) => catalogNameKey(i.materialName) === catalogNameKey(line.materialName));
-}
 router.use(authMiddleware);
 
 // ── Reconcile quotation status with approval workflow status ──────────
@@ -507,15 +503,11 @@ router.patch(
       const existingItems = await prisma.quotationItem.findMany({ where: { quotationId: existing.id } });
       const pricingOpen = isApprovedLocked && !!existing.mprId && existingItems.some((i) => Number(i.unitPrice) <= 0);
       const pricingOnly = pricingOpen && !!req.body.items && !req.file;
-      if (isApprovedLocked) {
-        // Allow editing only the notes/description on approved quotations
-        const isNotesOnlyUpdate = req.body.notes !== undefined
-          && !req.body.items
-          && !req.file;
-        if (!isNotesOnlyUpdate && !pricingOnly) {
-          res.status(400).json({ error: 'Cannot edit an approved quotation (only description/notes can be updated)' });
-          return;
-        }
+      // A finalized quotation can be edited too (items, prices, quantities, description): the
+      // change flows into the request and the PO. Only the attached file stays frozen.
+      if (isApprovedLocked && req.file) {
+        res.status(400).json({ error: 'Cannot replace the file of an approved quotation' });
+        return;
       }
 
       const updateData: Record<string, unknown> = {};
@@ -524,28 +516,10 @@ router.patch(
         updateData.notes = req.body.notes || null;
       }
 
-      // Block item/file changes on approved quotations (notes-only allowed above)
-      if (isApprovedLocked && !pricingOnly) {
-        if (req.body.items || req.file) {
-          res.status(400).json({ error: 'Cannot edit line items or file on an approved quotation' });
-          return;
-        }
-      }
-
       if (req.body.items) {
         const items = typeof req.body.items === 'string'
           ? JSON.parse(req.body.items) as QuotationLineItem[]
           : req.body.items as QuotationLineItem[];
-        if (pricingOnly) {
-          // Lines follow the MPR — only prices / GST may change here (they keep their item + spec).
-          const matches = existingItems.map((e) => ({ e, m: matchLine(items, e) }));
-          const sameLines = items.length === existingItems.length && matches.every(({ e, m }) => m && Number(m.quantity) === Number(e.quantity));
-          if (!sameLines) {
-            res.status(400).json({ error: 'Item names and quantities follow the material request — edit them there. Only prices can be entered here.' });
-            return;
-          }
-          for (const { e, m } of matches) Object.assign(m!, { itemId: e.itemId, specification: e.specification, materialName: e.materialName });
-        }
         const vendor = await prisma.vendor.findFirst({
           where: { id: existing.vendorId, projectId },
           include: { materials: true },
@@ -625,9 +599,13 @@ router.patch(
       });
 
       // Prices entered on a revised quotation: sync + re-submit its PO for approval.
+      // Any edit of the lines flows into the request, the other quotations and the POs. Admins,
+      // Project Head and Head of Construction keep the PO's approvals; anyone else sends it back.
       let poResubmitted: string | null = null;
-      if (pricingOnly) {
-        poResubmitted = await syncPoFromQuotation(existing.id, projectId, req.user!.id, `Items priced on ${existing.quotationNumber}`);
+      if (req.body.items) {
+        const reapprove = !editsStandWithoutReapproval(req.user!);
+        const numbers = await propagateFromQuotation(existing.id, projectId, req.user!.id, reapprove, `Items ${pricingOnly ? 'priced' : 'edited'} on ${existing.quotationNumber}`);
+        poResubmitted = reapprove ? numbers[0] ?? null : null;
       }
 
       res.json(poResubmitted ? { ...updated, poResubmitted } : updated);
