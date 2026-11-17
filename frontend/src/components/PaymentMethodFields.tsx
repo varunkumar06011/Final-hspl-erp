@@ -36,7 +36,6 @@ export function paymentErrorKey(v: PaymentFieldsValue, hasVendor: boolean): stri
   if (!v.method) return 'errPaymentType';
   if (v.method !== MPRPaymentMethod.BANK_TRANSFER) return null;
   if (!hasVendor) return 'errBankVendor';
-  if (!v.accountHolderName.trim()) return 'errAccountHolder';
   if (!/^[0-9]{6,20}$/.test(v.accountNumber.trim())) return 'errAccountNumber';
   if (!IFSC_PATTERN.test(v.ifscCode.trim().toUpperCase())) return 'errIfsc';
   return null;
@@ -49,7 +48,7 @@ export function paymentPayload(v: PaymentFieldsValue) {
     accountDetails:
       v.method === MPRPaymentMethod.BANK_TRANSFER
         ? {
-            accountHolderName: v.accountHolderName.trim(),
+            accountHolderName: v.accountHolderName.trim() || undefined,
             accountNumber: v.accountNumber.trim(),
             ifscCode: v.ifscCode.trim().toUpperCase(),
             bankName: v.bankName.trim() || undefined,
@@ -88,7 +87,6 @@ export default function PaymentMethodFields({
   const { t } = useTranslation('mpr');
   const bank = value.method === MPRPaymentMethod.BANK_TRANSFER;
   const errKey = showError ? paymentErrorKey(value, hasVendor) : null;
-  const holderBad = showError && bank && !value.accountHolderName.trim();
   const acctBad = showError && bank && !/^[0-9]{6,20}$/.test(value.accountNumber.trim());
   const ifscBad = showError && bank && !IFSC_PATTERN.test(value.ifscCode.trim().toUpperCase());
 
@@ -120,12 +118,10 @@ export default function PaymentMethodFields({
           <Grid container spacing={2}>
             <Grid item xs={12}>
               <TextField
-                fullWidth size="small" required disabled={disabled}
+                fullWidth size="small" disabled={disabled}
                 label={t('accountHolderName')}
                 value={value.accountHolderName}
                 onChange={(e) => onChange({ ...value, accountHolderName: e.target.value })}
-                error={holderBad}
-                helperText={holderBad ? t('errAccountHolder') : undefined}
               />
             </Grid>
             <Grid item xs={12} sm={5}>
