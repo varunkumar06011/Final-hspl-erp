@@ -176,6 +176,7 @@ model Vendor {
   panNumber          String?
   category           String    @default("OTHER") // VendorCategory enum
   bankName           String?
+  accountHolderName  String?
   bankAccountNumber  String?
   ifscCode           String?
   address            String?
@@ -1957,6 +1958,7 @@ model MaterialPurchaseRequestItem {
   requiredDate    DateTime?
   estimatedRate   Decimal   @default(0) @db.Decimal(15, 2)
   estimatedAmount Decimal   @default(0) @db.Decimal(15, 2)
+  gstRate         Decimal?  @db.Decimal(5, 2)
   remarks         String?
   createdAt       DateTime  @default(now())
 

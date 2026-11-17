@@ -124,7 +124,7 @@ export default function NewRequestDialog({ open, onClose, onCreated }: { open: b
         if (canCreateVendor) {
           // Bank details typed under "Payment type" go onto the new vendor.
           const withBank = payment.method === 'BANK_TRANSFER'
-            ? { ...vendor, bankAccountNumber: payment.accountNumber.trim(), ifscCode: payment.ifscCode.trim().toUpperCase(), bankName: payment.bankName.trim() }
+            ? { ...vendor, accountHolderName: payment.accountHolderName.trim(), bankAccountNumber: payment.accountNumber.trim(), ifscCode: payment.ifscCode.trim().toUpperCase(), bankName: payment.bankName.trim() }
             : vendor;
           const strip = Object.fromEntries(Object.entries(withBank).map(([k, v]) => [k, typeof v === 'string' ? v.trim() : v]).filter(([, v]) => v !== ''));
           const created = (await api.post('/vendors', strip)).data;

@@ -257,6 +257,8 @@ export async function streamMprPdf(res: NodeJS.WritableStream, mpr: any) {
   // Data rows — only show actual entered items (no blank rows)
   const dataRowH = 30;
   let subtotal = 0;
+  let gstTotal = 0;
+  const gstRates = new Set<number>();
   for (let i = 0; i < items.length; i++) {
     if (y > pageH - 120) { doc.addPage(); y = 40; }
     const item = items[i];
@@ -275,6 +277,11 @@ export async function streamMprPdf(res: NodeJS.WritableStream, mpr: any) {
       const rate = rateOf(item);
       const amount = rate * Number(item.quantity);
       subtotal += amount;
+      if (rate > 0) {
+        const itemGst = Number(item.gstRate ?? mpr.estimatedGstRate) || 0;
+        gstTotal += (amount * itemGst) / 100;
+        gstRates.add(itemGst);
+      }
       doc.text(rate > 0 ? money(rate) : '—', colRate, y + 7, { width: wRate - 2, align: rate > 0 ? 'right' : 'center' });
       doc.text(rate > 0 ? money(amount) : '—', colAmt, y + 7, { width: wAmt - 2, align: rate > 0 ? 'right' : 'center' });
     }
@@ -283,10 +290,9 @@ export async function streamMprPdf(res: NodeJS.WritableStream, mpr: any) {
 
   // Totals — only when prices were entered
   if (hasPrice) {
-    const gstRate = Number(mpr.estimatedGstRate) || 0;
-    const gstAmount = (subtotal * gstRate) / 100;
+    const gstAmount = gstTotal;
     const lines: Array<[string, string, boolean]> = [['Sub Total', money(subtotal), false]];
-    if (gstRate > 0) lines.push([`GST (${gstRate}%)`, money(gstAmount), false]);
+    if (gstAmount > 0) lines.push([gstRates.size === 1 ? `GST (${[...gstRates][0]}%)` : 'GST (per item)', money(gstAmount), false]);
     lines.push(['Total', money(subtotal + gstAmount), true]);
     const lineH = 20;
     if (y + lines.length * lineH > pageH - 60) { doc.addPage(); y = 40; }

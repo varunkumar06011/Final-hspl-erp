@@ -52,7 +52,7 @@ export const mprInclude = {
     where: { deletedAt: null, status: { notIn: ['DELETED', 'CANCELLED', 'REJECTED'] } },
     select: { id: true, poNumber: true, status: true },
   },
-  vendor: { select: { id: true, name: true, vendorCode: true, vendorType: true, phone: true, contactPersonPhone: true, bankName: true, bankAccountNumber: true, ifscCode: true } },
+  vendor: { select: { id: true, name: true, vendorCode: true, vendorType: true, phone: true, contactPersonPhone: true, bankName: true, accountHolderName: true, bankAccountNumber: true, ifscCode: true } },
   quotations: {
     where: { deletedAt: null },
     select: { id: true, quotationNumber: true, status: true, totalAmount: true, grandTotal: true },
@@ -123,7 +123,7 @@ class PaymentInputError extends Error {
   }
 }
 
-interface AccountDetails { bankName?: string; accountNumber: string; ifscCode: string }
+interface AccountDetails { accountHolderName?: string; bankName?: string; accountNumber: string; ifscCode: string }
 
 /** PO statuses from which the payment type is frozen for everyone except admins. */
 const PO_APPROVED_STATUSES = ['APPROVED', 'PARTIALLY_DELIVERED', 'DELIVERED'];
@@ -184,15 +184,21 @@ async function saveVendorBank(
   if (!vendorId || !details) return;
   const before = await prisma.vendor.findFirst({
     where: { id: vendorId, projectId, deletedAt: null },
-    select: { bankName: true, bankAccountNumber: true, ifscCode: true },
+    select: { bankName: true, accountHolderName: true, bankAccountNumber: true, ifscCode: true },
   });
   if (!before) return;
   const next = {
     bankAccountNumber: details.accountNumber,
     ifscCode: details.ifscCode,
     ...(details.bankName ? { bankName: details.bankName } : {}),
+    ...(details.accountHolderName ? { accountHolderName: details.accountHolderName } : {}),
   };
-  if (before.bankAccountNumber === next.bankAccountNumber && before.ifscCode === next.ifscCode && (!details.bankName || before.bankName === details.bankName)) return;
+  if (
+    before.bankAccountNumber === next.bankAccountNumber &&
+    before.ifscCode === next.ifscCode &&
+    (!details.bankName || before.bankName === details.bankName) &&
+    (!details.accountHolderName || before.accountHolderName === details.accountHolderName)
+  ) return;
   await prisma.vendor.update({ where: { id: vendorId }, data: next });
   await logAudit({ userId, action: AuditAction.UPDATE, entityType: 'vendors', entityId: vendorId, projectId, oldValue: before, newValue: next });
 }
@@ -248,7 +254,7 @@ async function withShipmentFlags<T extends { id: string; vendorId: string | null
  * item when the name or picked item matches, else a new one) and takes the item's code and
  * the item's own spec, so the same material can never end up under two codes.
  */
-function catalogLines<T extends { materialName: string; materialCode?: string | null; itemId?: string | null; specification?: string | null; unit?: string | null }>(
+function catalogLines<T extends { materialName: string; materialCode?: string | null; itemId?: string | null; specification?: string | null; unit?: string | null; quantity: unknown; estimatedRate?: unknown; gstRate?: unknown }>(
   items: T[],
   requestType: string | null | undefined,
   userId: string,
@@ -257,6 +263,29 @@ function catalogLines<T extends { materialName: string; materialCode?: string | 
     kind: requestType === 'SERVICE' ? CatalogItemKind.SERVICE : CatalogItemKind.MATERIAL,
     userId,
   });
+}
+
+/**
+ * Prices the lines of a request. Every line carries its own GST % (a line without one takes
+ * the request's %); the request keeps one summary %: the shared rate, or the blended rate
+ * (GST / subtotal) when the lines differ.
+ */
+function priceItems<T extends { quantity: unknown; unit?: string | null; estimatedRate?: unknown; gstRate?: unknown }>(
+  items: T[],
+  requestRate: number,
+) {
+  const lines = items.map((item) => {
+    const base = billableQuantity(Number(item.quantity), item.unit) * (Number(item.estimatedRate) || 0);
+    const gstRate = item.gstRate != null && item.gstRate !== '' ? Number(item.gstRate) : requestRate;
+    return { ...item, gstRate, estimatedAmount: base };
+  });
+  const estimatedSubtotal = lines.reduce((sum, l) => sum + l.estimatedAmount, 0);
+  const estimatedGstAmount = lines.reduce((sum, l) => sum + (l.estimatedAmount * l.gstRate) / 100, 0);
+  const rates = new Set(lines.filter((l) => l.estimatedAmount > 0).map((l) => l.gstRate));
+  const estimatedGstRate = rates.size === 1
+    ? [...rates][0]
+    : rates.size === 0 ? requestRate : Math.round((estimatedGstAmount / estimatedSubtotal) * 10000) / 100;
+  return { lines, estimatedSubtotal, estimatedGstAmount, estimatedGstRate, estimatedTotal: estimatedSubtotal + estimatedGstAmount };
 }
 
 /** Material requests are numbered <code>-MPR001, service requests <code>-SR001. */
@@ -477,17 +506,9 @@ router.post(
       }
 
       const items = await catalogLines(req.body.items, req.body.requestType, req.user!.id);
-      const estimatedGstRate = Number(req.body.estimatedGstRate) || 0;
-
-      // Compute estimated amounts
-      const computedItems = items.map((item: any) => {
-        const qty = Number(item.quantity);
-        const rate = Number(item.estimatedRate) || 0;
-        return { ...item, estimatedAmount: billableQuantity(qty, item.unit) * rate };
-      });
-      const estimatedSubtotal = computedItems.reduce((sum: number, item: any) => sum + Number(item.estimatedAmount), 0);
-      const estimatedGstAmount = (estimatedSubtotal * estimatedGstRate) / 100;
-      const estimatedTotal = estimatedSubtotal + estimatedGstAmount;
+      // Estimated amounts, with each line's own GST %
+      const { lines: computedItems, estimatedSubtotal, estimatedGstRate, estimatedGstAmount, estimatedTotal } =
+        priceItems(items, Number(req.body.estimatedGstRate) || 0);
 
       const record = await prisma.materialPurchaseRequest.create({
         data: {
@@ -528,6 +549,7 @@ router.post(
               requiredDate: item.requiredDate ? new Date(item.requiredDate) : null,
               estimatedRate: item.estimatedRate,
               estimatedAmount: item.estimatedAmount,
+              gstRate: item.gstRate,
               remarks: item.remarks || null,
             })),
           },
@@ -651,8 +673,11 @@ router.put(
       // The lock only bites when something actually changes (the edit form re-sends the current values).
       let paymentChanged = req.body.paymentMethod !== undefined && req.body.paymentMethod !== existing.paymentMethod;
       if (!paymentChanged && req.body.accountDetails && existing.vendorId && !vendorChanged) {
-        const cur = await prisma.vendor.findFirst({ where: { id: existing.vendorId }, select: { bankAccountNumber: true, ifscCode: true } });
-        paymentChanged = cur?.bankAccountNumber !== req.body.accountDetails.accountNumber || cur?.ifscCode !== req.body.accountDetails.ifscCode;
+        const cur = await prisma.vendor.findFirst({ where: { id: existing.vendorId }, select: { bankAccountNumber: true, ifscCode: true, accountHolderName: true } });
+        paymentChanged =
+          cur?.bankAccountNumber !== req.body.accountDetails.accountNumber ||
+          cur?.ifscCode !== req.body.accountDetails.ifscCode ||
+          (!!req.body.accountDetails.accountHolderName && cur?.accountHolderName !== req.body.accountDetails.accountHolderName);
       }
       if (paymentChanged) await assertCanChangePayment(req.user!, existing);
       if (effectiveMethod === MPRPaymentMethod.BANK_TRANSFER && (paymentTouched || vendorChanged)) {
@@ -680,16 +705,10 @@ router.put(
       // If items are provided, recompute totals and replace items
       if (req.body.items) {
         const items = await catalogLines(req.body.items, req.body.requestType ?? existing.requestType, req.user!.id);
-        const estimatedGstRate = Number(updateData.estimatedGstRate ?? existing.estimatedGstRate);
-        const computedItems = items.map((item: any) => {
-          const qty = Number(item.quantity);
-          const rate = Number(item.estimatedRate) || 0;
-          return { ...item, estimatedAmount: billableQuantity(qty, item.unit) * rate };
-        });
-        const estimatedSubtotal = computedItems.reduce((sum: number, item: any) => sum + Number(item.estimatedAmount), 0);
-        const estimatedGstAmount = (estimatedSubtotal * estimatedGstRate) / 100;
-        const estimatedTotal = estimatedSubtotal + estimatedGstAmount;
+        const { lines: computedItems, estimatedSubtotal, estimatedGstRate, estimatedGstAmount, estimatedTotal } =
+          priceItems(items, Number(updateData.estimatedGstRate ?? existing.estimatedGstRate) || 0);
 
+        updateData.estimatedGstRate = estimatedGstRate;
         updateData.estimatedSubtotal = estimatedSubtotal;
         updateData.estimatedGstAmount = estimatedGstAmount;
         updateData.estimatedTotal = estimatedTotal;
@@ -707,16 +726,18 @@ router.put(
             requiredDate: item.requiredDate ? new Date(item.requiredDate) : null,
             estimatedRate: item.estimatedRate,
             estimatedAmount: item.estimatedAmount,
+            gstRate: item.gstRate,
             remarks: item.remarks || null,
           })),
         };
       } else if (req.body.estimatedGstRate !== undefined) {
-        // Recompute GST with new rate but existing items
+        // One new rate for every existing line
         const estimatedSubtotal = Number(existing.estimatedSubtotal);
         const estimatedGstRate = Number(updateData.estimatedGstRate);
         const estimatedGstAmount = (estimatedSubtotal * estimatedGstRate) / 100;
         updateData.estimatedGstAmount = estimatedGstAmount;
         updateData.estimatedTotal = estimatedSubtotal + estimatedGstAmount;
+        await prisma.materialPurchaseRequestItem.updateMany({ where: { mprId: existing.id }, data: { gstRate: estimatedGstRate } });
       }
 
       // An edit by an admin, Project Head or Head of Construction stands as it is: no new

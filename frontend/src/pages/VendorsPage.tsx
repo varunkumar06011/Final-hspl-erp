@@ -391,6 +391,7 @@ export default function VendorsPage() {
           { name: 'materials', label: t('materialsSupplied'), type: 'materials-list' },
           { name: 'panNumber', label: t('panNumber'), type: 'text' },
           { name: 'bankName', label: t('bankName'), type: 'text' },
+          { name: 'accountHolderName', label: t('accountHolderName'), type: 'text' },
           { name: 'bankAccountNumber', label: t('accountNumber'), type: 'text' },
           { name: 'ifscCode', label: t('ifsc'), type: 'text' },
           { name: 'address', label: t('address'), type: 'textarea' },

@@ -28,6 +28,7 @@
   "materialsSupplied": "Materials Supplied",
   "panNumber": "PAN Number",
   "bankName": "Bank Name",
+  "accountHolderName": "Account Holder Name",
   "accountNumber": "Account Number",
   "ifsc": "IFSC Code",
   "address": "Address",

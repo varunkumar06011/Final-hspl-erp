@@ -9,20 +9,22 @@ import { IFSC_PATTERN, MPRPaymentMethod } from '@hospital-erp/shared';
 
 export interface PaymentFieldsValue {
   method: MPRPaymentMethod | '';
+  accountHolderName: string;
   accountNumber: string;
   ifscCode: string;
   bankName: string;
 }
 
-export const EMPTY_PAYMENT: PaymentFieldsValue = { method: '', accountNumber: '', ifscCode: '', bankName: '' };
+export const EMPTY_PAYMENT: PaymentFieldsValue = { method: '', accountHolderName: '', accountNumber: '', ifscCode: '', bankName: '' };
 
 /** Payment fields prefilled from a vendor's bank details on file. */
 export function paymentFromVendor(
   method: string | null | undefined,
-  vendor?: { bankAccountNumber?: string | null; ifscCode?: string | null; bankName?: string | null } | null,
+  vendor?: { accountHolderName?: string | null; bankAccountNumber?: string | null; ifscCode?: string | null; bankName?: string | null } | null,
 ): PaymentFieldsValue {
   return {
     method: (method as MPRPaymentMethod) || '',
+    accountHolderName: vendor?.accountHolderName ?? '',
     accountNumber: vendor?.bankAccountNumber ?? '',
     ifscCode: vendor?.ifscCode ?? '',
     bankName: vendor?.bankName ?? '',
@@ -34,6 +36,7 @@ export function paymentErrorKey(v: PaymentFieldsValue, hasVendor: boolean): stri
   if (!v.method) return 'errPaymentType';
   if (v.method !== MPRPaymentMethod.BANK_TRANSFER) return null;
   if (!hasVendor) return 'errBankVendor';
+  if (!v.accountHolderName.trim()) return 'errAccountHolder';
   if (!/^[0-9]{6,20}$/.test(v.accountNumber.trim())) return 'errAccountNumber';
   if (!IFSC_PATTERN.test(v.ifscCode.trim().toUpperCase())) return 'errIfsc';
   return null;
@@ -46,6 +49,7 @@ export function paymentPayload(v: PaymentFieldsValue) {
     accountDetails:
       v.method === MPRPaymentMethod.BANK_TRANSFER
         ? {
+            accountHolderName: v.accountHolderName.trim(),
             accountNumber: v.accountNumber.trim(),
             ifscCode: v.ifscCode.trim().toUpperCase(),
             bankName: v.bankName.trim() || undefined,
@@ -84,6 +88,7 @@ export default function PaymentMethodFields({
   const { t } = useTranslation('mpr');
   const bank = value.method === MPRPaymentMethod.BANK_TRANSFER;
   const errKey = showError ? paymentErrorKey(value, hasVendor) : null;
+  const holderBad = showError && bank && !value.accountHolderName.trim();
   const acctBad = showError && bank && !/^[0-9]{6,20}$/.test(value.accountNumber.trim());
   const ifscBad = showError && bank && !IFSC_PATTERN.test(value.ifscCode.trim().toUpperCase());
 
@@ -113,6 +118,16 @@ export default function PaymentMethodFields({
         <Box sx={{ mt: 1.5 }}>
           {!hasVendor && showError && <Alert severity="error" sx={{ mb: 1 }}>{t('errBankVendor')}</Alert>}
           <Grid container spacing={2}>
+            <Grid item xs={12}>
+              <TextField
+                fullWidth size="small" required disabled={disabled}
+                label={t('accountHolderName')}
+                value={value.accountHolderName}
+                onChange={(e) => onChange({ ...value, accountHolderName: e.target.value })}
+                error={holderBad}
+                helperText={holderBad ? t('errAccountHolder') : undefined}
+              />
+            </Grid>
             <Grid item xs={12} sm={5}>
               <TextField
                 fullWidth size="small" required disabled={disabled}

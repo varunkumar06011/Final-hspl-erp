@@ -516,7 +516,7 @@ export default function QuotationsPage() {
           qtyMap[item.materialName.trim().toLowerCase()] = { quantity: Number(item.quantity), unit: item.unit };
           // Price entered on the MPR (optional) is the starting point; it stays editable.
           const rate = Number(item.estimatedRate) || 0;
-          const gstRate = rate > 0 ? Number(mpr.estimatedGstRate) || 0 : 0;
+          const gstRate = rate > 0 ? Number(item.gstRate ?? mpr.estimatedGstRate) || 0 : 0;
           return {
             materialName: item.materialName,
             itemId: item.itemId ?? null,
