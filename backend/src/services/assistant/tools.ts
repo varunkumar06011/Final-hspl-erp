@@ -489,7 +489,7 @@ function queryTable(body: any): ListTable | undefined {
 
 // ─── write tools (create-only, proposal + confirm) ──────────────────────────
 // Unit codes the MPR / service-request form offers (QTY_UNIT_OPTIONS + SERVICE_UNIT_OPTIONS in the frontend).
-const UNIT_CODES = ['nos', 'hrs', 'sqft', 'rft', 'kg', 'ton', 'ltr', 'set', 'day', 'visit', 'job', 'lumpsum'];
+const UNIT_CODES = ['nos', 'hrs', 'sqft', 'rft', 'kg', 'ton', 'ltr', 'set', 'unit', 'day', 'visit', 'job', 'lumpsum'];
 const lineItemMaterial = (extra: Record<string, unknown>) =>
   O(
     {

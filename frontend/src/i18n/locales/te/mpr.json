@@ -112,6 +112,7 @@
   "colAmount": "మొత్తం",
   "subTotal": "ఉప మొత్తం",
   "gstLine": "జీఎస్టీ ({{rate}}%)",
+  "gstRateLabel": "జీఎస్టీ %",
   "estimatedTotalHint": "ధర లేని వస్తువులు లెక్కలో చేర్చబడవు",
   "colRemarks": "వ్యాఖ్యలు",
   "addItem": "వస్తువును జోడించండి",

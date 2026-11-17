@@ -112,6 +112,7 @@
   "colAmount": "Amount",
   "subTotal": "Sub total",
   "gstLine": "GST ({{rate}}%)",
+  "gstRateLabel": "GST %",
   "estimatedTotalHint": "Items without a price are not included",
   "colRemarks": "Remarks",
   "addItem": "Add Item",
