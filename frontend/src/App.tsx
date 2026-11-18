@@ -1,5 +1,5 @@
-import { Suspense, lazy, useEffect } from 'react';
-import { BrowserRouter, HashRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { Suspense, useEffect } from 'react';
+import { BrowserRouter, HashRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { queryClient } from './config/queryClient';
 import { hydrateDashboardCache, watchDashboardCache } from './utils/dashboardCache';
@@ -34,43 +34,7 @@ import LoginPage from './pages/LoginPage';
 import { isNative } from './config/appConfig';
 import OpeningVideo from './components/OpeningVideo';
 import ProjectLinkSwitcher from './components/ProjectLinkSwitcher';
-
-// A lazy chunk can fail to load because a new deploy replaced the hashed file
-// this open tab still references (or a flaky mobile fetch). Retrying the same
-// URL cannot help (the browser caches the failed import), so on failure we
-// reload once to fetch the fresh index.html and chunk names. The timestamp
-// guard allows a new reload for a later deploy but stops a reload loop when
-// the failure is real (e.g. offline).
-const CHUNK_RELOAD_KEY = 'chunk-reload-at';
-const CHUNK_RELOAD_WINDOW_MS = 30_000;
-
-function reloadForFreshBuild(): boolean {
-  try {
-    const last = Number(sessionStorage.getItem(CHUNK_RELOAD_KEY) || 0);
-    if (Date.now() - last < CHUNK_RELOAD_WINDOW_MS) return false;
-    sessionStorage.setItem(CHUNK_RELOAD_KEY, String(Date.now()));
-  } catch {
-    // storage blocked: reload anyway, once per failure
-  }
-  window.location.reload();
-  return true;
-}
-
-function lazyWithRetry<T extends React.ComponentType<unknown>>(
-  factory: () => Promise<{ default: T }>,
-) {
-  return lazy(async () => {
-    try {
-      return await factory();
-    } catch (err) {
-      if (reloadForFreshBuild()) {
-        // Keep Suspense showing its fallback while the page reloads.
-        return new Promise<{ default: T }>(() => {});
-      }
-      throw err;
-    }
-  });
-}
+import { lazyWithRetry } from './utils/lazyWithRetry';
 
 // Pages are lazy-loaded so the boot bundle only contains the app shell +
 // login. Previously all ~45 pages (and their heavy deps — jsPDF, charts,
@@ -202,6 +166,12 @@ const ROUTES = [
 // webview ever reloaded. Hash routing keeps every route under '/' locally.
 const Router = isNative ? HashRouter : BrowserRouter;
 
+/** Clears a caught error whenever the user navigates, so one bad screen never traps the app. */
+function RouteErrorBoundary({ children }: { children: React.ReactNode }) {
+  const location = useLocation();
+  return <ErrorBoundary resetKey={location.pathname}>{children}</ErrorBoundary>;
+}
+
 export default function App() {
   const online = useOnlineStatus();
 
@@ -217,7 +187,7 @@ export default function App() {
         <CreateReviewProvider>
         <QueryClientProvider client={queryClient}>
           <Router>
-            <ErrorBoundary>
+            <RouteErrorBoundary>
               <OfflineBanner />
               {!online ? (
                 <ErrorScreen variant="offline" />
@@ -283,7 +253,7 @@ export default function App() {
                   </Routes>
                 </>
               )}
-            </ErrorBoundary>
+            </RouteErrorBoundary>
           </Router>
         </QueryClientProvider>
         </CreateReviewProvider>

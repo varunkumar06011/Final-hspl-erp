@@ -1,4 +1,5 @@
-import { useState, lazy, Suspense } from 'react';
+import { useState, Suspense } from 'react';
+import { lazyWithRetry } from '../utils/lazyWithRetry';
 import { Box, Card, CardContent, Typography, Skeleton, Alert, Chip, useMediaQuery, useTheme, CircularProgress } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { UserRole, isAdminRole, canOverrideApprovals } from '@hospital-erp/shared';
@@ -15,7 +16,7 @@ import { useAuthStore } from '../stores/authStore';
 import { useTranslation } from 'react-i18next';
 // Admin dashboard pulls in recharts (~300KB) — lazy-load it so non-admin
 // dashboards don't pay the chart-library cost on every load.
-const AdminDashboardPage = lazy(() => import('./AdminDashboardPage'));
+const AdminDashboardPage = lazyWithRetry(() => import('./AdminDashboardPage'));
 
 type PendingType = 'payments' | 'quotations' | 'pos' | 'invoices';
 

@@ -16,6 +16,8 @@
     "somethingWrong": "Something went wrong",
     "unexpectedRender": "An unexpected error occurred while rendering this page.",
     "tryAgain": "Try Again",
+    "updateAvailable": "The app was updated or a page did not finish loading. Reload to continue.",
+    "reload": "Reload",
     "notFoundTitle": "Page Not Found",
     "notFoundMsg": "The page you're looking for doesn't exist or has been moved.",
     "offlineTitle": "You're Offline",
