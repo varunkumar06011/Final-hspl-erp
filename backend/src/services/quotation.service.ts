@@ -281,7 +281,7 @@ export async function createQuotationFromMpr(mprId: string, projectId: string, u
       quantity: Number(item.quantity),
       unit: item.unit ?? undefined,
       unitPrice: Number(item.estimatedRate ?? 0),
-      gstRate: Number(mpr.estimatedGstRate ?? 0),
+      gstRate: Number(item.gstRate ?? mpr.estimatedGstRate ?? 0),
     })),
   });
 }

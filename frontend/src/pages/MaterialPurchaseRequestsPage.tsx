@@ -31,7 +31,7 @@ import { DetailSection, DetailField } from '../components/DetailSection';
 import WaitingOn from '../components/WaitingOn';
 import CopyText from '../components/CopyText';
 import ApprovalTiming from '../components/ApprovalTiming';
-import { MPRStatus, MPRRequestType, MPRPaymentMethod, UserRole, isAdminRole, isFirstLevelApproverRole, isWorkflowOpenToRole, canOverrideApprovals, findApprovableStep, isSuperAdmin, CatalogItemKind } from '@hospital-erp/shared';
+import { MPRStatus, MPRRequestType, MPRPaymentMethod, UserRole, isAdminRole, isFirstLevelApproverRole, isWorkflowOpenToRole, canOverrideApprovals, findApprovableStep, isSuperAdmin, CatalogItemKind, GST_RATES } from '@hospital-erp/shared';
 import { formatDate, STATUS_COLORS, QTY_UNIT_OPTIONS, SERVICE_UNIT_OPTIONS, SERVICE_CATEGORY_OPTIONS, enumLabel, unitLabel, serviceCategoryLabel } from '../utils/enumOptions';
 import { useTranslation } from 'react-i18next';
 import api, { extractErrorMessage } from '../config/api';
@@ -62,6 +62,8 @@ interface MPRItem {
   unit?: string;
   requiredDate?: string;
   estimatedRate?: string | number;
+  /** GST % of this line (older requests: null = the request's own %). */
+  gstRate?: string | number | null;
   remarks?: string;
 }
 
@@ -229,10 +231,12 @@ export default function MaterialPurchaseRequestsPage() {
     return [{ materialName: '', materialCode: '', quantity: '', unit: 'nos', requiredDate: '', remarks: '' }];
   });
   // Optional prices: sum quantity x rate over the items that have a rate.
-  const estimatedTotal = items.reduce(
-    (sum, i) => sum + billableQuantity(i.quantity, i.unit) * (Number(i.estimatedRate) || 0),
-    0,
-  );
+  // Every item has its own GST %; the amount shown per item and the totals follow it.
+  const lineBase = (i: MPRItem) => billableQuantity(i.quantity, i.unit) * (Number(i.estimatedRate) || 0);
+  const lineGst = (i: MPRItem) => (lineBase(i) * (Number(i.gstRate) || 0)) / 100;
+  const estimatedSubtotal = items.reduce((sum, i) => sum + lineBase(i), 0);
+  const estimatedGstAmount = items.reduce((sum, i) => sum + lineGst(i), 0);
+  const estimatedTotal = estimatedSubtotal + estimatedGstAmount;
 
   // Vendor selection — an existing vendor, or a brand-new one created inline
   // (name + phone + type only). Non-vendor requests skip the Quotation step.
@@ -397,6 +401,7 @@ export default function MaterialPurchaseRequestsPage() {
       unit: i.unit ?? 'nos',
       requiredDate: i.requiredDate ? new Date(i.requiredDate).toISOString().slice(0, 10) : '',
       estimatedRate: Number(i.estimatedRate) > 0 ? String(i.estimatedRate) : '',
+      gstRate: String(Number(i.gstRate ?? row.estimatedGstRate) || 0),
       remarks: i.remarks ?? '',
     })));
     setVendorMode('existing');
@@ -494,6 +499,7 @@ export default function MaterialPurchaseRequestsPage() {
           unit: i.unit || undefined,
           requiredDate: i.requiredDate || undefined,
           estimatedRate: Number(i.estimatedRate) > 0 ? Number(i.estimatedRate) : 0,
+          gstRate: Number(i.gstRate) || 0,
           remarks: i.remarks || undefined,
         })),
       };
@@ -942,8 +948,10 @@ export default function MaterialPurchaseRequestsPage() {
                   <Box sx={{ minWidth: 0 }}>
                   {/* Key facts — only what people look for first (vendor, status and items are in the header) */}
                   {(() => {
-                    const est = row.items.reduce((s, i) => s + (Number(i.estimatedRate) || 0) * billableQuantity(i.quantity, i.unit), 0);
-                    const estTotal = est + (est * (Number(row.estimatedGstRate) || 0)) / 100;
+                    const estTotal = row.items.reduce((s, i) => {
+                      const base = (Number(i.estimatedRate) || 0) * billableQuantity(i.quantity, i.unit);
+                      return s + base + (base * (Number(i.gstRate ?? row.estimatedGstRate) || 0)) / 100;
+                    }, 0);
                     return (
                       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', sm: 'repeat(4, 1fr)' }, gap: 1, mb: 1 }}>
                         {estTotal > 0 && (
@@ -1054,8 +1062,8 @@ export default function MaterialPurchaseRequestsPage() {
                     const rateOf = (i: MPRItem) => Number(i.estimatedRate) || 0;
                     const hasPrice = row.items.some((i) => rateOf(i) > 0);
                     const subtotal = row.items.reduce((s, i) => s + rateOf(i) * billableQuantity(i.quantity, i.unit), 0);
-                    const gstRate = Number(row.estimatedGstRate) || 0;
-                    const gst = (subtotal * gstRate) / 100;
+                    const itemGstRate = (i: MPRItem) => Number(i.gstRate ?? row.estimatedGstRate) || 0;
+                    const gst = row.items.reduce((s, i) => s + (rateOf(i) * billableQuantity(i.quantity, i.unit) * itemGstRate(i)) / 100, 0);
                     const money = (n: number) => `₹${n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
                     return (
                       <TableContainer component={Paper} variant="outlined" sx={{ mt: 1.5, overflowX: 'auto' }}>
@@ -1067,6 +1075,7 @@ export default function MaterialPurchaseRequestsPage() {
                               <TableCell align="right">{t('colQty')}</TableCell>
                               {hasPrice && <TableCell align="right">{t('colRate')}</TableCell>}
                               {hasPrice && <TableCell align="right">{t('colAmount')}</TableCell>}
+                              {hasPrice && <TableCell align="right">{t('gstRateLabel')}</TableCell>}
                             </TableRow>
                           </TableHead>
                           <TableBody>
@@ -1098,26 +1107,34 @@ export default function MaterialPurchaseRequestsPage() {
                                       {rate > 0 ? money(rate * billableQuantity(item.quantity, item.unit)) : '—'}
                                     </TableCell>
                                   )}
+                                  {hasPrice && (
+                                    <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
+                                      {rate > 0 ? `${itemGstRate(item)}%` : '—'}
+                                    </TableCell>
+                                  )}
                                 </TableRow>
                               );
                             })}
                             {hasPrice && (
                               <>
-                                {gstRate > 0 && (
+                                {gst > 0 && (
                                   <>
                                     <TableRow>
                                       <TableCell colSpan={4} align="right">{t('subTotal')}</TableCell>
                                       <TableCell align="right">{money(subtotal)}</TableCell>
+                                      <TableCell />
                                     </TableRow>
                                     <TableRow>
-                                      <TableCell colSpan={4} align="right">{t('gstLine', { rate: gstRate })}</TableCell>
+                                      <TableCell colSpan={4} align="right">{t('gstTotalLabel')}</TableCell>
                                       <TableCell align="right">{money(gst)}</TableCell>
+                                      <TableCell />
                                     </TableRow>
                                   </>
                                 )}
                                 <TableRow sx={{ '& td': { fontWeight: 700, fontSize: '0.95rem', bgcolor: 'action.hover' } }}>
                                   <TableCell colSpan={4} align="right">{t('estimatedTotal')}</TableCell>
                                   <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>{money(subtotal + gst)}</TableCell>
+                                  <TableCell />
                                 </TableRow>
                               </>
                             )}
@@ -1452,6 +1469,8 @@ export default function MaterialPurchaseRequestsPage() {
                   <TableCell>{t('colUnit')}</TableCell>
                   <TableCell>{isServiceTab ? t('colServiceDate') : t('colRequiredDate')}</TableCell>
                   <TableCell align="right">{t('colPrice')}</TableCell>
+                  <TableCell>{t('gstRateLabel')}</TableCell>
+                  <TableCell align="right">{t('colAmountWithGst')}</TableCell>
                   <TableCell>{t('colRemarks')}</TableCell>
                   <TableCell></TableCell>
                 </TableRow>
@@ -1529,6 +1548,22 @@ export default function MaterialPurchaseRequestsPage() {
                     </TableCell>
                     <TableCell>
                       <TextField
+                        select
+                        size="small"
+                        value={String(Number(item.gstRate) || 0)}
+                        onChange={(e) => updateItem(index, 'gstRate', e.target.value)}
+                        sx={{ width: 90 }}
+                      >
+                        {GST_RATES.map((r) => <MenuItem key={r} value={String(r)}>{r}%</MenuItem>)}
+                      </TextField>
+                    </TableCell>
+                    <TableCell align="right" sx={{ whiteSpace: 'nowrap', fontWeight: 600 }}>
+                      {lineBase(item) > 0
+                        ? `₹${(lineBase(item) + lineGst(item)).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                        : '—'}
+                    </TableCell>
+                    <TableCell>
+                      <TextField
                         size="small"
                         value={item.remarks ?? ''}
                         onChange={(e) => updateItem(index, 'remarks', e.target.value)}
@@ -1550,6 +1585,12 @@ export default function MaterialPurchaseRequestsPage() {
             <Button size="small" startIcon={<AddIcon />} onClick={addItem}>{t('addItem')}</Button>
             {estimatedTotal > 0 && (
               <Box sx={{ textAlign: 'right' }}>
+                {estimatedGstAmount > 0 && (
+                  <Typography variant="body2" color="text.secondary">
+                    {t('subTotal')}: ₹{estimatedSubtotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    {' + '}{t('gstTotalLabel')}: ₹{estimatedGstAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </Typography>
+                )}
                 <Typography variant="subtitle2">
                   {t('estimatedTotal')}: ₹{estimatedTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </Typography>

@@ -29,6 +29,7 @@ export const GUARDED_COLUMNS: Record<string, readonly string[]> = {
     "status",
     "decidedAt",
     "comments",
+    "digitallySigned",
     "createdAt"
   ],
   "ApprovalWorkflow": [
@@ -534,6 +535,7 @@ export const GUARDED_COLUMNS: Record<string, readonly string[]> = {
     "requiredDate",
     "estimatedRate",
     "estimatedAmount",
+    "gstRate",
     "remarks",
     "createdAt"
   ],
@@ -541,6 +543,8 @@ export const GUARDED_COLUMNS: Record<string, readonly string[]> = {
     "id",
     "mprNumber",
     "legacyNumber",
+    "voucherNumber",
+    "paymentMethod",
     "date",
     "requiredBy",
     "department",
@@ -884,6 +888,7 @@ export const GUARDED_COLUMNS: Record<string, readonly string[]> = {
     "panNumber",
     "category",
     "bankName",
+    "accountHolderName",
     "bankAccountNumber",
     "ifscCode",
     "address",

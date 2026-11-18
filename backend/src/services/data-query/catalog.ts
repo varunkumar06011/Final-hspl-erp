@@ -33,6 +33,8 @@ export const DATA_EXCLUDED: Record<string, string> = {
   ProofNumber: 'bookkeeping for papers',
   FileFingerprint: 'file hashes, technical',
   DuplicateFlag: 'admin-only review list with its own page',
+  ApprovalSignature: 'signature images',
+  UserSignature: 'signature images',
 };
 
 /** Shared (not per-project) tables everyone may read. */

@@ -186,6 +186,7 @@
     "ton": "Ton (metric ton)",
     "ltr": "Ltr (liters)",
     "set": "Set (kit/set)",
+    "unit": "Unit",
     "day": "Day(s)",
     "visit": "Visit(s)",
     "job": "Job (per job)",

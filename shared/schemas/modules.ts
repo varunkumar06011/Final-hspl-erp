@@ -103,6 +103,7 @@ export const createVendorSchema = z.object({
     panNumber: z.string().max(20).optional(),
     category: z.string().min(1).max(100).default('OTHER'),
     bankName: z.string().max(100).optional(),
+    accountHolderName: z.string().max(150).optional(),
     bankAccountNumber: z.string().max(30).optional(),
     ifscCode: z.string().max(15).optional(),
     address: z.string().max(500).optional(),
@@ -1827,12 +1828,15 @@ const mprItemInput = z.object({
   unit: z.string().trim().max(20).optional(),
   requiredDate: mprDateStr.optional(),
   estimatedRate: money.default(0),
+  // GST % of this line; left out = the request's own GST % (older clients, Miko).
+  gstRate: z.coerce.number().min(0).max(100).optional(),
   remarks: z.string().trim().max(500).optional(),
 });
 
 // Vendor bank details captured on a request paid by bank transfer. They are saved on the
 // vendor too (new vendor: created with them; existing vendor: updated).
 export const mprAccountDetailsSchema = z.object({
+  accountHolderName: z.string().trim().max(150).optional(),
   bankName: z.string().trim().max(100).optional(),
   accountNumber: z.string().trim().regex(/^[0-9]{6,20}$/, 'Account number must be 6 to 20 digits'),
   ifscCode: z

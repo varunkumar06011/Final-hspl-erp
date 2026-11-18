@@ -226,6 +226,7 @@ export const QTY_UNIT_OPTIONS = [
   { value: 'ton', label: 'Ton (metric ton)' },
   { value: 'ltr', label: 'Ltr (liters)' },
   { value: 'set', label: 'Set (kit/set)' },
+  { value: 'unit', label: 'Unit' },
 ] as const;
 
 // Units for Service Request items — hrs/nos are shared with QTY_UNIT_OPTIONS above.
@@ -236,6 +237,7 @@ export const SERVICE_UNIT_OPTIONS = [
   { value: 'job', label: 'Job (per job)' },
   { value: 'lumpsum', label: 'Lumpsum' },
   { value: 'nos', label: 'Nos (units)' },
+  { value: 'unit', label: 'Unit' },
 ] as const;
 
 // Suggested Service Category values for the free-text Autocomplete —

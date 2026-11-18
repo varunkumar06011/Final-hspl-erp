@@ -310,7 +310,7 @@ async function pushLinesToMpr(mprId: string, lines: ChainLine[]): Promise<void> 
     }
     const fresh = await tx.materialPurchaseRequestItem.findMany({ where: { mprId } });
     const subtotal = fresh.reduce((sum, i) => sum + Number(i.estimatedAmount), 0);
-    const gst = (subtotal * Number(mpr.estimatedGstRate)) / 100;
+    const gst = fresh.reduce((sum, i) => sum + (Number(i.estimatedAmount) * Number(i.gstRate ?? mpr.estimatedGstRate)) / 100, 0);
     await tx.materialPurchaseRequest.update({
       where: { id: mprId },
       data: { estimatedSubtotal: subtotal, estimatedGstAmount: gst, estimatedTotal: subtotal + gst },
