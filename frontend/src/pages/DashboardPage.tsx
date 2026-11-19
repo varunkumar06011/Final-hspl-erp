@@ -21,10 +21,6 @@ const AdminDashboardPage = lazyWithRetry(() => import('./AdminDashboardPage'));
 type PendingType = 'payments' | 'quotations' | 'pos' | 'invoices';
 
 export default function DashboardPage() {
-  const { t } = useTranslation();
-  const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
-
   const user = useAuthStore((s) => s.user);
 
   // ── Role-based dashboard branch ──
@@ -46,7 +42,18 @@ export default function DashboardPage() {
     );
   }
 
-  // ── Existing dashboard for all non-admin roles (unchanged) ──
+  return <StandardDashboard />;
+}
+
+// ── Existing dashboard for all non-admin roles ──
+// A separate component so its hooks never sit after the role check above: an
+// early return before hooks makes React throw ("Rendered more/fewer hooks")
+// when the signed-in user's role or permissions change while this page is open.
+function StandardDashboard() {
+  const { t } = useTranslation();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  const user = useAuthStore((s) => s.user);
 
   const { data: summary, isLoading, isError } = useQuery({
     queryKey: ['/dashboard', 'summary'],

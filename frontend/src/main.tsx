@@ -10,6 +10,7 @@ import './i18n';
 import { isNative } from './config/appConfig';
 import { installNativeOpenShim } from './utils/native';
 import { initNativePushRouting } from './config/notifications';
+import { recoverFromChunkError } from './utils/chunkRecovery';
 
 // Unlock screen orientation — allow both portrait and landscape.
 // The manifest no longer specifies an orientation, but if the PWA was
@@ -99,20 +100,13 @@ if (!isNative && 'serviceWorker' in navigator) {
   });
 }
 
-// If a lazy chunk/preload fails (stale deploy, flaky mobile network), Vite
-// fires 'vite:preloadError'. Reload to pick up the fresh build — the
-// timestamp guard (shared with lazyWithRetry in App.tsx) prevents a reload
-// loop if the failure persists, but still allows a reload after a later deploy.
+// If a lazy chunk/preload fails (stale deploy, flaky mobile network, refused
+// request), Vite fires 'vite:preloadError'. Revalidate + reload (limited, see
+// chunkRecovery.ts). Never call event.preventDefault() here: Vite then resolves
+// the import to `undefined` and the real error is lost (that was the
+// "reading 'default'" / "page did not finish loading" screen).
 window.addEventListener('vite:preloadError', (event) => {
-  event.preventDefault();
-  try {
-    const last = Number(sessionStorage.getItem('chunk-reload-at') || 0);
-    if (Date.now() - last < 30_000) return;
-    sessionStorage.setItem('chunk-reload-at', String(Date.now()));
-  } catch {
-    // storage blocked: fall through and reload
-  }
-  window.location.reload();
+  void recoverFromChunkError((event as Event & { payload?: unknown }).payload);
 });
 
 // Listen for notification click messages from the service worker

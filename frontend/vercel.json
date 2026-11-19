@@ -1,7 +1,7 @@
 {
   "headers": [
     {
-      "source": "/assets/(.*)",
+      "source": "/assets/(.+\\.(?:js|mjs|css|woff2?|png|svg|jpe?g|webp|json|wasm))",
       "headers": [{ "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }]
     },
     {
@@ -20,6 +20,6 @@
     { "source": "/icon-maskable.svg", "destination": "/icon-maskable.svg" },
     { "source": "/api/:path*", "destination": "https://hospital-erpbackend-production.up.railway.app/api/:path*" },
     { "source": "/health", "destination": "https://hospital-erpbackend-production.up.railway.app/health" },
-    { "source": "/((?!api|health|firebase-messaging-sw.js|manifest.webmanifest|icon.svg|icon-maskable.svg).*)", "destination": "/index.html" }
+    { "source": "/((?!api|health|assets/.+\\.(?:js|mjs|css|woff2?|png|svg|jpe?g|webp|json|wasm)$|firebase-messaging-sw.js|manifest.webmanifest|icon.svg|icon-maskable.svg).*)", "destination": "/index.html" }
   ]
 }

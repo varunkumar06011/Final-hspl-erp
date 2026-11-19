@@ -1,6 +1,7 @@
 import { Component, ReactNode } from 'react';
 import { Box, Typography, Button } from '@mui/material';
 import i18n from '../i18n';
+import { recoverFromChunkError } from '../utils/chunkRecovery';
 
 interface Props {
   children: ReactNode;
@@ -49,7 +50,8 @@ export default class ErrorBoundary extends Component<Props, State> {
 
   handleReset = () => {
     if (isStaleModuleError(this.state.error)) {
-      window.location.reload();
+      // Revalidate cached page files first: a bad cached copy survives a plain reload.
+      void recoverFromChunkError(this.state.error, true);
       return;
     }
     this.setState({ hasError: false, error: null });
@@ -66,6 +68,12 @@ export default class ErrorBoundary extends Component<Props, State> {
               ? i18n.t('misc:error.updateAvailable')
               : this.state.error?.message ?? i18n.t('misc:error.unexpectedRender')}
           </Typography>
+          {stale && this.state.error?.message && (
+            // The real cause (file + reason), so a screenshot tells us what failed.
+            <Typography variant="caption" color="text.disabled" sx={{ maxWidth: 420, textAlign: 'center', wordBreak: 'break-all', fontFamily: 'monospace' }}>
+              {this.state.error.message}
+            </Typography>
+          )}
           <Button variant="outlined" onClick={this.handleReset}>
             {stale ? i18n.t('misc:error.reload') : i18n.t('misc:error.tryAgain')}
           </Button>
