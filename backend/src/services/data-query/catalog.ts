@@ -31,6 +31,8 @@ export const DATA_EXCLUDED: Record<string, string> = {
   ChatMessage: 'private conversations',
   ChatAttachment: 'private conversations',
   ProofNumber: 'bookkeeping for papers',
+  SiteMaterialSlip: 'daily site slips; not yet in the miko_reader guard (its stock moves are readable as inventory transactions)',
+  SiteMaterialSlipLine: 'lines of daily site slips; not yet in the miko_reader guard',
   FileFingerprint: 'file hashes, technical',
   DuplicateFlag: 'admin-only review list with its own page',
   ApprovalSignature: 'signature images',
