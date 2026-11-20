@@ -13,6 +13,7 @@ import {
 } from '@hospital-erp/shared';
 import { prisma } from '../config/prisma';
 import { EXCLUDE_PART_POS } from './part-po.service';
+import { overdueSlips } from './site-slip.service';
 
 // ═══════════════════════════════════════════════════════════
 // "My Work" — one list per person of what needs them and what they started.
@@ -23,9 +24,9 @@ import { EXCLUDE_PART_POS } from './part-po.service';
 // decide quickly. Records are always filtered by the caller's project.
 // ═══════════════════════════════════════════════════════════
 
-export type WorkKind = 'MPR' | 'QUOTATION' | 'PO' | 'INVOICE' | 'GRN';
+export type WorkKind = 'MPR' | 'QUOTATION' | 'PO' | 'INVOICE' | 'GRN' | 'SITE_SLIP';
 /** RECEIVE: goods of an approved PO still to arrive at site; INSPECT / POST_STOCK: a goods receipt still to be checked / put into stock. */
-export type WorkAction = 'APPROVE' | 'FINALIZE' | 'REVIEW' | 'SUBMIT' | 'FIX' | 'RECEIVE' | 'INSPECT' | 'POST_STOCK';
+export type WorkAction = 'APPROVE' | 'FINALIZE' | 'REVIEW' | 'SUBMIT' | 'FIX' | 'RECEIVE' | 'INSPECT' | 'POST_STOCK' | 'SITE_UPDATE';
 
 export interface WorkFlag {
   code: 'OVER_ESTIMATE' | 'NO_BUDGET_HEAD' | 'NEW_VENDOR' | 'URGENT' | 'NEEDED_SOON' | 'WAITING_LONG' | 'PAID_IN_ADVANCE';
@@ -496,6 +497,27 @@ export async function getMyWork(projectId: string, viewer: Viewer): Promise<MyWo
       waitingSince: since.toISOString(),
       path: `/goods-receipts?id=${r.id}`,
       flags: buildFlags({ waitingSince: since }),
+    });
+  }
+
+  // ── Site slips whose evening update was forgotten (the person who took the material) ──
+  for (const s of await overdueSlips(projectId, viewer.id)) {
+    const date = s.slipDate.toISOString().slice(0, 10);
+    needsAction.push({
+      kind: 'SITE_SLIP',
+      id: s.id,
+      number: s.slipNumber,
+      party: null,
+      amount: null,
+      summary: summarizeLines(s.lines.map((l) => ({ materialName: l.inventoryItem.name, quantity: l.takenQty, unit: l.inventoryItem.unit }))),
+      why: s.work,
+      status: 'OPEN',
+      action: 'SITE_UPDATE',
+      requestedBy: s.takenBy.name,
+      waitingOn: [],
+      waitingSince: s.createdAt.toISOString(),
+      path: `/inventory?tab=site&date=${date}`,
+      flags: buildFlags({ waitingSince: s.createdAt }),
     });
   }
 

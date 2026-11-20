@@ -22,8 +22,8 @@ import api from '../config/api';
 import { useUrlState } from '../hooks/useUrlState';
 import { formatCurrency, roleLabel } from '../utils/enumOptions';
 
-type Kind = 'MPR' | 'QUOTATION' | 'PO' | 'INVOICE' | 'GRN';
-type Action = 'APPROVE' | 'FINALIZE' | 'REVIEW' | 'SUBMIT' | 'FIX' | 'RECEIVE' | 'INSPECT' | 'POST_STOCK';
+type Kind = 'MPR' | 'QUOTATION' | 'PO' | 'INVOICE' | 'GRN' | 'SITE_SLIP';
+type Action = 'APPROVE' | 'FINALIZE' | 'REVIEW' | 'SUBMIT' | 'FIX' | 'RECEIVE' | 'INSPECT' | 'POST_STOCK' | 'SITE_UPDATE';
 type TabKey = 'needsAction' | 'waiting' | 'sentBack' | 'drafts';
 
 interface WorkFlag {
@@ -57,7 +57,7 @@ interface MyWork {
 }
 
 const TABS: TabKey[] = ['needsAction', 'waiting', 'sentBack', 'drafts'];
-const KINDS: Kind[] = ['MPR', 'QUOTATION', 'PO', 'GRN', 'INVOICE'];
+const KINDS: Kind[] = ['MPR', 'QUOTATION', 'PO', 'GRN', 'INVOICE', 'SITE_SLIP'];
 const DAY_MS = 86_400_000;
 
 const daysSince = (iso: string) => Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / DAY_MS));

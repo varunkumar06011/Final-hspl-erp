@@ -41,6 +41,7 @@ import {
   Warning as WarningIcon,
   MoveToInbox as ReceiveIcon,
   PlaylistAddCheck as EntriesIcon,
+  Engineering as SiteIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { InventoryTxnType, InventoryItemType, CatalogItemKind } from '@hospital-erp/shared';
@@ -56,6 +57,7 @@ import InventorySummary, { InventorySummaryData } from '../components/inventory/
 import ReceiveStockDialog from '../components/inventory/ReceiveStockDialog';
 import MergeDuplicatesDialog from '../components/inventory/MergeDuplicatesDialog';
 import StockEntriesTab from '../components/inventory/StockEntriesTab';
+import SiteMaterialTab from '../components/inventory/SiteMaterialTab';
 
 import { useTranslation } from 'react-i18next';
 import FilePicker from '../components/FilePicker';
@@ -65,6 +67,15 @@ export default function InventoryPage() {
   const [mergeOpen, setMergeOpen] = useState(false);
   const navigate = useNavigate();
   const [tab, setTab] = useState(0);
+  // Site material (collect / use / return) opens over this screen, like Receive Stock.
+  // ?tab=site (from search results) opens it straight away.
+  const [siteOpen, setSiteOpen] = useState(() => {
+    try {
+      return new URLSearchParams(window.location.search).get('tab') === 'site';
+    } catch {
+      return false;
+    }
+  });
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(20);
   const [search, setSearch] = useState('');
@@ -92,7 +103,7 @@ export default function InventoryPage() {
       const response = await api.get(endpoint, { params });
       return response.data;
     },
-    enabled: tab !== 2,
+    enabled: tab < 2,
   });
 
   // Headline metrics (value, stock health, 30-day movement). Only available to
@@ -108,6 +119,21 @@ export default function InventoryPage() {
     },
   });
   const stats = { lowStock: summary?.lowStockCount ?? 0 };
+
+  // Today's site slips, per stock item: what is out at site now (taken, evening
+  // update not done yet) and what was used today. Shown beside the store stock.
+  const { data: siteToday } = useQuery<{ totals: { itemId: string; open: number; used: number }[] } | null>({
+    queryKey: ['/inventory/site-slips', 'today'],
+    queryFn: async () => {
+      try {
+        return (await api.get('/inventory/site-slips')).data;
+      } catch {
+        return null;
+      }
+    },
+    enabled: tab === 0,
+  });
+  const siteByItem = new Map((siteToday?.totals ?? []).map((t) => [t.itemId, t]));
 
   const { apply, undo } = useOptimistic();
 
@@ -287,6 +313,10 @@ export default function InventoryPage() {
           <Button variant="contained" color="success" startIcon={<ReceiveIcon />} onClick={() => setReceiveOpen(true)}>
             {tr('receiveStock')}
           </Button>
+          {/* Site person: collected in the morning, used and returned in the evening. */}
+          <Button variant="contained" startIcon={<SiteIcon />} onClick={() => setSiteOpen(true)}>
+            {tr('siteButton')}
+          </Button>
           <Button variant="outlined" startIcon={<SwapVertIcon />} onClick={() => { setTxnForm({ type: InventoryTxnType.OUT, quantity: 0 }); setTxnPhoto(null); setError(''); setTxnDialogOpen(true); }}>
             {tr('stockMovement')}
           </Button>
@@ -320,7 +350,7 @@ export default function InventoryPage() {
         </Card>
       )}
 
-      {tab !== 2 && (
+      {tab < 2 && (
       <Card sx={{ overflow: 'hidden' }}>
         {tab === 0 && (
           <Box sx={{ p: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
@@ -349,14 +379,12 @@ export default function InventoryPage() {
           <Table size="small">
             <TableHead>
               {tab === 0 ? (
-                <TableRow sx={{ bgcolor: 'grey.50' }}>
-                  <TableCell sx={{ fontWeight: 600 }}>{tr('name')}</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>{tr('sku')}</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>{tr('category')}</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>{tr('type')}</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>{tr('unit')}</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>{tr('stock')}</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>{tr('minLevel')}</TableCell>
+                <TableRow sx={{ bgcolor: 'action.hover', '& th': { fontWeight: 600, fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.04em', color: 'text.secondary' } }}>
+                  <TableCell>{tr('item')}</TableCell>
+                  <TableCell>{tr('type')}</TableCell>
+                  <TableCell>{tr('inStock')}</TableCell>
+                  <TableCell>{tr('atSiteToday')}</TableCell>
+                  <TableCell>{tr('minLevel')}</TableCell>
                   <TableCell align="right" sx={{ fontWeight: 600 }}>{tr('avgRate')}</TableCell>
                   <TableCell align="right" sx={{ fontWeight: 600 }}>{tr('value')}</TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>{tr('location')}</TableCell>
@@ -410,14 +438,14 @@ export default function InventoryPage() {
                       }}
                       onClick={isAsset ? () => navigate(`/assets/${row.id}`) : undefined}
                     >
-                      <TableCell data-label={tr('name')} sx={{ fontWeight: 500 }}>{String(row.name ?? '—')}</TableCell>
-                      <TableCell data-label={tr('sku')}>
-                        <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.8rem', color: 'text.secondary' }}>
-                          {String(row.sku ?? '—')}
-                        </Typography>
-                      </TableCell>
-                      <TableCell data-label={tr('category')}>
-                        {row.category ? <Chip label={String(row.category)} size="small" variant="outlined" /> : '—'}
+                      <TableCell data-label={tr('item')} sx={{ borderLeft: 3, borderLeftColor: outOfStock && !isAsset ? 'error.main' : lowStock ? 'warning.main' : 'transparent' }}>
+                        <Typography variant="body2" sx={{ fontWeight: 600 }}>{String(row.name ?? '—')}</Typography>
+                        <Stack direction="row" spacing={0.75} alignItems="center" sx={{ mt: 0.25, flexWrap: 'wrap', rowGap: 0.5 }}>
+                          {!!row.sku && (
+                            <Typography variant="caption" sx={{ fontFamily: 'monospace', color: 'text.secondary' }}>{String(row.sku)}</Typography>
+                          )}
+                          {!!row.category && <Chip label={String(row.category)} size="small" variant="outlined" sx={{ height: 18, '& .MuiChip-label': { px: 0.75, fontSize: '0.65rem' } }} />}
+                        </Stack>
                       </TableCell>
                       <TableCell data-label={tr('type')}>
                         <Chip
@@ -427,22 +455,23 @@ export default function InventoryPage() {
                           variant="outlined"
                         />
                       </TableCell>
-                      <TableCell data-label={tr('unit')}>{String(row.unit ?? '—')}</TableCell>
-                      <TableCell data-label={tr('stock')}>
+                      <TableCell data-label={tr('inStock')}>
                         {isAsset ? (
                           <Chip label={tr('seeAssets')} size="small" color="secondary" variant="outlined" onClick={(e) => { e.stopPropagation(); navigate(`/assets/${row.id}`); }} />
                         ) : (
-                          <Stack spacing={0.5} sx={{ minWidth: 80 }}>
-                            <Stack direction="row" spacing={0.5} alignItems="center">
+                          <Stack spacing={0.5} sx={{ minWidth: 110 }}>
+                            <Stack direction="row" spacing={0.5} alignItems="baseline">
                               <Typography
-                                variant="body2"
                                 sx={{
-                                  fontWeight: 600,
+                                  fontWeight: 700,
+                                  fontSize: '1.05rem',
+                                  fontVariantNumeric: 'tabular-nums',
                                   color: outOfStock ? 'error.main' : lowStock ? 'warning.main' : 'text.primary',
                                 }}
                               >
                                 {formatIndianNumber(currentStock)}
                               </Typography>
+                              <Typography variant="caption" color="text.secondary">{String(row.unit ?? '')}</Typography>
                               {outOfStock && <Chip label={tr('out')} size="small" color="error" sx={{ height: 16, '& .MuiChip-label': { px: 0.5, fontSize: '0.6rem' } }} />}
                               {!outOfStock && lowStock && <Chip label={tr('low')} size="small" color="warning" sx={{ height: 16, '& .MuiChip-label': { px: 0.5, fontSize: '0.6rem' } }} />}
                             </Stack>
@@ -456,6 +485,22 @@ export default function InventoryPage() {
                             )}
                           </Stack>
                         )}
+                      </TableCell>
+                      <TableCell data-label={tr('atSiteToday')}>
+                        {(() => {
+                          const s = siteByItem.get(row.id as string);
+                          if (!s || (s.open <= 0 && s.used <= 0)) return <Typography variant="body2" color="text.disabled">—</Typography>;
+                          return (
+                            <Stack spacing={0.5} alignItems="flex-start">
+                              {s.open > 0 && (
+                                <Chip size="small" color="info" variant="outlined" label={tr('atSiteChip', { n: formatIndianNumber(s.open), unit: String(row.unit ?? '') })} />
+                              )}
+                              {s.used > 0 && (
+                                <Chip size="small" color="warning" variant="outlined" label={tr('usedTodayChip', { n: formatIndianNumber(s.used), unit: String(row.unit ?? '') })} />
+                              )}
+                            </Stack>
+                          );
+                        })()}
                       </TableCell>
                       <TableCell data-label={tr('minLevel')}>{minStock > 0 ? formatIndianNumber(minStock) : '—'}</TableCell>
                       <TableCell data-label={tr('avgRate')} align="right">{!isAsset && Number(row.weightedAvgCost) > 0 ? formatCurrency(row.weightedAvgCost) : '—'}</TableCell>
@@ -627,6 +672,12 @@ export default function InventoryPage() {
 
       <MergeDuplicatesDialog open={mergeOpen} onClose={() => setMergeOpen(false)} onDone={(m) => setNotice(m)} />
       <ReceiveStockDialog open={receiveOpen} onClose={() => setReceiveOpen(false)} onDone={(m) => setNotice(m)} />
+
+      <ResponsiveDialog open={siteOpen} onClose={() => setSiteOpen(false)} maxWidth="lg" fullWidth>
+        <DialogContent sx={{ bgcolor: 'background.default', p: { xs: 1.5, sm: 2.5 } }}>
+          <SiteMaterialTab />
+        </DialogContent>
+      </ResponsiveDialog>
     </Box>
   );
 }
