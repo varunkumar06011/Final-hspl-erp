@@ -18,6 +18,7 @@ import { validateMiddleware } from '../middleware/validate';
 import { logAudit } from '../services/audit.service';
 import { generateProjectSequenceNumber } from '../services/sequence.service';
 import { notifyPaymentsMade } from '../services/payment-notify.service';
+import { receivePaidPoStock } from '../services/paid-po-stock.service';
 import { streamPaymentConfirmationPdf } from '../services/payment-confirmation-pdf.service';
 import { paymentConfirmationPng } from '../services/payment-confirmation-image.service';
 import { getStorageService, serveFile } from '../services/storage.service';
@@ -1329,6 +1330,7 @@ router.post(
         oldValue: { status: PaymentStatus.APPROVED },
         newValue: { status: PaymentStatus.PAID, paymentAmount: String(req.body.amount) },
       });
+      await receivePaidPoStock(projectId, [pr.id], req.user!.id);
       void notifyPaymentsMade(projectId, [pr.id], req.user!.id);
 
       res.status(201).json(payment);
@@ -1474,6 +1476,7 @@ router.post(
         oldValue: { status: PaymentStatus.APPROVED },
         newValue: { status: PaymentStatus.PAID, linkedVoucher: voucher.jvNumber },
       });
+      await receivePaidPoStock(projectId, [pr.id], req.user!.id);
       void notifyPaymentsMade(projectId, [pr.id], req.user!.id);
 
       res.status(201).json(payment);
@@ -1632,6 +1635,7 @@ router.post(
         });
       }
 
+      await receivePaidPoStock(projectId, requests.map((r) => r.id), req.user!.id);
       void notifyPaymentsMade(projectId, requests.map((r) => r.id), req.user!.id);
       res.status(201).json({ voucher: voucher.jvNumber, payments });
     } catch (error) {
