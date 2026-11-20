@@ -8,6 +8,8 @@ CREATE TABLE IF NOT EXISTS "site_material_slips" (
     "takenById" UUID NOT NULL,
     "status" TEXT NOT NULL DEFAULT 'OPEN',
     "work" TEXT,
+    "phaseId" UUID,
+    "budgetHeadId" UUID,
     "closedAt" TIMESTAMP(3),
     "closedBy" UUID,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -23,6 +25,7 @@ CREATE TABLE IF NOT EXISTS "site_material_slip_lines" (
     "takenQty" DECIMAL(10,2) NOT NULL,
     "usedQty" DECIMAL(10,2),
     "returnedQty" DECIMAL(10,2),
+    "takenValue" DECIMAL(15,2) NOT NULL DEFAULT 0,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
@@ -36,6 +39,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS "site_material_slip_lines_slipId_inventoryItem
 
 ALTER TABLE "site_material_slips" ADD CONSTRAINT "site_material_slips_projectId_fkey" FOREIGN KEY ("projectId") REFERENCES "projects"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE "site_material_slips" ADD CONSTRAINT "site_material_slips_takenById_fkey" FOREIGN KEY ("takenById") REFERENCES "users"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "site_material_slips" ADD CONSTRAINT "site_material_slips_phaseId_fkey" FOREIGN KEY ("phaseId") REFERENCES "phases"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "site_material_slips" ADD CONSTRAINT "site_material_slips_budgetHeadId_fkey" FOREIGN KEY ("budgetHeadId") REFERENCES "budget_heads"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 ALTER TABLE "site_material_slip_lines" ADD CONSTRAINT "site_material_slip_lines_slipId_fkey" FOREIGN KEY ("slipId") REFERENCES "site_material_slips"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 ALTER TABLE "site_material_slip_lines" ADD CONSTRAINT "site_material_slip_lines_inventoryItemId_fkey" FOREIGN KEY ("inventoryItemId") REFERENCES "inventory_items"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 

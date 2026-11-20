@@ -28,11 +28,13 @@ import {
   NightsStay as EveningIcon,
   CheckCircle as DoneIcon,
   HourglassTop as PendingIcon,
+  Edit as EditIcon,
 } from '@mui/icons-material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { InventoryItemType, UserRole, isAdminRole } from '@hospital-erp/shared';
 import ResponsiveDialog from '../ResponsiveDialog';
+import CreatableSelect from '../CreatableSelect';
 import api, { extractErrorMessage } from '../../config/api';
 import { useAuthStore } from '../../stores/authStore';
 import { formatIndianNumber } from '../../utils/enumOptions';
@@ -59,6 +61,8 @@ interface Slip {
   status: 'OPEN' | 'CLOSED';
   work: string | null;
   takenBy: { id: string; name: string };
+  phase?: { id: string; name: string } | null;
+  budgetHead?: { id: string; particulars: string } | null;
   lines: SlipLine[];
 }
 interface Totals {
@@ -76,6 +80,7 @@ interface SlipDay {
   totals: Totals[];
   openCount: number;
   overdueOpen: number;
+  overdue?: { id: string; slipNumber: string; date: string; takenBy: { id: string; name: string } }[];
 }
 
 const todayOnSite = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
@@ -96,15 +101,27 @@ export default function SiteMaterialTab() {
   const qc = useQueryClient();
   const user = useAuthStore((s) => s.user);
   const today = todayOnSite();
-  const [date, setDate] = useState(today);
+  // ?date=YYYY-MM-DD (from My Work's "do the evening update") opens that day.
+  const [date, setDate] = useState(() => {
+    try {
+      const d = new URLSearchParams(window.location.search).get('date');
+      return d && /^\d{4}-\d{2}-\d{2}$/.test(d) && d <= today ? d : today;
+    } catch {
+      return today;
+    }
+  });
   const [notice, setNotice] = useState('');
 
   const [takeOpen, setTakeOpen] = useState(false);
   const [work, setWork] = useState('');
+  const [phaseId, setPhaseId] = useState('');
+  const [budgetHeadId, setBudgetHeadId] = useState('');
   const [takeRows, setTakeRows] = useState<TakeRow[]>([{ item: null, quantity: '' }]);
   const [takeError, setTakeError] = useState('');
 
   const [closing, setClosing] = useState<Slip | null>(null);
+  // false: evening update of an open slip; true: correction of a closed one.
+  const [correcting, setCorrecting] = useState(false);
   const [closeRows, setCloseRows] = useState<CloseRow[]>([]);
   const [closeError, setCloseError] = useState('');
 
@@ -140,7 +157,7 @@ export default function SiteMaterialTab() {
   };
 
   const takeMutation = useMutation({
-    mutationFn: async (body: { work: string; lines: { itemId: string; quantity: number }[] }) =>
+    mutationFn: async (body: { work: string; phaseId?: string; budgetHeadId?: string; lines: { itemId: string; quantity: number }[] }) =>
       (await api.post('/inventory/site-slips/take', body)).data as Slip,
     onSuccess: (slip) => {
       setTakeOpen(false);
@@ -152,11 +169,11 @@ export default function SiteMaterialTab() {
   });
 
   const closeMutation = useMutation({
-    mutationFn: async ({ id, lines }: { id: string; lines: { lineId: string; usedQty: number; returnedQty: number }[] }) =>
-      (await api.post(`/inventory/site-slips/${id}/close`, { lines })).data as Slip,
-    onSuccess: (slip) => {
+    mutationFn: async ({ id, correct, lines }: { id: string; correct: boolean; lines: { lineId: string; usedQty: number; returnedQty: number }[] }) =>
+      (await api.post(`/inventory/site-slips/${id}/${correct ? 'correct' : 'close'}`, { lines })).data as Slip,
+    onSuccess: (slip, vars) => {
       setClosing(null);
-      setNotice(t('siteCloseDone', { n: slip.slipNumber }));
+      setNotice(t(vars.correct ? 'siteCorrectDone' : 'siteCloseDone', { n: slip.slipNumber }));
       refresh();
     },
     onError: (err) => setCloseError(extractErrorMessage(err)),
@@ -169,8 +186,13 @@ export default function SiteMaterialTab() {
       user.role === UserRole.PROJECT_HEAD ||
       user.role === UserRole.HEAD_OF_CONSTRUCTION);
 
+  // Today's open slip of this person: a new take adds to it (same phase / budget head).
+  const myOpenSlip = date === today ? (data?.slips ?? []).find((s) => s.status === 'OPEN' && s.takenBy.id === user?.id) : undefined;
+
   const openTake = () => {
     setWork('');
+    setPhaseId('');
+    setBudgetHeadId('');
     setTakeRows([{ item: null, quantity: '' }]);
     setTakeError('');
     setTakeOpen(true);
@@ -185,22 +207,30 @@ export default function SiteMaterialTab() {
       if (!(q > 0)) return setTakeError(t('siteErrQty'));
       if (q > num(r.item.currentStock)) return setTakeError(t('siteErrStock', { name: r.item.name, n: qty(r.item.currentStock), unit: r.item.unit }));
     }
+    if (!myOpenSlip && !phaseId && !budgetHeadId && !work.trim()) return setTakeError(t('siteErrPurpose'));
     setTakeError('');
-    takeMutation.mutate({ work, lines: lines.map((r) => ({ itemId: r.item!.id, quantity: Number(r.quantity) })) });
+    takeMutation.mutate({
+      work,
+      ...(phaseId ? { phaseId } : {}),
+      ...(budgetHeadId ? { budgetHeadId } : {}),
+      lines: lines.map((r) => ({ itemId: r.item!.id, quantity: Number(r.quantity) })),
+    });
   };
 
-  const openClose = (slip: Slip) => {
+  const openClose = (slip: Slip, correct = false) => {
     setCloseRows(
       slip.lines.map((l) => ({
         lineId: l.id,
         name: l.inventoryItem.name,
         unit: l.inventoryItem.unit,
         taken: num(l.takenQty),
-        used: '',
-        returned: '',
+        // A correction starts from what was saved.
+        used: correct && l.usedQty != null ? String(num(l.usedQty)) : '',
+        returned: correct && l.returnedQty != null ? String(num(l.returnedQty)) : '',
       })),
     );
     setCloseError('');
+    setCorrecting(correct);
     setClosing(slip);
   };
 
@@ -227,6 +257,7 @@ export default function SiteMaterialTab() {
     setCloseError('');
     closeMutation.mutate({
       id: closing.id,
+      correct: correcting,
       lines: closeRows.map((r) => ({ lineId: r.lineId, usedQty: Number(r.used), returnedQty: Number(r.returned) })),
     });
   };
@@ -262,7 +293,23 @@ export default function SiteMaterialTab() {
       </Card>
 
       {!!data?.overdueOpen && (
-        <Alert severity="warning">{t('siteOverdue', { count: data.overdueOpen })}</Alert>
+        <Alert severity="warning">
+          {t('siteOverdue', { count: data.overdueOpen })}
+          {/* Each forgotten slip, with a button that opens its day for the evening update. */}
+          <Stack direction="row" spacing={1} sx={{ mt: 1, flexWrap: 'wrap', rowGap: 1 }}>
+            {(data.overdue ?? []).map((o) => (
+              <Chip
+                key={o.id}
+                size="small"
+                color="warning"
+                variant="outlined"
+                clickable
+                onClick={() => setDate(o.date)}
+                label={`${o.slipNumber} · ${o.takenBy.name} · ${t('siteOverdueOpen', { d: o.date })}`}
+              />
+            ))}
+          </Stack>
+        </Alert>
       )}
 
       {/* Day totals */}
@@ -317,11 +364,20 @@ export default function SiteMaterialTab() {
                   <Chip size="small" color="success" icon={<DoneIcon />} label={t('siteStatusClosed')} />
                 )}
               </Stack>
-              {slip.work && <Typography variant="body2" color="text.secondary">{slip.work}</Typography>}
+              {(slip.work || slip.phase || slip.budgetHead) && (
+                <Typography variant="body2" color="text.secondary">
+                  {[slip.phase?.name, slip.budgetHead?.particulars, slip.work].filter(Boolean).join(' · ')}
+                </Typography>
+              )}
             </Box>
             {slip.status === 'OPEN' && canClose(slip) && (
               <Button variant="contained" color="secondary" startIcon={<EveningIcon />} onClick={() => openClose(slip)}>
                 {t('siteEvening')}
+              </Button>
+            )}
+            {slip.status === 'CLOSED' && canClose(slip) && (
+              <Button variant="outlined" size="small" startIcon={<EditIcon />} onClick={() => openClose(slip, true)}>
+                {t('siteCorrect')}
               </Button>
             )}
           </Stack>
@@ -359,6 +415,29 @@ export default function SiteMaterialTab() {
           <Stack spacing={2} sx={{ pt: 1 }}>
             <Alert severity="info" sx={{ py: 0.25 }}>{t('siteTakeHelp')}</Alert>
             {takeError && <Alert severity="error">{takeError}</Alert>}
+            {myOpenSlip ? (
+              <Alert severity="info" sx={{ py: 0.25 }}>
+                {t('siteAddingTo', {
+                  n: myOpenSlip.slipNumber,
+                  for: myOpenSlip.phase?.name || myOpenSlip.budgetHead?.particulars
+                    ? t('siteFor', { x: myOpenSlip.phase?.name ?? myOpenSlip.budgetHead?.particulars })
+                    : '',
+                })}
+              </Alert>
+            ) : (
+              <>
+                {/* Like the issue-stock screen: what is this material for. */}
+                <Typography variant="caption" color="text.secondary">{t('sitePurposeHelp')}</Typography>
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                    <CreatableSelect label={t('sitePhase')} value={phaseId} onChange={(v) => setPhaseId(v || '')} optionsEndpoint="/phases" />
+                  </Box>
+                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                    <CreatableSelect label={t('siteBudgetHead')} value={budgetHeadId} onChange={(v) => setBudgetHeadId(v || '')} optionsEndpoint="/budget-heads" optionLabelKey="particulars" />
+                  </Box>
+                </Stack>
+              </>
+            )}
             <TextField id="site-take-work" label={t('siteWork')} placeholder={t('siteWorkHint')} value={work} onChange={(e) => setWork(e.target.value)} size="small" fullWidth />
             {takeRows.map((row, i) => (
               <Stack key={i} direction="row" spacing={1} alignItems="flex-start">
@@ -425,10 +504,10 @@ export default function SiteMaterialTab() {
 
       {/* Evening: used / returned */}
       <ResponsiveDialog open={!!closing} onClose={() => setClosing(null)} maxWidth="sm" fullWidth>
-        <DialogTitle>{t('siteEveningTitle', { n: closing?.slipNumber ?? '' })}</DialogTitle>
+        <DialogTitle>{t(correcting ? 'siteCorrectTitle' : 'siteEveningTitle', { n: closing?.slipNumber ?? '' })}</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ pt: 1 }}>
-            <Alert severity="info" sx={{ py: 0.25 }}>{t('siteEveningHelp')}</Alert>
+            <Alert severity="info" sx={{ py: 0.25 }}>{t(correcting ? 'siteCorrectHelp' : 'siteEveningHelp')}</Alert>
             {closeError && <Alert severity="error">{closeError}</Alert>}
             {closeRows.map((r, i) => (
               <Box key={r.lineId} sx={{ border: 1, borderColor: 'divider', borderRadius: 1, p: 1.5 }}>
@@ -465,7 +544,7 @@ export default function SiteMaterialTab() {
         <DialogActions sx={{ flexWrap: 'wrap', gap: 1 }}>
           <Button onClick={() => setClosing(null)}>{t('cancel')}</Button>
           <Button variant="contained" onClick={submitClose} disabled={closeMutation.isPending}>
-            {closeMutation.isPending ? <CircularProgress size={20} /> : t('siteEveningSave')}
+            {closeMutation.isPending ? <CircularProgress size={20} /> : t(correcting ? 'siteCorrectSave' : 'siteEveningSave')}
           </Button>
         </DialogActions>
       </ResponsiveDialog>

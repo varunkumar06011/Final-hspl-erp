@@ -57,6 +57,42 @@ export async function applyInbound(
   };
 }
 
+/**
+ * Outbound at a known unit cost: takes back stock that came in at that cost (a site slip
+ * correction that lowers what was returned), so the store's value is not shifted by the
+ * difference between that cost and today's average.
+ */
+export async function applyOutboundAtCost(
+  tx: Prisma.TransactionClient,
+  itemId: string,
+  quantity: number,
+  unitCost: number,
+): Promise<ValuedMovement> {
+  const qty = Math.abs(quantity);
+  const cost = Math.max(0, unitCost);
+  const subValue = qty * cost;
+  const rows = await tx.$queryRaw<ValuationRow[]>`
+    UPDATE "inventory_items"
+    SET "currentStock" = "currentStock" - ${qty}::numeric,
+        "totalValue" = CASE
+          WHEN "currentStock" - ${qty}::numeric <= 0 THEN 0
+          ELSE GREATEST(0, ROUND(COALESCE("totalValue", 0) - ${subValue}::numeric, 2)) END,
+        "weightedAvgCost" = CASE
+          WHEN "currentStock" - ${qty}::numeric > 0
+            THEN ROUND(GREATEST(0, COALESCE("totalValue", 0) - ${subValue}::numeric) / ("currentStock" - ${qty}::numeric), 2)
+          ELSE "weightedAvgCost" END,
+        "updatedAt" = NOW()
+    WHERE "id" = ${itemId}::uuid
+    RETURNING "currentStock", "weightedAvgCost"`;
+  const row = rows[0];
+  return {
+    balance: Number(row.currentStock),
+    unitCost: cost,
+    totalCost: round2(subValue),
+    avgCost: Number(row.weightedAvgCost),
+  };
+}
+
 /** Inbound stock at the item's current average (returns to store): value follows the average. */
 export async function applyReturn(
   tx: Prisma.TransactionClient,

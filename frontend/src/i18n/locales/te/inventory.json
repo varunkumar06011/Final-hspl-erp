@@ -67,7 +67,7 @@
   "idleStock": "వాడని స్టాక్ (60+ రోజులు)",
   "idleStockHint": "{{count}} వస్తువు(లు) 60 రోజులుగా జారీ కాలేదు",
   "receivedLast30": "స్వీకరించినవి (30 రోజులు)",
-  "issuedLast30": "జారీ చేసినవి (30 రోజులు)",
+  "issuedLast30": "వాడినది (30 రోజులు)",
   "returnedLast30": "తిరిగి వచ్చినవి (30 రోజులు)",
   "needsAttention": "శ్రద్ధ అవసరం",
   "receiptsToProcess": "{{count}} గూడ్స్ రిసీట్(లు) తనిఖీ / పోస్ట్ కోసం వేచి ఉన్నాయి",
@@ -189,5 +189,18 @@
   "receiveProofSection": "నోట్స్ మరియు ఫోటో",
   "receiveLine": "మెటీరియల్ {{n}}",
   "receiveCount_one": "{{count}} మెటీరియల్",
-  "receiveCount_other": "{{count}} మెటీరియల్స్"
+  "receiveCount_other": "{{count}} మెటీరియల్స్",
+  "issuedNetHint": "తీసుకున్నది {{taken}} · తిరిగి ఇచ్చినది {{returned}}",
+  "sitePhase": "దశ",
+  "siteBudgetHead": "బడ్జెట్ హెడ్",
+  "sitePurposeHelp": "మెటీరియల్ దేనికి అని చెప్పండి: దశ, బడ్జెట్ హెడ్ లేదా పని.",
+  "siteErrPurpose": "దశ లేదా బడ్జెట్ హెడ్ ఎంచుకోండి, లేదా పని నమోదు చేయండి.",
+  "siteAddingTo": "ఈరోజు స్లిప్ {{n}}{{for}} లో కలుస్తుంది.",
+  "siteFor": " ({{x}})",
+  "siteCorrect": "సరిచేయండి",
+  "siteCorrectTitle": "స్లిప్ సరిచేయండి · {{n}}",
+  "siteCorrectHelp": "తప్పు సంఖ్య సేవ్ అయితే వాడినది / తిరిగి ఇచ్చినది మార్చండి. ఎక్కువ తిరిగి ఇస్తే స్టాక్‌లో కలుస్తుంది; తక్కువ అయితే స్టాక్ నుంచి మళ్ళీ తగ్గుతుంది.",
+  "siteCorrectSave": "సవరణ సేవ్ చేయండి",
+  "siteCorrectDone": "స్లిప్ {{n}} సరిచేశాము. స్టాక్ అప్‌డేట్ అయింది.",
+  "siteOverdueOpen": "{{d}} తెరవండి"
 }

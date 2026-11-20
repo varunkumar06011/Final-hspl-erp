@@ -67,7 +67,7 @@
   "idleStock": "Idle stock (60+ days)",
   "idleStockHint": "{{count}} item(s) not issued in 60 days",
   "receivedLast30": "Received (30 days)",
-  "issuedLast30": "Issued (30 days)",
+  "issuedLast30": "Used (30 days)",
   "returnedLast30": "Returned (30 days)",
   "needsAttention": "Needs attention",
   "receiptsToProcess": "{{count}} goods receipt(s) waiting to inspect / post",
@@ -189,5 +189,18 @@
   "receiveProofSection": "Notes and photo",
   "receiveLine": "Material {{n}}",
   "receiveCount_one": "{{count}} material",
-  "receiveCount_other": "{{count}} materials"
+  "receiveCount_other": "{{count}} materials",
+  "issuedNetHint": "Taken {{taken}} · returned {{returned}}",
+  "sitePhase": "Phase",
+  "siteBudgetHead": "Budget head",
+  "sitePurposeHelp": "Say what the material is for: a phase, a budget head or the work.",
+  "siteErrPurpose": "Choose a phase, a budget head or enter the work.",
+  "siteAddingTo": "Adding to today’s slip {{n}}{{for}}.",
+  "siteFor": " for {{x}}",
+  "siteCorrect": "Correct",
+  "siteCorrectTitle": "Correct slip · {{n}}",
+  "siteCorrectHelp": "Change used / returned if a wrong number was saved. More returned goes back into stock; less is taken out of stock again.",
+  "siteCorrectSave": "Save correction",
+  "siteCorrectDone": "Slip {{n}} corrected. Stock updated.",
+  "siteOverdueOpen": "Open {{d}}"
 }

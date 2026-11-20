@@ -177,6 +177,7 @@ export async function mergeInventoryItems(projectId: string, sourceId: string, t
           where: { id: same.id },
           data: {
             takenQty: Number(same.takenQty) + Number(line.takenQty),
+            takenValue: Number(same.takenValue ?? 0) + Number(line.takenValue ?? 0),
             usedQty: addQty(same.usedQty, line.usedQty),
             returnedQty: addQty(same.returnedQty, line.returnedQty),
           },

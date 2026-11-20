@@ -60,7 +60,7 @@ async function generateSku(tx: Prisma.TransactionClient, projectId: string, cate
 type EntryWithItems = Prisma.StockEntryGetPayload<{ include: { items: true } }>;
 
 /** Turns an approved entry into stock. Runs inside the caller's transaction. */
-async function postEntry(
+export async function postEntry(
   tx: Prisma.TransactionClient,
   entry: EntryWithItems,
   actor: { id: string; name: string },

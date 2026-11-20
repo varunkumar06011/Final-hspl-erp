@@ -32,7 +32,8 @@
     "PO": "Purchase order",
     "INVOICE": "Invoice",
     "PAYMENT": "Payment",
-    "GRN": "Goods receipt"
+    "GRN": "Goods receipt",
+    "SITE_SLIP": "Site slip"
   },
   "act": {
     "APPROVE": "Review & approve",
@@ -42,7 +43,8 @@
     "FIX": "Open & fix",
     "RECEIVE": "Receive goods at site",
     "INSPECT": "Inspect goods",
-    "POST_STOCK": "Post to inventory"
+    "POST_STOCK": "Post to inventory",
+    "SITE_UPDATE": "Do the evening update"
   },
   "flag": {
     "OVER_ESTIMATE": "{{value}}% above the estimate",

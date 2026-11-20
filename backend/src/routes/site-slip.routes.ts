@@ -4,13 +4,15 @@
  *   GET  /history?from=&to=         day-wise used / returned per material
  *   POST /take                      { lines: [{ itemId, quantity }], work? }  morning: taken (stock down)
  *   POST /:id/close                 { lines: [{ lineId, usedQty, returnedQty }] }  evening: used / returned
+ *   POST /:id/correct               { lines: [{ lineId, usedQty, returnedQty }] }  fix a closed slip
  */
 import { Router, Response, NextFunction } from 'express';
 import { AuditAction, Permission } from '@hospital-erp/shared';
 import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middleware/auth';
 import { rbacMiddleware } from '../middleware/rbac';
 import { logAudit } from '../services/audit.service';
-import { SlipError, closeSlip, listSlips, parseSlipDate, siteToday, takeMaterial, usageHistory } from '../services/site-slip.service';
+import { SlipError, closeSlip, correctSlip, listSlips, parseSlipDate, siteToday, takeMaterial, usageHistory } from '../services/site-slip.service';
+import { prisma } from '../config/prisma';
 
 const router = Router();
 router.use(authMiddleware);
@@ -59,7 +61,12 @@ router.get('/history', rbacMiddleware(Permission.MANAGE_INVENTORY), async (req: 
 router.post('/take', rbacMiddleware(Permission.MANAGE_INVENTORY), async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
     const projectId = requireProjectId(req);
-    const slip = await takeMaterial(projectId, actorOf(req), { lines: req.body?.lines, work: req.body?.work });
+    const slip = await takeMaterial(projectId, actorOf(req), {
+      lines: req.body?.lines,
+      work: req.body?.work,
+      phaseId: req.body?.phaseId,
+      budgetHeadId: req.body?.budgetHeadId,
+    });
     await logAudit({
       userId: req.user!.id,
       action: slip.created ? AuditAction.CREATE : AuditAction.UPDATE,
@@ -85,6 +92,30 @@ router.post('/:id/close', rbacMiddleware(Permission.MANAGE_INVENTORY), async (re
       entityId: slip.id,
       projectId,
       newValue: { slipNumber: slip.slipNumber, status: 'CLOSED', lines: req.body?.lines },
+    });
+    res.json(slip);
+  } catch (err) {
+    fail(err, res, next);
+  }
+});
+
+// POST /:id/correct — fix a closed slip's used / returned split (wrong number typed in the evening).
+router.post('/:id/correct', rbacMiddleware(Permission.MANAGE_INVENTORY), async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  try {
+    const projectId = requireProjectId(req);
+    const before = await prisma.siteMaterialSlip.findFirst({
+      where: { id: req.params.id, projectId },
+      select: { lines: { select: { id: true, usedQty: true, returnedQty: true } } },
+    });
+    const slip = await correctSlip(projectId, actorOf(req), req.params.id, { lines: req.body?.lines });
+    await logAudit({
+      userId: req.user!.id,
+      action: AuditAction.UPDATE,
+      entityType: 'SITE_MATERIAL_SLIP',
+      entityId: slip.id,
+      projectId,
+      oldValue: { lines: before?.lines.map((l) => ({ lineId: l.id, usedQty: Number(l.usedQty ?? 0), returnedQty: Number(l.returnedQty ?? 0) })) },
+      newValue: { slipNumber: slip.slipNumber, corrected: true, lines: req.body?.lines },
     });
     res.json(slip);
   } catch (err) {

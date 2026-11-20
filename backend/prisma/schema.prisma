@@ -890,16 +890,24 @@ model SiteMaterialSlip {
   slipDate   DateTime  @db.Date
   takenById  String    @db.Uuid
   status     String    @default("OPEN") // OPEN | CLOSED
-  work       String? // what the material was taken for
-  closedAt   DateTime?
-  closedBy   String?   @db.Uuid
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
+  work         String? // what the material was taken for
+  // What the material is charged to, like the "issue stock" screen; set on the first take of the slip.
+  phaseId      String?   @db.Uuid
+  budgetHeadId String?   @db.Uuid
+  closedAt     DateTime?
+  closedBy     String?   @db.Uuid
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
-  project Project                @relation(fields: [projectId], references: [id])
-  takenBy User                   @relation("SiteSlipTakenBy", fields: [takenById], references: [id])
-  lines   SiteMaterialSlipLine[]
+  project    Project                @relation(fields: [projectId], references: [id])
+  takenBy    User                   @relation("SiteSlipTakenBy", fields: [takenById], references: [id])
+  phase      Phase?                 @relation(fields: [phaseId], references: [id], onDelete: SetNull)
+  budgetHead BudgetHead?            @relation(fields: [budgetHeadId], references: [id], onDelete: SetNull)
+  lines      SiteMaterialSlipLine[]
 
+  // Also enforced in the migration, but not expressible here: a partial unique index
+  // "site_material_slips_one_open_per_person_day" (projectId, takenById, slipDate) WHERE status = 'OPEN'.
+  // If `prisma migrate dev` ever generates a DROP INDEX for it, delete that line from the new migration.
   @@unique([projectId, slipNumber])
   @@index([projectId, slipDate])
   @@index([projectId, takenById, status])
@@ -913,6 +921,9 @@ model SiteMaterialSlipLine {
   takenQty        Decimal  @db.Decimal(10, 2)
   usedQty         Decimal? @db.Decimal(10, 2)
   returnedQty     Decimal? @db.Decimal(10, 2)
+  // Stock value that left the store for this line (sum of its OUT costs); a return goes
+  // back at the same unit cost, so the store's value does not drift during the day.
+  takenValue      Decimal  @default(0) @db.Decimal(15, 2)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
@@ -1152,6 +1163,7 @@ model Phase {
   purchaseOrders PurchaseOrder[]
   photos         SitePhoto[]
   inventoryTxns  InventoryTransaction[]
+  siteMaterialSlips SiteMaterialSlip[]
 
   @@map("phases")
 }
@@ -1561,6 +1573,7 @@ model BudgetHead {
   cashTransactions CashTransaction[]         @relation("CashTxnBudgetHead")
   inventoryTxns    InventoryTransaction[]
   siteBills        MaterialPurchaseRequest[] @relation("SiteBillBudgetHead")
+  siteMaterialSlips SiteMaterialSlip[]
 
   @@unique([projectId, slNo])
   @@index([projectId])
