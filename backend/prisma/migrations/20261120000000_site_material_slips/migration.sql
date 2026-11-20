@@ -38,3 +38,7 @@ ALTER TABLE "site_material_slips" ADD CONSTRAINT "site_material_slips_projectId_
 ALTER TABLE "site_material_slips" ADD CONSTRAINT "site_material_slips_takenById_fkey" FOREIGN KEY ("takenById") REFERENCES "users"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE "site_material_slip_lines" ADD CONSTRAINT "site_material_slip_lines_slipId_fkey" FOREIGN KEY ("slipId") REFERENCES "site_material_slips"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 ALTER TABLE "site_material_slip_lines" ADD CONSTRAINT "site_material_slip_lines_inventoryItemId_fkey" FOREIGN KEY ("inventoryItemId") REFERENCES "inventory_items"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- One open slip per person per day, enforced by the database (a double-tap cannot create two).
+-- Partial index: closed slips of the same day are unaffected.
+CREATE UNIQUE INDEX IF NOT EXISTS "site_material_slips_one_open_per_person_day" ON "site_material_slips"("projectId", "takenById", "slipDate") WHERE "status" = 'OPEN';

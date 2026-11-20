@@ -301,6 +301,17 @@ router.delete(
         res.status(400).json({ error: 'Inventory items with stock cannot be deleted' });
         return;
       }
+      // Material out on site: its evening return would land on a deleted item.
+      const openSlipLines = await prisma.siteMaterialSlipLine.count({
+        where: { inventoryItemId: existing.id, slip: { status: 'OPEN' } },
+      });
+      if (openSlipLines > 0) {
+        res.status(409).json({
+          error: `${existing.name} is still out on an open site slip. Finish that slip's evening update before deleting the item`,
+          code: 'OPEN_SITE_SLIP',
+        });
+        return;
+      }
 
       await prisma.inventoryItem.update({
         where: { id: req.params.id },

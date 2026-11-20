@@ -82,6 +82,24 @@ export async function takeMaterial(
   actor: SlipActor,
   input: { lines: Array<{ itemId?: unknown; quantity?: unknown }>; work?: unknown },
 ) {
+  // A double-tap on the first take of the day sends two requests that both see no slip.
+  // The database allows one open slip per person per day (and unique slip numbers), so the
+  // loser fails with a unique violation and simply runs again, adding to the winner's slip.
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await takeOnce(projectId, actor, input);
+    } catch (err) {
+      const unique = err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002';
+      if (!unique || attempt >= 3) throw err;
+    }
+  }
+}
+
+async function takeOnce(
+  projectId: string,
+  actor: SlipActor,
+  input: { lines: Array<{ itemId?: unknown; quantity?: unknown }>; work?: unknown },
+) {
   const byItem = cleanTakeLines(input.lines);
   const work = typeof input.work === 'string' && input.work.trim() ? input.work.trim().slice(0, 300) : null;
 
@@ -143,7 +161,9 @@ export async function takeMaterial(
           update: { takenQty: { increment: qty } },
         });
       }
-      return tx.siteMaterialSlip.findUniqueOrThrow({ where: { id: slip.id }, include: slipInclude });
+      const full = await tx.siteMaterialSlip.findUniqueOrThrow({ where: { id: slip.id }, include: slipInclude });
+      // `created` tells the caller whether this take started the day's slip (audit CREATE vs UPDATE).
+      return { ...full, created: !existing };
     },
     { timeout: 20_000, maxWait: 10_000 },
   );

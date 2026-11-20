@@ -6,6 +6,7 @@
  * with a tiny in-memory stock.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { Prisma } from '@prisma/client';
 
 const { db } = vi.hoisted(() => ({
   db: {
@@ -14,6 +15,7 @@ const { db } = vi.hoisted(() => ({
     slips: [] as any[],
     lines: [] as any[],
     txns: [] as any[],
+    raceOnce: false,
   },
 }));
 
@@ -48,6 +50,12 @@ vi.mock('../src/config/prisma', () => {
         return s ? withLines(s) : null;
       }),
       create: vi.fn(async ({ data }: any) => {
+        if (db.raceOnce) {
+          // A second request (double-tap) created today's slip a moment earlier.
+          db.raceOnce = false;
+          db.slips.push({ id: 'slip-winner', status: 'OPEN', ...data, slipNumber: 'VGH-SLIP-W' });
+          throw new Prisma.PrismaClientKnownRequestError('Unique constraint failed', { code: 'P2002', clientVersion: 'test' });
+        }
         const s = { id: `slip-${db.slips.length + 1}`, status: 'OPEN', ...data };
         db.slips.push(s);
         return s;
@@ -90,6 +98,7 @@ describe('site material slips', () => {
     db.slips = [];
     db.lines = [];
     db.txns = [];
+    db.raceOnce = false;
   });
 
   it('morning: taking 50 of 100 bags leaves 50 in stock and 50 at site', async () => {
@@ -123,6 +132,22 @@ describe('site material slips', () => {
     ]);
     expect(h.totals[0]).toMatchObject({ used: 40, returned: 10 });
     await expect(usageHistory('p', day, new Date(day.getTime() - 86_400_000))).rejects.toBeInstanceOf(SlipError);
+  });
+
+  it('a double-tap on the first take adds to the slip the other request created (no 500, no second slip)', async () => {
+    db.raceOnce = true;
+    const slip = await takeMaterial('p', ravi, { lines: [{ itemId: 'cement', quantity: 20 }] });
+    expect(slip.id).toBe('slip-winner');
+    expect(slip.created).toBe(false);
+    expect(db.slips).toHaveLength(1);
+    expect(db.stock.get('cement')).toBe(80);
+  });
+
+  it('reports whether a take started the day’s slip (audit CREATE) or added to it (UPDATE)', async () => {
+    const first = await takeMaterial('p', ravi, { lines: [{ itemId: 'cement', quantity: 10 }] });
+    const second = await takeMaterial('p', ravi, { lines: [{ itemId: 'cement', quantity: 5 }] });
+    expect(first.created).toBe(true);
+    expect(second.created).toBe(false);
   });
 
   it('taking more the same day adds to the same slip', async () => {

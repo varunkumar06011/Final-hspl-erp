@@ -62,7 +62,7 @@ router.post('/take', rbacMiddleware(Permission.MANAGE_INVENTORY), async (req: Au
     const slip = await takeMaterial(projectId, actorOf(req), { lines: req.body?.lines, work: req.body?.work });
     await logAudit({
       userId: req.user!.id,
-      action: AuditAction.UPDATE,
+      action: slip.created ? AuditAction.CREATE : AuditAction.UPDATE,
       entityType: 'SITE_MATERIAL_SLIP',
       entityId: slip.id,
       projectId,

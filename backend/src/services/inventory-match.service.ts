@@ -162,6 +162,31 @@ export async function mergeInventoryItems(projectId: string, sourceId: string, t
     const moved = await tx.inventoryTransaction.updateMany({ where: { itemId: source.id }, data: { itemId: target.id } });
     const assets = await tx.asset.updateMany({ where: { inventoryItemId: source.id }, data: { inventoryItemId: target.id } });
 
+    // Site slip lines move too, so an evening return on an open slip lands on the kept item
+    // and usage history stays on one item. A slip that already has a line for the kept item
+    // gets the quantities added together.
+    const slipLines = await tx.siteMaterialSlipLine.findMany({ where: { inventoryItemId: source.id } });
+    const addQty = (a: Prisma.Decimal | null, b: Prisma.Decimal | null) =>
+      a === null && b === null ? null : Number(a ?? 0) + Number(b ?? 0);
+    for (const line of slipLines) {
+      const same = await tx.siteMaterialSlipLine.findUnique({
+        where: { slipId_inventoryItemId: { slipId: line.slipId, inventoryItemId: target.id } },
+      });
+      if (same) {
+        await tx.siteMaterialSlipLine.update({
+          where: { id: same.id },
+          data: {
+            takenQty: Number(same.takenQty) + Number(line.takenQty),
+            usedQty: addQty(same.usedQty, line.usedQty),
+            returnedQty: addQty(same.returnedQty, line.returnedQty),
+          },
+        });
+        await tx.siteMaterialSlipLine.delete({ where: { id: line.id } });
+      } else {
+        await tx.siteMaterialSlipLine.update({ where: { id: line.id }, data: { inventoryItemId: target.id } });
+      }
+    }
+
     const stock = Number(target.currentStock) + Number(source.currentStock);
     const value = Number(target.totalValue) + Number(source.totalValue);
     const aliases = new Set([...target.aliases, ...source.aliases, normalizeMaterialName(source.name)]);
@@ -192,7 +217,7 @@ export async function mergeInventoryItems(projectId: string, sourceId: string, t
       merged,
       summary: {
         sourceName: source.name, sourceSku: source.sku, targetName: target.name,
-        movedTransactions: moved.count, movedAssets: assets.count, stockAdded: Number(source.currentStock),
+        movedTransactions: moved.count, movedAssets: assets.count, movedSlipLines: slipLines.length, stockAdded: Number(source.currentStock),
       },
     };
   });

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Autocomplete,
@@ -113,11 +113,23 @@ export default function SiteMaterialTab() {
     queryFn: async () => (await api.get('/inventory/site-slips', { params: { date } })).data,
   });
 
-  const { data: stockItems = [] } = useQuery<StockItem[]>({
-    queryKey: ['/inventory/items', 'site-slip-picker'],
+  // The picker asks the server as the person types (any number of items), 50 matches at a time.
+  const [pickerInput, setPickerInput] = useState('');
+  const [pickerSearch, setPickerSearch] = useState('');
+  useEffect(() => {
+    const h = setTimeout(() => setPickerSearch(pickerInput.trim()), 250);
+    return () => clearTimeout(h);
+  }, [pickerInput]);
+  const { data: stockItems = [], isFetching: pickerLoading } = useQuery<StockItem[]>({
+    queryKey: ['/inventory/items', 'site-slip-picker', pickerSearch],
     queryFn: async () =>
-      (await api.get('/inventory/items', { params: { pageSize: 500, itemType: InventoryItemType.CONSUMABLE } })).data?.data ?? [],
+      (
+        await api.get('/inventory/items', {
+          params: { pageSize: 50, itemType: InventoryItemType.CONSUMABLE, ...(pickerSearch ? { search: pickerSearch } : {}) },
+        })
+      ).data?.data ?? [],
     enabled: takeOpen,
+    staleTime: 15_000,
   });
 
   const refresh = () => {
@@ -356,6 +368,10 @@ export default function SiteMaterialTab() {
                   options={stockItems.filter((s) => num(s.currentStock) > 0 && (!chosenIds.has(s.id) || s.id === row.item?.id))}
                   value={row.item}
                   onChange={(_e, v) => setTakeRows((rows) => rows.map((r, idx) => (idx === i ? { ...r, item: v } : r)))}
+                  onInputChange={(_e, value, reason) => { if (reason === 'input') setPickerInput(value); }}
+                  onOpen={() => setPickerInput('')}
+                  filterOptions={(x) => x}
+                  loading={pickerLoading}
                   getOptionLabel={(o) => o.name}
                   isOptionEqualToValue={(a, b) => a.id === b.id}
                   renderOption={(props, o) => (

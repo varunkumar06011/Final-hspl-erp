@@ -4,6 +4,7 @@ const tx = vi.hoisted(() => ({
   inventoryItem: { findFirst: vi.fn(), update: vi.fn() },
   inventoryTransaction: { updateMany: vi.fn() },
   asset: { updateMany: vi.fn() },
+  siteMaterialSlipLine: { findMany: vi.fn(async () => []), findUnique: vi.fn(), update: vi.fn(), delete: vi.fn() },
 }));
 const prismaMock = vi.hoisted(() => ({
   $transaction: vi.fn(async (fn: (t: unknown) => unknown) => fn(tx)),
@@ -43,6 +44,29 @@ describe('mergeInventoryItems', () => {
     expect(sourceUpdate.currentStock).toBe(0);
     expect(sourceUpdate.deletedAt).toBeInstanceOf(Date);
     expect(res.summary.movedTransactions).toBe(3);
+  });
+
+  it('moves site slip lines to the kept item, adding into a line the slip already has', async () => {
+    tx.inventoryItem.findFirst
+      .mockResolvedValueOnce(item({ id: 'src', name: 'Cemnt' }))
+      .mockResolvedValueOnce(item({ id: 'tgt', name: 'Cement' }));
+    tx.inventoryTransaction.updateMany.mockResolvedValue({ count: 0 });
+    tx.asset.updateMany.mockResolvedValue({ count: 0 });
+    tx.inventoryItem.update.mockImplementation(async ({ data }: { data: unknown }) => data);
+    // Open slip A has only the merged-away item; open slip B has both.
+    tx.siteMaterialSlipLine.findMany.mockResolvedValueOnce([
+      { id: 'la', slipId: 'A', inventoryItemId: 'src', takenQty: 20, usedQty: null, returnedQty: null },
+      { id: 'lb', slipId: 'B', inventoryItemId: 'src', takenQty: 5, usedQty: null, returnedQty: null },
+    ] as never);
+    tx.siteMaterialSlipLine.findUnique.mockImplementation((async ({ where }: { where: { slipId_inventoryItemId: { slipId: string } } }) =>
+      where.slipId_inventoryItemId.slipId === 'B' ? { id: 'kb', takenQty: 10, usedQty: null, returnedQty: null } : null) as never);
+
+    const res = await mergeInventoryItems('p1', 'src', 'tgt');
+
+    expect(tx.siteMaterialSlipLine.update).toHaveBeenCalledWith({ where: { id: 'la' }, data: { inventoryItemId: 'tgt' } });
+    expect(tx.siteMaterialSlipLine.update).toHaveBeenCalledWith({ where: { id: 'kb' }, data: { takenQty: 15, usedQty: null, returnedQty: null } });
+    expect(tx.siteMaterialSlipLine.delete).toHaveBeenCalledWith({ where: { id: 'lb' } });
+    expect(res.summary.movedSlipLines).toBe(2);
   });
 
   it('refuses to merge an asset into a consumable, or an item into itself', async () => {
