@@ -13,6 +13,7 @@ import {
 } from '@hospital-erp/shared';
 import { recalcInvoicePaymentStatus } from '../services/invoice-payment.service';
 import { notifyPaymentsMade } from '../services/payment-notify.service';
+import { receivePaidPoStock } from '../services/paid-po-stock.service';
 import {
   createVoucherSchema,
   listVouchersSchema,
@@ -712,6 +713,7 @@ router.post(
         newValue: { jvNumber, voucherType, totalDebit, totalCredit, sourceInvoiceId },
       });
 
+      if (linkedPaymentRequest) await receivePaidPoStock(projectId, [linkedPaymentRequest.id], req.user!.id);
       if (linkedPaymentRequest) void notifyPaymentsMade(projectId, [linkedPaymentRequest.id], req.user!.id);
 
       res.status(201).json({
