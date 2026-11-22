@@ -24,7 +24,7 @@ import {
 } from '@mui/icons-material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { CONTRACT_PO_TYPES, POPaymentType, CatalogItemKind } from '@hospital-erp/shared';
+import { CONTRACT_PO_TYPES, POPaymentType, POStatus, CatalogItemKind } from '@hospital-erp/shared';
 import CatalogLineFields from './CatalogLineFields';
 import { useMaterialCatalog } from './MaterialAutocomplete';
 import api, { extractErrorMessage } from '../config/api';
@@ -641,5 +641,92 @@ export function ContractPanel({ contract, canManage, onOpenSubPo }: {
         onClose={() => setEditOpen(false)}
       />
     </Box>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Attach an existing PO to a contract as one of its sub-POs
+// ─────────────────────────────────────────────────────────────────────────────
+
+// A contract can take sub-POs only while approved (or later), same as the sub-PO route.
+const COMMITTED_CONTRACT_STATUSES: string[] = [POStatus.APPROVED, POStatus.PARTIALLY_DELIVERED, POStatus.DELIVERED];
+
+interface ContractChoice {
+  id: string;
+  poNumber: string;
+  vendorId: string;
+  status: string;
+  contractTitle?: string | null;
+  contractClosedAt?: string | null;
+}
+
+export function AttachToContractDialog({
+  po,
+  onClose,
+}: {
+  po: { id: string; poNumber: string; vendorId: string } | null;
+  onClose: () => void;
+}) {
+  const { t } = useTranslation('po');
+  const queryClient = useQueryClient();
+  const [contractId, setContractId] = useState('');
+  const [acknowledged, setAcknowledged] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (po) { setContractId(''); setAcknowledged(false); setError(''); }
+  }, [po]);
+
+  const { data: contractData, isLoading } = useQuery({
+    queryKey: ['/purchase-orders', 'contracts-for-attach'],
+    enabled: !!po,
+    queryFn: async () => (await api.get('/purchase-orders', { params: { kind: 'contract', pageSize: 200 } })).data,
+  });
+  const contracts = useMemo(
+    () => ((contractData?.data ?? []) as ContractChoice[]).filter(
+      (c) => c.vendorId === po?.vendorId && COMMITTED_CONTRACT_STATUSES.includes(c.status) && !c.contractClosedAt,
+    ),
+    [contractData, po],
+  );
+
+  const mutation = useMutation({
+    mutationFn: async () =>
+      (await api.post(`/purchase-orders/${po!.id}/attach-to-contract`, { contractId, acknowledged })).data,
+    onSuccess: () => { refreshPoData(queryClient); onClose(); },
+    onError: (err: unknown) => setError(extractErrorMessage(err)),
+  });
+
+  return (
+    <ResponsiveDialog open={!!po} onClose={onClose} maxWidth="sm" fullWidth>
+      <DialogTitle>{t('attachDialogTitle', { n: po?.poNumber })}</DialogTitle>
+      <DialogContent>
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
+          <Alert severity="info">{t('attachHelp', { n: po?.poNumber })}</Alert>
+          {error && <Alert severity="error" onClose={() => setError('')}>{error}</Alert>}
+          {!isLoading && contracts.length === 0 && <Alert severity="warning">{t('attachNone')}</Alert>}
+          <TextField
+            select
+            label={t('attachContractLabel')}
+            value={contractId}
+            onChange={(e) => setContractId(e.target.value)}
+            fullWidth
+            disabled={contracts.length === 0}
+          >
+            {contracts.map((c) => (
+              <MenuItem key={c.id} value={c.id}>
+                {c.poNumber}{c.contractTitle ? ` · ${c.contractTitle}` : ''}
+              </MenuItem>
+            ))}
+          </TextField>
+          <AcknowledgementCheckbox checked={acknowledged} onChange={setAcknowledged} entityLabel={t('entityAttach')} />
+        </Box>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose}>{t('cancel')}</Button>
+        <Button variant="contained" disabled={!acknowledged || !contractId || mutation.isPending} onClick={() => mutation.mutate()}>
+          {mutation.isPending ? <CircularProgress size={20} /> : t('attachBtn')}
+        </Button>
+      </DialogActions>
+    </ResponsiveDialog>
   );
 }

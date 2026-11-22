@@ -919,6 +919,96 @@ router.post(
   }
 );
 
+// POST /:id/attach-to-contract — make an existing PO a sub-PO of an approved contract.
+// Body: { contractId }. Only the link changes: the PO keeps its number, items, approval,
+// budget commitment and payments, which now sit under the contract. The contract itself
+// carries no amount (grandTotal 0), so nothing is counted twice.
+router.post(
+  '/:id/attach-to-contract',
+  rbacMiddleware(Permission.CREATE_PO),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      const contractId = typeof req.body?.contractId === 'string' ? req.body.contractId : '';
+      if (!contractId) {
+        res.status(400).json({ error: 'Choose the contract PO to attach to' });
+        return;
+      }
+      if (contractId === req.params.id) {
+        res.status(400).json({ error: 'A purchase order cannot be attached to itself' });
+        return;
+      }
+
+      const [po, contract] = await Promise.all([
+        prisma.purchaseOrder.findFirst({
+          where: { id: req.params.id, projectId, deletedAt: null },
+          select: { id: true, poNumber: true, vendorId: true, status: true, isContract: true, contractPoId: true, isSiteBillBatch: true },
+        }),
+        prisma.purchaseOrder.findFirst({
+          where: { id: contractId, projectId, deletedAt: null, isContract: true },
+          select: { id: true, poNumber: true, vendorId: true, status: true, contractClosedAt: true },
+        }),
+      ]);
+      if (!po) {
+        res.status(404).json({ error: 'Purchase order not found' });
+        return;
+      }
+      if (!contract) {
+        res.status(404).json({ error: 'Contract not found. Pick a contract PO of this project.' });
+        return;
+      }
+      if (po.isContract) {
+        res.status(400).json({ error: 'A contract cannot be attached under another contract' });
+        return;
+      }
+      if (po.contractPoId) {
+        res.status(400).json({ error: po.contractPoId === contract.id ? 'This PO is already a sub-PO of this contract' : 'This PO is already a sub-PO of another contract' });
+        return;
+      }
+      if (po.isSiteBillBatch) {
+        res.status(400).json({ error: 'A site-bill reimbursement PO cannot be attached to a contract' });
+        return;
+      }
+      if (DEAD_PO_STATUSES.includes(po.status)) {
+        res.status(400).json({ error: 'A rejected, cancelled or deleted purchase order cannot be attached to a contract' });
+        return;
+      }
+      if (po.vendorId !== contract.vendorId) {
+        res.status(400).json({ error: `Vendor mismatch: contract ${contract.poNumber} belongs to a different vendor` });
+        return;
+      }
+      if (!COMMITTED_PO_STATUSES.includes(contract.status)) {
+        res.status(400).json({ error: 'Sub-POs can only be attached to an approved contract' });
+        return;
+      }
+      if (contract.contractClosedAt) {
+        res.status(400).json({ error: 'This contract is closed. Reopen it before attaching more sub-POs' });
+        return;
+      }
+
+      const updated = await prisma.purchaseOrder.update({
+        where: { id: po.id },
+        data: { contractPoId: contract.id },
+        include: poInclude,
+      });
+
+      await logAudit({
+        userId: req.user!.id,
+        action: AuditAction.UPDATE,
+        entityType: 'PURCHASE_ORDER',
+        entityId: po.id,
+        projectId,
+        oldValue: { contractPoId: null },
+        newValue: { contractPoId: contract.id, contractPoNumber: contract.poNumber, attachedAsSubPo: true, acknowledged: true },
+      });
+
+      res.json(updated);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
 // GET /:id/part-balance — how much of a PO is still unpaid and not covered by a sub-PO.
 router.get(
   '/:id/part-balance',

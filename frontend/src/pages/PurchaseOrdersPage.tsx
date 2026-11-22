@@ -89,7 +89,7 @@ import ItemsGist from '../components/ItemsGist';
 import CatalogLineFields from '../components/CatalogLineFields';
 import { useMaterialCatalog } from '../components/MaterialAutocomplete';
 import PriceFlag, { LinePriceFlag, usePriceCheck } from '../components/PriceFlag';
-import { NewContractDialog, ContractPanel, ConvertToContractDialog } from '../components/ContractPO';
+import { NewContractDialog, ContractPanel, ConvertToContractDialog, AttachToContractDialog } from '../components/ContractPO';
 import { PartPoDialog } from '../components/PartPoDialog';
 import { useCreateReview } from '../components/CreateReview';
 
@@ -253,6 +253,7 @@ export default function PurchaseOrdersPage() {
   const [expandedPoId, setExpandedPoId] = useState<string | null>(null);
   const [contractOpen, setContractOpen] = useState(false);
   const [convertRow, setConvertRow] = useState<PORow | null>(null);
+  const [attachRow, setAttachRow] = useState<PORow | null>(null);
   const [partRow, setPartRow] = useState<PORow | null>(null);
   const [tab, setTab] = useState<'all' | 'contract'>('all');
   const [detailRows, setDetailRows] = useState<Set<string>>(new Set());
@@ -672,6 +673,10 @@ export default function PurchaseOrdersPage() {
   }
   // Any live PO that is not already a contract / sub-PO / site-bill batch can become a contract.
   function canConvertToContract(row: PORow): boolean {
+    return !editLocked && !!user && !row.isContract && !row.contractPoId && !row.isSiteBillBatch && LIVE_FOR_CLASSIFY.includes(row.status) && hasPermission(user.role, Permission.CREATE_PO, user.extraPermissions);
+  }
+  // A live PO of a vendor that has an approved contract can be moved under it as a sub-PO.
+  function canAttachToContract(row: PORow): boolean {
     return !editLocked && !!user && !row.isContract && !row.contractPoId && !row.isSiteBillBatch && LIVE_FOR_CLASSIFY.includes(row.status) && hasPermission(user.role, Permission.CREATE_PO, user.extraPermissions);
   }
   // An approved normal PO that is not itself a contract / sub-PO can take balance sub-POs (part payments).
@@ -1321,6 +1326,9 @@ export default function PurchaseOrdersPage() {
                                   {canConvertToContract(row) && (
                                     <Button size="small" color="secondary" onClick={() => setConvertRow(row)}>{t('convertToContract')}</Button>
                                   )}
+                                  {canAttachToContract(row) && (
+                                    <Button size="small" color="secondary" onClick={() => setAttachRow(row)}>{t('attachToContract')}</Button>
+                                  )}
                                   {!isUmbrellaContract(row) && (row.status === POStatus.APPROVED || row.status === POStatus.PARTIALLY_DELIVERED) && (
                                     <Button size="small" startIcon={<GatePassIcon />} onClick={() => navigate('/gate-passes')}>{t('gatePass')}</Button>
                                   )}
@@ -1372,6 +1380,7 @@ export default function PurchaseOrdersPage() {
 
       <NewContractDialog open={contractOpen} onClose={() => setContractOpen(false)} />
       <ConvertToContractDialog po={convertRow ? { id: convertRow.id, poNumber: convertRow.poNumber } : null} onClose={() => setConvertRow(null)} />
+      <AttachToContractDialog po={attachRow ? { id: attachRow.id, poNumber: attachRow.poNumber, vendorId: attachRow.vendorId } : null} onClose={() => setAttachRow(null)} />
       <PartPoDialog po={partRow ? { id: partRow.id, poNumber: partRow.poNumber } : null} onClose={() => setPartRow(null)} />
 
       {/* Create PO Dialog */}
