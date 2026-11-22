@@ -82,5 +82,19 @@
   "invoiceNo": "ఇన్వాయిస్ #",
   "stock": "నిల్వ (స్టాక్)",
   "amount": "మొత్తం",
-  "requestNo": "అభ్యర్థన #"
+  "requestNo": "అభ్యర్థన #",
+  "bankAccounts": "బ్యాంక్ ఖాతాలు",
+  "bankAccountsTitle": "బ్యాంక్ ఖాతాలు — {{name}}",
+  "bankAccountsHelp": "ఒక విక్రేతకు అనేక బ్యాంక్ ఖాతాలు ఉండవచ్చు. ప్రధాన ఖాతా విక్రేత వివరాల్లో చూపబడుతుంది, అభ్యర్థనలో ఖాతా ఎంచుకోకపోతే అదే ఉపయోగించబడుతుంది. మెటీరియల్ అభ్యర్థనలో చెల్లించాల్సిన ఖాతాను ఎంచుకోండి.",
+  "noBankAccounts": "ఈ విక్రేతకు ఇంకా బ్యాంక్ ఖాతా సేవ్ చేయలేదు.",
+  "primaryTag": "ప్రధాన",
+  "makePrimary": "ప్రధానంగా చేయి",
+  "editBankAccount": "ఖాతాను సవరించు",
+  "removeBankAccount": "ఖాతాను తీసివేయి",
+  "addBankAccount": "ఖాతా జోడించు",
+  "saveBankAccount": "ఖాతాను సేవ్ చేయి",
+  "makePrimaryOnSave": "దీన్ని ప్రధాన ఖాతాగా చేయి",
+  "bankAccountErrNumber": "6 నుండి 20 అంకెలు",
+  "bankAccountErrIfsc": "11 అక్షరాలు, ఉదా. SBIN0001234",
+  "cancel": "రద్దు"
 }

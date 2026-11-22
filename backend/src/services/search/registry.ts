@@ -89,6 +89,7 @@ export const EXCLUDED_MODELS: Record<string, string> = {
   Document: 'general documents can be PIN-locked; their names must not leak through search',
   Project: 'the tenant itself, not project data',
   PushSubscription: 'device tokens',
+  VendorBankAccount: 'bank account numbers are not searchable; the vendor page shows them',
   AppNotification: 'per-user inbox, not shared records',
   AuditLog: 'system trail with raw JSON snapshots; has its own page',
   AssetScan: 'high-volume scan log',

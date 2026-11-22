@@ -29,6 +29,7 @@ import { nextCode, resolveCatalogLines } from '../services/catalog.service';
 import { CatalogItemKind, catalogNameKey, lineKey, isAdminRole, billableQuantity } from '@hospital-erp/shared';
 import multer from 'multer';
 import { syncChainDescription } from '../services/description-sync.service';
+import { makePrimary } from '../services/vendor-bank.service';
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
 const allowedReceiptFileTypes = ['application/pdf', 'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/bmp', 'image/tiff'];
@@ -48,6 +49,7 @@ export const mprInclude = {
   createdByUser: { select: { id: true, name: true } },
   requestRaisedBy: { select: { id: true, name: true } },
   items: true,
+  paymentBankAccount: { select: { id: true, bankName: true, accountHolderName: true, accountNumber: true, ifscCode: true } },
   purchaseOrders: {
     where: { deletedAt: null, status: { notIn: ['DELETED', 'CANCELLED', 'REJECTED'] } },
     select: { id: true, poNumber: true, status: true },
@@ -150,20 +152,20 @@ async function assertCanChangePayment(
 }
 
 /**
- * Checks the payment type before anything is written: bank transfer needs a vendor and an
- * account number + IFSC, either typed now or already on the vendor.
+ * Checks the payment type before anything is written: bank transfer needs a vendor, and either a
+ * saved account of the vendor (vendorBankAccountId), typed details, or the vendor's primary account.
  */
 async function validatePayment(
   method: string,
   details: AccountDetails | undefined,
-  vendor: { vendorId?: string | null; hasNewVendor?: boolean },
+  vendor: { vendorId?: string | null; hasNewVendor?: boolean; vendorBankAccountId?: string | null },
   projectId: string,
 ): Promise<void> {
   if (method !== MPRPaymentMethod.BANK_TRANSFER) return;
   if (!vendor.vendorId && !vendor.hasNewVendor) {
     throw new PaymentInputError('Choose a vendor before selecting bank transfer');
   }
-  if (details) return;
+  if (details || vendor.vendorBankAccountId) return;
   if (vendor.vendorId) {
     const v = await prisma.vendor.findFirst({
       where: { id: vendor.vendorId, projectId, deletedAt: null },
@@ -174,33 +176,81 @@ async function validatePayment(
   throw new PaymentInputError('Account number and IFSC code are required for a bank transfer');
 }
 
-/** Writes typed bank details to the vendor (new or existing) and audits the change. */
-async function saveVendorBank(
-  vendorId: string | null,
-  details: AccountDetails | undefined,
-  projectId: string,
-  userId: string,
-): Promise<void> {
-  if (!vendorId || !details) return;
-  const before = await prisma.vendor.findFirst({
-    where: { id: vendorId, projectId, deletedAt: null },
-    select: { bankName: true, accountHolderName: true, bankAccountNumber: true, ifscCode: true },
+/**
+ * The vendor bank account a bank-transfer request pays to (stored on the request). Returns null for
+ * cash / cheque.
+ * - A saved account chosen in the form must belong to the vendor and is used as it is.
+ * - Typed details reuse an existing account with the same number and IFSC; otherwise they are added
+ *   to the vendor's accounts. The primary account does not change, unless the vendor has none yet.
+ * - Neither given: the vendor's primary account.
+ */
+async function resolvePayeeAccount(args: {
+  method: string | null | undefined;
+  vendorId: string | null;
+  details?: AccountDetails;
+  vendorBankAccountId?: string | null;
+  projectId: string;
+  userId: string;
+}): Promise<string | null> {
+  if (args.method !== MPRPaymentMethod.BANK_TRANSFER) return null;
+  if (!args.vendorId) throw new PaymentInputError('Choose a vendor before selecting bank transfer');
+  const vendorId = args.vendorId;
+  const projectId = args.projectId;
+  const ownedBy = { vendorId, vendor: { projectId, deletedAt: null } };
+
+  if (args.vendorBankAccountId) {
+    const chosen = await prisma.vendorBankAccount.findFirst({ where: { id: args.vendorBankAccountId, ...ownedBy }, select: { id: true } });
+    if (!chosen) throw new PaymentInputError('The selected bank account does not belong to this vendor');
+    return chosen.id;
+  }
+  if (!args.details) {
+    const primary = await prisma.vendorBankAccount.findFirst({ where: { ...ownedBy, isPrimary: true }, select: { id: true } });
+    return primary?.id ?? null;
+  }
+
+  const d = args.details;
+  const existing = await prisma.vendorBankAccount.findFirst({
+    where: { ...ownedBy, accountNumber: d.accountNumber, ifscCode: d.ifscCode },
+    select: { id: true },
   });
-  if (!before) return;
-  const next = {
-    bankAccountNumber: details.accountNumber,
-    ifscCode: details.ifscCode,
-    ...(details.bankName ? { bankName: details.bankName } : {}),
-    ...(details.accountHolderName ? { accountHolderName: details.accountHolderName } : {}),
-  };
-  if (
-    before.bankAccountNumber === next.bankAccountNumber &&
-    before.ifscCode === next.ifscCode &&
-    (!details.bankName || before.bankName === details.bankName) &&
-    (!details.accountHolderName || before.accountHolderName === details.accountHolderName)
-  ) return;
-  await prisma.vendor.update({ where: { id: vendorId }, data: next });
-  await logAudit({ userId, action: AuditAction.UPDATE, entityType: 'vendors', entityId: vendorId, projectId, oldValue: before, newValue: next });
+  if (existing) return existing.id;
+
+  const { id, count } = await prisma.$transaction(async (tx) => {
+    const existingCount = await tx.vendorBankAccount.count({ where: { vendorId } });
+    const account = await tx.vendorBankAccount.create({
+      data: {
+        vendorId,
+        bankName: d.bankName ?? null,
+        accountHolderName: d.accountHolderName ?? null,
+        accountNumber: d.accountNumber,
+        ifscCode: d.ifscCode,
+        isPrimary: false,
+      },
+    });
+    if (existingCount === 0) await makePrimary(tx, vendorId, account.id);
+    return { id: account.id, count: existingCount };
+  });
+  await logAudit({
+    userId: args.userId,
+    action: AuditAction.UPDATE,
+    entityType: 'VENDOR',
+    entityId: vendorId,
+    projectId,
+    newValue: { bankAccountAdded: { accountNumber: d.accountNumber, ifscCode: d.ifscCode, isPrimary: count === 0 } },
+  });
+  return id;
+}
+
+/** Whether the account a request would pay to is the one it already pays to (no new account is made). */
+async function isCurrentPayee(
+  currentPayeeId: string | null,
+  vendorBankAccountId: string | null | undefined,
+  details: AccountDetails | undefined,
+): Promise<boolean> {
+  if (vendorBankAccountId) return vendorBankAccountId === currentPayeeId;
+  if (!details || !currentPayeeId) return false;
+  const cur = await prisma.vendorBankAccount.findUnique({ where: { id: currentPayeeId }, select: { accountNumber: true, ifscCode: true } });
+  return cur?.accountNumber === details.accountNumber && cur?.ifscCode === details.ifscCode;
 }
 
 /** Statuses that do not count as a real earlier request when flagging repeat shipments. */
@@ -499,11 +549,16 @@ router.post(
       const projectId = requireProjectId(req);
       const mprNumber = await nextRequestNumber(projectId, req.body.requestType);
 
-      await validatePayment(req.body.paymentMethod, req.body.accountDetails, { vendorId: req.body.vendorId, hasNewVendor: !!req.body.newVendor?.name }, projectId);
+      await validatePayment(req.body.paymentMethod, req.body.accountDetails, { vendorId: req.body.vendorId, hasNewVendor: !!req.body.newVendor?.name, vendorBankAccountId: req.body.vendorBankAccountId }, projectId);
       const vendorId = await resolveVendor(req.body, projectId, req.user!.id);
-      if (req.body.paymentMethod === MPRPaymentMethod.BANK_TRANSFER) {
-        await saveVendorBank(vendorId, req.body.accountDetails, projectId, req.user!.id);
-      }
+      const paymentBankAccountId = await resolvePayeeAccount({
+        method: req.body.paymentMethod,
+        vendorId,
+        details: req.body.accountDetails,
+        vendorBankAccountId: req.body.vendorBankAccountId,
+        projectId,
+        userId: req.user!.id,
+      });
 
       const items = await catalogLines(req.body.items, req.body.requestType, req.user!.id);
       // Estimated amounts, with each line's own GST %
@@ -516,6 +571,7 @@ router.post(
           mprNumber,
           vendorId,
           paymentMethod: req.body.paymentMethod,
+          paymentBankAccountId,
           requestType: req.body.requestType || 'MATERIAL',
           serviceCategory: req.body.serviceCategory || null,
           servicePeriodStart: req.body.servicePeriodStart ? new Date(req.body.servicePeriodStart) : null,
@@ -669,22 +725,22 @@ router.put(
       // Payment type: validated before any vendor is created; bank details go to the vendor.
       const vendorChanged = req.body.vendorId !== undefined || req.body.newVendor !== undefined;
       const effectiveMethod: string | null = req.body.paymentMethod ?? existing.paymentMethod ?? null;
-      const paymentTouched = req.body.paymentMethod !== undefined || req.body.accountDetails !== undefined;
+      const paymentTouched = req.body.paymentMethod !== undefined || req.body.accountDetails !== undefined || req.body.vendorBankAccountId !== undefined;
       // The lock only bites when something actually changes (the edit form re-sends the current values).
       let paymentChanged = req.body.paymentMethod !== undefined && req.body.paymentMethod !== existing.paymentMethod;
-      if (!paymentChanged && req.body.accountDetails && existing.vendorId && !vendorChanged) {
-        const cur = await prisma.vendor.findFirst({ where: { id: existing.vendorId }, select: { bankAccountNumber: true, ifscCode: true, accountHolderName: true } });
-        paymentChanged =
-          cur?.bankAccountNumber !== req.body.accountDetails.accountNumber ||
-          cur?.ifscCode !== req.body.accountDetails.ifscCode ||
-          (!!req.body.accountDetails.accountHolderName && cur?.accountHolderName !== req.body.accountDetails.accountHolderName);
+      if (!paymentChanged && effectiveMethod === MPRPaymentMethod.BANK_TRANSFER && existing.vendorId && !vendorChanged && paymentTouched) {
+        // The stored payee, or the vendor's primary account for requests made before accounts were stored.
+        const currentPayeeId = existing.paymentBankAccountId
+          ?? (await prisma.vendorBankAccount.findFirst({ where: { vendorId: existing.vendorId, isPrimary: true }, select: { id: true } }))?.id
+          ?? null;
+        paymentChanged = !(await isCurrentPayee(currentPayeeId, req.body.vendorBankAccountId, req.body.accountDetails));
       }
       if (paymentChanged) await assertCanChangePayment(req.user!, existing);
       if (effectiveMethod === MPRPaymentMethod.BANK_TRANSFER && (paymentTouched || vendorChanged)) {
         await validatePayment(
           effectiveMethod,
           req.body.accountDetails,
-          { vendorId: vendorChanged ? req.body.vendorId : existing.vendorId, hasNewVendor: !!req.body.newVendor?.name },
+          { vendorId: vendorChanged ? req.body.vendorId : existing.vendorId, hasNewVendor: !!req.body.newVendor?.name, vendorBankAccountId: req.body.vendorBankAccountId },
           projectId,
         );
       }
@@ -694,7 +750,18 @@ router.put(
         updateData.vendorId = await resolveVendor(req.body, projectId, req.user!.id);
       }
       if (effectiveMethod === MPRPaymentMethod.BANK_TRANSFER) {
-        await saveVendorBank((updateData.vendorId as string | null | undefined) ?? existing.vendorId, req.body.accountDetails, projectId, req.user!.id);
+        if (paymentTouched || vendorChanged) {
+          updateData.paymentBankAccountId = await resolvePayeeAccount({
+            method: effectiveMethod,
+            vendorId: (updateData.vendorId as string | null | undefined) ?? existing.vendorId,
+            details: req.body.accountDetails,
+            vendorBankAccountId: req.body.vendorBankAccountId,
+            projectId,
+            userId: req.user!.id,
+          });
+        }
+      } else {
+        updateData.paymentBankAccountId = null;
       }
 
       // Rates as they were, so a changed rate can be pushed into the quotations.
@@ -855,14 +922,19 @@ router.post(
         return;
       }
       await assertCanChangePayment(req.user!, existing);
-      const { paymentMethod, accountDetails } = req.body;
-      await validatePayment(paymentMethod, accountDetails, { vendorId: existing.vendorId }, projectId);
-      if (paymentMethod === MPRPaymentMethod.BANK_TRANSFER) {
-        await saveVendorBank(existing.vendorId, accountDetails, projectId, req.user!.id);
-      }
+      const { paymentMethod, accountDetails, vendorBankAccountId } = req.body;
+      await validatePayment(paymentMethod, accountDetails, { vendorId: existing.vendorId, vendorBankAccountId }, projectId);
+      const paymentBankAccountId = await resolvePayeeAccount({
+        method: paymentMethod,
+        vendorId: existing.vendorId,
+        details: accountDetails,
+        vendorBankAccountId,
+        projectId,
+        userId: req.user!.id,
+      });
       const record = await prisma.materialPurchaseRequest.update({
         where: { id: existing.id },
-        data: { paymentMethod },
+        data: { paymentMethod, paymentBankAccountId },
         include: mprInclude,
       });
       await logAudit({

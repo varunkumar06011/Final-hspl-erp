@@ -50,7 +50,7 @@ import SpecAutocomplete from '../components/SpecAutocomplete';
 import PriceFlag, { LinePriceFlag, usePriceCheck } from '../components/PriceFlag';
 import { useCreateReview } from '../components/CreateReview';
 import { ProofNumberButton } from '../components/ProofNumber';
-import PaymentMethodFields, { EMPTY_PAYMENT, paymentErrorKey, paymentFromVendor, paymentMethodLabel, paymentPayload, type PaymentFieldsValue } from '../components/PaymentMethodFields';
+import PaymentMethodFields, { EMPTY_PAYMENT, paymentErrorKey, paymentFromSaved, paymentMethodLabel, paymentPayload, type PaymentFieldsValue } from '../components/PaymentMethodFields';
 
 interface MPRItem {
   materialName: string;
@@ -409,7 +409,7 @@ export default function MaterialPurchaseRequestsPage() {
     setNewVendorName('');
     setNewVendorPhone('');
     setNewVendorType('VENDOR');
-    setPayment(paymentFromVendor(row.paymentMethod, row.vendor));
+    setPayment(paymentFromSaved(row.paymentMethod, row));
     setShowPayErrors(false);
     setCreateOpen(true);
   }
@@ -786,7 +786,7 @@ export default function MaterialPurchaseRequestsPage() {
   }
   function openPaymentEdit(row: MPRRow) {
     setPayRow(row);
-    setPayEdit(paymentFromVendor(row.paymentMethod, row.vendor));
+    setPayEdit(paymentFromSaved(row.paymentMethod, row));
     setPayEditError('');
     setPayEditShowErrors(false);
   }
@@ -1237,7 +1237,7 @@ export default function MaterialPurchaseRequestsPage() {
         <DialogContent dividers>
           {payEditError && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setPayEditError('')}>{payEditError}</Alert>}
           {payRow && !payRow.vendorId && <Alert severity="warning" sx={{ mb: 2 }}>{t('errBankVendor')}</Alert>}
-          <PaymentMethodFields value={payEdit} onChange={setPayEdit} showError={payEditShowErrors} hasVendor={!!payRow?.vendorId} />
+          <PaymentMethodFields value={payEdit} onChange={setPayEdit} showError={payEditShowErrors} hasVendor={!!payRow?.vendorId} vendorId={payRow?.vendorId} />
           <Typography variant="caption" color="text.secondary">{t('changePaymentNote')}</Typography>
         </DialogContent>
         <DialogActions>
@@ -1314,6 +1314,7 @@ export default function MaterialPurchaseRequestsPage() {
             onChange={setPayment}
             showError={showPayErrors}
             hasVendor={(vendorMode === 'existing' && !!selectedVendorId) || (vendorMode === 'new' && !!newVendorName.trim())}
+            vendorId={vendorMode === 'existing' ? selectedVendorId : null}
           />
 
           <Divider sx={{ mb: 2 }} />

@@ -984,8 +984,8 @@ async function loadConfirmation(projectId: string, id: string) {
     include: {
       project: { select: { name: true } },
       vendor: { select: { name: true, vendorCode: true, phone: true, contactPersonPhone: true, bankName: true, bankAccountNumber: true } },
-      invoice: { select: { invoiceCode: true, date: true, purchaseOrder: { select: { poNumber: true, date: true, items: { select: { materialName: true, specification: true } } } } } },
-      purchaseOrder: { select: { poNumber: true, date: true, items: { select: { materialName: true, specification: true } } } },
+      invoice: { select: { invoiceCode: true, date: true, purchaseOrder: { select: { poNumber: true, date: true, mprId: true, items: { select: { materialName: true, specification: true } } } } } },
+      purchaseOrder: { select: { poNumber: true, date: true, mprId: true, items: { select: { materialName: true, specification: true } } } },
       payments: {
         orderBy: { createdAt: 'desc' },
         take: 1,
@@ -1002,7 +1002,12 @@ async function loadConfirmation(projectId: string, id: string) {
   const p = pr.payments[0];
   const po = pr.purchaseOrder ?? pr.invoice?.purchaseOrder ?? null;
   const materials = [...new Set((po?.items ?? []).map((i) => (i.specification ? `${i.materialName} - ${i.specification}` : i.materialName)))];
-  const account = pr.vendor?.bankAccountNumber ? String(pr.vendor.bankAccountNumber).replace(/\s/g, '') : null;
+  // The account the money went to: the one chosen on the request, else the vendor's primary account.
+  const payeeMpr = po?.mprId
+    ? await prisma.materialPurchaseRequest.findUnique({ where: { id: po.mprId }, select: { paymentBankAccount: { select: { bankName: true, accountNumber: true } } } })
+    : null;
+  const payee = payeeMpr?.paymentBankAccount ?? { bankName: pr.vendor?.bankName ?? null, accountNumber: pr.vendor?.bankAccountNumber ?? null };
+  const account = payee.accountNumber ? String(payee.accountNumber).replace(/\s/g, '') : null;
   return {
     pr,
     data: {
@@ -1017,7 +1022,7 @@ async function loadConfirmation(projectId: string, id: string) {
       description: pr.description ?? null,
       materials,
       suppliedOn: pr.invoice?.date ?? po?.date ?? null,
-      vendorBank: pr.vendor?.bankName ?? null,
+      vendorBank: payee.bankName ?? null,
       vendorAccountLast4: account && account.length >= 4 ? account.slice(-4) : null,
       mode: p?.mode ?? pr.paymentMode ?? null,
       reference: p?.reference ?? pr.chequeNumber ?? null,

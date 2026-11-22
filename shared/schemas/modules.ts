@@ -1846,6 +1846,19 @@ export const mprAccountDetailsSchema = z.object({
     .refine((v) => IFSC_PATTERN.test(v), 'IFSC must be 11 characters, e.g. SBIN0001234'),
 });
 
+// ═══ Vendor bank accounts (a vendor can hold several; one is primary) ═══
+export const vendorBankAccountBodySchema = mprAccountDetailsSchema.extend({
+  makePrimary: z.boolean().optional(),
+});
+export const createVendorBankAccountSchema = z.object({
+  params: z.object({ id: uuid }),
+  body: vendorBankAccountBodySchema,
+});
+export const updateVendorBankAccountSchema = z.object({
+  params: z.object({ id: uuid, accountId: uuid }),
+  body: vendorBankAccountBodySchema.partial(),
+});
+
 export const createMPRSchema = z.object({
   body: z.object({
     requestType: z.enum(['MATERIAL', 'SERVICE']).default('MATERIAL'),
@@ -1878,6 +1891,8 @@ export const createMPRSchema = z.object({
       invalid_type_error: 'Payment type is required',
     }),
     accountDetails: mprAccountDetailsSchema.optional(),
+    // A saved account of the vendor to pay to (bank transfer). Omitted = type the account in accountDetails.
+    vendorBankAccountId: uuid.nullable().optional(),
   }),
 });
 
@@ -1906,6 +1921,8 @@ export const updateMPRSchema = z.object({
     newVendor: quickCreateVendorSchema.optional(),
     paymentMethod: z.nativeEnum(MPRPaymentMethod).optional(),
     accountDetails: mprAccountDetailsSchema.optional(),
+    // A saved account of the vendor to pay to (bank transfer). Omitted = type the account in accountDetails.
+    vendorBankAccountId: uuid.nullable().optional(),
   }),
 });
 
@@ -1915,6 +1932,8 @@ export const changeMPRPaymentMethodSchema = z.object({
   body: z.object({
     paymentMethod: z.nativeEnum(MPRPaymentMethod, { required_error: 'Payment type is required' }),
     accountDetails: mprAccountDetailsSchema.optional(),
+    // A saved account of the vendor to pay to (bank transfer). Omitted = type the account in accountDetails.
+    vendorBankAccountId: uuid.nullable().optional(),
   }),
 });
 

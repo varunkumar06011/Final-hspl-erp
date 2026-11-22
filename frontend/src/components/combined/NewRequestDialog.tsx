@@ -220,7 +220,7 @@ export default function NewRequestDialog({ open, onClose, onCreated }: { open: b
                 {!canCreateVendor && <Alert severity="info" sx={{ gridColumn: '1 / -1' }}>{t('vendorDetailsLater')}</Alert>}
               </Box>
             )}
-            <PaymentMethodFields value={payment} onChange={setPayment} showError={showPayErrors} hasVendor={vendorReady} />
+            <PaymentMethodFields value={payment} onChange={setPayment} showError={showPayErrors} hasVendor={vendorReady} vendorId={vendorMode === 'existing' ? vendorId : null} />
             <Alert severity="info">{vendorMode === 'new' && vendor.vendorType === VendorType.NON_VENDOR ? t('nonVendorFlow') : t('vendorFlow')}</Alert>
           </>
         )}

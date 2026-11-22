@@ -184,5 +184,8 @@
   "changePaymentLocked": "The purchase order is approved - only an admin can change the payment type now",
   "changePaymentTitle": "Payment type - {{n}}",
   "changePaymentNote": "Can be changed by anyone until the purchase order is approved; after that only an admin can change it. The request is not sent for approval again.",
-  "savePayment": "Save"
+  "savePayment": "Save",
+  "savedBankAccount": "Saved bank account",
+  "newBankAccount": "New account (type below)",
+  "primaryAccountTag": "primary"
 }

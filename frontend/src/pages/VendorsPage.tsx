@@ -5,7 +5,7 @@ import {
   Tab, Tabs, Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
   Typography, TextField, Stack,
 } from '@mui/material';
-import { Link as LinkIcon, ReceiptLong as StatementIcon } from '@mui/icons-material';
+import { Link as LinkIcon, ReceiptLong as StatementIcon, AccountBalance as BankIcon } from '@mui/icons-material';
 import { useQuery } from '@tanstack/react-query';
 import { hasPermission, Permission, UserRole } from '@hospital-erp/shared';
 import { useAuthStore } from '../stores/authStore';
@@ -13,6 +13,7 @@ import EntityPage from '../components/EntityPage';
 import ResponsiveDialog from '../components/ResponsiveDialog';
 import ResponsiveTable from '../components/ResponsiveTable';
 import VendorHistoryDialog from '../components/VendorHistoryDialog';
+import VendorBankAccountsDialog from '../components/VendorBankAccountsDialog';
 import api from '../config/api';
 import { formatDate, formatCurrency, formatIndianNumber, STATUS_COLORS, enumLabel } from '../utils/enumOptions';
 import { useTranslation } from 'react-i18next';
@@ -320,9 +321,11 @@ export default function VendorsPage() {
   const [linkedId, setLinkedId] = useState<string | null>(null);
   const [statementId, setStatementId] = useState<string | null>(null);
   const [historyId, setHistoryId] = useState<string | null>(null);
+  const [bankVendor, setBankVendor] = useState<{ id: string; name: string } | null>(null);
   const user = useAuthStore((st) => st.user);
   // Vendor-only users (Site Supervisor) edit vendor details but see no money figures.
   const fin = !!user && hasPermission(user.role as UserRole, Permission.VIEW_FINANCIALS, user.extraPermissions);
+  const canEditVendor = !!user && hasPermission(user.role as UserRole, Permission.CREATE_VENDOR, user.extraPermissions);
   const FIN_KEYS = ['totalBilled', 'totalPaid', 'outstanding', 'weOwe', 'theyOwe'];
 
   return (
@@ -398,22 +401,33 @@ export default function VendorsPage() {
           { name: 'email', label: t('email'), type: 'text' },
           { name: 'description', label: t('description'), type: 'textarea' },
         ]}
-        rowActions={(row) => !fin ? null : (
+        rowActions={(row) => (
           <Stack direction="row" spacing={0.5}>
             <Button
               size="small"
-              startIcon={<LinkIcon />}
-              onClick={(e) => { e.stopPropagation(); setLinkedId(String(row.id)); }}
+              startIcon={<BankIcon />}
+              onClick={(e) => { e.stopPropagation(); setBankVendor({ id: String(row.id), name: String(row.name ?? '') }); }}
             >
-              {t('linked')}
+              {t('bankAccounts')}
             </Button>
-            <Button
-              size="small"
-              startIcon={<StatementIcon />}
-              onClick={(e) => { e.stopPropagation(); setStatementId(String(row.id)); }}
-            >
-              {t('statement')}
-            </Button>
+            {fin && (
+              <>
+                <Button
+                  size="small"
+                  startIcon={<LinkIcon />}
+                  onClick={(e) => { e.stopPropagation(); setLinkedId(String(row.id)); }}
+                >
+                  {t('linked')}
+                </Button>
+                <Button
+                  size="small"
+                  startIcon={<StatementIcon />}
+                  onClick={(e) => { e.stopPropagation(); setStatementId(String(row.id)); }}
+                >
+                  {t('statement')}
+                </Button>
+              </>
+            )}
           </Stack>
         )}
       />
@@ -421,6 +435,13 @@ export default function VendorsPage() {
       <VendorHistoryDialog vendorId={historyId} open={!!historyId} onClose={() => setHistoryId(null)} />
       <VendorLinkedDialog vendorId={linkedId} open={!!linkedId} onClose={() => setLinkedId(null)} />
       <VendorStatementDialog vendorId={statementId} open={!!statementId} onClose={() => setStatementId(null)} />
+      <VendorBankAccountsDialog
+        vendorId={bankVendor?.id ?? null}
+        vendorName={bankVendor?.name}
+        open={!!bankVendor}
+        onClose={() => setBankVendor(null)}
+        canEdit={canEditVendor}
+      />
     </>
   );
 }

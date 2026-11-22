@@ -34,6 +34,7 @@ export const DATA_EXCLUDED: Record<string, string> = {
   FileFingerprint: 'file hashes, technical',
   DuplicateFlag: 'admin-only review list with its own page',
   ApprovalSignature: 'signature images',
+  VendorBankAccount: 'vendor bank account numbers; not for Miko to read or quote',
   UserSignature: 'signature images',
 };
 

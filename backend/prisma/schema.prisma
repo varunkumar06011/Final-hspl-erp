@@ -203,12 +203,35 @@ model Vendor {
   assets                   Asset[]
   assignedWorkTasks        WorkTask[]                @relation("WorkTaskAssignedVendor")
   materialPurchaseRequests MaterialPurchaseRequest[]
+  bankAccounts             VendorBankAccount[]
 
   @@unique([projectId, name])
   @@index([projectId, deletedAt])
   @@index([projectId, status])
   @@index([projectId, vendorType])
   @@map("vendors")
+}
+
+// A vendor can have several bank accounts. The one flagged isPrimary is mirrored onto the
+// Vendor's own bankName / accountHolderName / bankAccountNumber / ifscCode columns (existing
+// readers keep working). Each material purchase request records which account it is paid to.
+model VendorBankAccount {
+  id                String    @id @default(uuid()) @db.Uuid
+  vendorId          String    @db.Uuid
+  bankName          String?
+  accountHolderName String?
+  accountNumber     String
+  ifscCode          String
+  isPrimary         Boolean   @default(false)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  vendor    Vendor                    @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  mprPaidTo MaterialPurchaseRequest[] @relation("MprPayeeAccount")
+
+  @@unique([vendorId, accountNumber, ifscCode])
+  @@index([vendorId])
+  @@map("vendor_bank_accounts")
 }
 
 model VendorMaterial {
@@ -1879,6 +1902,8 @@ model MaterialPurchaseRequest {
   // How this request will be paid: MPRPaymentMethod enum (BANK_TRANSFER | CASH | CHEQUE). Mandatory on new
   // requests; null on old ones. Bank details live on the vendor.
   paymentMethod         String?
+  // The vendor bank account this request is paid to (bank transfer only). Null = vendor's primary account.
+  paymentBankAccountId  String?   @db.Uuid
   date                  DateTime  @default(now())
   requiredBy            DateTime?
   department            String?
@@ -1925,6 +1950,7 @@ model MaterialPurchaseRequest {
 
   project          Project                       @relation(fields: [projectId], references: [id])
   vendor           Vendor?                       @relation(fields: [vendorId], references: [id])
+  paymentBankAccount VendorBankAccount?          @relation("MprPayeeAccount", fields: [paymentBankAccountId], references: [id], onDelete: SetNull)
   billBudgetHead   BudgetHead?                   @relation("SiteBillBudgetHead", fields: [billBudgetHeadId], references: [id])
   createdByUser    User                          @relation("MPRCreatedBy", fields: [createdBy], references: [id])
   requestRaisedBy  User?                         @relation("MPRRaisedBy", fields: [requestRaisedById], references: [id])
@@ -1943,6 +1969,7 @@ model MaterialPurchaseRequest {
   @@index([billBudgetHeadId])
   @@index([legacyNumber])
   @@index([voucherNumber])
+  @@index([paymentBankAccountId])
   @@map("material_purchase_requests")
 }
 

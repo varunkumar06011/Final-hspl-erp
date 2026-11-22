@@ -545,6 +545,7 @@ export const GUARDED_COLUMNS: Record<string, readonly string[]> = {
     "legacyNumber",
     "voucherNumber",
     "paymentMethod",
+    "paymentBankAccountId",
     "date",
     "requiredBy",
     "department",

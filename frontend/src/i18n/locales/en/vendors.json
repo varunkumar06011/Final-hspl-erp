@@ -82,5 +82,19 @@
   "invoiceNo": "Invoice #",
   "stock": "Stock",
   "amount": "Amount",
-  "requestNo": "Request #"
+  "requestNo": "Request #",
+  "bankAccounts": "Bank accounts",
+  "bankAccountsTitle": "Bank accounts — {{name}}",
+  "bankAccountsHelp": "A vendor can have several bank accounts. The primary one is shown on the vendor and used when a request does not pick an account. Pick the account to pay to on the material request.",
+  "noBankAccounts": "No bank account saved for this vendor yet.",
+  "primaryTag": "Primary",
+  "makePrimary": "Make primary",
+  "editBankAccount": "Edit account",
+  "removeBankAccount": "Remove account",
+  "addBankAccount": "Add account",
+  "saveBankAccount": "Save account",
+  "makePrimaryOnSave": "Make this the primary account",
+  "bankAccountErrNumber": "6 to 20 digits",
+  "bankAccountErrIfsc": "11 characters, e.g. SBIN0001234",
+  "cancel": "Cancel"
 }

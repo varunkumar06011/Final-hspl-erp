@@ -9,6 +9,7 @@ import { notifyAllHeads } from '../services/push.service';
 import { generateProjectSequenceNumber } from '../services/sequence.service';
 import { ensureVendorLedger } from './ledger.routes';
 import { EXCLUDE_PART_POS } from '../services/part-po.service';
+import { vendorBankUpdateData } from '../services/vendor-bank.service';
 
 interface MaterialInput {
   id?: string;
@@ -201,17 +202,34 @@ const router = createCrudRouter({
           unit: m.unit ?? null,
         })),
       },
+      // The bank account given at creation is the vendor's primary account.
+      ...(body.bankAccountNumber && body.ifscCode
+        ? {
+            bankAccounts: {
+              create: {
+                bankName: body.bankName ?? null,
+                accountHolderName: body.accountHolderName ?? null,
+                accountNumber: body.bankAccountNumber as string,
+                ifscCode: body.ifscCode as string,
+                isPrimary: true,
+              },
+            },
+          }
+        : {}),
     };
   },
   transformUpdate: async (body, _userId, _projectId, existingId) => {
     const data: Record<string, unknown> = {};
 
     // Copy scalar fields
-    for (const key of ['name', 'vendorType', 'contactPersonName', 'contactPersonPhone', 'referenceBy', 'gstNumber', 'panNumber', 'category', 'bankName', 'accountHolderName', 'bankAccountNumber', 'ifscCode', 'address', 'phone', 'email', 'description', 'status', 'rating']) {
+    // Bank fields are not copied here: they go to the primary account (vendorBankUpdateData), which mirrors them back.
+    for (const key of ['name', 'vendorType', 'contactPersonName', 'contactPersonPhone', 'referenceBy', 'gstNumber', 'panNumber', 'category', 'address', 'phone', 'email', 'description', 'status', 'rating']) {
       if (body[key] !== undefined) {
         data[key] = body[key];
       }
     }
+
+    Object.assign(data, await vendorBankUpdateData(existingId, body));
 
     // Handle materials sync: delete all existing and recreate
     if (body.materials !== undefined) {
