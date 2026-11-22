@@ -322,7 +322,7 @@
   "proofSkipped": "PO downloaded. {{count}} attached file(s) (Word/Excel or unreadable) could not be added to the PDF.",
   "attachToContract": "Attach to contract",
   "attachDialogTitle": "Attach {{n}} as a sub-PO",
-  "attachHelp": "{{n}} becomes a sub-PO of the contract you pick. Its number, items, approval and payments stay as they are, and its amount is counted in the contract's sub-PO total. Only approved contracts of the same vendor are listed.",
+  "attachHelp": "{{n}} becomes a sub-PO of the contract you pick. Its number, items, approval, vendor and payments stay as they are, and its amount is counted in the contract's sub-PO total. Approved contracts of any vendor are listed.",
   "attachContractLabel": "Contract PO",
   "attachNone": "No approved contract for this vendor. Convert a PO to a contract first.",
   "attachBtn": "Attach as sub-PO",

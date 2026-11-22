@@ -921,8 +921,9 @@ router.post(
 
 // POST /:id/attach-to-contract — make an existing PO a sub-PO of an approved contract.
 // Body: { contractId }. Only the link changes: the PO keeps its number, items, approval,
-// budget commitment and payments, which now sit under the contract. The contract itself
-// carries no amount (grandTotal 0), so nothing is counted twice.
+// budget commitment, vendor and payments, which now sit under the contract. The contract
+// itself carries no amount (grandTotal 0), so nothing is counted twice. The vendor may differ
+// from the contract's vendor.
 router.post(
   '/:id/attach-to-contract',
   rbacMiddleware(Permission.CREATE_PO),
@@ -973,10 +974,6 @@ router.post(
         res.status(400).json({ error: 'A rejected, cancelled or deleted purchase order cannot be attached to a contract' });
         return;
       }
-      if (po.vendorId !== contract.vendorId) {
-        res.status(400).json({ error: `Vendor mismatch: contract ${contract.poNumber} belongs to a different vendor` });
-        return;
-      }
       if (!COMMITTED_PO_STATUSES.includes(contract.status)) {
         res.status(400).json({ error: 'Sub-POs can only be attached to an approved contract' });
         return;
@@ -999,7 +996,7 @@ router.post(
         entityId: po.id,
         projectId,
         oldValue: { contractPoId: null },
-        newValue: { contractPoId: contract.id, contractPoNumber: contract.poNumber, attachedAsSubPo: true, acknowledged: true },
+        newValue: { contractPoId: contract.id, contractPoNumber: contract.poNumber, attachedAsSubPo: true, vendorId: po.vendorId, contractVendorId: contract.vendorId, acknowledged: true },
       });
 
       res.json(updated);

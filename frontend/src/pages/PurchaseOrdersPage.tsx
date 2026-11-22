@@ -1380,7 +1380,7 @@ export default function PurchaseOrdersPage() {
 
       <NewContractDialog open={contractOpen} onClose={() => setContractOpen(false)} />
       <ConvertToContractDialog po={convertRow ? { id: convertRow.id, poNumber: convertRow.poNumber } : null} onClose={() => setConvertRow(null)} />
-      <AttachToContractDialog po={attachRow ? { id: attachRow.id, poNumber: attachRow.poNumber, vendorId: attachRow.vendorId } : null} onClose={() => setAttachRow(null)} />
+      <AttachToContractDialog po={attachRow ? { id: attachRow.id, poNumber: attachRow.poNumber } : null} onClose={() => setAttachRow(null)} />
       <PartPoDialog po={partRow ? { id: partRow.id, poNumber: partRow.poNumber } : null} onClose={() => setPartRow(null)} />
 
       {/* Create PO Dialog */}

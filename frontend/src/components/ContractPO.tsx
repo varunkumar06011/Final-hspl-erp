@@ -655,6 +655,7 @@ interface ContractChoice {
   id: string;
   poNumber: string;
   vendorId: string;
+  vendor?: { name: string } | null;
   status: string;
   contractTitle?: string | null;
   contractClosedAt?: string | null;
@@ -664,7 +665,7 @@ export function AttachToContractDialog({
   po,
   onClose,
 }: {
-  po: { id: string; poNumber: string; vendorId: string } | null;
+  po: { id: string; poNumber: string } | null;
   onClose: () => void;
 }) {
   const { t } = useTranslation('po');
@@ -684,9 +685,9 @@ export function AttachToContractDialog({
   });
   const contracts = useMemo(
     () => ((contractData?.data ?? []) as ContractChoice[]).filter(
-      (c) => c.vendorId === po?.vendorId && COMMITTED_CONTRACT_STATUSES.includes(c.status) && !c.contractClosedAt,
+      (c) => COMMITTED_CONTRACT_STATUSES.includes(c.status) && !c.contractClosedAt,
     ),
-    [contractData, po],
+    [contractData],
   );
 
   const mutation = useMutation({
@@ -714,7 +715,7 @@ export function AttachToContractDialog({
           >
             {contracts.map((c) => (
               <MenuItem key={c.id} value={c.id}>
-                {c.poNumber}{c.contractTitle ? ` · ${c.contractTitle}` : ''}
+                {c.poNumber}{c.contractTitle ? ` · ${c.contractTitle}` : ''}{c.vendor?.name ? ` · ${c.vendor.name}` : ''}
               </MenuItem>
             ))}
           </TextField>
