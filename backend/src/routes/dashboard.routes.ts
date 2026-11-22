@@ -895,7 +895,7 @@ router.get(
           where: { projectId, deletedAt: null },
           _sum: { currentBalance: true, openingBalance: true },
         }),
-        // Budget heads (all, sorted by slNo; used-first reordering applied below)
+        // Budget heads (all, sorted by slNo)
         prisma.budgetHead.findMany({
           where: { projectId, deletedAt: null },
           orderBy: { slNo: 'asc' },
@@ -1244,14 +1244,6 @@ router.get(
           utilizationPct: Math.round(utilizationPct * 100) / 100,
         };
       });
-      // Reorder so used heads (committed/actual/paid > 0) appear first, then by slNo
-      budgetHeadRows.sort((a, b) => {
-        const aUsed = a.committed > 0 || a.actual > 0 || a.paid > 0 ? 0 : 1;
-        const bUsed = b.committed > 0 || b.actual > 0 || b.paid > 0 ? 0 : 1;
-        if (aUsed !== bUsed) return aUsed - bUsed;
-        return Number(a.slNo) - Number(b.slNo);
-      });
-
       // ── Today's outflow (Amount Used Today) — net of refunds and
       // excluding loan repayments, same rule as Total Expenditure ──
       const startOfToday = new Date(new Date().setHours(0, 0, 0, 0));

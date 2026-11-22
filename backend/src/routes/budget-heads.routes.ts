@@ -697,11 +697,11 @@ router.get(
   },
 );
 
-// ── Custom list ordering: used heads first ──
-// Heads with any committed/actual/paid amount > 0 appear above unused heads.
-// Within each group, heads are ordered by slNo ascending. This is a display-only
-// sort; no data is changed. Overrides the CRUD factory's default slNo sort so
-// that "started" budget heads surface to the top of the list.
+// ── List ordering: strictly by Sl. No. ──
+// Rows come back in Sl. No. order, paged in the database, so the page shows the
+// same sequence as the number column. Started/used heads are not pulled to the
+// top; the amounts show that on each row. Replaces the CRUD factory's list route
+// so the sort and paging both run in the database.
 router.get(
   '/',
   rbacMiddleware(Permission.VIEW_FINANCIALS),
@@ -715,22 +715,17 @@ router.get(
         where.particulars = { contains: String(search), mode: 'insensitive' };
       }
 
-      const all = await prisma.budgetHead.findMany({ where });
-
-      const isUsed = (h: typeof all[number]) =>
-        Number(h.committedAmount) > 0 || Number(h.actualAmount) > 0 || Number(h.paidAmount) > 0;
-
-      const sorted = all.sort((a, b) => {
-        const aUsed = isUsed(a) ? 0 : 1;
-        const bUsed = isUsed(b) ? 0 : 1;
-        if (aUsed !== bUsed) return aUsed - bUsed;
-        return Number(a.slNo) - Number(b.slNo);
-      });
-
       const p = Number(page);
       const ps = Number(pageSize);
-      const total = sorted.length;
-      const data = sorted.slice((p - 1) * ps, p * ps);
+      const [total, data] = await Promise.all([
+        prisma.budgetHead.count({ where }),
+        prisma.budgetHead.findMany({
+          where,
+          orderBy: { slNo: 'asc' },
+          skip: (p - 1) * ps,
+          take: ps,
+        }),
+      ]);
 
       res.json({
         data,
