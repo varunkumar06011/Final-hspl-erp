@@ -91,5 +91,16 @@
   "chStatus": "స్థితి: {{o}} → {{n}}",
   "chName2": "పేరు → \"{{n}}\"",
   "chAlloc2": "కేటాయింపు → {{n}}",
-  "chStatus2": "స్థితి → {{n}}"
+  "chStatus2": "స్థితి → {{n}}",
+  "filterMin": "కనిష్ట మొత్తం (₹)",
+  "filterMax": "గరిష్ట మొత్తం (₹)",
+  "filterUsage": "వినియోగం",
+  "filterSort": "క్రమీకరణ",
+  "usageAll": "అన్ని శీర్షికలు",
+  "usageUsed": "వినియోగించినవి",
+  "usageUnused": "ఉపయోగించనివి",
+  "sortSlNo": "క్ర.సం. ప్రకారం",
+  "sortAmountAsc": "మొత్తం: తక్కువ ముందు",
+  "sortAmountDesc": "మొత్తం: ఎక్కువ ముందు",
+  "clearFilters": "ఫిల్టర్లు తీసివేయి"
 }

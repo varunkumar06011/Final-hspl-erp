@@ -91,5 +91,16 @@
   "chStatus": "Status: {{o}} → {{n}}",
   "chName2": "Name → \"{{n}}\"",
   "chAlloc2": "Allocated → {{n}}",
-  "chStatus2": "Status → {{n}}"
+  "chStatus2": "Status → {{n}}",
+  "filterMin": "Min amount (₹)",
+  "filterMax": "Max amount (₹)",
+  "filterUsage": "Usage",
+  "filterSort": "Sort",
+  "usageAll": "All heads",
+  "usageUsed": "Used",
+  "usageUnused": "Unused",
+  "sortSlNo": "Sl. No. order",
+  "sortAmountAsc": "Amount: least first",
+  "sortAmountDesc": "Amount: highest first",
+  "clearFilters": "Clear filters"
 }

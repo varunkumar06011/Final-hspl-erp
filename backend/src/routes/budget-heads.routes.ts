@@ -1,5 +1,6 @@
 import { Router, Response, NextFunction } from 'express';
 import { Permission, AuditAction, JournalAccountType, JVType } from '@hospital-erp/shared';
+import { Prisma } from '@prisma/client';
 import {
   createBudgetHeadSchema,
   updateBudgetHeadSchema,
@@ -697,23 +698,53 @@ router.get(
   },
 );
 
-// ── List ordering: strictly by Sl. No. ──
-// Rows come back in Sl. No. order, paged in the database, so the page shows the
-// same sequence as the number column. Started/used heads are not pulled to the
-// top; the amounts show that on each row. Replaces the CRUD factory's list route
-// so the sort and paging both run in the database.
+// ── List: filters, sort and paging all run in the database ──
+// Query params (all optional):
+//   search     – particulars contains text
+//   minAmount / maxAmount – range on allocatedAmount (inclusive)
+//   usage      – 'used' (committed/actual/paid > 0) | 'unused'
+//   sort       – 'slNo' (default) | 'amount_asc' | 'amount_desc' (ties by slNo)
+// Default order is Sl. No., so the page matches the number column. Replaces the
+// CRUD factory's list route.
+const parseAmountParam = (raw: unknown): number | undefined => {
+  if (raw === undefined || raw === null || raw === '') return undefined;
+  const n = Number(String(raw).replace(/,/g, ''));
+  return Number.isFinite(n) && n >= 0 ? n : undefined;
+};
+const USED_ANY: Prisma.BudgetHeadWhereInput[] = [
+  { committedAmount: { gt: 0 } },
+  { actualAmount: { gt: 0 } },
+  { paidAmount: { gt: 0 } },
+];
+
 router.get(
   '/',
   rbacMiddleware(Permission.VIEW_FINANCIALS),
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const projectId = requireProjectId(req);
-      const { page = 1, pageSize = 20, search } = req.query as Record<string, unknown>;
+      const { page = 1, pageSize = 20, search, minAmount, maxAmount, usage, sort } =
+        req.query as Record<string, unknown>;
 
-      const where: Record<string, unknown> = { projectId, deletedAt: null };
+      const where: Prisma.BudgetHeadWhereInput = { projectId, deletedAt: null };
       if (search) {
         where.particulars = { contains: String(search), mode: 'insensitive' };
       }
+      const min = parseAmountParam(minAmount);
+      const max = parseAmountParam(maxAmount);
+      if (min !== undefined || max !== undefined) {
+        where.allocatedAmount = {
+          ...(min !== undefined ? { gte: min } : {}),
+          ...(max !== undefined ? { lte: max } : {}),
+        };
+      }
+      if (usage === 'used') where.OR = USED_ANY;
+      else if (usage === 'unused') where.NOT = { OR: USED_ANY };
+
+      const orderBy: Prisma.BudgetHeadOrderByWithRelationInput[] =
+        sort === 'amount_asc' ? [{ allocatedAmount: 'asc' }, { slNo: 'asc' }]
+        : sort === 'amount_desc' ? [{ allocatedAmount: 'desc' }, { slNo: 'asc' }]
+        : [{ slNo: 'asc' }];
 
       const p = Number(page);
       const ps = Number(pageSize);
@@ -721,7 +752,7 @@ router.get(
         prisma.budgetHead.count({ where }),
         prisma.budgetHead.findMany({
           where,
-          orderBy: { slNo: 'asc' },
+          orderBy,
           skip: (p - 1) * ps,
           take: ps,
         }),

@@ -51,6 +51,7 @@ import LandscapeExcelTable from '../components/LandscapeExcelTable';
 import PortraitRotateHint from '../components/PortraitRotateHint';
 import { formatCurrency, formatIndianNumber, formatDate } from '../utils/enumOptions';
 import { useDeepLinkRow } from '../hooks/useDeepLinkRow';
+import { useUrlState } from '../hooks/useUrlState';
 import { useMobileLandscape, useMobilePortrait } from '../hooks/useMobileLandscape';
 
 import { useTranslation } from 'react-i18next';
@@ -59,7 +60,21 @@ export default function BudgetHeadsPage() {
   const { t: tr } = useTranslation('budget');
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(50);
-  const [search, setSearch] = useState('');
+  // Filters live in the URL, so they survive refresh and back/forward navigation.
+  const [search, setSearch] = useUrlState<string>('search', '');
+  const [minAmount, setMinAmount] = useUrlState<string>('minAmount', '');
+  const [maxAmount, setMaxAmount] = useUrlState<string>('maxAmount', '');
+  const [usage, setUsage] = useUrlState<string>('usage', 'all');
+  const [sort, setSort] = useUrlState<string>('sort', 'slNo');
+  const filtersActive = Boolean(search || minAmount || maxAmount || usage !== 'all' || sort !== 'slNo');
+  const clearFilters = () => {
+    setSearch('');
+    setMinAmount('');
+    setMaxAmount('');
+    setUsage('all');
+    setSort('slNo');
+    setPage(0);
+  };
   const [dialogOpen, setDialogOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [editing, setEditing] = useState<Record<string, unknown> | null>(null);
@@ -81,10 +96,14 @@ export default function BudgetHeadsPage() {
   const isMobilePortrait = useMobilePortrait();
 
   const { data, isLoading, isError, refetch } = useQuery({
-    queryKey: ['/budget-heads', page, pageSize, search],
+    queryKey: ['/budget-heads', page, pageSize, search, minAmount, maxAmount, usage, sort],
     queryFn: async () => {
       const params: Record<string, unknown> = { page: page + 1, pageSize };
       if (search) params.search = search;
+      if (minAmount) params.minAmount = minAmount;
+      if (maxAmount) params.maxAmount = maxAmount;
+      if (usage !== 'all') params.usage = usage;
+      if (sort !== 'slNo') params.sort = sort;
       const response = await api.get('/budget-heads', { params });
       return response.data;
     },
@@ -563,16 +582,59 @@ export default function BudgetHeadsPage() {
           </Box>
         ) : (
           <>
-            <Box sx={{ p: 2 }}>
+            <Stack direction="row" useFlexGap sx={{ p: 2, gap: 1.5, flexWrap: 'wrap', alignItems: 'center' }}>
               <TextField
                 size="small"
                 placeholder={tr('search')}
                 value={search}
                 onChange={(e) => { setSearch(e.target.value); setPage(0); }}
                 InputProps={{ startAdornment: (<InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment>) }}
-                sx={{ width: { xs: '100%', sm: 300 } }}
+                sx={{ width: { xs: '100%', sm: 260 } }}
               />
-            </Box>
+              <TextField
+                size="small"
+                label={tr('filterMin')}
+                value={formatIndianNumber(minAmount)}
+                onChange={(e) => { setMinAmount(e.target.value.replace(/,/g, '')); setPage(0); }}
+                inputProps={{ inputMode: 'decimal' }}
+                sx={{ width: { xs: 'calc(50% - 6px)', sm: 160 } }}
+              />
+              <TextField
+                size="small"
+                label={tr('filterMax')}
+                value={formatIndianNumber(maxAmount)}
+                onChange={(e) => { setMaxAmount(e.target.value.replace(/,/g, '')); setPage(0); }}
+                inputProps={{ inputMode: 'decimal' }}
+                sx={{ width: { xs: 'calc(50% - 6px)', sm: 160 } }}
+              />
+              <TextField
+                select
+                size="small"
+                label={tr('filterUsage')}
+                value={usage}
+                onChange={(e) => { setUsage(e.target.value); setPage(0); }}
+                sx={{ width: { xs: '100%', sm: 170 } }}
+              >
+                <MenuItem value="all">{tr('usageAll')}</MenuItem>
+                <MenuItem value="used">{tr('usageUsed')}</MenuItem>
+                <MenuItem value="unused">{tr('usageUnused')}</MenuItem>
+              </TextField>
+              <TextField
+                select
+                size="small"
+                label={tr('filterSort')}
+                value={sort}
+                onChange={(e) => { setSort(e.target.value); setPage(0); }}
+                sx={{ width: { xs: '100%', sm: 220 } }}
+              >
+                <MenuItem value="slNo">{tr('sortSlNo')}</MenuItem>
+                <MenuItem value="amount_asc">{tr('sortAmountAsc')}</MenuItem>
+                <MenuItem value="amount_desc">{tr('sortAmountDesc')}</MenuItem>
+              </TextField>
+              {filtersActive && (
+                <Button size="small" onClick={clearFilters}>{tr('clearFilters')}</Button>
+              )}
+            </Stack>
 
             <ResponsiveTable>
               {tableNode}
