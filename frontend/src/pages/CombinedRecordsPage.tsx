@@ -42,6 +42,7 @@ interface Row {
   isSiteBills: boolean;
   isContract?: boolean;
   requestType: string | null;
+  description: string | null;
   date: string | null;
   lastActivity: string | null;
   vendors: string[];
@@ -205,6 +206,11 @@ export default function CombinedRecordsPage() {
                   {r.numbers.goodsReceipts > 0 && <Chip size="small" variant="outlined" label={t('grnCount', { count: r.numbers.goodsReceipts })} />}
                   {r.numbers.invoices > 0 && <Chip size="small" variant="outlined" label={t('invoiceCount', { count: r.numbers.invoices })} />}
                 </Box>
+                {r.description && (
+                  <Typography variant="body2" sx={{ mt: 0.5, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', wordBreak: 'break-word' }} title={r.description}>
+                    {r.description}
+                  </Typography>
+                )}
                 {r.materials.length > 0 && (
                   <Typography variant="caption" color="text.secondary" display="block" noWrap sx={{ mt: 0.5 }}>
                     {r.materials.join(', ')}{r.materialCount > r.materials.length ? ` +${r.materialCount - r.materials.length}` : ''}

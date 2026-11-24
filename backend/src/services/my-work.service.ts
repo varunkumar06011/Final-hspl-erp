@@ -278,7 +278,7 @@ export async function getMyWork(projectId: string, viewer: Viewer): Promise<MyWo
           include: {
             createdByUser: { select: { name: true } },
             items: { select: { materialName: true, deliveredQty: true, unit: true } },
-            purchaseOrder: { select: { poNumber: true, vendor: { select: { name: true } } } },
+            purchaseOrder: { select: { poNumber: true, notes: true, mpr: { select: { description: true } }, vendor: { select: { name: true } } } },
           },
         })
       : Promise.resolve([]),
@@ -488,7 +488,7 @@ export async function getMyWork(projectId: string, viewer: Viewer): Promise<MyWo
       party: r.purchaseOrder?.vendor?.name ?? null,
       amount: null,
       summary: summarizeLines(r.items.map((i) => ({ materialName: i.materialName, quantity: i.deliveredQty, unit: i.unit }))),
-      why: r.purchaseOrder?.poNumber ?? null,
+      why: clean(r.purchaseOrder?.mpr?.description) ?? clean(r.purchaseOrder?.notes) ?? r.purchaseOrder?.poNumber ?? null,
       status: r.status,
       action: inspect ? 'INSPECT' : 'POST_STOCK',
       requestedBy: r.createdByUser?.name ?? null,

@@ -257,7 +257,7 @@ export async function listCombinedRecords(projectId: string, viewer: Viewer, que
       ? prisma.quotation.findMany({
           where: { ...base, status: { not: 'DELETED' } },
           select: {
-            id: true, quotationNumber: true, mprId: true, status: true, grandTotal: true, date: true, updatedAt: true,
+            id: true, quotationNumber: true, mprId: true, status: true, grandTotal: true, date: true, updatedAt: true, notes: true,
             vendor: { select: { name: true } }, items: { select: { materialName: true } },
           },
         })
@@ -267,7 +267,7 @@ export async function listCombinedRecords(projectId: string, viewer: Viewer, que
           where: { ...base, status: { not: 'DELETED' } },
           select: {
             id: true, poNumber: true, quotationId: true, mprId: true, isContract: true, contractPoId: true, contractTitle: true, periodLabel: true, status: true, grandTotal: true, netPayable: true,
-            date: true, updatedAt: true, isSiteBillBatch: true, reimburseTo: true,
+            date: true, updatedAt: true, isSiteBillBatch: true, reimburseTo: true, notes: true,
             vendor: { select: { name: true } }, items: { select: { materialName: true } },
             approvalWorkflow: listWorkflow,
           },
@@ -389,6 +389,11 @@ export async function listCombinedRecords(projectId: string, viewer: Viewer, que
     ].filter((d): d is Date => !!d);
     const startDate = r.mpr?.date ?? r.quotations[0]?.date ?? r.pos[0]?.date;
 
+    // One description per purchase (see description-sync.service): the request's own text, else what its quotations / POs carry.
+    const description = [r.mpr?.description, ...r.quotations.map((q) => q.notes), ...r.pos.map((p) => p.notes)]
+      .map((t) => (typeof t === 'string' ? t.trim() : ''))
+      .find((t) => t.length > 0) ?? null;
+
     const doc: SearchDoc = {
       numbers: [
         r.mpr?.mprNumber, ...r.quotations.map((q) => q.quotationNumber), ...r.pos.map((p) => p.poNumber),
@@ -396,7 +401,7 @@ export async function listCombinedRecords(projectId: string, viewer: Viewer, que
         ...rPay.flatMap((p) => [p.paymentCode, p.requestNumber]), ...rBills.map((b) => b.mprNumber),
       ].filter((n): n is string => !!n),
       texts: [
-        ...vendors, ...materials, r.mpr?.description, r.mpr?.billShopName, ...rBills.map((b) => b.billShopName),
+        ...vendors, ...materials, description, r.mpr?.billShopName, ...rBills.map((b) => b.billShopName),
         ...r.pos.flatMap((p) => [p.reimburseTo, p.contractTitle, p.periodLabel]), String(Math.round(amount)),
       ].filter((t): t is string => !!t),
     };
@@ -409,6 +414,7 @@ export async function listCombinedRecords(projectId: string, viewer: Viewer, que
       isSiteBills: isSiteBatch || !!r.mpr?.isSiteBill,
       isContract: r.pos.some((p) => p.isContract),
       requestType: r.mpr?.requestType ?? null,
+      description,
       date: startDate ?? null,
       lastActivity: dates.length ? new Date(Math.max(...dates.map((d) => d.getTime()))) : startDate ?? null,
       vendors,
