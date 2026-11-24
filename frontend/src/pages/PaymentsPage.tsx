@@ -30,6 +30,7 @@ import {
   FormControlLabel,
 } from '@mui/material';
 import ResponsiveDialog from '../components/ResponsiveDialog';
+import ExpandableText from '../components/ExpandableText';
 import StalledChip from '../components/StalledChip';
 import AcknowledgementCheckbox from '../components/AcknowledgementCheckbox';
 import RefreshButton from '../components/RefreshButton';
@@ -725,9 +726,7 @@ export default function PaymentsPage() {
                           : row.type === 'ADVANCE'
                             ? tr('poN', { n: row.purchaseOrder?.poNumber ?? '—' })
                             : row.invoice?.invoiceCode ?? '—'}
-                        {row.type !== 'EXPENSE' && row.description && (
-                          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', whiteSpace: 'pre-wrap', overflowWrap: 'break-word' }}>{row.description}</Typography>
-                        )}
+                        {row.type !== 'EXPENSE' && <ExpandableText text={row.description} variant="caption" color="text.secondary" />}
                       </TableCell>
                       <TableCell data-label={tr('vendor')}>{row.vendor ? `${row.vendor.vendorCode} - ${row.vendor.name}` : '—'}</TableCell>
                       <TableCell data-label={tr('amount')}>{formatCurrency(row.amount)}</TableCell>

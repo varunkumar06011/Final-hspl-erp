@@ -34,6 +34,7 @@ import {
   Tab,
 } from '@mui/material';
 import ResponsiveDialog from '../components/ResponsiveDialog';
+import ExpandableText from '../components/ExpandableText';
 import { DetailSection, DetailField } from '../components/DetailSection';
 import WaitingOn from '../components/WaitingOn';
 import StalledChip from '../components/StalledChip';
@@ -1074,6 +1075,7 @@ export default function PurchaseOrdersPage() {
                             <Typography variant="caption" color="warning.main" title={row.editReason}>{t('edited')}</Typography>
                           )}
                         </Box>
+                        <ExpandableText text={row.notes} />
                         {!isUmbrellaContract(row) && (row.items ?? []).length > 0 && (
                           <Typography variant="caption" color="text.secondary" noWrap>
                             {(row.items ?? []).slice(0, 2).map((i) => `${i.materialName} × ${formatIndianNumber(i.quantity)}${i.unit ? ' ' + i.unit : ''}`).join(', ')}
@@ -1108,11 +1110,6 @@ export default function PurchaseOrdersPage() {
 
                         {/* Items — simple list: material, qty, rate, amount */}
                         {!isUmbrellaContract(row) && row.items && row.items.length > 0 && <ItemsGist items={row.items} max={50} />}
-
-                        {/* Description — only when there is one */}
-                        {row.notes && (
-                          <Typography variant="body2" sx={{ mt: 1, fontSize: '0.85rem', whiteSpace: 'pre-wrap', overflowWrap: 'break-word' }}>{row.notes}</Typography>
-                        )}
 
                         {row.isContract && expandedPoId === row.id && (
                           <ContractPanel

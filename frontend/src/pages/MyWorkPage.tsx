@@ -19,6 +19,7 @@ import {
 import { Refresh as RefreshIcon, Search as SearchIcon } from '@mui/icons-material';
 import { useTranslation } from 'react-i18next';
 import api from '../config/api';
+import ExpandableText from '../components/ExpandableText';
 import { useUrlState } from '../hooks/useUrlState';
 import { formatCurrency, roleLabel } from '../utils/enumOptions';
 
@@ -89,10 +90,10 @@ function WorkCard({ item, tab }: { item: WorkItem; tab: TabKey }) {
 
       <Box sx={{ mt: 1 }}>
         {item.why ? (
-          <Typography variant="body2">
-            <Box component="span" sx={{ fontWeight: 600 }}>{t('why')}: </Box>
-            {item.why}
-          </Typography>
+          <>
+            <Typography variant="caption" sx={{ fontWeight: 600 }} color="text.secondary">{t('why')}</Typography>
+            <ExpandableText text={item.why} />
+          </>
         ) : (
           <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
             {t('noWhy')}

@@ -42,6 +42,7 @@ import { POPaymentType, SITE_BILL_LIMIT, isAdminRole, canOverrideApprovals, Site
 import api, { extractErrorMessage } from '../config/api';
 import { useUrlFilters } from '../hooks/useUrlFilters';
 import ResponsiveDialog from '../components/ResponsiveDialog';
+import ExpandableText from '../components/ExpandableText';
 import CameraCapture from '../components/CameraCapture';
 import UploadSourceButton from '../components/UploadSourceButton';
 import { ProofNumberField, proofHeaders } from '../components/ProofNumber';
@@ -246,10 +247,10 @@ export default function SiteBillsPage() {
                       <Box sx={{ flex: 1 }} />
                       <Typography fontWeight={700}>{formatCurrency(row.total)}</Typography>
                     </Box>
+                    <ExpandableText text={row.description} />
                     <ItemsGist items={row.items.map((i) => ({ ...i, unitPrice: i.rate }))} max={6} />
                     <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap', mt: 0.5 }}>
                       {row.paidBy && <Typography variant="caption" color="text.secondary">{t('paidBy', { name: row.paidBy.name })}</Typography>}
-                      {row.description && <Typography variant="caption" color="text.secondary">· {row.description}</Typography>}
                       <Box sx={{ flex: 1 }} />
                       {!row.po && !editLocked && budgetHeads.length > 0 ? (
                         <TextField

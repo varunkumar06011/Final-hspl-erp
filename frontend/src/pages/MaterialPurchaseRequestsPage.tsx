@@ -26,6 +26,7 @@ import {
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import VendorAutocomplete from '../components/VendorAutocomplete';
+import ExpandableText from '../components/ExpandableText';
 import StalledChip from '../components/StalledChip';
 import { DetailSection, DetailField } from '../components/DetailSection';
 import WaitingOn from '../components/WaitingOn';
@@ -933,9 +934,7 @@ export default function MaterialPurchaseRequestsPage() {
                       )}
                     </Box>
                     <ApprovalTiming startedAt={row.createdAt} workflow={row.approvalWorkflow} compact />
-                    {row.description && (
-                      <Typography variant="caption" color="text.primary" sx={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', overflowWrap: 'anywhere' }}>{row.description}</Typography>
-                    )}
+                    <ExpandableText text={row.description} variant="body2" />
                     {row.items.length > 0 && (
                       <Typography variant="caption" color="text.secondary" noWrap>
                         {row.items.slice(0, 2).map((i) => `${i.materialName} × ${i.quantity}${i.unit ? ' ' + i.unit : ''}`).join(', ')}
@@ -977,10 +976,6 @@ export default function MaterialPurchaseRequestsPage() {
                   })()}
 
                   <Box sx={{ mb: 0.5 }}><ApprovalTiming startedAt={row.createdAt} workflow={row.approvalWorkflow} /></Box>
-
-                  {row.description && (
-                    <Typography variant="body2" sx={{ mt: 0.5, color: 'text.primary' }}>{row.description}</Typography>
-                  )}
 
                   {/* Main actions — the rest live under More details */}
                   <Box sx={{ display: 'flex', gap: 0.5, mt: 1, pt: 1, borderTop: '1px solid', borderColor: 'divider', flexWrap: 'wrap', alignItems: 'center' }}>

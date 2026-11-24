@@ -108,6 +108,7 @@ const invoiceInclude = {
     select: {
       id: true,
       poNumber: true,
+      notes: true, // the purchase's one description, shown on the invoice list
       date: true,
       createdAt: true,
       quotation: { select: { id: true, quotationNumber: true, date: true } },

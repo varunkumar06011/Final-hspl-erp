@@ -25,6 +25,7 @@ import {
   Checkbox,
 } from '@mui/material';
 import ResponsiveDialog from '../components/ResponsiveDialog';
+import ExpandableText from '../components/ExpandableText';
 import StalledChip from '../components/StalledChip';
 import { DetailSection, DetailField } from '../components/DetailSection';
 import ApprovalStepsDisplay from '../components/ApprovalStepsDisplay';
@@ -949,6 +950,7 @@ export default function QuotationsPage() {
                           </Typography>
                         )}
                       </Box>
+                      <ExpandableText text={row.notes} />
                       {(row.items ?? []).length > 0 && (
                         <Typography variant="caption" color="text.secondary" noWrap>
                           {(row.items ?? []).slice(0, 2).map((i) => `${i.materialName} × ${i.quantity}${i.unit ? ' ' + i.unit : ''}`).join(', ')}
@@ -981,9 +983,6 @@ export default function QuotationsPage() {
 
                   {/* Materials — simple list: material, qty, rate, amount */}
                   {row.items && row.items.length > 0 && <ItemsGist items={row.items} max={50} />}
-                  {row.notes && (
-                    <Typography variant="body2" sx={{ mt: 1, fontSize: '0.85rem', whiteSpace: 'pre-wrap', overflowWrap: 'break-word' }}>{row.notes}</Typography>
-                  )}
 
                   {/* Main actions — the rest live under More details */}
                   <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, mt: 1, pt: 1, borderTop: '1px solid', borderColor: 'divider' }}>
