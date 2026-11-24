@@ -870,6 +870,7 @@ export default function PurchaseOrdersPage() {
                       <TableCell sx={{ fontWeight: 700 }}>{t('poDate')}</TableCell>
                       <TableCell sx={{ fontWeight: 700 }}>{t('vendorName')}</TableCell>
                       <TableCell sx={{ fontWeight: 700 }}>{t('itemDescription')}</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }}>{t('description')}</TableCell>
                       <TableCell sx={{ fontWeight: 700 }}>{t('paymentType')}</TableCell>
                       <TableCell sx={{ fontWeight: 700 }} align="right">{t('total')}</TableCell>
                       <TableCell sx={{ fontWeight: 700 }} align="right">{t('gst')}</TableCell>
@@ -882,9 +883,9 @@ export default function PurchaseOrdersPage() {
                   </TableHead>
                   <TableBody>
                     {isLoading ? (
-                      <TableRow><TableCell colSpan={14} align="center" sx={{ py: 4 }}><CircularProgress size={32} /></TableCell></TableRow>
+                      <TableRow><TableCell colSpan={15} align="center" sx={{ py: 4 }}><CircularProgress size={32} /></TableCell></TableRow>
                     ) : rows.length === 0 ? (
-                      <TableRow><TableCell colSpan={14} align="center" sx={{ py: 4 }}><Typography color="text.secondary">{t('noPOs')}</Typography></TableCell></TableRow>
+                      <TableRow><TableCell colSpan={15} align="center" sx={{ py: 4 }}><Typography color="text.secondary">{t('noPOs')}</Typography></TableCell></TableRow>
                     ) : (
                       rows.map((row, idx) => (
                         <TableRow
@@ -900,7 +901,10 @@ export default function PurchaseOrdersPage() {
                           <TableCell>{formatDate(row.date)}</TableCell>
                           <TableCell>{row.vendor?.vendorCode} - {row.vendor?.name ?? '—'}</TableCell>
                           <TableCell className="truncate-cell" title={(row.items ?? []).map((i) => `${i.materialName} × ${i.quantity} ${i.unit ?? ''}`).join('\n') || (row.notes ?? '')}>
-                            {isUmbrellaContract(row) ? (row.contractTitle ?? '—') : ((row.items ?? []).map((i) => `${i.materialName} × ${formatIndianNumber(i.quantity)} ${i.unit ?? ''}`.trim()).join('; ') || row.notes || '—')}
+                            {isUmbrellaContract(row) ? (row.contractTitle ?? '—') : ((row.items ?? []).map((i) => `${i.materialName} × ${formatIndianNumber(i.quantity)} ${i.unit ?? ''}`.trim()).join('; ') || '—')}
+                          </TableCell>
+                          <TableCell sx={{ minWidth: 220, maxWidth: 320, verticalAlign: 'top' }}>
+                            <ExpandableText text={row.notes} />
                           </TableCell>
                           <TableCell>
                             <Chip
