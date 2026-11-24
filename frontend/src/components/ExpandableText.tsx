@@ -27,7 +27,12 @@ export default function ExpandableText({ text, lines = 2, variant = 'body2', col
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el || open) return;
-    setOverflows(el.scrollHeight - el.clientHeight > 1);
+    const measure = () => setOverflows(el.scrollHeight - el.clientHeight > 1);
+    measure();
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
   }, [value, lines, open]);
 
   if (!value) return null;

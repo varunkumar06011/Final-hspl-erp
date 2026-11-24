@@ -698,12 +698,15 @@ export default function InvoicesPage() {
               ) : (
                 rows.map((row) => (
                   <TableRow key={row.id} hover {...pendingProps(row)} ref={rowRef(row.id)} onClick={() => setActiveRecord({ type: 'INVOICE', id: row.id, label: row.invoiceCode })} sx={{ ...(highlightId === row.id && { bgcolor: 'warning.light', '&:hover': { bgcolor: 'warning.light' } }) }}>
+                    {row.purchaseOrder?.notes && <TableCell className="mobile-only" data-label=""><ExpandableText text={row.purchaseOrder.notes} /></TableCell>}
                     <TableCell data-label={t('colInvoiceCode')}>{row.invoiceCode}</TableCell>
                     <TableCell data-label={t('colInvoiceNo')}>{row.invoiceNumber}</TableCell>
                     <TableCell data-label={t('colVendor')}>{row.vendor?.vendorCode} - {row.vendor?.name ?? '—'}</TableCell>
                     <TableCell data-label={t('colPO')}>
                       {row.purchaseOrder?.poNumber ?? '—'}
-                      <ExpandableText text={row.purchaseOrder?.notes} variant="caption" color="text.secondary" />
+                      <Box sx={{ display: { xs: 'none', md: 'block' } }}>
+                        <ExpandableText text={row.purchaseOrder?.notes} variant="caption" color="text.secondary" />
+                      </Box>
                     </TableCell>
                     <TableCell data-label={t('colInvoiceDate')}>
                       {row.purchaseOrder && new Date(row.date) < new Date(row.purchaseOrder.date) ? (

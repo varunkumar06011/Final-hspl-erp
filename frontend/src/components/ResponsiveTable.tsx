@@ -18,6 +18,9 @@ export default function ResponsiveTable({ children }: { children: React.ReactNod
     <Box
       className="responsive-table"
       sx={{
+        // A cell marked `mobile-only` (e.g. the purchase description) exists
+        // only in the stacked mobile card, where it sits at the very top.
+        '& .mobile-only': { display: 'none' },
         // Desktop: no changes at all
         // Mobile: transform table rows into stacked cards
         '@media (max-width: 899.95px)': {
@@ -91,6 +94,13 @@ export default function ResponsiveTable({ children }: { children: React.ReactNod
           '& .MuiTableBody-root .MuiTableRow-root .MuiTableCell-root:not([data-label])': {
             justifyContent: 'center',
             py: 3,
+            '&::before': { content: 'none' },
+          },
+          '& .MuiTableBody-root .MuiTableRow-root .MuiTableCell-root.mobile-only': {
+            display: 'flex',
+            order: -1,
+            justifyContent: 'flex-start',
+            py: 0.75,
             '&::before': { content: 'none' },
           },
           // Hide cells explicitly marked as hidden on mobile

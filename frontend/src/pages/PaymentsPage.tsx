@@ -718,6 +718,7 @@ export default function PaymentsPage() {
                 ) : (
                   rows.map((row) => (
                     <TableRow key={row.id} hover {...pendingProps(row)} ref={rowRef(row.id)} onClick={() => setActiveRecord({ type: 'PAYMENT', id: row.id, label: row.paymentCode })} sx={{ ...(highlightId === row.id && { bgcolor: 'warning.light', '&:hover': { bgcolor: 'warning.light' } }) }}>
+                      {row.type !== 'EXPENSE' && row.description && <TableCell className="mobile-only" data-label=""><ExpandableText text={row.description} /></TableCell>}
                       <TableCell data-label={tr('code')}>{row.paymentCode}</TableCell>
                       <TableCell data-label={tr('type')}><Chip label={enumLabel(row.type)} size="small" color={row.type === 'EXPENSE' ? 'secondary' : row.type === 'ADVANCE' ? 'warning' : 'primary'} variant="outlined" /></TableCell>
                       <TableCell data-label={tr('descriptionInvoicePo')}>
@@ -726,7 +727,11 @@ export default function PaymentsPage() {
                           : row.type === 'ADVANCE'
                             ? tr('poN', { n: row.purchaseOrder?.poNumber ?? '—' })
                             : row.invoice?.invoiceCode ?? '—'}
-                        {row.type !== 'EXPENSE' && <ExpandableText text={row.description} variant="caption" color="text.secondary" />}
+                        {row.type !== 'EXPENSE' && (
+                          <Box sx={{ display: { xs: 'none', md: 'block' } }}>
+                            <ExpandableText text={row.description} variant="caption" color="text.secondary" />
+                          </Box>
+                        )}
                       </TableCell>
                       <TableCell data-label={tr('vendor')}>{row.vendor ? `${row.vendor.vendorCode} - ${row.vendor.name}` : '—'}</TableCell>
                       <TableCell data-label={tr('amount')}>{formatCurrency(row.amount)}</TableCell>

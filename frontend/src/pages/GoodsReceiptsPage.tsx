@@ -488,10 +488,13 @@ export default function GoodsReceiptsPage() {
                 const types = new Set(receipt.items.map((i) => i.itemType || 'CONSUMABLE'));
                 return (
                 <TableRow key={receipt.id} hover>
+                  {receipt.purchaseOrder.notes && <TableCell className="mobile-only" data-label=""><ExpandableText text={receipt.purchaseOrder.notes} /></TableCell>}
                   <TableCell data-label={t('colReceipt')}>{receipt.receiptNumber} <StalledChip type="GOODS_RECEIPT" id={receipt.id} /></TableCell>
                   <TableCell data-label={t('colPO')}>
                     {receipt.purchaseOrder.poNumber}
-                    <ExpandableText text={receipt.purchaseOrder.notes} variant="caption" color="text.secondary" />
+                    <Box sx={{ display: { xs: 'none', md: 'block' } }}>
+                      <ExpandableText text={receipt.purchaseOrder.notes} variant="caption" color="text.secondary" />
+                    </Box>
                   </TableCell>
                   <TableCell data-label={t('colGatepass')}>{receipt.gatePass?.passNumber ?? '—'}</TableCell>
                   <TableCell data-label={t('vendor')}>{receipt.purchaseOrder.vendor.name}</TableCell>
