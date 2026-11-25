@@ -64,7 +64,7 @@ export interface MaterialEntry {
 export interface FieldDef {
   name: string;
   label: string;
-  type: 'text' | 'number' | 'date' | 'select' | 'textarea' | 'select-with-other' | 'materials-list';
+  type: 'text' | 'number' | 'date' | 'select' | 'textarea' | 'select-with-other' | 'materials-list' | 'custom';
   required?: boolean;
   options?: { value: string; label: string }[];
   optionsEndpoint?: string;
@@ -75,6 +75,8 @@ export interface FieldDef {
   otherLabel?: string;
   otherFieldLabel?: string;
   createOptionLabel?: string;
+  /** For type 'custom': renders its own content in the form (not part of the saved payload). */
+  render?: (ctx: { editing: Record<string, unknown> | null }) => ReactNode;
 }
 
 export interface ColumnDef {
@@ -619,6 +621,9 @@ export default function EntityPage({
                     otherFieldLabel={field.otherFieldLabel}
                   />
                 );
+              }
+              if (field.type === 'custom') {
+                return <Box key={field.name}>{field.render?.({ editing })}</Box>;
               }
               if (field.type === 'materials-list') {
                 const materials = (form[field.name] as MaterialEntry[] | undefined) ?? [];

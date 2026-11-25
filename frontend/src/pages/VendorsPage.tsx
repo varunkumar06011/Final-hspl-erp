@@ -393,10 +393,21 @@ export default function VendorsPage() {
           ] },
           { name: 'materials', label: t('materialsSupplied'), type: 'materials-list' },
           { name: 'panNumber', label: t('panNumber'), type: 'text' },
-          { name: 'bankName', label: t('bankName'), type: 'text' },
-          { name: 'accountHolderName', label: t('accountHolderName'), type: 'text' },
-          { name: 'bankAccountNumber', label: t('accountNumber'), type: 'text' },
-          { name: 'ifscCode', label: t('ifsc'), type: 'text' },
+          // Bank accounts live only in the accounts list (one source); the form just opens it.
+          { name: 'bankAccountsLink', label: t('bankAccounts'), type: 'custom', render: ({ editing }) => (
+            editing ? (
+              <Button
+                variant="outlined"
+                size="small"
+                startIcon={<BankIcon />}
+                onClick={() => setBankVendor({ id: String(editing.id), name: String(editing.name ?? '') })}
+              >
+                {t('bankAccounts')}
+              </Button>
+            ) : (
+              <Typography variant="caption" color="text.secondary">{t('bankAccountsAfterSave')}</Typography>
+            )
+          ) },
           { name: 'address', label: t('address'), type: 'textarea' },
           { name: 'email', label: t('email'), type: 'text' },
           { name: 'description', label: t('description'), type: 'textarea' },

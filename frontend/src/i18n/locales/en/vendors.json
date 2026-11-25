@@ -83,6 +83,7 @@
   "stock": "Stock",
   "amount": "Amount",
   "requestNo": "Request #",
+  "bankAccountsAfterSave": "Save the vendor first, then add its bank accounts here.",
   "bankAccounts": "Bank accounts",
   "bankAccountsTitle": "Bank accounts — {{name}}",
   "bankAccountsHelp": "A vendor can have several bank accounts. The primary one is shown on the vendor and used when a request does not pick an account. Pick the account to pay to on the material request.",
