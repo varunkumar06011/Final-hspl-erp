@@ -42,5 +42,7 @@
   "skipped": "{{count}} admins with full control were left unchanged.",
   "manage": "Module access",
   "noAccessTitle": "No modules available",
-  "noAccessBody": "An administrator has not given your account any module yet. Please contact Admin 1 or Admin 2."
+  "noAccessBody": "An administrator has not given your account any module yet. Please contact Admin 1 or Admin 2.",
+  "approvalPopup": "Approval pop-up",
+  "approvalPopupHint": "Shows a pop-up with Approve / Reject when a request is waiting for this person. Off by default; on for Project Heads."
 }

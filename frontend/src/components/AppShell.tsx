@@ -53,6 +53,7 @@ import { useAuthStore } from '../stores/authStore';
 import { APP_MODULES, UserRole, isAdminRole, moduleForPath, type UserResponse } from '@hospital-erp/shared';
 import { canManageModuleAccess, canUseModule } from '../utils/moduleAccess';
 import { useSessionProfile } from '../hooks/useSessionProfile';
+import ApprovalPopup from './ApprovalPopup';
 import { useEditLock } from '../hooks/useEditLock';
 import { onForegroundMessage, enableNotifications, isPushSupported, getPermissionState, PUSH_DEEP_LINK_KEY } from '../config/notifications';
 import NotificationBell from './NotificationBell';
@@ -778,6 +779,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
       {/* AI assistant — reads records and prepares creates for confirmation */}
       {assistantOn && <AssistantDrawer open={assistantOpen} onClose={() => setAssistantOpen(false)} />}
+
+      {/* Approve / reject pop-up for users it is switched on for (Module Access) */}
+      <ApprovalPopup />
 
       {/* Real-time presence — shows other users viewing the same page */}
       <PresenceBar />

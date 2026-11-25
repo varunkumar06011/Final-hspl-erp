@@ -57,6 +57,7 @@ import stalledRoutes from './stalled.routes';
 import siteBillRoutes from './site-bills.routes';
 import combinedRecordRoutes from './combined-records.routes';
 import myWorkRoutes from './my-work.routes';
+import approvalPopupRoutes from './approval-popup.routes';
 import taskHubRoutes from './taskhub.routes';
 import catalogRoutes from './catalog.routes';
 
@@ -67,6 +68,7 @@ router.use('/projects', projectRoutes);
 router.use('/audit', auditRoutes);
 router.use('/dashboard', dashboardRoutes);
 router.use('/my-work', myWorkRoutes);
+router.use('/approval-popup', approvalPopupRoutes);
 router.use('/stalled', stalledRoutes);
 router.use('/vendors', vendorBankAccountRoutes);
 router.use('/vendors', vendorRoutes);

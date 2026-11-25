@@ -150,6 +150,15 @@ Admin 1, Admin 2 and super admins can switch any module on or off per user (Modu
 - **Materials.** `GET /material-purchase-requests/material-catalog` feeds the material type-ahead; MPR create/update (`canonicalizeMaterialCodes`) forces a material that already exists to reuse its existing code.
 - **Fuzzy search.** `shared/fuzzy.ts` (`fuzzyFilter`) tolerates typos and spelling variants (lakshmi/laxmi). Vendor pickers use `components/VendorAutocomplete.tsx`; `createCrudRouter` takes `fuzzyFields` to retry a list search fuzzily when nothing matches. `hooks/useUrlState.ts` batches same-tick writes (react-router's functional `setSearchParams` otherwise drops the first one: this was why list searches did nothing).
 
+## Approval pop-up
+
+A card with Approve / Reject (plus "Later") that opens in the app for requests waiting on the signed-in user. Off for everyone except Project Heads (`users.approvalPopup`, set by migration `20261125000000_approval_popup`); Admin 1 / Admin 2 / super admins switch it per user on the Module Access page (`PATCH /module-access/approval-popup`). It is only a layer on top of the existing approvals.
+
+- `GET /api/approval-popup` (`services/approval-popup.service.ts`) returns My Work's `APPROVE` items of kind MPR / PO / INVOICE (so it follows the normal rules for who may decide), with the MPR material lines. `enabled: false` when the user's switch is off. Read-only.
+- Approve / Reject call the normal `/<module>/:id/approve|reject` endpoints, so the workflow, statuses, audit and notifications are untouched.
+- Live: a Prisma `$use` hook on approval-bearing tables sends `SocketEvents.APPROVAL_POPUP_REFRESH` to switched-on users (debounced 0.7 s); the app also refetches every 60 s and on focus. "Later" hides a card for the browser session.
+- Frontend: `components/ApprovalPopup.tsx`, mounted in `AppShell`. Tests: `tests/approval-popup.test.ts`.
+
 ## Locked documents
 
 General documents (Documents → General) can be PIN-locked. The uploader sets a personal 6-digit **document PIN** (`users.documentPinHash`, separate from the login PIN; change needs the old PIN, or the login PIN to reset). A locked document (`documents.isLocked`) is masked in the list (no name for others, no description/file/people) until `POST /documents/:id/unlock` is called with the uploader's PIN (their 6-digit document PIN, or, if that is forgotten, their 4-digit login PIN; the lengths tell them apart); that returns a 15-minute token (own secret, not a login token) sent back as `x-doc-unlocks` (list) / `x-doc-unlock` (file). The `Document` model is excluded from global search so locked names cannot leak.

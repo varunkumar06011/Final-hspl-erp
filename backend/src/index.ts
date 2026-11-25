@@ -6,6 +6,7 @@ import { startQuotationAgingScheduler, stopQuotationAgingScheduler } from './ser
 import { startCatalogBackfill } from './services/catalog-backfill.service';
 import { startSearchIndex, stopSearchIndex, warmAllProjects } from './services/search/manager';
 import { startTaskHubNudges, stopTaskHubNudges } from './services/taskhub.service';
+import { startApprovalPopupNudges, stopApprovalPopupNudges } from './services/approval-popup.service';
 
 const server = http.createServer(app);
 
@@ -36,6 +37,7 @@ server.listen(env.PORT, () => {
 
   // Tell Task Hub when approvals change (only when TASKHUB_WEBHOOK_URL + TASKHUB_SYNC_SECRET are set).
   startTaskHubNudges();
+  startApprovalPopupNudges();
 });
 
 // Graceful shutdown
@@ -44,6 +46,7 @@ process.on('SIGTERM', () => {
   stopQuotationAgingScheduler();
   stopSearchIndex();
   stopTaskHubNudges();
+  stopApprovalPopupNudges();
   server.close(() => {
     console.log('Server closed');
     process.exit(0);
@@ -55,6 +58,7 @@ process.on('SIGINT', () => {
   stopQuotationAgingScheduler();
   stopSearchIndex();
   stopTaskHubNudges();
+  stopApprovalPopupNudges();
   server.close(() => {
     console.log('Server closed');
     process.exit(0);

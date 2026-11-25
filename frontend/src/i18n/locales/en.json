@@ -504,6 +504,25 @@
       "copied": "Copied to clipboard",
       "copiedPage": "Page {{n}} copied to clipboard",
       "copyFailed": "Copy is not supported here. Use Save instead."
+    },
+    "approvalPopup": {
+      "title": "Approval needed",
+      "more": "+{{n}} more waiting",
+      "kind": {
+        "MPR": "Material request",
+        "PO": "Purchase order",
+        "INVOICE": "Invoice"
+      },
+      "vendor": "Vendor",
+      "total": "Total",
+      "requestedBy": "Requested by",
+      "materials": "Materials",
+      "moreLines": "+{{n}} more",
+      "reason": "Reason for rejecting",
+      "approve": "Approve",
+      "reject": "Reject",
+      "later": "Later",
+      "open": "Open"
     }
   },
   "ledgerGroups": {

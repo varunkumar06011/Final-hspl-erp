@@ -70,6 +70,7 @@ interface AccessUser {
   extraPermissions: string[];
   moduleAccess: ModuleAccessMap;
   fullControl: boolean;
+  approvalPopup: boolean;
 }
 
 /** module key → true/false (override) or null (back to role default) */
@@ -148,6 +149,24 @@ export default function ModuleAccessPage() {
       );
       if (res.skipped > 0) toast.info(ta('skipped', { count: res.skipped }));
       else if (body.userIds.length > 1) toast.success(ta('savedMany', { count: body.userIds.length }));
+    },
+  });
+
+  const popupMutation = useMutation({
+    mutationFn: async (body: { userIds: string[]; enabled: boolean }) =>
+      (await api.patch('/module-access/approval-popup', body)).data as { data: AccessUser[] },
+    onMutate: async (body) => {
+      await queryClient.cancelQueries({ queryKey: QUERY_KEY });
+      const previous = queryClient.getQueryData<{ data: AccessUser[] }>(QUERY_KEY);
+      const ids = new Set(body.userIds);
+      queryClient.setQueryData<{ data: AccessUser[] }>(QUERY_KEY, (cur) =>
+        cur && { data: cur.data.map((u) => (ids.has(u.id) ? { ...u, approvalPopup: body.enabled } : u)) },
+      );
+      return { previous };
+    },
+    onError: (err, _body, ctx) => {
+      if (ctx?.previous) queryClient.setQueryData(QUERY_KEY, ctx.previous);
+      toast.error(extractErrorMessage(err));
     },
   });
 
@@ -259,6 +278,20 @@ export default function ModuleAccessPage() {
       </Card>
 
       {selected.fullControl && <Alert severity="info" icon={<LockIcon />}>{ta('fullControlNote')}</Alert>}
+
+      <Card>
+        <Box sx={{ px: 2, py: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            <Typography variant="body2" fontWeight={600}>{ta('approvalPopup')}</Typography>
+            <Typography variant="caption" color="text.secondary">{ta('approvalPopupHint')}</Typography>
+          </Box>
+          <Switch
+            checked={selected.approvalPopup}
+            onChange={(e) => popupMutation.mutate({ userIds: [selected.id], enabled: e.target.checked })}
+            inputProps={{ 'aria-label': ta('approvalPopup') }}
+          />
+        </Box>
+      </Card>
 
       {BY_SECTION.map(({ section, modules }) => {
         const onCount = modules.filter((m) => enabled(selected, m.key)).length;

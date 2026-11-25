@@ -1,5 +1,6 @@
 import { Router, Response, NextFunction } from 'express';
 import { Prisma } from '@prisma/client';
+import { z } from 'zod';
 import {
   AuditAction,
   SocketEvents,
@@ -38,6 +39,7 @@ const USER_SELECT = {
   isActive: true,
   extraPermissions: true,
   moduleAccess: true,
+  approvalPopup: true,
 } as const;
 
 type AccessRow = Prisma.UserGetPayload<{ select: typeof USER_SELECT }>;
@@ -52,6 +54,7 @@ function toDto(u: AccessRow) {
     extraPermissions: u.extraPermissions,
     moduleAccess: normalizeModuleAccess(u.moduleAccess),
     fullControl: hasFullModuleControl(u.role, u.extraPermissions),
+    approvalPopup: u.approvalPopup,
   };
 }
 
@@ -120,6 +123,49 @@ router.patch(
       emitToUsers(saved.map((u) => u.id), SocketEvents.MODULE_ACCESS_CHANGED, {});
 
       res.json({ data: saved.map(toDto), skipped });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+// PATCH /api/module-access/approval-popup — switch the approval pop-up on/off for one or more users.
+// Not a module: it only decides whether the app shows that user a pop-up for requests waiting on them.
+const approvalPopupSchema = z.object({
+  body: z.object({ userIds: z.array(z.string().uuid()).min(1).max(500), enabled: z.boolean() }),
+});
+
+router.patch(
+  '/approval-popup',
+  validateMiddleware(approvalPopupSchema),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const { userIds, enabled } = req.body as { userIds: string[]; enabled: boolean };
+      const targets = await prisma.user.findMany({ where: { id: { in: userIds } }, select: USER_SELECT });
+      if (targets.length !== new Set(userIds).size) {
+        res.status(404).json({ error: 'One or more users were not found' });
+        return;
+      }
+      const changed = targets.filter((u) => u.approvalPopup !== enabled);
+      const saved = await prisma.$transaction(
+        changed.map((u) => prisma.user.update({ where: { id: u.id }, data: { approvalPopup: enabled }, select: USER_SELECT })),
+      );
+      await Promise.all(
+        changed.map((u) =>
+          logAudit({
+            userId: req.user!.id,
+            action: AuditAction.UPDATE,
+            entityType: 'UserApprovalPopup',
+            entityId: u.id,
+            projectId: req.user!.projectId,
+            oldValue: { user: u.name, approvalPopup: u.approvalPopup },
+            newValue: { user: u.name, approvalPopup: enabled },
+          }),
+        ),
+      );
+      // Open sessions pick the change up at once.
+      emitToUsers(saved.map((u) => u.id), SocketEvents.APPROVAL_POPUP_REFRESH, {});
+      res.json({ data: saved.map(toDto) });
     } catch (error) {
       next(error);
     }

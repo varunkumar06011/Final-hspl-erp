@@ -37,6 +37,9 @@ model User {
   // Per-user module overrides set by Admin 1 / Admin 2: JSON map of module key
   // (shared/access.ts APP_MODULES) → boolean. Missing key = role default.
   moduleAccess      Json?
+  // Show this user a pop-up for every request waiting for their approval (Approve / Reject on the spot).
+  // Off for everyone; the migration switches it on for Project Heads. Admins change it on Module Access.
+  approvalPopup     Boolean   @default(false)
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 

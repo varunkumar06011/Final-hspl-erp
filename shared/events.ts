@@ -69,6 +69,8 @@ export const SocketEvents = {
 
   // An admin changed this user's module access — refresh the session profile.
   MODULE_ACCESS_CHANGED: 'user:module-access:changed',
+  // Something may be waiting for this user's approval — refetch the approval pop-up list.
+  APPROVAL_POPUP_REFRESH: 'user:approval-popup:refresh',
 } as const;
 
 export type SocketEventName = (typeof SocketEvents)[keyof typeof SocketEvents];
