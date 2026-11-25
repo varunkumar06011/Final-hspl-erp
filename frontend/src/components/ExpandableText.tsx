@@ -4,6 +4,8 @@ import { useTranslation } from 'react-i18next';
 
 interface Props {
   text: string | null | undefined;
+  /** Bold prefix shown before the text ("Payment terms"). */
+  label?: string;
   /** Lines shown before "See more" appears. */
   lines?: number;
   variant?: TypographyProps['variant'];
@@ -16,7 +18,7 @@ interface Props {
  * "See more / See less" toggle when longer. Safe inside clickable rows and
  * accordion headers: the toggle never triggers the row's own click.
  */
-export default function ExpandableText({ text, lines = 2, variant = 'body2', color = 'text.primary', sx }: Props) {
+export default function ExpandableText({ text, label, lines = 2, variant = 'body2', color = 'text.primary', sx }: Props) {
   const { t } = useTranslation();
   const ref = useRef<HTMLElement | null>(null);
   const [open, setOpen] = useState(false);
@@ -56,6 +58,7 @@ export default function ExpandableText({ text, lines = 2, variant = 'body2', col
           ...sx,
         }}
       >
+        {label && <Box component="span" sx={{ fontWeight: 600 }}>{label}: </Box>}
         {value}
       </Typography>
       {(overflows || open) && (

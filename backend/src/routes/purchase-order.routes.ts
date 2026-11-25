@@ -119,10 +119,10 @@ const poInclude = {
       date: true,
       createdAt: true,
       items: { select: { materialName: true, quantity: true, unit: true, unitPrice: true } },
-      mpr: { select: { id: true, mprNumber: true, items: { select: { materialName: true, quantity: true, unit: true, estimatedRate: true } } } },
+      mpr: { select: { id: true, mprNumber: true, technicalRequirements: true, items: { select: { materialName: true, quantity: true, unit: true, estimatedRate: true } } } },
     },
   },
-  mpr: { select: { id: true, mprNumber: true } },
+  mpr: { select: { id: true, mprNumber: true, technicalRequirements: true } },
   items: {
     include: {
       ledgerPosts: {

@@ -27,7 +27,7 @@ import { Permission, hasPermission } from '@hospital-erp/shared';
 import api, { extractErrorMessage } from '../config/api';
 import { useAuthStore } from '../stores/authStore';
 import ApprovalActionDialog from '../components/ApprovalActionDialog';
-import ExpandableText from '../components/ExpandableText';
+import PurchaseTexts from '../components/PurchaseTexts';
 import { useToast } from '../components/ToastProvider';
 import RefreshButton from '../components/RefreshButton';
 import StageStepper, { type Step } from '../components/combined/StageStepper';
@@ -44,6 +44,8 @@ interface Row {
   isContract?: boolean;
   requestType: string | null;
   description: string | null;
+  paymentTerms: string | null;
+  requirements: string | null;
   date: string | null;
   lastActivity: string | null;
   vendors: string[];
@@ -207,7 +209,7 @@ export default function CombinedRecordsPage() {
                   {r.numbers.goodsReceipts > 0 && <Chip size="small" variant="outlined" label={t('grnCount', { count: r.numbers.goodsReceipts })} />}
                   {r.numbers.invoices > 0 && <Chip size="small" variant="outlined" label={t('invoiceCount', { count: r.numbers.invoices })} />}
                 </Box>
-                {r.description && <Box sx={{ mt: 0.5 }}><ExpandableText text={r.description} /></Box>}
+                {(r.description || r.paymentTerms || r.requirements) && <Box sx={{ mt: 0.5 }}><PurchaseTexts description={r.description} paymentTerms={r.paymentTerms} requirements={r.requirements} /></Box>}
                 {r.materials.length > 0 && (
                   <Typography variant="caption" color="text.secondary" display="block" noWrap sx={{ mt: 0.5 }}>
                     {r.materials.join(', ')}{r.materialCount > r.materials.length ? ` +${r.materialCount - r.materials.length}` : ''}

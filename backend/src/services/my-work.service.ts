@@ -45,6 +45,10 @@ export interface WorkItem {
   summary: string | null;
   /** Why the record exists, in the requester's own words. */
   why: string | null;
+  /** Free text typed as the PO's payment terms. */
+  paymentTerms: string | null;
+  /** The request's terms / technical requirements. */
+  requirements: string | null;
   status: string;
   action: WorkAction;
   requestedBy: string | null;
@@ -209,7 +213,7 @@ export async function getMyWork(projectId: string, viewer: Viewer): Promise<MyWo
         vendor: { select: { name: true } },
         createdByUser: { select: { name: true } },
         items: { select: LINE_SELECT },
-        mpr: { select: { mprNumber: true, description: true, estimatedTotal: true } },
+        mpr: { select: { mprNumber: true, description: true, technicalRequirements: true, estimatedTotal: true } },
       },
     }),
     prisma.purchaseOrder.findMany({
@@ -227,7 +231,7 @@ export async function getMyWork(projectId: string, viewer: Viewer): Promise<MyWo
         vendor: { select: { id: true, name: true } },
         createdByUser: { select: { name: true } },
         items: { select: LINE_SELECT },
-        mpr: { select: { description: true, estimatedTotal: true } },
+        mpr: { select: { description: true, technicalRequirements: true, estimatedTotal: true } },
         approvalWorkflow: { select: WORKFLOW_SELECT },
       },
     }),
@@ -245,7 +249,7 @@ export async function getMyWork(projectId: string, viewer: Viewer): Promise<MyWo
       include: {
         vendor: { select: { name: true } },
         createdByUser: { select: { name: true } },
-        purchaseOrder: { select: { poNumber: true, notes: true, mpr: { select: { description: true } } } },
+        purchaseOrder: { select: { poNumber: true, notes: true, paymentTerms: true, mpr: { select: { description: true, technicalRequirements: true } } } },
         approvalWorkflow: { select: WORKFLOW_SELECT },
       },
     }),
@@ -265,7 +269,7 @@ export async function getMyWork(projectId: string, viewer: Viewer): Promise<MyWo
             vendor: { select: { name: true } },
             createdByUser: { select: { name: true } },
             items: { select: LINE_SELECT },
-            mpr: { select: { description: true } },
+            mpr: { select: { description: true, technicalRequirements: true } },
             goodsReceipts: { where: { deletedAt: null, status: { in: [GoodsReceiptStatus.PENDING_INSPECTION, GoodsReceiptStatus.READY_TO_POST] } }, select: { id: true } },
           },
         })
@@ -278,7 +282,7 @@ export async function getMyWork(projectId: string, viewer: Viewer): Promise<MyWo
           include: {
             createdByUser: { select: { name: true } },
             items: { select: { materialName: true, deliveredQty: true, unit: true } },
-            purchaseOrder: { select: { poNumber: true, notes: true, mpr: { select: { description: true } }, vendor: { select: { name: true } } } },
+            purchaseOrder: { select: { poNumber: true, notes: true, paymentTerms: true, mpr: { select: { description: true, technicalRequirements: true } }, vendor: { select: { name: true } } } },
           },
         })
       : Promise.resolve([]),
@@ -324,6 +328,8 @@ export async function getMyWork(projectId: string, viewer: Viewer): Promise<MyWo
       amount,
       summary: summarizeLines(r.items),
       why: clean(r.description) ?? clean(r.department),
+      paymentTerms: null,
+      requirements: clean(r.technicalRequirements),
       status: r.status,
       action: 'REVIEW',
       requestedBy: r.createdByUser?.name ?? null,
@@ -365,6 +371,8 @@ export async function getMyWork(projectId: string, viewer: Viewer): Promise<MyWo
       amount,
       summary: summarizeLines(q.items),
       why: clean(q.mpr?.description) ?? clean(q.notes),
+      paymentTerms: null,
+      requirements: clean(q.mpr?.technicalRequirements),
       status: q.status,
       action: 'FINALIZE',
       requestedBy: q.createdByUser?.name ?? null,
@@ -389,6 +397,8 @@ export async function getMyWork(projectId: string, viewer: Viewer): Promise<MyWo
       amount,
       summary: summarizeLines(p.items),
       why: clean(p.mpr?.description) ?? clean(p.notes),
+      paymentTerms: clean(p.paymentTerms),
+      requirements: clean(p.mpr?.technicalRequirements),
       status: p.status,
       action: 'REVIEW',
       requestedBy: p.createdByUser?.name ?? null,
@@ -434,6 +444,8 @@ export async function getMyWork(projectId: string, viewer: Viewer): Promise<MyWo
       amount,
       summary: inv.purchaseOrder ? inv.purchaseOrder.poNumber : null,
       why: clean(inv.purchaseOrder?.mpr?.description) ?? clean(inv.purchaseOrder?.notes) ?? clean(inv.notes),
+      paymentTerms: clean(inv.purchaseOrder?.paymentTerms),
+      requirements: clean(inv.purchaseOrder?.mpr?.technicalRequirements),
       status: inv.verificationStatus,
       action: 'REVIEW',
       requestedBy: inv.createdByUser?.name ?? null,
@@ -466,6 +478,8 @@ export async function getMyWork(projectId: string, viewer: Viewer): Promise<MyWo
       amount: Number(p.grandTotal) || null,
       summary: summarizeLines(p.items),
       why: clean(p.mpr?.description) ?? clean(p.notes),
+      paymentTerms: clean(p.paymentTerms),
+      requirements: clean(p.mpr?.technicalRequirements),
       status: p.status,
       action: 'RECEIVE',
       requestedBy: p.createdByUser?.name ?? null,
@@ -489,6 +503,8 @@ export async function getMyWork(projectId: string, viewer: Viewer): Promise<MyWo
       amount: null,
       summary: summarizeLines(r.items.map((i) => ({ materialName: i.materialName, quantity: i.deliveredQty, unit: i.unit }))),
       why: clean(r.purchaseOrder?.mpr?.description) ?? clean(r.purchaseOrder?.notes) ?? r.purchaseOrder?.poNumber ?? null,
+      paymentTerms: clean(r.purchaseOrder?.paymentTerms),
+      requirements: clean(r.purchaseOrder?.mpr?.technicalRequirements),
       status: r.status,
       action: inspect ? 'INSPECT' : 'POST_STOCK',
       requestedBy: r.createdByUser?.name ?? null,

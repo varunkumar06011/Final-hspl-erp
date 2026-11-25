@@ -247,7 +247,7 @@ export async function listCombinedRecords(projectId: string, viewer: Viewer, que
       // site bills already combined into a PO are shown through that PO's record; the rest are records of their own
       where: { ...base, OR: [{ isSiteBill: false }, { isSiteBill: true, sitePoId: null }] },
       select: {
-        id: true, mprNumber: true, date: true, updatedAt: true, status: true, requestType: true, description: true, isSiteBill: true, billShopName: true,
+        id: true, mprNumber: true, date: true, updatedAt: true, status: true, requestType: true, description: true, technicalRequirements: true, isSiteBill: true, billShopName: true,
         estimatedTotal: true, vendor: { select: { name: true, vendorType: true } },
         items: { select: { materialName: true } },
         approvalWorkflow: listWorkflow,
@@ -267,7 +267,7 @@ export async function listCombinedRecords(projectId: string, viewer: Viewer, que
           where: { ...base, status: { not: 'DELETED' } },
           select: {
             id: true, poNumber: true, quotationId: true, mprId: true, isContract: true, contractPoId: true, contractTitle: true, periodLabel: true, status: true, grandTotal: true, netPayable: true,
-            date: true, updatedAt: true, isSiteBillBatch: true, reimburseTo: true, notes: true,
+            date: true, updatedAt: true, isSiteBillBatch: true, reimburseTo: true, notes: true, paymentTerms: true,
             vendor: { select: { name: true } }, items: { select: { materialName: true } },
             approvalWorkflow: listWorkflow,
           },
@@ -394,6 +394,10 @@ export async function listCombinedRecords(projectId: string, viewer: Viewer, que
       .map((t) => (typeof t === 'string' ? t.trim() : ''))
       .find((t) => t.length > 0) ?? null;
 
+    // Free text typed on the request (requirements) and on the POs (payment terms).
+    const requirements = (r.mpr?.technicalRequirements ?? '').trim() || null;
+    const paymentTerms = uniq(r.pos.map((p) => (p.paymentTerms ?? '').trim())).join(' · ') || null;
+
     const doc: SearchDoc = {
       numbers: [
         r.mpr?.mprNumber, ...r.quotations.map((q) => q.quotationNumber), ...r.pos.map((p) => p.poNumber),
@@ -401,7 +405,7 @@ export async function listCombinedRecords(projectId: string, viewer: Viewer, que
         ...rPay.flatMap((p) => [p.paymentCode, p.requestNumber]), ...rBills.map((b) => b.mprNumber),
       ].filter((n): n is string => !!n),
       texts: [
-        ...vendors, ...materials, description, r.mpr?.billShopName, ...rBills.map((b) => b.billShopName),
+        ...vendors, ...materials, description, requirements, paymentTerms, r.mpr?.billShopName, ...rBills.map((b) => b.billShopName),
         ...r.pos.flatMap((p) => [p.reimburseTo, p.contractTitle, p.periodLabel]), String(Math.round(amount)),
       ].filter((t): t is string => !!t),
     };
@@ -415,6 +419,8 @@ export async function listCombinedRecords(projectId: string, viewer: Viewer, que
       isContract: r.pos.some((p) => p.isContract),
       requestType: r.mpr?.requestType ?? null,
       description,
+      paymentTerms,
+      requirements,
       date: startDate ?? null,
       lastActivity: dates.length ? new Date(Math.max(...dates.map((d) => d.getTime()))) : startDate ?? null,
       vendors,

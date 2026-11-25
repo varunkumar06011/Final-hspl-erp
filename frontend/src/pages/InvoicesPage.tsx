@@ -27,7 +27,7 @@ import {
   Snackbar,
 } from '@mui/material';
 import ResponsiveDialog from '../components/ResponsiveDialog';
-import ExpandableText from '../components/ExpandableText';
+import PurchaseTexts from '../components/PurchaseTexts';
 import StalledChip from '../components/StalledChip';
 import ApprovalStepsDisplay from '../components/ApprovalStepsDisplay';
 import ApprovalCommentsInline from '../components/ApprovalCommentsInline';
@@ -95,7 +95,7 @@ interface InvoiceRow {
   vendorId: string;
   vendor: { id: string; name: string; vendorCode: string };
   poId: string | null;
-  purchaseOrder: { id: string; poNumber: string; notes?: string | null; date: string; createdAt: string; quotation: { id: string; quotationNumber: string; date: string } | null; items: POItem[] } | null;
+  purchaseOrder: { id: string; poNumber: string; notes?: string | null; paymentTerms?: string | null; mpr?: { technicalRequirements?: string | null } | null; date: string; createdAt: string; quotation: { id: string; quotationNumber: string; date: string } | null; items: POItem[] } | null;
   date: string;
   createdAt: string;
   amount: number;
@@ -698,14 +698,18 @@ export default function InvoicesPage() {
               ) : (
                 rows.map((row) => (
                   <TableRow key={row.id} hover {...pendingProps(row)} ref={rowRef(row.id)} onClick={() => setActiveRecord({ type: 'INVOICE', id: row.id, label: row.invoiceCode })} sx={{ ...(highlightId === row.id && { bgcolor: 'warning.light', '&:hover': { bgcolor: 'warning.light' } }) }}>
-                    {row.purchaseOrder?.notes && <TableCell className="mobile-only" data-label=""><ExpandableText text={row.purchaseOrder.notes} /></TableCell>}
+                    {(row.purchaseOrder?.notes || row.purchaseOrder?.paymentTerms || row.purchaseOrder?.mpr?.technicalRequirements) && (
+                      <TableCell className="mobile-only" data-label="">
+                        <PurchaseTexts description={row.purchaseOrder?.notes} paymentTerms={row.purchaseOrder?.paymentTerms} requirements={row.purchaseOrder?.mpr?.technicalRequirements} />
+                      </TableCell>
+                    )}
                     <TableCell data-label={t('colInvoiceCode')}>{row.invoiceCode}</TableCell>
                     <TableCell data-label={t('colInvoiceNo')}>{row.invoiceNumber}</TableCell>
                     <TableCell data-label={t('colVendor')}>{row.vendor?.vendorCode} - {row.vendor?.name ?? '—'}</TableCell>
                     <TableCell data-label={t('colPO')}>
                       {row.purchaseOrder?.poNumber ?? '—'}
                       <Box sx={{ display: { xs: 'none', md: 'block' } }}>
-                        <ExpandableText text={row.purchaseOrder?.notes} variant="caption" color="text.secondary" />
+                        <PurchaseTexts description={row.purchaseOrder?.notes} paymentTerms={row.purchaseOrder?.paymentTerms} requirements={row.purchaseOrder?.mpr?.technicalRequirements} variant="caption" color="text.secondary" />
                       </Box>
                     </TableCell>
                     <TableCell data-label={t('colInvoiceDate')}>

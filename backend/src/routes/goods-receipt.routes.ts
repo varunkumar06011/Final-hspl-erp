@@ -26,7 +26,7 @@ const router = Router();
 router.use(authMiddleware);
 
 const receiptInclude = {
-  purchaseOrder: { select: { id: true, poNumber: true, notes: true, vendor: { select: { id: true, name: true, vendorCode: true } }, budgetHead: { select: { id: true, particulars: true } } } },
+  purchaseOrder: { select: { id: true, poNumber: true, notes: true, paymentTerms: true, mpr: { select: { technicalRequirements: true } }, vendor: { select: { id: true, name: true, vendorCode: true } }, budgetHead: { select: { id: true, particulars: true } } } },
   gatePass: { select: { id: true, passNumber: true, status: true, createdBy: true } },
   items: { include: { poItem: { select: { unitPrice: true } } } },
   inspection: { select: { id: true, status: true, inspectorId: true, completedDate: true } },

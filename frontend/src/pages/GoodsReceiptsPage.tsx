@@ -24,7 +24,7 @@ import { Add as AddIcon, FactCheck as InspectIcon, Inventory as PostIcon, Visibi
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import ResponsiveDialog from '../components/ResponsiveDialog';
-import ExpandableText from '../components/ExpandableText';
+import PurchaseTexts from '../components/PurchaseTexts';
 import StalledChip from '../components/StalledChip';
 import ResponsiveTable from '../components/ResponsiveTable';
 import LinkedFiles from '../components/LinkedFiles';
@@ -84,7 +84,7 @@ interface Receipt {
   id: string;
   receiptNumber: string;
   status: GoodsReceiptStatus;
-  purchaseOrder: { poNumber: string; notes?: string | null; vendor: { name: string }; budgetHead?: { id: string; particulars: string } | null };
+  purchaseOrder: { poNumber: string; notes?: string | null; paymentTerms?: string | null; mpr?: { technicalRequirements?: string | null } | null; vendor: { name: string }; budgetHead?: { id: string; particulars: string } | null };
   gatePass: { passNumber: string } | null;
   items: ReceiptItem[];
 }
@@ -488,12 +488,16 @@ export default function GoodsReceiptsPage() {
                 const types = new Set(receipt.items.map((i) => i.itemType || 'CONSUMABLE'));
                 return (
                 <TableRow key={receipt.id} hover>
-                  {receipt.purchaseOrder.notes && <TableCell className="mobile-only" data-label=""><ExpandableText text={receipt.purchaseOrder.notes} /></TableCell>}
+                  {(receipt.purchaseOrder.notes || receipt.purchaseOrder.paymentTerms || receipt.purchaseOrder.mpr?.technicalRequirements) && (
+                    <TableCell className="mobile-only" data-label="">
+                      <PurchaseTexts description={receipt.purchaseOrder.notes} paymentTerms={receipt.purchaseOrder.paymentTerms} requirements={receipt.purchaseOrder.mpr?.technicalRequirements} />
+                    </TableCell>
+                  )}
                   <TableCell data-label={t('colReceipt')}>{receipt.receiptNumber} <StalledChip type="GOODS_RECEIPT" id={receipt.id} /></TableCell>
                   <TableCell data-label={t('colPO')}>
                     {receipt.purchaseOrder.poNumber}
                     <Box sx={{ display: { xs: 'none', md: 'block' } }}>
-                      <ExpandableText text={receipt.purchaseOrder.notes} variant="caption" color="text.secondary" />
+                      <PurchaseTexts description={receipt.purchaseOrder.notes} paymentTerms={receipt.purchaseOrder.paymentTerms} requirements={receipt.purchaseOrder.mpr?.technicalRequirements} variant="caption" color="text.secondary" />
                     </Box>
                   </TableCell>
                   <TableCell data-label={t('colGatepass')}>{receipt.gatePass?.passNumber ?? '—'}</TableCell>

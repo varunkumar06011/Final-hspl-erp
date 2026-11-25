@@ -51,8 +51,8 @@ async function resolveUniqueRequestNumber(projectId: string, base: string): Prom
 
 const prInclude = {
   vendor: { select: { id: true, name: true, vendorCode: true } },
-  invoice: { select: { id: true, invoiceCode: true, invoiceNumber: true, totalAmount: true, purchaseOrder: { select: { items: { select: { materialName: true, quantity: true, unit: true, unitPrice: true, amount: true, gstRate: true } } } } } },
-  purchaseOrder: { select: { id: true, poNumber: true, grandTotal: true, paymentType: true, items: { select: { materialName: true, quantity: true, unit: true, unitPrice: true, amount: true, gstRate: true } } } },
+  invoice: { select: { id: true, invoiceCode: true, invoiceNumber: true, totalAmount: true, purchaseOrder: { select: { paymentTerms: true, mpr: { select: { technicalRequirements: true } }, items: { select: { materialName: true, quantity: true, unit: true, unitPrice: true, amount: true, gstRate: true } } } } } },
+  purchaseOrder: { select: { id: true, poNumber: true, grandTotal: true, paymentType: true, paymentTerms: true, mpr: { select: { technicalRequirements: true } }, items: { select: { materialName: true, quantity: true, unit: true, unitPrice: true, amount: true, gstRate: true } } } },
   createdByUser: { select: { id: true, name: true } },
   payments: {
     select: {

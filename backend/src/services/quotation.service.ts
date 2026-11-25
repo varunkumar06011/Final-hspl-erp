@@ -47,7 +47,7 @@ export interface CreateQuotationInput {
 
 const quotationInclude = {
   vendor: { select: { id: true, name: true, vendorCode: true, category: true, vendorType: true } },
-  mpr: { select: { id: true, mprNumber: true, items: true } },
+  mpr: { select: { id: true, mprNumber: true, technicalRequirements: true, items: true } },
   items: true,
   createdByUser: { select: { id: true, name: true } },
   approvalWorkflow: {

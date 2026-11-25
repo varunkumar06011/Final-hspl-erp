@@ -34,7 +34,7 @@ import {
   Tab,
 } from '@mui/material';
 import ResponsiveDialog from '../components/ResponsiveDialog';
-import ExpandableText from '../components/ExpandableText';
+import PurchaseTexts from '../components/PurchaseTexts';
 import { DetailSection, DetailField } from '../components/DetailSection';
 import WaitingOn from '../components/WaitingOn';
 import StalledChip from '../components/StalledChip';
@@ -131,7 +131,7 @@ interface QuotationSummary {
   date: string;
   createdAt: string;
   items?: { materialName: string; specification?: string | null; quantity: number; unit?: string | null; unitPrice: number }[];
-  mpr?: { id: string; mprNumber: string; items: { materialName: string; specification?: string | null; quantity: number; unit?: string | null; estimatedRate: number }[] } | null;
+  mpr?: { id: string; mprNumber: string; technicalRequirements?: string | null; items: { materialName: string; specification?: string | null; quantity: number; unit?: string | null; estimatedRate: number }[] } | null;
 }
 
 interface ApprovalStep {
@@ -153,7 +153,7 @@ interface PORow {
   vendor: { id: string; name: string; vendorCode: string; phone?: string; address?: string };
   quotationId: string;
   quotation: QuotationSummary;
-  mpr?: { id: string; mprNumber: string } | null;
+  mpr?: { id: string; mprNumber: string; technicalRequirements?: string | null } | null;
   date: string;
   createdAt: string;
   status: string;
@@ -904,7 +904,7 @@ export default function PurchaseOrdersPage() {
                             {isUmbrellaContract(row) ? (row.contractTitle ?? '—') : ((row.items ?? []).map((i) => `${i.materialName} × ${formatIndianNumber(i.quantity)} ${i.unit ?? ''}`.trim()).join('; ') || '—')}
                           </TableCell>
                           <TableCell sx={{ minWidth: 220, maxWidth: 320, verticalAlign: 'top' }}>
-                            <ExpandableText text={row.notes} />
+                            <PurchaseTexts description={row.notes} paymentTerms={row.paymentTerms} requirements={row.mpr?.technicalRequirements ?? row.quotation?.mpr?.technicalRequirements} />
                           </TableCell>
                           <TableCell>
                             <Chip
@@ -1079,7 +1079,7 @@ export default function PurchaseOrdersPage() {
                             <Typography variant="caption" color="warning.main" title={row.editReason}>{t('edited')}</Typography>
                           )}
                         </Box>
-                        <ExpandableText text={row.notes} />
+                        <PurchaseTexts description={row.notes} paymentTerms={row.paymentTerms} requirements={row.mpr?.technicalRequirements ?? row.quotation?.mpr?.technicalRequirements} />
                         {!isUmbrellaContract(row) && (row.items ?? []).length > 0 && (
                           <Typography variant="caption" color="text.secondary" noWrap>
                             {(row.items ?? []).slice(0, 2).map((i) => `${i.materialName} × ${formatIndianNumber(i.quantity)}${i.unit ? ' ' + i.unit : ''}`).join(', ')}

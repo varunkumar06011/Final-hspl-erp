@@ -109,6 +109,8 @@ const invoiceInclude = {
       id: true,
       poNumber: true,
       notes: true, // the purchase's one description, shown on the invoice list
+      paymentTerms: true,
+      mpr: { select: { technicalRequirements: true } },
       date: true,
       createdAt: true,
       quotation: { select: { id: true, quotationNumber: true, date: true } },

@@ -30,7 +30,7 @@ import {
   FormControlLabel,
 } from '@mui/material';
 import ResponsiveDialog from '../components/ResponsiveDialog';
-import ExpandableText from '../components/ExpandableText';
+import PurchaseTexts from '../components/PurchaseTexts';
 import StalledChip from '../components/StalledChip';
 import AcknowledgementCheckbox from '../components/AcknowledgementCheckbox';
 import RefreshButton from '../components/RefreshButton';
@@ -66,6 +66,12 @@ import { type GistItem } from '../components/ItemsGist';
 import { useTranslation, Trans } from 'react-i18next';
 import FilePicker from '../components/FilePicker';
 import { useCreateReview } from '../components/CreateReview';
+/** The PO's payment terms / the request's requirements behind a payment (direct PO, else through its invoice). */
+const poTerms = (r: { purchaseOrder?: { paymentTerms?: string | null } | null; invoice?: { purchaseOrder?: { paymentTerms?: string | null } | null } | null }) =>
+  r.purchaseOrder?.paymentTerms ?? r.invoice?.purchaseOrder?.paymentTerms ?? null;
+const poRequirements = (r: { purchaseOrder?: { mpr?: { technicalRequirements?: string | null } | null } | null; invoice?: { purchaseOrder?: { mpr?: { technicalRequirements?: string | null } | null } | null } | null }) =>
+  r.purchaseOrder?.mpr?.technicalRequirements ?? r.invoice?.purchaseOrder?.mpr?.technicalRequirements ?? null;
+
 interface PaymentRequestRow {
   id: string;
   paymentCode: string;
@@ -84,9 +90,9 @@ interface PaymentRequestRow {
   vendorId: string | null;
   vendor: { id: string; name: string; vendorCode: string } | null;
   invoiceId: string | null;
-  invoice: { id: string; invoiceCode: string; invoiceNumber: string; totalAmount: number; purchaseOrder?: { items: GistItem[] } | null } | null;
+  invoice: { id: string; invoiceCode: string; invoiceNumber: string; totalAmount: number; purchaseOrder?: { items: GistItem[]; paymentTerms?: string | null; mpr?: { technicalRequirements?: string | null } | null } | null } | null;
   poId: string | null;
-  purchaseOrder: { id: string; poNumber: string; grandTotal: number; paymentType: string; items?: GistItem[] } | null;
+  purchaseOrder: { id: string; poNumber: string; grandTotal: number; paymentType: string; paymentTerms?: string | null; mpr?: { technicalRequirements?: string | null } | null; items?: GistItem[] } | null;
   createdBy: string;
   createdByUser: { id: string; name: string };
   payments: { id: string; amount: number; mode: string; reference: string | null; date: string; bankAccountId: string | null; cashAccountId: string | null; bankAccount: { id: string; accountName: string } | null; cashAccount: { id: string; name: string } | null; journalVoucherId: string | null; journalVoucher: { jvNumber: string } | null }[];
@@ -718,7 +724,11 @@ export default function PaymentsPage() {
                 ) : (
                   rows.map((row) => (
                     <TableRow key={row.id} hover {...pendingProps(row)} ref={rowRef(row.id)} onClick={() => setActiveRecord({ type: 'PAYMENT', id: row.id, label: row.paymentCode })} sx={{ ...(highlightId === row.id && { bgcolor: 'warning.light', '&:hover': { bgcolor: 'warning.light' } }) }}>
-                      {row.type !== 'EXPENSE' && row.description && <TableCell className="mobile-only" data-label=""><ExpandableText text={row.description} /></TableCell>}
+                      {row.type !== 'EXPENSE' && (row.description || poTerms(row)) && (
+                        <TableCell className="mobile-only" data-label="">
+                          <PurchaseTexts description={row.description} paymentTerms={poTerms(row)} requirements={poRequirements(row)} />
+                        </TableCell>
+                      )}
                       <TableCell data-label={tr('code')}>{row.paymentCode}</TableCell>
                       <TableCell data-label={tr('type')}><Chip label={enumLabel(row.type)} size="small" color={row.type === 'EXPENSE' ? 'secondary' : row.type === 'ADVANCE' ? 'warning' : 'primary'} variant="outlined" /></TableCell>
                       <TableCell data-label={tr('descriptionInvoicePo')}>
@@ -729,7 +739,7 @@ export default function PaymentsPage() {
                             : row.invoice?.invoiceCode ?? '—'}
                         {row.type !== 'EXPENSE' && (
                           <Box sx={{ display: { xs: 'none', md: 'block' } }}>
-                            <ExpandableText text={row.description} variant="caption" color="text.secondary" />
+                            <PurchaseTexts description={row.description} paymentTerms={poTerms(row)} requirements={poRequirements(row)} variant="caption" color="text.secondary" />
                           </Box>
                         )}
                       </TableCell>

@@ -26,7 +26,7 @@ import {
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import VendorAutocomplete from '../components/VendorAutocomplete';
-import ExpandableText from '../components/ExpandableText';
+import PurchaseTexts from '../components/PurchaseTexts';
 import StalledChip from '../components/StalledChip';
 import { DetailSection, DetailField } from '../components/DetailSection';
 import WaitingOn from '../components/WaitingOn';
@@ -934,7 +934,7 @@ export default function MaterialPurchaseRequestsPage() {
                       )}
                     </Box>
                     <ApprovalTiming startedAt={row.createdAt} workflow={row.approvalWorkflow} compact />
-                    <ExpandableText text={row.description} variant="body2" />
+                    <PurchaseTexts description={row.description} requirements={row.technicalRequirements} />
                     {row.items.length > 0 && (
                       <Typography variant="caption" color="text.secondary" noWrap>
                         {row.items.slice(0, 2).map((i) => `${i.materialName} × ${i.quantity}${i.unit ? ' ' + i.unit : ''}`).join(', ')}

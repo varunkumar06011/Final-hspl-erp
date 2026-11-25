@@ -25,7 +25,7 @@ import {
   Checkbox,
 } from '@mui/material';
 import ResponsiveDialog from '../components/ResponsiveDialog';
-import ExpandableText from '../components/ExpandableText';
+import PurchaseTexts from '../components/PurchaseTexts';
 import StalledChip from '../components/StalledChip';
 import { DetailSection, DetailField } from '../components/DetailSection';
 import ApprovalStepsDisplay from '../components/ApprovalStepsDisplay';
@@ -131,7 +131,7 @@ interface QuotationRow {
   notes?: string | null;
   createdByUser: { id: string; name: string };
   items: QuotationItem[];
-  mpr?: { id: string; mprNumber: string; items: { materialName: string; quantity: number; unit?: string | null }[] } | null;
+  mpr?: { id: string; mprNumber: string; technicalRequirements?: string | null; items: { materialName: string; quantity: number; unit?: string | null }[] } | null;
   approvalWorkflow?: {
     id: string;
     status: string;
@@ -950,7 +950,7 @@ export default function QuotationsPage() {
                           </Typography>
                         )}
                       </Box>
-                      <ExpandableText text={row.notes} />
+                      <PurchaseTexts description={row.notes} requirements={row.mpr?.technicalRequirements} />
                       {(row.items ?? []).length > 0 && (
                         <Typography variant="caption" color="text.secondary" noWrap>
                           {(row.items ?? []).slice(0, 2).map((i) => `${i.materialName} × ${i.quantity}${i.unit ? ' ' + i.unit : ''}`).join(', ')}

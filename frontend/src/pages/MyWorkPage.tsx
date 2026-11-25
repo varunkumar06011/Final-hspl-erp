@@ -19,7 +19,7 @@ import {
 import { Refresh as RefreshIcon, Search as SearchIcon } from '@mui/icons-material';
 import { useTranslation } from 'react-i18next';
 import api from '../config/api';
-import ExpandableText from '../components/ExpandableText';
+import PurchaseTexts from '../components/PurchaseTexts';
 import { useUrlState } from '../hooks/useUrlState';
 import { formatCurrency, roleLabel } from '../utils/enumOptions';
 
@@ -41,6 +41,8 @@ interface WorkItem {
   amount: number | null;
   summary: string | null;
   why: string | null;
+  paymentTerms: string | null;
+  requirements: string | null;
   status: string;
   action: Action;
   requestedBy: string | null;
@@ -92,7 +94,7 @@ function WorkCard({ item, tab }: { item: WorkItem; tab: TabKey }) {
         {item.why ? (
           <>
             <Typography variant="caption" sx={{ fontWeight: 600 }} color="text.secondary">{t('why')}</Typography>
-            <ExpandableText text={item.why} />
+            <PurchaseTexts description={item.why} paymentTerms={item.paymentTerms} requirements={item.requirements} />
           </>
         ) : (
           <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
