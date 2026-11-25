@@ -20,6 +20,16 @@ export async function downloadPath(path: string, fileName: string, headers?: Rec
   window.URL.revokeObjectURL(url);
 }
 
+/** Save a blob the app made itself (e.g. a marked-up photo) to the device. */
+export async function saveBlobAs(blob: Blob, fileName: string): Promise<void> {
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = fileName;
+  a.click();
+  window.URL.revokeObjectURL(url);
+}
+
 /**
  * Fetch a file as a blob URL (for use in <img> / <iframe> etc).
  * Caller must revoke the URL when done.

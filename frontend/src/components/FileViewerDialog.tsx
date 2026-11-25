@@ -3,7 +3,7 @@ import { Alert, Box, Button, CircularProgress, DialogActions, DialogContent, Dia
 import { useTranslation } from 'react-i18next';
 import api from '../config/api';
 import { downloadPath } from '../utils/file';
-import PdfPages from './PdfPages';
+import MediaViewer, { detectMediaKind } from './MediaViewer';
 import ResponsiveDialog from './ResponsiveDialog';
 
 interface OpenTarget {
@@ -17,15 +17,6 @@ interface OpenTarget {
 type Kind = 'image' | 'pdf' | 'other';
 type Status = 'loading' | 'ready' | 'unsupported' | 'failed';
 
-const IMAGE_EXT = /\.(jpe?g|png|gif|webp|bmp|heic|heif)$/i;
-
-function detectKind(mime: string, fileName: string): Kind {
-  const m = mime.toLowerCase();
-  if (m.startsWith('image/') || IMAGE_EXT.test(fileName)) return 'image';
-  if (m === 'application/pdf' || /\.pdf$/i.test(fileName)) return 'pdf';
-  return 'other';
-}
-
 /**
  * View an authenticated `/:route/:id/file` document in-page (images and PDFs) instead of
  * downloading it. Types a browser cannot render (Word/Excel) only offer a download fallback.
@@ -35,8 +26,7 @@ function detectKind(mime: string, fileName: string): Kind {
 export function useFileViewer() {
   const { t } = useTranslation();
   const [target, setTarget] = useState<OpenTarget | null>(null);
-  const [url, setUrl] = useState<string | null>(null);
-  const [pdfBlob, setPdfBlob] = useState<Blob | null>(null);
+  const [blob, setBlob] = useState<Blob | null>(null);
   const [kind, setKind] = useState<Kind>('other');
   const [status, setStatus] = useState<Status>('loading');
 
@@ -45,28 +35,20 @@ export function useFileViewer() {
   useEffect(() => {
     if (!target) return undefined;
     let cancelled = false;
-    let created: string | null = null;
-    setUrl(null);
-    setPdfBlob(null);
+    setBlob(null);
     setStatus('loading');
     api
       .get(target.path, { responseType: 'blob', headers: target.headers })
       .then((res) => {
         if (cancelled) return;
-        const blob = res.data as Blob;
-        const k = detectKind(blob.type || '', target.fileName);
+        const data = res.data as Blob;
+        const k = detectMediaKind(data.type || '', target.fileName);
         setKind(k);
         if (k === 'other') {
           setStatus('unsupported');
           return;
         }
-        const type = k === 'pdf' ? 'application/pdf' : blob.type || 'image/jpeg';
-        if (k === 'pdf') {
-          setPdfBlob(blob);
-        } else {
-          created = window.URL.createObjectURL(new Blob([blob], { type }));
-          setUrl(created);
-        }
+        setBlob(data);
         setStatus('ready');
       })
       .catch(() => {
@@ -74,7 +56,6 @@ export function useFileViewer() {
       });
     return () => {
       cancelled = true;
-      if (created) window.URL.revokeObjectURL(created);
     };
   }, [target]);
 
@@ -88,7 +69,7 @@ export function useFileViewer() {
   }, []);
 
   const viewer = (
-    <ResponsiveDialog open={!!target} onClose={close} maxWidth="md" fullWidth>
+    <ResponsiveDialog open={!!target} onClose={close} maxWidth="lg" fullWidth>
       <DialogTitle sx={{ wordBreak: 'break-all' }}>{target?.fileName}</DialogTitle>
       <DialogContent>
         {status === 'failed' && <Alert severity="error">{t('shared.errOpenFile')}</Alert>}
@@ -96,10 +77,9 @@ export function useFileViewer() {
         {status === 'loading' && (
           <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}><CircularProgress /></Box>
         )}
-        {status === 'ready' && url && kind === 'image' && (
-          <Box component="img" src={url} alt={target?.fileName} sx={{ maxWidth: '100%', maxHeight: '75vh', display: 'block', mx: 'auto' }} />
+        {status === 'ready' && blob && (kind === 'image' || kind === 'pdf') && (
+          <MediaViewer key={target?.path} blob={blob} kind={kind} fileName={target?.fileName ?? ''} />
         )}
-        {status === 'ready' && pdfBlob && kind === 'pdf' && <PdfPages blob={pdfBlob} maxHeight="75vh" />}
       </DialogContent>
       <DialogActions>
         {target && status !== 'loading' && (

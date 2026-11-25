@@ -489,6 +489,21 @@
       "GOODS_RECEIPT": "Receipt",
       "INVOICE": "Invoice",
       "PAYMENT": "Payment"
+    },
+    "viewer": {
+      "rotateLeft": "Rotate left",
+      "rotateRight": "Rotate right",
+      "draw": "Draw",
+      "stopDraw": "Stop drawing",
+      "undo": "Undo",
+      "clearDrawing": "Clear drawing",
+      "save": "Save",
+      "copy": "Copy",
+      "saved": "Saved to your device",
+      "saveFailed": "Could not save the file",
+      "copied": "Copied to clipboard",
+      "copiedPage": "Page {{n}} copied to clipboard",
+      "copyFailed": "Copy is not supported here. Use Save instead."
     }
   },
   "ledgerGroups": {

@@ -14,6 +14,7 @@ import { useTranslation } from 'react-i18next';
 import { dateLocale } from '../../i18n';
 import { downloadFile } from '../../utils/file';
 import { SecureImage } from '../SecureImage';
+import { RemoteMediaViewer } from '../MediaViewer';
 import { CommentBody } from '../CommentsButton';
 import type { ChatAttachmentDTO, ChatMessageDTO } from './chatTypes';
 
@@ -320,17 +321,12 @@ function ChatMessageItem({
 
       <Dialog open={!!lightbox} onClose={() => setLightbox(null)} maxWidth="lg">
         {lightbox && (
-          <Box sx={{ position: 'relative', lineHeight: 0, bgcolor: 'black' }}>
-            <SecureImage
-              route="chat/attachments"
-              id={lightbox.id}
-              alt={lightbox.fileName}
-              sx={{ maxWidth: '100%', maxHeight: '85vh', width: 'auto', height: 'auto', objectFit: 'contain', borderRadius: 0 }}
-            />
+          <Box sx={{ position: 'relative', p: 1, minWidth: { sm: 480 }, bgcolor: 'background.paper' }}>
+            <RemoteMediaViewer route="chat/attachments" id={lightbox.id} fileName={lightbox.fileName} maxHeight="80vh" />
             <IconButton
               aria-label={t('attachment')}
               onClick={() => void downloadFile('chat/attachments', lightbox.id, lightbox.fileName)}
-              sx={{ position: 'absolute', right: 8, bottom: 8, color: 'white', bgcolor: 'rgba(0,0,0,.5)' }}
+              sx={{ position: 'absolute', right: 8, bottom: 8, bgcolor: 'background.paper', '&:hover': { bgcolor: 'action.hover' } }}
             >
               <DownloadIcon />
             </IconButton>

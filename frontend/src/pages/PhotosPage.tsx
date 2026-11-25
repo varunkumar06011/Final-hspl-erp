@@ -24,6 +24,7 @@ import {
   IconButton,
 } from '@mui/material';
 import ResponsiveDialog from '../components/ResponsiveDialog';
+import { RemoteMediaViewer } from '../components/MediaViewer';
 import {
   Add as AddIcon,
   Search as SearchIcon,
@@ -217,7 +218,7 @@ export default function PhotosPage() {
       <Dialog
         open={!!previewPhoto}
         onClose={() => setPreviewPhoto(null)}
-        maxWidth="md"
+        maxWidth="lg"
         fullWidth
         PaperProps={{ sx: { bgcolor: 'background.paper' } }}
       >
@@ -231,12 +232,9 @@ export default function PhotosPage() {
         </DialogTitle>
         <DialogContent dividers sx={{ p: 0, textAlign: 'center', bgcolor: 'common.black' }}>
           {previewPhoto && (
-            <SecureImage
-              route="photos"
-              id={previewPhoto.id as string}
-              alt={String(previewPhoto.caption ?? '')}
-              sx={{ maxWidth: '100%', maxHeight: '70vh', width: 'auto', height: 'auto', objectFit: 'contain' }}
-            />
+            <Box sx={{ p: 1, bgcolor: 'background.paper', textAlign: 'left' }}>
+              <RemoteMediaViewer route="photos" id={previewPhoto.id as string} fileName={`${String(previewPhoto.caption ?? 'photo')}.jpg`} maxHeight="65vh" />
+            </Box>
           )}
         </DialogContent>
         {previewPhoto && (

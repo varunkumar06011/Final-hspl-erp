@@ -29,7 +29,7 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import api, { extractErrorMessage } from '../../config/api';
 import { downloadPath, printPdfBlob } from '../../utils/file';
-import PdfPages from '../PdfPages';
+import MediaViewer from '../MediaViewer';
 import ResponsiveDialog from '../ResponsiveDialog';
 
 // ── response of GET /combined-records/:type/:id/proofs ──
@@ -171,11 +171,10 @@ function Lightbox({ items, index, onIndex, onClose }: { items: Proof[]; index: n
           <Alert severity="error" sx={{ m: 3 }}>{t('proofs.loadFailed')}</Alert>
         ) : !url ? (
           <CircularProgress sx={{ color: '#fff' }} />
-        ) : proof.format === 'image' ? (
-          <Box component="img" src={url} alt={proof.fileName} sx={{ maxWidth: '100%', maxHeight: '78vh', objectFit: 'contain', display: 'block' }} />
         ) : blob ? (
-          // drawn page by page: an iframe on a blob link shows nothing in the iOS app
-          <PdfPages key={proof.key} blob={blob} maxHeight="78vh" />
+          <Box sx={{ width: '100%', p: 1, bgcolor: 'background.paper' }}>
+            <MediaViewer key={proof.key} blob={blob} kind={proof.format === 'pdf' ? 'pdf' : 'image'} fileName={proof.fileName} maxHeight="70vh" />
+          </Box>
         ) : null}
       </DialogContent>
     </ResponsiveDialog>
