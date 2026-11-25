@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Alert, Box, Button, Chip, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle, Stack, TextField, Typography } from '@mui/material';
+import { Alert, Box, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle, Stack, TextField, Typography } from '@mui/material';
 import { useTranslation } from 'react-i18next';
 import { SocketEvents } from '@hospital-erp/shared';
 import api, { extractErrorMessage } from '../config/api';
 import { useAuthStore } from '../stores/authStore';
+import { useToast } from './ToastProvider';
 import { getSocket } from '../hooks/usePresence';
 import { formatCurrency } from '../utils/enumOptions';
 
@@ -66,7 +67,8 @@ export default function ApprovalPopup() {
   const [snoozed, setSnoozed] = useState<Set<string>>(readSnoozed);
   const [rejecting, setRejecting] = useState(false);
   const [reason, setReason] = useState('');
-  const [error, setError] = useState('');
+  const [failed, setFailed] = useState<{ id: string; message: string } | null>(null);
+  const toast = useToast();
 
   const { data } = useQuery<PopupData>({
     queryKey: QUERY_KEY,
@@ -100,7 +102,6 @@ export default function ApprovalPopup() {
   useEffect(() => {
     setRejecting(false);
     setReason('');
-    setError('');
   }, [current?.id]);
 
   const refreshAfter = useCallback(() => {
@@ -113,16 +114,29 @@ export default function ApprovalPopup() {
     void queryClient.invalidateQueries({ queryKey: ['pending-items'] });
   }, [queryClient]);
 
+  // Optimistic: the card leaves (and the next one shows) the moment a button is tapped; the request
+  // runs behind it. A refused request puts the card back with the reason it was refused.
   const decide = useMutation({
     mutationFn: async (v: { item: PopupItem; action: 'approve' | 'reject'; reason?: string }) => {
       const body = v.action === 'approve' ? { acknowledged: true } : { reason: v.reason, comments: v.reason, acknowledged: true };
       await api.post(`/${ROUTE[v.item.kind]}/${v.item.id}/${v.action}`, body);
     },
-    onSuccess: () => {
-      setError('');
-      refreshAfter();
+    onMutate: async (v) => {
+      await queryClient.cancelQueries({ queryKey: QUERY_KEY });
+      const previous = queryClient.getQueryData<PopupData>(QUERY_KEY);
+      queryClient.setQueryData<PopupData>(QUERY_KEY, (cur) =>
+        cur && { ...cur, items: cur.items.filter((i) => !(i.kind === v.item.kind && i.id === v.item.id)) },
+      );
+      setFailed(null);
+      return { previous };
     },
-    onError: (err) => setError(extractErrorMessage(err)),
+    onError: (err, v, ctx) => {
+      if (ctx?.previous) queryClient.setQueryData(QUERY_KEY, ctx.previous);
+      const message = extractErrorMessage(err);
+      setFailed({ id: v.item.id, message });
+      toast.error(message);
+    },
+    onSettled: refreshAfter,
   });
 
   const later = (item: PopupItem) => {
@@ -176,31 +190,31 @@ export default function ApprovalPopup() {
             onChange={(e) => setReason(e.target.value)}
           />
         )}
-        {error && (
+        {failed?.id === current.id && (
           <Alert severity="error" sx={{ mt: 2 }} action={<Button color="inherit" size="small" onClick={() => navigate(current.path)}>{t('shared.approvalPopup.open')}</Button>}>
-            {error}
+            {failed.message}
           </Alert>
         )}
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2, flexWrap: 'wrap', gap: 1 }}>
         {rejecting ? (
           <>
-            <Button onClick={() => setRejecting(false)} disabled={decide.isPending}>{t('shared.cancel')}</Button>
+            <Button onClick={() => setRejecting(false)}>{t('shared.cancel')}</Button>
             <Button
               color="error"
               variant="contained"
-              disabled={decide.isPending || !reason.trim()}
+              disabled={!reason.trim()}
               onClick={() => decide.mutate({ item: current, action: 'reject', reason: reason.trim() })}
             >
-              {decide.isPending ? <CircularProgress size={20} /> : t('shared.approvalPopup.reject')}
+              {t('shared.approvalPopup.reject')}
             </Button>
           </>
         ) : (
           <>
-            <Button onClick={() => later(current)} disabled={decide.isPending} sx={{ mr: 'auto' }}>{t('shared.approvalPopup.later')}</Button>
-            <Button color="error" variant="outlined" disabled={decide.isPending} onClick={() => setRejecting(true)}>{t('shared.approvalPopup.reject')}</Button>
-            <Button color="success" variant="contained" disabled={decide.isPending} onClick={() => decide.mutate({ item: current, action: 'approve' })}>
-              {decide.isPending ? <CircularProgress size={20} /> : t('shared.approvalPopup.approve')}
+            <Button onClick={() => later(current)} sx={{ mr: 'auto' }}>{t('shared.approvalPopup.later')}</Button>
+            <Button color="error" variant="outlined" onClick={() => setRejecting(true)}>{t('shared.approvalPopup.reject')}</Button>
+            <Button color="success" variant="contained" onClick={() => decide.mutate({ item: current, action: 'approve' })}>
+              {t('shared.approvalPopup.approve')}
             </Button>
           </>
         )}
