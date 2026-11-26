@@ -14,7 +14,11 @@ import ProtectedRoute, { NO_ACCESS_PATH } from './components/ProtectedRoute';
 import { useAuthStore } from './stores/authStore';
 import { canUseModule } from './utils/moduleAccess';
 
-/** Accountant and Accounts Head open on Accounting Vouchers, not the dashboard. */
+/**
+ * Accountant and Accounts Head land on Accounting Vouchers once per sign-in.
+ * After that, "/" (the sidebar Dashboard link) shows the dashboard.
+ */
+let accountsLandedFor: string | null = null;
 function AccountsHomeRedirect({ children }: { children: React.ReactNode }) {
   const user = useAuthStore((s) => s.user);
   if (
@@ -22,7 +26,14 @@ function AccountsHomeRedirect({ children }: { children: React.ReactNode }) {
     (user.role === UserRole.ACCOUNTANT || user.role === UserRole.ACCOUNTS_HEAD) &&
     canUseModule(user, 'vouchers')
   ) {
-    return <Navigate to="/vouchers" replace />;
+    const key = `accountsLanded:${user.id}`;
+    let done = accountsLandedFor === key;
+    try { done = done || sessionStorage.getItem('accountsLanded') === key; } catch { /* storage unavailable */ }
+    if (!done) {
+      accountsLandedFor = key;
+      try { sessionStorage.setItem('accountsLanded', key); } catch { /* storage unavailable */ }
+      return <Navigate to="/vouchers" replace />;
+    }
   }
   return <>{children}</>;
 }
