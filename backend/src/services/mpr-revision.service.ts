@@ -62,8 +62,8 @@ export async function syncQuotationsFromMpr(
   mprId: string,
   lines: MprLine[],
   gstRate: number,
-  /** Lines (by item + spec) whose rate was changed on the request: their new rate goes into the quotations too. */
-  rateChanges?: Map<string, number>,
+  /** Per request line (same order as `lines`): the rate changed on the request, which goes into the quotations too. Positional, because two lines of one item + spec are possible. */
+  rateChanges?: (number | undefined)[],
   /** A quotation that is itself the source of the edit. */
   skipQuotationId?: string,
 ): Promise<string[]> {
@@ -81,10 +81,10 @@ export async function syncQuotationsFromMpr(
   await prisma.$transaction(async (tx) => {
     for (const q of quotations) {
       const mayAddLines = !isFinalized(q.status) || finalizedCount === 1;
-      for (const { wanted, match } of pairByName(lines, q.items)) {
+      for (const [idx, { wanted, match }] of pairByName(lines, q.items).entries()) {
         if (!match && !mayAddLines) continue;
         if (match) {
-          const newRate = rateChanges?.get(lineKey(wanted));
+          const newRate = rateChanges?.[idx];
           const rate = newRate !== undefined && newRate > 0 ? newRate : Number(match.unitPrice);
           await tx.quotationItem.update({
             where: { id: match.id },

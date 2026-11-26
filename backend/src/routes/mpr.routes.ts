@@ -865,11 +865,13 @@ router.put(
       // for approval right away only when every quotation line is priced.
       let revision: { quotationsUpdated: number; pricingPending: boolean; poResubmitted: string[] } | undefined;
       if (linkedQuotations.length > 0 && req.body.items) {
-        const rateChanges = new Map<string, number>();
-        for (const i of record.items) {
-          const old = previousItems.find((p) => lineKey(p) === lineKey(i));
-          if (Number(i.estimatedRate) > 0 && (!old || Number(old.estimatedRate) !== Number(i.estimatedRate))) rateChanges.set(lineKey(i), Number(i.estimatedRate));
-        }
+        // Positional: two lines of the same item + spec must each keep their own rate.
+        const unusedOld = [...previousItems];
+        const rateChanges = record.items.map((i) => {
+          const at = unusedOld.findIndex((p) => lineKey(p) === lineKey(i));
+          const old = at >= 0 ? unusedOld.splice(at, 1)[0] : undefined;
+          return Number(i.estimatedRate) > 0 && (!old || Number(old.estimatedRate) !== Number(i.estimatedRate)) ? Number(i.estimatedRate) : undefined;
+        });
         const quotationIds = await syncQuotationsFromMpr(
           record.id,
           record.items.map((i) => ({ materialName: i.materialName, itemId: i.itemId, specification: i.specification, quantity: Number(i.quantity), unit: i.unit })),
