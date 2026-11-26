@@ -7,6 +7,7 @@ const db = vi.hoisted(() => ({
   vendorInvoice: { findMany: vi.fn() },
   paymentRequest: { findMany: vi.fn() },
   goodsReceipt: { findMany: vi.fn() },
+  siteMaterialSlip: { findMany: vi.fn(async () => []) },
 }));
 vi.mock('../src/config/prisma', () => ({ prisma: db }));
 

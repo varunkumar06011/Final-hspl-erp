@@ -25,7 +25,7 @@ export interface InventorySummaryData {
   lowStockItems: { id: string; name: string; unit: string; stock: number; min: number }[];
   valueByCategory: { category: string; value: number; items: number }[];
   topItems: { id: string; name: string; unit: string; stock: number; value: number }[];
-  last30Days: { inValue: number; outValue: number; returnValue: number; inCount: number; outCount: number };
+  last30Days: { inValue: number; outValue: number; returnValue: number; usedValue?: number; inCount: number; outCount: number };
   consumptionByBudgetHead: { id: string; name: string; value: number }[];
   consumptionByPhase: { id: string; name: string; value: number }[];
   deadStock: { count: number; value: number };
@@ -88,6 +88,7 @@ export default function InventorySummary({ data }: { data: InventorySummaryData 
   const p = data.pending;
   const hasPending = p.receiptsToProcess + p.entriesToApprove + p.gatePassesAwaiting + p.posAwaitingDelivery > 0;
   const flow = data.last30Days;
+  const used = flow.usedValue ?? Math.max(0, flow.outValue - flow.returnValue);
 
   return (
     <Box sx={{ mb: 2 }}>
@@ -123,7 +124,8 @@ export default function InventorySummary({ data }: { data: InventorySummaryData 
           <StatCard icon={<ReceivedIcon />} color="success.main" label={t('receivedLast30')} value={inr(flow.inValue)} sub={`${t('returnedLast30')}: ${inr(flow.returnValue)}`} />
         </Grid>
         <Grid item xs={6} sm={4}>
-          <StatCard icon={<IssuedIcon />} color="warning.main" label={t('issuedLast30')} value={inr(flow.outValue)} />
+          {/* Net of returns: material taken to site in the morning and returned in the evening is not counted as used. */}
+          <StatCard icon={<IssuedIcon />} color="warning.main" label={t('issuedLast30')} value={inr(used)} sub={flow.returnValue > 0 ? t('issuedNetHint', { taken: inr(flow.outValue), returned: inr(flow.returnValue) }) : undefined} />
         </Grid>
         <Grid item xs={12} sm={4}>
           <StatCard
@@ -177,7 +179,7 @@ export default function InventorySummary({ data }: { data: InventorySummaryData 
           <Card sx={{ p: 2, height: '100%' }}>
             <Typography variant="subtitle2" sx={{ mb: 1.5 }}>{t('issuedByBudgetHead')}</Typography>
             <BarList
-              total={flow.outValue}
+              total={used}
               rows={data.consumptionByBudgetHead.map((h) => ({ key: h.id, label: h.name, value: h.value }))}
             />
           </Card>
@@ -186,7 +188,7 @@ export default function InventorySummary({ data }: { data: InventorySummaryData 
           <Card sx={{ p: 2, height: '100%' }}>
             <Typography variant="subtitle2" sx={{ mb: 1.5 }}>{t('issuedByPhase')}</Typography>
             <BarList
-              total={flow.outValue}
+              total={used}
               rows={data.consumptionByPhase.map((h) => ({ key: h.id, label: h.name, value: h.value }))}
             />
           </Card>

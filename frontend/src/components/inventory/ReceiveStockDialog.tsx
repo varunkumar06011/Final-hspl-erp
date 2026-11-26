@@ -3,17 +3,19 @@ import {
   Alert,
   Box,
   Button,
+  Chip,
   CircularProgress,
   DialogActions,
   DialogContent,
   DialogTitle,
   IconButton,
+  InputAdornment,
   MenuItem,
   Stack,
   TextField,
   Typography,
 } from '@mui/material';
-import { Add as AddIcon, Delete as DeleteIcon, PhotoCamera as PhotoCameraIcon } from '@mui/icons-material';
+import { Add as AddIcon, Check as CheckIcon, Delete as DeleteIcon, MoveToInbox as ReceiveIcon, PhotoCamera as PhotoCameraIcon } from '@mui/icons-material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { CatalogItemKind, InventoryItemType, StockSourceType, isApproverRole } from '@hospital-erp/shared';
@@ -149,31 +151,84 @@ export default function ReceiveStockDialog({
     mutation.mutate();
   };
 
+  const sectionTitle = (n: number, text: string) => (
+    <Stack direction="row" spacing={1} alignItems="center">
+      <Box sx={{ width: 24, height: 24, borderRadius: '50%', bgcolor: 'primary.main', color: 'primary.contrastText', display: 'grid', placeItems: 'center', fontSize: '0.8rem', fontWeight: 700, flexShrink: 0 }}>{n}</Box>
+      <Typography variant="subtitle1" fontWeight={600}>{text}</Typography>
+    </Stack>
+  );
+  const lineCount = lines.filter((l) => l.materialName.trim()).length;
+  const inr = (v: number) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(v);
+
   return (
     <ResponsiveDialog open={open} onClose={onClose} maxWidth="md" fullWidth>
-      <DialogTitle>{t('receiveTitle')}</DialogTitle>
-      <DialogContent>
-        <Stack spacing={2} sx={{ pt: 1 }}>
-          <Alert severity="info" sx={{ py: 0.5 }}>{t('receiveIntro')}</Alert>
+      <DialogTitle sx={{ pb: 1 }}>
+        <Stack direction="row" spacing={1.5} alignItems="center">
+          <Box sx={{ width: 40, height: 40, borderRadius: 2, bgcolor: 'success.main', color: 'success.contrastText', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+            <ReceiveIcon />
+          </Box>
+          <Box sx={{ minWidth: 0 }}>
+            <Typography variant="h6" fontWeight={600} sx={{ lineHeight: 1.2 }}>{t('receiveTitle')}</Typography>
+            <Typography variant="body2" color="text.secondary">{t('receiveIntro')}</Typography>
+          </Box>
+        </Stack>
+      </DialogTitle>
+      <DialogContent dividers>
+        <Stack spacing={3}>
           {error && <Alert severity="error" onClose={() => setError('')}>{error}</Alert>}
 
-          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 2 }}>
-            <TextField select size="small" label={t('sourceType')} value={sourceType} onChange={(e) => setSourceType(e.target.value)} required>
-              {enumToOptions(StockSourceType).map((o) => <MenuItem key={o.value} value={o.value}>{o.label}</MenuItem>)}
-            </TextField>
-            <TextField size="small" type="date" label={t('entryDate')} value={entryDate} onChange={(e) => setEntryDate(e.target.value)} InputLabelProps={{ shrink: true }} />
-            <TextField size="small" label={t('supplier')} value={supplierName} onChange={(e) => setSupplierName(e.target.value)} />
-            <TextField size="small" label={t('referenceNo')} value={referenceNo} onChange={(e) => setReferenceNo(e.target.value)} />
-          </Box>
-
+          {/* 1. Where the stock came from */}
           <Stack spacing={1.5}>
-            {lines.map((line, i) => (
+            {sectionTitle(1, t('receiveSourceSection'))}
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+              {enumToOptions(StockSourceType).map((o) => (
+                <Chip
+                  key={o.value}
+                  label={o.label}
+                  clickable
+                  onClick={() => setSourceType(o.value)}
+                  color={sourceType === o.value ? 'primary' : 'default'}
+                  variant={sourceType === o.value ? 'filled' : 'outlined'}
+                  icon={sourceType === o.value ? <CheckIcon /> : undefined}
+                />
+              ))}
+            </Box>
+            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr 1fr' }, gap: 2 }}>
+              <TextField id="receive-date" size="small" type="date" label={t('entryDate')} value={entryDate} onChange={(e) => setEntryDate(e.target.value)} InputLabelProps={{ shrink: true }} />
+              <TextField id="receive-supplier" size="small" label={t('supplier')} value={supplierName} onChange={(e) => setSupplierName(e.target.value)} />
+              <TextField id="receive-ref" size="small" label={t('referenceNo')} value={referenceNo} onChange={(e) => setReferenceNo(e.target.value)} />
+            </Box>
+          </Stack>
+
+          {/* 2. Materials */}
+          <Stack spacing={1.5}>
+            {sectionTitle(2, t('receiveMaterialsSection'))}
+            {lines.map((line, i) => {
+              const lineTotal = (num(line.quantity) || 0) * (num(line.unitCost) || 0);
+              return (
+              <Box key={i} sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 2, overflow: 'hidden' }}>
+                <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ px: 1.5, py: 0.5, bgcolor: 'action.hover', gap: 1 }}>
+                  <Typography variant="caption" fontWeight={600} color="text.secondary" sx={{ textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    {t('receiveLine', { n: i + 1 })}
+                  </Typography>
+                  <Stack direction="row" alignItems="center" spacing={1}>
+                    {lineTotal > 0 && <Typography variant="body2" fontWeight={600} sx={{ fontVariantNumeric: 'tabular-nums' }}>{inr(lineTotal)}</Typography>}
+                    <IconButton
+                      size="small"
+                      color="error"
+                      aria-label={t('removeLine')}
+                      disabled={lines.length === 1}
+                      onClick={() => setLines((ls) => ls.filter((_, idx) => idx !== i))}
+                    >
+                      <DeleteIcon fontSize="small" />
+                    </IconButton>
+                  </Stack>
+                </Stack>
               <Box
-                key={i}
-                sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', md: '2.2fr 1fr 1fr 1fr 1.2fr auto' }, gap: 1, alignItems: 'start', p: 1, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}
+                sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', md: '2.2fr 1fr 1fr 1fr 1.2fr' }, gap: 1.5, alignItems: 'start', p: 1.5 }}
               >
                 {/* Same item list as every other screen: material from the catalog, spec from its own list. */}
-                <Box sx={{ gridColumn: { xs: '1 / -1', md: 'auto' } }}>
+                <Box sx={{ gridColumn: { xs: '1 / -1', md: 'auto' }, minWidth: 0 }}>
                   <CatalogLineFields
                     catalog={catalog}
                     line={line}
@@ -195,46 +250,48 @@ export default function ReceiveStockDialog({
                   inputProps={{ inputMode: 'decimal' }}
                 />
                 <TextField
+                  id={`receive-rate-${i}`}
                   size="small"
                   label={t('rateUnit')}
                   value={formatIndianNumber(line.unitCost)}
                   onChange={(e) => setLine(i, { unitCost: e.target.value.replace(/,/g, '') })}
                   inputProps={{ inputMode: 'decimal' }}
+                  InputProps={{ startAdornment: <InputAdornment position="start">₹</InputAdornment> }}
                 />
                 <TextField select size="small" label={t('type')} value={line.itemType} onChange={(e) => setLine(i, { itemType: e.target.value })}>
                   <MenuItem value={InventoryItemType.CONSUMABLE}>{enumLabel(InventoryItemType.CONSUMABLE)}</MenuItem>
                   <MenuItem value={InventoryItemType.ASSET}>{enumLabel(InventoryItemType.ASSET)}</MenuItem>
                 </TextField>
-                <IconButton
-                  size="small"
-                  color="error"
-                  aria-label={t('removeLine')}
-                  disabled={lines.length === 1}
-                  onClick={() => setLines((ls) => ls.filter((_, idx) => idx !== i))}
-                >
-                  <DeleteIcon fontSize="small" />
-                </IconButton>
               </Box>
-            ))}
-            <Box>
-              <Button size="small" startIcon={<AddIcon />} onClick={() => setLines((ls) => [...ls, emptyLine()])}>{t('addLine')}</Button>
-            </Box>
+              </Box>
+              );
+            })}
+            <Button variant="outlined" startIcon={<AddIcon />} onClick={() => setLines((ls) => [...ls, emptyLine()])} sx={{ borderStyle: 'dashed', py: 1 }} fullWidth>
+              {t('addLine')}
+            </Button>
+            <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ px: 2, py: 1.5, borderRadius: 2, bgcolor: 'success.main', color: 'success.contrastText', gap: 1, flexWrap: 'wrap' }}>
+              <Typography variant="body2" fontWeight={500}>{t('receiveCount', { count: lineCount })}</Typography>
+              <Typography variant="h6" fontWeight={700} sx={{ fontVariantNumeric: 'tabular-nums' }}>
+                {t('entryTotal')}: {inr(total)}
+              </Typography>
+            </Stack>
           </Stack>
 
-          <Typography variant="subtitle2" sx={{ textAlign: 'right' }}>
-            {t('entryTotal')}: {new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(total)}
-          </Typography>
+          {/* 3. Notes and photo */}
+          <Stack spacing={1.5}>
+            {sectionTitle(3, t('receiveProofSection'))}
+            <TextField id="receive-notes" size="small" label={t('notes')} value={notes} onChange={(e) => setNotes(e.target.value)} multiline rows={2} />
+            <FilePicker file={photo} onChange={setPhoto} accept="image/*" startIcon={<PhotoCameraIcon />} label={t('stockPhoto')} />
+          </Stack>
 
-          <TextField size="small" label={t('notes')} value={notes} onChange={(e) => setNotes(e.target.value)} multiline rows={2} />
-          <FilePicker file={photo} onChange={setPhoto} accept="image/*" startIcon={<PhotoCameraIcon />} label={t('stockPhoto')} />
           <Alert severity={willAutoPost ? 'success' : 'warning'} sx={{ py: 0.5 }}>
             {willAutoPost ? t('autoPostHint') : t('pendingHint')}
           </Alert>
         </Stack>
       </DialogContent>
-      <DialogActions sx={{ flexWrap: 'wrap', gap: 1 }}>
+      <DialogActions sx={{ flexWrap: 'wrap', gap: 1, px: 3, py: 2 }}>
         <Button onClick={() => { reset(); onClose(); }}>{t('cancel')}</Button>
-        <Button variant="contained" onClick={submit} disabled={mutation.isPending}>
+        <Button variant="contained" color="success" size="large" startIcon={mutation.isPending ? undefined : <ReceiveIcon />} onClick={submit} disabled={mutation.isPending}>
           {mutation.isPending ? <CircularProgress size={20} /> : t('record')}
         </Button>
       </DialogActions>

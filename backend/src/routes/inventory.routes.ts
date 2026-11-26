@@ -301,6 +301,17 @@ router.delete(
         res.status(400).json({ error: 'Inventory items with stock cannot be deleted' });
         return;
       }
+      // Material out on site: its evening return would land on a deleted item.
+      const openSlipLines = await prisma.siteMaterialSlipLine.count({
+        where: { inventoryItemId: existing.id, slip: { status: 'OPEN' } },
+      });
+      if (openSlipLines > 0) {
+        res.status(409).json({
+          error: `${existing.name} is still out on an open site slip. Finish that slip's evening update before deleting the item`,
+          code: 'OPEN_SITE_SLIP',
+        });
+        return;
+      }
 
       await prisma.inventoryItem.update({
         where: { id: req.params.id },
@@ -585,26 +596,34 @@ router.get(
         return last < since60;
       });
 
-      const flow = { inValue: 0, outValue: 0, returnValue: 0, inCount: 0, outCount: 0 };
+      // outValue = everything that left the store; usedValue = what stayed out after returns
+      // (site slips take in the morning and return in the evening, so gross issue overstates use).
+      const flow = { inValue: 0, outValue: 0, returnValue: 0, usedValue: 0, inCount: 0, outCount: 0 };
       const byHead = new Map<string, { id: string; name: string; value: number }>();
       const byPhase = new Map<string, { id: string; name: string; value: number }>();
       for (const t of recentTxns) {
         const v = Number(t.totalCost);
-        if (t.type === InventoryTxnType.IN) { flow.inValue += v; flow.inCount += 1; }
-        else if (t.type === InventoryTxnType.RETURN) flow.returnValue += v;
-        else if (t.type === InventoryTxnType.OUT) {
-          flow.outValue += v;
-          flow.outCount += 1;
-          if (t.budgetHeadId && t.budgetHead) {
-            const cur = byHead.get(t.budgetHeadId) ?? { id: t.budgetHeadId, name: t.budgetHead.particulars, value: 0 };
-            cur.value += v;
-            byHead.set(t.budgetHeadId, cur);
-          }
-          if (t.phaseId && t.phase) {
-            const cur = byPhase.get(t.phaseId) ?? { id: t.phaseId, name: t.phase.name, value: 0 };
-            cur.value += v;
-            byPhase.set(t.phaseId, cur);
-          }
+        if (t.type === InventoryTxnType.IN) { flow.inValue += v; flow.inCount += 1; continue; }
+        if (t.type !== InventoryTxnType.OUT && t.type !== InventoryTxnType.RETURN) continue;
+        // A return charged to a phase / budget head reduces what that phase / head used.
+        const signed = t.type === InventoryTxnType.OUT ? v : -v;
+        if (t.type === InventoryTxnType.OUT) { flow.outValue += v; flow.outCount += 1; } else flow.returnValue += v;
+        if (t.budgetHeadId && t.budgetHead) {
+          const cur = byHead.get(t.budgetHeadId) ?? { id: t.budgetHeadId, name: t.budgetHead.particulars, value: 0 };
+          cur.value += signed;
+          byHead.set(t.budgetHeadId, cur);
+        }
+        if (t.phaseId && t.phase) {
+          const cur = byPhase.get(t.phaseId) ?? { id: t.phaseId, name: t.phase.name, value: 0 };
+          cur.value += signed;
+          byPhase.set(t.phaseId, cur);
+        }
+      }
+      flow.usedValue = Math.max(0, Math.round((flow.outValue - flow.returnValue) * 100) / 100);
+      for (const m of [byHead, byPhase]) {
+        for (const [k, e] of m) {
+          e.value = Math.round(e.value * 100) / 100;
+          if (e.value <= 0) m.delete(k);
         }
       }
       const top = <T extends { value: number }>(list: T[], n = 5) => list.sort((a, b) => b.value - a.value).slice(0, n);

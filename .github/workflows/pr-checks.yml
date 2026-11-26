@@ -1,0 +1,55 @@
+# Runs on every pull request (and on pushes to master): typecheck of all workspaces,
+# the English/Telugu i18n key check, and the inventory unit tests.
+#
+# Only tests that mock the database run here; never the real-DB suites
+# (e2e-real-*, e2e-full-lifecycle, tests/scenarios) that hit the shared database.
+# Add a test file to INVENTORY_TESTS below to have it guard every PR. (Some older
+# unit test files currently fail on master too; add them once they are fixed.)
+name: PR checks
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+
+concurrency:
+  group: pr-checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      INVENTORY_TESTS: >-
+        tests/site-slip.test.ts
+        tests/inventory-merge.test.ts
+        tests/inventory-checklist.test.ts
+        tests/inventory-valuation.test.ts
+        tests/stock-entry-post.test.ts
+        tests/my-work.test.ts
+        tests/search-schema.test.ts
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Generate Prisma client
+        working-directory: backend
+        run: npx prisma generate
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: i18n keys (English / Telugu)
+        run: npm run i18n:check
+
+      - name: Inventory tests
+        working-directory: backend
+        run: npx vitest run $INVENTORY_TESTS

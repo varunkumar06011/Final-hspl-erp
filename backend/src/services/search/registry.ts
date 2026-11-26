@@ -56,6 +56,7 @@ export const REGISTRY: Record<string, EntityRegistration> = {
   Contract: { path: byId('/contracts'), permission: Permission.VIEW_FINANCIALS },
   GoodsReceipt: { label: 'Goods Receipt', path: byId('/goods-receipts'), permission: Permission.VIEW_FINANCIALS, title: ['receiptNumber'] },
   StockEntry: { label: 'Stock Entry', path: () => '/inventory', permission: Permission.MANAGE_INVENTORY, title: ['entryNumber'] },
+  SiteMaterialSlip: { label: 'Site Material Slip', path: () => '/inventory?tab=site', permission: Permission.MANAGE_INVENTORY, title: ['slipNumber'], subtitle: ['work'] },
   GatePass: { label: 'Gate Pass', path: byId('/gate-passes'), permission: Permission.VIEW_GATE_PASSES, title: ['passNumber'] },
   MaterialPurchaseRequest: {
     label: 'Material Request',
@@ -94,6 +95,7 @@ export const EXCLUDED_MODELS: Record<string, string> = {
   AuditLog: 'system trail with raw JSON snapshots; has its own page',
   AssetScan: 'high-volume scan log',
   AssetMovement: 'high-volume movement log',
+  SiteMaterialSlipLine: 'quantities only; shown on its slip',
   ApprovalWorkflow: 'plumbing; approvals surface on the record they belong to',
   ApprovalStep: 'plumbing; approvals surface on the record they belong to',
   UserSignature: 'private; only its owner may read it',
