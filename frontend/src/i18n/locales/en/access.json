@@ -9,8 +9,6 @@
   "user": "User",
   "noUsers": "No users found",
   "inactive": "Inactive",
-  "fullControl": "Full control",
-  "fullControlNote": "Admin 1, Admin 2 and super admins always have every module, so they can never be locked out. Their access cannot be changed here.",
   "customCount": "{{count}} custom",
   "modulesOn": "{{on}} of {{total}} modules on",
   "custom": "Custom",

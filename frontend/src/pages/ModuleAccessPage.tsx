@@ -38,7 +38,6 @@ import {
 } from '@mui/material';
 import { alpha } from '@mui/material/styles';
 import {
-  Lock as LockIcon,
   RestartAlt as ResetIcon,
   Search as SearchIcon,
   Undo as UndoIcon,
@@ -69,7 +68,6 @@ interface AccessUser {
   isActive: boolean;
   extraPermissions: string[];
   moduleAccess: ModuleAccessMap;
-  fullControl: boolean;
   approvalPopup: boolean;
 }
 
@@ -86,7 +84,7 @@ const BY_SECTION: { section: ModuleSection; modules: AppModule[] }[] = MODULE_SE
 const subject = (u: AccessUser) => ({ role: u.role, extraPermissions: u.extraPermissions, moduleAccess: u.moduleAccess });
 const enabled = (u: AccessUser, key: string) => isModuleEnabled(subject(u), key);
 const onByDefault = (u: AccessUser, m: AppModule) => isModuleOnByDefault(m, u.role, u.extraPermissions);
-const isCustom = (u: AccessUser, key: string) => !u.fullControl && typeof u.moduleAccess[key] === 'boolean';
+const isCustom = (u: AccessUser, key: string) => typeof u.moduleAccess[key] === 'boolean';
 
 /** Change that makes the module `on` for the user, stored only when it differs from the role default. */
 function changeFor(u: AccessUser, m: AppModule, on: boolean): boolean | null {
@@ -134,7 +132,7 @@ export default function ModuleAccessPage() {
       const previous = queryClient.getQueryData<{ data: AccessUser[] }>(QUERY_KEY);
       const ids = new Set(body.userIds);
       queryClient.setQueryData<{ data: AccessUser[] }>(QUERY_KEY, (cur) =>
-        cur && { data: cur.data.map((u) => (ids.has(u.id) && !u.fullControl ? applyChanges(u, body.changes, body.replace) : u)) },
+        cur && { data: cur.data.map((u) => (ids.has(u.id) ? applyChanges(u, body.changes, body.replace) : u)) },
       );
       return { previous };
     },
@@ -180,7 +178,7 @@ export default function ModuleAccessPage() {
     );
   }, [users, search, roleFilter]);
 
-  const selectedId = params.get('user') ?? users.find((u) => !u.fullControl)?.id ?? '';
+  const selectedId = params.get('user') ?? users[0]?.id ?? '';
   const selected = users.find((u) => u.id === selectedId) ?? null;
   const selectUser = (id: string) => setParams({ user: id }, { replace: true });
 
@@ -195,7 +193,7 @@ export default function ModuleAccessPage() {
   };
 
   const sameRoleOthers = selected
-    ? users.filter((u) => u.role === selected.role && u.id !== selected.id && !u.fullControl)
+    ? users.filter((u) => u.role === selected.role && u.id !== selected.id)
     : [];
 
   const customCount = (u: AccessUser) => APP_MODULES.filter((m) => isCustom(u, m.key)).length;
@@ -232,9 +230,7 @@ export default function ModuleAccessPage() {
                 secondary={`${roleLabel(u.role)}${u.isActive ? '' : ` · ${ta('inactive')}`}`}
                 primaryTypographyProps={{ noWrap: true, fontWeight: 500 }}
               />
-              {u.fullControl ? (
-                <Tooltip title={ta('fullControl')}><LockIcon fontSize="small" color="disabled" /></Tooltip>
-              ) : custom > 0 ? (
+              {custom > 0 ? (
                 <Chip size="small" color="warning" variant="outlined" label={ta('customCount', { count: custom })} />
               ) : null}
             </ListItemButton>
@@ -261,7 +257,7 @@ export default function ModuleAccessPage() {
               {customCount(selected) > 0 && ` · ${ta('customCount', { count: customCount(selected) })}`}
             </Typography>
           </Box>
-          {!selected.fullControl && (
+          {(
             <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
               <Button size="small" startIcon={<ResetIcon />} disabled={customCount(selected) === 0} onClick={() => save([selected.id], {}, true)}>
                 {ta('resetAll')}
@@ -276,8 +272,6 @@ export default function ModuleAccessPage() {
           )}
         </CardContent>
       </Card>
-
-      {selected.fullControl && <Alert severity="info" icon={<LockIcon />}>{ta('fullControlNote')}</Alert>}
 
       <Card>
         <Box sx={{ px: 2, py: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -302,7 +296,7 @@ export default function ModuleAccessPage() {
                 {t(`sections.${section}`, section)}{' '}
                 <Typography component="span" variant="caption" color="text.secondary">{onCount}/{modules.length}</Typography>
               </Typography>
-              {!selected.fullControl && (
+              {(
                 <Stack direction="row" spacing={0.5}>
                   <Button size="small" onClick={() => setModules(selected, modules, true)}>{ta('allOn')}</Button>
                   <Button size="small" onClick={() => setModules(selected, modules, false)}>{ta('allOff')}</Button>
@@ -342,7 +336,6 @@ export default function ModuleAccessPage() {
                   )}
                   <Switch
                     checked={on}
-                    disabled={selected.fullControl}
                     onChange={(e) => save([selected.id], { [m.key]: changeFor(selected, m, e.target.checked) })}
                     inputProps={{ 'aria-label': moduleLabel(m) }}
                   />
@@ -398,7 +391,6 @@ export default function ModuleAccessPage() {
               <TableRow key={u.id} hover sx={{ opacity: u.isActive ? 1 : 0.55 }}>
                 <TableCell sx={{ position: 'sticky', left: 0, zIndex: 2, bgcolor: 'background.paper', whiteSpace: 'nowrap' }}>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                    {u.fullControl && <LockIcon sx={{ fontSize: 14 }} color="disabled" />}
                     <Typography variant="body2" fontWeight={500}>{u.name}</Typography>
                   </Box>
                   <Typography variant="caption" color="text.secondary">{roleLabel(u.role)}</Typography>
@@ -420,7 +412,6 @@ export default function ModuleAccessPage() {
                         <Checkbox
                           size="small"
                           checked={enabled(u, m.key)}
-                          disabled={u.fullControl}
                           onChange={(e) => save([u.id], { [m.key]: changeFor(u, m, e.target.checked) })}
                           inputProps={{ 'aria-label': `${u.name} – ${moduleLabel(m)}` }}
                         />
@@ -437,7 +428,7 @@ export default function ModuleAccessPage() {
     </Card>
   );
 
-  const columnTargets = filtered.filter((u) => !u.fullControl);
+  const columnTargets = filtered;
   const setColumn = (m: AppModule, on: boolean | 'default') => {
     setColumnMenu(null);
     // One request per distinct change keeps role defaults intact for each user.

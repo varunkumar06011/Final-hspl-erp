@@ -144,8 +144,9 @@ export function normalizeModuleAccess(raw: unknown): ModuleAccessMap {
 }
 
 /**
- * Admin 1, Admin 2 and super admins control module access and always keep every
- * module. Other admins (Admin 3, 4, …) can be restricted like anyone else.
+ * Admin 1, Admin 2 and super admins may open Module Access and change anyone's
+ * modules, including their own and each other's. The page itself is not a
+ * module, so nobody can lock themselves out of it.
  */
 export function hasFullModuleControl(
   role: string,
@@ -173,7 +174,6 @@ export interface ModuleAccessSubject {
 
 /** Explicit override for the module, or undefined when the role default applies. */
 export function moduleOverride(subject: ModuleAccessSubject, key: string): boolean | undefined {
-  if (hasFullModuleControl(subject.role, subject.extraPermissions)) return undefined;
   const value = subject.moduleAccess?.[key];
   return typeof value === 'boolean' ? value : undefined;
 }
@@ -181,10 +181,10 @@ export function moduleOverride(subject: ModuleAccessSubject, key: string): boole
 export function isModuleEnabled(subject: ModuleAccessSubject, key: string): boolean {
   const module = MODULE_BY_KEY.get(key);
   if (!module) return true;
-  // A super admin ('*') has every module, whatever the role defaults say.
-  if (subject.extraPermissions?.includes(SUPER_ADMIN_GRANT)) return true;
   const override = moduleOverride(subject, key);
   if (override !== undefined) return override;
+  // A super admin ('*') has every module unless an admin switched it off.
+  if (subject.extraPermissions?.includes(SUPER_ADMIN_GRANT)) return true;
   return isModuleOnByDefault(module, subject.role, subject.extraPermissions);
 }
 
@@ -196,11 +196,9 @@ export function isModuleSwitchedOff(subject: ModuleAccessSubject, key: string): 
 /** The user's own extra permissions plus everything granted by modules switched on for them. */
 export function effectiveExtraPermissions(subject: ModuleAccessSubject): string[] {
   const out = new Set(subject.extraPermissions ?? []);
-  if (!hasFullModuleControl(subject.role, subject.extraPermissions)) {
-    for (const [key, on] of Object.entries(subject.moduleAccess ?? {})) {
-      if (on !== true) continue;
-      for (const p of MODULE_BY_KEY.get(key)?.grants ?? []) out.add(p);
-    }
+  for (const [key, on] of Object.entries(subject.moduleAccess ?? {})) {
+    if (on !== true) continue;
+    for (const p of MODULE_BY_KEY.get(key)?.grants ?? []) out.add(p);
   }
   return [...out];
 }

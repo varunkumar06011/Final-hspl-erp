@@ -73,21 +73,16 @@ describe('overrides', () => {
     expect(isModuleEnabled({ ...supervisor, moduleAccess: { vendors: false } }, 'vendors')).toBe(false);
   });
 
-  it('never restricts Admin 1, Admin 2 or a super admin', () => {
+  it('lets Admin 1, Admin 2 and super admins be restricted too', () => {
     for (const u of [
       { role: UserRole.ADMIN, extraPermissions: [] },
       { role: UserRole.ADMIN_2, extraPermissions: [] },
       { role: UserRole.SUPERVISOR, extraPermissions: ['*'] },
     ]) {
       expect(hasFullModuleControl(u.role, u.extraPermissions)).toBe(true);
-      expect(isModuleEnabled({ ...u, moduleAccess: { chat: false } }, 'chat')).toBe(true);
-      expect(blockingModuleForApiPath({ ...u, moduleAccess: { vendors: false } }, '/vendors')).toBeUndefined();
+      expect(isModuleEnabled({ ...u, moduleAccess: { chat: false } }, 'chat')).toBe(false);
+      expect(blockingModuleForApiPath({ ...u, moduleAccess: { vendors: false } }, '/vendors')).toBeDefined();
     }
-  });
-
-  it('lets Admin 3+ be restricted', () => {
-    expect(hasFullModuleControl('ADMIN_3', [])).toBe(false);
-    expect(isModuleEnabled({ role: 'ADMIN_3', extraPermissions: [], moduleAccess: { payments: false } }, 'payments')).toBe(false);
   });
 
   it('drops unknown keys and non-boolean values from stored JSON', () => {

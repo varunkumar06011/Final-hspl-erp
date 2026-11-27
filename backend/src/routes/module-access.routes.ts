@@ -4,7 +4,6 @@ import { z } from 'zod';
 import {
   AuditAction,
   SocketEvents,
-  hasFullModuleControl,
   canManageModuleAccess,
   normalizeModuleAccess,
   updateModuleAccessSchema,
@@ -19,7 +18,7 @@ import { emitToUsers } from '../socket';
 
 // Module Access page: which modules each user sees. Users are shared by every
 // project, so these lists are not project-scoped. Only Admin 1, Admin 2 and
-// super admins may read or change them, and their own access is never overridden.
+// super admins may read or change them, and they may change anyone's, admins and themselves included.
 const router = Router();
 router.use(authMiddleware);
 router.use((req: AuthenticatedRequest, res: Response, next: NextFunction) => {
@@ -53,7 +52,6 @@ function toDto(u: AccessRow) {
     isActive: u.isActive,
     extraPermissions: u.extraPermissions,
     moduleAccess: normalizeModuleAccess(u.moduleAccess),
-    fullControl: hasFullModuleControl(u.role, u.extraPermissions),
     approvalPopup: u.approvalPopup,
   };
 }
@@ -81,8 +79,8 @@ router.patch(
         return;
       }
 
-      const editable = targets.filter((u) => !hasFullModuleControl(u.role, u.extraPermissions));
-      const skipped = targets.length - editable.length;
+      const editable = targets;
+      const skipped = 0;
 
       const updates: { before: ModuleAccessMap; after: ModuleAccessMap; user: AccessRow }[] = [];
       for (const user of editable) {
