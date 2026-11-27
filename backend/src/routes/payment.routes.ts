@@ -1,5 +1,5 @@
 import { Router, Response, NextFunction } from 'express';
-import { Permission, AuditAction, PaymentStatus, UserRole, InvoiceVerificationStatus, VoucherType } from '@hospital-erp/shared';
+import { Permission, AuditAction, PaymentStatus, UserRole, InvoiceVerificationStatus, VoucherType, isWithinPaymentTolerance, splitPaidAmount, PAYMENT_MATCH_TOLERANCE } from '@hospital-erp/shared';
 import {
   createPaymentRequestSchema,
   listPaymentRequestsSchema,
@@ -1135,8 +1135,10 @@ router.post(
         res.status(409).json({ error: 'Payment has already been recorded' });
         return;
       }
-      if (Number(req.body.amount) !== Number(pr.amount)) {
-        res.status(400).json({ error: `Payment amount must match the approved amount of ${pr.amount}` });
+      if (!isWithinPaymentTolerance(Number(pr.amount), req.body.amount)) {
+        res.status(400).json({
+          error: `Payment amount must be within ₹${PAYMENT_MATCH_TOLERANCE} of the approved amount of ${pr.amount}`,
+        });
         return;
       }
 
@@ -1163,8 +1165,10 @@ router.post(
           if (outstanding <= 0.01) {
             throw new Error('Invoice is already fully paid; cannot record this payment');
           }
-          if (paymentAmount > outstanding + 0.01) {
-            throw new Error(`Payment amount ${paymentAmount} exceeds current outstanding ${outstanding.toFixed(2)}`);
+          // Checked on the approved amount: the paid amount may differ from it by
+          // up to ₹1 (rounding), and the invoice is settled by the approved amount.
+          if (Number(pr.amount) > outstanding + 0.01) {
+            throw new Error(`Payment amount ${Number(pr.amount)} exceeds current outstanding ${outstanding.toFixed(2)}`);
           }
         }
 
@@ -1397,8 +1401,10 @@ router.post(
         res.status(409).json({ error: 'This voucher is already linked to a payment' });
         return;
       }
-      if (Math.abs(Number(voucher.totalDebit) - Number(pr.amount)) > 0.01) {
-        res.status(400).json({ error: `Voucher amount must equal the approved amount of ${Number(pr.amount)}` });
+      if (!isWithinPaymentTolerance(Number(pr.amount), Number(voucher.totalDebit))) {
+        res.status(400).json({
+          error: `Voucher amount must be within ₹${PAYMENT_MATCH_TOLERANCE} of the approved amount of ${Number(pr.amount)}`,
+        });
         return;
       }
 
@@ -1452,7 +1458,8 @@ router.post(
         const created = await tx.payment.create({
           data: {
             paymentRequestId: pr.id,
-            amount: Number(pr.amount),
+            // What the voucher actually paid (may differ from the approved amount by ≤ ₹1)
+            amount: Number(voucher.totalDebit),
             mode: bankAccountId ? 'BANK_TRANSFER' : 'CASH',
             reference: voucher.chequeNumber ?? null,
             bankAccountId,
@@ -1491,7 +1498,7 @@ router.post(
 // POST /link-voucher-multi — settle several approved requests (e.g. 4 POs to the
 // same vendor) with ONE already-posted PAYMENT voucher. Books are untouched: no
 // voucher is posted; each request just gets a Payment row pointing at the voucher.
-// The request amounts must add up exactly to the voucher total.
+// The request amounts must add up to the voucher total within ±₹1.
 router.post(
   '/link-voucher-multi',
   rbacMiddleware(Permission.VIEW_FINANCIALS),
@@ -1553,12 +1560,16 @@ router.post(
       }
 
       const requestsTotal = requests.reduce((s, pr) => s + Number(pr.amount), 0);
-      if (Math.abs(Number(voucher.totalDebit) - requestsTotal) > 0.01) {
+      // Each request records its approved amount; the (≤ ₹1) difference goes on
+      // the largest one so the recorded payments add up to the voucher total.
+      const paidShares = splitPaidAmount(requests.map((pr) => Number(pr.amount)), Number(voucher.totalDebit));
+      if (!paidShares) {
         res.status(400).json({
-          error: `The selected requests add up to ${requestsTotal.toFixed(2)} but the voucher is ${Number(voucher.totalDebit).toFixed(2)}. They must match exactly.`,
+          error: `The selected requests add up to ${requestsTotal.toFixed(2)} but the voucher is ${Number(voucher.totalDebit).toFixed(2)}. They must be within ₹${PAYMENT_MATCH_TOLERANCE} of each other.`,
         });
         return;
       }
+      const paidShareById = new Map(requests.map((pr, i) => [pr.id, paidShares[i]]));
 
       // Same rule as the single link: the credit side must be a real bank/cash account
       let bankAccountId: string | null = null;
@@ -1606,7 +1617,7 @@ router.post(
             await tx.payment.create({
               data: {
                 paymentRequestId: pr.id,
-                amount: Number(pr.amount),
+                amount: paidShareById.get(pr.id) ?? Number(pr.amount),
                 mode: bankAccountId ? 'BANK_TRANSFER' : 'CASH',
                 reference: voucher.chequeNumber ?? null,
                 bankAccountId,

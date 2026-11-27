@@ -10,6 +10,8 @@ import {
   GST_LEDGER_NAMES,
   PaymentStatus,
   isAdminRole,
+  isWithinPaymentTolerance,
+  PAYMENT_MATCH_TOLERANCE,
 } from '@hospital-erp/shared';
 import { recalcInvoicePaymentStatus } from '../services/invoice-payment.service';
 import { notifyPaymentsMade } from '../services/payment-notify.service';
@@ -490,8 +492,10 @@ router.post(
           res.status(409).json({ error: 'Payment has already been recorded for this request' });
           return;
         }
-        if (Math.abs(totalDebit - Number(pr.amount)) > 0.01) {
-          res.status(400).json({ error: `Voucher amount must equal the approved amount of ${Number(pr.amount)}` });
+        if (!isWithinPaymentTolerance(Number(pr.amount), totalDebit)) {
+          res.status(400).json({
+            error: `Voucher amount must be within ₹${PAYMENT_MATCH_TOLERANCE} of the approved amount of ${Number(pr.amount)}`,
+          });
           return;
         }
         // The credit entry must be a bank/cash ledger linked to a real account —
@@ -508,7 +512,8 @@ router.post(
         }
         linkedPaymentRequest = {
           id: pr.id,
-          amount: Number(pr.amount),
+          // The voucher's actual total (may differ from the approved amount by ≤ ₹1)
+          amount: Math.round(totalDebit * 100) / 100,
           type: pr.type,
           invoiceId: pr.invoiceId,
           budgetHeadId: pr.budgetHeadId,

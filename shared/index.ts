@@ -8,3 +8,4 @@ export * from './schemas/index.js';
 export * from './fuzzy.js';
 export * from './catalog.js';
 export * from './hours.js';
+export * from './payment-match.js';

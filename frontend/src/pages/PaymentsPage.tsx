@@ -46,7 +46,7 @@ import {
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { PaymentStatus, PaymentMode, POPaymentType } from '@hospital-erp/shared';
+import { PaymentStatus, PaymentMode, POPaymentType, isWithinPaymentTolerance, PAYMENT_MATCH_TOLERANCE } from '@hospital-erp/shared';
 import { enumLabel, formatCurrency, formatIndianNumber, STATUS_COLORS, todayLocalDate } from '../utils/enumOptions';
 import { dateLocale } from '../i18n';
 import api, { extractErrorMessage } from '../config/api';
@@ -407,8 +407,8 @@ export default function PaymentsPage() {
         params: {
           voucherType: 'PAYMENT',
           status: 'POSTED',
-          minAmount: linkVoucherRow!.amount,
-          maxAmount: linkVoucherRow!.amount,
+          minAmount: Math.max(0, Number(linkVoucherRow!.amount) - PAYMENT_MATCH_TOLERANCE),
+          maxAmount: Number(linkVoucherRow!.amount) + PAYMENT_MATCH_TOLERANCE,
           pageSize: 100,
         },
       });
@@ -470,7 +470,7 @@ export default function PaymentsPage() {
   const multiSelectedTotal = multiRequests
     .filter((r) => multiRequestIds.includes(r.id))
     .reduce((s, r) => s + Number(r.amount), 0);
-  const multiMatches = !!multiVoucher && multiRequestIds.length >= 2 && Math.abs(Number(multiVoucher.totalDebit) - multiSelectedTotal) < 0.01;
+  const multiMatches = !!multiVoucher && multiRequestIds.length >= 2 && isWithinPaymentTolerance(multiSelectedTotal, Number(multiVoucher.totalDebit));
 
   const linkMultiMutation = useMutation({
     mutationFn: async () => {

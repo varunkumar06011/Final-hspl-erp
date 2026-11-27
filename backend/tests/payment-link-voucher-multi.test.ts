@@ -141,7 +141,7 @@ describe('POST /payments/link-voucher-multi', () => {
     db.requests = makeRequests([10000, 9000, 9500, 9000]);
     const res = await post([1, 2, 3, 4].map(reqId));
     expect(res.status).toBe(400);
-    expect(res.body.error).toMatch(/must match exactly/);
+    expect(res.body.error).toMatch(/must be within ₹1 of each other/);
     expect(db.created).toHaveLength(0);
     expect(db.claimed).toHaveLength(0);
   });
