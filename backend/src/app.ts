@@ -11,6 +11,7 @@ import { prisma } from './config/prisma';
 import { logger } from './utils/logger';
 import { INTERNAL_HEADER, INTERNAL_SECRET } from './services/assistant/internalApi';
 import { SECRET_HEADER as TASKHUB_HEADER, isValidTaskHubSecret } from './services/taskhub.service';
+import { storageModuleContext } from './services/storage/drive-context';
 
 const app = express();
 
@@ -63,6 +64,8 @@ app.get('/app-map', (_req, res) => {
   res.sendFile(APP_MAP_FILE);
 });
 
+// Which ERP module each request belongs to (Google Drive sub-folder for its uploads).
+app.use('/api', storageModuleContext);
 app.use('/api', routes);
 
 // 404 handler for unknown API routes

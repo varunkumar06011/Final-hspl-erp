@@ -192,6 +192,16 @@ Approvers (Project Head, Head of Construction, Admin 1, Admin 2, super admins: `
 - **Deep links.** `ProjectLinkSwitcher` (mounted in `App.tsx`) handles `?project=<id>`: switches project if needed (`useSwitchProject().switchTo(id, landing)`), then opens the page without the parameter. A signed-out user lands on login and then home.
 - Env: `TASKHUB_SYNC_SECRET`, `TASKHUB_WEBHOOK_URL`, optional `ERP_PUBLIC_URL` (link base, default first `FRONTEND_URL` entry).
 
+## File storage: Google Drive
+
+`STORAGE_MODE=gdrive` sends new uploads to Google Drive (`services/gdrive-storage.service.ts`, OAuth as the Drive owner: `GOOGLE_OAUTH_CLIENT_ID/SECRET/REFRESH_TOKEN`, folder `GOOGLE_DRIVE_FILES_FOLDER_ID`). The record's existing path column holds `gdrive:<fileId>`; files saved earlier keep opening from Supabase / the local folder (`RoutingStorageService`). Files are never shared: the ERP downloads and sends them after its own checks. Never read a stored path from disk or parse it for an extension; go through `getStorageService()` / `serveFile`.
+
+- **Folders per module.** Uploads go to `<root>/<Module>/` ("Quotations", "Payment Vouchers"...). The module comes from the API path (`storageModuleContext` in `app.ts`, table in `services/storage/drive-context.ts`); `/attachments/upload` uses the record's `entityType` (`setStorageModule`). Uploads outside a request use the kind of file (`documents`, `photos`...). The middleware re-binds the request's stream events because multer otherwise loses async context (the duplicate guard's context in `duplicate.service.ts` is still lost after multer, as before).
+- **Safe deletes.** `SafeDeleteStorageService` (`services/storage/safe-delete.ts`) waits 15 s after `deleteFile` on a Drive path, then trashes the file only if no record in any table (`FILE_COLUMNS` in `services/storage/file-refs.ts`) still points at it: replaced files, rolled-back deletes and files linked to several records are safe. Trashed files stay recoverable for 30 days. **New file column?** Add it to `FILE_COLUMNS`.
+- **Migration** (`scripts/migrate-files-to-drive.ts`, logic in `services/storage/drive-migration.ts`): `--dry-run` first; a plain run copies images/PDFs (`--all-types` for everything), checks Drive's MD5/size against the original, then repoints every record using that path in one transaction. Resumable (state file `DRIVE_MIGRATION_STATE`, plus a hash-of-old-path tag on each copy). `--verify [--download]`, `--orphans [--trash]`, `--cleanup-legacy` (deletes originals only after re-verifying the copy and only if nothing still points at them). Runs against whatever `DATABASE_URL` points at: on the shared database only deliberately.
+- Every Drive upload carries private app properties `erp=1` and `sha256` (orphan check, migration).
+- Tests: `tests/gdrive-*.test.ts` (in-memory Google at the fetch level in `tests/helpers/fake-google-drive.ts`).
+
 ## Second brain (Notion)
 
 This project is documented in Akhil's Notion second brain: "Hospital Construction ERP (Final-hspl-erp)" (https://app.notion.com/p/3fcfb1c823578191b029cbe46451e533). Root page: https://app.notion.com/p/3fcfb1c82357815bb1c2f8b544e206aa

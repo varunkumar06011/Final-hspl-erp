@@ -3,6 +3,7 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import type { Response } from 'express';
 import { withUploadGuard } from './duplicate.service';
 import { GoogleDriveStorageService, RoutingStorageService, driveConfigFromEnv, isDrivePath } from './gdrive-storage.service';
+import { SafeDeleteStorageService } from './storage/safe-delete';
 
 export interface UploadResult {
   filePath: string;
@@ -200,20 +201,43 @@ class SupabaseStorageService implements StorageService {
 }
 
 let storageService: StorageService | null = null;
+let safeDelete: SafeDeleteStorageService | null = null;
+let driveService: GoogleDriveStorageService | null | undefined;
+
+/** The store files were saved in before Drive (Supabase or the local folder). */
+export function getLegacyStorageService(): StorageService {
+  return legacyIsSupabase() ? new SupabaseStorageService() : new LocalStorageService();
+}
+
+/** The Google Drive store, or null when its settings are missing. */
+export function getDriveService(): GoogleDriveStorageService | null {
+  if (driveService === undefined) {
+    const driveConfig = driveConfigFromEnv(env);
+    driveService = driveConfig ? new GoogleDriveStorageService(driveConfig) : null;
+  }
+  return driveService;
+}
+
+/** Waiting Drive deletes (see storage/safe-delete.ts); null when Drive is not configured. */
+export function getSafeDeleteService(): SafeDeleteStorageService | null {
+  getStorageService();
+  return safeDelete;
+}
 
 export function getStorageService(): StorageService {
   if (!storageService) {
-    const legacy: StorageService = legacyIsSupabase() ? new SupabaseStorageService() : new LocalStorageService();
-    const driveConfig = driveConfigFromEnv(env);
-    if (env.STORAGE_MODE === 'gdrive' && !driveConfig) {
+    const legacy = getLegacyStorageService();
+    const drive = getDriveService();
+    if (env.STORAGE_MODE === 'gdrive' && !drive) {
       throw new Error(
         'STORAGE_MODE=gdrive needs GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET, GOOGLE_OAUTH_REFRESH_TOKEN and GOOGLE_DRIVE_FILES_FOLDER_ID',
       );
     }
-    if (driveConfig) {
+    if (drive) {
       // Drive files open from Drive in any mode; new uploads go there only in gdrive mode.
-      const drive = new GoogleDriveStorageService(driveConfig);
-      storageService = withUploadGuard(new RoutingStorageService(drive, legacy, env.STORAGE_MODE === 'gdrive' ? drive : legacy));
+      // A Drive file is trashed only once no record uses it any more.
+      safeDelete = new SafeDeleteStorageService(new RoutingStorageService(drive, legacy, env.STORAGE_MODE === 'gdrive' ? drive : legacy));
+      storageService = withUploadGuard(safeDelete);
     } else {
       storageService = withUploadGuard(legacy);
     }

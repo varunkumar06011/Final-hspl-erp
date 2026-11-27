@@ -6,6 +6,7 @@ import { authMiddleware, AuthenticatedRequest, requireProjectId } from '../middl
 import { validateMiddleware } from '../middleware/validate';
 import { logAudit } from '../services/audit.service';
 import { getStorageService, serveFile } from '../services/storage.service';
+import { setStorageModule, moduleFromEntityType } from '../services/storage/drive-context';
 import { listLinkedFiles } from '../services/linked-files.service';
 import multer from 'multer';
 import { isAllowedUpload, ALLOWED_UPLOAD_MESSAGE } from '../utils/uploadFileTypes';
@@ -90,6 +91,8 @@ router.post(
       const subPath = isImage ? 'images' : 'documents';
       const prefixedFileName = `${subPath}/${req.file.originalname}`;
 
+      // Generic route: file it under the module of the record it belongs to.
+      setStorageModule(moduleFromEntityType(String(req.body.entityType)));
       const storage = getStorageService();
       const uploadResult = await storage.upload(req.file.buffer, prefixedFileName, req.file.mimetype, bucket);
 
