@@ -6,14 +6,18 @@ on:
     - cron: "47 20 * * *"
   workflow_dispatch:
     inputs:
-      retention_days:
-        description: "Days to keep the backup artifact (1-90)"
+      retention_count:
+        description: "Number of newest daily backups to keep on Google Drive (0 = never delete)"
         required: false
         default: "30"
 
-# The backup is a full production dump stored as a workflow artifact, so this
-# repository MUST stay private (artifacts of public repos are downloadable by anyone).
+# The dump goes to a private Google Drive folder. It is also kept as a workflow artifact
+# ONLY while this repository is private: artifacts of a public repository can be
+# downloaded by anyone, so on a public repository the artifact step is skipped.
+# (Before: the dump was stored only as an artifact and the job refused to run once the
+# repository became public, so no backup was taken at all.)
 permissions:
+  id-token: write # only used by the OIDC / Workload Identity mode
   contents: read
 
 concurrency:
@@ -22,10 +26,11 @@ concurrency:
 
 env:
   PG_MAJOR: "17"
+  DRIVE_AUTH_MODE: ${{ secrets.GOOGLE_OAUTH_REFRESH_TOKEN != '' && 'oauth' || 'oidc' }}
 
 jobs:
   backup:
-    name: Backup Supabase PostgreSQL to GitHub artifact
+    name: Backup Supabase PostgreSQL to Google Drive
     runs-on: ubuntu-latest
     timeout-minutes: 60
 
@@ -37,21 +42,43 @@ jobs:
             scripts/backup
           sparse-checkout-cone-mode: false
 
-      - name: Refuse to run in a public repository
+      - name: Check required secrets are configured
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          GOOGLE_DRIVE_FOLDER_ID: ${{ secrets.GOOGLE_DRIVE_FOLDER_ID }}
+          WORKLOAD_IDENTITY_PROVIDER: ${{ secrets.WORKLOAD_IDENTITY_PROVIDER }}
+          SERVICE_ACCOUNT_EMAIL: ${{ secrets.SERVICE_ACCOUNT_EMAIL }}
+          GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
+          GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
+          GOOGLE_OAUTH_REFRESH_TOKEN: ${{ secrets.GOOGLE_OAUTH_REFRESH_TOKEN }}
+        run: |
+          set -euo pipefail
+          echo "Drive auth mode: ${DRIVE_AUTH_MODE}"
+          required="SUPABASE_DB_URL GOOGLE_DRIVE_FOLDER_ID"
+          if [ "${DRIVE_AUTH_MODE}" = "oauth" ]; then
+            required="$required GOOGLE_OAUTH_CLIENT_ID GOOGLE_OAUTH_CLIENT_SECRET GOOGLE_OAUTH_REFRESH_TOKEN"
+          else
+            required="$required WORKLOAD_IDENTITY_PROVIDER SERVICE_ACCOUNT_EMAIL"
+            if [ -n "${GOOGLE_OAUTH_CLIENT_ID}" ]; then
+              echo "::warning::GOOGLE_OAUTH_CLIENT_ID is set but GOOGLE_OAUTH_REFRESH_TOKEN is not, so the service-account (OIDC) mode is used. To upload as your Google account instead, mint the token with scripts/backup/oauth_consent.py (see docs/DATABASE_BACKUPS.md)."
+            fi
+          fi
+          missing=0
+          for v in $required; do
+            if [ -z "${!v}" ]; then echo "::error::secret $v is not configured"; missing=1; fi
+          done
+          if [ "$missing" = 1 ] && [ "${DRIVE_AUTH_MODE}" = "oidc" ] && [ -n "${GOOGLE_OAUTH_CLIENT_ID}" ]; then
+            echo "::error::No working Google sign-in: add GOOGLE_OAUTH_REFRESH_TOKEN (scripts/backup/oauth_consent.py) or the two OIDC secrets."
+          fi
+          exit $missing
+
+      - name: Is the repository private?
+        id: repo
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          if [ "$(gh api "repos/${{ github.repository }}" --jq .private)" != "true" ]; then
-            echo "::error::Repository is public; refusing to store a database dump as an artifact. Make the repo private."
-            exit 1
-          fi
-
-      - name: Check required secrets are configured
-        env:
-          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
-        run: |
-          if [ -z "$SUPABASE_DB_URL" ]; then echo "::error::secret SUPABASE_DB_URL is not configured"; exit 1; fi
+          echo "private=$(gh api "repos/${{ github.repository }}" --jq .private)" >> "$GITHUB_OUTPUT"
 
       - name: Install PostgreSQL client ${{ env.PG_MAJOR }}
         run: |
@@ -69,6 +96,16 @@ jobs:
           echo "${PG_BIN}" >> "$GITHUB_PATH"
           "${PG_BIN}/pg_dump" --version | grep -q " ${PG_MAJOR}\."
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: scripts/backup/requirements.txt
+
+      - name: Install Google Drive client
+        run: pip install --quiet -r scripts/backup/requirements.txt
+
       - name: Create and validate backup
         id: backup
         env:
@@ -76,12 +113,34 @@ jobs:
           BACKUP_DIR: ${{ runner.temp }}/backup
         run: bash scripts/backup/backup-database.sh
 
-      - name: Upload backup artifact
+      - name: Authenticate to Google Cloud (OIDC / Workload Identity Federation)
+        if: env.DRIVE_AUTH_MODE == 'oidc'
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.SERVICE_ACCOUNT_EMAIL }}
+          create_credentials_file: true
+          cleanup_credentials: true
+
+      - name: Upload to Google Drive, verify, apply retention
+        env:
+          GOOGLE_DRIVE_FOLDER_ID: ${{ secrets.GOOGLE_DRIVE_FOLDER_ID }}
+          # Passed only in OAuth mode: drive_upload.py switches to OAuth as soon as any of these
+          # is set, so a client id without its refresh token used to break the OIDC mode.
+          GOOGLE_OAUTH_CLIENT_ID: ${{ env.DRIVE_AUTH_MODE == 'oauth' && secrets.GOOGLE_OAUTH_CLIENT_ID || '' }}
+          GOOGLE_OAUTH_CLIENT_SECRET: ${{ env.DRIVE_AUTH_MODE == 'oauth' && secrets.GOOGLE_OAUTH_CLIENT_SECRET || '' }}
+          GOOGLE_OAUTH_REFRESH_TOKEN: ${{ env.DRIVE_AUTH_MODE == 'oauth' && secrets.GOOGLE_OAUTH_REFRESH_TOKEN || '' }}
+          BACKUP_RETENTION_COUNT: ${{ github.event.inputs.retention_count || '30' }}
+        run: python scripts/backup/drive_upload.py "${{ steps.backup.outputs.backup_dir }}"
+
+      # Second copy, only while the repository is private (public artifacts are downloadable by anyone).
+      - name: Keep a copy as a workflow artifact (private repository only)
+        if: steps.repo.outputs.private == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: db-backup-${{ steps.backup.outputs.backup_date }}-${{ github.run_number }}
           path: ${{ steps.backup.outputs.backup_dir }}
-          retention-days: ${{ github.event.inputs.retention_days || '30' }}
+          retention-days: 30
           if-no-files-found: error
 
       - name: Summary
@@ -90,7 +149,12 @@ jobs:
           {
             echo "### Database backup succeeded"
             echo "- Backup date: \`${{ steps.backup.outputs.backup_date }}\`"
-            echo "- Artifact: \`db-backup-${{ steps.backup.outputs.backup_date }}-${{ github.run_number }}\` (kept ${{ github.event.inputs.retention_days || '30' }} days)"
+            echo "- Uploaded to Google Drive folder \`${{ steps.backup.outputs.backup_date }}/\` (see workflow log for file list)"
+            if [ "${{ steps.repo.outputs.private }}" = "true" ]; then
+              echo "- Also kept as workflow artifact \`db-backup-${{ steps.backup.outputs.backup_date }}-${{ github.run_number }}\` (30 days)"
+            else
+              echo "- No workflow artifact: the repository is public"
+            fi
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Cleanup local backup files

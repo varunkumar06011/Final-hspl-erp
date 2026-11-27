@@ -25,8 +25,19 @@ const envSchema = z.object({
   FRONTEND_URL: z.string().default('http://localhost:5173'),
 
   // Storage mode
-  STORAGE_MODE: z.enum(['local', 'supabase']).default('local'),
+  // gdrive: new uploads go to Google Drive; files saved earlier keep opening from
+  // Supabase (or the local folder), chosen by the stored path.
+  STORAGE_MODE: z.enum(['local', 'supabase', 'gdrive']).default('local'),
   LOCAL_STORAGE_PATH: z.string().default('./uploads'),
+
+  // Google Drive file storage (STORAGE_MODE=gdrive). Same OAuth client as the database
+  // backup workflow; the refresh token is minted once with scripts/backup/oauth_consent.py.
+  GOOGLE_OAUTH_CLIENT_ID: z.string().optional(),
+  GOOGLE_OAUTH_CLIENT_SECRET: z.string().optional(),
+  GOOGLE_OAUTH_REFRESH_TOKEN: z.string().optional(),
+  // Drive folder that holds ERP uploads (one sub-folder per kind: documents, photos...).
+  // Keep it separate from the backups folder.
+  GOOGLE_DRIVE_FILES_FOLDER_ID: z.string().optional(),
 
   // OpenAI: AI assistant "Miko" and OCR document structuring (OCR uses the local parser if omitted)
   OPENAI_API_KEY: z.string().optional(),
