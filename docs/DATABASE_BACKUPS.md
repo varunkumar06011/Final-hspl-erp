@@ -320,9 +320,19 @@ never delete the root folder (its ID is in the GitHub secret).
 
 ## Limitations
 
+- **Public repository: Drive only.** The dump always goes to the private Drive
+  folder. A second copy as a workflow artifact is kept only while the
+  repository is private (artifacts of a public repository can be downloaded by
+  anyone); on a public repository that step is skipped. Until November 2026
+  the dump was stored only as an artifact, so once the repository became public
+  the job refused to run and no backups were taken; before that the Drive
+  upload failed because `GOOGLE_OAUTH_REFRESH_TOKEN` was never added. The job
+  now stops with a clear message when the OAuth client is set but the refresh
+  token is not.
 - **Supabase Storage is not backed up.** Uploaded documents/images live in
   Storage buckets, not in PostgreSQL. A separate Storage backup is required
-  for full disaster recovery of files.
+  for full disaster recovery of files. With `STORAGE_MODE=gdrive` new uploads
+  go to Google Drive instead (files saved earlier stay in Supabase).
 - **Service-account storage quota.** Files uploaded by a service account are
   owned by it. Google has been removing/zeroing storage quota for service
   accounts in *My Drive*; if uploads fail with `storageQuotaExceeded`, put

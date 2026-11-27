@@ -2,6 +2,7 @@ import { env } from '../config/env';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import type { Response } from 'express';
 import { withUploadGuard } from './duplicate.service';
+import { GoogleDriveStorageService, RoutingStorageService, driveConfigFromEnv, isDrivePath } from './gdrive-storage.service';
 
 export interface UploadResult {
   filePath: string;
@@ -10,10 +11,16 @@ export interface UploadResult {
   size: number;
 }
 
+/** Files saved before the switch to Drive live in Supabase when it is configured. */
+function legacyIsSupabase(): boolean {
+  return (env.STORAGE_MODE === 'supabase' || env.STORAGE_MODE === 'gdrive') && !!env.SUPABASE_URL && !!env.SUPABASE_SERVICE_KEY;
+}
+
 /**
  * Serve a stored file to the client.
- * - Supabase mode: 302 redirect to a signed URL (bucket stays private).
- * - Local mode: stream the file buffer with the stored content-type.
+ * - Google Drive file ("gdrive:<id>"): stream it (Drive files are never shared by link).
+ * - Supabase file: 302 redirect to a signed URL (bucket stays private).
+ * - Local file: stream the file buffer with the stored content-type.
  */
 export async function serveFile(
   res: Response,
@@ -21,14 +28,28 @@ export async function serveFile(
   mimeType: string | null,
   storage: StorageService = getStorageService()
 ): Promise<void> {
-  if (env.STORAGE_MODE === 'supabase') {
+  if (!isDrivePath(filePath) && legacyIsSupabase()) {
     const signedUrl = await storage.getSignedUrl(filePath);
     res.redirect(signedUrl);
   } else {
     const buffer = await storage.getFile(filePath);
-    res.setHeader('Content-Type', mimeType || 'application/octet-stream');
+    // A Drive path has no file extension, so a caller that guesses the type from the name
+    // (the project logo) gets null: read the type from the file's first bytes instead.
+    res.setHeader('Content-Type', mimeType || sniffMimeType(buffer) || 'application/octet-stream');
     res.send(buffer);
   }
+}
+
+/** Content type from a file's first bytes, for the common upload types; null when unknown. */
+export function sniffMimeType(buf: Buffer): string | null {
+  if (buf.length >= 8 && buf.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return 'image/png';
+  if (buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return 'image/jpeg';
+  if (buf.length >= 6 && /^GIF8[79]a/.test(buf.subarray(0, 6).toString('latin1'))) return 'image/gif';
+  if (buf.length >= 12 && buf.subarray(0, 4).toString('latin1') === 'RIFF' && buf.subarray(8, 12).toString('latin1') === 'WEBP') return 'image/webp';
+  if (buf.length >= 5 && buf.subarray(0, 5).toString('latin1') === '%PDF-') return 'application/pdf';
+  const head = buf.subarray(0, 256).toString('utf8').trimStart();
+  if (head.startsWith('<svg') || (head.startsWith('<?xml') && head.includes('<svg'))) return 'image/svg+xml';
+  return null;
 }
 
 export interface StorageService {
@@ -182,10 +203,19 @@ let storageService: StorageService | null = null;
 
 export function getStorageService(): StorageService {
   if (!storageService) {
-    if (env.STORAGE_MODE === 'supabase' && env.SUPABASE_URL && env.SUPABASE_SERVICE_KEY) {
-      storageService = withUploadGuard(new SupabaseStorageService());
+    const legacy: StorageService = legacyIsSupabase() ? new SupabaseStorageService() : new LocalStorageService();
+    const driveConfig = driveConfigFromEnv(env);
+    if (env.STORAGE_MODE === 'gdrive' && !driveConfig) {
+      throw new Error(
+        'STORAGE_MODE=gdrive needs GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET, GOOGLE_OAUTH_REFRESH_TOKEN and GOOGLE_DRIVE_FILES_FOLDER_ID',
+      );
+    }
+    if (driveConfig) {
+      // Drive files open from Drive in any mode; new uploads go there only in gdrive mode.
+      const drive = new GoogleDriveStorageService(driveConfig);
+      storageService = withUploadGuard(new RoutingStorageService(drive, legacy, env.STORAGE_MODE === 'gdrive' ? drive : legacy));
     } else {
-      storageService = withUploadGuard(new LocalStorageService());
+      storageService = withUploadGuard(legacy);
     }
   }
   return storageService;
