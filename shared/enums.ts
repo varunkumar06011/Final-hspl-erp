@@ -247,6 +247,8 @@ export enum InventoryTxnType {
 
 /** Where stock that did not come through a PO originated. */
 export enum StockSourceType {
+  /** Material that physically arrived at site, typed in by hand (the usual "Add Inventory" entry). */
+  MATERIAL_DELIVERY = 'MATERIAL_DELIVERY',
   OPENING_STOCK = 'OPENING_STOCK',
   CASH_PURCHASE = 'CASH_PURCHASE',
   OWNER_FREE_ISSUE = 'OWNER_FREE_ISSUE',
@@ -672,6 +674,8 @@ export enum Permission {
   CREATE_GATE_PASS = 'CREATE_GATE_PASS',
   VIEW_GATE_PASSES = 'VIEW_GATE_PASSES',
   MANAGE_INVENTORY = 'MANAGE_INVENTORY',
+  /** Enter material that arrived (Add Inventory page) without being able to see any stock data. */
+  ADD_INVENTORY = 'ADD_INVENTORY',
   // Construction
   MANAGE_PHASES = 'MANAGE_PHASES',
   MANAGE_ACTIVITIES = 'MANAGE_ACTIVITIES',
@@ -699,6 +703,7 @@ export enum Permission {
 
 export const PERMISSION_MATRIX: Record<UserRole, Permission[]> = {
   [UserRole.SUPERVISOR]: [
+    Permission.ADD_INVENTORY,
     Permission.CREATE_VENDOR,
     Permission.CREATE_QUOTATION,
     Permission.MANAGE_WORK_TASKS,
@@ -722,6 +727,7 @@ export const PERMISSION_MATRIX: Record<UserRole, Permission[]> = {
     Permission.VIEW_MPR,
   ],
   [UserRole.ACCOUNTANT]: [
+    Permission.ADD_INVENTORY,
     Permission.CREATE_VENDOR,
     Permission.CREATE_QUOTATION,
     Permission.MANAGE_WORK_TASKS,
@@ -746,6 +752,7 @@ export const PERMISSION_MATRIX: Record<UserRole, Permission[]> = {
     Permission.VIEW_MPR,
   ],
   [UserRole.SITE_SUPERVISOR]: [
+    Permission.ADD_INVENTORY,
     Permission.CREATE_VENDOR,
     Permission.VIEW_VENDORS,
     Permission.CREATE_GATE_PASS,
@@ -755,6 +762,7 @@ export const PERMISSION_MATRIX: Record<UserRole, Permission[]> = {
     Permission.VIEW_MPR,
   ],
   [UserRole.PROJECT_HEAD]: [
+    Permission.ADD_INVENTORY,
     Permission.CREATE_VENDOR,
     Permission.CREATE_QUOTATION,
     Permission.MANAGE_WORK_TASKS,
@@ -783,6 +791,7 @@ export const PERMISSION_MATRIX: Record<UserRole, Permission[]> = {
     Permission.VIEW_MPR,
   ],
   [UserRole.HEAD_OF_CONSTRUCTION]: [
+    Permission.ADD_INVENTORY,
     Permission.CREATE_VENDOR,
     Permission.CREATE_QUOTATION,
     Permission.MANAGE_WORK_TASKS,
@@ -806,6 +815,7 @@ export const PERMISSION_MATRIX: Record<UserRole, Permission[]> = {
     Permission.VIEW_MPR,
   ],
   [UserRole.ACCOUNTS_HEAD]: [
+    Permission.ADD_INVENTORY,
     Permission.CREATE_PO,
     Permission.VERIFY_INVOICE,
     Permission.VIEW_FINANCIALS,
@@ -815,6 +825,7 @@ export const PERMISSION_MATRIX: Record<UserRole, Permission[]> = {
     Permission.VIEW_MPR,
   ],
   [UserRole.ADMIN]: [
+    Permission.ADD_INVENTORY,
     Permission.CREATE_VENDOR,
     Permission.CREATE_QUOTATION,
     Permission.MANAGE_WORK_TASKS,
@@ -841,6 +852,7 @@ export const PERMISSION_MATRIX: Record<UserRole, Permission[]> = {
     Permission.VIEW_MPR,
   ],
   [UserRole.ADMIN_2]: [
+    Permission.ADD_INVENTORY,
     Permission.CREATE_VENDOR,
     Permission.CREATE_QUOTATION,
     Permission.MANAGE_WORK_TASKS,

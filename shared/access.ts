@@ -86,6 +86,8 @@ export const APP_MODULES: readonly AppModule[] = [
   { key: 'transactionRegister', label: 'Transaction Register', section: 'Reports', path: '/transaction-register', permission: Permission.VIEW_FINANCIALS, defaultFor: adminOrAccountant, grants: FIN, apiPrefixes: [] },
   // ── Site Operations ──
   { key: 'inventory', label: 'Inventory', section: 'Site Operations', path: '/inventory', permission: Permission.MANAGE_INVENTORY, defaultFor: (role) => !adminOrAccountant(role), grants: [Permission.MANAGE_INVENTORY], apiPrefixes: ['/inventory', '/stock-entries'] },
+  // Entry only: type in material that arrived; no stock data is shown.
+  { key: 'addInventory', label: 'Add Inventory', section: 'Site Operations', path: '/add-inventory', permission: Permission.ADD_INVENTORY, grants: [Permission.ADD_INVENTORY], apiPrefixes: ['/inventory-intake'] },
   { key: 'assets', label: 'Assets', section: 'Site Operations', path: '/assets', permission: Permission.MANAGE_INVENTORY, defaultFor: (role) => !adminOrAccountant(role), grants: [Permission.MANAGE_INVENTORY], apiPrefixes: ['/assets'] },
   { key: 'labour', label: 'Attendance', section: 'Site Operations', path: '/labour', permission: Permission.MANAGE_LABOUR, defaultFor: (role) => !adminOrAccountant(role), grants: [Permission.MANAGE_LABOUR], apiPrefixes: ['/labour'] },
   { key: 'photos', label: 'Site Photos', section: 'Site Operations', path: '/photos', permission: Permission.UPLOAD_PHOTOS, grants: [Permission.UPLOAD_PHOTOS], apiPrefixes: ['/photos'] },

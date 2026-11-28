@@ -175,7 +175,8 @@
     "CASH_PURCHASE": "Cash / petty purchase",
     "OWNER_FREE_ISSUE": "Owner free-issue",
     "PROJECT_TRANSFER": "Transfer from another project",
-    "SITE_RETURN": "Return from site"
+    "SITE_RETURN": "Return from site",
+    "MATERIAL_DELIVERY": "Material delivery"
   },
   "units": {
     "nos": "Nos (pieces)",
@@ -330,7 +331,8 @@
     "Module Access": "Module Access",
     "Miko Assistant": "Miko Assistant",
     "My Work": "My Work",
-    "Possible Duplicates": "Possible Duplicates"
+    "Possible Duplicates": "Possible Duplicates",
+    "Add Inventory": "Add Inventory"
   },
   "roles": {
     "SUPERVISOR": "Supervisor",
