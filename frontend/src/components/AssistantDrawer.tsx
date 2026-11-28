@@ -171,6 +171,8 @@ interface ActionState {
   link?: string | null;
   error?: string;
   photos?: { attached: number; total: number };
+  /** Saved, but it repeats an earlier request (backend wording, from the duplicate check). */
+  warning?: string;
 }
 
 const AMOUNT_COLS = /(total|amount|grandTotal|balance|price)$/i;
@@ -785,6 +787,7 @@ export default function AssistantDrawer({ open, onClose }: Props) {
         label: data.result?.label,
         link: data.result?.link,
         photos: data.result?.photos,
+        warning: data.result?.warning,
       });
       void queryClient.invalidateQueries();
       // Approvals, payments... keep the conversation where it is; only a create ends its flow.
@@ -1667,6 +1670,9 @@ export default function AssistantDrawer({ open, onClose }: Props) {
                             </Typography>
                           )}
                         </Alert>
+                      )}
+                      {st.status === 'saved' && st.warning && (
+                        <Alert severity="warning" sx={{ py: 0, mt: 0.5 }}>{st.warning}</Alert>
                       )}
                       {st.status === 'failed' && (
                         <Alert severity="error" sx={{ py: 0 }}>

@@ -36,6 +36,7 @@ import { MPRStatus, MPRRequestType, MPRPaymentMethod, UserRole, isAdminRole, isF
 import { formatDate, STATUS_COLORS, QTY_UNIT_OPTIONS, SERVICE_UNIT_OPTIONS, SERVICE_CATEGORY_OPTIONS, enumLabel, unitLabel, serviceCategoryLabel } from '../utils/enumOptions';
 import { useTranslation } from 'react-i18next';
 import api, { extractErrorMessage } from '../config/api';
+import { MprDuplicateAlert, SavedMprDuplicate, useFormMprDuplicates, type MprDuplicateResult } from '../components/MprDuplicateAlert';
 import { patchRow, pendingProps, removeRow, useOptimistic } from '../utils/optimistic';
 import { useAuthStore } from '../stores/authStore';
 import ApprovalStepsDisplay from '../components/ApprovalStepsDisplay';
@@ -470,6 +471,15 @@ export default function MaterialPurchaseRequestsPage() {
     setItems(items.filter((_, i) => i !== index));
   }
 
+  // "Entered twice" verdict: live while typing, and once more from the server right after saving.
+  const [savedDup, setSavedDup] = useState<MprDuplicateResult | null>(null);
+  const { data: formDup } = useFormMprDuplicates({
+    enabled: createOpen,
+    vendorId: vendorMode === 'existing' ? selectedVendorId || null : null,
+    requestType: requestTypeTab,
+    excludeId: editRow?.id ?? null,
+    items,
+  });
   const review = useCreateReview();
   const createMutation = useMutation({
     mutationFn: async () => {
@@ -517,8 +527,10 @@ export default function MaterialPurchaseRequestsPage() {
       const res = await api.post('/material-purchase-requests', payload);
       return res.data;
     },
-    onSuccess: (data?: { revision?: { quotationsUpdated: number; pricingPending: boolean; poResubmitted: string[] } }) => {
+    onSuccess: (data?: { revision?: { quotationsUpdated: number; pricingPending: boolean; poResubmitted: string[] }; duplicateWarning?: MprDuplicateResult | null }) => {
       queryClient.invalidateQueries({ queryKey: ['mprs'] });
+      queryClient.invalidateQueries({ queryKey: ['mpr-duplicates'] });
+      setSavedDup(data?.duplicateWarning ?? null);
       queryClient.invalidateQueries({ queryKey: ['/vendors'] });
       const rev = data?.revision;
       if (rev) {
@@ -832,6 +844,7 @@ export default function MaterialPurchaseRequestsPage() {
 
       {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
       {notice && <Alert severity="success" sx={{ mb: 2 }} onClose={() => setNotice('')}>{notice}</Alert>}
+      {savedDup && <Box onClick={() => setSavedDup(null)} sx={{ cursor: 'pointer' }}><MprDuplicateAlert result={savedDup} /></Box>}
 
       {/* Filters */}
       <Box sx={{ display: 'flex', gap: 1, mb: 2, flexWrap: 'wrap' }}>
@@ -945,6 +958,7 @@ export default function MaterialPurchaseRequestsPage() {
                 </AccordionSummary>
                 <AccordionDetails sx={{ borderTop: '1px solid', borderColor: 'divider', p: 1.25 }}>
                   <Box sx={{ minWidth: 0 }}>
+                  {expandedId === row.id && <SavedMprDuplicate id={row.id} />}
                   {/* Key facts — only what people look for first (vendor, status and items are in the header) */}
                   {(() => {
                     const estTotal = row.items.reduce((s, i) => {
@@ -1248,6 +1262,7 @@ export default function MaterialPurchaseRequestsPage() {
         <DialogTitle>{editRow ? t('editTitle', { n: editRow.mprNumber }) : (isServiceTab ? t('newService') : t('newMaterialFull'))}</DialogTitle>
         <DialogContent dividers>
           {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
+          <MprDuplicateAlert result={formDup} />
 
           {/* Vendor Selection */}
           <Typography variant="subtitle2" sx={{ mb: 1 }}>{t('vendorSection')}</Typography>

@@ -187,5 +187,16 @@
   "savePayment": "Save",
   "savedBankAccount": "Saved bank account",
   "newBankAccount": "New account (type below)",
-  "primaryAccountTag": "primary"
+  "primaryAccountTag": "primary",
+  "dupTwice": "Entered twice",
+  "dupTimes": "Entered {{count}} times",
+  "dupPossible": "Possible duplicate",
+  "dupPaymentOnly": "A payment of this amount already exists",
+  "dupSameLines": "same vendor, same items and quantities",
+  "dupSameTotal": "same vendor and total, some items the same",
+  "dupSomeLines": "same vendor, same item and quantity: {{lines}}",
+  "dupPo": "PO {{pos}}",
+  "dupPaid": "Paid {{amount}}",
+  "dupNotPaid": "Nothing paid yet",
+  "dupLoose": "A payment of the same amount to this vendor already exists: {{codes}}"
 }

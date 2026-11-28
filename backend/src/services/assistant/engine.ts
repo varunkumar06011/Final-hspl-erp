@@ -541,7 +541,7 @@ export interface ConfirmResult {
   error?: string;
   /** PIN_REQUIRED / PIN_WRONG / PIN_LOCKED / PIN_NOT_SET: the card stays open for another try. */
   code?: string;
-  result?: { type: string; id: string | null; label: string; link: string | null; photos?: { attached: number; total: number } };
+  result?: { type: string; id: string | null; label: string; link: string | null; photos?: { attached: number; total: number }; warning?: string };
   /** Appended to the client's history so the model knows what was created (and its id). */
   historyAppend?: ChatContent[];
 }
@@ -690,10 +690,12 @@ export async function confirmAction(actionId: string, user: AssistantUser, opts:
   });
   if (documentIds.length) await releaseDocuments(user, documentIds).catch(() => undefined);
 
+  // A request that repeats an earlier one (same vendor, items, quantities) is saved but flagged by the API.
+  const dupWarning = typeof res.body?.duplicateWarning?.message === 'string' ? (res.body.duplicateWarning.message as string) : undefined;
   return {
     ok: true,
     status: 201,
-    result: { type: tool.model, id: created.id ?? null, label, link, photos: photos.length ? { attached, total: photos.length } : undefined },
+    result: { type: tool.model, id: created.id ?? null, label, link, photos: photos.length ? { attached, total: photos.length } : undefined, warning: dupWarning },
     historyAppend: isAction
       ? [
           { role: 'user', parts: [{ text: `(system) The user confirmed and the app did: ${action.tool} on ${label} (id ${created.id}).` }] },
@@ -701,7 +703,7 @@ export async function confirmAction(actionId: string, user: AssistantUser, opts:
         ]
       : [
           { role: 'user', parts: [{ text: `(system) The user confirmed and the app saved: ${action.tool} -> ${label} (id ${created.id ?? 'n/a'}). Use this id if they ask for a follow-up on it.` }] },
-          { role: 'model', parts: [{ text: `Saved: ${label}.` }] },
+          { role: 'model', parts: [{ text: `Saved: ${label}.${dupWarning ? ` Warning: ${dupWarning}` : ''}` }] },
         ],
   };
 }

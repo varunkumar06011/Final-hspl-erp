@@ -30,6 +30,8 @@ import { CatalogItemKind, catalogNameKey, lineKey, isAdminRole, billableQuantity
 import multer from 'multer';
 import { syncChainDescription } from '../services/description-sync.service';
 import { makePrimary } from '../services/vendor-bank.service';
+import { findMprDuplicates, type DuplicateLine } from '../services/mpr-duplicate.service';
+import { z } from 'zod';
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
 const allowedReceiptFileTypes = ['application/pdf', 'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/bmp', 'image/tiff'];
@@ -539,6 +541,78 @@ router.get(
   }
 );
 
+// POST /duplicate-check — has this vendor already been asked for the same items and quantities?
+// Used by the request form before saving. Read-only (never creates catalog items).
+const duplicateCheckSchema = z.object({
+  body: z.object({
+    vendorId: z.string().uuid().optional(),
+    requestType: z.enum(['MATERIAL', 'SERVICE']).optional(),
+    excludeId: z.string().uuid().optional(),
+    estimatedGstRate: z.coerce.number().min(0).max(100).optional(),
+    items: z
+      .array(
+        z.object({
+          itemId: z.string().uuid().nullish(),
+          materialName: z.string().trim().min(1),
+          specification: z.string().nullish(),
+          quantity: z.coerce.number().positive(),
+          unit: z.string().nullish(),
+          estimatedRate: z.coerce.number().min(0).optional(),
+          gstRate: z.coerce.number().min(0).max(100).nullish(),
+        }),
+      )
+      .min(1)
+      .max(200),
+  }),
+});
+
+router.post(
+  '/duplicate-check',
+  rbacMiddleware(Permission.CREATE_MPR),
+  validateMiddleware(duplicateCheckSchema),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      const { vendorId, requestType, excludeId, items } = req.body;
+      const { estimatedTotal } = priceItems(items, Number(req.body.estimatedGstRate) || 0);
+      res.json(await findMprDuplicates({ projectId, vendorId, requestType, excludeId, total: estimatedTotal, lines: items as DuplicateLine[] }));
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+// GET /:id/duplicates — is this saved request a repeat of an earlier one (and was it paid already)?
+router.get(
+  '/:id/duplicates',
+  rbacMiddleware(Permission.VIEW_MPR),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const projectId = requireProjectId(req);
+      const mpr = await prisma.materialPurchaseRequest.findFirst({
+        where: { id: req.params.id, projectId, deletedAt: null },
+        select: { id: true, vendorId: true, requestType: true, estimatedTotal: true, items: { select: { itemId: true, materialName: true, specification: true, quantity: true } } },
+      });
+      if (!mpr) {
+        res.status(404).json({ error: 'Material Purchase Request not found' });
+        return;
+      }
+      res.json(
+        await findMprDuplicates({
+          projectId,
+          vendorId: mpr.vendorId,
+          requestType: mpr.requestType,
+          excludeId: mpr.id,
+          total: Number(mpr.estimatedTotal),
+          lines: mpr.items.map((i) => ({ itemId: i.itemId, materialName: i.materialName, specification: i.specification, quantity: Number(i.quantity) })),
+        }),
+      );
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
 // POST / — create MPR
 router.post(
   '/',
@@ -614,7 +688,16 @@ router.post(
       });
 
       await logAudit({ userId: req.user!.id, action: AuditAction.CREATE_MPR, entityType: 'material_purchase_requests', entityId: record.id, projectId, newValue: { mprNumber: record.mprNumber } });
-      res.status(201).json(record);
+      // Saved either way; if it repeats an earlier request the response says so (and what was paid).
+      const duplicate = await findMprDuplicates({
+        projectId,
+        vendorId,
+        requestType: record.requestType,
+        excludeId: record.id,
+        total: Number(record.estimatedTotal),
+        lines: record.items.map((i) => ({ itemId: i.itemId, materialName: i.materialName, specification: i.specification, quantity: Number(i.quantity) })),
+      });
+      res.status(201).json({ ...record, duplicateWarning: duplicate.level === 'NONE' && !duplicate.loosePayments.length ? null : duplicate });
     } catch (error) {
       if (error instanceof PaymentInputError) {
         res.status(error.status).json({ error: error.message });

@@ -187,5 +187,16 @@
   "savePayment": "సేవ్",
   "savedBankAccount": "సేవ్ చేసిన బ్యాంక్ ఖాతా",
   "newBankAccount": "కొత్త ఖాతా (క్రింద టైప్ చేయండి)",
-  "primaryAccountTag": "ప్రధాన"
+  "primaryAccountTag": "ప్రధాన",
+  "dupTwice": "రెండుసార్లు నమోదైంది",
+  "dupTimes": "{{count}} సార్లు నమోదైంది",
+  "dupPossible": "డూప్లికేట్ అయ్యే అవకాశం ఉంది",
+  "dupPaymentOnly": "ఈ మొత్తానికి చెల్లింపు ఇప్పటికే ఉంది",
+  "dupSameLines": "అదే వెండర్, అవే వస్తువులు మరియు పరిమాణాలు",
+  "dupSameTotal": "అదే వెండర్ మరియు మొత్తం, కొన్ని వస్తువులు ఒకటే",
+  "dupSomeLines": "అదే వెండర్, అదే వస్తువు మరియు పరిమాణం: {{lines}}",
+  "dupPo": "PO {{pos}}",
+  "dupPaid": "చెల్లించినది {{amount}}",
+  "dupNotPaid": "ఇంకా ఏమీ చెల్లించలేదు",
+  "dupLoose": "ఈ వెండర్‌కు అదే మొత్తానికి చెల్లింపు ఇప్పటికే ఉంది: {{codes}}"
 }
