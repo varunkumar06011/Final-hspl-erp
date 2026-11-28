@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Box, Card, Chip, Grid, LinearProgress, Stack, Typography, Alert } from '@mui/material';
 import {
   AccountBalanceWallet as ValueIcon,
@@ -12,6 +13,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { formatIndianNumber } from '../../utils/enumOptions';
+import InventoryListDialog, { type InventoryListKind } from './InventoryListDialog';
 
 export interface InventorySummaryData {
   totalValue: number;
@@ -42,6 +44,7 @@ function StatCard({
   sub,
   color = 'primary.main',
   emphasize,
+  onClick,
 }: {
   icon: React.ReactNode;
   label: string;
@@ -49,9 +52,31 @@ function StatCard({
   sub?: React.ReactNode;
   color?: string;
   emphasize?: boolean;
+  /** Makes the card a button that opens the records behind the number. */
+  onClick?: () => void;
 }) {
   return (
-    <Card sx={{ p: 2, height: '100%', ...(emphasize ? { borderColor: color, borderWidth: 1, borderStyle: 'solid' } : {}) }}>
+    <Card
+      {...(onClick
+        ? {
+            role: 'button',
+            tabIndex: 0,
+            onClick,
+            onKeyDown: (e: React.KeyboardEvent) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                onClick();
+              }
+            },
+          }
+        : {})}
+      sx={{
+        p: 2,
+        height: '100%',
+        ...(emphasize ? { borderColor: color, borderWidth: 1, borderStyle: 'solid' } : {}),
+        ...(onClick ? { cursor: 'pointer', '&:hover, &:focus-visible': { boxShadow: 4 } } : {}),
+      }}
+    >
       <Stack direction="row" spacing={1.5} alignItems="flex-start">
         <Box sx={{ color, mt: 0.5 }}>{icon}</Box>
         <Box sx={{ minWidth: 0 }}>
@@ -85,12 +110,14 @@ function BarList({ rows, total }: { rows: { key: string; label: string; value: n
 export default function InventorySummary({ data }: { data: InventorySummaryData }) {
   const { t } = useTranslation('inventory');
   const navigate = useNavigate();
+  const [list, setList] = useState<InventoryListKind | null>(null);
   const p = data.pending;
   const hasPending = p.receiptsToProcess + p.entriesToApprove + p.gatePassesAwaiting + p.posAwaitingDelivery > 0;
   const flow = data.last30Days;
 
   return (
     <Box sx={{ mb: 2 }}>
+      <InventoryListDialog kind={list} onClose={() => setList(null)} />
       <Grid container spacing={2} sx={{ mb: 2 }}>
         <Grid item xs={12} sm={6} md={4}>
           <StatCard
@@ -102,7 +129,7 @@ export default function InventorySummary({ data }: { data: InventorySummaryData 
           />
         </Grid>
         <Grid item xs={6} sm={3} md={2}>
-          <StatCard icon={<ItemsIcon />} label={t('totalItems')} value={formatIndianNumber(data.itemCount)} />
+          <StatCard icon={<ItemsIcon />} label={t('totalItems')} value={formatIndianNumber(data.itemCount)} onClick={() => setList('all')} />
         </Grid>
         <Grid item xs={6} sm={3} md={2}>
           <StatCard
@@ -111,13 +138,14 @@ export default function InventorySummary({ data }: { data: InventorySummaryData 
             label={t('lowStock')}
             value={data.lowStockCount}
             sub={`${t('outOfStock')}: ${data.outOfStockCount}`}
+            onClick={() => setList('low')}
           />
         </Grid>
         <Grid item xs={6} sm={3} md={2}>
-          <StatCard icon={<LayersIcon />} color="secondary.main" label={t('assets')} value={formatIndianNumber(data.assetUnits)} />
+          <StatCard icon={<LayersIcon />} color="secondary.main" label={t('assets')} value={formatIndianNumber(data.assetUnits)} onClick={() => setList('assets')} />
         </Grid>
         <Grid item xs={6} sm={3} md={2}>
-          <StatCard icon={<CategoryIcon />} color="success.main" label={t('consumables')} value={formatIndianNumber(data.consumableCount)} />
+          <StatCard icon={<CategoryIcon />} color="success.main" label={t('consumables')} value={formatIndianNumber(data.consumableCount)} onClick={() => setList('consumables')} />
         </Grid>
         <Grid item xs={6} sm={4}>
           <StatCard icon={<ReceivedIcon />} color="success.main" label={t('receivedLast30')} value={inr(flow.inValue)} sub={`${t('returnedLast30')}: ${inr(flow.returnValue)}`} />

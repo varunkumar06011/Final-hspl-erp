@@ -149,6 +149,83 @@ async function postEntry(
   }
 }
 
+export interface StockEntryInput {
+  sourceType: StockSourceType;
+  entryDate?: Date;
+  supplierName?: string;
+  referenceNo?: string;
+  notes?: string;
+  items: { materialName: string; itemId?: string; specification?: string | null; unit: string; quantity: number; unitCost: number; itemType: InventoryItemType; category?: string }[];
+}
+
+/**
+ * Saves a stock entry: posted into stock at once when the person holds an approver role (or
+ * the caller passes `postNow`, as "Add Inventory" does), otherwise it waits for a head's
+ * approval. `approvedBy` is only recorded for an approver: nobody else approved it.
+ */
+export async function createStockEntry(
+  projectId: string,
+  user: { id: string; name: string; role: string; extraPermissions?: string[] },
+  input: StockEntryInput,
+  { postNow = false }: { postNow?: boolean } = {},
+) {
+  const { sourceType, entryDate, supplierName, referenceNo, notes, items } = input;
+  const entryNumber = await generateProjectSequenceNumber('stockEntry', 'entryNumber', 'STK', 3, projectId);
+  const approver = isApproverRole(user.role) || canOverrideApprovals(user.role, user.extraPermissions);
+  const autoPost = postNow || approver;
+
+  const created = await prisma.$transaction(async (tx) => {
+    const entry = await tx.stockEntry.create({
+      data: {
+        projectId,
+        entryNumber,
+        sourceType,
+        status: autoPost ? StockEntryStatus.POSTED : StockEntryStatus.PENDING_APPROVAL,
+        ...(entryDate ? { entryDate } : {}),
+        supplierName: supplierName || null,
+        referenceNo: referenceNo || null,
+        notes: notes || null,
+        createdBy: user.id,
+        ...(approver ? { approvedBy: user.id, approvedAt: new Date() } : {}),
+        items: {
+          create: items.map((line) => ({
+            materialName: line.materialName.trim(),
+            itemId: line.itemId ?? null,
+            specification: line.specification ?? null,
+            unit: line.unit,
+            quantity: line.quantity,
+            unitCost: line.unitCost ?? 0,
+            itemType: line.itemType,
+            category: line.category || null,
+          })),
+        },
+      },
+      include: { items: true },
+    });
+    if (autoPost) await postEntry(tx, entry, { id: user.id, name: user.name });
+    return tx.stockEntry.findUniqueOrThrow({ where: { id: entry.id }, include: entryInclude });
+  }, { timeout: 30_000 });
+
+  await logAudit({
+    userId: user.id,
+    action: AuditAction.CREATE,
+    entityType: 'STOCK_ENTRY',
+    entityId: created.id,
+    projectId,
+    newValue: { entryNumber, sourceType, status: created.status, lines: items.length },
+  });
+  if (!autoPost) {
+    notifyAllHeads(projectId, {
+      entityType: 'STOCK_ENTRY',
+      entityId: created.id,
+      title: 'Stock entry awaiting approval',
+      body: `${entryNumber} (${sourceType.replace(/_/g, ' ').toLowerCase()}) entered by ${user.name}`,
+      url: '/inventory',
+    }).catch((err) => console.error('[Push] Stock entry notification error:', err));
+  }
+  return created;
+}
+
 router.get('/', rbacMiddleware(Permission.MANAGE_INVENTORY), async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
     const projectId = requireProjectId(req);
@@ -205,59 +282,7 @@ router.post(
         }
       }
 
-      const entryNumber = await generateProjectSequenceNumber('stockEntry', 'entryNumber', 'STK', 3, projectId);
-      const autoPost = (isApproverRole(req.user!.role) || canOverrideApprovals(req.user!.role, req.user!.extraPermissions));
-
-      const created = await prisma.$transaction(async (tx) => {
-        const entry = await tx.stockEntry.create({
-          data: {
-            projectId,
-            entryNumber,
-            sourceType,
-            status: autoPost ? StockEntryStatus.POSTED : StockEntryStatus.PENDING_APPROVAL,
-            ...(entryDate ? { entryDate } : {}),
-            supplierName: supplierName || null,
-            referenceNo: referenceNo || null,
-            notes: notes || null,
-            createdBy: req.user!.id,
-            ...(autoPost ? { approvedBy: req.user!.id, approvedAt: new Date() } : {}),
-            items: {
-              create: items.map((line) => ({
-                materialName: line.materialName.trim(),
-                itemId: line.itemId ?? null,
-                specification: line.specification ?? null,
-                unit: line.unit,
-                quantity: line.quantity,
-                unitCost: line.unitCost ?? 0,
-                itemType: line.itemType,
-                category: line.category || null,
-              })),
-            },
-          },
-          include: { items: true },
-        });
-        if (autoPost) await postEntry(tx, entry, { id: req.user!.id, name: req.user!.name });
-        return tx.stockEntry.findUniqueOrThrow({ where: { id: entry.id }, include: entryInclude });
-      }, { timeout: 30_000 });
-
-      await logAudit({
-        userId: req.user!.id,
-        action: AuditAction.CREATE,
-        entityType: 'STOCK_ENTRY',
-        entityId: created.id,
-        projectId,
-        newValue: { entryNumber, sourceType, status: created.status, lines: items.length },
-      });
-      if (!autoPost) {
-        notifyAllHeads(projectId, {
-          entityType: 'STOCK_ENTRY',
-          entityId: created.id,
-          title: 'Stock entry awaiting approval',
-          body: `${entryNumber} (${sourceType.replace(/_/g, ' ').toLowerCase()}) entered by ${req.user!.name}`,
-          url: '/inventory',
-        }).catch((err) => console.error('[Push] Stock entry notification error:', err));
-      }
-
+      const created = await createStockEntry(projectId, req.user!, { sourceType, entryDate, supplierName, referenceNo, notes, items });
       res.status(201).json(created);
     } catch (error) {
       next(error);

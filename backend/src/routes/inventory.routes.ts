@@ -110,6 +110,7 @@ router.post(
 // GET /items — list inventory items
 router.get(
   '/items',
+  rbacMiddleware(Permission.MANAGE_INVENTORY),
   validateMiddleware(listInventorySchema),
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
@@ -326,6 +327,7 @@ router.delete(
 // GET /transactions — list transactions
 router.get(
   '/transactions',
+  rbacMiddleware(Permission.MANAGE_INVENTORY),
   validateMiddleware(listInventoryTxnsSchema),
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {

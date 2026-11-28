@@ -135,5 +135,13 @@
   "mergeInto": "Merge into kept item",
   "mergeMoves": "{{n}} movements",
   "mergeConfirm": "Merge \"{{from}}\" into \"{{to}}\"? This cannot be undone.",
-  "mergeDone": "Merged \"{{from}}\" into \"{{to}}\"."
+  "mergeDone": "Merged \"{{from}}\" into \"{{to}}\".",
+  "intakeTitle": "Add inventory",
+  "intakeIntro": "Enter the material that has arrived at site: what it is, how much, and who brought it. Add a photo of the bill or material if you can.",
+  "intakeLine": "Material {{n}}",
+  "intakeRate": "Rate (if known)",
+  "intakeSave": "Save entry",
+  "assetNo": "Asset ID",
+  "listCount_one": "{{count}} record",
+  "listCount_other": "{{count}} records"
 }

@@ -12,6 +12,7 @@ import {
   Refresh as RefreshIcon,
   LocalShipping as GatePassIcon,
   Inventory as InventoryIcon,
+  AddBox as AddInventoryIcon,
   Engineering as LabourIcon,
   Devices as AssetsIcon,
   CameraAlt as PhotoIcon,
@@ -107,6 +108,7 @@ const NAV_ITEMS = [
   { label: 'Payment Report', icon: <PaymentReportIcon />, path: '/payment-reports', section: 'Reports' },
   // ── Site Operations ──
   { label: 'Inventory', icon: <InventoryIcon />, path: '/inventory', section: 'Site Operations' },
+  { label: 'Add Inventory', icon: <AddInventoryIcon />, path: '/add-inventory', section: 'Site Operations' },
   { label: 'Assets', icon: <AssetsIcon />, path: '/assets', section: 'Site Operations' },
   { label: 'Attendance', icon: <LabourIcon />, path: '/labour', section: 'Site Operations' },
   { label: 'Site Photos', icon: <PhotoIcon />, path: '/photos', section: 'Site Operations' },

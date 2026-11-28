@@ -789,6 +789,29 @@ export const createStockEntrySchema = z.object({
     items: z.array(stockEntryItem).min(1).max(100),
   }),
 });
+// "Add Inventory": what arrived, typed by hand by someone who cannot see stock. The item type
+// and (when no rate is given) the value come from the matching stock item on the server.
+export const createInventoryIntakeSchema = z.object({
+  body: z.object({
+    sourceType: z.nativeEnum(StockSourceType).default(StockSourceType.MATERIAL_DELIVERY),
+    entryDate: dateStr.optional(),
+    supplierName: z.string().trim().max(200).optional(),
+    referenceNo: z.string().trim().max(100).optional(),
+    notes: z.string().trim().max(500).optional(),
+    items: z
+      .array(
+        z.object({
+          materialName: nonEmptyText(200),
+          ...catalogLink,
+          unit: z.string().trim().min(1).max(20),
+          quantity: positiveQty,
+          unitCost: money.optional(),
+        }),
+      )
+      .min(1)
+      .max(50),
+  }),
+});
 export const rejectStockEntrySchema = z.object({
   params: z.object({ id: uuid }),
   body: z.object({ reason: nonEmptyText(500) }),

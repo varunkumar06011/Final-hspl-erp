@@ -74,6 +74,7 @@ const VouchersPage = lazyWithRetry(() => import('./pages/VouchersPage'));
 const AccountingReportsPage = lazyWithRetry(() => import('./pages/AccountingReportsPage'));
 const PaymentReportPage = lazyWithRetry(() => import('./pages/PaymentReportPage'));
 const InventoryPage = lazyWithRetry(() => import('./pages/InventoryPage'));
+const AddInventoryPage = lazyWithRetry(() => import('./pages/AddInventoryPage'));
 const AssetsPage = lazyWithRetry(() => import('./pages/AssetsPage'));
 const AssetDetailPage = lazyWithRetry(() => import('./pages/AssetDetailPage'));
 const AssetScanPage = lazyWithRetry(() => import('./pages/AssetScanPage'));
@@ -142,6 +143,7 @@ const ROUTES = [
   { path: '/accounting-reports', element: <AccountingReportsPage /> },
   { path: '/payment-reports', element: <PaymentReportPage /> },
   { path: '/inventory', element: <InventoryPage /> },
+  { path: '/add-inventory', element: <AddInventoryPage /> },
   { path: '/assets', element: <AssetsPage /> },
   { path: '/assets/:itemId', element: <AssetDetailPage /> },
   { path: '/labour', element: <LabourPage /> },
