@@ -12,6 +12,7 @@ import {
   Pagination,
   Paper,
   TextField,
+  Tooltip,
   Typography,
 } from '@mui/material';
 import {
@@ -52,6 +53,8 @@ interface Row {
   materials: string[];
   materialCount: number;
   amount: number;
+  /** From the server (computePaymentStatus); null when nothing is payable yet. */
+  paymentStatus?: PaymentStatus | null;
   numbers: {
     mpr: { id: string; number: string; status: string } | null;
     quotations: { id: string; number: string; status: string }[];
@@ -71,6 +74,16 @@ interface ListResponse {
   counts: Record<string, number>;
   pagination: { page: number; pageSize: number; total: number; totalPages: number };
 }
+
+type PaymentStatus = 'PAID' | 'PENDING' | 'PARTIAL' | 'UNPAID';
+
+/** Total amount colour by payment status (darker shades on light backgrounds for contrast). */
+const PAYMENT_COLORS: Record<PaymentStatus, { light: string; dark: string }> = {
+  PAID: { light: '#2E7D32', dark: '#66BB6A' }, // green
+  UNPAID: { light: '#D32F2F', dark: '#EF5350' }, // red
+  PARTIAL: { light: '#E65100', dark: '#FFA726' }, // orange
+  PENDING: { light: '#B8860B', dark: '#FFCA28' }, // yellow
+};
 
 const STAGES = ['all', 'REQUEST', 'QUOTATION', 'PO', 'DELIVERY', 'INVOICE', 'PAYMENT', 'DONE', 'CLOSED'] as const;
 
@@ -200,7 +213,13 @@ export default function CombinedRecordsPage() {
                   {r.requestType === 'SERVICE' && <Chip size="small" variant="outlined" label={t('typeService')} />}
                   <Typography variant="body2" color="text.secondary" noWrap sx={{ minWidth: 0, flexShrink: 1 }}>{r.vendors.join(', ') || '—'}</Typography>
                   <Box sx={{ flex: 1 }} />
-                  <Typography fontWeight={700}>{formatCurrency(r.amount)}</Typography>
+                  {r.paymentStatus ? (
+                    <Tooltip title={t(`paymentStatus.${r.paymentStatus}`)}>
+                      <Typography fontWeight={700} sx={{ color: (th) => PAYMENT_COLORS[r.paymentStatus!][th.palette.mode] }}>{formatCurrency(r.amount)}</Typography>
+                    </Tooltip>
+                  ) : (
+                    <Typography fontWeight={700}>{formatCurrency(r.amount)}</Typography>
+                  )}
                 </Box>
                 <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', mt: 0.5 }}>
                   {r.numbers.mpr && r.title !== r.numbers.mpr.number && <NumberChip label={r.numbers.mpr.number} status={r.numbers.mpr.status} />}

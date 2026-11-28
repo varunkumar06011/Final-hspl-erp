@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 
 vi.mock('../src/config/prisma', () => ({ prisma: {} }));
 
-import { computeStages, matchesQuery, normalizeToken, type ChainShape } from '../src/services/combined-records.service';
+import { computePaymentStatus, computeStages, matchesQuery, normalizeToken, type ChainShape } from '../src/services/combined-records.service';
 
 const chain = (over: Partial<ChainShape>): ChainShape => ({
   mpr: { status: 'APPROVED', nonVendor: false },
@@ -129,5 +129,36 @@ describe('contracts and site bills in a record', () => {
   it('a site bill not yet combined into a PO is waiting to be combined', () => {
     const r = computeStages(chain({ mpr: { status: 'APPROVED', nonVendor: true, isSiteBill: true }, pos: [] }));
     expect(r.next).toBe('combineSiteBill');
+  });
+});
+
+describe('combined records payment status (total amount colour)', () => {
+  const po = (grandTotal: number, extra: Partial<ChainShape['pos'][number]> = {}) => ({ status: 'APPROVED', grandTotal, netPayable: grandTotal, ...extra });
+  const status = (pos: ChainShape['pos'], payments: ChainShape['payments']) => computePaymentStatus({ pos, payments });
+
+  it('is null when nothing is payable yet', () => {
+    expect(status([], [])).toBeNull();
+    expect(status([po(1000, { status: 'REJECTED' })], [])).toBeNull();
+    expect(status([po(0, { umbrella: true })], [])).toBeNull();
+  });
+  it('unpaid when no payment was received', () => {
+    expect(status([po(1000)], [])).toBe('UNPAID');
+    expect(status([po(1000)], [{ status: 'REJECTED', amount: 1000 }, { status: 'CANCELLED', amount: 1000 }])).toBe('UNPAID');
+  });
+  it('partially paid when some, not all, is paid', () => {
+    expect(status([po(1000)], [{ status: 'PAID', amount: 400.25 }])).toBe('PARTIAL');
+  });
+  it('fully paid within the ₹1 tolerance (decimals compared in paise)', () => {
+    expect(status([po(1000.5)], [{ status: 'PAID', amount: 999.5 }])).toBe('PAID');
+    expect(status([po(1000.5)], [{ status: 'PAID', amount: 999.49 }])).toBe('PARTIAL');
+    expect(status([po(600), po(400.1)], [{ status: 'PAID', amount: 600 }, { status: 'PAID', amount: 400.1 }])).toBe('PAID');
+  });
+  it('uses net payable when set', () => {
+    expect(status([po(1000, { netPayable: 900 })], [{ status: 'PAID', amount: 900 }])).toBe('PAID');
+  });
+  it('pending verification while a request awaits approval or its voucher', () => {
+    expect(status([po(1000)], [{ status: 'PENDING', amount: 1000 }])).toBe('PENDING');
+    expect(status([po(1000)], [{ status: 'PAID', amount: 500 }, { status: 'APPROVED', amount: 500 }])).toBe('PENDING');
+    expect(status([po(1000)], [{ status: 'PAID', amount: 1000 }, { status: 'PENDING', amount: 10 }])).toBe('PAID');
   });
 });

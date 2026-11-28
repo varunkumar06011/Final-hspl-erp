@@ -245,5 +245,11 @@
     "accountNo": "A/c No",
     "ifsc": "IFSC",
     "none": "No account details"
+  },
+  "paymentStatus": {
+    "PAID": "Fully paid",
+    "PENDING": "Payment pending verification",
+    "PARTIAL": "Partially paid",
+    "UNPAID": "Not paid"
   }
 }

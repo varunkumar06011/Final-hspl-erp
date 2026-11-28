@@ -1,4 +1,5 @@
 import {
+  PAYMENT_MATCH_TOLERANCE,
   Permission,
   canOverrideApprovals,
   findApprovableStep,
@@ -6,6 +7,7 @@ import {
   isApproverRole,
   isWorkflowOpenToRole,
   lineKey,
+  toPaise,
 } from '@hospital-erp/shared';
 import { prisma } from '../config/prisma';
 
@@ -111,8 +113,7 @@ export function computeStages(c: ChainShape): { steps: Step[]; current: StepKey 
   steps.push({ key: 'INVOICE', state: siteBill ? 'skipped' : invoiced ? 'done' : poApproved ? 'current' : 'todo' });
 
   // ── Payment ──
-  const payable = workPos.reduce((s, p) => s + (p.netPayable || p.grandTotal), 0);
-  const paid = c.payments.filter((p) => p.status === 'PAID').reduce((s, p) => s + p.amount, 0);
+  const { payable, paid } = payableAndPaid(c);
   const fullyPaid = payable > 0 && paid >= payable - 0.5;
   steps.push({ key: 'PAYMENT', state: fullyPaid ? 'done' : poApproved ? 'current' : 'todo' });
 
@@ -142,6 +143,39 @@ export function computeStages(c: ChainShape): { steps: Step[]; current: StepKey 
       next: why as NextAction,
     };
   }
+}
+
+/**
+ * What the record owes and what has been paid, the same sums the PAYMENT step uses:
+ * payable = net payable (else grand total) of live work POs; paid = PAID payment
+ * requests only (pending, rejected and cancelled requests never count).
+ */
+function payableAndPaid(c: Pick<ChainShape, 'pos' | 'payments'>): { payable: number; paid: number } {
+  const workPos = c.pos.filter((p) => !DEAD.includes(p.status) && !p.umbrella);
+  const payable = workPos.reduce((s, p) => s + (p.netPayable || p.grandTotal), 0);
+  const paid = c.payments.filter((p) => p.status === 'PAID').reduce((s, p) => s + p.amount, 0);
+  return { payable, paid };
+}
+
+/** Payment requests still waiting to be approved or paid (voucher not yet recorded). */
+const AWAITING_PAYMENT = ['PENDING', 'APPROVED'];
+
+export type RecordPaymentStatus = 'PAID' | 'PENDING' | 'PARTIAL' | 'UNPAID';
+
+/**
+ * Payment status of a record, for colouring its total amount. Null when nothing is
+ * payable yet (no live PO with an amount). Paid within ₹1 (PAYMENT_MATCH_TOLERANCE,
+ * compared in paise) of the payable counts as fully paid; a request still awaiting
+ * approval / its voucher shows as pending; otherwise partially paid or unpaid.
+ */
+export function computePaymentStatus(c: Pick<ChainShape, 'pos' | 'payments'>): RecordPaymentStatus | null {
+  const { payable, paid } = payableAndPaid(c);
+  const payablePaise = toPaise(payable);
+  const paidPaise = toPaise(paid);
+  if (!(payablePaise > 0)) return null;
+  if (paidPaise >= payablePaise - Math.round(PAYMENT_MATCH_TOLERANCE * 100)) return 'PAID';
+  if (c.payments.some((p) => AWAITING_PAYMENT.includes(p.status))) return 'PENDING';
+  return paidPaise > 0 ? 'PARTIAL' : 'UNPAID';
 }
 
 // ───────────────────────── search ─────────────────────────
@@ -353,6 +387,8 @@ export async function listCombinedRecords(projectId: string, viewer: Viewer, que
     const rBills = poIds.flatMap((id) => billsByPo.get(id) ?? []);
     const isSiteBatch = r.pos.some((p) => p.isSiteBillBatch);
 
+    const chainPos = r.pos.map((p) => ({ status: p.status, grandTotal: money(p.grandTotal), netPayable: money(p.netPayable), umbrella: p.isContract && money(p.grandTotal) === 0 }));
+    const chainPayments = rPay.map((p) => ({ status: p.status, amount: money(p.amount) }));
     const stages = computeStages({
       mpr: r.mpr
         ? { status: r.mpr.status, nonVendor: r.mpr.vendor?.vendorType === 'NON_VENDOR', isSiteBill: r.mpr.isSiteBill }
@@ -360,11 +396,12 @@ export async function listCombinedRecords(projectId: string, viewer: Viewer, que
           ? { status: 'APPROVED', nonVendor: true, isSiteBill: true }
           : null,
       quotations: r.quotations,
-      pos: r.pos.map((p) => ({ status: p.status, grandTotal: money(p.grandTotal), netPayable: money(p.netPayable), umbrella: p.isContract && money(p.grandTotal) === 0 })),
+      pos: chainPos,
       goodsReceipts: rGrs,
       invoices: rInv,
-      payments: rPay.map((p) => ({ status: p.status, amount: money(p.amount) })),
+      payments: chainPayments,
     });
+    const paymentStatus = stages.current === 'CLOSED' ? null : computePaymentStatus({ pos: chainPos, payments: chainPayments });
 
     const vendors = uniq([r.mpr?.vendor?.name, ...r.quotations.map((q) => q.vendor.name), ...r.pos.map((p) => p.vendor.name)]);
     const materials = uniq([
@@ -427,6 +464,7 @@ export async function listCombinedRecords(projectId: string, viewer: Viewer, que
       materials: materials.slice(0, 6),
       materialCount: materials.length,
       amount: Math.round(amount * 100) / 100,
+      paymentStatus,
       numbers: {
         mpr: r.mpr ? { id: r.mpr.id, number: r.mpr.mprNumber, status: r.mpr.status } : null,
         quotations: r.quotations.map((q) => ({ id: q.id, number: q.quotationNumber, status: q.status })),
